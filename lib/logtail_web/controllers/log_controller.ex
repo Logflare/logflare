@@ -1,7 +1,7 @@
 defmodule LogtailWeb.LogController do
   use LogtailWeb, :controller
 
-  def create(conn, _params) do
-    
+  def create() do
+
   end
 end

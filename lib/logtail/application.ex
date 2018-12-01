@@ -14,6 +14,8 @@ defmodule Logtail.Application do
       supervisor(LogtailWeb.Endpoint, []),
       # Start your own worker by calling: Logtail.Worker.start_link(arg1, arg2, arg3)
       # worker(Logtail.Worker, [arg1, arg2, arg3]),
+      supervisor(Logtail.Periodically, []),
+      supervisor(Logtail.Main, []),
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
