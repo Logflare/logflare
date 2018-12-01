@@ -5,12 +5,10 @@ defmodule Logtail.Main do
     GenServer.start_link(__MODULE__, %{})
   end
 
-  def init(table) do
-    logs = :ets.new(table, [:named_table, :set, :protected])
-    {:ok, logs}
+  def init(logs_table) do
+    logs_table = :ets.new(:logs_table, [:named_table, :set, :protected])
+    |> IO.inspect(label: "ETS Table Created")
+    {:ok, logs_table}
   end
 
-  def create_table() do
-
-  end
 end

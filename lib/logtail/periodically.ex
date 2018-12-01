@@ -14,12 +14,12 @@ defmodule Logtail.Periodically do
   @impl true
   def handle_info(:work, state) do
     # Do the desired work here
-    IO.puts "did work"
+    IO.puts "Periodically GenServer Running"
     schedule_work() # Reschedule once more
     {:noreply, state}
   end
 
   defp schedule_work() do
-    Process.send_after(self(), :work, 1000) # In 2 hours
+    Process.send_after(self(), :work, 5000) # In 5 seconds
   end
 end
