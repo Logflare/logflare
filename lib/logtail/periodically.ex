@@ -20,6 +20,6 @@ defmodule Logtail.Periodically do
   end
 
   defp schedule_work() do
-    Process.send_after(self(), :work, 5000) # In 5 seconds
+    Process.send_after(self(), :work, 60000) # In 60 seconds
   end
 end
