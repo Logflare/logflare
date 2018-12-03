@@ -16,8 +16,9 @@ defmodule Logtail.Main do
   def create_table_or_insert_log(table_name, timestamp, log_entry) do
     case :ets.info(table_name) do
       :undefined ->
-        :ets.new(table_name, [:named_table, :ordered_set, :public])
-        :ets.insert(table_name, {timestamp, log_entry})
+        table_name
+        |> :ets.new([:named_table, :ordered_set, :public])
+        |> :ets.insert({timestamp, log_entry})
       _ ->
         :ets.insert(table_name, {timestamp, log_entry})
     end
