@@ -1,7 +1,7 @@
 defmodule Logtail.Main do
   use GenServer
 
-  @table :logs_table
+  @table :unused_table
 
   def start_link do
     GenServer.start_link(__MODULE__, %{})
@@ -13,16 +13,12 @@ defmodule Logtail.Main do
     {:ok, table}
   end
 
-  def create_log(timestamp, log_entry) do
-    :ets.insert(@table, {timestamp, log_entry})
-  end
-
   def create_table_or_insert_log(table_name, timestamp, log_entry) do
     case :ets.info(table_name) do
       :undefined ->
         :ets.new(table_name, [:named_table, :ordered_set, :public])
         :ets.insert(table_name, {timestamp, log_entry})
-      [_, _, _, _, _, _, _, _, _, _, _, _, _, _] ->
+      _ ->
         :ets.insert(table_name, {timestamp, log_entry})
     end
   end
