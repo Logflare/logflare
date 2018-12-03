@@ -10,7 +10,7 @@ defmodule Logtail.Main do
     {:ok, args}
   end
 
-  def create_table_or_insert_log(table_name, timestamp, log_entry) do
+  def insert_log(table_name, timestamp, log_entry) do
     case :ets.info(table_name) do
       :undefined ->
         table_name
