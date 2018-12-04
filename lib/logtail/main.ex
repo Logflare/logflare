@@ -12,7 +12,7 @@ defmodule Logtail.Main do
 
   def handle_cast(table_name, timestamp, log_entry) do
     insert_log(table_name, timestamp, log_entry)
-    {:noreply, table_name, timestamp, log_entry}
+    {:noreply, table_name}
   end
 
   def insert_log(table_name, timestamp, log_entry) do
