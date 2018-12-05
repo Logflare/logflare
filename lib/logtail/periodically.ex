@@ -14,7 +14,7 @@ defmodule Logtail.Periodically do
   @impl true
   def handle_info(:work, state) do
     # Do the desired work here
-    IO.puts "Periodically GenServer Running"
+    # IO.puts "Periodically GenServer Running"
     schedule_work() # Reschedule once more
     {:noreply, state}
   end

@@ -11,18 +11,17 @@ defmodule LogtailWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+
   end
 
   scope "/", LogtailWeb do
     pipe_through :browser # Use the default browser stack
-
     get "/", PageController, :index
-    post "/logs", LogController, :create
 
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", LogtailWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", LogtailWeb do
+    pipe_through :api
+    post "/logs", LogController, :create
+  end
 end
