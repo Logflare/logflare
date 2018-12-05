@@ -12,7 +12,7 @@ defmodule LogtailWeb.LogController do
     case :ets.info(website_table) do
       :undefined ->
         website_table
-        |> :ets.new([:named_table, :ordered_set, :public])
+        |> Logtail.Main.new_table()
         |> :ets.insert({timestamp, log_entry})
         _ ->
         :ets.insert(website_table, {timestamp, log_entry})
