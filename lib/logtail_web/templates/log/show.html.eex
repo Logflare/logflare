@@ -3,7 +3,7 @@
 <ul class="collection">
   <%= for log <- @logs do %>
     <li class="collection-item">
-      # <%= log %>
+      <%= log %>
     </li>
   <% end %>
 </ul>
