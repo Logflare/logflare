@@ -9,14 +9,14 @@ defmodule LogtailWeb.LogController do
 
   def create(conn, %{"website_table" => website_table, "timestamp" => timestamp, "log_entry" => log_entry}) do
     website_table = String.to_atom(website_table)
-    {ts, _} = Integer.parse(timestamp)
+    # {ts, _} = Integer.parse(timestamp)
     case :ets.info(website_table) do
       :undefined ->
         website_table
         |> Logtail.Main.new_table()
-        |> :ets.insert({ts, log_entry})
+        |> :ets.insert({timestamp, log_entry})
         _ ->
-        :ets.insert(website_table, {ts, log_entry})
+        :ets.insert(website_table, {timestamp, log_entry})
       end
     message = "Logged!"
 
@@ -25,7 +25,7 @@ defmodule LogtailWeb.LogController do
 
   def show(conn, %{"id" => id}) do
     table_id = String.to_atom(id)
-    logs = [:ets.match(table_id, {'$1'})]
+    logs = [:ets.match(table_id, {:"$0", :"$1"})]
     render(conn, "show.html", logs: logs)
   end
 
