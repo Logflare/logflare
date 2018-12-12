@@ -1,4 +1,4 @@
-defmodule Logtail.Plugs.SetUser do
+defmodule LogtailWeb.Plugs.SetUser do
   import Plug.Conn
   import Phoenix.Controller
 

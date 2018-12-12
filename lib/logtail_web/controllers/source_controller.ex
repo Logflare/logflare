@@ -1,6 +1,8 @@
 defmodule LogtailWeb.SourceController do
   use LogtailWeb, :controller
 
+  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :edit, :update, :delete]
+
   alias Logtail.User
   alias Logtail.Repo
   alias Logtail.Source
