@@ -1,0 +1,10 @@
+<h5>New Source</h5>
+
+<%= form_for @changeset, source_path(@conn, :create), fn f -> %>
+  <div class="form-group">
+    <%= text_input f, :source, placeholder: "Source", class: "form-control" %>
+    <%= error_tag f, :source %>
+  </div>
+
+  <%= submit "Add Source", class: "btn btn-primary" %>
+<% end %>

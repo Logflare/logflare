@@ -18,6 +18,8 @@ defmodule LogtailWeb.Router do
   scope "/", LogtailWeb do
     pipe_through :browser # Use the default browser stack
     get "/", SourceController, :index
+    post "/", SourceController, :create
+    get "/new", SourceController, :new
     get "/logs/:id", LogController, :show
 
   end
