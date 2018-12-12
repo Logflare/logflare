@@ -21,6 +21,14 @@ defmodule LogtailWeb.Router do
 
   end
 
+  scope "/auth", LogtailWeb do
+    pipe_through :browser
+
+    get "/logout", AuthController, :logout
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
+  end
+
   scope "/api", LogtailWeb do
     pipe_through :api
     post "/logs", LogController, :create
