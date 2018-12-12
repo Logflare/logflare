@@ -16,7 +16,15 @@
       <header class="header">
         <nav role="navigation">
           <ul class="nav nav-pills pull-right">
-            <li></li>
+            <%= if @conn.assigns[:user] do %>
+              <li>
+                <%= link "Logout", to: auth_path(@conn, :logout) %>
+              </li>
+            <% else %>
+              <li>
+                <%= link "Sign in with Github", to: auth_path(@conn, :request, "github") %>
+              </li>
+            <% end %>
           </ul>
         </nav>
         <h1>Log Tail</h1>
