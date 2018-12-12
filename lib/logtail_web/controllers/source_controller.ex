@@ -1,4 +1,4 @@
-defmodule LogtailWeb.PageController do
+defmodule LogtailWeb.SourceController do
   use LogtailWeb, :controller
 
   def index(conn, _params) do
