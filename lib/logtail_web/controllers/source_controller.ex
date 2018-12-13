@@ -19,10 +19,12 @@ defmodule LogtailWeb.SourceController do
           where: s.user_id == ^user_id,
           select: %{
             name: s.name,
-            id: s.id
+            id: s.id,
+            
           }
 
     sources = Repo.all(query)
+    sources
 
     render conn, "dashboard.html", sources: sources
   end
