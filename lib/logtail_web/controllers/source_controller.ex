@@ -1,7 +1,7 @@
 defmodule LogtailWeb.SourceController do
   use LogtailWeb, :controller
 
-  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :edit, :update, :delete]
+  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :edit, :update, :delete, :sources]
 
   alias Logtail.User
   alias Logtail.Source
@@ -9,6 +9,11 @@ defmodule LogtailWeb.SourceController do
 
   def index(conn, _params) do
     render conn, "index.html"
+  end
+
+  def sources(conn, _params) do
+    sources = Repo.all(Source)
+    render conn, "sources.html", sources: sources
   end
 
   def new(conn, _params) do
@@ -27,7 +32,7 @@ defmodule LogtailWeb.SourceController do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Source created!")
-        |> redirect(to: source_path(conn, :index))
+        |> redirect(to: source_path(conn, :sources))
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
