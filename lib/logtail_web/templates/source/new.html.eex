@@ -4,6 +4,7 @@
   <div class="form-group">
     <%= text_input f, :name, placeholder: "Source", class: "form-control" %>
     <%= error_tag f, :name %>
+    <%= hidden_input f, :token, value: Ecto.UUID.generate(), class: "form-control" %>
   </div>
 
   <%= submit "Add Source", class: "btn btn-primary" %>

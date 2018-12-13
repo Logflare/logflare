@@ -15,6 +15,6 @@ defmodule Logtail.Source do
   def changeset(source, attrs) do
     source
     |> cast(attrs, [:name, :token])
-    |> validate_required([:name])
+    |> validate_required([:name, :token])
   end
 end
