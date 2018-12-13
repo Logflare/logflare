@@ -23,10 +23,4 @@ defmodule LogtailWeb.LogController do
     render(conn, "index.json", message: message)
   end
 
-  def show(conn, %{"id" => id}) do
-    table_id = String.to_atom(id)
-    logs = :ets.match(table_id, {:"$0", :"$1"})
-    render(conn, "show.html", logs: logs)
-  end
-
 end

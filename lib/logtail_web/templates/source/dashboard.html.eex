@@ -1,8 +1,8 @@
-<h5>Dashboard</h5>
+<h4>Dashboard</h4>
 
-<ul class="collection">
+<ul class="list-group">
   <%= for source <- @sources do %>
-    <li class="collection-item">
+    <li class="list-group-item">
       <%= source %>
     </li>
   <% end %>
