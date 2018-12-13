@@ -1,1 +1,9 @@
 <h5>Dashboard</h5>
+
+<ul class="collection">
+  <%= for source <- @sources do %>
+    <li class="collection-item">
+      <%= source %>
+    </li>
+  <% end %>
+</ul>
