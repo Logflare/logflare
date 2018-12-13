@@ -1,19 +1,26 @@
 defmodule LogtailWeb.SourceController do
   use LogtailWeb, :controller
+  import Ecto.Query, only: [from: 2]
 
-  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :edit, :update, :delete, :sources]
+  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :edit, :update, :delete, :dashboard]
 
   alias Logtail.User
   alias Logtail.Source
   alias Logtail.Repo
 
+
   def index(conn, _params) do
     render conn, "index.html"
   end
 
-  def sources(conn, _params) do
-    sources = Repo.all(Source)
-    render conn, "sources.html", sources: sources
+  def dashboard(conn, _params) do
+    user_id = conn.assigns.user.id
+    query = from s in "sources",
+          where: s.user_id == ^user_id,
+          select: s.name
+    sources = Repo.all(query)
+
+    render conn, "dashboard.html", sources: sources
   end
 
   def new(conn, _params) do
@@ -32,7 +39,7 @@ defmodule LogtailWeb.SourceController do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Source created!")
-        |> redirect(to: source_path(conn, :sources))
+        |> redirect(to: source_path(conn, :dashboard))
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
