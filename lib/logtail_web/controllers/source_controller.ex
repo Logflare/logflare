@@ -24,14 +24,14 @@ defmodule LogtailWeb.SourceController do
     IO.inspect(changeset)
 
     case Repo.insert(changeset) do
-      {:ok, _topic} ->
+      {:ok, _source} ->
         conn
         |> put_flash(:info, "Source created!")
         |> redirect(to: source_path(conn, :index))
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
-        |> render "index.html", changeset: changeset
+        |> render "new.html", changeset: changeset
     end
  end
 
