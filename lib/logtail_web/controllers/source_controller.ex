@@ -54,13 +54,14 @@ defmodule LogtailWeb.SourceController do
   def show(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
     table_id = String.to_atom(source.token)
+
     case :ets.info(table_id) do
       :undefined ->
         logs = []
-        render(conn, "show.html", logs: logs)
+        IO.inspect(render(conn, "show.html", logs: logs, source: source))
       _ ->
         logs = :ets.match(table_id, {:"$0", :"$1"})
-        render(conn, "show.html", logs: logs)
+        render(conn, "show.html", logs: logs, source: source)
     end
   end
 

@@ -7,8 +7,9 @@ defmodule LogtailWeb.LogController do
 #    GenServer.cast(Logtail.Main, )
 #  end
 
-  def create(conn, %{"website_table" => website_table, "timestamp" => timestamp, "log_entry" => log_entry}) do
+  def create(conn, %{"website_table" => website_table, "log_entry" => log_entry}) do
     website_table = String.to_atom(website_table)
+    timestamp = Integer.to_string(:os.system_time(:millisecond))
     # {ts, _} = Integer.parse(timestamp)
     case :ets.info(website_table) do
       :undefined ->
