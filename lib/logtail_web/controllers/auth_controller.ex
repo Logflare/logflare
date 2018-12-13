@@ -25,7 +25,7 @@ defmodule LogtailWeb.AuthController do
         conn
         |> put_flash(:info, "Welcome back!")
         |> put_session(:user_id, user.id)
-        |> redirect(to: source_path(conn, :index))
+        |> redirect(to: source_path(conn, :dashboard))
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Error signing in.")

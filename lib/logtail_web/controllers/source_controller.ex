@@ -2,7 +2,7 @@ defmodule LogtailWeb.SourceController do
   use LogtailWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :dashboard, :show]
+  plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :dashboard, :show, :delete]
 
   alias Logtail.User
   alias Logtail.Source
@@ -62,6 +62,14 @@ defmodule LogtailWeb.SourceController do
         logs = :ets.match(table_id, {:"$0", :"$1"})
         render(conn, "show.html", logs: logs)
     end
+  end
+
+  def delete(conn, %{"id" => source_id}) do
+    Repo.get!(Source, source_id) |> Repo.delete!
+
+    conn
+    |> put_flash(:info, "Source deleted!")
+    |> redirect(to: source_path(conn, :dashboard))
   end
 
 end

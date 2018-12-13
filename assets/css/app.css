@@ -1,1 +1,7 @@
 /* This file is for your main application css. */
+
+.delete-link {
+  font-size: 10px;
+  color: red;
+  text-transform: uppercase;
+}

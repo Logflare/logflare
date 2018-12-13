@@ -4,6 +4,9 @@
   <%= for source <- @sources do %>
     <li class="list-group-item">
       <%= link source.name, to: source_path(@conn, :show, source.id) %>
+      <%= link "delete", to: source_path(@conn, :delete, source.id), method: :delete, class: "delete-link pull-right" %>
     </li>
   <% end %>
 </ul>
+
+<%= link "New source", to: source_path(@conn, :new) %>

@@ -20,7 +20,7 @@ defmodule LogtailWeb.Router do
 
     get "/dashboard", SourceController, :dashboard
     get "/", SourceController, :index
-    
+
   end
 
   scope "/sources", LogtailWeb do
@@ -29,6 +29,7 @@ defmodule LogtailWeb.Router do
     get "/new", SourceController, :new
     post "/", SourceController, :create
     get "/:id", SourceController, :show
+    delete "/:id", SourceController, :delete
 
   end
 
