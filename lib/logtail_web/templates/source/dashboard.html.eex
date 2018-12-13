@@ -3,7 +3,7 @@
 <ul class="list-group">
   <%= for source <- @sources do %>
     <li class="list-group-item">
-      <%= source %>
+      <%= link source.name, to: source_path(@conn, :show, source.id) %>
     </li>
   <% end %>
 </ul>
