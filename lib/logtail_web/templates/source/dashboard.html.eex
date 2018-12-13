@@ -9,4 +9,4 @@
   <% end %>
 </ul>
 
-<%= link "New source", to: source_path(@conn, :new) %>
+<%= link "New source", to: source_path(@conn, :new), class: "btn btn-success" %>

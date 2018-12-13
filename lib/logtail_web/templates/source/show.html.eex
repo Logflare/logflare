@@ -1,4 +1,4 @@
-<h3>Logs for <%= @source.name %></h3>
+<h3>Logs for <span class="text-primary"><%= @source.name %></span></h3>
 
 <ul class="collection">
   <%= for log <- @logs do %>
@@ -10,12 +10,14 @@
 
 <%= if @logs == [] do %>
   <h4>No logs ... add some logs!</h4>
-  <pre><code>
+  <pre class="example-log-code">
+    <code>
     curl -X "POST" "https://logtail.app/api/logs" \
-     -H 'Content-Type: application/json' \
-     -d $'{
-       "website_table": "<%= @source.token %>",
-       "log_entry": "This is another log message."
-     }'
-   </pre></code>
+    -H 'Content-Type: application/json' \
+    -d $'{
+      "website_table": "<%= @source.token %>",
+      "log_entry": "This is another log message."
+    }'
+    </code>
+  </pre>
 <% end %>

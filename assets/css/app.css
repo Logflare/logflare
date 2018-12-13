@@ -5,3 +5,11 @@
   color: red;
   text-transform: uppercase;
 }
+
+.header {
+  margin-bottom: 20px;
+}
+
+.example-log-code {
+  font-size: 10px;
+}

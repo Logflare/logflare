@@ -58,7 +58,7 @@ defmodule LogtailWeb.SourceController do
     case :ets.info(table_id) do
       :undefined ->
         logs = []
-        IO.inspect(render(conn, "show.html", logs: logs, source: source))
+        render(conn, "show.html", logs: logs, source: source)
       _ ->
         logs = :ets.match(table_id, {:"$0", :"$1"})
         render(conn, "show.html", logs: logs, source: source)

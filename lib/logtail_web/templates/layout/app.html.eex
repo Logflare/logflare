@@ -18,7 +18,7 @@
           <ul class="nav nav-pills pull-right">
             <%= if @conn.assigns[:user] do %>
               <li>
-                <%= link "Dashbaord", to: source_path(@conn, :dashboard) %>
+                <%= link "Dashboard", to: source_path(@conn, :dashboard) %>
               </li>
               <li>
                 <%= link "Logout", to: auth_path(@conn, :logout) %>
