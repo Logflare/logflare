@@ -3,21 +3,21 @@ defmodule LogtailWeb.LogController do
 
 #  use Logtail.Main
 #
-#  def create(conn, %{"id" => website_table}) do
+#  def create(conn, %{"id" => source_table}) do
 #    GenServer.cast(Logtail.Main, )
 #  end
 
-  def create(conn, %{"website_table" => website_table, "log_entry" => log_entry}) do
-    website_table = String.to_atom(website_table)
+  def create(conn, %{"source" => source_table, "log_entry" => log_entry}) do
+    source_table = String.to_atom(source_table)
     timestamp = Integer.to_string(:os.system_time(:millisecond))
     # {ts, _} = Integer.parse(timestamp)
-    case :ets.info(website_table) do
+    case :ets.info(source_table) do
       :undefined ->
-        website_table
+        source_table
         |> Logtail.Main.new_table()
         |> :ets.insert({timestamp, log_entry})
         _ ->
-        :ets.insert(website_table, {timestamp, log_entry})
+        :ets.insert(source_table, {timestamp, log_entry})
       end
     message = "Logged!"
 

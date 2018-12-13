@@ -15,7 +15,7 @@
     curl -X "POST" "https://logtail.app/api/logs" \
     -H 'Content-Type: application/json' \
     -d $'{
-      "website_table": "<%= @source.token %>",
+      "source": "<%= @source.token %>",
       "log_entry": "This is another log message."
     }'
     </code>
