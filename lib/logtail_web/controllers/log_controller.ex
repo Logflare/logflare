@@ -16,12 +16,29 @@ defmodule LogtailWeb.LogController do
         source_table
         |> Logtail.Main.new_table()
         |> :ets.insert({timestamp, log_entry})
-        _ ->
-        :ets.insert(source_table, {timestamp, log_entry})
+      _ ->
+        insert_and_or_delete(source_table, {timestamp, log_entry})
       end
     message = "Logged!"
 
     render(conn, "index.json", message: message)
   end
+
+  defp insert_and_or_delete(source_table, timestamp_and_log_entry) do
+    log_count = :ets.info(source_table)
+
+    case log_count[:size] >= 100 do
+      true ->
+        first_log = :ets.first(source_table)
+        :ets.delete(source_table, first_log)
+        IO.puts("+++DELETED STUFF+++")
+        :ets.insert(source_table, timestamp_and_log_entry)
+        IO.puts("+++INSERTED STUFF+++")
+      false ->
+        :ets.insert(source_table, timestamp_and_log_entry)
+        IO.puts("+++INSERTED STUFF+++")
+    end
+  end
+
 
 end
