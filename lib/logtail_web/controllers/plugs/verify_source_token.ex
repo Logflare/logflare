@@ -14,9 +14,11 @@ defmodule LogtailWeb.Plugs.VerifySourceToken do
 
     case Repo.get_by(Source, token: token) do
       nil ->
+        message = "Unknown source token."
         conn
         |> put_status(403)
-        |> redirect(to: "/api/error")
+        |> put_view(LogtailWeb.LogView)
+        |> render("index.json", message: message)
         |> halt()
       _ ->
         conn
