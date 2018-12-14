@@ -31,12 +31,9 @@ defmodule LogtailWeb.LogController do
       true ->
         first_log = :ets.first(source_table)
         :ets.delete(source_table, first_log)
-        IO.puts("+++DELETED STUFF+++")
         :ets.insert(source_table, timestamp_and_log_entry)
-        IO.puts("+++INSERTED STUFF+++")
       false ->
         :ets.insert(source_table, timestamp_and_log_entry)
-        IO.puts("+++INSERTED STUFF+++")
     end
   end
 
