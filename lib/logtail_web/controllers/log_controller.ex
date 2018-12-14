@@ -1,12 +1,6 @@
 defmodule LogtailWeb.LogController do
   use LogtailWeb, :controller
 
-#  use Logtail.Main
-#
-#  def create(conn, %{"id" => source_table}) do
-#    GenServer.cast(Logtail.Main, )
-#  end
-
   def create(conn, %{"source" => source_table, "log_entry" => log_entry}) do
     source_table = String.to_atom(source_table)
     timestamp = Integer.to_string(:os.system_time(:millisecond))
@@ -36,6 +30,5 @@ defmodule LogtailWeb.LogController do
         :ets.insert(source_table, timestamp_and_log_entry)
     end
   end
-
 
 end
