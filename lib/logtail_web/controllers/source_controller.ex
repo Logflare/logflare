@@ -4,10 +4,8 @@ defmodule LogtailWeb.SourceController do
 
   plug LogtailWeb.Plugs.RequireAuth when action in [:new, :create, :dashboard, :show, :delete]
 
-  
   alias Logtail.Source
   alias Logtail.Repo
-
 
   def index(conn, _params) do
     render conn, "index.html"

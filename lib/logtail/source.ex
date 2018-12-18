@@ -2,7 +2,6 @@ defmodule Logtail.Source do
   use Ecto.Schema
   import Ecto.Changeset
 
-
   schema "sources" do
     field :name, :string
     field :token, Ecto.UUID
