@@ -1,7 +1,7 @@
 defmodule LogtailWeb.SourceChannel do
   use LogtailWeb, :channel
 
-  def join("source:" <> source_id, payload, socket) do
+  def join("source:" <> source_token, payload, socket) do
     if authorized?(payload) do
       {:ok, socket}
     else

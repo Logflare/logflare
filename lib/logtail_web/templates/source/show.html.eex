@@ -24,6 +24,6 @@
 
 <script>
   document.addEventListener("DOMContentLoaded", function(){
-    window.createSocket(<%= @source.id %>)
+    window.createSocket("<%= @source.token %>")
   });
 </script>

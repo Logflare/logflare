@@ -55,11 +55,28 @@ socket.connect()
 
 // Now that you are connected, you can join channels with a topic:
 
-const createSocket = (sourceId) => {
-  let channel = socket.channel(`source:${sourceId}`, {})
+const createSocket = (sourceToken) => {
+  let channel = socket.channel(`source:${sourceToken}`, {})
   channel.join()
     .receive("ok", resp => { console.log("Joined successfully", resp) })
     .receive("error", resp => { console.log("Unable to join", resp) })
-  };
+
+  channel.on(`source:${sourceToken}:new`, renderLog);
+};
+
+
+function renderLog(event) {
+  const renderedLog = logTemplate(event.log_message)
+
+  document.querySelector('.collection').innerHTML += renderedLog;
+}
+
+function logTemplate(log_message) {
+  return `
+    <li class="collection-item">
+      ${log_message}
+    </li>
+  `;
+}
 
 window.createSocket = createSocket;
