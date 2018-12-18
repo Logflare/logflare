@@ -21,3 +21,9 @@
     </code>
   </pre>
 <% end %>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function(){
+    window.createSocket(<%= @source.id %>)
+  });
+</script>

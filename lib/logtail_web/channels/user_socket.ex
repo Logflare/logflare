@@ -2,7 +2,7 @@ defmodule LogtailWeb.UserSocket do
   use Phoenix.Socket
 
   ## Channels
-  # channel "room:*", LogtailWeb.RoomChannel
+  channel "source:*", LogtailWeb.SourceChannel
 
   ## Transports
   transport :websocket, Phoenix.Transports.WebSocket
