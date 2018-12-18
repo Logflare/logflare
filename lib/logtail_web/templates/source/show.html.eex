@@ -1,9 +1,9 @@
 <h3>Logs for <span class="text-primary"><%= @source.name %></span></h3>
 
-<ul class="collection">
+<ul class="list-unstyled">
   <%= for log <- @logs do %>
-    <li class="collection-item">
-      <%= log %>
+    <li>
+      <mark><%= log.timestamp %></mark> <%= log.log_message %>
     </li>
   <% end %>
 </ul>

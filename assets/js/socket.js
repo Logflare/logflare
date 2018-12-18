@@ -66,15 +66,15 @@ const createSocket = (sourceToken) => {
 
 
 function renderLog(event) {
-  const renderedLog = logTemplate(event.log_message)
+  const renderedLog = logTemplate(event)
 
-  document.querySelector('.collection').innerHTML += renderedLog;
+  document.querySelector('.list-unstyled').innerHTML += renderedLog;
 }
 
-function logTemplate(log_message) {
+function logTemplate(event) {
   return `
     <li class="collection-item">
-      ${log_message}
+      <mark>${event.timestamp}</mark> ${event.log_message}
     </li>
   `;
 }

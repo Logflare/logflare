@@ -32,12 +32,13 @@ defmodule LogtailWeb.LogController do
     end
   end
 
+
   defp insert_and_broadcast(source_table, timestamp_and_log_entry) do
     source_table_string = Atom.to_string(source_table)
     {timestamp, log_entry} = timestamp_and_log_entry
     payload = %{timestamp: timestamp, log_message: log_entry}
 
-    :ets.insert(source_table, timestamp_and_log_entry)
+    :ets.insert(source_table, {timestamp, payload})
     LogtailWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
   end
 
