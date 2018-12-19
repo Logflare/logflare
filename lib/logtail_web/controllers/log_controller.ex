@@ -10,7 +10,7 @@ defmodule LogtailWeb.LogController do
       :undefined ->
         source_table
         |> Logtail.Main.new_table()
-        # |> LogtailWeb.SourceController.create(conn, _params)
+        # |> LogtailWeb.SourceController.create(conn, params)
         |> insert_and_broadcast(timestamp_and_log_entry)
 
       _ ->
