@@ -13,8 +13,6 @@ defmodule LogtailWeb.Plugs.VerifyApiKey do
     headers = Enum.into(conn.req_headers, %{})
     api_key = headers["x-api-key"]
 
-    IO.inspect(api_key)
-
     case Repo.get_by(User, api_key: api_key) do
       nil ->
         message = "Unknown x-api-key."

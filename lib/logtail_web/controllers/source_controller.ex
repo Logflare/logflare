@@ -43,7 +43,8 @@ defmodule LogtailWeb.SourceController do
     changeset = conn.assigns.user
       |> Ecto.build_assoc(:sources)
       |> Source.changeset(source)
-    IO.inspect(changeset)
+
+    IO.inspect(conn.assigns.user)
 
     case Repo.insert(changeset) do
       {:ok, _source} ->
