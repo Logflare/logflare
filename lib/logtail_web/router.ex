@@ -12,7 +12,7 @@ defmodule LogtailWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug LogtailWeb.Plugs.VerifySourceToken
+    plug LogtailWeb.Plugs.VerifyApiKey
 
   end
 
