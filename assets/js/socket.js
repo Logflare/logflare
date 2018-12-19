@@ -68,6 +68,7 @@ const createSocket = (sourceToken) => {
 function renderLog(event) {
   const renderedLog = logTemplate(event)
 
+  document.querySelector('#no-logs-warning').innerHTML = '';
   document.querySelector('.list-unstyled').innerHTML += renderedLog;
 }
 
