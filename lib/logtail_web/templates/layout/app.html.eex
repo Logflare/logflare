@@ -13,7 +13,7 @@
     <script>
       <%= if @conn.assigns.user do %>
         window.userToken = "<%= Phoenix.Token.sign(LogtailWeb.Endpoint, "key", @conn.assigns.user.id) %>"
-      <%= end %>
+      <% end %>
     </script>
 
   </head>

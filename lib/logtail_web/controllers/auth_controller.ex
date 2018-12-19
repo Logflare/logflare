@@ -7,8 +7,11 @@ defmodule LogtailWeb.AuthController do
   alias Logtail.Repo
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
-      user_params = %{token: auth.credentials.token, email: auth.info.email, provider: "github"}
+      api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64 |> binary_part(0, 12)
+      user_params = %{token: auth.credentials.token, email: auth.info.email, provider: "github", api_key: api_key}
       changeset = User.changeset(%User{}, user_params)
+
+      IO.inspect(changeset)
 
       signin(conn, changeset)
   end
