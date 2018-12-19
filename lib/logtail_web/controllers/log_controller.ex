@@ -3,7 +3,7 @@ defmodule LogtailWeb.LogController do
 
   def create(conn, %{"source" => source_table, "log_entry" => log_entry}) do
     source_table = String.to_atom(source_table)
-    timestamp = Integer.to_string(:os.system_time(:millisecond))
+    timestamp = :os.system_time(:microsecond)
     timestamp_and_log_entry = {timestamp, log_entry}
 
     case :ets.info(source_table) do
