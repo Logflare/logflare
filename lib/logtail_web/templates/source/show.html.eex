@@ -8,21 +8,23 @@
   <% end %>
 </ul>
 
-<%= if @logs == [] do %>
-  <div id="no-logs-warning">
-    <h4>No logs ... add some logs!</h4>
-    <pre class="example-log-code">
-      <code>
-        curl -X "POST" "https://logtail.app/api/logs" \
-        -H 'Content-Type: application/json' \
-        -d $'{
-          "source": "<%= @source.token %>",
-          "log_entry": "This is another log message."
-        }'
-      </code>
-    </pre>
-  </div>
-<% end %>
+
+<div id="no-logs-warning">
+  <%= if @logs == [] do %>
+  <h4>No logs ... add some logs!</h4>
+  <pre class="example-log-code">
+    <code>
+      curl -X "POST" "https://logtail.app/api/logs" \
+      -H 'Content-Type: application/json' \
+      -d $'{
+        "source": "<%= @source.token %>",
+        "log_entry": "This is another log message."
+      }'
+    </code>
+  </pre>
+  <% end %>
+</div>
+
 
 <script>
   document.addEventListener("DOMContentLoaded", function(){
