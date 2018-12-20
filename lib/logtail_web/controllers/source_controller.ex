@@ -44,8 +44,6 @@ defmodule LogtailWeb.SourceController do
       |> Ecto.build_assoc(:sources)
       |> Source.changeset(source)
 
-    IO.inspect(conn.params)
-
     case Repo.insert(changeset) do
       {:ok, _source} ->
         conn
