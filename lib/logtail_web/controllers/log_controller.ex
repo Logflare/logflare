@@ -82,7 +82,7 @@ defmodule LogtailWeb.LogController do
 
     case source do
       nil ->
-        String.to_atom(Ecto.UUID.generate())
+        Ecto.UUID.generate()
       _ ->
         source.token
     end
