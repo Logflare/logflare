@@ -26,4 +26,22 @@ defmodule LogtailWeb.Plugs.VerifyApiKey do
     end
   end
 
+#  def call(conn, _params) do
+#    source = conn.params["source"]
+#    source_name = conn.params["source_name"]
+#    both_nil = source <> source_name
+#
+#    case source AND source_name == nil do
+#      true ->
+#        message = "Source or source_name needed."
+#        conn
+#        |> put_status(403)
+#        |> put_view(LogtailWeb.LogView)
+#        |> render("index.json", message: message)
+#        |> halt()
+#      false ->
+#        conn
+#    end
+#  end
+
 end

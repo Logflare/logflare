@@ -20,14 +20,14 @@ defmodule LogtailWeb.LogController do
           String.to_atom(conn.params["source"])
       end
 
-      source_name =
-        case conn.params["source_name"] == nil do
-          true ->
-            source_table_string = Atom.to_string(source_table)
-            Repo.get_by(Source, token: source_table_string)
-          false ->
-            conn.params["source_name"]
-        end
+    source_name =
+      case conn.params["source_name"] == nil do
+        true ->
+          source_table_string = Atom.to_string(source_table)
+          Repo.get_by(Source, token: source_table_string)
+        false ->
+          conn.params["source_name"]
+      end
 
     case :ets.info(source_table) do
       :undefined ->
