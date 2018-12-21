@@ -9,18 +9,25 @@ defmodule LogtailWeb.LogController do
     timestamp = :os.system_time(:microsecond)
     timestamp_and_log_entry = {timestamp, log_entry}
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
-    source_name = conn.params["source_name"]
 
     source_table =
       case conn.params["source"] == nil do
         true ->
-          String.to_atom(Ecto.UUID.generate())
+          source_name = conn.params["source_name"]
+          lookup_or_gen_source_token(source_name)
+          |> String.to_atom()
         false ->
           String.to_atom(conn.params["source"])
       end
 
-    IO.puts("++++++")
-    IO.inspect(source_table)
+      source_name =
+        case conn.params["source_name"] == nil do
+          true ->
+            source_table_string = Atom.to_string(source_table)
+            Repo.get_by(Source, token: source_table_string)
+          false ->
+            conn.params["source_name"]
+        end
 
     case :ets.info(source_table) do
       :undefined ->
@@ -59,11 +66,8 @@ defmodule LogtailWeb.LogController do
     LogtailWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
   end
 
-  def create_source(source_table, source_name, api_key) do
+  defp create_source(source_table, source_name, api_key) do
     source_table_string = Atom.to_string(source_table)
-
-    IO.puts("++++++")
-    IO.inspect(source_table_string)
 
     source = %{token: source_table_string, name: source_name}
 
@@ -71,9 +75,17 @@ defmodule LogtailWeb.LogController do
       |> Ecto.build_assoc(:sources)
       |> Source.changeset(source)
       |> Repo.insert()
+  end
 
-    IO.puts("++++++")
-    IO.inspect(changeset)
+  defp lookup_or_gen_source_token(source_name) do
+    source = Repo.get_by(Source, name: source_name)
+
+    case source do
+      nil ->
+        String.to_atom(Ecto.UUID.generate())
+      _ ->
+        source.token
+    end
   end
 
 end

@@ -15,5 +15,6 @@ defmodule Logtail.Source do
     source
     |> cast(attrs, [:name, :token])
     |> validate_required([:name, :token])
+    |> unique_constraint(:name)
   end
 end
