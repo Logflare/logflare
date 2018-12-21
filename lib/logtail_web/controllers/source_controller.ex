@@ -21,16 +21,15 @@ defmodule LogtailWeb.SourceController do
             token: s.token,
           }
 
-    sources = Repo.all(query)
+    sources =
+      for source <- Repo.all(query) do
+        log_count = get_log_count(source)
+        Map.put(source, :log_count, log_count)
+      end
 
-  #  for each source <- sources, do:
-  #    Map.get_and_update(source, :token, fn current_value ->
-  #        {current_value, "new value!"} end)
-  #  end
+    IO.inspect(sources)
 
-    # IO.inspect(sources)
-
-    render conn, "dashboard.html", sources: sources
+    render(conn, "dashboard.html", sources: sources)
   end
 
   def new(conn, _params) do
@@ -76,6 +75,17 @@ defmodule LogtailWeb.SourceController do
     conn
     |> put_flash(:info, "Source deleted!")
     |> redirect(to: source_path(conn, :dashboard))
+  end
+
+  defp get_log_count(source) do
+    log_table_info = :ets.info(String.to_atom(elem(Ecto.UUID.load(source.token), 1)))
+
+    case log_table_info do
+     :undefined ->
+       0
+     _ ->
+       log_table_info[:size]
+    end
   end
 
 end

@@ -5,7 +5,13 @@
     <li class="list-group-item">
       <%= link source.name, to: source_path(@conn, :show, source.id) %>
       <%= link "delete", to: source_path(@conn, :delete, source.id), method: :delete, class: "delete-link pull-right" %>
-      
+      <span class="my-badge">
+        <%= if source.log_count == :undefined  do  %>
+          0
+        <%= else %>
+          <%= source.log_count %>
+        <%= end %>
+      </span>
     </li>
   <% end %>
 </ul>
