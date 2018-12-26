@@ -47,7 +47,7 @@ defmodule LogflareWeb.SourceController do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Source created!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: source_path(conn, :dashboard))
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
@@ -74,7 +74,7 @@ defmodule LogflareWeb.SourceController do
 
     conn
     |> put_flash(:info, "Source deleted!")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: source_path(conn, :dashboard))
   end
 
   defp get_log_count(source) do
