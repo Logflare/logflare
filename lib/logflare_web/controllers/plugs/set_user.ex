@@ -1,6 +1,5 @@
 defmodule LogflareWeb.Plugs.SetUser do
   import Plug.Conn
-  import Phoenix.Controller
 
   alias Logflare.Repo
   alias Logflare.User

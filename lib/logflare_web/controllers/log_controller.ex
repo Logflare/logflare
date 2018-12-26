@@ -71,7 +71,7 @@ defmodule LogflareWeb.LogController do
 
     source = %{token: source_table_string, name: source_name}
 
-    changeset = Repo.get_by(User, api_key: api_key)
+    Repo.get_by(User, api_key: api_key)
       |> Ecto.build_assoc(:sources)
       |> Source.changeset(source)
       |> Repo.insert()

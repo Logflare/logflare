@@ -15,8 +15,15 @@ use Mix.Config
 # which you typically run after static files are built.
 config :logflare, LogflareWeb.Endpoint,
   load_from_system_env: true,
-  url: [host: "logflare.app", port: 80],
-  cache_static_manifest: "priv/static/cache_manifest.json"
+  url: [host: {:system, "HOST"}, port: {:system, "PORT"}],
+  cache_static_manifest: "priv/static/cache_manifest.json",
+  server: true,
+  version: Application.spec(:logflare_web, :vsn),
+  secret_key_base: System.get_env("SECRET_KEY_BASE"),
+  session_cookie_name: System.get_env("SESSION_COOKIE_NAME"),
+  session_cookie_signing_salt: System.get_env("SESSION_COOKIE_SIGNING_SALT"),
+  session_cookie_encryption_salt:
+System.get_env("SESSION_COOKIE_ENCRYPTION_SALT")
 
 # Do not print debug messages in production
 config :logger, level: :info
@@ -26,13 +33,12 @@ config :logger, level: :info
 # To get SSL working, you will need to add the `https` key
 # to the previous section and set your `:url` port to 443:
 #
-#     config :logflare, LogflareWeb.Endpoint,
-#       ...
-#       url: [host: "example.com", port: 443],
-#       https: [:inet6,
-#               port: 443,
-#               keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
-#               certfile: System.get_env("SOME_APP_SSL_CERT_PATH")]
+# config :logflare, LogflareWeb.Endpoint,
+#  url: [host: "logflare.app", port: 443],
+#  https: [:inet6,
+#          port: 443,
+#          keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
+#          certfile: System.get_env("SOME_APP_SSL_CERT_PATH")]
 #
 # Where those two env variables return an absolute path to
 # the key and cert in disk or a relative path inside priv,
@@ -41,8 +47,8 @@ config :logger, level: :info
 # We also recommend setting `force_ssl`, ensuring no data is
 # ever sent via http, always redirecting to https:
 #
-#     config :logflare, LogflareWeb.Endpoint,
-#       force_ssl: [hsts: true]
+# config :logflare, LogflareWeb.Endpoint,
+#  force_ssl: [hsts: true]
 #
 # Check `Plug.SSL` for all available options in `force_ssl`.
 
@@ -51,7 +57,7 @@ config :logger, level: :info
 # If you are doing OTP releases, you need to instruct Phoenix
 # to start the server for all endpoints:
 #
-#     config :phoenix, :serve_endpoints, true
+config :phoenix, :serve_endpoints, true
 #
 # Alternatively, you can configure exactly which server to
 # start per endpoint:
@@ -62,3 +68,9 @@ config :logger, level: :info
 # Finally import the config/prod.secret.exs
 # which should be versioned separately.
 import_config "prod.secret.exs"
+
+config :logflare, Logflare.Repo,
+#  adapter: Ecto.Adapters.Postgres,
+  url: System.get_env("DATABASE_URL"),
+  pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+  ssl: false

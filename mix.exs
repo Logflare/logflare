@@ -45,7 +45,8 @@ defmodule Logflare.Mixfile do
       {:ueberauth_github, "~> 0.7"},
       {:plug, "~> 1.7"},
       {:jason, "~> 1.0"},
-      {:poison, "~> 3.1"}
+      {:poison, "~> 3.1"},
+      {:distillery, "~> 2.0"}
     ]
   end
 

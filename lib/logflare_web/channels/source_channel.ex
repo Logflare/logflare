@@ -1,7 +1,7 @@
 defmodule LogflareWeb.SourceChannel do
   use LogflareWeb, :channel
 
-  def join("source:" <> source_token, payload, socket) do
+  def join("source:" <> _source_token, payload, socket) do
     if authorized?(payload) do
       {:ok, socket}
     else

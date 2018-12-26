@@ -11,7 +11,7 @@ config :logger, level: :warn
 
 # Configure your database
 config :logflare, Logflare.Repo,
-  adapter: Ecto.Adapters.Postgres,
+#  adapter: Ecto.Adapters.Postgres,
   username: "postgres",
   password: "postgres",
   database: "logflare_test",
