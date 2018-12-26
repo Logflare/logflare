@@ -4,9 +4,6 @@ defmodule LogflareWeb.Endpoint do
   socket "/socket", LogflareWeb.UserSocket,
    websocket: true
 
-  # websocket: Phoenix.Transports.WebSocket
-
-
   # Serve at "/" the static files from "priv/static" directory.
   #
   # You should set gzip to true if you are running phoenix.digest
