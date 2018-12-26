@@ -12,7 +12,7 @@ defmodule LogflareWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug LogflareWeb.Plugs.VerifyApiKey
+    plug LogflareWeb.Plugs.VerifyApiRequest
 
   end
 
