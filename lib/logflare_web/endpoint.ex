@@ -1,8 +1,8 @@
 defmodule LogflareWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :logflare
 
-  socket "/socket", LogflareWeb.UserSocket
-  # websocket: [key1: value1, key2: value2, key3: value3]
+  socket "/socket", LogflareWeb.UserSocket,
+   websocket: true
 
   # websocket: Phoenix.Transports.WebSocket
 
