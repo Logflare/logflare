@@ -1,5 +1,8 @@
-<h3>Logs for <span class="text-primary"><%= @source.name %></span></h3>
+<div class="source-header">
+  <code class="pull-right">< ></code><h3>Logs for <span class="text-primary"><%= @source.name %></h3>
+</div>
 
+<div>
 <ul class="list-unstyled">
   <%= for log <- @logs do %>
     <li>
@@ -7,7 +10,7 @@
     </li>
   <% end %>
 </ul>
-
+</div>
 
 <div id="no-logs-warning">
   <%= if @logs == [] do %>

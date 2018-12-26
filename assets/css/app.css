@@ -28,3 +28,14 @@
     background-color: #0000002e;
     border-radius: 10px;
 }
+
+.console-text {
+  font-family: monospace;
+  font-size: 14px;
+  background-color: black;
+  color: #7EF854;
+}
+
+#dashboard-container {
+  max-width: 100%;
+}

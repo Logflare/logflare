@@ -8,6 +8,7 @@
     <meta name="author" content="">
 
     <title>Hello Logtail!</title>
+    
     <link rel="stylesheet" href="<%= static_path(@conn, "/css/app.css") %>">
 
     <script>
@@ -21,7 +22,7 @@
   <body>
     <div class="container">
       <header class="header">
-        <nav role="navigation">
+        <nav role="nav">
           <ul class="nav nav-pills pull-right">
             <%= if @conn.assigns[:user] do %>
               <li>

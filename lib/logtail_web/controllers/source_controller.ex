@@ -27,7 +27,7 @@ defmodule LogtailWeb.SourceController do
         Map.put(source, :log_count, log_count)
       end
 
-    IO.inspect(sources)
+    # IO.inspect(sources)
 
     render(conn, "dashboard.html", sources: sources)
   end
