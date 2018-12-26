@@ -18,6 +18,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     conn
       |> check_api_key(api_key)
       |> check_source_and_name(source, source_name)
+      |> check_source_token(source)
   end
 
   defp check_api_key(conn, api_key) do
@@ -45,6 +46,25 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         |> halt()
       _ ->
         conn
+    end
+  end
+
+  defp check_source_token(conn, source) do
+    cond do
+      is_nil(source) ->
+        conn
+      true ->
+        cond do
+          String.length(source) == 36 ->
+            conn
+          true ->
+            message = "Check your source."
+            conn
+            |> put_status(403)
+            |> put_view(LogflareWeb.LogView)
+            |> render("index.json", message: message)
+            |> halt()
+        end
     end
   end
 
