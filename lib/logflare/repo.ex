@@ -1,6 +1,8 @@
 defmodule Logflare.Repo do
-  use Ecto.Repo, otp_app: :logflare
-
+  use Ecto.Repo,
+    otp_app: :logflare,
+    adapter: Ecto.Adapters.Postgres
+    
   @doc """
   Dynamically loads the repository url from the
   DATABASE_URL environment variable.

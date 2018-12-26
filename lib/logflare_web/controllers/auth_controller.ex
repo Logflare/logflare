@@ -17,7 +17,7 @@ defmodule LogflareWeb.AuthController do
   def logout(conn, _params) do
       conn
       |> configure_session(drop: true)
-      |> redirect(to: source_path(conn, :index))
+      |> redirect(to: Routes.source_path(conn, :index))
   end
 
   defp signin(conn, changeset) do
@@ -26,11 +26,11 @@ defmodule LogflareWeb.AuthController do
         conn
         |> put_flash(:info, "Welcome back!")
         |> put_session(:user_id, user.id)
-        |> redirect(to: source_path(conn, :dashboard))
+        |> redirect(to: Routes.source_path(conn, :dashboard))
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Error signing in.")
-        |> redirect(to: source_path(conn, :index))
+        |> redirect(to: Routes.source_path(conn, :index))
     end
   end
 

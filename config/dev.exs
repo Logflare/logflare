@@ -49,10 +49,10 @@ config :logger, :console, format: "[$level] $message\n"
 config :phoenix, :stacktrace_depth, 20
 
 # Configure your database
-config :logflare, Logflare.Repo,
-  adapter: Ecto.Adapters.Postgres,
-  username: "chasegranberry",
-  password: "",
-  database: "logtail_dev",
-  hostname: "localhost",
-  pool_size: 10
+ config :logflare, Logflare.Repo,
+#   adapter: Ecto.Adapters.Postgres,
+   username: "chasegranberry",
+   password: "",
+   database: "logtail_dev",
+   hostname: "localhost",
+   pool_size: 10

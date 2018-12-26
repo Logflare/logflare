@@ -2,6 +2,10 @@ defmodule LogflareWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :logflare
 
   socket "/socket", LogflareWeb.UserSocket
+  # websocket: [key1: value1, key2: value2, key3: value3]
+
+  # websocket: Phoenix.Transports.WebSocket
+
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -24,7 +28,7 @@ defmodule LogflareWeb.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
-    json_decoder: Poison
+    json_decoder: Jason
 
   plug Plug.MethodOverride
   plug Plug.Head
