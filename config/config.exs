@@ -27,7 +27,6 @@ config :logger, :console,
 import_config "#{Mix.env}.exs"
 
 config :ueberauth, Ueberauth,
-  json_library: Jason,
   providers: [
     github: { Ueberauth.Strategy.Github, [default_scope: "user,user:email,public_repo"] }
   ]
