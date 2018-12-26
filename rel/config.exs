@@ -51,5 +51,5 @@ release :logflare do
   set applications: [
     :runtime_tools
   ]
+  # set pre_start_hooks: "rel/hooks/pre_start.sh"
 end
-
