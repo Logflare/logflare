@@ -1,4 +1,4 @@
-defmodule Logtail.Repo.Migrations.AddApiKeyToUsers do
+defmodule Logflare.Repo.Migrations.AddApiKeyToUsers do
   use Ecto.Migration
 
   def change do

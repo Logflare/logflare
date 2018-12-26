@@ -1,4 +1,4 @@
-defmodule Logtail.Repo.Migrations.SourcesToUsersAgain do
+defmodule Logflare.Repo.Migrations.SourcesToUsersAgain do
   use Ecto.Migration
 
   def change do

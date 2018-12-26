@@ -1,4 +1,4 @@
-defmodule LogtailWeb.ChannelCase do
+defmodule LogflareWeb.ChannelCase do
   @moduledoc """
   This module defines the test case to be used by
   channel tests.
@@ -21,15 +21,15 @@ defmodule LogtailWeb.ChannelCase do
       use Phoenix.ChannelTest
 
       # The default endpoint for testing
-      @endpoint LogtailWeb.Endpoint
+      @endpoint LogflareWeb.Endpoint
     end
   end
 
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logtail.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logtail.Repo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     end
     :ok
   end

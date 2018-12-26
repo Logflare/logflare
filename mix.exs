@@ -1,9 +1,9 @@
-defmodule Logtail.Mixfile do
+defmodule Logflare.Mixfile do
   use Mix.Project
 
   def project do
     [
-      app: :logtail,
+      app: :logflare,
       version: "0.0.1",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env),
@@ -19,7 +19,7 @@ defmodule Logtail.Mixfile do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {Logtail.Application, []},
+      mod: {Logflare.Application, []},
       extra_applications: [:logger, :runtime_tools, :ueberauth_github]
     ]
   end

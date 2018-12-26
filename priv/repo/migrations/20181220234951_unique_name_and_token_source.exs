@@ -1,4 +1,4 @@
-defmodule Logtail.Repo.Migrations.UniqueNameAndTokenSource do
+defmodule Logflare.Repo.Migrations.UniqueNameAndTokenSource do
   use Ecto.Migration
 
   def change do

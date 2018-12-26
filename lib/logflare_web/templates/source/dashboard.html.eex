@@ -1,0 +1,23 @@
+<h4>Dashboard</h4>
+
+<div id="dashboard-container">
+<ul class="list-group">
+  <%= for source <- @sources do %>
+    <li class="list-group-item">
+      <%= link source.name, to: source_path(@conn, :show, source.id) %>
+      <%= link "delete", to: source_path(@conn, :delete, source.id), method: :delete, class: "delete-link pull-right" %>
+      <span class="my-badge">
+        <small>
+        <%= if source.log_count == :undefined  do  %>
+          0
+        <% else %>
+          <%= source.log_count %>
+        <% end %>
+        </small>
+      </span>
+    </li>
+  <% end %>
+</ul>
+</div>
+
+<%= link "New source", to: source_path(@conn, :new), class: "btn btn-success" %>

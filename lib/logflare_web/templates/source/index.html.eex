@@ -1,0 +1,30 @@
+<div class="jumbotron">
+  <h2><%= gettext "Welcome to %{name}!", name: "Logflare" %></h2>
+  <p class="lead">Tail your Cloudflare logs!</p>
+</div>
+
+<div class="row marketing">
+  <div class="col-lg-6">
+    <h4>Links</h4>
+    <ul>
+      <li>
+        <a href="https://www.pagemodified.com/">Page Modified</a>
+      </li>
+      <li>
+        <a href="https://www.cloudflare.com/">Cloudflare</a>
+      </li>
+    </ul>
+  </div>
+
+  <div class="col-lg-6">
+    <h4>Help</h4>
+    <ul>
+      <li>
+        <a href="https://twitter.com/chasers">Twitter</a>
+      </li>
+      <li>
+        <a mailto="support@pagemodified.com">Email</a>
+      </li>
+    </ul>
+  </div>
+</div>

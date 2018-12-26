@@ -1,4 +1,4 @@
-defmodule Logtail.Repo.Migrations.CreateSources do
+defmodule Logflare.Repo.Migrations.CreateSources do
   use Ecto.Migration
 
   def change do

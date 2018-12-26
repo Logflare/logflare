@@ -1,4 +1,4 @@
 ExUnit.start()
 
-Ecto.Adapters.SQL.Sandbox.mode(Logtail.Repo, :manual)
+Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
 

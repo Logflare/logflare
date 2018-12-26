@@ -1,4 +1,4 @@
-defmodule LogtailWeb.ConnCase do
+defmodule LogflareWeb.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -19,18 +19,18 @@ defmodule LogtailWeb.ConnCase do
     quote do
       # Import conveniences for testing with connections
       use Phoenix.ConnTest
-      import LogtailWeb.Router.Helpers
+      import LogflareWeb.Router.Helpers
 
       # The default endpoint for testing
-      @endpoint LogtailWeb.Endpoint
+      @endpoint LogflareWeb.Endpoint
     end
   end
 
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logtail.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logtail.Repo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     end
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end

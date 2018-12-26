@@ -1,4 +1,4 @@
-defmodule Logtail.Repo.Migrations.AddUsersTable do
+defmodule Logflare.Repo.Migrations.AddUsersTable do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-# Logtail
+# Logflare
 
 To start your Phoenix server:
 

@@ -1,4 +1,4 @@
-defmodule Logtail.DataCase do
+defmodule Logflare.DataCase do
   @moduledoc """
   This module defines the setup for tests requiring
   access to the application's data layer.
@@ -16,20 +16,20 @@ defmodule Logtail.DataCase do
 
   using do
     quote do
-      alias Logtail.Repo
+      alias Logflare.Repo
 
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
-      import Logtail.DataCase
+      import Logflare.DataCase
     end
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logtail.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logtail.Repo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     end
 
     :ok

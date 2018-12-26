@@ -6,15 +6,15 @@
 use Mix.Config
 
 # General application configuration
-config :logtail,
-  ecto_repos: [Logtail.Repo]
+config :logflare,
+  ecto_repos: [Logflare.Repo]
 
 # Configures the endpoint
-config :logtail, LogtailWeb.Endpoint,
+config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
-  render_errors: [view: LogtailWeb.ErrorView, accepts: ~w(html json)],
-  pubsub: [name: Logtail.PubSub,
+  render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
+  pubsub: [name: Logflare.PubSub,
            adapter: Phoenix.PubSub.PG2]
 
 # Configures Elixir's Logger
