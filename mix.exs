@@ -20,7 +20,7 @@ defmodule Logflare.Mixfile do
   def application do
     [
       mod: {Logflare.Application, []},
-      extra_applications: [:logger, :runtime_tools, :ueberauth_github]
+      extra_applications: [:logger, :runtime_tools, :ueberauth_github, :edeliver]
     ]
   end
 
@@ -46,7 +46,8 @@ defmodule Logflare.Mixfile do
       {:plug, "~> 1.7"},
       {:jason, "~> 1.0"},
       {:poison, "~> 3.1"},
-      {:distillery, "~> 2.0"}
+      {:distillery, "~> 2.0"},
+      {:edeliver, ">= 1.6.0"}
     ]
   end
 
