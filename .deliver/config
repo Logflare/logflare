@@ -8,6 +8,8 @@ PRODUCTION_HOSTS="logflare.app"
 PRODUCTION_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 
+ECTO_REPOSITORY="Logflare.Repo"
+
 pre_erlang_get_and_update_deps() {
   local _prod_secret_path="/home/logflare/app_config/prod.secret.exs"
   if [ "$TARGET_MIX_ENV" = "prod" ]; then
