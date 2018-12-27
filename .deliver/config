@@ -36,7 +36,7 @@ pre_erlang_clean_compile() {
     npm install
 
     # building brunch
-    brunch build --production
+    node node_modules/brunch/bin/brunch build --production
 
     # run your custom task
     APP='$APP' MIX_ENV='$TARGET_MIX_ENV' $MIX_CMD phoenix.digest $SILENCE
