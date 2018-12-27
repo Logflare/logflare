@@ -43,14 +43,12 @@ config :logger, :console, format: "[$level] $message\n"
 config :phoenix, :stacktrace_depth, 20
 
 # Configure your database
- config :logflare, Logflare.Repo,
-#   adapter: Ecto.Adapters.Postgres,
+config :logflare, Logflare.Repo,
+#  adapter: Ecto.Adapters.Postgres,
    username: "chasegranberry",
    password: "",
    database: "logtail_dev",
    hostname: "localhost",
    pool_size: 10
 
- config :ueberauth, Ueberauth.Strategy.Github.OAuth,
-   client_id: "c4779963f3cd015f51f4",
-   client_secret: "7e3939f96209dbf6409321fcb18b1779caec1158"
+import_config "dev.secret.exs"
