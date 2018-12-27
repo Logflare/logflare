@@ -1,10 +1,10 @@
 APP="logflare"
 
-BUILD_HOST="104.248.221.157"
+BUILD_HOST="logflare.app"
 BUILD_USER="logflare"
 BUILD_AT="/home/logflare/app_build"
 
-PRODUCTION_HOSTS="104.248.221.157"
+PRODUCTION_HOSTS="logflare.app"
 PRODUCTION_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 
