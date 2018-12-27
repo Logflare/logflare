@@ -18,8 +18,10 @@ config :logflare, LogflareWeb.Endpoint,
   url: [host: "logflare.app", port: 80],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
+  root: ".",
   code_reloader: false,
   version: Application.spec(:logflare_web, :vsn)
+  
 #  secret_key_base: System.get_env("SECRET_KEY_BASE"),
 #  session_cookie_name: System.get_env("SESSION_COOKIE_NAME"),
 #  session_cookie_signing_salt: System.get_env("SESSION_COOKIE_SIGNING_SALT"),
