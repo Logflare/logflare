@@ -38,9 +38,7 @@
             <% end %>
           </ul>
         </nav>
-        <h1>Logflare <small>
-          <%={:ok, vsn} = :application.get_key(:logflare, :vsn); List.to_string(vsn) %>
-        </small></h1>
+        <h1>Logflare <small>v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></h1>
       </header>
 
       <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
