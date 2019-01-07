@@ -1,17 +1,28 @@
 /* This file is for your main application css. */
 
 .delete-link {
-  font-size: 10px;
+  font-size: .5rem;
   color: red;
   text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.help-block {
+    color: red;
+    text-transform: uppercase;
+    font-size: .75rem;
 }
 
 .navbar {
-  margin-bottom: 20px;
+  margin-bottom: .75rem;
+}
+
+.source-header {
+
 }
 
 .list-group {
-  margin-bottom: 20px;
+  margin-bottom: .75rem;
 }
 
 .example-log-code {
@@ -22,7 +33,7 @@
     display: inline-block;
     min-width: 10px;
     padding: 3px 7px;
-    font-size: 12px;
+    font-size: .8em;
     font-weight: 700;
     line-height: 1;
     color: #969696;
@@ -35,13 +46,13 @@
 
 .console-text {
   font-family: monospace;
-  font-size: 14px;
+  font-size: 1em;
   background-color: black;
   color: #7EF854;
 }
 
-#dashboard-container {
-  max-width: 100%;
+.container {
+  max-width: 95%;
 }
 
 @media screen and (max-width: 768px) {

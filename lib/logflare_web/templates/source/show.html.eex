@@ -1,5 +1,5 @@
 <div class="source-header">
-  <code class="float-right"><i class="fas fa-info-circle"></i></code><h3>Logs for <span class="text-primary"><%= @source.name %></h3>
+  <i class="fas fa-info-circle float-right"></i><h5>Logs for <span class="text-primary"><%= @source.name %></h5>
 </div>
 
 <div>
@@ -15,7 +15,7 @@
 <div id="no-logs-warning">
   <%= if @logs == [] do %>
   <h4>No logs ... add some logs!</h4>
-  <pre class="example-log-code">
+  <pre class="pre-scrollable bg-light">
     <code>
       curl -X "POST" "https://logflare.app/api/logs" \
         -H 'Content-Type: application/json' \

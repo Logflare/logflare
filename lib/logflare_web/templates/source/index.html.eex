@@ -5,7 +5,7 @@
 
 <div class="row marketing">
   <div class="col-lg-6">
-    <h4>Links</h4>
+    <h5>Links</h5>
     <ul>
       <li>
         <a href="https://www.pagemodified.com/">Page Modified</a>
@@ -17,7 +17,7 @@
   </div>
 
   <div class="col-lg-6">
-    <h4>Help</h4>
+    <h5>Help</h5>
     <ul>
       <li>
         <a href="https://twitter.com/chasers">Twitter</a>

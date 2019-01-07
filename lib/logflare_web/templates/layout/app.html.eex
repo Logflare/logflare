@@ -25,7 +25,6 @@
   </head>
 
   <body>
-    <div class="container">
       <nav class="navbar navbar-expand-lg navbar-light bg-light">
         <a href="/" class="navbar-brand">Logflare <small class="app-version">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -50,18 +49,17 @@
         </div>
       </nav>
 
-      <%= unless is_nil(get_flash(@conn, :info)) do %>
-        <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
-      <% end %>
-      <%= unless is_nil(get_flash(@conn, :error)) do %>
-      <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
-      <% end %>
-
-      <main role="main">
-        <%= render @view_module, @view_template, assigns %>
-      </main>
-
-    </div> <!-- /container -->
+      <div class="container mx-auto">
+        <%= unless is_nil(get_flash(@conn, :info)) do %>
+          <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
+        <% end %>
+        <%= unless is_nil(get_flash(@conn, :error)) do %>
+          <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
+        <% end %>
+        <main role="main">
+          <%= render @view_module, @view_template, assigns %>
+        </main>
+      </div>
     <script src="<%= static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>
