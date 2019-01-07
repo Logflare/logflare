@@ -1,10 +1,7 @@
 /* This file is for your main application css. */
 
 .delete-link {
-  font-size: .5rem;
   color: red;
-  text-transform: uppercase;
-  vertical-align: middle;
 }
 
 .help-block {

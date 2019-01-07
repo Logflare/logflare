@@ -5,7 +5,9 @@
   <%= for source <- @sources do %>
     <li class="list-group-item">
       <%= link source.name, to: source_path(@conn, :show, source.id) %>
-      <%= link "delete", to: source_path(@conn, :delete, source.id), method: :delete, class: "delete-link float-right" %>
+      <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "float-right delete-link" do %>
+        <i class="fa fa-trash"></i>
+      <% end %>
       <span class="my-badge">
         <small>
         <%= if source.log_count == :undefined  do  %>
