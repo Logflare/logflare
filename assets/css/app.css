@@ -6,7 +6,11 @@
   text-transform: uppercase;
 }
 
-.header {
+.navbar {
+  margin-bottom: 20px;
+}
+
+.list-group {
   margin-bottom: 20px;
 }
 
