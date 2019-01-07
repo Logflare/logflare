@@ -8,41 +8,50 @@
     <meta name="author" content="">
 
     <title>Hello Logflare!</title>
-
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
     <link rel="stylesheet" href="<%= static_path(@conn, "/css/app.css") %>">
+
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+
+    <script defer src="https://use.fontawesome.com/releases/v5.6.3/js/all.js" integrity="sha384-EIHISlAOj4zgYieurP0SdoiBYfGJKkgWedPHH4jCzpCXLmzVsw1ouK59MuUtP4a1" crossorigin="anonymous"></script>
 
     <script>
       <%= if @conn.assigns.user do %>
         window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, "key", @conn.assigns.user.id) %>"
       <% end %>
     </script>
-
   </head>
 
   <body>
     <div class="container">
-      <header class="header">
-        <nav role="nav">
-          <ul class="nav nav-pills pull-right">
-            <%= if @conn.assigns[:user] do %>
-              <li>
-                <%= link "Dashboard", to: source_path(@conn, :dashboard) %>
-              </li>
-              <li>
-                <%= link "Logout", to: auth_path(@conn, :logout) %>
-              </li>
-            <% else %>
-              <li>
-                <%= link "Sign in with Github", to: auth_path(@conn, :request, "github") %>
-              </li>
-            <% end %>
-          </ul>
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+          <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <a href="/" class="navbar-brand">Logflare <small class="app-version">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
+            <ul class="navbar-nav mr-auto">
+              <%= if @conn.assigns[:user] do %>
+                <li class="nav-item">
+                  <%= link "Dashboard", to: source_path(@conn, :dashboard), class: "nav-link" %>
+                </li>
+                <li class="nav-item">
+                  <%= link "Logout", to: auth_path(@conn, :logout), class: "nav-link" %>
+                </li>
+                <% else %>
+                <li class="nav-item">
+                  <%= link "Sign in with Github", to: auth_path(@conn, :request, "github"), class: "nav-link" %>
+                </li>
+              <% end %>
+            </ul>
+          </div>
         </nav>
-        <h1>Logflare <small class="app-version">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></h1>
-      </header>
 
-      <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
+      <%= unless is_nil(get_flash(@conn, :info)) do %>
+        <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
+      <% end %>
+      <%= unless is_nil(get_flash(@conn, :error)) do %>
       <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
+      <% end %>
 
       <main role="main">
         <%= render @view_module, @view_template, assigns %>

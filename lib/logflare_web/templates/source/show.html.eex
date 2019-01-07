@@ -1,5 +1,5 @@
 <div class="source-header">
-  <code class="pull-right">< ></code><h3>Logs for <span class="text-primary"><%= @source.name %></h3>
+  <code class="float-right"><i class="fas fa-info-circle"></i></code><h3>Logs for <span class="text-primary"><%= @source.name %></h3>
 </div>
 
 <div>
