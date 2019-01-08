@@ -1,7 +1,10 @@
 <div class="subhead">
   <div class="container mx-auto">
     <div class="log-settings float-right">
-      <i class="fa fa-toggle-on" aria-hidden="true"></i> local time <i class="fas fa-info-circle"></i> help
+      <ul>
+        <li><i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span></li>
+        <li><i class="fas fa-info-circle"></i> <span class="hide-on-mobile">help</span></li>
+      </ul>
     </div>
     <h5>~/logs/<span class="text-primary"><%= @source.name %></h5>
   </div>

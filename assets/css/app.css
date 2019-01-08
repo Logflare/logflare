@@ -116,10 +116,22 @@ mark {
   padding-bottom: .35em;
   margin-bottom: 1em;
   color: black;
+  overflow-y: scroll;
 }
 
-.subhead > .container > h5 {
+.subhead h5 {
   margin: 0px;
+  overflow-x: scroll;
+}
+
+.subhead li {
+  display: inline-block;
+  margin-left: 1em;
+}
+
+.subhead ul {
+  margin: 0px;
+  padding: 0px;
 }
 
 
@@ -165,9 +177,9 @@ mark {
   max-width: 95%;
 }
 
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 550px) {
 
-    .app-version {
+    .hide-on-mobile {
       display: none;
     }
 
