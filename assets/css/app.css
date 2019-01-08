@@ -5,6 +5,12 @@ body {
   color: #7EF854;
 }
 
+.subhead code {
+  color: white;
+  background-color: #f8547d;
+  padding: .2em;
+}
+
 .delete-link {
 
 }
@@ -84,6 +90,7 @@ body {
 .list-group-item {
   background-color: #1d1d1d;
   border: 0px;
+  overflow-x: scroll;
 }
 
 a {
