@@ -5,6 +5,10 @@ body {
   color: #7EF854;
 }
 
+.pointer-cursor {
+  cursor: pointer;
+}
+
 .subhead code {
   color: white;
   background-color: #f8547d;

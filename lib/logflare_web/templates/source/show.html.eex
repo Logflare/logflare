@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li id="swap-date"><i class="fa fa-toggle-off" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span></li>
+        <li id="swap-date" class="pointer-cursor"><i class="fa fa-toggle-off" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span></li>
         <li><i class="fas fa-info-circle"></i> <span class="hide-on-mobile">help</span></li>
       </ul>
     </div>
@@ -53,7 +53,7 @@
 
     document.getElementById("swap-date").innerHTML = `<i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
   }
-  
+
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>")
   });

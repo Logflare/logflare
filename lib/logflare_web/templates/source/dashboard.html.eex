@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span class="hide-on-mobile">Your API key is <code id="api-key">CLICK ME</code></span></li>
+        <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span class="hide-on-mobile">Your API key is <code class="pointer-cursor" id="api-key">CLICK ME</code></span></li>
       </ul>
     </div>
     <h5>~/logs</h5>
