@@ -150,6 +150,7 @@ mark {
   font-family: monospace;
   font-size: 1em;
   color: #7EF854;
+  word-break: break-word;
 }
 
 .container {
