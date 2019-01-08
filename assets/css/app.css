@@ -6,7 +6,7 @@ body {
 }
 
 .delete-link {
-  
+
 }
 
 .help-block {
@@ -21,6 +21,27 @@ body {
 
 .jumbotron {
   background-color: #1d1d1d;
+  margin-top: 1em;
+}
+
+.btn-primary {
+  background-color: #cf54f8;
+  border-color: #dd76ff;
+}
+
+.btn-primary:hover {
+  background-color: #bf00ff;
+  border-color: #dd76ff;
+}
+
+.btn-primary:not(:disabled):not(.disabled).active, .btn-primary:not(:disabled):not(.disabled):active, .show>.btn-primary.dropdown-toggle {
+    color: #fff;
+    background-color: #bf00ff;
+    border-color: #dd76ff;
+}
+
+.btn-primary.focus, .btn-primary:focus {
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.27);
 }
 
 .alert {
@@ -29,7 +50,7 @@ body {
 }
 
 .alert-warning {
-  background-color: yellow;
+  background-color: #f8f854;
   border-width: 0px;
 }
 

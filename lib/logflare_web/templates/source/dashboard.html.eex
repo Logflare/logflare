@@ -23,5 +23,5 @@
       </li>
     <% end %>
   </ul>
-  <%= link "New source", to: source_path(@conn, :new), class: "btn btn-success" %>
+  <%= link "New source", to: source_path(@conn, :new), class: "btn btn-primary" %>
 </div>
