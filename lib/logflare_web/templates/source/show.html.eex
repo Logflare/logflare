@@ -9,7 +9,7 @@
 
 <div class="container mx-auto">
 <div>
-<ul class="list-unstyled">
+<ul class="list-unstyled console-text">
   <%= for log <- @logs do %>
     <li>
       <mark><%= log.timestamp %></mark> <%= log.log_message %>
@@ -21,7 +21,7 @@
 <div id="no-logs-warning">
   <%= if @logs == [] do %>
   <h4>No logs ... add some logs!</h4>
-  <pre class="pre-scrollable bg-light">
+  <pre class="pre-scrollable">
     <code>
       curl -X "POST" "https://logflare.app/api/logs" \
         -H 'Content-Type: application/json' \

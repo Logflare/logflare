@@ -59,6 +59,10 @@ body {
   border-width: 0px;
 }
 
+.pre-scrollable {
+  background-color: #1d1d1d;
+  color: #e2e2e2;
+}
 
 .message {
     position: fixed;
@@ -83,7 +87,7 @@ body {
 }
 
 a {
-  color: #7EF854;
+  color: #e2e2e2;
 }
 
 a:hover {
@@ -145,7 +149,6 @@ mark {
 .console-text {
   font-family: monospace;
   font-size: 1em;
-  background-color: black;
   color: #7EF854;
 }
 
