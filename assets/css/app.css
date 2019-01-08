@@ -1,5 +1,10 @@
 /* This file is for your main application css. */
 
+body {
+  background-color: black;
+  color: #7EF854;
+}
+
 .delete-link {
   color: red;
 }
@@ -11,12 +16,87 @@
 }
 
 .navbar {
-  margin-bottom: .75rem;
+
+}
+
+.jumbotron {
+  background-color: #1d1d1d;
+}
+
+.alert {
+  border-radius: .25rem;
+  margin-bottom: 0rem;
+}
+
+.alert-warning {
+  background-color: yellow;
+  border-width: 0px;
+}
+
+.alert-info {
+  background-color: #00ccff;
+  border-width: 0px;
+}
+
+
+.message {
+    position: fixed;
+    top: 25px;
+    left: 25px;
+    width: 250px;
+    z-index: 1000;
+}
+.inner-message {
+    color: black;
+    margin: 0 auto;
+    text-shadow: 1px 1px 1px #ffffff75;
+}
+
+.close {
+    text-shadow: 1px 1px 1px #ffffff75;
+}
+
+.list-group-item {
+  background-color: #1d1d1d;
+  border: 0px;
+}
+
+a {
+  color: #7EF854;
+}
+
+a:hover {
+  color: white;
+}
+
+.text-primary {
+  color: #386C26!important;
+}
+
+mark {
+  background-color: #92DF78;
+}
+
+.bg-light {
+  background-color: #7EF854!important;
 }
 
 .source-header {
 
 }
+
+.subhead {
+  background-color: #92DF78;
+  padding-top: .35em;
+  padding-bottom: .35em;
+  margin-bottom: 1em;
+  color: black;
+}
+
+.subhead > .container > h5 {
+  margin: 0px;
+}
+
 
 .list-group {
   margin-bottom: .75rem;
@@ -33,11 +113,11 @@
     font-size: .8em;
     font-weight: 700;
     line-height: 1;
-    color: #969696;
+    color: black;
     text-align: center;
     white-space: nowrap;
     vertical-align: middle;
-    background-color: #eaeaea;
+    background-color: #92DF78;
     border-radius: 10px;
 }
 

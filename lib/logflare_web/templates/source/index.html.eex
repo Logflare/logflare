@@ -1,3 +1,4 @@
+<div class="container mx-auto">
 <div class="jumbotron">
   <h2><%= gettext "Welcome to %{name}!", name: "Logflare" %></h2>
   <p class="lead">Tail your Cloudflare logs!</p>
@@ -27,4 +28,5 @@
       </li>
     </ul>
   </div>
+</div>
 </div>

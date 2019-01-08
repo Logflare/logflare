@@ -1,7 +1,13 @@
-<div class="source-header">
-  <i class="fas fa-info-circle float-right"></i><h5>Logs for <span class="text-primary"><%= @source.name %></h5>
+<div class="subhead">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <i class="fa fa-toggle-on" aria-hidden="true"></i> local time <i class="fas fa-info-circle"></i> help
+    </div>
+    <h5>~/logs/<span class="text-primary"><%= @source.name %></h5>
+  </div>
 </div>
 
+<div class="container mx-auto">
 <div>
 <ul class="list-unstyled">
   <%= for log <- @logs do %>
@@ -35,3 +41,4 @@
     window.createSocket("<%= @source.token %>")
   });
 </script>
+</div>

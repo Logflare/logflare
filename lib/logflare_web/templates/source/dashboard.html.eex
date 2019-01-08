@@ -1,25 +1,27 @@
-<h5>Dashboard</h5>
-
-<div id="dashboard-container">
-<ul class="list-group">
-  <%= for source <- @sources do %>
-    <li class="list-group-item">
-      <%= link source.name, to: source_path(@conn, :show, source.id) %>
-      <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "float-right delete-link" do %>
-        <i class="fa fa-trash"></i>
-      <% end %>
-      <span class="my-badge">
-        <small>
-        <%= if source.log_count == :undefined  do  %>
-          0
-        <% else %>
-          <%= source.log_count %>
-        <% end %>
-        </small>
-      </span>
-    </li>
-  <% end %>
-</ul>
+<div class="subhead">
+  <div class="container mx-auto">
+    <h5>~/logs</h5>
+  </div>
 </div>
-
-<%= link "New source", to: source_path(@conn, :new), class: "btn btn-success" %>
+<div class="container mx-auto">
+  <ul class="list-group">
+    <%= for source <- @sources do %>
+      <li class="list-group-item">
+        <%= link source.name, to: source_path(@conn, :show, source.id) %>
+        <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "float-right delete-link" do %>
+          <i class="fa fa-trash"></i>
+        <% end %>
+        <span class="my-badge">
+          <small>
+            <%= if source.log_count == :undefined  do  %>
+            0
+            <% else %>
+            <%= source.log_count %>
+            <% end %>
+          </small>
+        </span>
+      </li>
+    <% end %>
+  </ul>
+  <%= link "New source", to: source_path(@conn, :new), class: "btn btn-success" %>
+</div>

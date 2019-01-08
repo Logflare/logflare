@@ -25,41 +25,50 @@
   </head>
 
   <body>
-      <nav class="navbar navbar-expand-lg navbar-light bg-light">
-        <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small class="app-version">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
-        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-
-        <div class="collapse navbar-collapse" id="navbarSupportedContent">
-          <ul class="navbar-nav mr-auto">
-            <%= if @conn.assigns[:user] do %>
-            <li class="nav-item">
-              <%= link "Dashboard", to: source_path(@conn, :dashboard), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
-              <%= link "Logout", to: auth_path(@conn, :logout), class: "nav-link" %>
-            </li>
-            <% else %>
-            <li class="nav-item">
-              <%= link "Sign in with Github", to: auth_path(@conn, :request, "github"), class: "nav-link" %>
-            </li>
-            <% end %>
-          </ul>
+    <%= unless is_nil(get_flash(@conn, :info)) do %>
+      <div class="message">
+        <div class="inner-message alert alert-info" role="alert"><%= get_flash(@conn, :info) %>
+          <button type="button" class="close" data-dismiss="alert">&times;</button>
         </div>
-      </nav>
-
-      <div class="container mx-auto">
-        <%= unless is_nil(get_flash(@conn, :info)) do %>
-          <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
-        <% end %>
-        <%= unless is_nil(get_flash(@conn, :error)) do %>
-          <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
-        <% end %>
-        <main role="main">
-          <%= render @view_module, @view_template, assigns %>
-        </main>
       </div>
+    <% end %>
+    <%= unless is_nil(get_flash(@conn, :error)) do %>
+      <div class="message">
+        <div class="inner-message alert alert-warning" role="alert"><%= get_flash(@conn, :error) %>
+          <button type="button" class="close" data-dismiss="alert">&times;</button>
+        </div>
+      </div>
+
+    <% end %>
+
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+      <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small class="app-version">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+        <ul class="navbar-nav mr-auto">
+          <%= if @conn.assigns[:user] do %>
+          <li class="nav-item">
+            <%= link "Dashboard", to: source_path(@conn, :dashboard), class: "nav-link" %>
+          </li>
+          <li class="nav-item">
+            <%= link "Logout", to: auth_path(@conn, :logout), class: "nav-link" %>
+          </li>
+          <% else %>
+          <li class="nav-item">
+            <%= link "Sign in with Github", to: auth_path(@conn, :request, "github"), class: "nav-link" %>
+          </li>
+          <% end %>
+        </ul>
+      </div>
+    </nav>
+
+    <main role="main">
+      <%= render @view_module, @view_template, assigns %>
+    </main>
+
     <script src="<%= static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>
