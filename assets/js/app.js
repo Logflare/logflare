@@ -19,9 +19,3 @@ import "phoenix_html"
 // paths "./socket" or full ones "web/static/js/socket".
 
 import socket from "./socket"
-
-document.getElementById("api-key").addEventListener("click", myFunction);
-
-function myFunction() {
-  document.getElementById("api-key").innerHTML = window.userApikey;
-}

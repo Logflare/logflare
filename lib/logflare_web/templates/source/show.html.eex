@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span></li>
+        <li id="swap-date"><i class="fa fa-toggle-off" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span></li>
         <li><i class="fas fa-info-circle"></i> <span class="hide-on-mobile">help</span></li>
       </ul>
     </div>
@@ -15,7 +15,7 @@
 <ul class="list-unstyled console-text-list">
   <%= for log <- @logs do %>
     <li>
-      <mark><%= log.timestamp %></mark> <%= log.log_message %>
+      <mark class="log-datestamp"><%= log.timestamp %></mark> <%= log.log_message %>
     </li>
   <% end %>
 </ul>
@@ -40,6 +40,20 @@
 
 
 <script>
+  document.getElementById("swap-date").addEventListener("click", dateSwap);
+
+  function dateSwap() {
+    var x = document.getElementsByClassName("log-datestamp");
+
+    for (let a of x) {
+      var date = Date(a);
+      // var iso_date = date.toISOString();
+      a.innerHTML = date;
+    }
+
+    document.getElementById("swap-date").innerHTML = `<i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
+  }
+  
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>")
   });

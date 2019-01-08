@@ -30,3 +30,10 @@
   </ul>
   <%= link "New source", to: source_path(@conn, :new), class: "btn btn-primary" %>
 </div>
+<script>
+document.getElementById("api-key").addEventListener("click", myFunction);
+
+function myFunction() {
+  document.getElementById("api-key").innerHTML = window.userApikey;
+}
+</script>
