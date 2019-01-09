@@ -77,9 +77,7 @@
           time = timestamps[i];
           local_time = formatLocalTime(time.innerHTML / 1000);
           utc_time = time.innerHTML
-          timestamps[i].innerHTML = `
-            <span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>
-            `;
+          timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
           };
       break;
       case false:
@@ -89,9 +87,7 @@
           time = timestamps[i];
           local_time = formatLocalTime(time.innerHTML / 1000);
           utc_time = time.innerHTML
-          timestamps[i].innerHTML = `
-            <span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>
-            `;
+          timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
           };
     };
   }
@@ -104,14 +100,10 @@
 
     switch (window.localTime) {
       case true:
-      last.innerHTML = `
-        <span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>
-      `;
+      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
       break;
       case false:
-      last.innerHTML = `
-        <span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>
-      `;
+      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
     };
   }
 
