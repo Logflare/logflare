@@ -18,7 +18,7 @@ function renderLog(event) {
 
   document.querySelector('#no-logs-warning').innerHTML = '';
   document.querySelector('.list-unstyled').innerHTML += renderedLog;
-  dateSwapNew();
+  dateAddNew();
 }
 
 function logTemplate(event) {

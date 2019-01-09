@@ -43,7 +43,8 @@
   window.localTime = false
 
   document.addEventListener("DOMContentLoaded", function(){
-    window.createSocket("<%= @source.token %>")
+    window.createSocket("<%= @source.token %>");
+    dateAdd();
   });
 
   document.getElementById("swap-date").addEventListener("click", dateSwap);
@@ -52,22 +53,63 @@
     window.localTime = ! window.localTime
     document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
 
-    var timestamps = document.getElementsByClassName("log-datestamp");
+    var utcs = document.getElementsByClassName("utc");
 
-    for (var i = 0; i < timestamps.length; i++) {
-      time = timestamps[i];
-      local_time = new Date(time.innerHTML / 1000);
-      timestamps[i].innerHTML = local_time;
+    for (var i = 0; i < utcs.length; i++) {
+      utcs[i].classList.toggle("d-none");
+    };
+
+    var local_times = document.getElementsByClassName("local-time");
+
+    for (var i = 0; i < local_times.length; i++) {
+      local_times[i].classList.toggle("d-none");
     };
   }
 
-  function dateSwapNew() {
+  function dateAdd() {
+    switch (window.localTime) {
+      case true:
+        var timestamps = document.getElementsByClassName("log-datestamp");
+
+        for (var i = 0; i < timestamps.length; i++) {
+          time = timestamps[i];
+          local_time = new Date(time.innerHTML / 1000);
+          utc_time = time.innerHTML
+          timestamps[i].innerHTML = `
+            <span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>
+            `;
+          };
+      break;
+      case false:
+        var timestamps = document.getElementsByClassName("log-datestamp");
+
+        for (var i = 0; i < timestamps.length; i++) {
+          time = timestamps[i];
+          local_time = new Date(time.innerHTML / 1000);
+          utc_time = time.innerHTML
+          timestamps[i].innerHTML = `
+            <span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>
+            `;
+          };
+    };
+  }
+
+  function dateAddNew() {
     var timestamps = document.getElementsByClassName("new-log");
     var last = timestamps[timestamps.length - 1];
-    var local_time = new Date(last.innerHTML / 1000);
+    local_time = new Date(last.innerHTML / 1000);
+    utc_time = last.innerHTML
 
-    if (window.localTime == true) {
-      last.innerHTML = local_time;
+    switch (window.localTime) {
+      case true:
+      last.innerHTML = `
+        <span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>
+      `;
+      break;
+      case false:
+      last.innerHTML = `
+        <span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>
+      `;
     };
   }
 
