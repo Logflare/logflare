@@ -87,6 +87,12 @@ body {
     text-shadow: 1px 1px 1px #ffffff75;
 }
 
+/* Fixes artifacts in Chrome */
+
+.list-group-item:focus, .list-group-item:hover {
+    z-index: auto;
+}
+
 .close {
     text-shadow: 1px 1px 1px #ffffff75;
 }
