@@ -41,11 +41,15 @@
 
 <script>
   window.localTime = false
+
+  document.addEventListener("DOMContentLoaded", function(){
+    window.createSocket("<%= @source.token %>")
+  });
+
   document.getElementById("swap-date").addEventListener("click", dateSwap);
 
   function dateSwap() {
     window.localTime = ! window.localTime
-
     document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
 
     var timestamps = document.getElementsByClassName("log-datestamp");
@@ -59,9 +63,9 @@
 
   function dateSwapNew() {
     var timestamps = document.getElementsByClassName("new-log");
-
     var last = timestamps[timestamps.length - 1];
     var local_time = new Date(last.innerHTML / 1000);
+
     if (window.localTime == true) {
       last.innerHTML = local_time;
     };
@@ -77,8 +81,5 @@
     };
   }
 
-  document.addEventListener("DOMContentLoaded", function(){
-    window.createSocket("<%= @source.token %>")
-  });
 </script>
 </div>

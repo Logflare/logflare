@@ -23,7 +23,7 @@ function renderLog(event) {
 
 function logTemplate(event) {
   return `
-    <li class="collection-item">
+    <li>
       <mark class="new-log">${event.timestamp}</mark> ${event.log_message}
     </li>
   `;
