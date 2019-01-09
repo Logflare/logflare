@@ -2,8 +2,8 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li id="swap-date" class="pointer-cursor"><i class="fa fa-toggle-off" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span></li>
-        <li><i class="fas fa-info-circle"></i> <span class="hide-on-mobile">help</span></li>
+        <li><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <a href="javascript:dateSwap();"><span class="hide-on-mobile">local time</span></a></li>
+        <li><i class="fas fa-info-circle"></i> <span class="hide-on-mobile"><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21">help</a></span></li>
       </ul>
     </div>
     <h5>~/logs/<span class="text-primary"><%= @source.name %></h5>
@@ -118,10 +118,10 @@
   function timeToggle(bool) {
     switch (bool) {
       case true:
-        return `<i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
+        return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`;
       break;
       case false:
-        return `<i class="fa fa-toggle-off" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
+        return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
     };
   }
 

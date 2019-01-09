@@ -29,6 +29,11 @@ body {
 
 }
 
+.log-settings a {
+  text-decoration: none;
+  color: black;
+}
+
 .jumbotron {
   background-color: #1d1d1d;
   margin-top: 1em;
