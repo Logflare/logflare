@@ -40,10 +40,13 @@
 
 
 <script>
+  window.localTime = false
   document.getElementById("swap-date").addEventListener("click", dateSwap);
 
   function dateSwap() {
-    document.getElementById("swap-date").innerHTML = `<i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
+    window.localTime = ! window.localTime
+
+    document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
 
     var timestamps = document.getElementsByClassName("log-datestamp");
 
@@ -51,6 +54,26 @@
       time = timestamps[i];
       local_time = new Date(time.innerHTML / 1000);
       timestamps[i].innerHTML = local_time;
+    };
+  }
+
+  function dateSwapNew() {
+    var timestamps = document.getElementsByClassName("new-log");
+
+    var last = timestamps[timestamps.length - 1];
+    var local_time = new Date(last.innerHTML / 1000);
+    if (window.localTime == true) {
+      last.innerHTML = local_time;
+    };
+  }
+
+  function timeToggle(bool) {
+    switch (bool) {
+      case true:
+        return `<i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
+      break;
+      case false:
+        return `<i class="fa fa-toggle-off" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
     };
   }
 

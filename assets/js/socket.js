@@ -18,12 +18,13 @@ function renderLog(event) {
 
   document.querySelector('#no-logs-warning').innerHTML = '';
   document.querySelector('.list-unstyled').innerHTML += renderedLog;
+  dateSwapNew();
 }
 
 function logTemplate(event) {
   return `
     <li class="collection-item">
-      <mark>${event.timestamp}</mark> ${event.log_message}
+      <mark class="new-log">${event.timestamp}</mark> ${event.log_message}
     </li>
   `;
 }
