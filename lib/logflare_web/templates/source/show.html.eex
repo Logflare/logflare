@@ -43,15 +43,15 @@
   document.getElementById("swap-date").addEventListener("click", dateSwap);
 
   function dateSwap() {
-    var x = document.getElementsByClassName("log-datestamp");
-
-    for (let a of x) {
-      var date = Date(a);
-      // var iso_date = date.toISOString();
-      a.innerHTML = date;
-    }
-
     document.getElementById("swap-date").innerHTML = `<i class="fa fa-toggle-on" aria-hidden="true"></i> <span class="hide-on-mobile">local time</span>`;
+
+    var timestamps = document.getElementsByClassName("log-datestamp");
+
+    for (var i = 0; i < timestamps.length; i++) {
+      time = timestamps[i];
+      local_time = new Date(time.innerHTML / 1000);
+      timestamps[i].innerHTML = local_time;
+    };
   }
 
   document.addEventListener("DOMContentLoaded", function(){
