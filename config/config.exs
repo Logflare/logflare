@@ -28,7 +28,7 @@ import_config "#{Mix.env}.exs"
 
 config :ueberauth, Ueberauth,
   providers: [
-    github: { Ueberauth.Strategy.Github, [default_scope: "user,user:email,public_repo"] }
+    github: { Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"] }
   ]
 
 # Use Jason for JSON parsing in Phoenix
