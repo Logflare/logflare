@@ -29,9 +29,10 @@ body {
 
 }
 
-.log-settings a {
+.log-settings a, .log-settings a:hover  {
   text-decoration: none;
   color: black;
+
 }
 
 .jumbotron {

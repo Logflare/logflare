@@ -2,8 +2,8 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <a href="javascript:dateSwap();"><span class="hide-on-mobile">local time</span></a></li>
-        <li><i class="fas fa-info-circle"></i> <span class="hide-on-mobile"><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21">help</a></span></li>
+        <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
+        <li><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21"><i class="fas fa-info-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
     </div>
     <h5>~/logs/<span class="text-primary"><%= @source.name %></h5>
@@ -51,8 +51,6 @@
 
         const logflare = await fetch("https://logflare.app/api/logs", init)
 
-        // console.log(ua)
-
         return response
       }
 
@@ -86,8 +84,6 @@
     window.createSocket("<%= @source.token %>");
     dateAdd();
   });
-
-  document.getElementById("swap-date").addEventListener("click", dateSwap);
 
   function dateSwap() {
     window.localTime = ! window.localTime
