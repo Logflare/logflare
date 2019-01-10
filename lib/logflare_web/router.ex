@@ -38,6 +38,7 @@ defmodule LogflareWeb.Router do
     pipe_through :browser
 
     get "/logout", AuthController, :logout
+    get "/new-api-key", AuthController, :new_api_key
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
   end

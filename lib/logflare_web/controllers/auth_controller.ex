@@ -20,6 +20,19 @@ defmodule LogflareWeb.AuthController do
       |> redirect(to: source_path(conn, :index))
   end
 
+  def new_api_key(conn, _params) do
+    %{assigns: %{user: user}} = conn
+    api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64 |> binary_part(0, 12)
+    user_params = %{api_key: api_key}
+    changeset = User.changeset(user, user_params)
+
+    Repo.update(changeset)
+
+    conn
+    |> put_flash(:info, "API key reset!")
+    |> redirect(to: source_path(conn, :dashboard))
+  end
+
   defp signin(conn, changeset) do
     case insert_or_update_user(changeset) do
       {:ok, user} ->
