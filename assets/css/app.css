@@ -10,6 +10,11 @@ body {
     height: auto;
   }
 
+.alert-info a {
+  color: white;
+  text-shadow: 0px;
+}
+
 .pointer-cursor {
   cursor: pointer;
 }
@@ -95,7 +100,6 @@ body {
 .inner-message {
     color: black;
     margin: 0 auto;
-    text-shadow: 1px 1px 1px #ffffff75;
 }
 
 /* Fixes artifacts in Chrome */

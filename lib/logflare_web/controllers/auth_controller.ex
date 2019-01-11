@@ -1,5 +1,6 @@
 defmodule LogflareWeb.AuthController do
   use LogflareWeb, :controller
+  use Phoenix.HTML
 
   plug Ueberauth
 
@@ -20,17 +21,34 @@ defmodule LogflareWeb.AuthController do
       |> redirect(to: source_path(conn, :index))
   end
 
-  def new_api_key(conn, _params) do
-    %{assigns: %{user: user}} = conn
-    api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64 |> binary_part(0, 12)
-    user_params = %{api_key: api_key}
-    changeset = User.changeset(user, user_params)
+  def new_api_key(conn, params) do
+    IO.inspect(conn.params["undo"])
+    case conn.params["undo"] do
+      "true" ->
+        %{assigns: %{user: user}} = conn
+        new_api_key = user.old_api_key
+        old_api_key = user.api_key
+        user_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
-    Repo.update(changeset)
+        changeset = User.changeset(user, user_params)
+        Repo.update(changeset)
 
-    conn
-    |> put_flash(:info, "API key reset!")
-    |> redirect(to: source_path(conn, :dashboard))
+        conn
+        |> put_flash(:info, "API key restored!")
+        |> redirect(to: source_path(conn, :dashboard))
+      nil ->
+        %{assigns: %{user: user}} = conn
+        new_api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64 |> binary_part(0, 12)
+        old_api_key = user.api_key
+        user_params = %{api_key: new_api_key, old_api_key: old_api_key}
+
+        changeset = User.changeset(user, user_params)
+        Repo.update(changeset)
+
+        conn
+        |> put_flash(:info, ["API key reset! ", link("Undo?", to: auth_path(conn, :new_api_key, undo: :true))])
+        |> redirect(to: source_path(conn, :dashboard))
+      end
   end
 
   defp signin(conn, changeset) do
