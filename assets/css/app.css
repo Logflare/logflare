@@ -15,8 +15,31 @@ body {
   text-shadow: 0px;
 }
 
+code {
+  color: #cf54f8;
+}
+
 .pointer-cursor {
   cursor: pointer;
+}
+
+h2 {
+  color: #0cf;
+}
+
+h4 {
+  margin-top: 1em;
+}
+
+#feature-list li:before {
+  content: '✓';
+  margin-right: .5em;
+  margin-left: .75em;
+  color: #f58220;
+}
+
+.footer {
+  margin-top: 1em;
 }
 
 .subhead code {

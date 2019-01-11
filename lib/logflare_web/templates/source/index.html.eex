@@ -1,31 +1,49 @@
 <div class="container mx-auto">
 <div class="jumbotron">
   <h2><%= gettext "Welcome to %{name}!", name: "Logflare" %></h2>
-  <p class="lead">Tail your Cloudflare logs!</p>
+  <p class="lead"><code>tail -f</code> your Cloudflare logs!</p>
   <img class="img-fluid" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
 </div>
 
-<div class="row marketing">
-  <div class="col-lg-6">
-    <h5>Links</h5>
-    <ul>
+<div class="value">
+<h4>Why?</h4>
+<p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
+<%= link "Sign up with Github", to: auth_path(@conn, :request, "github"), class: "btn btn-primary", role: "button" %>
+</div>
+<h4>Features</h4>
+<ul id="feature-list" class="list-unstyled">
+  <li>Stream logs to your browser.</li>
+  <li>Send custom logs via API request.</li>
+  <li>Watch log files with the agent.</li>
+  <li>Free!</li>
+  <li>100 log entries per source.</li>
+  <li>Up to 100 sources per account.</li>
+  <li>Logs older than 30 days are deleted.</li>
+</ul>
+<div class="row footer">
+  <div class="col-lg-3">
+    <h5>Help</h5>
+    <ul class="list-unstyled">
       <li>
-        <a href="https://www.pagemodified.com/">Page Modified</a>
-      </li>
-      <li>
-        <a href="https://www.cloudflare.com/">Cloudflare</a>
+        <a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21">Twitter</a>
       </li>
     </ul>
   </div>
 
-  <div class="col-lg-6">
-    <h5>Help</h5>
-    <ul>
+  <div class="col-lg-3">
+    <h5>Open Source</h5>
+    <ul class="list-unstyled">
       <li>
-        <a href="https://twitter.com/chasers">Twitter</a>
+        <a href="https://github.com/Logflare/logflare">Logflare Web</a>
       </li>
       <li>
-        <a href="mailto:support+logflare@pagemodified.com">Email</a>
+        <a href="https://github.com/Logflare/logflare-agent">Logflare Agent</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/cloudflare-app">Cloudflare App</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
       </li>
     </ul>
   </div>

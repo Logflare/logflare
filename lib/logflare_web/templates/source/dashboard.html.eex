@@ -3,7 +3,7 @@
     <div class="log-settings float-right">
       <ul>
         <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span>Your API key is <code class="pointer-cursor" id="api-key">CLICK ME</code></span></li>
-        <li class="hide-on-mobile"><i class="fas fa-bomb"></i> <%= link "Reset", to: auth_path(@conn, :new_api_key) %></li>
+        <li><i class="fas fa-bomb hide-on-mobile"></i> <%= link "Reset", to: auth_path(@conn, :new_api_key), class: "hide-on-mobile" %></li>
       </ul>
     </div>
     <h5>~/logs</h5>
