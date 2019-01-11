@@ -2,6 +2,7 @@
 <div class="jumbotron">
   <h2><%= gettext "Welcome to %{name}!", name: "Logflare" %></h2>
   <p class="lead">Tail your Cloudflare logs!</p>
+  <img class="img-fluid" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
 </div>
 
 <div class="row marketing">
