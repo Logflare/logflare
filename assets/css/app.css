@@ -9,6 +9,11 @@ body {
   display: inline;
 }
 
+.feature-icons {
+  color: #ff913d;
+  width: 50px!important;
+}
+
 #homepage-header {
   height: 250px;
   background-color: #1d1d1d;
@@ -49,7 +54,6 @@ h4 {
 }
 
 #feature-list li:before {
-  content: '✓';
   margin-right: .5em;
   margin-left: .75em;
   color: #f58220;
