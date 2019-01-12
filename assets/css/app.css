@@ -17,12 +17,12 @@ body {
 #homepage-header {
   height: 250px;
   background-color: #1d1d1d;
-  padding-top: 5em;
-  padding-left: 6em;
 }
 
 #homepage-header-text {
-  width: 34%;
+  width: 39%;
+  padding-top: 5em;
+  padding-left: 7%;
 }
 
 .screenshot {
