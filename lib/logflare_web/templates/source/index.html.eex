@@ -1,11 +1,14 @@
-<div class="homepage-container mx-auto">
 
-<div class="jumbotron">
+
+<div id="homepage-header">
+<div id="homepage-header-text">
   <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
-  <h2><%= gettext "Welcome to %{name}!", name: "Logflare" %></h2>
+  <h2>Edge Logs for Everyone</h2>
   <p class="lead"><code>tail -f</code> your Cloudflare logs!</p>
 </div>
+</div>
 
+<div class="homepage-container mx-auto">
 <div class="value">
 <h4>Why?</h4>
 <p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
@@ -77,17 +80,54 @@
 -->
 
 <h4>5 minute setup</h4>
+<p>Just install our Cloudflare Worker and you're good to go!</p>
+<pre class="pre-scrollable">
+  <code>
+      async function handleRequest(request) {
+        const rMeth = request.method
+        const rUrl = request.url
+        const uAgent = request.headers.get("user-agent")
+        const cfRay = request.headers.get("cf-ray")
+
+        const sourceKey = "xxxxxxxxxxx"
+        const apiKey = "xxxxxxxxxxx"
+
+        const response = await fetch(request)
+
+        const statusCode = response.status
+        const contentLength = response.headers.get("content-legth")
+
+        const logEntry = `${rMeth} | ${statusCode} | ${cfRay} | ${rUrl} | ${uAgent}`
+
+        const init = {
+          method: "POST",
+          headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
+        }
+
+        const logflare = await fetch("https://logflare.app/api/logs", init)
+
+        return response
+      }
+
+      addEventListener("fetch", event => {
+        event.respondWith(handleRequest(event.request))
+      })
+  </code>
+</pre>
 
 <h4>Features</h4>
 <ul id="feature-list" class="list-unstyled">
-  <li>Free!</li>
-  <li>Stream logs to your browser.</li>
-  <li>Send custom logs via API request.</li>
-  <li>Watch log files with the agent.</li>
-  <li>100 log entries per source.</li>
-  <li>Up to 100 sources per account.</li>
-  <li>Logs older than 30 days are deleted.</li>
-  <li>Log routing.</li>
+  <li>Free</li>
+  <li>Open source</li>
+  <li>Stream logs to your browser</li>
+  <li>Send custom logs via API request</li>
+  <li>Watch log files with the agent</li>
+  <li>100 log entries per source</li>
+  <li>Up to 100 sources per account</li>
+  <li>Logs older than 30 days are deleted</li>
+  <li>Log routing</li>
+  <li>Local time & UTC</li>
 </ul>
 
 <div class="row footer">

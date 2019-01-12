@@ -9,6 +9,13 @@ body {
   display: inline;
 }
 
+#homepage-header {
+  height: 250px;
+  background-color: #1d1d1d;
+  padding-top: 5em;
+  padding-left: 6em;
+}
+
 .screenshot {
   position: absolute;
   right: 100px;
@@ -18,7 +25,6 @@ body {
   border-radius: 3px;
   -webkit-transform: rotate(30deg);
   transform: rotate(-3deg);
-  border: 10px solid trasparent;
 }
 
 .alert-info a {
@@ -119,7 +125,7 @@ h4 {
   border-width: 0px;
 }
 
-.pre-scrollable {
+pre {
   background-color: #1d1d1d;
   color: #e2e2e2;
 }
