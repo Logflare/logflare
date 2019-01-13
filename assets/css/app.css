@@ -20,7 +20,6 @@ body {
 }
 
 #homepage-header-text {
-  width: 39%;
   padding-top: 5em;
   padding-left: 7%;
 }
@@ -269,10 +268,6 @@ mark {
 
     .hide-on-mobile {
       display: none;
-    }
-
-    #homepage-header-text {
-      width: 100%;
     }
 
 }
