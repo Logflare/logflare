@@ -237,15 +237,15 @@ mark {
     border-radius: 10px;
 }
 
-.console-text {
+#console-text {
   font-family: monospace;
   font-size: 1em;
   color: #7EF854;
   word-break: break-word;
-  height: calc(100vh - 110px);
   overflow-x: scroll;
-  display: flex;
-  flex-direction: column-reverse;
+  height: calc(100vh - 110px);
+/*display: flex;
+  flex-direction: column-reverse; */
 }
 
 .console-text-list {

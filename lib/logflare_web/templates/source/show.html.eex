@@ -10,7 +10,7 @@
   </div>
 </div>
 
-<div class="container mx-auto console-text">
+<div class="container mx-auto" id="console-text">
 <div>
 <ul class="list-unstyled console-text-list">
   <%= for log <- @logs do %>
@@ -76,14 +76,46 @@
 
 
 <script>
-
-
-  window.localTime = false
+  window.localTime = false;
+  window.scrollTracker = 0;
+  setInterval(resetScrollTracker, 500)
 
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>");
     dateAdd();
+    scrollBottom();
   });
+
+  document.getElementById("console-text").addEventListener("scroll", function(){
+    window.scrollTracker += 1;
+  });
+
+  function scrollBottom(){
+    var console_text = document.getElementById("console-text");
+
+    console_text.scrollTop = console_text.scrollHeight;
+  }
+
+  function stayScrolledBottom() {
+    var console_text = document.getElementById("console-text");
+
+    switch (window.scrollTracker == 1) {
+      case true:
+      console_text.scrollTop = console_text.scrollHeight;
+      window.scrollTracker -= 1;
+      break;
+      case false:
+    };
+  }
+
+  function resetScrollTracker() {
+    var console_text = document.getElementById("console-text");
+
+    if (console_text.clientHeight + console_text.scrollTop == console_text.scrollHeight) {
+      window.scrollTracker = 1;
+    };
+    // console.log(window.scrollTracker);
+  }
 
   function dateSwap() {
     window.localTime = ! window.localTime
