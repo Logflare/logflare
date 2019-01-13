@@ -4,7 +4,7 @@
 <div id="homepage-header-text">
   <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
   <h2>Edge Logs for Everyone</h2>
-  <p class="lead"><code>tail -f</code> your Cloudflare logs!</p>
+  <p class="lead"><code>tail -f</code> your Cloudflare logs for <u>free!</u></p>
   <small class="text-uppercase">*** not affiliated with Cloudflare ***</small>
 </div>
 </div>
