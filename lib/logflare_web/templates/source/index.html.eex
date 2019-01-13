@@ -120,7 +120,7 @@
 <h4>Features</h4>
 <ul id="feature-list" class="list-unstyled">
   <li><i class="fas fa-money-bill feature-icons"></i>Free</li>
-  <li><i class="fas fa-clone feature-icons"></i>Open source</li>
+  <li><i class="fas fa-balance-scale feature-icons"></i></i>Open source</li>
   <li><i class="fas fa-stream feature-icons"></i>Stream logs to your browser</li>
   <li><i class="fas fa-code feature-icons"></i>Send custom logs via API request</li>
   <li><i class="fas fa-binoculars feature-icons"></i>Watch log files with the agent</li>
