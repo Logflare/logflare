@@ -5,6 +5,7 @@
   <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
   <h2>Edge Logs for Everyone</h2>
   <p class="lead"><code>tail -f</code> your Cloudflare logs!</p>
+  <small class="text-uppercase">*** not affiliated with Cloudflare ***</small>
 </div>
 </div>
 
@@ -79,7 +80,7 @@
 </div>
 -->
 
-<h4>5 minute setup</h4>
+<h4>5 Minute Setup</h4>
 <p>Just install our Cloudflare Worker and you're good to go!</p>
 <pre class="pre-scrollable">
   <code>
