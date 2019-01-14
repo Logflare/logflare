@@ -82,6 +82,7 @@
     window.createSocket("<%= @source.token %>");
     dateAdd();
     setScroll();
+    dateSwap();
   });
 
   document.getElementById("console-text").addEventListener("scroll", function(){
