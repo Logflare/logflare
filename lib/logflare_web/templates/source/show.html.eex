@@ -77,20 +77,18 @@
 
 <script>
   window.localTime = false;
-  window.scrollTracker = 0;
-  setInterval(resetScrollTracker, 500)
 
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>");
     dateAdd();
-    scrollBottom();
+    setScroll();
   });
 
   document.getElementById("console-text").addEventListener("scroll", function(){
-    window.scrollTracker += 1;
-  });
+     resetScrollTracker();
+   });
 
-  function scrollBottom(){
+  function setScroll(){
     var console_text = document.getElementById("console-text");
 
     console_text.scrollTop = console_text.scrollHeight;
@@ -99,22 +97,22 @@
   function stayScrolledBottom() {
     var console_text = document.getElementById("console-text");
 
-    switch (window.scrollTracker == 1) {
-      case true:
+    if (window.scrollTracker == true) {
       console_text.scrollTop = console_text.scrollHeight;
-      window.scrollTracker -= 1;
-      break;
-      case false:
     };
   }
 
   function resetScrollTracker() {
     var console_text = document.getElementById("console-text");
 
-    if (console_text.clientHeight + console_text.scrollTop == console_text.scrollHeight) {
-      window.scrollTracker = 1;
+    switch (console_text.scrollHeight - console_text.scrollTop == console_text.clientHeight) {
+      case true:
+        window.scrollTracker = true;
+        // console.log("scrolled to the bottom");
+      break;
+      case false:
+        window.scrollTracker = false;
     };
-    // console.log(window.scrollTracker);
   }
 
   function dateSwap() {
