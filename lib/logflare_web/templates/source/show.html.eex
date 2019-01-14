@@ -81,8 +81,8 @@
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>");
     dateAdd();
-    setScroll();
     dateSwap();
+    setScroll();
   });
 
   document.getElementById("console-text").addEventListener("scroll", function(){
