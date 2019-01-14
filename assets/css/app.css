@@ -242,9 +242,10 @@ mark {
   font-size: 1em;
   color: #7EF854;
   word-break: break-word;
+  overflow-wrap: break-word;
   overflow-x: scroll;
   height: calc(100vh - 110px);
-/*display: flex;
+  /* display: flex;
   flex-direction: column-reverse; */
 }
 
