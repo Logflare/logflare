@@ -26,7 +26,7 @@
   <h4>No logs ... add some logs!</h4>
   <div class="clearfix">
     <h6>With a Cloudflare Worker</h6>
-    <textarea class="copyable-code" name="curl-code" id="worker-code">
+    <textarea class="copyable-code" name="curl-code" id="worker-code" wrap="off">
       async function handleRequest(request) {
         const rMeth = request.method
         const rUrl = request.url
@@ -62,7 +62,7 @@
   </div>
   <div class="clearfix">
     <h6>With an API Request</h6>
-    <textarea class="copyable-code" name="curl-code" id="curl-code">
+    <textarea class="copyable-code" name="curl-code" id="curl-code" wrap="off">
       curl -X "POST" "https://logflare.app/api/logs" \
         -H 'Content-Type: application/json' \
         -H 'X-API-KEY: <%= @user.api_key %>' \
