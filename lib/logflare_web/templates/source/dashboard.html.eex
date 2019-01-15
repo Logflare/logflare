@@ -36,7 +36,17 @@
 window.userApiKey = "<%= @user.api_key %>";
 window.showingApiKey = false;
 
-document.getElementById("api-key").addEventListener("click", showApiKey);
+document.getElementById("api-key").addEventListener("click", function(){
+  showApiKey();
+  copyApiKey();
+});
+
+function copyApiKey() {
+  var apiKey = document.getElementById("api-key-form");
+  apiKey.select();
+  document.execCommand("copy");
+  alert("Copied: " + apiKey.value);
+}
 
 function showApiKey() {
   window.showingApiKey = ! window.showingApiKey
@@ -46,7 +56,7 @@ function showApiKey() {
 function toggleApiKey(bool) {
   switch (bool) {
     case true:
-      return window.userApiKey;
+      return `<input type="text" name="api-key" id="api-key-form" value="<%= @user.api_key %>">`;
     case false:
       return `CLICK ME`;
   };

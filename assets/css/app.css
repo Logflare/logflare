@@ -5,6 +5,14 @@ body {
   color: #7EF854;
 }
 
+#api-key-form {
+  width: 102px;
+  border: none;
+  background: #f8547d;
+  height: 1em;
+  color: white;
+}
+
 .footer-list {
   display: inline;
 }
@@ -22,6 +30,10 @@ body {
 #homepage-header-text {
   padding-top: 5em;
   padding-left: 7%;
+}
+
+#no-logs-warning {
+  margin-right: 10%;
 }
 
 .screenshot {
