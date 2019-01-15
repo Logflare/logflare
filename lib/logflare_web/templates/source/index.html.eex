@@ -1,5 +1,5 @@
 
-
+<div class="no-subhead">
 <div id="homepage-header">
 <div id="homepage-header-text">
   <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
@@ -163,5 +163,6 @@
     </ul>
   </div>
 
+</div>
 </div>
 </div>

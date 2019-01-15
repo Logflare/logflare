@@ -59,12 +59,16 @@ body {
 .screenshot {
   position: absolute;
   right: 100px;
-  top: 60px;
+  top: 90px;
   width: 500px;
   background-color: #333;
   border-radius: 3px;
   transform: rotate(3deg);
   box-shadow: 0px 0px 35px rgba(0,0,0,.25);
+}
+
+main {
+  margin-top: 110px;
 }
 
 .alert-info a {
@@ -225,9 +229,10 @@ mark {
   background-color: #92DF78;
   padding-top: .35em;
   padding-bottom: .35em;
-  margin-bottom: 1em;
+
   color: black;
   overflow-y: scroll;
+  box-shadow: 0px 0px 35px #000000;
 }
 
 .subhead h5 {
@@ -277,12 +282,21 @@ mark {
   overflow-wrap: break-word;
   overflow-x: scroll;
   height: calc(100vh - 110px);
+  padding-bottom: 5px;
   /* display: flex;
   flex-direction: column-reverse; */
 }
 
 .console-text-list {
   margin: 0px;
+}
+
+.subhead-fixed {
+  position: fixed;
+  top: 55px;
+  right: 0;
+  left: 0;
+  z-index: 1020;
 }
 
 .container {
@@ -295,6 +309,10 @@ mark {
 
 .homepage-container {
   max-width: 85%;
+}
+
+.no-subhead {
+  margin-top: -55px;
 }
 
 @media screen and (max-width: 990px) {
