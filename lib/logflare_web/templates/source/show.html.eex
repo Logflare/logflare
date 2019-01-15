@@ -24,9 +24,9 @@
 <div id="no-logs-warning">
   <%= if @logs == [] do %>
   <h4>No logs ... add some logs!</h4>
-  <h6>With a Cloudflare Worker</h2>
-  <pre class="pre-scrollable">
-    <code>
+  <div class="clearfix">
+    <h6>With a Cloudflare Worker</h6>
+    <textarea class="copyable-code" name="curl-code" id="worker-code">
       async function handleRequest(request) {
         const rMeth = request.method
         const rUrl = request.url
@@ -57,20 +57,22 @@
       addEventListener("fetch", event => {
         event.respondWith(handleRequest(event.request))
       })
-    </code>
-  </pre>
-  <h6>With an API Request</h2>
-  <pre class="pre-scrollable">
-    <code>
+    </textarea>
+    <button class="btn btn-primary btn-sm float-right" onclick="copyCode(`worker-code`, `Copied worker!`)">Copy Worker Code</button>
+  </div>
+  <div class="clearfix">
+    <h6>With an API Request</h6>
+    <textarea class="copyable-code" name="curl-code" id="curl-code">
       curl -X "POST" "https://logflare.app/api/logs" \
         -H 'Content-Type: application/json' \
         -H 'X-API-KEY: <%= @user.api_key %>' \
         -d $'{
           "source": "<%= @source.token %>",
           "log_entry": "This is another log message."
-      }'
-    </code>
-  </pre>
+        }'
+      </textarea>
+      <button class="btn btn-primary btn-sm float-right" onclick="copyCode(`curl-code`, `Copied command!`)">Copy Command</button>
+  </div>
   <% end %>
 </div>
 
@@ -184,6 +186,13 @@
 
   function formatLocalTime(date) {
     return dateFns.format(date, 'ddd MMM D YYYY hh:mm:ssa')
+  }
+
+  function copyCode(id, alert_message) {
+    var copyText = document.getElementById(id);
+    copyText.select();
+    document.execCommand("copy");
+    alert(alert_message);
   }
 
 </script>
