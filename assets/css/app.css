@@ -178,7 +178,7 @@ pre {
     top: 25px;
     left: 25px;
     width: 250px;
-    z-index: 1000;
+    z-index: 1050;
 }
 .inner-message {
     color: black;

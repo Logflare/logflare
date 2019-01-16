@@ -97,6 +97,29 @@
      swapDownArrow();
    });
 
+   // If you want to get rid of the overflow scroll div
+   // detect bottom with this. Account for nav height in calc.
+   // May not be 110.
+   //
+   // window.addEventListener("scroll", function(){
+   //    detectBottom();
+   // });
+
+   // function detectBottom() {
+   //    window_inner_height = window.innerHeight;
+   //    window_offset = window.pageYOffset;
+   //    client_height = document.body.clientHeight;
+   //    nav_height = 110
+
+   //    console.log(window_inner_height);
+   //    console.log(window_offset);
+   //    console.log(client_height);
+
+   //    if (window_inner_height + window_offset - nav_height == client_height) {
+   //      console.log("bottom");
+   //    };
+   // }
+
    function swapDownArrow() {
      switch (window.scrollTracker) {
        case true:
