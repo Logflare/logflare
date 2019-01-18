@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><a href="javascript:setScroll();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="javascript:scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
         <li><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -12,7 +12,6 @@
 </div>
 
 <div class="container mx-auto" id="console-text">
-<div>
 <ul class="list-unstyled console-text-list">
   <%= for log <- @logs do %>
     <li>
@@ -20,7 +19,6 @@
     </li>
   <% end %>
 </ul>
-</div>
 
 <div id="no-logs-warning">
   <%= if @logs == [] do %>
@@ -89,36 +87,13 @@
     window.createSocket("<%= @source.token %>");
     dateAdd();
     dateSwap();
-    setScroll();
+    scrollBottom();
   });
 
-  document.getElementById("console-text").addEventListener("scroll", function(){
+   window.addEventListener("scroll", function(){
      resetScrollTracker();
      swapDownArrow();
-   });
-
-   // If you want to get rid of the overflow scroll div
-   // detect bottom with this. Account for nav height in calc.
-   // May not be 110.
-   //
-   // window.addEventListener("scroll", function(){
-   //    detectBottom();
-   // });
-
-   // function detectBottom() {
-   //    window_inner_height = window.innerHeight;
-   //    window_offset = window.pageYOffset;
-   //    client_height = document.body.clientHeight;
-   //    nav_height = 110
-
-   //    console.log(window_inner_height);
-   //    console.log(window_offset);
-   //    console.log(client_height);
-
-   //    if (window_inner_height + window_offset - nav_height == client_height) {
-   //      console.log("bottom");
-   //    };
-   // }
+  });
 
    function swapDownArrow() {
      switch (window.scrollTracker) {
@@ -130,27 +105,37 @@
      };
    }
 
-  function setScroll(){
-    var console_text = document.getElementById("console-text");
+  function scrollBottom(){
+    window_inner_height = window.innerHeight;
+    window_offset = window.pageYOffset;
+    y = window_offset + window_inner_height;
 
-    console_text.scrollTop = console_text.scrollHeight;
+    window.scrollTo(0, y);
   }
 
   function stayScrolledBottom() {
     var console_text = document.getElementById("console-text");
 
     if (window.scrollTracker == true) {
-      console_text.scrollTop = console_text.scrollHeight;
+      scrollBottom();
     };
   }
 
   function resetScrollTracker() {
-    var console_text = document.getElementById("console-text");
+    window_inner_height = window.innerHeight;
+    window_offset = window.pageYOffset;
+    client_height = document.body.clientHeight;
+    // should make this dynamic
+    nav_height = 110;
 
-    switch (console_text.scrollHeight - console_text.scrollTop == console_text.clientHeight) {
+    // console.log(window_inner_height);
+    // console.log(window_offset);
+    // console.log(client_height);
+
+    switch (window_inner_height + window_offset - nav_height == client_height) {
       case true:
         window.scrollTracker = true;
-        // console.log("scrolled to the bottom");
+        // console.log("bottom");
       break;
       case false:
         window.scrollTracker = false;

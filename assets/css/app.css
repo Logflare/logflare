@@ -280,8 +280,8 @@ mark {
   color: #7EF854;
   word-break: break-word;
   overflow-wrap: break-word;
-  overflow-x: scroll;
-  height: calc(100vh - 110px);
+  /* overflow-x: scroll;
+  height: calc(100vh - 110px); */
   padding-bottom: 5px;
   /* display: flex;
   flex-direction: column-reverse; */
