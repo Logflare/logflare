@@ -63,7 +63,19 @@ defmodule LogflareWeb.LogController do
     payload = %{timestamp: timestamp, log_message: log_entry}
 
     :ets.insert(source_table, {timestamp, payload})
+
+    log_count = :ets.info(source_table)[:size]
+
+    broadcast_log_count(source_table, log_count)
     LogflareWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
+  end
+
+  defp broadcast_log_count(source_table, log_count) do
+    source_table_string = Atom.to_string(source_table)
+
+    payload = %{log_count: log_count, source_token: source_table_string}
+
+    LogflareWeb.Endpoint.broadcast("dashboard", "dashboard:update", payload)
   end
 
   defp create_source(source_table, source_name, api_key) do

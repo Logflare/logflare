@@ -17,7 +17,7 @@
         <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "float-right delete-link" do %>
           <i class="fa fa-trash"></i>
         <% end %>
-        <span class="my-badge">
+        <span class="my-badge" id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
           <small>
             <%= if source.log_count == :undefined  do  %>
             0
@@ -35,6 +35,10 @@
 <script>
 window.userApiKey = "<%= @user.api_key %>";
 window.showingApiKey = false;
+
+document.addEventListener("DOMContentLoaded", function(){
+  window.createDashboardSocket();
+});
 
 document.getElementById("api-key").addEventListener("click", function(){
   showApiKey();

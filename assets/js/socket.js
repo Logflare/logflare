@@ -7,7 +7,7 @@ socket.connect()
 const createSocket = (sourceToken) => {
   let channel = socket.channel(`source:${sourceToken}`, {})
   channel.join()
-    .receive("ok", resp => { console.log("Joined successfully", resp) })
+    .receive("ok", resp => { console.log("Source socket joined successfully", resp) })
     .receive("error", resp => { console.log("Unable to join", resp) })
 
   channel.on(`source:${sourceToken}:new`, renderLog);
