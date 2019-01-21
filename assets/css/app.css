@@ -317,7 +317,7 @@ mark {
 @media screen and (max-width: 990px) {
 
     .hide-on-mobile {
-      display: none;
+      display: none!important;
     }
 
 }
