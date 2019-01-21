@@ -263,8 +263,7 @@ mark {
     display: inline-block;
     min-width: 10px;
     padding: 3px 7px;
-    font-size: .8em;
-    font-weight: 700;
+    font-size: .7em;
     line-height: 1;
     color: black;
     text-align: center;
@@ -321,4 +320,58 @@ mark {
       display: none;
     }
 
+}
+
+.fade-in {
+  animation: fadeIn ease 1s;
+  -webkit-animation: fadeIn ease 1s;
+  -moz-animation: fadeIn ease 1s;
+  -o-animation: fadeIn ease 1s;
+  -ms-animation: fadeIn ease 1s;
+}
+
+
+@keyframes fadeIn{
+  0% {
+    background-color: #00ccff;
+  }
+  100% {
+    background-color: #92DF78;
+  }
+}
+
+@-moz-keyframes fadeIn {
+  0% {
+    background-color: #00ccff;
+  }
+  100% {
+    background-color: #92DF78;
+  }
+}
+
+@-webkit-keyframes fadeIn {
+  0% {
+    background-color: #00ccff;
+  }
+  100% {
+    background-color: #92DF78;
+  }
+}
+
+@-o-keyframes fadeIn {
+  0% {
+    background-color: #00ccff;
+  }
+  100% {
+    background-color: #92DF78;
+  }
+}
+
+@-ms-keyframes fadeIn {
+  0% {
+    background-color: #00ccff;
+  }
+  100% {
+    background-color: #92DF78;
+  }
 }

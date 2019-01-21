@@ -44,7 +44,7 @@ function createDashboardSocket() {
 function swapBadge(event) {
   var badge = document.getElementById(event.source_token);
 
-  badge.innerHTML = `<small>${event.log_count}</small>`;
+  badge.innerHTML = `<small class="my-badge fade-in">${event.log_count}</small>`;
 
   console.log("Updated source count: " + event.source_token)
 }

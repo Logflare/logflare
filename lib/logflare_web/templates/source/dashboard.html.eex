@@ -17,8 +17,8 @@
         <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "float-right delete-link" do %>
           <i class="fa fa-trash"></i>
         <% end %>
-        <span class="my-badge" id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
-          <small>
+        <span id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
+          <small class="my-badge">
             <%= if source.log_count == :undefined  do  %>
             0
             <% else %>
