@@ -83,11 +83,16 @@
 <script>
   window.localTime = false;
 
+  document.addEventListener('readystatechange', () => console.log(document.readyState));
+
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>");
     dateAdd();
+    console.log("dateAdd");
     dateSwap();
+    console.log("dateSwap");
     scrollBottom();
+    console.log("scrollBottom");
   });
 
    window.addEventListener("scroll", function(){
@@ -106,9 +111,7 @@
    }
 
   function scrollBottom(){
-    window_inner_height = window.innerHeight;
-    window_offset = window.pageYOffset;
-    y = window_offset + window_inner_height;
+    y = document.body.clientHeight;
 
     window.scrollTo(0, y);
   }

@@ -47,7 +47,8 @@ defmodule Logflare.Mixfile do
       {:jason, "~> 1.0"},
       {:poison, "~> 3.1"},
       {:distillery, "~> 2.0"},
-      {:edeliver, ">= 1.6.0"}
+      {:edeliver, ">= 1.6.0"},
+      {:httpoison, "~> 1.4"}
     ]
   end
 
