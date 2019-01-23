@@ -7,7 +7,7 @@
     <meta name="description" content="Easily access your Cloudflare logs in a centralized web-based log management solution.">
     <meta name="author" content="">
 
-    <title>Logflare | Tail -f Your Cloudflare Logs </title>
+    <title>Logflare | Tail -f Cloudflare Logs </title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
     <link rel="stylesheet" href="<%= static_path(@conn, "/css/app.css") %>">
 
