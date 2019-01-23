@@ -4,6 +4,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
 
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Source
 
   def init(_params) do
 
@@ -53,18 +54,25 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     cond do
       is_nil(source) ->
         conn
-      true ->
-        cond do
-          String.length(source) == 36 ->
-            conn
-          true ->
+      String.length(source) == 36 ->
+        case Repo.get_by(Source, token: source) do
+          nil ->
             message = "Check your source."
             conn
             |> put_status(403)
             |> put_view(LogflareWeb.LogView)
             |> render("index.json", message: message)
             |> halt()
+          _ ->
+            conn
         end
+      true ->
+        message = "Check your source."
+        conn
+        |> put_status(403)
+        |> put_view(LogflareWeb.LogView)
+        |> render("index.json", message: message)
+        |> halt()
     end
   end
 
