@@ -83,16 +83,11 @@
 <script>
   window.localTime = false;
 
-  document.addEventListener('readystatechange', () => console.log(document.readyState));
-
   document.addEventListener("DOMContentLoaded", function(){
     window.createSocket("<%= @source.token %>");
     dateAdd();
-    console.log("dateAdd");
     dateSwap();
-    console.log("dateSwap");
     scrollBottom();
-    console.log("scrollBottom");
   });
 
    window.addEventListener("scroll", function(){
@@ -114,14 +109,6 @@
     y = document.body.clientHeight;
 
     window.scrollTo(0, y);
-  }
-
-  function stayScrolledBottom() {
-    var console_text = document.getElementById("console-text");
-
-    if (window.scrollTracker == true) {
-      scrollBottom();
-    };
   }
 
   function resetScrollTracker() {
