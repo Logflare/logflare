@@ -27,10 +27,13 @@ defmodule LogflareWeb.Router do
   scope "/sources", LogflareWeb do
     pipe_through :browser
 
-    get "/new", SourceController, :new
-    post "/", SourceController, :create
-    get "/:id", SourceController, :show
-    delete "/:id", SourceController, :delete
+    # get "/new", SourceController, :new
+    # post "/", SourceController, :create
+    # get "/:id", SourceController, :show
+    # delete "/:id", SourceController, :delete
+    # edit "/:id/edit", SourceController, :edit
+    # put "/:id", SourceController, :update
+    resources "/", SourceController
 
   end
 

@@ -2,7 +2,7 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  plug LogflareWeb.Plugs.RequireAuth when action in [:new, :create, :dashboard, :show, :delete]
+  plug LogflareWeb.Plugs.RequireAuth when action in [:new, :create, :dashboard, :show, :delete, :edit, :update]
 
   alias Logflare.Source
   alias Logflare.Repo
@@ -66,6 +66,27 @@ defmodule LogflareWeb.SourceController do
       _ ->
         logs = List.flatten(:ets.match(table_id, {:_, :"$1"}))
         render(conn, "show.html", logs: logs, source: source)
+    end
+  end
+
+  def edit(conn, %{"id" => source_id}) do
+    source = Repo.get(Source, source_id)
+    changeset = Source.changeset(source, %{})
+
+    render conn, "edit.html", changeset: changeset, source: source
+  end
+
+  def update(conn, %{"id" => source_id, "source" => source}) do
+    old_source = Repo.get(Source, source_id)
+    changeset = Source.changeset(old_source, source)
+
+    case Repo.update(changeset) do
+      {:ok, _source} ->
+        conn
+        |> put_flash(:info, "Source updated!")
+        |> redirect(to: source_path(conn, :dashboard))
+      {:error, changeset} ->
+        render conn, "edit.html", changeset: changeset, source: old_source
     end
   end
 

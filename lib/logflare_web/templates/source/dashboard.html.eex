@@ -16,9 +16,12 @@
     <%= for source <- @sources do %>
       <li class="list-group-item">
         <%= link source.name, to: source_path(@conn, :show, source.id) %>
-        <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "float-right delete-link" do %>
-          <i class="fa fa-trash"></i>
-        <% end %>
+        <div class="float-right">
+          <%= link "Edit", to: source_path(@conn, :edit, source.id) %>
+          <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "delete-link" do %>
+            <i class="fa fa-trash"></i>
+          <% end %>
+        </div>
         <span id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
           <small class="my-badge">
             <%= if source.log_count == :undefined  do  %>
