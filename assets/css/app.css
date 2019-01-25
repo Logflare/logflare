@@ -108,8 +108,12 @@ h4 {
   padding: .2em;
 }
 
-.delete-link {
+.dashboard-links:hover {
+  text-decoration: none;
+}
 
+.dashboard-links {
+  margin-left: .5em;
 }
 
 .help-block {

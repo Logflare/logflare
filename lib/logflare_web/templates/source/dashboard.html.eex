@@ -17,8 +17,10 @@
       <li class="list-group-item">
         <%= link source.name, to: source_path(@conn, :show, source.id) %>
         <div class="float-right">
-          <%= link "Edit", to: source_path(@conn, :edit, source.id) %>
-          <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "delete-link" do %>
+          <%= link to: source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
+            <i class="fas fa-edit"></i>
+          <% end %>
+          <%= link to: source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
             <i class="fa fa-trash"></i>
           <% end %>
         </div>
