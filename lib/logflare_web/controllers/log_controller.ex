@@ -6,8 +6,10 @@ defmodule LogflareWeb.LogController do
   alias Logflare.User
 
   def create(conn, %{"log_entry" => log_entry}) do
-    timestamp = :os.system_time(:microsecond)
-    timestamp_and_log_entry = {timestamp, log_entry}
+    monotime = System.monotonic_time(:nanosecond)
+    timestamp = System.system_time(:microsecond)
+    unique_int = System.unique_integer([:monotonic])
+    time_event = {monotime, timestamp, unique_int}
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
     source_table =
@@ -33,36 +35,36 @@ defmodule LogflareWeb.LogController do
       :undefined ->
         source_table
         |> Logflare.Main.new_table()
-        |> insert_and_broadcast(timestamp_and_log_entry)
+        |> insert_and_broadcast(time_event, log_entry)
 
         create_source(source_table, source_name, api_key)
       _ ->
-        insert_and_or_delete(source_table, timestamp_and_log_entry)
+        insert_and_or_delete(source_table, time_event, log_entry)
       end
     message = "Logged!"
 
     render(conn, "index.json", message: message)
   end
 
-  defp insert_and_or_delete(source_table, timestamp_and_log_entry) do
+  defp insert_and_or_delete(source_table, time_event, log_entry) do
     log_count = :ets.info(source_table)
 
     case log_count[:size] >= 3000 do
       true ->
         first_log = :ets.first(source_table)
         :ets.delete(source_table, first_log)
-        insert_and_broadcast(source_table, timestamp_and_log_entry)
+        insert_and_broadcast(source_table, time_event, log_entry)
       false ->
-        insert_and_broadcast(source_table, timestamp_and_log_entry)
+        insert_and_broadcast(source_table, time_event, log_entry)
     end
   end
 
-  defp insert_and_broadcast(source_table, timestamp_and_log_entry) do
+  defp insert_and_broadcast(source_table, time_event, log_entry) do
     source_table_string = Atom.to_string(source_table)
-    {timestamp, log_entry} = timestamp_and_log_entry
+    {_monotime, timestamp, _unique_int} = time_event
     payload = %{timestamp: timestamp, log_message: log_entry}
 
-    :ets.insert(source_table, {timestamp, payload})
+    :ets.insert(source_table, {time_event, payload})
 
     log_count = :ets.info(source_table)[:size]
 
