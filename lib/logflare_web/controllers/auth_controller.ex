@@ -18,7 +18,7 @@ defmodule LogflareWeb.AuthController do
   def logout(conn, _params) do
       conn
       |> configure_session(drop: true)
-      |> redirect(to: source_path(conn, :index))
+      |> redirect(to: Routes.source_path(conn, :index))
   end
 
   def new_api_key(conn, params) do
@@ -35,7 +35,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "API key restored!")
-        |> redirect(to: source_path(conn, :dashboard))
+        |> redirect(to: Routes.source_path(conn, :dashboard))
       nil ->
         %{assigns: %{user: user}} = conn
         new_api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64 |> binary_part(0, 12)
@@ -46,8 +46,8 @@ defmodule LogflareWeb.AuthController do
         Repo.update(changeset)
 
         conn
-        |> put_flash(:info, ["API key reset! ", link("Undo?", to: auth_path(conn, :new_api_key, undo: :true))])
-        |> redirect(to: source_path(conn, :dashboard))
+        |> put_flash(:info, ["API key reset! ", link("Undo?", to: Routes.auth_path(conn, :new_api_key, undo: :true))])
+        |> redirect(to: Routes.source_path(conn, :dashboard))
       end
   end
 
@@ -57,11 +57,11 @@ defmodule LogflareWeb.AuthController do
         conn
         |> put_flash(:info, "Welcome back!")
         |> put_session(:user_id, user.id)
-        |> redirect(to: source_path(conn, :dashboard))
+        |> redirect(to: Routes.source_path(conn, :dashboard))
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Error signing in.")
-        |> redirect(to: source_path(conn, :index))
+        |> redirect(to: Routes.source_path(conn, :index))
     end
   end
 

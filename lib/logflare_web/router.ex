@@ -21,7 +21,6 @@ defmodule LogflareWeb.Router do
 
     get "/dashboard", SourceController, :dashboard
     get "/", SourceController, :index
-
   end
 
   scope "/sources", LogflareWeb do
@@ -33,8 +32,12 @@ defmodule LogflareWeb.Router do
     # delete "/:id", SourceController, :delete
     # edit "/:id/edit", SourceController, :edit
     # put "/:id", SourceController, :update
-    resources "/", SourceController, except: [:index]
-
+    resources "/", SourceController, except: [:index] do
+      get "/rules/new", RuleController, :new
+      post "/rules", RuleController, :create
+      get "/rules", RuleController, :index
+      delete "/rules/:id", RuleController, :delete
+    end
   end
 
   scope "/auth", LogflareWeb do

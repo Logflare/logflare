@@ -6,6 +6,7 @@ defmodule Logflare.Source do
     field :name, :string
     field :token, Ecto.UUID
     belongs_to :user, Logflare.User
+    has_many :rules, Logflare.Rule
 
     timestamps()
   end

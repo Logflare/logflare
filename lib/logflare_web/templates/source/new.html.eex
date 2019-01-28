@@ -5,7 +5,7 @@
 </div>
 
 <div class="container mx-auto">
-  <%= form_for @changeset, source_path(@conn, :create), fn f -> %>
+  <%= form_for @changeset, Routes.source_path(@conn, :create), fn f -> %>
     <div class="form-group">
       <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control" %>
       <%= error_tag f, :name %>

@@ -5,12 +5,12 @@
 </div>
 
 <div class="container mx-auto">
-<%= form_for @changeset, source_path(@conn, :update, @source), fn f -> %>
+<%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
   <div class="form-group">
-    <%= text_input f, :name, placeholder: "Title", class: "form-control" %>
+    <h5 id="rules-header">Name</h5>
+    <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control" %>
     <%= error_tag f, :name %>
   </div>
-
   <%= submit "Save source", class: "btn btn-primary" %>
 <% end %>
 </div>

@@ -13,7 +13,7 @@
 <div class="value">
 <h4>Why?</h4>
 <p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
-<%= link "Sign up with Github", to: auth_path(@conn, :request, "github"), class: "btn btn-primary", role: "button" %>
+<%= link "Sign up with Github", to: Routes.auth_path(@conn, :request, "github"), class: "btn btn-primary", role: "button" %>
 </div>
 
 <!--

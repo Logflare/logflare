@@ -1,0 +1,16 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/rules</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h5 id="rules-header">Rules</h5>
+  <p>Route logs with rules.</p>
+  <%= for rule <- @rules do %>
+    <li class="">
+      <%= rule.regex %> | <%= rule.sink %>
+    </li>
+  <% end %>
+  <%= link "New rule", to: Routes.source_rule_path(@conn, :new, @source.id), class: "btn btn-primary" %>
+</div>

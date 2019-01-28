@@ -47,7 +47,7 @@ defmodule LogflareWeb.SourceController do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Source created!")
-        |> redirect(to: source_path(conn, :dashboard))
+        |> redirect(to: Routes.source_path(conn, :dashboard))
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
@@ -73,20 +73,45 @@ defmodule LogflareWeb.SourceController do
     source = Repo.get(Source, source_id)
     changeset = Source.changeset(source, %{})
 
-    render conn, "edit.html", changeset: changeset, source: source
+    # IO.inspect(conn)
+    # IO.inspect(changeset)
+    # IO.inspect(source)
+
+    user_id = conn.assigns.user.id
+    query = from s in "sources",
+          where: s.user_id == ^user_id,
+          select: %{
+            name: s.name,
+            id: s.id,
+            token: s.token,
+          }
+
+    sources =
+      for source <- Repo.all(query) do
+        token = Ecto.UUID.load(source.token) |> elem(1)
+        Map.put(source, :token, token)
+      end
+
+    render conn, "edit.html", changeset: changeset, source: source, sources: sources
   end
 
   def update(conn, %{"id" => source_id, "source" => source}) do
     old_source = Repo.get(Source, source_id)
+
+    # case source["rules"] == nil explicitly set "source" => nil
+    # in the source map so that it updates the db to nil
+
     changeset = Source.changeset(old_source, source)
 
     case Repo.update(changeset) do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Source updated!")
-        |> redirect(to: source_path(conn, :dashboard))
+        |> redirect(to: Routes.source_path(conn, :dashboard))
       {:error, changeset} ->
-        render conn, "edit.html", changeset: changeset, source: old_source
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> render("edit.html", changeset: changeset, source: old_source)
     end
   end
 
@@ -95,7 +120,7 @@ defmodule LogflareWeb.SourceController do
 
     conn
     |> put_flash(:info, "Source deleted!")
-    |> redirect(to: source_path(conn, :dashboard))
+    |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
   defp get_log_count(source) do

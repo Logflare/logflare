@@ -9,7 +9,7 @@
 
     <title>Logflare | Tail -f Cloudflare Logs </title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-    <link rel="stylesheet" href="<%= static_path(@conn, "/css/app.css") %>">
+    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
 
     <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png">
     <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png">
@@ -72,14 +72,14 @@
         <ul class="navbar-nav mr-auto">
           <%= if @conn.assigns[:user] do %>
           <li class="nav-item">
-            <%= link "Dashboard", to: source_path(@conn, :dashboard), class: "nav-link" %>
+            <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
           </li>
           <li class="nav-item">
-            <%= link "Logout", to: auth_path(@conn, :logout), class: "nav-link" %>
+            <%= link "Logout", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>
           </li>
           <% else %>
           <li class="nav-item">
-            <%= link "Sign in with Github", to: auth_path(@conn, :request, "github"), class: "nav-link" %>
+            <%= link "Sign in with Github", to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" %>
           </li>
           <% end %>
         </ul>
@@ -90,6 +90,6 @@
       <%= render @view_module, @view_template, assigns %>
     </main>
 
-    <script src="<%= static_path(@conn, "/js/app.js") %>"></script>
+    <script src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>

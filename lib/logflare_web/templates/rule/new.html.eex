@@ -1,0 +1,28 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~logs/<span class="text-primary"><%= @source.name %></span>/rules/new</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h5 id="rules-header">Rules</h5>
+  <p>Route logs with rules.</p>
+  <%= form_for @changeset, Routes.source_rule_path(@conn, :create, @source.id), fn f -> %>
+    <div class="form-group">
+      <%= hidden_input f, :source, value: @source.id, class: "form-control rules-input" %>
+      <%= error_tag f, :source %>
+      <span class="rules">
+        <%= label f, :regex, class: "control-label" %>
+        <%= text_input f, :regex, placeholder: "regex", class: "form-control" %>
+        <%= error_tag f, :regex %>
+      </span>
+      <span class="rules">
+        <%= label f, :sink, class: "control-label" %>
+        <%= select f, :sink, Enum.map(@sources, &{&1.name, &1.token}), prompt: "Choose a sink", class: "form-control rules-input" %>
+        <%= error_tag f, :sink %>
+      </span>
+    </div>
+
+    <%= submit "Add rule", class: "btn btn-primary" %>
+  <% end %>
+</div>

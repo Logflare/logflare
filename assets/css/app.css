@@ -5,6 +5,31 @@ body {
   color: #7EF854;
 }
 
+.input_container input.form-control {
+ display: inline-block;
+ margin: 0 1em 1em 0;
+ width: 90%;
+}
+
+.btn-dark {
+
+}
+
+#rules-header {
+  margin: 1em 0 .25em 0 ;
+}
+
+.rules-input{
+  display: block;
+}
+
+.rules {
+  display: inline-block;
+  width: 40%;
+  margin: 0 1em .5em 0 ;
+  vertical-align: top;
+}
+
 #api-key-form {
   width: 102px;
   border: none;

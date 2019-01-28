@@ -5,9 +5,10 @@
         <li><a href="javascript:scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
         <li><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
+        <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
       </ul>
     </div>
-    <h5>~/logs/<span class="text-primary"><%= @source.name %></h5>
+    <h5>~/logs/<span class="text-primary"><%= @source.name %></span</h5>
   </div>
 </div>
 

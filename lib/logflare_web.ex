@@ -21,7 +21,7 @@ defmodule LogflareWeb do
     quote do
       use Phoenix.Controller, namespace: LogflareWeb
       import Plug.Conn
-      import LogflareWeb.Router.Helpers
+      alias LogflareWeb.Router.Helpers, as: Routes
       import LogflareWeb.Gettext
     end
   end
@@ -37,7 +37,7 @@ defmodule LogflareWeb do
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
 
-      import LogflareWeb.Router.Helpers
+      alias LogflareWeb.Router.Helpers, as: Routes
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
     end
