@@ -1,6 +1,8 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
 
+  import Ecto.Query, only: [from: 2]
+
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.User
@@ -31,6 +33,15 @@ defmodule LogflareWeb.LogController do
           conn.params["source_name"]
       end
 
+    send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key)
+    # create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+
+    message = "Logged!"
+
+    render(conn, "index.json", message: message)
+  end
+
+  defp create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key) do
     case :ets.info(source_table) do
       :undefined ->
         source_table
@@ -40,10 +51,43 @@ defmodule LogflareWeb.LogController do
         create_source(source_table, source_name, api_key)
       _ ->
         insert_and_or_delete(source_table, time_event, log_entry)
-      end
-    message = "Logged!"
+    end
+  end
 
-    render(conn, "index.json", message: message)
+  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
+    #{:ok, source_uuid} = Ecto.UUID.dump(Atom.to_string(source_table))
+    table_info = Repo.get_by(Source, token: Atom.to_string(source_table))
+
+    rules_query = from r in "rules",
+      where: r.source_id == ^table_info.id,
+      select: %{
+        id: r.id,
+        regex: r.regex,
+        sink: r.sink,
+        sink_id: r.source_id,
+      }
+
+    rules = Repo.all(rules_query)
+
+    case rules == [] do
+      true ->
+        create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+      false ->
+        Enum.map(rules,
+          fn (x) ->
+            case Regex.match?(~r{#{x.regex}}, log_entry) do
+              true ->
+                {:ok, sink} = Ecto.UUID.load(x.sink)
+                sink_atom = String.to_atom(sink)
+                sink_name = Repo.get(Source, table_info.id).name
+                create_table_maybe_and_insert(sink_atom, time_event, log_entry, sink_name, api_key)
+                create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+              false ->
+                Map.put(x, :matches, false)
+                create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+            end
+        end)
+    end
   end
 
   defp insert_and_or_delete(source_table, time_event, log_entry) do

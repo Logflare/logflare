@@ -88,7 +88,7 @@ defmodule LogflareWeb.SourceController do
 
     sources =
       for source <- Repo.all(query) do
-        token = Ecto.UUID.load(source.token) |> elem(1)
+        {:ok, token} = Ecto.UUID.load(source.token)
         Map.put(source, :token, token)
       end
 
