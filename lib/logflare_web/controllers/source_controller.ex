@@ -22,7 +22,6 @@ defmodule LogflareWeb.SourceController do
             token: s.token,
           }
 
-
     sources =
       for source <- Repo.all(query) do
         log_count = get_log_count(source)

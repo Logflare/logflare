@@ -83,7 +83,6 @@ defmodule LogflareWeb.LogController do
                 create_table_maybe_and_insert(sink_atom, time_event, log_entry, sink_name, api_key)
                 create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
               false ->
-                Map.put(x, :matches, false)
                 create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
             end
         end)
