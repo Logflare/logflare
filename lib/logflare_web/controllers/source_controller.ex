@@ -15,11 +15,13 @@ defmodule LogflareWeb.SourceController do
     user_id = conn.assigns.user.id
     query = from s in "sources",
           where: s.user_id == ^user_id,
+          order_by: s.name,
           select: %{
             name: s.name,
             id: s.id,
             token: s.token,
           }
+
 
     sources =
       for source <- Repo.all(query) do
