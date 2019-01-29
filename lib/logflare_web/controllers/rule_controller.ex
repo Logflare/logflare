@@ -2,31 +2,11 @@ defmodule LogflareWeb.RuleController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  plug LogflareWeb.Plugs.RequireAuth when action in [:new, :create, :delete, :index]
+  plug LogflareWeb.Plugs.RequireAuth when action in [:create, :delete, :index]
 
   alias Logflare.Rule
   alias Logflare.Source
   alias Logflare.Repo
-
-  def new(conn, %{"source_id" => source_id}) do
-    changeset = Rule.changeset(%Rule{source: source_id })
-    user_id = conn.assigns.user.id
-    query = from s in "sources",
-          where: s.user_id == ^user_id,
-          select: %{
-            name: s.name,
-            id: s.id,
-            token: s.token,
-          }
-    sources =
-      for source <- Repo.all(query) do
-        token = Ecto.UUID.load(source.token) |> elem(1)
-        Map.put(source, :token, token)
-      end
-    source = Repo.get(Source, source_id)
-
-    render(conn, "new.html", changeset: changeset, source: source, sources: sources)
-  end
 
   def create(conn, %{"rule" => rule}) do
     source_id = rule["source"]
@@ -35,7 +15,7 @@ defmodule LogflareWeb.RuleController do
     |> Ecto.build_assoc(:rules)
     |> Rule.changeset(rule)
     user_id = conn.assigns.user.id
-    query = from s in "sources",
+    source_query = from s in "sources",
         where: s.user_id == ^user_id,
         select: %{
           name: s.name,
@@ -43,9 +23,24 @@ defmodule LogflareWeb.RuleController do
           token: s.token,
         }
     sources =
-      for source <- Repo.all(query) do
+      for source <- Repo.all(source_query) do
         token = Ecto.UUID.load(source.token) |> elem(1)
         Map.put(source, :token, token)
+      end
+
+    source_id_int = String.to_integer(source_id)
+    rules_query = from r in "rules",
+      where: r.source_id == ^source_id_int,
+      select: %{
+        id: r.id,
+        regex: r.regex,
+        sink: r.sink,
+      }
+
+    rules =
+      for rule <- Repo.all(rules_query) do
+        sink = Ecto.UUID.load(rule.sink) |> elem(1)
+        Map.put(rule, :sink, sink)
       end
 
     case Repo.insert(changeset) do
@@ -56,27 +51,53 @@ defmodule LogflareWeb.RuleController do
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
-        |> render("new.html", changeset: changeset, source: source, sources: sources)
+        |> render("index.html", rules: rules, source: source, changeset: changeset, sources: sources)
+        # |> redirect(to: Routes.source_rule_path(conn, :index, source_id))
     end
   end
 
   def index(conn, %{"source_id" => source_id}) do
+    IO.inspect(conn)
+    changeset = Rule.changeset(%Rule{source: source_id })
+    user_id = conn.assigns.user.id
     source_id_int = String.to_integer(source_id)
-    query = from r in "rules",
+    rules_query = from r in "rules",
       where: r.source_id == ^source_id_int,
       select: %{
+        id: r.id,
         regex: r.regex,
         sink: r.sink,
       }
+    source_query = from s in "sources",
+        where: s.user_id == ^user_id,
+        select: %{
+          name: s.name,
+          id: s.id,
+          token: s.token,
+        }
     rules =
-      for rule <- Repo.all(query) do
+      for rule <- Repo.all(rules_query) do
         sink = Ecto.UUID.load(rule.sink) |> elem(1)
         Map.put(rule, :sink, sink)
       end
 
     source = Repo.get(Source, source_id)
 
-    render conn, "index.html", rules: rules, source: source
+    sources =
+      for source <- Repo.all(source_query) do
+        token = Ecto.UUID.load(source.token) |> elem(1)
+        Map.put(source, :token, token)
+      end
+
+    render conn, "index.html", rules: rules, source: source, changeset: changeset, sources: sources
+  end
+
+  def delete(conn, %{"id" => rule_id, "source_id" => source_id}) do
+    Repo.get!(Rule, rule_id) |> Repo.delete!
+
+    conn
+    |> put_flash(:info, "Rule deleted!")
+    |> redirect(to: Routes.source_rule_path(conn, :index, source_id))
   end
 
 end

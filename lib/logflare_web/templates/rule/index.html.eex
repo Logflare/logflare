@@ -7,10 +7,35 @@
 <div class="container mx-auto">
   <h5 id="rules-header">Rules</h5>
   <p>Route logs with rules.</p>
+  <ul class="list-group">
   <%= for rule <- @rules do %>
-    <li class="">
-      <%= rule.regex %> | <%= rule.sink %>
+    <li class="list-group-item">
+      Matching <code><%= rule.regex %></code> routing to <code><%= rule.sink %></code>
+      <%= link to: Routes.source_rule_path(@conn, :delete, @source.id, rule.id), method: :delete, class: "dashboard-links float-right" do %>
+        <i class="fa fa-trash"></i>
+      <% end %>
     </li>
   <% end %>
-  <%= link "New rule", to: Routes.source_rule_path(@conn, :new, @source.id), class: "btn btn-primary" %>
+</ul>
+</div>
+<div class="container mx-auto">
+  <h5 id="rules-header">New Rule</h5>
+  <%= form_for @changeset, Routes.source_rule_path(@conn, :create, @source.id), fn f -> %>
+    <div class="form-group">
+      <%= hidden_input f, :source, value: @source.id, class: "form-control rules-input" %>
+      <%= error_tag f, :source %>
+      <span class="rules">
+        <%= label f, :regex, class: "control-label" %>
+        <%= text_input f, :regex, placeholder: "regex", class: "form-control" %>
+        <%= error_tag f, :regex %>
+      </span>
+      <span class="rules">
+        <%= label f, :sink, class: "control-label" %>
+        <%= select f, :sink, Enum.map(@sources, &{&1.name, &1.token}), prompt: "Choose a sink", class: "form-control rules-input" %>
+        <%= error_tag f, :sink %>
+      </span>
+    </div>
+
+    <%= submit "Add rule", class: "btn btn-primary" %>
+  <% end %>
 </div>

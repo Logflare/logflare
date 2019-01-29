@@ -33,7 +33,6 @@ defmodule LogflareWeb.Router do
     # edit "/:id/edit", SourceController, :edit
     # put "/:id", SourceController, :update
     resources "/", SourceController, except: [:index] do
-      get "/rules/new", RuleController, :new
       post "/rules", RuleController, :create
       get "/rules", RuleController, :index
       delete "/rules/:id", RuleController, :delete
