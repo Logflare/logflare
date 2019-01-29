@@ -6,7 +6,8 @@
 
 <div class="container mx-auto">
   <h5 id="rules-header">Rules</h5>
-  <p>Route logs with rules.</p>
+  <p>Route logs with rules. Rules will match against a log entry and copy it to the specified sink (another source).
+  Save special entries with rules. Create a rule for signups, or bots or IP addresses using regular expressions.</p>
   <ul class="list-group">
   <%= for rule <- @rules do %>
     <li class="list-group-item">
