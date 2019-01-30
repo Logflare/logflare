@@ -11,6 +11,11 @@ body {
  width: 90%;
 }
 
+.overflow-scroll-nowrap {
+  overflow-x: scroll;
+  white-space: nowrap;
+}
+
 .btn-dark {
 
 }

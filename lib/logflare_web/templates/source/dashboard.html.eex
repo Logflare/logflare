@@ -23,16 +23,18 @@
             <i class="fa fa-trash"></i>
           <% end %>
         </div>
-        <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
-        <span id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
-          <small class="my-badge">
-            <%= if source.log_count == :undefined  do  %>
-            0
-            <% else %>
-            <%= source.log_count %>
-            <% end %>
-          </small>
-        </span>
+        <div class="overflow-scroll-nowrap">
+          <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
+          <span id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
+            <small class="my-badge">
+              <%= if source.log_count == :undefined  do  %>
+              0
+              <% else %>
+              <%= source.log_count %>
+              <% end %>
+            </small>
+          </span>
+        </div>
       </li>
     <% end %>
   </ul>
