@@ -2,7 +2,7 @@ defmodule Logflare.Main do
   use GenServer
 
   def start_link do
-    GenServer.start_link(__MODULE__, 0, name: __MODULE__)
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def new_table(website_table) do
@@ -19,7 +19,8 @@ defmodule Logflare.Main do
     #table = website_table
     #table_args = [:named_table, :ordered_set, :public]
     #:ets.new(table, table_args)
-    IO.inspect({:reply, website_table, state+1}, label: "Requested new table!")
+    state = [website_table | state]
+    IO.inspect({:reply, website_table, state}, label: "Requested new table!")
   end
 
 end
