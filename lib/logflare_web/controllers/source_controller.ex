@@ -2,6 +2,7 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
+  plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
   plug LogflareWeb.Plugs.RequireAuth when action in [:new, :create, :dashboard, :show, :delete, :edit, :update]
 
   alias Logflare.Source
