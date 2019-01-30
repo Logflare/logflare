@@ -34,21 +34,18 @@ defmodule LogflareWeb.LogController do
       end
 
     send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key)
-    # create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
 
     message = "Logged!"
 
     render(conn, "index.json", message: message)
   end
 
-  defp create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key) do
+  defp insert_log(source_table, time_event, log_entry) do
     case :ets.info(source_table) do
       :undefined ->
         source_table
         |> Logflare.Main.new_table()
         |> insert_and_broadcast(time_event, log_entry)
-
-        create_source(source_table, source_name, api_key)
       _ ->
         insert_and_or_delete(source_table, time_event, log_entry)
     end
@@ -56,7 +53,14 @@ defmodule LogflareWeb.LogController do
 
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
     #{:ok, source_uuid} = Ecto.UUID.dump(Atom.to_string(source_table))
-    table_info = Repo.get_by(Source, token: Atom.to_string(source_table))
+    table_info =
+      case Repo.get_by(Source, token: Atom.to_string(source_table)) == nil do
+        true ->
+          create_source(source_table, source_name, api_key)
+          Repo.get_by(Source, token: Atom.to_string(source_table))
+        false ->
+          Repo.get_by(Source, token: Atom.to_string(source_table))
+      end
 
     rules_query = from r in "rules",
       where: r.source_id == ^table_info.id,
@@ -71,7 +75,7 @@ defmodule LogflareWeb.LogController do
 
     case rules == [] do
       true ->
-        create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+        insert_log(source_table, time_event, log_entry)
       false ->
         Enum.map(rules,
           fn (x) ->
@@ -79,11 +83,10 @@ defmodule LogflareWeb.LogController do
               true ->
                 {:ok, sink} = Ecto.UUID.load(x.sink)
                 sink_atom = String.to_atom(sink)
-                sink_name = Repo.get(Source, table_info.id).name
-                create_table_maybe_and_insert(sink_atom, time_event, log_entry, sink_name, api_key)
-                create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+                insert_log(sink_atom, time_event, log_entry)
+                insert_log(source_table, time_event, log_entry)
               false ->
-                create_table_maybe_and_insert(source_table, time_event, log_entry, source_name, api_key)
+                insert_log(source_table, time_event, log_entry)
             end
         end)
     end
