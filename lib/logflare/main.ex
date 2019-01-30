@@ -15,10 +15,11 @@ defmodule Logflare.Main do
   end
 
   def handle_call({:create, website_table}, _from, state) do
-    table = website_table
-    table_args = [:named_table, :ordered_set, :public]
-    :ets.new(table, table_args)
-    IO.inspect({:reply, table, state+1}, label: "New table!")
+    Logflare.TableOwner.start_link(website_table)
+    #table = website_table
+    #table_args = [:named_table, :ordered_set, :public]
+    #:ets.new(table, table_args)
+    IO.inspect({:reply, website_table, state+1}, label: "Requested new table!")
   end
 
 end
