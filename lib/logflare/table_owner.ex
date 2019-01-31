@@ -19,7 +19,7 @@ defmodule Logflare.TableOwner do
     table = website_table
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(table, table_args)
-    IO.inspect({:reply, website_table, state}, label: "New table!")
+    {:reply, website_table, state}
   end
 
 end
