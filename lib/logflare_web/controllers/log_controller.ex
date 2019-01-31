@@ -41,17 +41,6 @@ defmodule LogflareWeb.LogController do
     render(conn, "index.json", message: message)
   end
 
-  defp insert_log(source_table, time_event, log_entry) do
-    case :ets.info(source_table) do
-      :undefined ->
-        source_table
-        |> Logflare.Main.new_table()
-        |> insert_and_broadcast(time_event, log_entry)
-      _ ->
-        insert_and_or_delete(source_table, time_event, log_entry)
-    end
-  end
-
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
     #{:ok, source_uuid} = Ecto.UUID.dump(Atom.to_string(source_table))
     table_info =
@@ -93,6 +82,17 @@ defmodule LogflareWeb.LogController do
     end
   end
 
+  defp insert_log(source_table, time_event, log_entry) do
+    case :ets.info(source_table) do
+      :undefined ->
+        source_table
+        |> Logflare.Main.new_table()
+        |> insert_and_broadcast(time_event, log_entry)
+      _ ->
+        insert_and_or_delete(source_table, time_event, log_entry)
+    end
+  end
+
   defp insert_and_or_delete(source_table, time_event, log_entry) do
     {:ok, log_count} = Counter.get(source_table)
 
@@ -115,15 +115,13 @@ defmodule LogflareWeb.LogController do
     :ets.insert(source_table, {time_event, payload})
     Counter.incriment(source_table)
 
-    {:ok, log_count} = Counter.get(source_table)
-
-    broadcast_log_count(source_table, log_count)
+    broadcast_log_count(source_table)
     LogflareWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
   end
 
-  defp broadcast_log_count(source_table, log_count) do
+  defp broadcast_log_count(source_table) do
+    {:ok, log_count} = Counter.get(source_table)
     source_table_string = Atom.to_string(source_table)
-
     payload = %{log_count: log_count, source_token: source_table_string}
 
     LogflareWeb.Endpoint.broadcast("dashboard", "dashboard:update", payload)
