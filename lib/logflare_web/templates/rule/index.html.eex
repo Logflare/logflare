@@ -27,7 +27,7 @@
       <%= error_tag f, :source %>
       <span class="rules">
         <%= label f, :regex, class: "control-label" %>
-        <%= text_input f, :regex, placeholder: ".*googlebot.*", class: "form-control" %>
+        <%= text_input f, :regex, placeholder: ".*Googlebot.*", class: "form-control" %>
         <%= error_tag f, :regex %>
       </span>
       <span class="rules">
