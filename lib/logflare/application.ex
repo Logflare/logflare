@@ -16,6 +16,7 @@ defmodule Logflare.Application do
       # worker(Logflare.Worker, [arg1, arg2, arg3]),
       supervisor(Logflare.Periodically, []),
       supervisor(Logflare.Main, []),
+      supervisor(Logflare.Counter, []),
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
