@@ -32,7 +32,7 @@ defmodule Logflare.Main do
   def handle_call({:create, website_table}, _from, state) do
     Logflare.TableOwner.start_link(website_table)
     state = [website_table | state]
-    table_count = Enum.count(state)
+    # table_count = Enum.count(state)
     # IO.inspect(table_count, label: "Table count")
     {:reply, website_table, state}
   end
@@ -40,7 +40,7 @@ defmodule Logflare.Main do
   def handle_call({:stop, website_table}, _from, state) do
     GenServer.stop(website_table)
     state = List.delete(state, website_table)
-    table_count = Enum.count(state)
+    # table_count = Enum.count(state)
     # IO.inspect(table_count, label: "Table count")
     {:reply, website_table, state}
   end
