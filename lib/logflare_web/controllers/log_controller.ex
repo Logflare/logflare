@@ -6,6 +6,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Counter
 
   def create(conn, %{"log_entry" => log_entry}) do
     monotime = System.monotonic_time(:nanosecond)
@@ -93,12 +94,13 @@ defmodule LogflareWeb.LogController do
   end
 
   defp insert_and_or_delete(source_table, time_event, log_entry) do
-    log_count = :ets.info(source_table)
+    {:ok, log_count} = Counter.get(source_table)
 
-    case log_count[:size] >= 1000 do
+    case log_count >= 1000 do
       true ->
         first_log = :ets.first(source_table)
         :ets.delete(source_table, first_log)
+        Counter.decriment(source_table)
         insert_and_broadcast(source_table, time_event, log_entry)
       false ->
         insert_and_broadcast(source_table, time_event, log_entry)
@@ -111,8 +113,9 @@ defmodule LogflareWeb.LogController do
     payload = %{timestamp: timestamp, log_message: log_entry}
 
     :ets.insert(source_table, {time_event, payload})
+    Counter.incriment(source_table)
 
-    log_count = :ets.info(source_table)[:size]
+    {:ok, log_count} = Counter.get(source_table)
 
     broadcast_log_count(source_table, log_count)
     LogflareWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
