@@ -95,7 +95,7 @@ defmodule LogflareWeb.LogController do
   defp insert_and_or_delete(source_table, time_event, log_entry) do
     log_count = :ets.info(source_table)
 
-    case log_count[:size] >= 3000 do
+    case log_count[:size] >= 1000 do
       true ->
         first_log = :ets.first(source_table)
         :ets.delete(source_table, first_log)
