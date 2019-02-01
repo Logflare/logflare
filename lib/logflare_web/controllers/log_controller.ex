@@ -68,7 +68,6 @@ defmodule LogflareWeb.LogController do
       true ->
         insert_log(source_table, time_event, log_entry)
       false ->
-        IO.inspect(log_entry)
         Enum.map(rules,
           fn (x) ->
             case Regex.match?(~r{#{x.regex}}, "#{log_entry}") do

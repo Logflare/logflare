@@ -26,8 +26,20 @@ defmodule Logflare.Main do
     {:ok}
   end
 
-  def update_last_updated(website_table, _last_updated) do
-    {:ok, website_table}
+  def delete_all_empty_tables() do
+    state = :sys.get_state(Logflare.Main)
+    Enum.map(
+        state, fn(t) ->
+          first = :ets.first(t)
+          case first == :"$end_of_table" do
+            true ->
+              delete_table(t)
+            false ->
+              :ok
+          end
+        end
+      )
+    {:ok}
   end
 
   def init(state) do
@@ -51,10 +63,6 @@ defmodule Logflare.Main do
     # table_count = Enum.count(state)
     # IO.inspect(table_count, label: "Table count")
     {:reply, website_table, state}
-  end
-
-  def handle_info({:last_updated, _website_table}, state) do
-    {:noreply, state}
   end
 
 end
