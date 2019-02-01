@@ -68,18 +68,19 @@ defmodule LogflareWeb.LogController do
       true ->
         insert_log(source_table, time_event, log_entry)
       false ->
+        IO.inspect(log_entry)
         Enum.map(rules,
           fn (x) ->
-            case Regex.match?(~r{#{x.regex}}, log_entry) do
+            case Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
               true ->
                 {:ok, sink} = Ecto.UUID.load(x.sink)
                 sink_atom = String.to_atom(sink)
                 insert_log(sink_atom, time_event, log_entry)
-                insert_log(source_table, time_event, log_entry)
               false ->
-                insert_log(source_table, time_event, log_entry)
+                :ok
             end
         end)
+        insert_log(source_table, time_event, log_entry)
     end
   end
 
@@ -90,14 +91,8 @@ defmodule LogflareWeb.LogController do
         |> Logflare.Main.new_table()
         |> insert_and_broadcast(time_event, log_entry)
       _ ->
-        insert_and_or_delete(source_table, time_event, log_entry)
+        insert_and_broadcast(source_table, time_event, log_entry)
     end
-  end
-
-  defp insert_and_or_delete(source_table, time_event, log_entry) do
-
-    insert_and_broadcast(source_table, time_event, log_entry)
-
   end
 
   defp insert_and_broadcast(source_table, time_event, log_entry) do
