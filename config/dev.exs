@@ -49,6 +49,9 @@ config :logflare, Logflare.Repo,
    password: "",
    database: "logtail_dev",
    hostname: "localhost",
-   pool_size: 10
+   pool_size: 10,
+   loggers: [{Ecto.LogEntry, :log, []},
+            {ScoutApm.Instruments.EctoLogger, :log, []}]
 
 import_config "dev.secret.exs"
+import_config "scout_apm.exs"
