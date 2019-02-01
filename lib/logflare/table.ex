@@ -2,6 +2,7 @@ defmodule Logflare.Table do
   use GenServer
 
   alias Logflare.Counter
+  alias LogflareWeb.LogController
 
   def start_link(website_table) do
     GenServer.start_link(__MODULE__, website_table, name: website_table)
@@ -44,7 +45,7 @@ defmodule Logflare.Table do
 
           :ets.delete(website_table, first)
           Counter.decriment(website_table)
-          LogflareWeb.LogController.broadcast_log_count(website_table)
+          LogController.broadcast_log_count(website_table)
         end
         check_ttl()
         {:noreply, state}
@@ -60,10 +61,14 @@ defmodule Logflare.Table do
 
     case count > 1000 do
       true ->
-        first_log = :ets.first(website_table)
-        :ets.delete(website_table, first_log)
-        Counter.decriment(website_table)
-        LogflareWeb.LogController.broadcast_log_count(website_table)
+        for log <- 1001..count do
+          Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+            log = :ets.first(website_table)
+            :ets.delete(website_table, log)
+            Counter.decriment(website_table)
+            LogController.broadcast_log_count(website_table)
+          end)
+        end
         prune()
         {:noreply, state}
       false ->
@@ -79,7 +84,7 @@ defmodule Logflare.Table do
   end
 
   defp prune() do
-    Process.send_after(self(), :prune, 100)
+    Process.send_after(self(), :prune, 1000)
   end
 
 end

@@ -1,22 +1,16 @@
 defmodule Logflare.Application do
   use Application
 
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
   def start(_type, _args) do
     import Supervisor.Spec
 
-    # Define workers and child supervisors to be supervised
     children = [
-      # Start the Ecto repository
       supervisor(Logflare.Repo, []),
-      # Start the endpoint when the application starts
       supervisor(LogflareWeb.Endpoint, []),
-      # Start your own worker by calling: Logflare.Worker.start_link(arg1, arg2, arg3)
-      # worker(Logflare.Worker, [arg1, arg2, arg3]),
       supervisor(Logflare.Periodically, []),
       supervisor(Logflare.Main, []),
       supervisor(Logflare.Counter, []),
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
