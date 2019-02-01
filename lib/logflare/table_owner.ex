@@ -20,8 +20,8 @@ defmodule Logflare.TableOwner do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(table, table_args)
     state = [{:table, website_table}]
-    check_ttl(5000)
     {:reply, website_table, state}
+    check_ttl()
   end
 
   def handle_info(:ttl, state) do
@@ -35,24 +35,22 @@ defmodule Logflare.TableOwner do
         day_ago = now - 86400000000
         if timestamp < day_ago do
           # :ets.delete_match(website_table) I'm too dumb for this
-          # Match an argument list of three, where the second argument is a number > 3:
-          # [{['_', '$1', '_'],
-          #   [{ '>', '$1', 3}],
-          #     []}]
+          # https://github.com/ericmj/ex2ms
+
           :ets.delete(website_table, first)
           IO.puts("deleted stuff")
         end
-        check_ttl(100)
+        check_ttl()
         # GenServer.cast(self(), :ttl) # loop
         {:noreply, state}
       false ->
-        check_ttl(5000) # Reschedule once more
+        check_ttl() # Reschedule once more
         {:noreply, state}
     end
   end
 
-  defp check_ttl(ms) do
-    Process.send_after(self(), :ttl, ms)
+  defp check_ttl() do
+    Process.send_after(self(), :ttl, 1000)
   end
 
 end
