@@ -7,7 +7,6 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.Counter
-  alias Logflare.Table
 
   def create(conn, %{"log_entry" => log_entry}) do
     monotime = System.monotonic_time(:nanosecond)
@@ -43,14 +42,14 @@ defmodule LogflareWeb.LogController do
   end
 
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
-    #{:ok, source_uuid} = Ecto.UUID.dump(Atom.to_string(source_table))
+
     table_info =
-      case Repo.get_by(Source, token: Atom.to_string(source_table)) == nil do
-        true ->
-          create_source(source_table, source_name, api_key)
-          Repo.get_by(Source, token: Atom.to_string(source_table))
-        false ->
-          Repo.get_by(Source, token: Atom.to_string(source_table))
+      case Repo.get_by(Source, token: Atom.to_string(source_table)) do
+        nil ->
+          {:ok, table_info} = create_source(source_table, source_name, api_key)
+          table_info
+        table_info ->
+          table_info
       end
 
     rules_query = from r in "rules",

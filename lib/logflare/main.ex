@@ -16,6 +16,31 @@ defmodule Logflare.Main do
     {:ok, website_table}
   end
 
+  def init(state) do
+    IO.puts "Genserver Started: #{__MODULE__}"
+    {:ok, state}
+  end
+
+  ## Server
+
+  def handle_call({:create, website_table}, _from, state) do
+    Logflare.Table.start_link(website_table)
+    state = [website_table | state]
+    # table_count = Enum.count(state)
+    # IO.inspect(table_count, label: "Table count")
+    {:reply, website_table, state}
+  end
+
+  def handle_call({:stop, website_table}, _from, state) do
+    GenServer.stop(website_table)
+    state = List.delete(state, website_table)
+    # table_count = Enum.count(state)
+    # IO.inspect(table_count, label: "Table count")
+    {:reply, website_table, state}
+  end
+
+  ## Public Functions
+
   def delete_all_tables() do
     state = :sys.get_state(Logflare.Main)
     Enum.map(
@@ -40,29 +65,6 @@ defmodule Logflare.Main do
         end
       )
     {:ok}
-  end
-
-  def init(state) do
-    IO.puts "Genserver Started: #{__MODULE__}"
-    {:ok, state}
-  end
-
-  ## Server
-
-  def handle_call({:create, website_table}, _from, state) do
-    Logflare.Table.start_link(website_table)
-    state = [website_table | state]
-    # table_count = Enum.count(state)
-    # IO.inspect(table_count, label: "Table count")
-    {:reply, website_table, state}
-  end
-
-  def handle_call({:stop, website_table}, _from, state) do
-    GenServer.stop(website_table)
-    state = List.delete(state, website_table)
-    # table_count = Enum.count(state)
-    # IO.inspect(table_count, label: "Table count")
-    {:reply, website_table, state}
   end
 
 end
