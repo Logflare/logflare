@@ -22,8 +22,7 @@ defmodule Logflare.Counter do
   end
 
   def get(table) do
-    count = :ets.lookup(:counters, table)[table]
+    count = GenServer.call(table, :count)
     {:ok, count}
   end
-
 end

@@ -2,8 +2,7 @@ defmodule Logflare.TableOwner do
   use GenServer
 
   def start_link(website_table) do
-    GenServer.start_link(__MODULE__, [], name: website_table)
-    GenServer.call(website_table, {:create, website_table})
+    GenServer.start_link(__MODULE__, website_table, name: website_table)
   end
 
 #  def new_table(website_table) do
@@ -11,17 +10,24 @@ defmodule Logflare.TableOwner do
 #  end
 
   def init(state) do
+    GenServer.cast(state, {:create, state})
     IO.puts "Genserver Started: #{__MODULE__}"
     {:ok, state}
   end
 
-  def handle_call({:create, website_table}, _from, state) do
+  def handle_call(:count, _from, state) do
+    website_table = state[:table]
+    count = :ets.lookup(:counters, website_table)[website_table]
+    {:reply, count, state}
+  end
+
+  def handle_cast({:create, website_table}, state) do
     table = website_table
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(table, table_args)
     state = [{:table, website_table}]
-    {:reply, website_table, state}
     check_ttl()
+    {:noreply, state}
   end
 
   def handle_info(:ttl, state) do
