@@ -7,6 +7,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.Counter
+  alias Logflare.Table
 
   def create(conn, %{"log_entry" => log_entry}) do
     monotime = System.monotonic_time(:nanosecond)
@@ -94,17 +95,9 @@ defmodule LogflareWeb.LogController do
   end
 
   defp insert_and_or_delete(source_table, time_event, log_entry) do
-    {:ok, log_count} = Counter.get(source_table)
 
-    case log_count >= 1000 do
-      true ->
-        first_log = :ets.first(source_table)
-        :ets.delete(source_table, first_log)
-        Counter.decriment(source_table)
-        insert_and_broadcast(source_table, time_event, log_entry)
-      false ->
-        insert_and_broadcast(source_table, time_event, log_entry)
-    end
+    insert_and_broadcast(source_table, time_event, log_entry)
+
   end
 
   defp insert_and_broadcast(source_table, time_event, log_entry) do
@@ -119,8 +112,8 @@ defmodule LogflareWeb.LogController do
     LogflareWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
   end
 
-  defp broadcast_log_count(source_table) do
-    {:ok, log_count} = Counter.get(source_table)
+  def broadcast_log_count(source_table) do
+    {:ok, log_count} = Counter.log_count(source_table)
     source_table_string = Atom.to_string(source_table)
     payload = %{log_count: log_count, source_token: source_table_string}
 

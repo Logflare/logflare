@@ -12,17 +12,19 @@ defmodule Logflare.Counter do
   end
 
   def incriment(table) do
-    :ets.update_counter(:counters, table, 1, {1, 0})
+    :ets.update_counter(:counters, table, {2, 1}, {table, 0, 0})
     {:ok, table}
   end
 
   def decriment(table) do
-    :ets.update_counter(:counters, table, -1, {1, 0})
+    :ets.update_counter(:counters, table, {3, 1}, {table, 0, 0})
     {:ok, table}
   end
 
-  def get(table) do
-    count = GenServer.call(table, :count)
+  def log_count(table) do
+    [{_table, inserts, deletes}] = :ets.lookup(:counters, table)
+    count = inserts - deletes
     {:ok, count}
   end
+
 end

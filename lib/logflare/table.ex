@@ -1,25 +1,24 @@
-defmodule Logflare.TableOwner do
+defmodule Logflare.Table do
   use GenServer
+
+  alias Logflare.Counter
 
   def start_link(website_table) do
     GenServer.start_link(__MODULE__, website_table, name: website_table)
   end
 
-#  def new_table(website_table) do
-#    GenServer.call(__MODULE__, {:create, website_table})
-#  end
+  ## Client
 
   def init(state) do
     GenServer.cast(state, {:create, state})
-    IO.puts "Genserver Started: #{__MODULE__}"
+    IO.puts "Genserver Started: #{state}"
+    prune()
+    check_ttl()
+    # need to put TTL back here
     {:ok, state}
   end
 
-  def handle_call(:count, _from, state) do
-    website_table = state[:table]
-    count = :ets.lookup(:counters, website_table)[website_table]
-    {:reply, count, state}
-  end
+  ## Server
 
   def handle_cast({:create, website_table}, state) do
     table = website_table
@@ -44,19 +43,43 @@ defmodule Logflare.TableOwner do
           # https://github.com/ericmj/ex2ms
 
           :ets.delete(website_table, first)
-          IO.puts("deleted stuff")
+          Counter.decriment(website_table)
+          LogflareWeb.LogController.broadcast_log_count(website_table)
         end
         check_ttl()
-        # GenServer.cast(self(), :ttl) # loop
         {:noreply, state}
       false ->
-        check_ttl() # Reschedule once more
+        check_ttl()
         {:noreply, state}
     end
   end
 
+  def handle_info(:prune, state) do
+    website_table = state[:table]
+    {:ok, count} = Counter.log_count(website_table)
+
+    case count > 1000 do
+      true ->
+        first_log = :ets.first(website_table)
+        :ets.delete(website_table, first_log)
+        Counter.decriment(website_table)
+        LogflareWeb.LogController.broadcast_log_count(website_table)
+        prune()
+        {:noreply, state}
+      false ->
+        prune()
+        {:noreply, state}
+    end
+  end
+
+  ## Private Functions
+
   defp check_ttl() do
     Process.send_after(self(), :ttl, 1000)
+  end
+
+  defp prune() do
+    Process.send_after(self(), :prune, 100)
   end
 
 end

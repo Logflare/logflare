@@ -5,6 +5,8 @@ defmodule Logflare.Main do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  ## Client
+
   def new_table(website_table) do
     GenServer.call(__MODULE__, {:create, website_table})
   end
@@ -33,8 +35,10 @@ defmodule Logflare.Main do
     {:ok, state}
   end
 
+  ## Server
+
   def handle_call({:create, website_table}, _from, state) do
-    Logflare.TableOwner.start_link(website_table)
+    Logflare.Table.start_link(website_table)
     state = [website_table | state]
     # table_count = Enum.count(state)
     # IO.inspect(table_count, label: "Table count")
