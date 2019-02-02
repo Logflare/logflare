@@ -12,7 +12,7 @@ defmodule LogflareWeb.LogController do
     monotime = System.monotonic_time(:nanosecond)
     timestamp = System.system_time(:microsecond)
     unique_int = System.unique_integer([:monotonic])
-    time_event = {monotime, timestamp, unique_int}
+    time_event = {timestamp, unique_int, monotime}
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
     source_table =
@@ -95,7 +95,7 @@ defmodule LogflareWeb.LogController do
 
   defp insert_and_broadcast(source_table, time_event, log_entry) do
     source_table_string = Atom.to_string(source_table)
-    {_monotime, timestamp, _unique_int} = time_event
+    {timestamp, _unique_int, _monotime} = time_event
     payload = %{timestamp: timestamp, log_message: log_entry}
 
     :ets.insert(source_table, {time_event, payload})

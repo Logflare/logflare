@@ -43,7 +43,7 @@ defmodule Logflare.Table do
 
     case first != :"$end_of_table" do
       true ->
-        {_monotime, timestamp, _unique_int} = first
+        {timestamp, _unique_int, _monotime} = first
         now = System.os_time(:microsecond)
         day_ago = now - 86400000000
         if timestamp < day_ago do
