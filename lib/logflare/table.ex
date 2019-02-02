@@ -22,9 +22,8 @@ defmodule Logflare.Table do
   ## Server
 
   def handle_cast({:create, website_table}, state) do
-    table = website_table
     table_args = [:named_table, :ordered_set, :public]
-    :ets.new(table, table_args)
+    :ets.new(website_table, table_args)
     state = [{:table, website_table}]
     check_ttl()
     {:noreply, state}

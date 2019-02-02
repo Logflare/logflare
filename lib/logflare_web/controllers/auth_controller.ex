@@ -21,8 +21,7 @@ defmodule LogflareWeb.AuthController do
       |> redirect(to: Routes.source_path(conn, :index))
   end
 
-  def new_api_key(conn, params) do
-    IO.inspect(conn.params["undo"])
+  def new_api_key(conn, _params) do
     case conn.params["undo"] do
       "true" ->
         %{assigns: %{user: user}} = conn
