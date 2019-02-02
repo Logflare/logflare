@@ -54,7 +54,7 @@ defmodule Logflare.Main do
   ## Private Functions
 
   defp persist() do
-    Process.send_after(self(), :persist, 5000)
+    Process.send_after(self(), :persist, 60000)
   end
 
   defp persist_tables(state) do

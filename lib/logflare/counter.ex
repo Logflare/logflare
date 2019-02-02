@@ -11,6 +11,12 @@ defmodule Logflare.Counter do
     {:ok, state}
   end
 
+  def create(table) do
+    :ets.update_counter(:counters, table, {2, 0}, {table, 0, 0})
+    :ets.update_counter(:counters, table, {3, 0}, {table, 0, 0})
+    {:ok, table}
+  end
+
   def incriment(table) do
     :ets.update_counter(:counters, table, {2, 1}, {table, 0, 0})
     {:ok, table}

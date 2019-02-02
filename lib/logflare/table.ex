@@ -11,23 +11,19 @@ defmodule Logflare.Table do
   ## Client
 
   def init(state) do
-    GenServer.cast(state, {:create, state})
     IO.puts "Genserver Started: #{state}"
-    prune()
+
+    table_args = [:named_table, :ordered_set, :public]
+    :ets.new(state, table_args)
+    Counter.create(state)
     check_ttl()
-    # need to put TTL back here
+    prune()
+    
+    state = [{:table, state}]
     {:ok, state}
   end
 
   ## Server
-
-  def handle_cast({:create, website_table}, _state) do
-    table_args = [:named_table, :ordered_set, :public]
-    :ets.new(website_table, table_args)
-    state = [{:table, website_table}]
-    check_ttl()
-    {:noreply, state}
-  end
 
   def handle_info(:ttl, state) do
     website_table = state[:table]
