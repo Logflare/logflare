@@ -27,9 +27,7 @@ defmodule Logflare.Main do
           select: %{
             token: s.token,
           }
-
     sources = Repo.all(query)
-
     state =
       Enum.map(
         sources, fn(s) ->
@@ -38,7 +36,9 @@ defmodule Logflare.Main do
         end
       )
 
+    Enum.each(state, fn(s) -> Logflare.Table.start_link(s) end)
     persist()
+    
     {:ok, state}
   end
 

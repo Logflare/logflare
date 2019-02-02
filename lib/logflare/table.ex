@@ -17,13 +17,13 @@ defmodule Logflare.Table do
 
     case :ets.tabfile_info(String.to_charlist(tab_path)) do
       {:ok, info} ->
-        IO.puts("Loaded table")
+        IO.puts("Loaded table!")
         :ets.file2tab(String.to_charlist(tab_path))
         log_count = info[:size]
         Counter.create(state)
         Counter.incriment(state, log_count)
       {:error, _reason} ->
-        IO.puts("New table")
+        IO.puts("Created table!")
         table_args = [:named_table, :ordered_set, :public]
         :ets.new(state, table_args)
         Counter.create(state)

@@ -4,16 +4,12 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
-    # when we start populating tables on broot
-    # we can pull all the table names from psql here
-    # and set the state of Main
-
     children = [
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
       supervisor(Logflare.Periodically, []),
+      supervisor(Logflare.Counter, []), # init counter before main as main calls counter through table create
       supervisor(Logflare.Main, []),
-      supervisor(Logflare.Counter, []),
       {Task.Supervisor, name: Logflare.TaskSupervisor},
     ]
 
