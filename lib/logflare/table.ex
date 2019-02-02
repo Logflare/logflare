@@ -21,7 +21,7 @@ defmodule Logflare.Table do
 
   ## Server
 
-  def handle_cast({:create, website_table}, state) do
+  def handle_cast({:create, website_table}, _state) do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(website_table, table_args)
     state = [{:table, website_table}]
@@ -60,7 +60,7 @@ defmodule Logflare.Table do
 
     case count > 1000 do
       true ->
-        for log <- 1001..count do
+        for _log <- 1001..count do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
             log = :ets.first(website_table)
             :ets.delete(website_table, log)
