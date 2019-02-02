@@ -49,8 +49,7 @@ defmodule Logflare.Mixfile do
       {:distillery, "~> 2.0"},
       {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
-      {:scout_apm, "~> 0.0"},
-      {:persistent_ets, "~> 0.1.0"}
+      {:scout_apm, "~> 0.0"}
     ]
   end
 
