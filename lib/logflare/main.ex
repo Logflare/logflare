@@ -18,6 +18,7 @@ defmodule Logflare.Main do
 
   def init(state) do
     IO.puts "Genserver Started: #{__MODULE__}"
+    persist()
     {:ok, state}
   end
 
@@ -26,17 +27,43 @@ defmodule Logflare.Main do
   def handle_call({:create, website_table}, _from, state) do
     Logflare.Table.start_link(website_table)
     state = [website_table | state]
-    # table_count = Enum.count(state)
-    # IO.inspect(table_count, label: "Table count")
     {:reply, website_table, state}
   end
 
   def handle_call({:stop, website_table}, _from, state) do
     GenServer.stop(website_table)
     state = List.delete(state, website_table)
-    # table_count = Enum.count(state)
-    # IO.inspect(table_count, label: "Table count")
     {:reply, website_table, state}
+  end
+
+  def handle_info(:persist, state) do
+
+    case File.stat("tables") do
+      {:ok, _stats} ->
+        persist_tables(state)
+      {:error, _reason} ->
+        File.mkdir("tables")
+        persist_tables(state)
+    end
+
+    # IO.puts("persisting")
+    persist()
+    {:noreply, state}
+  end
+
+  ## Private Functions
+
+  defp persist() do
+    Process.send_after(self(), :persist, 5000)
+  end
+
+  defp persist_tables(state) do
+    Enum.each(
+        state, fn(t) ->
+          tab_path = "tables/" <> Atom.to_string(t) <> ".tab"
+          :ets.tab2file(t, String.to_charlist(tab_path))
+        end
+      )
   end
 
   ## Public Functions
@@ -53,7 +80,7 @@ defmodule Logflare.Main do
 
   def delete_all_empty_tables() do
     state = :sys.get_state(Logflare.Main)
-    Enum.map(
+    Enum.each(
         state, fn(t) ->
           first = :ets.first(t)
           case first == :"$end_of_table" do

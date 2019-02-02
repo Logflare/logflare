@@ -27,3 +27,5 @@ npm-debug.log
 /config/*.secret.exs
 
 .deliver/releases
+
+/tables

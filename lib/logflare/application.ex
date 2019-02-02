@@ -4,6 +4,10 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
+    # when we start populating tables on broot
+    # we can pull all the table names from psql here
+    # and set the state of Main
+
     children = [
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
@@ -19,8 +23,6 @@ defmodule Logflare.Application do
     Supervisor.start_link(children, opts)
   end
 
-  # Tell Phoenix to update the endpoint configuration
-  # whenever the application is updated.
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
