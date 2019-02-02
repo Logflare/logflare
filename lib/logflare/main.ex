@@ -1,6 +1,10 @@
 defmodule Logflare.Main do
   use GenServer
 
+  alias Logflare.Repo
+
+  import Ecto.Query, only: [from: 2]
+
   def start_link do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
@@ -16,8 +20,24 @@ defmodule Logflare.Main do
     {:ok, website_table}
   end
 
-  def init(state) do
+  def init(_state) do
     IO.puts "Genserver Started: #{__MODULE__}"
+
+    query = from s in "sources",
+          select: %{
+            token: s.token,
+          }
+
+    sources = Repo.all(query)
+
+    state =
+      Enum.map(
+        sources, fn(s) ->
+          {:ok, source} = Ecto.UUID.load(s.token)
+          String.to_atom(source)
+        end
+      )
+
     persist()
     {:ok, state}
   end
@@ -26,7 +46,7 @@ defmodule Logflare.Main do
 
   def handle_call({:create, website_table}, _from, state) do
     Logflare.Table.start_link(website_table)
-    state = [website_table | state]
+    state = Enum.uniq([website_table | state])
     {:reply, website_table, state}
   end
 
@@ -37,7 +57,6 @@ defmodule Logflare.Main do
   end
 
   def handle_info(:persist, state) do
-
     case File.stat("tables") do
       {:ok, _stats} ->
         persist_tables(state)
@@ -46,7 +65,6 @@ defmodule Logflare.Main do
         persist_tables(state)
     end
 
-    # IO.puts("persisting")
     persist()
     {:noreply, state}
   end

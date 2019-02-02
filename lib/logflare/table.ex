@@ -13,12 +13,24 @@ defmodule Logflare.Table do
   def init(state) do
     IO.puts "Genserver Started: #{state}"
 
-    table_args = [:named_table, :ordered_set, :public]
-    :ets.new(state, table_args)
-    Counter.create(state)
+    tab_path = "tables/" <> Atom.to_string(state) <> ".tab"
+
+    case :ets.tabfile_info(String.to_charlist(tab_path)) do
+      {:ok, info} ->
+        IO.puts("Loaded table")
+        :ets.file2tab(String.to_charlist(tab_path))
+        log_count = info[:size]
+        Counter.create(state)
+        Counter.incriment(state, log_count)
+      {:error, _reason} ->
+        IO.puts("New table")
+        table_args = [:named_table, :ordered_set, :public]
+        :ets.new(state, table_args)
+        Counter.create(state)
+    end
     check_ttl()
     prune()
-    
+
     state = [{:table, state}]
     {:ok, state}
   end
