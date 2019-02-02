@@ -5,7 +5,6 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
 
   alias LogflareWeb.Router.Helpers
   alias Logflare.Repo
-  alias Logflare.Source
 
   def init(_params) do
 
