@@ -54,6 +54,11 @@ defmodule LogflareWeb.AuthController do
     case insert_or_update_user(changeset) do
       {:ok, user} ->
         conn
+        |> put_flash(:info, "Thanks for signing up!")
+        |> put_session(:user_id, user.id)
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+      {:ok_found_user, user} ->
+        conn
         |> put_flash(:info, "Welcome back!")
         |> put_session(:user_id, user.id)
         |> redirect(to: Routes.source_path(conn, :dashboard))
@@ -69,7 +74,7 @@ defmodule LogflareWeb.AuthController do
       nil ->
         Repo.insert(changeset)
       user ->
-        {:ok, user}
+        {:ok_found_user, user}
     end
   end
 
