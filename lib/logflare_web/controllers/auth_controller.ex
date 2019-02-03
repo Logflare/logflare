@@ -56,7 +56,7 @@ defmodule LogflareWeb.AuthController do
         conn
         |> put_flash(:info, "Thanks for signing up!")
         |> put_session(:user_id, user.id)
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: Routes.source_path(conn, :dashboard, signup: true))
       {:ok_found_user, user} ->
         conn
         |> put_flash(:info, "Welcome back!")
