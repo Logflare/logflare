@@ -13,6 +13,7 @@ defmodule LogflareWeb.Router do
   pipeline :api do
     plug :accepts, ["json"]
     plug LogflareWeb.Plugs.VerifyApiRequest
+    plug LogflareWeb.Plugs.CheckSourceCountApi
 
   end
 
