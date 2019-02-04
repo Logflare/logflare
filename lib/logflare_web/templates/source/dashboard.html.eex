@@ -2,8 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span>Your API key is <code class="pointer-cursor" id="api-key">CLICK ME</code></span></li>
-        <li class="d-none"><i class="fa fa-info-circle" aria-hidden="true"></i> <input type="text" name="api-key" id="api-key-form" value="<%= @user.api_key %>"></li>
+        <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span>Your API key is <code class="pointer-cursor" id="api-key" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
         <li class="hide-on-mobile"><i class="fas fa-bomb" aria-hidden="true"></i> <%= link "Reset", to: Routes.auth_path(@conn, :new_api_key) %></li>
         <li><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -42,6 +41,8 @@
 </div>
 
 <script>
+var clipboard = new ClipboardJS('#api-key');
+
 window.userApiKey = "<%= @user.api_key %>";
 window.showingApiKey = false;
 
@@ -49,17 +50,16 @@ document.addEventListener("DOMContentLoaded", function(){
   window.createDashboardSocket();
 });
 
-document.getElementById("api-key").addEventListener("click", function(){
-  showApiKey();
-  copyApiKey();
+clipboard.on('success', function(e) {
+    showApiKey();
+    alert("Copied: " + window.userApiKey);
+    e.clearSelection();
 });
 
-function copyApiKey() {
-  var apiKey = document.getElementById("api-key-form");
-  apiKey.select();
-  document.execCommand("copy");
-  alert("Copied: " + apiKey.value);
-}
+clipboard.on('error', function(e) {
+    showApiKey();
+    e.clearSelection();
+});
 
 function showApiKey() {
   window.showingApiKey = ! window.showingApiKey
