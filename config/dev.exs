@@ -53,3 +53,6 @@ config :logflare, Logflare.Repo,
 
 import_config "dev.secret.exs"
 import_config "scout_apm.exs"
+
+config :scout_apm,
+  dev_trace: true

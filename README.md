@@ -4,7 +4,7 @@
 
 Stream logs to a central service and tail them in your browser.
 
-Sign up at https://loglare.app.
+Sign up at https://logflare.app.
 
 ## For Cloudflare
 
