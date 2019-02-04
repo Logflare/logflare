@@ -5,4 +5,5 @@ use Mix.Config
 
 config :phoenix, :template_engines,
   eex: ScoutApm.Instruments.EExEngine,
-  exs: ScoutApm.Instruments.ExsEngine
+  exs: ScoutApm.Instruments.ExsEngine,
+  log_level: "debug"
