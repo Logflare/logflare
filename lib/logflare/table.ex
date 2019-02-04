@@ -4,6 +4,8 @@ defmodule Logflare.Table do
   alias Logflare.Counter
   alias LogflareWeb.LogController
 
+  @ttl 2592000000000 # one month
+
   def start_link(website_table) do
     GenServer.start_link(__MODULE__, website_table, name: website_table)
   end
@@ -45,7 +47,7 @@ defmodule Logflare.Table do
       true ->
         {timestamp, _unique_int, _monotime} = first
         now = System.os_time(:microsecond)
-        day_ago = now - 86400000000
+        day_ago = now - @ttl
         if timestamp < day_ago do
           # :ets.delete_match(website_table) I'm too dumb for this
           # https://github.com/ericmj/ex2ms
