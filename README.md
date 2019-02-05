@@ -4,6 +4,8 @@
 
 Stream logs to a central service and tail them in your browser.
 
+![Logflare Example Gif](https://logflare.app/images/logflare-example.gif)
+
 Sign up at https://logflare.app.
 
 ## For Cloudflare
