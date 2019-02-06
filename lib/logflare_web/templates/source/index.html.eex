@@ -84,7 +84,8 @@
 <p>Just install our Cloudflare Worker and you're good to go!</p>
 <pre class="pre-scrollable">
   <code>
-    async function handleRequest(request) {
+    async function handleRequest(event) {
+      const {request} = event;
       const rMeth = request.method
       const rUrl = request.url
       const uAgent = request.headers.get("user-agent")
@@ -107,13 +108,13 @@
         body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
       }
 
-      const logflare = await fetch("https://logflare.app/api/logs", init)
+      event.waitUntil(fetch("https://logflare.app/api/logs", init))
 
       return response
     }
 
     addEventListener("fetch", event => {
-      event.respondWith(handleRequest(event.request))
+      event.respondWith(handleRequest(event))
     })
   </code>
 </pre>
