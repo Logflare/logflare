@@ -11,5 +11,4 @@ defmodule Logflare.Repo do
     :ok = ScoutApm.Instruments.EctoTelemetry.attach(__MODULE__)
     {:ok, Keyword.put(opts, :url, System.get_env("DATABASE_URL"))}
   end
-
 end

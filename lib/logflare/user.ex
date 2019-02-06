@@ -3,12 +3,12 @@ defmodule Logflare.User do
   import Ecto.Changeset
 
   schema "users" do
-    field :email, :string
-    field :provider, :string
-    field :token, :string
-    field :api_key, :string
-    field :old_api_key, :string
-    has_many :sources, Logflare.Source
+    field(:email, :string)
+    field(:provider, :string)
+    field(:token, :string)
+    field(:api_key, :string)
+    field(:old_api_key, :string)
+    has_many(:sources, Logflare.Source)
 
     timestamps()
   end

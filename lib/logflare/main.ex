@@ -21,24 +21,29 @@ defmodule Logflare.Main do
   end
 
   def init(_state) do
-    IO.puts "Genserver Started: #{__MODULE__}"
+    IO.puts("Genserver Started: #{__MODULE__}")
 
-    query = from s in "sources",
-          select: %{
-            token: s.token,
-          }
+    query =
+      from(s in "sources",
+        select: %{
+          token: s.token
+        }
+      )
+
     sources = Repo.all(query)
+
     state =
       Enum.map(
-        sources, fn(s) ->
+        sources,
+        fn s ->
           {:ok, source} = Ecto.UUID.load(s.token)
           String.to_atom(source)
         end
       )
 
-    Enum.each(state, fn(s) -> Logflare.Table.start_link(s) end)
+    Enum.each(state, fn s -> Logflare.Table.start_link(s) end)
     persist()
-    
+
     {:ok, state}
   end
 
@@ -60,6 +65,7 @@ defmodule Logflare.Main do
     case File.stat("tables") do
       {:ok, _stats} ->
         persist_tables(state)
+
       {:error, _reason} ->
         File.mkdir("tables")
         persist_tables(state)
@@ -77,39 +83,47 @@ defmodule Logflare.Main do
 
   defp persist_tables(state) do
     Enum.each(
-        state, fn(t) ->
-          tab_path = "tables/" <> Atom.to_string(t) <> ".tab"
-          :ets.tab2file(t, String.to_charlist(tab_path))
-        end
-      )
+      state,
+      fn t ->
+        tab_path = "tables/" <> Atom.to_string(t) <> ".tab"
+        :ets.tab2file(t, String.to_charlist(tab_path))
+      end
+    )
   end
 
   ## Public Functions
 
   def delete_all_tables() do
     state = :sys.get_state(Logflare.Main)
+
     Enum.map(
-        state, fn(t) ->
-          delete_table(t)
-        end
-      )
+      state,
+      fn t ->
+        delete_table(t)
+      end
+    )
+
     {:ok}
   end
 
   def delete_all_empty_tables() do
     state = :sys.get_state(Logflare.Main)
+
     Enum.each(
-        state, fn(t) ->
-          first = :ets.first(t)
-          case first == :"$end_of_table" do
-            true ->
-              delete_table(t)
-            false ->
-              :ok
-          end
+      state,
+      fn t ->
+        first = :ets.first(t)
+
+        case first == :"$end_of_table" do
+          true ->
+            delete_table(t)
+
+          false ->
+            :ok
         end
-      )
+      end
+    )
+
     {:ok}
   end
-
 end

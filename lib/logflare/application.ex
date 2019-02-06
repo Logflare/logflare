@@ -8,9 +8,10 @@ defmodule Logflare.Application do
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
       supervisor(Logflare.Periodically, []),
-      supervisor(Logflare.Counter, []), # init counter before main as main calls counter through table create
+      # init counter before main as main calls counter through table create
+      supervisor(Logflare.Counter, []),
       supervisor(Logflare.Main, []),
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
+      {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

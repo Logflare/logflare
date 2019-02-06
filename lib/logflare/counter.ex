@@ -6,7 +6,7 @@ defmodule Logflare.Counter do
   end
 
   def init(state) do
-    IO.puts "Genserver Started: #{__MODULE__}"
+    IO.puts("Genserver Started: #{__MODULE__}")
     :ets.new(:counters, [:public, :named_table])
     {:ok, state}
   end
@@ -37,5 +37,4 @@ defmodule Logflare.Counter do
     count = inserts - deletes
     {:ok, count}
   end
-
 end

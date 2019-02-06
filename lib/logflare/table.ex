@@ -4,9 +4,10 @@ defmodule Logflare.Table do
   alias Logflare.Counter
   alias LogflareWeb.LogController
 
-  @ttl 2592000000000 # one month
-  @ttl_timer 1000
-  @prune_timer 1000
+  # one month
+  @ttl 2_592_000_000_000
+  @ttl_timer 1_000
+  @prune_timer 1_000
 
   def start_link(website_table) do
     GenServer.start_link(__MODULE__, website_table, name: website_table)
@@ -15,7 +16,7 @@ defmodule Logflare.Table do
   ## Client
 
   def init(state) do
-    IO.puts "Genserver Started: #{state}"
+    IO.puts("Genserver Started: #{state}")
 
     tab_path = "tables/" <> Atom.to_string(state) <> ".tab"
 
@@ -26,12 +27,14 @@ defmodule Logflare.Table do
         log_count = info[:size]
         Counter.create(state)
         Counter.incriment(state, log_count)
+
       {:error, _reason} ->
         IO.puts("Created table!")
         table_args = [:named_table, :ordered_set, :public]
         :ets.new(state, table_args)
         Counter.create(state)
     end
+
     check_ttl()
     prune()
 
@@ -50,6 +53,7 @@ defmodule Logflare.Table do
         {timestamp, _unique_int, _monotime} = first
         now = System.os_time(:microsecond)
         day_ago = now - @ttl
+
         if timestamp < day_ago do
           # :ets.delete_match(website_table) I'm too dumb for this
           # https://github.com/ericmj/ex2ms
@@ -58,8 +62,10 @@ defmodule Logflare.Table do
           Counter.decriment(website_table)
           LogController.broadcast_log_count(website_table)
         end
+
         check_ttl()
         {:noreply, state}
+
       false ->
         check_ttl()
         {:noreply, state}
@@ -78,8 +84,10 @@ defmodule Logflare.Table do
           Counter.decriment(website_table)
           LogController.broadcast_log_count(website_table)
         end
+
         prune()
         {:noreply, state}
+
       false ->
         prune()
         {:noreply, state}
@@ -95,5 +103,4 @@ defmodule Logflare.Table do
   defp prune() do
     Process.send_after(self(), :prune, @prune_timer)
   end
-
 end
