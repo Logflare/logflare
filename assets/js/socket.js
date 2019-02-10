@@ -19,7 +19,9 @@ function renderLog(event) {
   document.querySelector('#no-logs-warning').innerHTML = '';
   document.querySelector('.list-unstyled').innerHTML += renderedLog;
   dateAddNew();
-  scrollBottom();
+  if (window.scrollTracker == true) {
+    scrollBottom();
+  }
 }
 
 function logTemplate(event) {
