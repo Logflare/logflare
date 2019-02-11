@@ -12,8 +12,14 @@ config :logflare, LogflareWeb.Endpoint,
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
-  watchers: [node: ["node_modules/brunch/bin/brunch", "watch", "--stdin",
-                    cd: Path.expand("../assets", __DIR__)]]
+  watchers: [
+    node: [
+      "node_modules/brunch/bin/brunch",
+      "watch",
+      "--stdin",
+      cd: Path.expand("../assets", __DIR__)
+    ]
+  ]
 
 # SSL Support
 #  config :logflare, LogflareWeb.Endpoint,
@@ -34,7 +40,6 @@ config :logflare, LogflareWeb.Endpoint,
     ]
   ]
 
-
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"
 
@@ -44,12 +49,12 @@ config :phoenix, :stacktrace_depth, 20
 
 # Configure your database
 config :logflare, Logflare.Repo,
-#  adapter: Ecto.Adapters.Postgres,
-   username: "chasegranberry",
-   password: "",
-   database: "logtail_dev",
-   hostname: "localhost",
-   pool_size: 10
+  #  adapter: Ecto.Adapters.Postgres,
+  username: "chasegranberry",
+  password: "",
+  database: "logtail_dev",
+  hostname: "localhost",
+  pool_size: 10
 
 import_config "dev.secret.exs"
 import_config "scout_apm.exs"

@@ -5,6 +5,7 @@ defmodule Logflare.Source do
   schema "sources" do
     field(:name, :string)
     field(:token, Ecto.UUID)
+    field(:public_token, :string)
     belongs_to(:user, Logflare.User)
     has_many(:rules, Logflare.Rule)
 
@@ -14,7 +15,7 @@ defmodule Logflare.Source do
   @doc false
   def changeset(source, attrs) do
     source
-    |> cast(attrs, [:name, :token])
+    |> cast(attrs, [:name, :token, :public_token])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
   end

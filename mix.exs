@@ -6,9 +6,9 @@ defmodule Logflare.Mixfile do
       app: :logflare,
       version: "0.0.7",
       elixir: "~> 1.4",
-      elixirc_paths: elixirc_paths(Mix.env),
-      compilers: [:phoenix, :gettext] ++ Mix.compilers,
-      start_permanent: Mix.env == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: [:phoenix, :gettext] ++ Mix.compilers(),
+      start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps()
     ]
@@ -20,13 +20,19 @@ defmodule Logflare.Mixfile do
   def application do
     [
       mod: {Logflare.Application, []},
-      extra_applications: [:logger, :runtime_tools, :ueberauth_github, :edeliver, :scout_apm]
+      extra_applications: [
+        :logger,
+        :runtime_tools,
+        :ueberauth_github,
+        :edeliver,
+        :scout_apm
+      ]
     ]
   end
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_),     do: ["lib", "priv/tasks"]
+  defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
   # Specifies your project dependencies.
   #
@@ -36,7 +42,8 @@ defmodule Logflare.Mixfile do
       {:phoenix, "~> 1.4.0"},
       {:phoenix_pubsub, "~> 1.0"},
       {:phoenix_ecto, "~> 4.0"},
-      {:ecto_sql, "~> 3.0"},
+      {:ecto_sql, "~> 3.0.3"},
+      {:telemetry, "~> 0.2.0"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},

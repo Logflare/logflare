@@ -2,30 +2,30 @@ defmodule LogflareWeb.Router do
   use LogflareWeb, :router
 
   pipeline :browser do
-    plug :accepts, ["html"]
-    plug :fetch_session
-    plug :fetch_flash
-    plug :protect_from_forgery
-    plug :put_secure_browser_headers
-    plug LogflareWeb.Plugs.SetUser
+    plug(:accepts, ["html"])
+    plug(:fetch_session)
+    plug(:fetch_flash)
+    plug(:protect_from_forgery)
+    plug(:put_secure_browser_headers)
+    plug(LogflareWeb.Plugs.SetUser)
   end
 
   pipeline :api do
-    plug :accepts, ["json"]
-    plug LogflareWeb.Plugs.VerifyApiRequest
-    plug LogflareWeb.Plugs.CheckSourceCountApi
-
+    plug(:accepts, ["json"])
+    plug(LogflareWeb.Plugs.VerifyApiRequest)
+    plug(LogflareWeb.Plugs.CheckSourceCountApi)
   end
 
   scope "/", LogflareWeb do
-    pipe_through :browser # Use the default browser stack
+    # Use the default browser stack
+    pipe_through(:browser)
 
-    get "/dashboard", SourceController, :dashboard
-    get "/", SourceController, :index
+    get("/dashboard", SourceController, :dashboard)
+    get("/", SourceController, :index)
   end
 
   scope "/sources", LogflareWeb do
-    pipe_through :browser
+    pipe_through(:browser)
 
     # get "/new", SourceController, :new
     # post "/", SourceController, :create
@@ -33,24 +33,26 @@ defmodule LogflareWeb.Router do
     # delete "/:id", SourceController, :delete
     # edit "/:id/edit", SourceController, :edit
     # put "/:id", SourceController, :update
+    get("/:id/public/:public_token", SourceController, :public)
+
     resources "/", SourceController, except: [:index] do
-      post "/rules", RuleController, :create
-      get "/rules", RuleController, :index
-      delete "/rules/:id", RuleController, :delete
+      post("/rules", RuleController, :create)
+      get("/rules", RuleController, :index)
+      delete("/rules/:id", RuleController, :delete)
     end
   end
 
   scope "/auth", LogflareWeb do
-    pipe_through :browser
+    pipe_through(:browser)
 
-    get "/logout", AuthController, :logout
-    get "/new-api-key", AuthController, :new_api_key
-    get "/:provider", AuthController, :request
-    get "/:provider/callback", AuthController, :callback
+    get("/logout", AuthController, :logout)
+    get("/new-api-key", AuthController, :new_api_key)
+    get("/:provider", AuthController, :request)
+    get("/:provider/callback", AuthController, :callback)
   end
 
   scope "/api", LogflareWeb do
-    pipe_through :api
-    post "/logs", LogController, :create
+    pipe_through(:api)
+    post("/logs", LogController, :create)
   end
 end
