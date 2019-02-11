@@ -57,7 +57,3 @@ config :logflare, Logflare.Repo,
   pool_size: 10
 
 import_config "dev.secret.exs"
-import_config "scout_apm.exs"
-
-config :scout_apm,
-  dev_trace: true

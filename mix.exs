@@ -24,8 +24,7 @@ defmodule Logflare.Mixfile do
         :logger,
         :runtime_tools,
         :ueberauth_github,
-        :edeliver,
-        :scout_apm
+        :edeliver
       ]
     ]
   end
@@ -43,7 +42,6 @@ defmodule Logflare.Mixfile do
       {:phoenix_pubsub, "~> 1.0"},
       {:phoenix_ecto, "~> 4.0"},
       {:ecto_sql, "~> 3.0.3"},
-      {:telemetry, "~> 0.2.0"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
@@ -54,8 +52,7 @@ defmodule Logflare.Mixfile do
       {:jason, "~> 1.0"},
       {:distillery, "~> 2.0"},
       {:edeliver, ">= 1.6.0"},
-      {:httpoison, "~> 1.4"},
-      {:scout_apm, "~> 0.0"}
+      {:httpoison, "~> 1.4"}
     ]
   end
 

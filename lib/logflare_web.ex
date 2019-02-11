@@ -23,7 +23,6 @@ defmodule LogflareWeb do
       import Plug.Conn
       alias LogflareWeb.Router.Helpers, as: Routes
       import LogflareWeb.Gettext
-      use ScoutApm.Instrumentation
     end
   end
 
