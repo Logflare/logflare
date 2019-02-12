@@ -54,7 +54,8 @@ defmodule Logflare.Mixfile do
       {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider,
-       github: "danschultzer/phoenix_oauth2_provider", branch: "phoenix-1-4"}
+       github: "danschultzer/phoenix_oauth2_provider", branch: "phoenix-1-4"},
+      {:poison, "~> 3.1"}
     ]
   end
 

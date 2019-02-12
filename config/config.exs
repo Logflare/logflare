@@ -38,4 +38,7 @@ config :phoenix_oauth2_provider, PhoenixOauth2Provider,
   repo: Logflare.Repo,
   resource_owner: Logflare.User,
   grant_flows: ~w(authorization_code),
-  use_refresh_token: true
+  use_refresh_token: true,
+  default_scopes: ~w(public),
+  optional_scopes: ~w(read write),
+  revoke_refresh_token_on_use: true
