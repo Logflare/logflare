@@ -14,7 +14,7 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
-    :ok = ScoutApm.Instruments.EctoTelemetry.attach(__MODULE__)
+    :ok = ScoutApm.Instruments.EctoTelemetry.attach(Logflare.Repo)
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
