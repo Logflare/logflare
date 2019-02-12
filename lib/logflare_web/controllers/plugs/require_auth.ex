@@ -5,17 +5,23 @@ defmodule LogflareWeb.Plugs.RequireAuth do
   alias LogflareWeb.Router.Helpers
 
   def init(_params) do
-
   end
 
   def call(conn, _params) do
-    if conn.assigns[:user] do
-      conn
-    else
-      conn
-      |> put_flash(:error, "You must be logged in.")
-      |> redirect(to: Helpers.source_path(conn, :index))
-      |> halt()
+    cond do
+      conn.assigns[:user] ->
+        conn
+
+      conn.request_path == "/oauth/authorize" ->
+        conn
+        |> redirect(to: Helpers.auth_path(conn, :request, "github"))
+        |> halt()
+
+      is_nil(conn.assigns[:user]) ->
+        conn
+        |> put_flash(:error, "You must be logged in.")
+        |> redirect(to: Helpers.source_path(conn, :index))
+        |> halt()
     end
   end
 end
