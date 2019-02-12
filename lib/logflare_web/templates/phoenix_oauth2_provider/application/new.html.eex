@@ -1,0 +1,6 @@
+<h2>New Application</h2>
+
+<%= render "form.html", changeset: @changeset,
+                        action: Routes.oauth_application_path(@conn, :create) %>
+
+<span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>
