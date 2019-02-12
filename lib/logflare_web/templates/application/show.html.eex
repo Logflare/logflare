@@ -1,5 +1,10 @@
-<h2>Application: <%= @application.name %></h2>
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/applications/<span class="text-primary overflow-scroll-nowrap"><%= @application.name %></span></h5>
+  </div>
+</div>
 
+<div class="container mx-auto">
 <ul>
 
   <li>
@@ -37,3 +42,4 @@
 
 <span><%= link "Edit", to: Routes.oauth_application_path(@conn, :edit, @application) %></span>
 <span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>
+</div>

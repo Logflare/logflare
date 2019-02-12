@@ -1,11 +1,15 @@
-<h2>Your authorized applications</h2>
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/applications/authorized</h5>
+  </div>
+</div>
 
-<table>
+<div class="container mx-auto">
+<table class="table table-dark table-sm">
   <thead>
     <tr>
       <th>Application</th>
       <th>Created At</th>
-
       <th></th>
     </tr>
   </thead>
@@ -14,7 +18,6 @@
     <tr>
       <td><%= application.name %></td>
       <td><%= application.inserted_at %></td>
-
       <td>
         <span><%= link "Delete", to: Routes.oauth_authorized_application_path(@conn, :delete, application), method: :delete, data: [confirm: "Are you sure?"], class: "button" %></span>
       </td>
@@ -22,3 +25,4 @@
 <% end %>
   </tbody>
 </table>
+</div>

@@ -1,6 +1,12 @@
-<h2>New Application</h2>
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/applications/new</h5>
+  </div>
+</div>
+<div class="container mx-auto">
 
 <%= render "form.html", changeset: @changeset,
                         action: Routes.oauth_application_path(@conn, :create) %>
 
 <span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>
+</div>

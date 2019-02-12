@@ -8,6 +8,7 @@ defmodule LogflareWeb.Router do
     plug(:fetch_flash)
     plug(:protect_from_forgery)
     plug(:put_secure_browser_headers)
+    plug(LogflareWeb.Plugs.SetUser)
   end
 
   pipeline :api do
@@ -17,13 +18,7 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :oauth_public do
-    plug(:fetch_session)
     plug(:put_secure_browser_headers)
-    plug(LogflareWeb.Plugs.SetUser)
-  end
-
-  pipeline :protected do
-    plug(LogflareWeb.Plugs.SetUser)
   end
 
   scope "/" do
@@ -32,19 +27,19 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/" do
-    pipe_through([:browser, :protected])
+    pipe_through(:browser)
     oauth_routes(:protected)
   end
 
   scope "/", LogflareWeb do
     # Use the default browser stack
-    pipe_through([:browser, :protected])
+    pipe_through(:browser)
     get("/", SourceController, :index)
     get("/dashboard", SourceController, :dashboard)
   end
 
   scope "/sources", LogflareWeb do
-    pipe_through([:browser, :protected])
+    pipe_through(:browser)
 
     # get "/new", SourceController, :new
     # post "/", SourceController, :create
@@ -62,7 +57,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/auth", LogflareWeb do
-    pipe_through([:browser, :protected])
+    pipe_through(:browser)
 
     get("/logout", AuthController, :logout)
     get("/new-api-key", AuthController, :new_api_key)

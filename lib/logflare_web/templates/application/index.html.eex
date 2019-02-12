@@ -1,13 +1,16 @@
-<h2>Your applications</h2>
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/applications/</h5>
+  </div>
+</div>
 
-<table>
+<div class="container mx-auto">
+<table class="table table-dark table-sm">
   <thead>
     <tr>
       <th>Name</th>
       <th>Callback URL</th>
-      <th></th>
-
-      <th></th>
+      <th>Action</th>
     </tr>
   </thead>
   <tbody>
@@ -15,7 +18,6 @@
     <tr>
       <td><%= link application.name, to: Routes.oauth_application_path(@conn, :show, application) %></td>
       <td><%= application.redirect_uri %></td>
-
       <td>
         <span><%= link "Edit", to: Routes.oauth_application_path(@conn, :edit, application), class: "button button-outline" %></span>
         <span><%= link "Delete", to: Routes.oauth_application_path(@conn, :delete, application), method: :delete, data: [confirm: "Are you sure?"], class: "button" %></span>
@@ -25,4 +27,5 @@
   </tbody>
 </table>
 
-<span><%= link "New Application", to: Routes.oauth_application_path(@conn, :new) %></span>
+<span><%= link "New Application", to: Routes.oauth_application_path(@conn, :new), class: "btn btn-primary" %></span>
+</div>
