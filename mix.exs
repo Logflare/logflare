@@ -24,7 +24,8 @@ defmodule Logflare.Mixfile do
         :logger,
         :runtime_tools,
         :ueberauth_github,
-        :edeliver
+        :edeliver,
+        :scout_apm
       ]
     ]
   end
@@ -53,7 +54,8 @@ defmodule Logflare.Mixfile do
       {:distillery, "~> 2.0"},
       {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
-      {:poison, "~> 3.1"}
+      {:poison, "~> 3.1"},
+      {:scout_apm, "~> 0.0"}
     ]
   end
 
