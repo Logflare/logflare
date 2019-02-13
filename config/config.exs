@@ -21,10 +21,6 @@ config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:user_id]
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-import_config "#{Mix.env()}.exs"
-
 config :ueberauth, Ueberauth,
   providers: [
     github: {Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"]}
@@ -42,3 +38,8 @@ config :phoenix_oauth2_provider, PhoenixOauth2Provider,
   default_scopes: ~w(public),
   optional_scopes: ~w(read write),
   revoke_refresh_token_on_use: true
+
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{Mix.env()}.exs"
+
