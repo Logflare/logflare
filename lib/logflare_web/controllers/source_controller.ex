@@ -41,7 +41,6 @@ defmodule LogflareWeb.SourceController do
 
   def new(conn, _params) do
     changeset = Source.changeset(%Source{}, %{})
-
     render(conn, "new.html", changeset: changeset)
   end
 
