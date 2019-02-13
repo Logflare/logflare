@@ -37,9 +37,9 @@ config :phoenix_oauth2_provider, PhoenixOauth2Provider,
   use_refresh_token: true,
   default_scopes: ~w(public),
   optional_scopes: ~w(read write),
-  revoke_refresh_token_on_use: true
+  revoke_refresh_token_on_use: true,
+  module: Logflare
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"
-
