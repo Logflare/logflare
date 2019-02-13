@@ -29,6 +29,17 @@ config :ueberauth, Ueberauth,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :phoenix_oauth2_provider, PhoenixOauth2Provider,
+  current_resource_owner: :user,
+  repo: Logflare.Repo,
+  resource_owner: Logflare.User,
+  grant_flows: ~w(authorization_code),
+  use_refresh_token: true,
+  default_scopes: ~w(public),
+  optional_scopes: ~w(read write),
+  revoke_refresh_token_on_use: true
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"
+

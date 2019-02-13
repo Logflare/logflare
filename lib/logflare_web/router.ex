@@ -1,5 +1,6 @@
 defmodule LogflareWeb.Router do
   use LogflareWeb, :router
+  use PhoenixOauth2Provider.Router
 
   pipeline :browser do
     plug(:accepts, ["html"])
@@ -16,12 +17,29 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.CheckSourceCountApi)
   end
 
+  pipeline :oauth_public do
+    plug(:put_secure_browser_headers)
+  end
+
+  pipeline :require_auth do
+    plug(LogflareWeb.Plugs.RequireAuth)
+  end
+
+  scope "/" do
+    pipe_through(:oauth_public)
+    oauth_routes(:public)
+  end
+
+  scope "/" do
+    pipe_through([:browser, :require_auth])
+    oauth_routes(:protected)
+  end
+
   scope "/", LogflareWeb do
     # Use the default browser stack
     pipe_through(:browser)
-
-    get("/dashboard", SourceController, :dashboard)
     get("/", SourceController, :index)
+    get("/dashboard", SourceController, :dashboard)
   end
 
   scope "/sources", LogflareWeb do
@@ -49,6 +67,10 @@ defmodule LogflareWeb.Router do
     get("/new-api-key", AuthController, :new_api_key)
     get("/:provider", AuthController, :request)
     get("/:provider/callback", AuthController, :callback)
+  end
+
+  scope "/api", LogflareWeb do
+    get("/user", UserController, :index)
   end
 
   scope "/api", LogflareWeb do
