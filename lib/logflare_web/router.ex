@@ -71,6 +71,7 @@ defmodule LogflareWeb.Router do
 
   scope "/api", LogflareWeb do
     get("/user", UserController, :index)
+    post("/cloudflare/event", CloudflareController, :event)
   end
 
   scope "/api", LogflareWeb do
