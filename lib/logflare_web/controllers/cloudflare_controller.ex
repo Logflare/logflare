@@ -3,13 +3,12 @@ defmodule LogflareWeb.CloudflareController do
 
   # import Ecto.Query, only: [from: 2]
 
-  alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.User
 
   # TODO: Figure out structs
-  # TODO: Remove accountSources on logout response
-  # TODO: Put back in accountSources when logging in a second time from CF app
+  # TODO: Remove source on logout response
+  # TODO: Put back in source when logging in a second time from CF app
 
   # defstruct title: "",
   #           type: "string",
@@ -33,7 +32,7 @@ defmodule LogflareWeb.CloudflareController do
   end
 
   defp build_response(conn, user_token) when is_nil(user_token) do
-    response = %{"message" => "Event acknowledged!"}
+    # response = %{"message" => "Event acknowledged!"}
     install = %{"install" => {}}
     response = conn.params["install"]
     response = put_in(install, ["install"], response)
@@ -41,7 +40,7 @@ defmodule LogflareWeb.CloudflareController do
     # {_pop, response} =
     #   pop_in(
     #     response,
-    #     ["install", "schema", "properties", "accountSources"]
+    #     ["install", "schema", "properties", "source"]
     #   )
 
     {:ok, response}
@@ -58,23 +57,35 @@ defmodule LogflareWeb.CloudflareController do
       Enum.map(sources, fn x -> {x.token, x.name} end)
       |> Map.new()
 
+    # build top level json response
     install = %{"install" => {}}
     response = conn.params["install"]
     response = put_in(install, ["install"], response)
 
+    # put in lists of sources for dropdown
     response =
       put_in(
         response,
-        ["install", "schema", "properties", "accountSources", "enum"],
+        ["install", "schema", "properties", "source", "enum"],
         enum
       )
 
     response =
       put_in(
         response,
-        ["install", "schema", "properties", "accountSources", "enumNames"],
+        ["install", "schema", "properties", "source", "enumNames"],
         enum_names
       )
+
+    # send over API key for worker
+    account_id = owner.resource_owner_id
+    account = Repo.get_by(User, id: account_id)
+    api_key = account.api_key
+
+    options = conn.params["install"]["options"]
+    logflare = %{"logflare" => %{"api_key" => api_key}}
+    new_options = Map.merge(options, logflare)
+    response = put_in(response, ["install", "options"], new_options)
 
     {:ok, response}
   end
