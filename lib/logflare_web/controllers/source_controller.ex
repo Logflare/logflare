@@ -11,6 +11,7 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.Source
   alias Logflare.Repo
+  alias LogflareWeb.AuthController
 
   def index(conn, _params) do
     render(conn, "index.html")
@@ -45,16 +46,28 @@ defmodule LogflareWeb.SourceController do
   end
 
   def create(conn, %{"source" => source}) do
+    user = conn.assigns.user
+
     changeset =
-      conn.assigns.user
+      user
       |> Ecto.build_assoc(:sources)
       |> Source.changeset(source)
 
+    oauth_path = get_session(conn, :oauth_path)
+
     case Repo.insert(changeset) do
       {:ok, _source} ->
-        conn
-        |> put_flash(:info, "Source created!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        case is_nil(oauth_path) do
+          true ->
+            conn
+            |> put_flash(:info, "Source created!")
+            |> redirect(to: Routes.source_path(conn, :dashboard))
+
+          false ->
+            conn
+            |> put_flash(:info, "Source created!")
+            |> AuthController.redirect_for_oauth(oauth_path, user)
+        end
 
       {:error, changeset} ->
         conn

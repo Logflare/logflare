@@ -5,9 +5,18 @@
 </div>
 
 <div class="container mx-auto">
+  <p>
+    Sources are where logs go. You can name your source anything you want. We suggest
+    you namespace your sources like <code>YourApp.all</code> which would take all logs.
+    <code>YourApp.server-name</code> would take logs from a specific server. <code>YourApp.cloudflare</code>
+    would take all logs from Cloudflare.
+  </p>
   <%= form_for @changeset, Routes.source_path(@conn, :create), fn f -> %>
     <div class="form-group">
       <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control" %>
+      <small class="form-text text-muted">
+        Don't worry, you can change the name later.
+      </small>
       <%= error_tag f, :name %>
       <%= hidden_input f, :token, value: Ecto.UUID.generate(), class: "form-control" %>
     </div>

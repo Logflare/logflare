@@ -67,17 +67,10 @@ defmodule LogflareWeb.AuthController do
 
     case insert_or_update_user(changeset) do
       {:ok, user} ->
-        case is_nil(oauth_path) do
-          true ->
-            conn
-            |> put_flash(:info, "Thanks for signing up!")
-            |> put_session(:user_id, user.id)
-            |> redirect(to: Routes.source_path(conn, :dashboard, signup: true))
-
-          false ->
-            conn
-            |> redirect_for_oauth(oauth_path, user)
-        end
+        conn
+        |> put_flash(:info, "Thanks for signing up! Now create a source!")
+        |> put_session(:user_id, user.id)
+        |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
         case is_nil(oauth_path) do
@@ -99,7 +92,7 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
-  defp redirect_for_oauth(conn, path, user) do
+  def redirect_for_oauth(conn, path, user) do
     conn
     |> put_session(:user_id, user.id)
     |> put_session(:oauth_path, nil)
