@@ -7,6 +7,18 @@ defmodule LogflareWeb.CloudflareController do
   alias Logflare.Repo
   alias Logflare.User
 
+  # TODO: Figure out structs
+  # TODO: Remove accountSources on logout response
+  # TODO: Put back in accountSources when logging in a second time from CF app
+
+  # defstruct title: "",
+  #           type: "string",
+  #           description: "Which source should we send logs to?",
+  #           order: 2,
+  #           required: true,
+  #           enum: [],
+  #           enumNames: %{}
+
   def event(conn, params) do
     # event(conn, %{"authentications" => %{"account" => %{"token" => %{"token" => user_token}}}})
 
@@ -26,11 +38,11 @@ defmodule LogflareWeb.CloudflareController do
     response = conn.params["install"]
     response = put_in(install, ["install"], response)
 
-    {_pop, response} =
-      pop_in(
-        response,
-        ["install", "schema", "properties", "accountSources"]
-      )
+    # {_pop, response} =
+    #   pop_in(
+    #     response,
+    #     ["install", "schema", "properties", "accountSources"]
+    #   )
 
     {:ok, response}
   end
@@ -48,7 +60,6 @@ defmodule LogflareWeb.CloudflareController do
 
     install = %{"install" => {}}
     response = conn.params["install"]
-
     response = put_in(install, ["install"], response)
 
     response =

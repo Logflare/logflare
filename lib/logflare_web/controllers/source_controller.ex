@@ -66,7 +66,7 @@ defmodule LogflareWeb.SourceController do
           false ->
             conn
             |> put_flash(:info, "Source created!")
-            |> AuthController.redirect_for_oauth(oauth_path, user)
+            |> AuthController.redirect_for_oauth(user)
         end
 
       {:error, changeset} ->

@@ -82,7 +82,7 @@ defmodule LogflareWeb.AuthController do
 
           false ->
             conn
-            |> redirect_for_oauth(oauth_path, user)
+            |> redirect_for_oauth(user)
         end
 
       {:error, _reason} ->
@@ -92,21 +92,22 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
-  def redirect_for_oauth(conn, path, user) do
+  def redirect_for_oauth(conn, user) do
+    oauth_params = get_session(conn, :oauth_params)
+
     conn
     |> put_session(:user_id, user.id)
     |> put_session(:oauth_path, nil)
-    |> redirect(external: path)
+    |> redirect(
+      to:
+        Routes.oauth_authorization_path(conn, :new,
+          client_id: oauth_params["client_id"],
+          redirect_uri: oauth_params["redirect_uri"],
+          response_type: oauth_params["response_type"],
+          scope: oauth_params["scope"]
+        )
+    )
   end
-
-  #  defp redirect_for_oauth(conn, path, user) do
-  #   oauth_params = get_session(conn, :oauth_params)
-  #
-  #   conn
-  #    |> put_session(:user_id, user.id)
-  #    |> put_session(:oauth_path, nil)
-  #    |> redirect(to: Routes.oauth_authorization_path(conn, :new, client_id: oauth_params["client_id"], redirect_uri: oauth_params["redirect_uri"], response_type: oauth_params["response_type"], scope: oauth_params["scope"], user.email: oauth_params["user.email"]))
-  #  end
 
   defp insert_or_update_user(changeset) do
     case Repo.get_by(User, email: changeset.changes.email) do
