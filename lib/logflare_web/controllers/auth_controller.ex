@@ -63,7 +63,7 @@ defmodule LogflareWeb.AuthController do
   end
 
   defp signin(conn, changeset) do
-    oauth_path = get_session(conn, :oauth_path)
+    oauth_params = get_session(conn, :oauth_params)
 
     case insert_or_update_user(changeset) do
       {:ok, user} ->
@@ -73,7 +73,7 @@ defmodule LogflareWeb.AuthController do
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
-        case is_nil(oauth_path) do
+        case is_nil(oauth_params) do
           true ->
             conn
             |> put_flash(:info, "Welcome back!")
