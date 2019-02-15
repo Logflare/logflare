@@ -97,7 +97,7 @@ defmodule LogflareWeb.AuthController do
 
     conn
     |> put_session(:user_id, user.id)
-    |> put_session(:oauth_path, nil)
+    |> put_session(:oauth_params, nil)
     |> redirect(
       to:
         Routes.oauth_authorization_path(conn, :new,
