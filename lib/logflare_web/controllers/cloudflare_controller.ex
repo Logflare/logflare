@@ -49,30 +49,21 @@ defmodule LogflareWeb.CloudflareController do
     response = conn.params["install"]
     response = put_in(install, ["install"], response)
 
-    # put in lists of sources for dropdown
-    response =
-      put_in(
-        response,
-        ["install", "schema", "properties", "source", "enum"],
-        enum
-      )
-
-    response =
-      put_in(
-        response,
-        ["install", "schema", "properties", "source", "enumNames"],
-        enum_names
-      )
-
-    # send over API key for worker
+    # get the api key
     account_id = owner.resource_owner_id
     account = Repo.get_by(User, id: account_id)
     api_key = account.api_key
 
+    # add api key to options
     options = conn.params["install"]["options"]
     logflare = %{"logflare" => %{"api_key" => api_key}}
     new_options = Map.merge(options, logflare)
-    response = put_in(response, ["install", "options"], new_options)
+
+    # put in lists of sources for dropdown & api key
+    response =
+      put_in(response, ["install", "schema", "properties", "source", "enum"], enum)
+      |> put_in(["install", "schema", "properties", "source", "enumNames"], enum_names)
+      |> put_in(["install", "options"], new_options)
 
     {:ok, response}
   end
