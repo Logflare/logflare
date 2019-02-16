@@ -1,8 +1,6 @@
 defmodule LogflareWeb.CloudflareController do
   use LogflareWeb, :controller
 
-  # import Ecto.Query, only: [from: 2]
-
   alias Logflare.Repo
   alias Logflare.User
 
@@ -10,17 +8,7 @@ defmodule LogflareWeb.CloudflareController do
   # TODO: Remove source on logout response
   # TODO: Put back in source when logging in a second time from CF app
 
-  # defstruct title: "",
-  #           type: "string",
-  #           description: "Which source should we send logs to?",
-  #           order: 2,
-  #           required: true,
-  #           enum: [],
-  #           enumNames: %{}
-
   def event(conn, params) do
-    # event(conn, %{"authentications" => %{"account" => %{"token" => %{"token" => user_token}}}})
-
     user_token = params["authentications"]["account"]["token"]["token"]
     {:ok, response} = build_response(conn, user_token)
 
@@ -32,7 +20,6 @@ defmodule LogflareWeb.CloudflareController do
   end
 
   defp build_response(conn, user_token) when is_nil(user_token) do
-    # response = %{"message" => "Event acknowledged!"}
     install = %{"install" => {}}
     response = conn.params["install"]
     response = put_in(install, ["install"], response)
