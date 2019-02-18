@@ -6,7 +6,18 @@
 
 <div id="login" class="container">
   <ul class="list-group">
-    <li class="list-group-item"><i class="fab fa-github float-right align-middle"></i><%= link "Sign in with Github", to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" %></li>
-    <li class="list-group-item"><i class="fab fa-google float-right align-middle"></i><%= link "Sign in with Google", to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" %></li>
+    <li class="list-group-item">
+      <%= link to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" do %>
+      <span class="login-icon"><i class="fab fa-github"></span></i> Sign in with Github
+      <% end %>
+    </li>
+    <li class="list-group-item">
+      <%= link to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" do %>
+      <span class="login-icon"><i class="fab fa-google"></span></i> Sign in with Google
+      <% end %>
+    </li>
   </ul>
+  <p class="text-center">
+    <small>When using the Logflare hosted service you agree to our <a href="https://github.com/Logflare/logflare/tree/master/legal">terms of service, privacy policy and cookie policy</a>.</small>  
+  </p>
 </div>

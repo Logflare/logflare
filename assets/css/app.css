@@ -15,6 +15,10 @@ body {
   max-width: 300px;
 }
 
+.login-icon {
+  padding-right: 10px;
+}
+
 .overflow-scroll-nowrap {
   overflow-x: scroll;
   white-space: nowrap;
