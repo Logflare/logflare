@@ -24,7 +24,8 @@ defmodule Logflare.Mixfile do
         :logger,
         :runtime_tools,
         :ueberauth_github,
-        :edeliver
+        :edeliver,
+        :ueberauth_google
       ]
     ]
   end
@@ -55,7 +56,8 @@ defmodule Logflare.Mixfile do
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider,
        github: "danschultzer/phoenix_oauth2_provider", branch: "phoenix-1-4"},
-      {:poison, "~> 3.1"}
+      {:poison, "~> 3.1"},
+      {:ueberauth_google, "~> 0.8"}
     ]
   end
 

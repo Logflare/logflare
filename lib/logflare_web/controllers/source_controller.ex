@@ -48,11 +48,11 @@ defmodule LogflareWeb.SourceController do
       |> Ecto.build_assoc(:sources)
       |> Source.changeset(source)
 
-    oauth_path = get_session(conn, :oauth_path)
+    oauth_params = get_session(conn, :oauth_params)
 
     case Repo.insert(changeset) do
       {:ok, _source} ->
-        case is_nil(oauth_path) do
+        case is_nil(oauth_params) do
           true ->
             conn
             |> put_flash(:info, "Source created!")

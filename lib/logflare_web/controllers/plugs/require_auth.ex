@@ -15,7 +15,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
       conn.request_path == "/oauth/authorize" ->
         conn
         |> put_session(:oauth_params, conn.params)
-        |> redirect(to: Helpers.auth_path(conn, :request, "github"))
+        |> redirect(to: Helpers.auth_path(conn, :login))
         |> halt()
 
       is_nil(conn.assigns[:user]) ->

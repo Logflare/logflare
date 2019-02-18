@@ -11,6 +11,10 @@ body {
  width: 90%;
 }
 
+#login {
+  max-width: 300px;
+}
+
 .overflow-scroll-nowrap {
   overflow-x: scroll;
   white-space: nowrap;

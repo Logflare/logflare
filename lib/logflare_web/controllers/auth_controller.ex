@@ -13,7 +13,7 @@ defmodule LogflareWeb.AuthController do
     user_params = %{
       token: auth.credentials.token,
       email: auth.info.email,
-      provider: "github",
+      provider: Atom.to_string(auth.provider),
       api_key: api_key
     }
 
@@ -27,6 +27,10 @@ defmodule LogflareWeb.AuthController do
     conn
     |> configure_session(drop: true)
     |> redirect(to: Routes.source_path(conn, :index))
+  end
+
+  def login(conn, _params) do
+    render(conn, "login.html")
   end
 
   def new_api_key(conn, _params) do

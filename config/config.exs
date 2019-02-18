@@ -23,7 +23,8 @@ config :logger, :console,
 
 config :ueberauth, Ueberauth,
   providers: [
-    github: {Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"]}
+    github: {Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"]},
+    google: {Ueberauth.Strategy.Google, []}
   ]
 
 # Use Jason for JSON parsing in Phoenix
