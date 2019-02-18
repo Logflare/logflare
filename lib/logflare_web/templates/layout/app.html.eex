@@ -38,8 +38,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/date-fns/1.30.1/date_fns.min.js"></script>
 
     <script>
-      <%= if @conn.assigns.user do %>
-        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, "key", @conn.assigns.user.id) %>";
+      <%= if @user do %>
+        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, "key", @user.id) %>";
       <% end %>
     </script>
   </head>
@@ -75,7 +75,7 @@
 
       <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
-          <%= if @conn.assigns[:user] do %>
+          <%= if @user do %>
             <%= if @conn.request_path == "/" do %>
             <li class="nav-item">
               <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
