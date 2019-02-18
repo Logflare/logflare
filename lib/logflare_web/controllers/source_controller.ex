@@ -4,11 +4,6 @@ defmodule LogflareWeb.SourceController do
 
   plug(LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create])
 
-  plug(
-    LogflareWeb.Plugs.RequireAuth
-    when action in [:new, :create, :dashboard, :show, :delete, :edit, :update]
-  )
-
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
