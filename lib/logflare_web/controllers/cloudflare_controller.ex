@@ -3,16 +3,14 @@ defmodule LogflareWeb.CloudflareController do
 
   alias Logflare.Repo
   alias Logflare.User
-
-  # TODO: Figure out structs
-  # TODO: Remove source on logout response
-  # TODO: Put back in source when logging in a second time from CF app
+  alias ExOauth2Provider.OauthAccessTokens.OauthAccessToken
 
   def event(conn, params) do
     user_token = params["authentications"]["account"]["token"]["token"]
-    {:ok, response} = build_response(conn, user_token)
 
-    response = Jason.encode!(response)
+    response =
+      build_response(conn, user_token)
+      |> Jason.encode!()
 
     conn
     |> put_resp_content_type("application/json")
@@ -20,51 +18,71 @@ defmodule LogflareWeb.CloudflareController do
   end
 
   defp build_response(conn, user_token) when is_nil(user_token) do
-    install = %{"install" => {}}
-    response = conn.params["install"]
-    response = put_in(install, ["install"], response)
-
-    # {_pop, response} =
-    #   pop_in(
-    #     response,
-    #     ["install", "schema", "properties", "source"]
-    #   )
-
-    {:ok, response}
+    init_json(conn)
+    |> strip_api_key
+    |> reset_sources
   end
 
   defp build_response(conn, user_token) do
-    owner =
-      Logflare.Repo.get_by(ExOauth2Provider.OauthAccessTokens.OauthAccessToken, token: user_token)
-
+    owner = Logflare.Repo.get_by(OauthAccessToken, token: user_token)
     sources = Repo.all(Ecto.assoc(owner, [:resource_owner, :sources]))
     enum = Enum.map(sources, & &1.token)
+    response = init_json(conn)
+    new_options = build_options(owner, response)
 
     enum_names =
       Enum.map(sources, fn x -> {x.token, x.name} end)
       |> Map.new()
 
-    # build top level json response
-    install = %{"install" => {}}
-    response = conn.params["install"]
-    response = put_in(install, ["install"], response)
+    put_in(response, ["install", "schema", "properties", "source", "enum"], enum)
+    |> put_in(["install", "schema", "properties", "source", "enumNames"], enum_names)
+    |> put_in(["install", "options"], new_options)
+  end
 
-    # get the api key
+  defp init_json(conn) do
+    install = %{"install" => {}}
+    request = conn.params["install"]
+
+    put_in(install, ["install"], request)
+  end
+
+  defp build_options(owner, response) do
     account_id = owner.resource_owner_id
     account = Repo.get_by(User, id: account_id)
     api_key = account.api_key
 
-    # add api key to options
-    options = conn.params["install"]["options"]
+    options = response["install"]["options"]
     logflare = %{"logflare" => %{"api_key" => api_key}}
-    new_options = Map.merge(options, logflare)
 
-    # put in lists of sources for dropdown & api key
-    response =
-      put_in(response, ["install", "schema", "properties", "source", "enum"], enum)
-      |> put_in(["install", "schema", "properties", "source", "enumNames"], enum_names)
-      |> put_in(["install", "options"], new_options)
+    Map.merge(options, logflare)
+  end
 
-    {:ok, response}
+  defp strip_api_key(response) do
+    {_pop, response} =
+      pop_in(
+        response,
+        ["install", "options", "logflare"]
+      )
+
+    response
+  end
+
+  defp reset_sources(response) do
+    source = %{
+      "showIf" => %{"account" => %{"op" => "!=", "value" => ""}},
+      "default" => "signin",
+      "description" => "Which source should we send logs to?",
+      "enum" => ["signin"],
+      "enumNames" => %{
+        "signin" => "Sign in to select a source"
+      },
+      "order" => 2,
+      "productDefinitions" => [],
+      "required" => true,
+      "title" => "Source",
+      "type" => "string"
+    }
+
+    put_in(response, ["install", "schema", "properties", "source"], source)
   end
 end
