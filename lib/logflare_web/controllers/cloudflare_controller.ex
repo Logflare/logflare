@@ -9,7 +9,7 @@ defmodule LogflareWeb.CloudflareController do
     user_token = params["authentications"]["account"]["token"]["token"]
 
     response =
-      build_response(conn, user_token)
+      IO.inspect(build_response(conn, user_token))
       |> Jason.encode!()
 
     conn
@@ -29,6 +29,7 @@ defmodule LogflareWeb.CloudflareController do
     enum = Enum.map(sources, & &1.token)
     response = init_json(conn)
     new_options = build_options(owner, response)
+    default_source = List.first(enum)
 
     enum_names =
       Enum.map(sources, fn x -> {x.token, x.name} end)
@@ -37,6 +38,7 @@ defmodule LogflareWeb.CloudflareController do
     put_in(response, ["install", "schema", "properties", "source", "enum"], enum)
     |> put_in(["install", "schema", "properties", "source", "enumNames"], enum_names)
     |> put_in(["install", "options"], new_options)
+    |> put_in(["install", "options", "source"], default_source)
   end
 
   defp init_json(conn) do
