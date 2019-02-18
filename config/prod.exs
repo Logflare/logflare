@@ -73,4 +73,3 @@ config :logflare, Logflare.Repo,
   ssl: false
 
 import_config "prod.secret.exs"
-import_config "scout_apm.exs"
