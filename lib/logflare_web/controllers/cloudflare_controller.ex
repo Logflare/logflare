@@ -9,7 +9,7 @@ defmodule LogflareWeb.CloudflareController do
     user_token = params["authentications"]["account"]["token"]["token"]
 
     response =
-      IO.inspect(build_response(conn, user_token))
+      build_response(conn, user_token)
       |> Jason.encode!()
 
     conn
@@ -19,7 +19,7 @@ defmodule LogflareWeb.CloudflareController do
 
   defp build_response(conn, user_token) when is_nil(user_token) do
     init_json(conn)
-    |> strip_api_key
+    |> reset_options
     |> reset_sources
   end
 
@@ -59,14 +59,10 @@ defmodule LogflareWeb.CloudflareController do
     Map.merge(options, logflare)
   end
 
-  defp strip_api_key(response) do
-    {_pop, response} =
-      pop_in(
-        response,
-        ["install", "options", "logflare"]
-      )
+  defp reset_options(response) do
+    {_pop, response} = pop_in(response, ["install", "options", "logflare"])
 
-    response
+    put_in(response, ["install", "options", "source"], "signin")
   end
 
   defp reset_sources(response) do
