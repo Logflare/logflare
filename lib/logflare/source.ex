@@ -18,5 +18,6 @@ defmodule Logflare.Source do
     |> cast(attrs, [:name, :token, :public_token])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
+    |> unique_constraint(:public_token)
   end
 end
