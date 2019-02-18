@@ -13,8 +13,6 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         conn
 
       conn.request_path == "/oauth/authorize" ->
-        scheme = Atom.to_string(conn.scheme)
-
         conn
         |> put_session(:oauth_params, conn.params)
         |> redirect(to: Helpers.auth_path(conn, :request, "github"))
