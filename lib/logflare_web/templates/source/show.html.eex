@@ -38,7 +38,7 @@
           const cIP= request.headers.get("cf-connecting-ip")
 
           const sourceKey = "<%= @source.token %>"
-          const apiKey = "<%= @user.api_key %>"
+          const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
 
           const response = await fetch(request)
 
@@ -71,7 +71,7 @@
       <textarea class="copyable-code" name="curl-code" id="curl-code">
         curl -X "POST" "https://logflare.app/api/logs" \
           -H 'Content-Type: application/json' \
-          -H 'X-API-KEY: <%= @user.api_key %>' \
+          -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN IN FIRST" end %>' \
           -d $'{
             "source": "<%= @source.token %>",
             "log_entry": "This is another log message."
