@@ -282,7 +282,7 @@ mark {
 
 .subhead h5 {
   margin: 0px;
-  display: block;
+  display: flex;
   max-width: 70%;
   overflow: hidden;
 }

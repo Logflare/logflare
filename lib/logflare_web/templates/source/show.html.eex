@@ -8,7 +8,7 @@
         <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
       </ul>
     </div>
-    <h5>~/logs/<span class="text-primary overflow-scroll-nowrap"><%= @source.name %></span</h5>
+    <h5>~/logs/<span class="text-primary"><%= @source.name %></span</h5>
   </div>
 </div>
 
