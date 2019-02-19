@@ -72,10 +72,22 @@ defmodule LogflareWeb.SourceController do
   end
 
   def show(conn, %{"id" => source_id}) do
+    user_id = conn.assigns.user.id
     source = Repo.get(Source, source_id)
-    table_id = String.to_atom(source.token)
-    logs = get_logs(table_id)
-    render(conn, "show.html", logs: logs, source: source)
+
+    case user_id == source.user_id do
+      true ->
+        IO.inspect(source)
+        table_id = String.to_atom(source.token)
+        logs = get_logs(table_id)
+        render(conn, "show.html", logs: logs, source: source)
+
+      false ->
+        conn
+        |> put_flash(:error, "That's not yours!")
+        |> redirect(to: Routes.source_path(conn, :index))
+        |> halt()
+    end
   end
 
   def public(conn, %{"public_token" => public_token}) do
@@ -96,57 +108,84 @@ defmodule LogflareWeb.SourceController do
 
   def edit(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
-    changeset = Source.changeset(source, %{})
-
     user_id = conn.assigns.user.id
 
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-          public_token: s.public_token
-        }
-      )
+    case user_id == source.user_id do
+      true ->
+        changeset = Source.changeset(source, %{})
 
-    sources =
-      for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.load(source.token)
-        Map.put(source, :token, token)
-      end
+        query =
+          from(s in "sources",
+            where: s.user_id == ^user_id,
+            select: %{
+              name: s.name,
+              id: s.id,
+              token: s.token,
+              public_token: s.public_token
+            }
+          )
 
-    render(conn, "edit.html", changeset: changeset, source: source, sources: sources)
+        sources =
+          for source <- Repo.all(query) do
+            {:ok, token} = Ecto.UUID.load(source.token)
+            Map.put(source, :token, token)
+          end
+
+        render(conn, "edit.html", changeset: changeset, source: source, sources: sources)
+
+      false ->
+        conn
+        |> put_flash(:error, "That's not yours!")
+        |> redirect(to: Routes.source_path(conn, :index))
+        |> halt()
+    end
   end
 
   def update(conn, %{"id" => source_id, "source" => source}) do
+    user_id = conn.assigns.user.id
     old_source = Repo.get(Source, source_id)
-
-    # case source["rules"] == nil explicitly set "source" => nil
-    # in the source map so that it updates the db to nil
-
     changeset = Source.changeset(old_source, source)
 
-    case Repo.update(changeset) do
-      {:ok, _source} ->
-        conn
-        |> put_flash(:info, "Source updated!")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+    case user_id == old_source.user_id do
+      true ->
+        case Repo.update(changeset) do
+          {:ok, _source} ->
+            conn
+            |> put_flash(:info, "Source updated!")
+            |> redirect(to: Routes.source_path(conn, :edit, source_id))
 
-      {:error, changeset} ->
+          {:error, changeset} ->
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> render("edit.html", changeset: changeset, source: old_source)
+        end
+
+      false ->
         conn
-        |> put_flash(:error, "Something went wrong!")
-        |> render("edit.html", changeset: changeset, source: old_source)
+        |> put_flash(:error, "That's not yours!")
+        |> redirect(to: Routes.source_path(conn, :index))
+        |> halt()
     end
   end
 
   def delete(conn, %{"id" => source_id}) do
-    Repo.get!(Source, source_id) |> Repo.delete!()
+    user_id = conn.assigns.user.id
+    source = Repo.get(Source, source_id)
 
-    conn
-    |> put_flash(:info, "Source deleted!")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    case user_id == source.user_id do
+      true ->
+        source |> Repo.delete!()
+
+        conn
+        |> put_flash(:info, "Source deleted!")
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+
+      false ->
+        conn
+        |> put_flash(:error, "That's not yours!")
+        |> redirect(to: Routes.source_path(conn, :index))
+        |> halt()
+    end
   end
 
   defp get_logs(table_id) do

@@ -65,62 +65,82 @@ defmodule LogflareWeb.RuleController do
           changeset: changeset,
           sources: sources
         )
-
-        # |> redirect(to: Routes.source_rule_path(conn, :index, source_id))
     end
   end
 
   def index(conn, %{"source_id" => source_id}) do
-    changeset = Rule.changeset(%Rule{source: source_id})
     user_id = conn.assigns.user.id
-    source_id_int = String.to_integer(source_id)
     source = Repo.get(Source, source_id)
 
-    rules_query =
-      from(r in "rules",
-        where: r.source_id == ^source_id_int,
-        select: %{
-          id: r.id,
-          regex: r.regex,
-          sink: r.sink
-        }
-      )
+    case user_id == source.user_id do
+      true ->
+        changeset = Rule.changeset(%Rule{source: source_id})
+        source_id_int = String.to_integer(source_id)
 
-    sources_query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token
-        }
-      )
+        rules_query =
+          from(r in "rules",
+            where: r.source_id == ^source_id_int,
+            select: %{
+              id: r.id,
+              regex: r.regex,
+              sink: r.sink
+            }
+          )
 
-    rules =
-      for rule <- Repo.all(rules_query) do
-        sink = Ecto.UUID.load(rule.sink) |> elem(1)
-        Map.put(rule, :sink, sink)
-      end
+        sources_query =
+          from(s in "sources",
+            where: s.user_id == ^user_id,
+            select: %{
+              name: s.name,
+              id: s.id,
+              token: s.token
+            }
+          )
 
-    sources =
-      for source <- Repo.all(sources_query) do
-        token = Ecto.UUID.load(source.token) |> elem(1)
-        Map.put(source, :token, token)
-      end
+        rules =
+          for rule <- Repo.all(rules_query) do
+            sink = Ecto.UUID.load(rule.sink) |> elem(1)
+            Map.put(rule, :sink, sink)
+          end
 
-    render(conn, "index.html",
-      rules: rules,
-      source: source,
-      changeset: changeset,
-      sources: sources
-    )
+        sources =
+          for source <- Repo.all(sources_query) do
+            token = Ecto.UUID.load(source.token) |> elem(1)
+            Map.put(source, :token, token)
+          end
+
+        render(conn, "index.html",
+          rules: rules,
+          source: source,
+          changeset: changeset,
+          sources: sources
+        )
+
+      false ->
+        conn
+        |> put_flash(:error, "That's not yours!")
+        |> redirect(to: Routes.source_path(conn, :index))
+        |> halt()
+    end
   end
 
   def delete(conn, %{"id" => rule_id, "source_id" => source_id}) do
-    Repo.get!(Rule, rule_id) |> Repo.delete!()
+    user_id = conn.assigns.user.id
+    source = Repo.get(Source, source_id)
 
-    conn
-    |> put_flash(:info, "Rule deleted!")
-    |> redirect(to: Routes.source_rule_path(conn, :index, source_id))
+    case user_id == source.user_id do
+      true ->
+        Repo.get!(Rule, rule_id) |> Repo.delete!()
+
+        conn
+        |> put_flash(:info, "Rule deleted!")
+        |> redirect(to: Routes.source_rule_path(conn, :index, source_id))
+
+      false ->
+        conn
+        |> put_flash(:error, "That's not yours!")
+        |> redirect(to: Routes.source_path(conn, :index))
+        |> halt()
+    end
   end
 end
