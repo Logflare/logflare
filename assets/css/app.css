@@ -19,9 +19,13 @@ body {
   padding-right: 10px;
 }
 
-.overflow-scroll-nowrap {
-  overflow-x: scroll;
-  white-space: nowrap;
+.word-break-all {
+  word-break: break-all;
+}
+
+.source-link {
+  float: left;
+  width: 75%;
 }
 
 .btn-dark {
@@ -240,7 +244,7 @@ pre {
 .list-group-item {
   background-color: #1d1d1d;
   border: 0px;
-  overflow-x: scroll;
+  overflow: hidden;
 }
 
 a {
@@ -273,13 +277,14 @@ mark {
   padding-bottom: .35em;
 
   color: black;
-  overflow-y: scroll;
   box-shadow: 0px 0px 35px #000000;
 }
 
 .subhead h5 {
   margin: 0px;
-  overflow-x: scroll;
+  display: block;
+  max-width: 70%;
+  overflow: hidden;
 }
 
 .subhead li {
