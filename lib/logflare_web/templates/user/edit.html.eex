@@ -24,12 +24,18 @@
     </div>
     <%= submit "Update preferences", class: "btn btn-primary form-button" %>
   <% end %>
+
   <h5 class="header-margin">Signed Up with <%= String.capitalize(@user.provider) %></h5>
   <p>You signed up with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
   <%= if @user.provider == "github" do %>
-    <p>Review <a href="https://github.com/settings/applications">your authorized Oauth applications</a> at Github.</p>
+    <p>Review your authorized Oauth applications at Github.</p>
+    <%= link "Visit Github", to: "https://github.com/settings/applications", class: "btn btn-primary form-button" %>
   <% end %>
   <%= if @user.provider == "google" do %>
-    <p>Review <a href="https://myaccount.google.com/permissions">apps with access to your Google account</a>.</p>
+    <p>Review apps with access to your Google account</a>.</p>
+    <%= link "Visit Google", to: "https://myaccount.google.com/permissions", class: "btn btn-primary form-button" %>
   <% end %>
+  <h5 class="header-margin">Delete Your Account</h5>
+  <p>This will immediately delete everything associated with your account. There is no undo.</p>
+  <%= link "Delete now", to: Routes.user_path(@conn, :delete), class: "btn btn-danger", method: :delete %>
 </div>

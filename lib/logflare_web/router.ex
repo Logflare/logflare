@@ -70,6 +70,7 @@ defmodule LogflareWeb.Router do
 
     get("/edit", UserController, :edit)
     put("/edit", UserController, :update)
+    delete("/", UserController, :delete)
   end
 
   scope "/auth", LogflareWeb do

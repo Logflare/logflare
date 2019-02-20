@@ -5,16 +5,14 @@ defmodule LogflareWeb.UserController do
   alias Logflare.User
 
   def edit(conn, _params) do
-    user_id = conn.assigns.user.id
-    user = Repo.get(User, user_id)
+    user = conn.assigns.user
     changeset = User.changeset(user, %{})
 
     render(conn, "edit.html", changeset: changeset, user: user)
   end
 
   def update(conn, %{"user" => user}) do
-    user_id = conn.assigns.user.id
-    old_user = Repo.get(User, user_id)
+    old_user = conn.assigns.user
     changeset = User.changeset(old_user, user)
 
     case Repo.update(changeset) do
@@ -28,5 +26,14 @@ defmodule LogflareWeb.UserController do
         |> put_flash(:error, "Something went wrong!")
         |> render("edit.html", changeset: changeset, user: old_user)
     end
+  end
+
+  def delete(conn, _params) do
+    user_id = conn.assigns.user.id
+    Repo.get!(User, user_id) |> Repo.delete!()
+
+    conn
+    |> put_flash(:info, "Account deleted!")
+    |> redirect(to: Routes.source_path(conn, :index))
   end
 end
