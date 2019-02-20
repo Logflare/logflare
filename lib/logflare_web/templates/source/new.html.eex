@@ -21,6 +21,6 @@
       <%= hidden_input f, :token, value: Ecto.UUID.generate(), class: "form-control" %>
     </div>
 
-    <%= submit "Add source", class: "btn btn-primary" %>
+    <%= submit "Add source", class: "btn btn-primary form-button" %>
   <% end %>
 </div>

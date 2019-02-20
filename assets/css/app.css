@@ -15,6 +15,10 @@ body {
   max-width: 300px;
 }
 
+.label-padding {
+  margin-top: 1em;
+}
+
 .login-icon {
   padding-right: 10px;
 }
@@ -32,8 +36,12 @@ body {
 
 }
 
-#rules-header {
-  margin: 1em 0 .25em 0 ;
+.header-margin {
+  padding: 1em 0 .25em 0;
+}
+
+.form-button {
+  margin-bottom: 1em;
 }
 
 .rules-input{

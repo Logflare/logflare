@@ -6,17 +6,17 @@
 
 <div class="container mx-auto">
 
-  <h5 id="rules-header">Source Name</h5>
+  <h5 class="header-margin">Source Name</h5>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a good place to keep all bot logs. Route logs with regex using <%= link to: Routes.source_rule_path(@conn, :index, @source) do %>rules<% end %>.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
     <div class="form-group">
       <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control" %>
       <%= error_tag f, :name %>
     </div>
-    <%= submit "Save source", class: "btn btn-primary" %>
+    <%= submit "Save source", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <h5 id="rules-header">Public Access</h5>
+  <h5 class="header-margin">Public Access</h5>
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
   <%= if @source.public_token != nil do %>
     <div>
@@ -28,7 +28,7 @@
       <%= hidden_input ff, :public_token, value: :crypto.strong_rand_bytes(6) |> Base.url_encode64 |> binary_part(0, 6), class: "form-control" %>
       <%= error_tag ff, :public_token %>
     </div>
-    <%= submit "Generate path", class: "btn btn-primary" %>
+    <%= submit "Generate path", class: "btn btn-primary form-button" %>
   <% end %>
 
 </div>

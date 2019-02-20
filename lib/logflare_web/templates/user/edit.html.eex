@@ -1,0 +1,35 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/account/edit</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h5 class="header-margin">Preferences</h5>
+  <p>Set your account preferences.</p>
+  <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
+    <div class="form-group">
+      <%= label f, :name %>
+      <%= text_input f, :name, placeholder: "Name", class: "form-control"%>
+      <%= error_tag f, :name %>
+      <%= label f, :email_preferred, "Preferred email", class: "label-padding" %>
+      <%= email_input f, :email_preferred, placeholder: "Preferred email", class: "form-control"%>
+      <small class="form-text text-muted">
+        This can be different from the account you authorized with. We'll only send you important product or account related emails.
+      </small>
+      <%= error_tag f, :email_preferred %>
+      <%= label f, :email_me_product, "Email me product updates", class: "label-padding" %>
+      <%= checkbox f, :email_me_product %>
+      <%= hidden_input f, :email, class: "form-control", disabled: "disabled" %>
+    </div>
+    <%= submit "Update preferences", class: "btn btn-primary form-button" %>
+  <% end %>
+  <h5 class="header-margin">Signed Up with <%= String.capitalize(@user.provider) %></h5>
+  <p>You signed up with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
+  <%= if @user.provider == "github" do %>
+    <p>Review <a href="https://github.com/settings/applications">your authorized Oauth applications</a> at Github.</p>
+  <% end %>
+  <%= if @user.provider == "google" do %>
+    <p>Review <a href="https://myaccount.google.com/permissions">apps with access to your Google account</a>.</p>
+  <% end %>
+</div>

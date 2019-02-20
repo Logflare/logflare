@@ -65,6 +65,13 @@ defmodule LogflareWeb.Router do
     end
   end
 
+  scope "/account", LogflareWeb do
+    pipe_through([:browser, :require_auth])
+
+    get("/edit", UserController, :edit)
+    put("/edit", UserController, :update)
+  end
+
   scope "/auth", LogflareWeb do
     pipe_through([:browser, :require_auth])
     get("/new-api-key", AuthController, :new_api_key)

@@ -13,8 +13,11 @@ defmodule LogflareWeb.AuthController do
     user_params = %{
       token: auth.credentials.token,
       email: auth.info.email,
+      email_preferred: auth.info.email,
       provider: Atom.to_string(auth.provider),
-      api_key: api_key
+      api_key: api_key,
+      image: auth.info.image,
+      name: auth.info.name
     }
 
     changeset = User.changeset(%User{}, user_params)
