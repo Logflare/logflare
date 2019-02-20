@@ -33,6 +33,7 @@ defmodule LogflareWeb.RuleController do
     sources_query =
       from(s in "sources",
         where: s.user_id == ^user_id,
+        order_by: s.name,
         select: %{
           name: s.name,
           id: s.id,
@@ -90,6 +91,7 @@ defmodule LogflareWeb.RuleController do
     sources_query =
       from(s in "sources",
         where: s.user_id == ^user_id,
+        order_by: s.name,
         select: %{
           name: s.name,
           id: s.id,
