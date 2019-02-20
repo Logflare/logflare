@@ -8,17 +8,16 @@ defmodule LogflareWeb.RuleController do
   alias Logflare.Source
   alias Logflare.Repo
 
-  def create(conn, %{"rule" => rule}) do
-    source_id = rule["source"]
+  def create(conn, %{"rule" => rule, "source_id" => source_id}) do
+    user_id = conn.assigns.user.id
     source = Repo.get(Source, source_id)
+    disabled_source = source.token
+    source_id_int = String.to_integer(source_id)
 
     changeset =
       Repo.get(Source, source_id)
       |> Ecto.build_assoc(:rules)
       |> Rule.changeset(rule)
-
-    user_id = conn.assigns.user.id
-    source_id_int = String.to_integer(source_id)
 
     rules_query =
       from(r in "rules",
@@ -44,7 +43,14 @@ defmodule LogflareWeb.RuleController do
     sources =
       for source <- Repo.all(sources_query) do
         token = Ecto.UUID.load(source.token) |> elem(1)
-        Map.put(source, :token, token)
+
+        if token == disabled_source do
+          Map.put(source, :disabled, true)
+          |> Map.put(:token, token)
+        else
+          Map.put(source, :disabled, false)
+          |> Map.put(:token, token)
+        end
       end
 
     rules =
@@ -74,9 +80,10 @@ defmodule LogflareWeb.RuleController do
   def index(conn, %{"source_id" => source_id}) do
     user_id = conn.assigns.user.id
     source = Repo.get(Source, source_id)
+    disabled_source = source.token
+    source_id_int = String.to_integer(source_id)
 
     changeset = Rule.changeset(%Rule{source: source_id})
-    source_id_int = String.to_integer(source_id)
 
     rules_query =
       from(r in "rules",
@@ -108,8 +115,17 @@ defmodule LogflareWeb.RuleController do
     sources =
       for source <- Repo.all(sources_query) do
         token = Ecto.UUID.load(source.token) |> elem(1)
-        Map.put(source, :token, token)
+
+        if token == disabled_source do
+          Map.put(source, :disabled, true)
+          |> Map.put(:token, token)
+        else
+          Map.put(source, :disabled, false)
+          |> Map.put(:token, token)
+        end
       end
+
+    IO.inspect(sources)
 
     render(conn, "index.html",
       rules: rules,
