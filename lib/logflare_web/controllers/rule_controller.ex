@@ -42,20 +42,17 @@ defmodule LogflareWeb.RuleController do
 
     sources =
       for source <- Repo.all(sources_query) do
-        token = Ecto.UUID.load(source.token) |> elem(1)
+        {:ok, token} = Ecto.UUID.load(source.token)
+        s = Map.put(source, :token, token)
 
-        if token == disabled_source do
-          Map.put(source, :disabled, true)
-          |> Map.put(:token, token)
-        else
-          Map.put(source, :disabled, false)
-          |> Map.put(:token, token)
-        end
+        if disabled_source == token,
+          do: Map.put(s, :disabled, true),
+          else: Map.put(s, :disabled, false)
       end
 
     rules =
       for rule <- Repo.all(rules_query) do
-        sink = Ecto.UUID.load(rule.sink) |> elem(1)
+        {:ok, sink} = Ecto.UUID.load(rule.sink)
         Map.put(rule, :sink, sink)
       end
 
@@ -108,24 +105,23 @@ defmodule LogflareWeb.RuleController do
 
     rules =
       for rule <- Repo.all(rules_query) do
-        sink = Ecto.UUID.load(rule.sink) |> elem(1)
+        {:ok, sink} = Ecto.UUID.load(rule.sink)
         Map.put(rule, :sink, sink)
       end
 
     sources =
       for source <- Repo.all(sources_query) do
-        token = Ecto.UUID.load(source.token) |> elem(1)
+        {:ok, token} = Ecto.UUID.load(source.token)
+        s = Map.put(source, :token, token)
 
-        if token == disabled_source do
-          Map.put(source, :disabled, true)
-          |> Map.put(:token, token)
-        else
-          Map.put(source, :disabled, false)
-          |> Map.put(:token, token)
+        case token do
+          ^disabled_source ->
+            Map.put(s, :disabled, true)
+
+          _source ->
+            Map.put(s, :disabled, false)
         end
       end
-
-    IO.inspect(sources)
 
     render(conn, "index.html",
       rules: rules,

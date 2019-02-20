@@ -32,7 +32,7 @@
       </span>
       <span class="rules">
         <%= label f, :sink, class: "control-label" %>
-        <%= select f, :sink, IO.inspect(Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled])), prompt: "Choose a sink", class: "form-control rules-input" %>
+        <%= select f, :sink, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a sink", class: "form-control rules-input" %>
         <%= error_tag f, :sink %>
       </span>
     </div>
