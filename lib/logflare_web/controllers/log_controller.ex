@@ -19,8 +19,10 @@ defmodule LogflareWeb.LogController do
       case conn.params["source"] == nil do
         true ->
           source_name = conn.params["source_name"]
+
           lookup_or_gen_source_token(source_name)
           |> String.to_atom()
+
         false ->
           String.to_atom(conn.params["source"])
       end
@@ -30,6 +32,7 @@ defmodule LogflareWeb.LogController do
         true ->
           source_table_string = Atom.to_string(source_table)
           Repo.get_by(Source, token: source_table_string)
+
         false ->
           conn.params["source_name"]
       end
@@ -42,42 +45,49 @@ defmodule LogflareWeb.LogController do
   end
 
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
-
     table_info =
       case Repo.get_by(Source, token: Atom.to_string(source_table)) do
         nil ->
           {:ok, table_info} = create_source(source_table, source_name, api_key)
           table_info
+
         table_info ->
           table_info
       end
 
-    rules_query = from r in "rules",
-      where: r.source_id == ^table_info.id,
-      select: %{
-        id: r.id,
-        regex: r.regex,
-        sink: r.sink,
-        sink_id: r.source_id,
-      }
+    rules_query =
+      from(r in "rules",
+        where: r.source_id == ^table_info.id,
+        select: %{
+          id: r.id,
+          regex: r.regex,
+          sink: r.sink,
+          sink_id: r.source_id
+        }
+      )
 
     rules = Repo.all(rules_query)
 
     case rules == [] do
       true ->
         insert_log(source_table, time_event, log_entry)
+
       false ->
-        Enum.map(rules,
-          fn (x) ->
+        Enum.map(
+          rules,
+          fn x ->
             case Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
               true ->
                 {:ok, sink} = Ecto.UUID.load(x.sink)
                 sink_atom = String.to_atom(sink)
                 insert_log(sink_atom, time_event, log_entry)
+
               false ->
                 :ok
             end
-        end)
+          end
+        )
+
         insert_log(source_table, time_event, log_entry)
     end
   end
@@ -88,6 +98,7 @@ defmodule LogflareWeb.LogController do
         source_table
         |> Logflare.Main.new_table()
         |> insert_and_broadcast(time_event, log_entry)
+
       _ ->
         insert_and_broadcast(source_table, time_event, log_entry)
     end
@@ -102,7 +113,12 @@ defmodule LogflareWeb.LogController do
     Counter.incriment(source_table)
 
     broadcast_log_count(source_table)
-    LogflareWeb.Endpoint.broadcast("source:" <> source_table_string, "source:#{source_table_string}:new", payload)
+
+    LogflareWeb.Endpoint.broadcast(
+      "source:" <> source_table_string,
+      "source:#{source_table_string}:new",
+      payload
+    )
   end
 
   def broadcast_log_count(source_table) do
@@ -110,7 +126,11 @@ defmodule LogflareWeb.LogController do
     source_table_string = Atom.to_string(source_table)
     payload = %{log_count: log_count, source_token: source_table_string}
 
-    LogflareWeb.Endpoint.broadcast("dashboard", "dashboard:update", payload)
+    LogflareWeb.Endpoint.broadcast(
+      "dashboard:" <> source_table_string,
+      "dashboard:#{source_table_string}:update",
+      payload
+    )
   end
 
   defp create_source(source_table, source_name, api_key) do
@@ -119,9 +139,9 @@ defmodule LogflareWeb.LogController do
     source = %{token: source_table_string, name: source_name}
 
     Repo.get_by(User, api_key: api_key)
-      |> Ecto.build_assoc(:sources)
-      |> Source.changeset(source)
-      |> Repo.insert()
+    |> Ecto.build_assoc(:sources)
+    |> Source.changeset(source)
+    |> Repo.insert()
   end
 
   defp lookup_or_gen_source_token(source_name) do
@@ -130,9 +150,9 @@ defmodule LogflareWeb.LogController do
     case source do
       nil ->
         Ecto.UUID.generate()
+
       _ ->
         source.token
     end
   end
-
 end

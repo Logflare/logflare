@@ -1,7 +1,7 @@
 defmodule LogflareWeb.DashboardChannel do
   use LogflareWeb, :channel
 
-  def join("dashboard", payload, socket) do
+  def join("dashboard:" <> _account_id, payload, socket) do
     if authorized?(payload) do
       {:ok, socket}
     else

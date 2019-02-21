@@ -2,8 +2,8 @@ defmodule LogflareWeb.UserSocket do
   use Phoenix.Socket
 
   ## Channels
-  channel "source:*", LogflareWeb.SourceChannel
-  channel "dashboard", LogflareWeb.DashboardChannel
+  channel("source:*", LogflareWeb.SourceChannel)
+  channel("dashboard:*", LogflareWeb.DashboardChannel)
 
   ## Transports - Deprecated in Phoenix 1.4
   # transport :websocket, Phoenix.Transports.WebSocket

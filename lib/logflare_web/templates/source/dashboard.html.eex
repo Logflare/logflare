@@ -41,19 +41,24 @@
   <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
 </div>
 
+
+
 <script>
 var clipboard = new ClipboardJS('#api-key');
 
-window.userApiKey = "<%= @user.api_key %>";
+window.userApiKey = '<%= @user.api_key %>';
 window.showingApiKey = false;
 
-document.addEventListener("DOMContentLoaded", function(){
-  window.createDashboardSocket();
-});
+<%= for source <- @sources do %>
+  document.addEventListener('DOMContentLoaded', function(){
+    console.log('<%= Ecto.UUID.load(source.token) |> elem(1) %>')
+    window.createDashboardSocket('<%= Ecto.UUID.load(source.token) |> elem(1) %>');
+  });
+<% end %>
 
 clipboard.on('success', function(e) {
     showApiKey();
-    alert("Copied: " + window.userApiKey);
+    alert('Copied: ' + window.userApiKey);
     e.clearSelection();
 });
 
@@ -64,7 +69,7 @@ clipboard.on('error', function(e) {
 
 function showApiKey() {
   window.showingApiKey = ! window.showingApiKey
-  document.getElementById("api-key").innerHTML = toggleApiKey(window.showingApiKey);
+  document.getElementById('api-key').innerHTML = toggleApiKey(window.showingApiKey);
 }
 
 function toggleApiKey(bool) {
