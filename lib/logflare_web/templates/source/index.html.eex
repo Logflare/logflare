@@ -5,7 +5,6 @@
   <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
   <h2>Edge Logs for Everyone</h2>
   <p class="lead"><code>tail -f</code> your Cloudflare logs for <u>free</u>!</p>
-  <small class="text-uppercase">*** not affiliated with Cloudflare ***</small>
 </div>
 </div>
 
@@ -80,46 +79,15 @@
 </div>
 -->
 
-<h4>5 Minute Setup</h4>
-<p>Just install our Cloudflare Worker and you're good to go!</p>
-<pre class="pre-scrollable">
-  <code>
-    async function handleRequest(event) {
-      const {request} = event;
-      const rMeth = request.method
-      const rUrl = request.url
-      const uAgent = request.headers.get("user-agent")
-      const rHost = request.headers.get("host")
-      const cfRay = request.headers.get("cf-ray")
-      const cIP= request.headers.get("cf-connecting-ip")
-
-      const sourceKey = "YOUR_SOURCE_KEY"
-      const apiKey = "YOUR_API_KEY"
-
-      const response = await fetch(request)
-
-      const statusCode = response.status
-      const contentLength = response.headers.get("content-legth")
-
-      const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
-
-      const init = {
-        method: "POST",
-        headers: { "X-API-KEY": apiKey, "Content-Type": "application/json", "User-Agent": `Cloudflare Worker via ${rHost}` },
-        body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
-      }
-
-      event.waitUntil(fetch("https://logflare.app/api/logs", init))
-
-      return response
-    }
-
-    addEventListener("fetch", event => {
-      event.respondWith(handleRequest(event))
-    })
-  </code>
-</pre>
-
+<h4>Already on Cloudflare?</h4>
+<p>Just install our Cloudflare App and you're good to go!</p>
+<iframe
+  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+  allowTransparency="true"
+  scroll="no"
+  frameBorder="0"
+  style="height: 48px; width: 180px">
+</iframe>
 <h4>Features</h4>
 <ul id="feature-list" class="list-unstyled">
   <li><i class="fas fa-money-bill feature-icons"></i>Free</li>

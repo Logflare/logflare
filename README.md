@@ -10,19 +10,29 @@ Sign up at https://logflare.app.
 
 ## For Cloudflare
 
-You can setup a worker in your own account.
+Install the Cloudflare App.
 
-If you sign up, when you create a new source you can copy the Cloudflare worker code from that page in the app and deploy a worker in your own account. You can copy and paste this without any modification as your API key and source key are customized for you there.
-
-We currently don't have an app on Cloudflare. Working on one though, see the cloudflare-app repo.
+<a href="https://www.cloudflare.com/apps/logflare/install?source=button">
+  <img
+    src="https://install.cloudflareapps.com/install-button.png"
+    alt="Install Logflare with Cloudflare"
+    border="0"
+    width="150">
+</a>
 
 ## For log files
 
-See the logflare-agent repo to send over logs from files. It's an elixir app that watches a file (soon multiple files) and sends over any new lines it finds via an API call.
+See the logflare-agent repo to send over logs from files. It's an elixir app that watches or multiple files and sends over any new lines it finds via an API call.
 
-## Setup
+## Learn more
 
-To start your Phoenix server:
+  * Official website: https://logflare.app
+  * Cloudflare app: https://www.cloudflare.com/apps/logflare/install
+  * Support: https://twitter.com/chasers
+
+## Self hosted
+
+Make sure Erlang, Elixir and Postgres are installed. Clone the repo then start your Phoenix server:
 
   * Install dependencies with `mix deps.get`
   * Create and migrate your database with `mix ecto.create && mix ecto.migrate`
@@ -30,13 +40,3 @@ To start your Phoenix server:
   * Start Phoenix endpoint with `mix phx.server`
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
-
-Ready to run in production? Please [check our deployment guides](http://www.phoenixframework.org/docs/deployment).
-
-## Learn more
-
-  * Official website: http://www.phoenixframework.org/
-  * Guides: http://phoenixframework.org/docs/overview
-  * Docs: https://hexdocs.pm/phoenix
-  * Mailing list: http://groups.google.com/group/phoenix-talk
-  * Source: https://github.com/phoenixframework/phoenix
