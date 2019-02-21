@@ -4,7 +4,7 @@
       <ul>
         <li><a href="javascript:scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
-        <li><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
+        <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
         <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
       </ul>
     </div>
@@ -81,6 +81,73 @@
       <button class="btn btn-primary btn-sm float-right" onclick="copyCode(`curl-code`, `Copied command!`)">Copy Command</button>
   </div>
   <% end %>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade bd-example-modal-lg" id="sourceHelpModal" tabindex="-1" role="dialog" aria-labelledby="sourceHelpModal" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sourceHelpModalLabel">Send Logs to this Source</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <h6>With an API Request</h6>
+        <pre class="pre-scrollable">
+          <code>
+            curl -X "POST" "https://logflare.app/api/logs" \
+              -H 'Content-Type: application/json' \
+              -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN IN FIRST" end %>' \
+              -d $'{
+                "source": "<%= @source.token %>",
+                "log_entry": "This is another log message."
+              }'
+          </code>
+        </pre>
+        <h6>With a Cloudflare Worker</h6>
+        <pre class="pre-scrollable">
+          <code>
+            async function handleRequest(event) {
+              const {request} = event;
+              const rMeth = request.method
+              const rUrl = request.url
+              const uAgent = request.headers.get("user-agent")
+              const rHost = request.headers.get("host")
+              const cfRay = request.headers.get("cf-ray")
+              const cIP= request.headers.get("cf-connecting-ip")
+
+              const sourceKey = "YOUR_SOURCE_KEY"
+              const apiKey = "YOUR_API_KEY"
+
+              const response = await fetch(request)
+
+              const statusCode = response.status
+              const contentLength = response.headers.get("content-legth")
+
+              const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
+
+              const init = {
+                method: "POST",
+                headers: { "X-API-KEY": apiKey, "Content-Type": "application/json", "User-Agent": `Cloudflare Worker via ${rHost}` },
+                body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
+              }
+
+              event.waitUntil(fetch("https://logflare.app/api/logs", init))
+
+              return response
+            }
+
+            addEventListener("fetch", event => {
+              event.respondWith(handleRequest(event))
+            })
+          </code>
+        </pre>
+      </div>
+    </div>
+  </div>
 </div>
 
 
@@ -214,4 +281,3 @@
   }
 
 </script>
-</div>

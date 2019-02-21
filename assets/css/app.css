@@ -11,6 +11,26 @@ body {
  width: 90%;
 }
 
+.modal-content {
+  color: #7EF854;
+  background-color: black;
+}
+
+.modal-header {
+  color: black;
+  background-color: #7EF854;
+}
+
+.modal-header {
+  border-bottom: 0px;
+  border-top-left-radius: 0.1rem;
+  border-top-right-radius: .1rem;
+}
+
+.modal-content {
+  border: 3px solid rgba(0,0,0,.2);
+}
+
 #login {
   max-width: 300px;
 }
