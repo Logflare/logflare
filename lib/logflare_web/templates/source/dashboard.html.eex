@@ -51,7 +51,6 @@ window.showingApiKey = false;
 
 <%= for source <- @sources do %>
   document.addEventListener('DOMContentLoaded', function(){
-    console.log('<%= Ecto.UUID.load(source.token) |> elem(1) %>')
     window.createDashboardSocket('<%= Ecto.UUID.load(source.token) |> elem(1) %>');
   });
 <% end %>
