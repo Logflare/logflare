@@ -24,11 +24,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96x96.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="<%= Routes.static_path(@conn, "/manifest.json") %>">
     <meta name="msapplication-TileColor" content="#7ef854">
     <meta name="msapplication-TileImage" content="/images/ms-icon-144x144.png">
     <meta name="theme-color" content="#7ef854">
-    <link rel="icon" href="/images/favicon.png">
+    <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
 
     <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
@@ -64,7 +64,7 @@
     <nav class="navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @conn.request_path != "/" do %>
         <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
-          <i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
+          <i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small>
         <% end %>
       <% else %>
         <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>

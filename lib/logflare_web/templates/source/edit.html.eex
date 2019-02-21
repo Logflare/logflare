@@ -30,7 +30,6 @@
     </div>
     <%= submit "Generate path", class: "btn btn-primary form-button" %>
   <% end %>
-
 </div>
 
 <script>
