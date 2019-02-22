@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Plugs.SetUser do
+defmodule LogflareWeb.Plugs.SetApiUser do
   import Plug.Conn
 
   alias Logflare.Repo
@@ -9,13 +9,9 @@ defmodule LogflareWeb.Plugs.SetUser do
 
   def call(conn, _params) do
     headers = Enum.into(conn.req_headers, %{})
-    user_id = get_session(conn, :user_id)
     api_key = headers["x-api-key"]
 
     cond do
-      user = user_id && Repo.get(User, user_id) ->
-        assign(conn, :user, user)
-
       user = api_key && Repo.get_by(User, api_key: api_key) ->
         IO.inspect(assign(conn, :user, user))
 

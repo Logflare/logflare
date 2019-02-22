@@ -15,6 +15,7 @@ defmodule LogflareWeb.Router do
 
   pipeline :api do
     plug(:accepts, ["json"])
+    plug(LogflareWeb.Plugs.SetApiUser)
   end
 
   pipeline :require_api_auth do
