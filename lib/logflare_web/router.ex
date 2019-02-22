@@ -52,7 +52,7 @@ defmodule LogflareWeb.Router do
 
   scope "/sources", LogflareWeb do
     pipe_through(:browser)
-    get("/:id/public/:public_token", SourceController, :public)
+    get("/public/:public_token", SourceController, :public)
   end
 
   scope "/sources", LogflareWeb do

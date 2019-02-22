@@ -20,12 +20,12 @@
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
   <%= if @source.public_token != nil do %>
     <div>
-      <code>https://logflare.app/sources/<%= @source.id %>/public/<%= @source.public_token %></code> <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="https://logflare.app/sources/<%= @source.id %>/public/<%= @source.public_token %>">Copy path</button>
+      <code>https://logflare.app/sources/public/<%= @source.public_token %></code> <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="https://logflare.app/sources/public/<%= @source.public_token %>">Copy path</button>
     </div>
   <% end %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn ff -> %>
     <div class="form-group">
-      <%= hidden_input ff, :public_token, value: :crypto.strong_rand_bytes(6) |> Base.url_encode64 |> binary_part(0, 6), class: "form-control" %>
+      <%= hidden_input ff, :public_token, value: :crypto.strong_rand_bytes(12) |> Base.url_encode64, class: "form-control" %>
       <%= error_tag ff, :public_token %>
     </div>
     <%= submit "Generate path", class: "btn btn-primary form-button" %>
