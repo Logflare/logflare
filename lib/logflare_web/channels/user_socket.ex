@@ -11,7 +11,7 @@ defmodule LogflareWeb.UserSocket do
   channel("dashboard:*", LogflareWeb.DashboardChannel)
 
   def connect(%{"token" => "undefined", "public_token" => "undefined"}, socket) do
-    :error
+    {:ok, socket}
   end
 
   def connect(%{"token" => token, "public_token" => public_token}, socket)
@@ -36,6 +36,6 @@ defmodule LogflareWeb.UserSocket do
 
   def id(_socket), do: nil
 
-  def verify_token(token),
+  defp verify_token(token),
     do: Phoenix.Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: @max_age)
 end

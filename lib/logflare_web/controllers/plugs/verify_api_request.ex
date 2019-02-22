@@ -6,11 +6,10 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   alias Logflare.User
   alias Logflare.Source
 
-  def init(_params) do
-
+  def init(_opts) do
   end
 
-  def call(conn, _params) do
+  def call(conn, _opts) do
     headers = Enum.into(conn.req_headers, %{})
     api_key = headers["x-api-key"]
     source = conn.params["source"]
@@ -18,21 +17,23 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     log_entry = conn.params["log_entry"]
 
     conn
-      |> check_api_key(api_key)
-      |> check_log_entry(log_entry)
-      |> check_source_and_name(source, source_name)
-      |> check_source_token(source)
+    |> check_api_key(api_key)
+    |> check_log_entry(log_entry)
+    |> check_source_and_name(source, source_name)
+    |> check_source_token(source)
   end
 
   defp check_api_key(conn, api_key) do
     case Repo.get_by(User, api_key: api_key) do
       nil ->
         message = "Unknown x-api-key."
+
         conn
         |> put_status(403)
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
         |> halt()
+
       _ ->
         conn
     end
@@ -42,11 +43,13 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     case log_entry == nil do
       true ->
         message = "Log entry needed."
+
         conn
         |> put_status(403)
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
         |> halt()
+
       false ->
         conn
     end
@@ -54,13 +57,15 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
 
   defp check_source_and_name(conn, source, source_name) do
     case [source, source_name] do
-      [nil, nil]  ->
+      [nil, nil] ->
         message = "Source or source_name needed."
+
         conn
         |> put_status(403)
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
         |> halt()
+
       _ ->
         conn
     end
@@ -70,20 +75,25 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     cond do
       is_nil(source) ->
         conn
+
       String.length(source) == 36 ->
         case Repo.get_by(Source, token: source) do
           nil ->
             message = "Check your source."
+
             conn
             |> put_status(403)
             |> put_view(LogflareWeb.LogView)
             |> render("index.json", message: message)
             |> halt()
+
           _ ->
             conn
         end
+
       true ->
         message = "Check your source."
+
         conn
         |> put_status(403)
         |> put_view(LogflareWeb.LogView)
@@ -91,5 +101,4 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         |> halt()
     end
   end
-
 end
