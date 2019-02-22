@@ -1,3 +1,9 @@
+<%= if @public_token do %>
+<script>
+  window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>";
+</script>
+<% end %>
+
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
     <div class="log-settings float-right">

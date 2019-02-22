@@ -3,19 +3,20 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
   import Phoenix.Controller
   import Ecto.Query, only: [from: 2]
 
-  alias LogflareWeb.Router.Helpers
+  alias LogflareWeb.Router.Helpers, as: Routes
   alias Logflare.Repo
 
   def init(_params) do
-
   end
 
   def call(conn, _params) do
     user_id = conn.assigns.user.id
 
-    query = from s in "sources",
-          where: s.user_id == ^user_id,
-          select: count(s.id)
+    query =
+      from(s in "sources",
+        where: s.user_id == ^user_id,
+        select: count(s.id)
+      )
 
     sources_count = Repo.one(query)
 
@@ -24,7 +25,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
     else
       conn
       |> put_flash(:error, "You have 100 sources. Delete one first!")
-      |> redirect(to: Helpers.source_path(conn, :dashboard))
+      |> redirect(to: Routes.source_path(conn, :dashboard))
       |> halt()
     end
   end

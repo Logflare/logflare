@@ -39,7 +39,7 @@
 
     <script>
       <%= if @user do %>
-        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, "key", @user.id) %>";
+        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
       <% end %>
     </script>
   </head>

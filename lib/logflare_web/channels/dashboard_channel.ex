@@ -1,16 +1,15 @@
 defmodule LogflareWeb.DashboardChannel do
   use LogflareWeb, :channel
 
-  def join("dashboard:" <> _account_id, payload, socket) do
-    if authorized?(payload) do
+  def join("dashboard:" <> source_token, _payload, socket) do
+    if authorized?(source_token, socket) do
       {:ok, socket}
     else
-      {:error, %{reason: "unauthorized"}}
+      {:error, %{reason: "Not authorized!"}}
     end
   end
 
-  # Add authorization logic here as required.
-  defp authorized?(_payload) do
-    true
+  defp authorized?(source_token, socket) do
+    Enum.map(socket.assigns[:user].sources, & &1.token) |> Enum.member?(source_token)
   end
 end

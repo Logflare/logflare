@@ -77,7 +77,7 @@ defmodule LogflareWeb.SourceController do
 
     table_id = String.to_atom(source.token)
     logs = get_logs(table_id)
-    render(conn, "show.html", logs: logs, source: source)
+    render(conn, "show.html", logs: logs, source: source, public_token: nil)
   end
 
   def public(conn, %{"public_token" => public_token}) do
@@ -92,7 +92,7 @@ defmodule LogflareWeb.SourceController do
       false ->
         table_id = String.to_atom(source.token)
         logs = get_logs(table_id)
-        render(conn, "show.html", logs: logs, source: source)
+        render(conn, "show.html", logs: logs, source: source, public_token: public_token)
     end
   end
 
