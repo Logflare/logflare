@@ -8,7 +8,6 @@ defmodule LogflareWeb.Plugs.SetUser do
   end
 
   def call(conn, _params) do
-    headers = Enum.into(conn.req_headers, %{})
     user_id = get_session(conn, :user_id)
 
     cond do
