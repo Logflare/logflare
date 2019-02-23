@@ -13,7 +13,7 @@ defmodule LogflareWeb.Plugs.SetApiUser do
 
     cond do
       user = api_key && Repo.get_by(User, api_key: api_key) ->
-        IO.inspect(assign(conn, :user, user))
+        assign(conn, :user, user)
 
       true ->
         assign(conn, :user, nil)

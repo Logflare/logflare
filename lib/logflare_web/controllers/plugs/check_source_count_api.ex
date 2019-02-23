@@ -7,19 +7,19 @@ defmodule LogflareWeb.Plugs.CheckSourceCountApi do
   alias Logflare.Repo
   alias Logflare.User
 
-
   def init(_params) do
-
   end
 
   def call(conn, _params) do
     headers = Enum.into(conn.req_headers, %{})
     api_key = headers["x-api-key"]
-    user_id = Repo.get_by(User, api_key: api_key).id
+    user_id = conn.assigns.user.id
 
-    query = from s in "sources",
-          where: s.user_id == ^user_id,
-          select: count(s.id)
+    query =
+      from(s in "sources",
+        where: s.user_id == ^user_id,
+        select: count(s.id)
+      )
 
     sources_count = Repo.one(query)
 
@@ -27,6 +27,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCountApi do
       conn
     else
       message = "You have 100 sources. Delete one first!"
+
       conn
       |> put_status(403)
       |> put_view(LogflareWeb.LogView)
