@@ -17,14 +17,14 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     log_entry = conn.params["log_entry"]
 
     conn
-    |> check_api_key(api_key)
+    |> check_user()
     |> check_log_entry(log_entry)
     |> check_source_and_name(source, source_name)
     |> check_source_token(source)
   end
 
-  defp check_api_key(conn, api_key) do
-    case Repo.get_by(User, api_key: api_key) do
+  defp check_user(conn) do
+    case conn.assigns.user do
       nil ->
         message = "Unknown x-api-key."
 
