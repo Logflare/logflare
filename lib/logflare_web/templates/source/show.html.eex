@@ -4,8 +4,8 @@
       <ul>
         <li><a href="javascript:scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
-        <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
         <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
+        <%= if @logs != [] do %><li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i> <span class="hide-on-mobile">send more logs</a></span></li><% end %>
       </ul>
     </div>
     <h5>~/logs/<span class="text-primary"><%= @source.name %></span</h5>
@@ -95,6 +95,11 @@
         </button>
       </div>
       <div class="modal-body">
+        <h6>With the Cloudflare App</h6>
+        <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no" frameborder="0" style="height: 48px; width: 180px">
+        </iframe>
+        <h6>With the Agent</h6>
+        <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button" %>
         <h6>With an API Request</h6>
         <pre class="pre-scrollable">
           <code>
@@ -107,7 +112,7 @@
               }'
           </code>
         </pre>
-        <h6>With a Cloudflare Worker</h6>
+        <h6>With a Custom Cloudflare Worker</h6>
         <pre class="pre-scrollable">
           <code>
             async function handleRequest(event) {
@@ -119,8 +124,8 @@
               const cfRay = request.headers.get("cf-ray")
               const cIP= request.headers.get("cf-connecting-ip")
 
-              const sourceKey = "YOUR_SOURCE_KEY"
-              const apiKey = "YOUR_API_KEY"
+              const sourceKey = "<%= @source.token %>"
+              const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
 
               const response = await fetch(request)
 
