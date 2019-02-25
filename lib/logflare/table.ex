@@ -1,8 +1,10 @@
 defmodule Logflare.Table do
   use GenServer
 
-  alias Logflare.Counter
+  alias Logflare.TableCounter
   alias LogflareWeb.LogController
+
+  require Logger
 
   # one month
   @ttl 2_592_000_000_000
@@ -16,23 +18,21 @@ defmodule Logflare.Table do
   ## Client
 
   def init(state) do
-    IO.puts("Genserver Started: #{state}")
-
     tab_path = "tables/" <> Atom.to_string(state) <> ".tab"
 
     case :ets.tabfile_info(String.to_charlist(tab_path)) do
       {:ok, info} ->
-        IO.puts("Loaded table!")
+        Logger.info("Loaded table: #{state}")
         :ets.file2tab(String.to_charlist(tab_path))
         log_count = info[:size]
-        Counter.create(state)
-        Counter.incriment(state, log_count)
+        TableCounter.create(state)
+        TableCounter.incriment(state, log_count)
 
       {:error, _reason} ->
-        IO.puts("Created table!")
+        Logger.info("Created table: #{state}")
         table_args = [:named_table, :ordered_set, :public]
         :ets.new(state, table_args)
-        Counter.create(state)
+        TableCounter.create(state)
     end
 
     check_ttl()
@@ -59,7 +59,7 @@ defmodule Logflare.Table do
           # https://github.com/ericmj/ex2ms
 
           :ets.delete(website_table, first)
-          Counter.decriment(website_table)
+          TableCounter.decriment(website_table)
           LogController.broadcast_log_count(website_table)
         end
 
@@ -74,14 +74,14 @@ defmodule Logflare.Table do
 
   def handle_info(:prune, state) do
     website_table = state[:table]
-    {:ok, count} = Counter.log_count(website_table)
+    {:ok, count} = TableCounter.log_count(website_table)
 
     case count > 1000 do
       true ->
         for _log <- 1001..count do
           log = :ets.first(website_table)
           :ets.delete(website_table, log)
-          Counter.decriment(website_table)
+          TableCounter.decriment(website_table)
           LogController.broadcast_log_count(website_table)
         end
 

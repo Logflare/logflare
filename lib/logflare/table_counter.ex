@@ -1,4 +1,4 @@
-defmodule Logflare.Counter do
+defmodule Logflare.TableCounter do
   use GenServer
 
   require Logger

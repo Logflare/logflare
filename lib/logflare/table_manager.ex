@@ -1,9 +1,11 @@
-defmodule Logflare.Main do
+defmodule Logflare.TableManager do
   use GenServer
 
   alias Logflare.Repo
 
   import Ecto.Query, only: [from: 2]
+
+  require Logger
 
   def start_link do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -21,7 +23,7 @@ defmodule Logflare.Main do
   end
 
   def init(_state) do
-    IO.puts("Genserver Started: #{__MODULE__}")
+    Logger.info("Table manager started!")
 
     query =
       from(s in "sources",

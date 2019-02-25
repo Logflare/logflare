@@ -6,8 +6,9 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.Counter
+  alias Logflare.TableCounter
   alias Logflare.SystemCounter
+  alias Logflare.TableManager
 
   @system_counter :total_logs_logged
 
@@ -99,7 +100,7 @@ defmodule LogflareWeb.LogController do
     case :ets.info(source_table) do
       :undefined ->
         source_table
-        |> Logflare.Main.new_table()
+        |> TableManager.new_table()
         |> insert_and_broadcast(time_event, log_entry)
 
       _ ->
@@ -113,11 +114,11 @@ defmodule LogflareWeb.LogController do
     payload = %{timestamp: timestamp, log_message: log_entry}
 
     :ets.insert(source_table, {time_event, payload})
-    Counter.incriment(source_table)
+    TableCounter.incriment(source_table)
     SystemCounter.incriment(@system_counter)
 
     broadcast_log_count(source_table)
-    broadcast_total_log_count
+    broadcast_total_log_count()
 
     LogflareWeb.Endpoint.broadcast(
       "source:" <> source_table_string,
@@ -127,7 +128,7 @@ defmodule LogflareWeb.LogController do
   end
 
   def broadcast_log_count(source_table) do
-    {:ok, log_count} = Counter.log_count(source_table)
+    {:ok, log_count} = TableCounter.log_count(source_table)
     source_table_string = Atom.to_string(source_table)
     payload = %{log_count: log_count, source_token: source_table_string}
 
