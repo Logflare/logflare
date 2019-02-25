@@ -27,7 +27,7 @@
       <%= error_tag f, :source %>
       <span class="rules">
         <%= label f, :regex, class: "control-label" %>
-        <%= text_input f, :regex, placeholder: ".*Googlebot.*", class: "form-control" %>
+        <%= text_input f, :regex, placeholder: "\\| 4.. \\|", class: "form-control" %>
         <%= error_tag f, :regex %>
       </span>
       <span class="rules">
@@ -35,6 +35,9 @@
         <%= select f, :sink, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a sink", class: "form-control rules-input" %>
         <%= error_tag f, :sink %>
       </span>
+      <small class="form-text text-muted">
+        <code>\| 4.. \|</code> matches all 4xx requests. <code>Googlebot</code> will match all Googlebot requests.
+      </small>
     </div>
 
     <%= submit "Add rule", class: "btn btn-primary" %>
