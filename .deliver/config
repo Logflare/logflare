@@ -20,7 +20,7 @@ pre_erlang_get_and_update_deps() {
 }
 
 pre_erlang_clean_compile() {
-  status "Preparing assets with: brunch build and phx.digest"
+  status "Preparing assets with: Webpack and phx.digest"
   __sync_remote "
     # runs the commands on the build host
     [ -f ~/.profile ] && source ~/.profile # load profile (optional)
@@ -37,8 +37,8 @@ pre_erlang_clean_compile() {
     cd 'assets'
     npm install
 
-    # building brunch
-    node node_modules/brunch/bin/brunch build --production
+    # building
+    node_modules/.bin/webpack --mode production --silent
 
     # run your custom task
     cd '$BUILD_AT'
