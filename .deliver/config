@@ -33,9 +33,9 @@ pre_erlang_clean_compile() {
 
     mkdir -p priv/static # required by the phoenix.digest task
 
-    # installing npm dependencies
+    # installing yarn dependencies
     cd 'assets'
-    npm install
+    yarn
 
     # building
     node_modules/.bin/webpack --mode production --silent
