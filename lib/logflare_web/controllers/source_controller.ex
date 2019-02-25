@@ -8,9 +8,13 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
+  alias Logflare.SystemCounter
+
+  @system_counter :total_logs_logged
 
   def index(conn, _params) do
-    render(conn, "index.html")
+    {:ok, log_count} = SystemCounter.log_count(@system_counter)
+    render(conn, "index.html", log_count: log_count)
   end
 
   def dashboard(conn, _params) do

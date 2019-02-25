@@ -9,6 +9,7 @@ defmodule LogflareWeb.UserSocket do
 
   channel("source:*", LogflareWeb.SourceChannel)
   channel("dashboard:*", LogflareWeb.DashboardChannel)
+  channel("everyone", LogflareWeb.EveryoneChannel)
 
   def connect(%{"token" => "undefined", "public_token" => "undefined"}, socket) do
     {:ok, socket}

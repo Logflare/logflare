@@ -78,7 +78,10 @@
   <hr class="featurette-divider">
 </div>
 -->
-
+<blockquote class="blockquote text-center">
+  <p class="mb-0" id="total-logged"><%= @log_count %></p>
+  <footer class="blockquote-footer">Logs logged to date</footer>
+</blockquote>
 <h4>Already on Cloudflare?</h4>
 <p>Just install our Cloudflare App and you're good to go!</p>
 <iframe
@@ -88,6 +91,7 @@
   frameBorder="0"
   style="height: 48px; width: 180px">
 </iframe>
+
 <h4>Features</h4>
 <ul id="feature-list" class="list-unstyled">
   <li><i class="fas fa-money-bill feature-icons"></i>Free</li>
@@ -147,3 +151,8 @@
 </div>
 </div>
 </div>
+<script>
+  document.addEventListener("DOMContentLoaded", function(){
+    window.createEveryoneSocket();
+  });
+</script>

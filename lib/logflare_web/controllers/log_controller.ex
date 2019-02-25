@@ -7,6 +7,9 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.Counter
+  alias Logflare.SystemCounter
+
+  @system_counter :total_logs_logged
 
   def create(conn, %{"log_entry" => log_entry}) do
     monotime = System.monotonic_time(:nanosecond)
@@ -111,8 +114,10 @@ defmodule LogflareWeb.LogController do
 
     :ets.insert(source_table, {time_event, payload})
     Counter.incriment(source_table)
+    SystemCounter.incriment(@system_counter)
 
     broadcast_log_count(source_table)
+    broadcast_total_log_count
 
     LogflareWeb.Endpoint.broadcast(
       "source:" <> source_table_string,
@@ -131,6 +136,13 @@ defmodule LogflareWeb.LogController do
       "dashboard:#{source_table_string}:update",
       payload
     )
+  end
+
+  def broadcast_total_log_count() do
+    {:ok, log_count} = SystemCounter.log_count(@system_counter)
+    payload = %{total_logs_logged: log_count}
+
+    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 
   defp create_source(source_table, source_name, api_key) do

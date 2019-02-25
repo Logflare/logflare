@@ -10,6 +10,7 @@ defmodule Logflare.Application do
       supervisor(Logflare.Periodically, []),
       # init counter before main as main calls counter through table create
       supervisor(Logflare.Counter, []),
+      supervisor(Logflare.SystemCounter, []),
       supervisor(Logflare.Main, []),
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
