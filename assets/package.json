@@ -10,14 +10,15 @@
     "phoenix_html": "file:../deps/phoenix_html"
   },
   "devDependencies": {
-    "@fortawesome/fontawesome-free": "^5.1.0",
     "@babel/core": "^7.0.0",
     "@babel/preset-env": "^7.0.0",
+    "@fortawesome/fontawesome-free": "^5.1.0",
     "babel-loader": "^8.0.0",
     "bootstrap": "4.1.2",
     "copy-webpack-plugin": "^4.5.0",
     "css-loader": "^0.28.11",
     "file-loader": "^1.1.11",
+    "imports-loader": "^0.8.0",
     "jquery": "^3.3.1",
     "mini-css-extract-plugin": "^0.4.0",
     "node-sass": "^4.9.0",
