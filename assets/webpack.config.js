@@ -80,7 +80,8 @@ module.exports = (env, options) => ({
     new Webpack.ProvidePlugin({
       $: 'jquery',
       jQuery: 'jquery',
-      'window.jQuery': 'jquery'
+      'window.jQuery': 'jquery',
+      dateFns: 'date-fns'
 })
   ]
 });

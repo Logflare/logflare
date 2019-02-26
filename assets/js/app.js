@@ -7,3 +7,5 @@ import socket from "./socket"
 import 'bootstrap'
 
 global.$ = global.jQuery = $;
+
+global.dateFns = dateFns;
