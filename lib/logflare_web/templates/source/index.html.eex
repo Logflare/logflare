@@ -79,8 +79,8 @@
 </div>
 -->
 <blockquote class="blockquote text-center">
-  <p class="mb-0" id="total-logged"><%= @log_count %></p>
-  <footer class="blockquote-footer">Logs logged to date</footer>
+  <p class="mb-0" id="total-logged"><span><%= @log_count %></span></p>
+  <footer class="blockquote-footer">logs logged to date</footer>
 </blockquote>
 <h4>Already on Cloudflare?</h4>
 <p>Just install our Cloudflare App and you're good to go!</p>

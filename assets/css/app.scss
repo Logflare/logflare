@@ -16,6 +16,7 @@ body {
 .blockquote {
   margin-top: 2em;
   margin-bottom: 2em;
+  font-size: 1.75em;
 }
 
 .modal-content {
@@ -455,5 +456,54 @@ mark {
   }
   100% {
     background-color: #92DF78;
+  }
+}
+
+.flash-text {
+  animation: flashText ease 1s;
+  -webkit-animation: flashText ease 1s;
+  -moz-animation: flashText ease 1s;
+  -o-animation: flashText ease 1s;
+  -ms-animation: flashText ease 1s;
+}
+
+
+@keyframes flashText{
+  0% {
+    color: #00ccff;
+  }
+  100% {
+  }
+}
+
+@-moz-keyframes flashText {
+  0% {
+    color: #00ccff;
+  }
+  100% {
+  }
+}
+
+@-webkit-keyframes flashText {
+  0% {
+    color: #00ccff;
+  }
+  100% {
+  }
+}
+
+@-o-keyframes flashText {
+  0% {
+    color: #00ccff;
+  }
+  100% {
+  }
+}
+
+@-ms-keyframes flashText {
+  0% {
+    color: #00ccff;
+  }
+  100% {
   }
 }

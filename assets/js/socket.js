@@ -63,7 +63,7 @@ function createEveryoneSocket() {
 function swapCount(event) {
   var counter = document.getElementById('total-logged');
 
-  counter.innerHTML = `${event.total_logs_logged}`;
+  counter.innerHTML = `<span class="flash-text">${event.total_logs_logged}</span>`;
 }
 
 window.createEveryoneSocket = createEveryoneSocket;
