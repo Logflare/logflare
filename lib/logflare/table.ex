@@ -1,4 +1,9 @@
 defmodule Logflare.Table do
+  @moduledoc """
+  Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
+  things in the table. Handles loading the table from the disk if found on startup.
+  """
+
   use GenServer
 
   alias Logflare.TableCounter
@@ -23,6 +28,7 @@ defmodule Logflare.Table do
     case :ets.tabfile_info(String.to_charlist(tab_path)) do
       {:ok, info} ->
         Logger.info("Loaded table: #{state}")
+        Logger.info("#{__MODULE__}")
         :ets.file2tab(String.to_charlist(tab_path))
         log_count = info[:size]
         TableCounter.create(state)
