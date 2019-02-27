@@ -14,10 +14,18 @@
   <ul class="list-group">
     <%= for source <- @sources do %>
       <li class="list-group-item">
-
+        <div>
+          <div class="float-right">
+            <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
+              <i class="fas fa-edit"></i>
+            <% end %>
+            <%= link to: Routes.source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
+              <i class="fa fa-trash"></i>
+            <% end %>
+          </div>
         <div class="source-link word-break-all">
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
-          <span id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
+          <span id="<%= source.token %>">
             <small class="my-badge">
               <%= if source.log_count == :undefined  do  %>
               0
@@ -27,14 +35,12 @@
             </small>
           </span>
         </div>
-        <div class="float-right">
-          <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
-            <i class="fas fa-edit"></i>
-          <% end %>
-          <%= link to: Routes.source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
-            <i class="fa fa-trash"></i>
-          <% end %>
-        </div>
+      </div>
+      <div>
+        <small class="">
+          events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
+        </small>
+      </div>
       </li>
     <% end %>
   </ul>
@@ -51,7 +57,7 @@ window.showingApiKey = false;
 
 <%= for source <- @sources do %>
   document.addEventListener('DOMContentLoaded', function(){
-    window.createDashboardSocket('<%= Ecto.UUID.load(source.token) |> elem(1) %>');
+    window.createDashboardSocket('<%= source.token %>');
   });
 <% end %>
 

@@ -1,4 +1,9 @@
 defmodule Logflare.Table do
+  @moduledoc """
+  Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
+  things in the table. Handles loading the table from the disk if found on startup.
+  """
+
   use GenServer
 
   alias Logflare.TableCounter
@@ -28,11 +33,15 @@ defmodule Logflare.Table do
         TableCounter.create(state)
         TableCounter.incriment(state, log_count)
 
+        Logflare.TableRateCounter.start_link(state, log_count)
+
       {:error, _reason} ->
         Logger.info("Created table: #{state}")
         table_args = [:named_table, :ordered_set, :public]
         :ets.new(state, table_args)
         TableCounter.create(state)
+
+        Logflare.TableRateCounter.start_link(state, 0)
     end
 
     check_ttl()
