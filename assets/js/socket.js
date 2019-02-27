@@ -40,13 +40,20 @@ function createDashboardSocket(sourceToken) {
     .receive("ok", resp => { console.log("Dashboard socket joined successfully", resp) })
     .receive("error", resp => { console.log("Unable to join", resp) })
 
-  channel.on(`dashboard:${sourceToken}:update`, swapBadge);
+  channel.on(`dashboard:${sourceToken}:log_count`, swapBadge);
+  channel.on(`dashboard:${sourceToken}:rate`, swapRate);
 };
 
 function swapBadge(event) {
   var badge = document.getElementById(event.source_token);
 
   badge.innerHTML = `<small class="my-badge fade-in">${event.log_count}</small>`;
+}
+
+function swapRate(event) {
+  var rate = document.getElementById(`${event.source_token}-rate`);
+
+  rate.innerHTML = `${event.rate}`
 }
 
 window.createDashboardSocket = createDashboardSocket;

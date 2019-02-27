@@ -1,4 +1,8 @@
 defmodule Logflare.TableManager do
+  @moduledoc """
+  Boots up a gen server per source table. Keeps a list of active tables in state. 
+  """
+
   use GenServer
 
   alias Logflare.Repo

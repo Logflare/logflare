@@ -34,7 +34,12 @@ defmodule LogflareWeb.SourceController do
     sources =
       for source <- Repo.all(query) do
         log_count = get_log_count(source)
+        rate = get_rate(source)
+        {:ok, token} = Ecto.UUID.load(source.token)
+
         Map.put(source, :log_count, log_count)
+        |> Map.put(:rate, rate)
+        |> Map.put(:token, token)
       end
 
     render(conn, "dashboard.html", sources: sources)
@@ -171,5 +176,11 @@ defmodule LogflareWeb.SourceController do
       _ ->
         log_table_info[:size]
     end
+  end
+
+  defp get_rate(source) do
+    {:ok, token} = Ecto.UUID.load(source.token)
+    website_table = :"#{token}"
+    Logflare.TableRateCounter.get_rate(website_table)
   end
 end

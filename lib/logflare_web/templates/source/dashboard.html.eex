@@ -17,7 +17,7 @@
 
         <div class="source-link word-break-all">
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
-          <span id="<%= Ecto.UUID.load(source.token) |> elem(1) %>">
+          <span id="<%= source.token %>">
             <small class="my-badge">
               <%= if source.log_count == :undefined  do  %>
               0
@@ -35,6 +35,9 @@
             <i class="fa fa-trash"></i>
           <% end %>
         </div>
+        <small class="">
+          events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
+        </small>
       </li>
     <% end %>
   </ul>
@@ -51,7 +54,7 @@ window.showingApiKey = false;
 
 <%= for source <- @sources do %>
   document.addEventListener('DOMContentLoaded', function(){
-    window.createDashboardSocket('<%= Ecto.UUID.load(source.token) |> elem(1) %>');
+    window.createDashboardSocket('<%= source.token %>');
   });
 <% end %>
 

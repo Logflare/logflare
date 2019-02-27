@@ -134,7 +134,7 @@ defmodule LogflareWeb.LogController do
 
     LogflareWeb.Endpoint.broadcast(
       "dashboard:" <> source_table_string,
-      "dashboard:#{source_table_string}:update",
+      "dashboard:#{source_table_string}:log_count",
       payload
     )
   end
