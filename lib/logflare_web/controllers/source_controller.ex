@@ -181,6 +181,14 @@ defmodule LogflareWeb.SourceController do
   defp get_rate(source) do
     {:ok, token} = Ecto.UUID.load(source.token)
     website_table = :"#{token}"
-    Logflare.TableRateCounter.get_rate(website_table)
+    log_table_info = :ets.info(website_table)
+
+    case log_table_info do
+      :undefined ->
+        0
+
+      _ ->
+        Logflare.TableRateCounter.get_rate(website_table)
+    end
   end
 end
