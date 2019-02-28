@@ -17,7 +17,8 @@ function renderLog(event) {
   const renderedLog = logTemplate(event)
 
   document.querySelector('#no-logs-warning').innerHTML = '';
-  document.querySelector('.list-unstyled').innerHTML += renderedLog;
+  document.getElementById('logs-list').appendChild(renderedLog)
+
   dateAddNew();
   if (window.scrollTracker == true) {
     scrollBottom();
@@ -25,11 +26,19 @@ function renderLog(event) {
 }
 
 function logTemplate(event) {
-  return `
-    <li>
-      <mark class="new-log">${event.timestamp}</mark> ${event.log_message}
-    </li>
-  `;
+  var timestamp = `${event.timestamp}`
+  var logMessage = ` ${event.log_message}`
+  var newLi = document.createElement("li");
+  var newMark = document.createElement("mark");
+  var newTimestamp = document.createTextNode(timestamp);
+  var newLogMessage = document.createTextNode(logMessage);
+
+  newMark.appendChild(newTimestamp)
+  newMark.className = 'new-log';
+  newLi.appendChild(newMark)
+  newLi.appendChild(newLogMessage)
+
+  return newLi
 }
 
 window.createSocket = createSocket;

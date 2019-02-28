@@ -20,7 +20,7 @@
 </div>
 
 <div class="container mx-auto" id="console-text">
-<ul class="list-unstyled console-text-list">
+<ul id="logs-list" class="list-unstyled console-text-list">
   <%= for log <- @logs do %>
     <li>
       <mark class="log-datestamp"><%= log.timestamp %></mark> <%= log.log_message %>
