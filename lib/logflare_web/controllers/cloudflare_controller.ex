@@ -21,6 +21,7 @@ defmodule LogflareWeb.CloudflareController do
     init_json(conn)
     |> reset_options
     |> reset_sources
+    |> reset_links
   end
 
   defp build_response(conn, user_token) do
@@ -45,6 +46,18 @@ defmodule LogflareWeb.CloudflareController do
     install = %{"install" => {}}
     request = conn.params["install"]
 
+    links = %{
+      "links" => [
+        %{
+          "title" => "Logflare Dashboard",
+          "description" => "Signed in successfully! See your logs at your Logflare dashboard.",
+          "href" => "https://logflare.app/dashboard"
+        }
+      ]
+    }
+
+    request = Map.merge(request, links)
+
     put_in(install, ["install"], request)
   end
 
@@ -63,6 +76,18 @@ defmodule LogflareWeb.CloudflareController do
     {_pop, response} = pop_in(response, ["install", "options", "logflare"])
 
     put_in(response, ["install", "options", "source"], "signin")
+  end
+
+  defp reset_links(response) do
+    links = [
+      %{
+        "title" => "Logflare",
+        "description" => "Need help?",
+        "href" => "https://logflare.app/"
+      }
+    ]
+
+    put_in(response, ["install", "links"], links)
   end
 
   defp reset_sources(response) do
