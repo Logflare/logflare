@@ -27,17 +27,16 @@
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
           <span id="<%= source.token %>">
             <small class="my-badge">
-              <%= if source.log_count == :undefined  do  %>
-              0
-              <% else %>
               <%= source.log_count %>
-              <% end %>
             </small>
           </span>
         </div>
       </div>
       <div>
-        <small class="">
+        <small class="source-details">
+          id: <%= source.token %>
+        </small>
+        <small class="source-details">
           events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
         </small>
       </div>
