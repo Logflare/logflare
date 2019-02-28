@@ -12,7 +12,7 @@
 <div class="value">
 <h4>Why?</h4>
 <p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
-<%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/Fre52A", class: "btn btn-secondary", role: "button" %>
+<%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/0dx0XgzHL91o1WtV", class: "btn btn-secondary", role: "button" %>
 </div>
 
 <!--
