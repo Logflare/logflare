@@ -16,7 +16,7 @@ defmodule LogflareWeb.UserSocket do
   end
 
   def connect(%{"token" => token, "public_token" => public_token}, socket)
-      when token == "undefined" do
+      when public_token != "undefined" do
     if {:ok, public_token} = verify_token(public_token) do
       {:ok, assign(socket, :public_token, public_token)}
     else
@@ -25,7 +25,7 @@ defmodule LogflareWeb.UserSocket do
   end
 
   def connect(%{"token" => token, "public_token" => public_token}, socket)
-      when public_token == "undefined" do
+      when token != "undefined" do
     with {:ok, user_id} <- verify_token(token),
          user <- Repo.get(User, user_id) |> Repo.preload(:sources) do
       {:ok, assign(socket, :user, user)}
