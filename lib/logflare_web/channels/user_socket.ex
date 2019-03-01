@@ -11,11 +11,15 @@ defmodule LogflareWeb.UserSocket do
   channel("dashboard:*", LogflareWeb.DashboardChannel)
   channel("everyone", LogflareWeb.EveryoneChannel)
 
+  def connect(%{"token" => "undefined"}, socket) do
+    {:ok, socket}
+  end
+
   def connect(%{"token" => "undefined", "public_token" => "undefined"}, socket) do
     {:ok, socket}
   end
 
-  def connect(%{"token" => token, "public_token" => public_token}, socket)
+  def connect(%{"token" => _token, "public_token" => public_token}, socket)
       when public_token != "undefined" do
     if {:ok, public_token} = verify_token(public_token) do
       {:ok, assign(socket, :public_token, public_token)}
@@ -24,7 +28,7 @@ defmodule LogflareWeb.UserSocket do
     end
   end
 
-  def connect(%{"token" => token, "public_token" => public_token}, socket)
+  def connect(%{"token" => token, "public_token" => _public_token}, socket)
       when token != "undefined" do
     with {:ok, user_id} <- verify_token(token),
          user <- Repo.get(User, user_id) |> Repo.preload(:sources) do
