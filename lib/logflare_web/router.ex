@@ -91,6 +91,7 @@ defmodule LogflareWeb.Router do
   scope "/api", LogflareWeb do
     pipe_through(:api)
     post("/cloudflare/event", CloudflareController, :event)
+    post("/v1/cloudflare/event", CloudflareControllerV1, :event)
   end
 
   scope "/api", LogflareWeb do
