@@ -52,7 +52,7 @@ defmodule LogflareWeb.CloudflareControllerV1 do
     links = %{
       "links" => [
         %{
-          "title" => "Logflare Dashboard",
+          "title" => "Logflare dashboard",
           "description" => "Signed in successfully! See your logs at your Logflare dashboard.",
           "href" => "https://logflare.app/dashboard"
         }
