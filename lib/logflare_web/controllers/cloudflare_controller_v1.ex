@@ -72,34 +72,34 @@ defmodule LogflareWeb.CloudflareControllerV1 do
     options = response["install"]["options"]
     logflare = %{"logflare" => %{"api_key" => api_key}}
 
-    headers = %{
-      "headers" => [
-        %{"header" => "rMeth"},
-        %{"header" => "statusCode"},
-        %{"header" => "cIP"},
-        %{"header" => "cfRay"},
-        %{"header" => "rUrl"},
-        %{"header" => "uAgent"}
+    metadata = %{
+      "metadata" => [
+        %{"field" => "rMeth"},
+        %{"field" => "statusCode"},
+        %{"field" => "cIP"},
+        %{"field" => "cfRay"},
+        %{"field" => "rUrl"},
+        %{"field" => "uAgent"}
       ]
     }
 
     Map.merge(options, logflare)
-    |> Map.merge(headers)
+    |> Map.merge(metadata)
   end
 
   defp build_properties(response) do
     properties = response["install"]["schema"]["properties"]
 
-    headers = %{
-      "headers" => %{
-        "title" => "Headers",
+    metadata = %{
+      "metadata" => %{
+        "title" => "Request Metadata",
         "type" => "array",
         "description" => "Customise your log messages. Add or remove fields and set the order.",
         "items" => %{
           "type" => "object",
           "properties" => %{
-            "header" => %{
-              "title" => "Header",
+            "field" => %{
+              "title" => "Field",
               "type" => "string",
               "enum" => [
                 "rMeth",
@@ -109,7 +109,20 @@ defmodule LogflareWeb.CloudflareControllerV1 do
                 "cIP",
                 "uAgent",
                 "cfCacheStatus",
-                "contentLength"
+                "contentLength",
+                "contentType",
+                "responseConnection",
+                "requestConnection",
+                "cacheControl",
+                "acceptRanges",
+                "expectCt",
+                "expires",
+                "lastModified",
+                "vary",
+                "server",
+                "etag",
+                "date",
+                "transferEncoding"
               ],
               "enumNames" => %{
                 "rMeth" => "Request Method",
@@ -119,7 +132,20 @@ defmodule LogflareWeb.CloudflareControllerV1 do
                 "cIP" => "Connecting IP",
                 "uAgent" => "User Agent",
                 "cfCacheStatus" => "Cache Status",
-                "contentLength" => "Content Length"
+                "contentLength" => "Content Length",
+                "contentType" => "Content Type",
+                "responseConnection" => "Response Connection",
+                "requestConnection" => "Request Connection",
+                "cacheControl" => "Cache Control",
+                "acceptRanges" => "Accept Ranges",
+                "expectCt" => "Expect CT",
+                "expires" => "Expires",
+                "lastModified" => "Last Modified",
+                "vary" => "Vary",
+                "server" => "Server",
+                "etag" => "Etag",
+                "date" => "Date",
+                "transferEncoding" => "Transfer Encoding"
               },
               "default" => "statusCode"
             }
@@ -128,18 +154,18 @@ defmodule LogflareWeb.CloudflareControllerV1 do
       }
     }
 
-    Map.merge(properties, headers)
+    Map.merge(properties, metadata)
   end
 
   defp reset_properties(response) do
-    headers = %{}
+    metadata = %{}
 
-    put_in(response, ["install", "schema", "properties", "headers"], headers)
+    put_in(response, ["install", "schema", "properties", "metadata"], metadata)
   end
 
   defp reset_options(response) do
     {_pop, response} = pop_in(response, ["install", "options", "logflare"])
-    {_pop, response} = pop_in(response, ["install", "options", "headers"])
+    {_pop, response} = pop_in(response, ["install", "options", "metadata"])
 
     put_in(response, ["install", "options", "source"], "signin")
   end
