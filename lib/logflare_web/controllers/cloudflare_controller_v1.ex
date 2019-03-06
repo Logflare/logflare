@@ -72,19 +72,19 @@ defmodule LogflareWeb.CloudflareControllerV1 do
     options = response["install"]["options"]
     logflare = %{"logflare" => %{"api_key" => api_key}}
 
-    # headers = %{
-    #   "headers" => [
-    #     %{"header" => "rMeth"},
-    #     %{"header" => "statusCode"},
-    #     %{"header" => "cIP"},
-    #     %{"header" => "cfRay"},
-    #     %{"header" => "rUrl"},
-    #     %{"header" => "uAgent"}
-    #   ]
-    # }
+    headers = %{
+      "headers" => [
+        %{"header" => "rMeth"},
+        %{"header" => "statusCode"},
+        %{"header" => "cIP"},
+        %{"header" => "cfRay"},
+        %{"header" => "rUrl"},
+        %{"header" => "uAgent"}
+      ]
+    }
 
     Map.merge(options, logflare)
-    # |> Map.merge(headers)
+    |> Map.merge(headers)
   end
 
   defp build_properties(response) do
