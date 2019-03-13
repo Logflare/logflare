@@ -9,6 +9,7 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Repo
   alias LogflareWeb.AuthController
   alias Logflare.SystemCounter
+  alias Logflare.SourceData
 
   @system_counter :total_logs_logged
 
@@ -33,8 +34,8 @@ defmodule LogflareWeb.SourceController do
 
     sources =
       for source <- Repo.all(query) do
-        log_count = get_log_count(source)
-        rate = get_rate(source)
+        log_count = SourceData.get_log_count(source)
+        rate = SourceData.get_rate(source)
         {:ok, token} = Ecto.UUID.load(source.token)
 
         Map.put(source, :log_count, log_count)
@@ -85,7 +86,7 @@ defmodule LogflareWeb.SourceController do
     source = Repo.get(Source, source_id)
 
     table_id = String.to_atom(source.token)
-    logs = get_logs(table_id)
+    logs = SourceData.get_logs(table_id)
     render(conn, "show.html", logs: logs, source: source, public_token: nil)
   end
 
@@ -100,7 +101,7 @@ defmodule LogflareWeb.SourceController do
 
       false ->
         table_id = String.to_atom(source.token)
-        logs = get_logs(table_id)
+        logs = SourceData.get_logs(table_id)
         render(conn, "show.html", logs: logs, source: source, public_token: public_token)
     end
   end
@@ -154,41 +155,5 @@ defmodule LogflareWeb.SourceController do
     conn
     |> put_flash(:info, "Source deleted!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
-  end
-
-  defp get_logs(table_id) do
-    case :ets.info(table_id) do
-      :undefined ->
-        []
-
-      _ ->
-        List.flatten(:ets.match(table_id, {:_, :"$1"}))
-    end
-  end
-
-  defp get_log_count(source) do
-    log_table_info = :ets.info(String.to_atom(elem(Ecto.UUID.load(source.token), 1)))
-
-    case log_table_info do
-      :undefined ->
-        0
-
-      _ ->
-        log_table_info[:size]
-    end
-  end
-
-  defp get_rate(source) do
-    {:ok, token} = Ecto.UUID.load(source.token)
-    website_table = :"#{token}"
-    log_table_info = :ets.info(website_table)
-
-    case log_table_info do
-      :undefined ->
-        0
-
-      _ ->
-        Logflare.TableRateCounter.get_rate(website_table)
-    end
   end
 end
