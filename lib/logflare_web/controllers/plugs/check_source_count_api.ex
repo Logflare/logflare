@@ -3,16 +3,14 @@ defmodule LogflareWeb.Plugs.CheckSourceCountApi do
   import Phoenix.Controller
   import Ecto.Query, only: [from: 2]
 
-  alias LogflareWeb.Router.Helpers
   alias Logflare.Repo
-  alias Logflare.User
 
   def init(_params) do
   end
 
   def call(conn, _params) do
     headers = Enum.into(conn.req_headers, %{})
-    api_key = headers["x-api-key"]
+
     user_id = conn.assigns.user.id
 
     query =

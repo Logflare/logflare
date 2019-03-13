@@ -3,15 +3,13 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   import Phoenix.Controller
 
   alias Logflare.Repo
-  alias Logflare.User
+
   alias Logflare.Source
 
   def init(_opts) do
   end
 
   def call(conn, _opts) do
-    headers = Enum.into(conn.req_headers, %{})
-    api_key = headers["x-api-key"]
     source = conn.params["source"]
     source_name = conn.params["source_name"]
     log_entry = conn.params["log_entry"]
