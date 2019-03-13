@@ -31,6 +31,10 @@ defmodule LogflareWeb.Router do
     plug(:put_secure_browser_headers)
   end
 
+  pipeline :check_admin do
+    plug(LogflareWeb.Plugs.CheckAdmin)
+  end
+
   scope "/" do
     pipe_through(:oauth_public)
     oauth_routes(:public)
@@ -72,6 +76,12 @@ defmodule LogflareWeb.Router do
     get("/edit", UserController, :edit)
     put("/edit", UserController, :update)
     delete("/", UserController, :delete)
+  end
+
+  scope "/admin", LogflareWeb do
+    pipe_through([:browser, :check_admin])
+
+    get("/dashboard", AdminController, :dashboard)
   end
 
   scope "/auth", LogflareWeb do

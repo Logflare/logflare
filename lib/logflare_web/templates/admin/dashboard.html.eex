@@ -1,0 +1,53 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li></li>
+      </ul>
+    </div>
+    <h5>~/admin</h5>
+  </div>
+</div>
+<div class="container mx-auto">
+  <ul class="list-group">
+    <%= for source <- @sources do %>
+      <li class="list-group-item">
+        <div>
+          <div class="float-right">
+            <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
+              <i class="fas fa-edit"></i>
+            <% end %>
+            <%= link to: Routes.source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
+              <i class="fa fa-trash"></i>
+            <% end %>
+          </div>
+        <div class="source-link word-break-all">
+          <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
+          <span id="<%= source.token %>">
+            <small class="my-badge">
+              <%= source.log_count %>
+            </small>
+          </span>
+        </div>
+      </div>
+      <div>
+        <small class="source-details">
+          id: <%= source.token %>
+        </small>
+        <small class="source-details">
+          events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
+        </small>
+      </div>
+      </li>
+    <% end %>
+  </ul>
+  <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
+</div>
+
+<script>
+<%= for source <- @sources do %>
+  document.addEventListener('DOMContentLoaded', function(){
+    window.createDashboardSocket('<%= source.token %>');
+  });
+<% end %>
+</script>
