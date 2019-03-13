@@ -4,7 +4,7 @@ defmodule LogflareWeb.AdminController do
 
   alias Logflare.Source
   alias Logflare.Repo
-  alias Logflare.SourceMetaData
+  alias Logflare.SourceData
 
   def dashboard(conn, _params) do
     query =
@@ -19,8 +19,8 @@ defmodule LogflareWeb.AdminController do
 
     sources =
       for source <- Repo.all(query) do
-        log_count = SourceMetaData.get_log_count(source)
-        rate = SourceMetaData.get_rate(source)
+        log_count = SourceData.get_log_count(source)
+        rate = SourceData.get_rate(source)
         {:ok, token} = Ecto.UUID.load(source.token)
 
         Map.put(source, :log_count, log_count)

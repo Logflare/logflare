@@ -1,4 +1,4 @@
-defmodule Logflare.SourceMetaData do
+defmodule Logflare.SourceData do
   def get_log_count(source) do
     log_table_info = :ets.info(String.to_atom(elem(Ecto.UUID.load(source.token), 1)))
 
@@ -22,6 +22,16 @@ defmodule Logflare.SourceMetaData do
 
       _ ->
         Logflare.TableRateCounter.get_rate(website_table)
+    end
+  end
+
+  def get_logs(table_id) do
+    case :ets.info(table_id) do
+      :undefined ->
+        []
+
+      _ ->
+        List.flatten(:ets.match(table_id, {:_, :"$1"}))
     end
   end
 end
