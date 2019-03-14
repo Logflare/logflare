@@ -21,12 +21,18 @@ defmodule LogflareWeb.AdminController do
         log_count = SourceData.get_log_count(source)
         rate = SourceData.get_rate(source)
         {:ok, token} = Ecto.UUID.load(source.token)
+        timestamp = SourceData.get_latest_date(source)
 
         Map.put(source, :log_count, log_count)
         |> Map.put(:rate, rate)
         |> Map.put(:token, token)
+        |> Map.put(:latest, timestamp)
       end
 
-    render(conn, "dashboard.html", sources: sources)
+    sorted_sources = Enum.sort_by(sources, &Map.fetch(&1, :latest), &>=/2)
+
+    IO.inspect(sorted_sources)
+
+    render(conn, "dashboard.html", sources: sorted_sources)
   end
 end

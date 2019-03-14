@@ -34,4 +34,23 @@ defmodule Logflare.SourceData do
         List.flatten(:ets.match(table_id, {:_, :"$1"}))
     end
   end
+
+  def get_latest_date(source) do
+    {:ok, token} = Ecto.UUID.load(source.token)
+    website_table = String.to_atom(token)
+
+    case :ets.info(website_table) do
+      :undefined ->
+        0
+
+      _ ->
+        case :ets.last(website_table) do
+          :"$end_of_table" ->
+            0
+
+          {timestamp, _unique_int, _monotime} ->
+            timestamp
+        end
+    end
+  end
 end

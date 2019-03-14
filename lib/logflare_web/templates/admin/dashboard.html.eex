@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li></li>
+        <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
       </ul>
     </div>
     <h5>~/admin</h5>
@@ -37,6 +37,9 @@
         <small class="source-details">
           events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
         </small>
+        <small class="source-details">
+          latest: <span class="log-datestamp"><%= source.latest %></span>
+        </small>
       </div>
       </li>
     <% end %>
@@ -45,9 +48,71 @@
 </div>
 
 <script>
+window.localTime = false;
+
+document.addEventListener("DOMContentLoaded", function(){
+  dateAdd();
+  dateSwap();
+});
+
 <%= for source <- @sources do %>
   document.addEventListener('DOMContentLoaded', function(){
     window.createDashboardSocket('<%= source.token %>');
   });
 <% end %>
+
+function dateSwap() {
+  window.localTime = ! window.localTime
+  document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
+
+  var utcs = document.getElementsByClassName("utc");
+
+  for (var i = 0; i < utcs.length; i++) {
+    utcs[i].classList.toggle("d-none");
+  };
+
+  var local_times = document.getElementsByClassName("local-time");
+
+  for (var i = 0; i < local_times.length; i++) {
+    local_times[i].classList.toggle("d-none");
+  };
+}
+
+function dateAdd() {
+  switch (window.localTime) {
+    case true:
+      var timestamps = document.getElementsByClassName("log-datestamp");
+
+      for (var i = 0; i < timestamps.length; i++) {
+        time = timestamps[i];
+        local_time = formatLocalTime(time.innerHTML / 1000);
+        utc_time = time.innerHTML
+        timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
+        };
+    break;
+    case false:
+      var timestamps = document.getElementsByClassName("log-datestamp");
+
+      for (var i = 0; i < timestamps.length; i++) {
+        time = timestamps[i];
+        local_time = formatLocalTime(time.innerHTML / 1000);
+        utc_time = time.innerHTML
+        timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
+        };
+  };
+}
+
+function timeToggle(bool) {
+  switch (bool) {
+    case true:
+      return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`;
+    break;
+    case false:
+      return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
+  };
+}
+
+function formatLocalTime(date) {
+  return dateFns.format(date, 'ddd MMM D YYYY hh:mm:ssa')
+}
 </script>
