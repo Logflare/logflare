@@ -31,8 +31,6 @@ defmodule LogflareWeb.AdminController do
 
     sorted_sources = Enum.sort_by(sources, &Map.fetch(&1, :latest), &>=/2)
 
-    IO.inspect(sorted_sources)
-
     render(conn, "dashboard.html", sources: sorted_sources)
   end
 end
