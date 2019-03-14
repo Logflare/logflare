@@ -8,6 +8,7 @@ defmodule Logflare.Source do
     field(:public_token, :string)
     belongs_to(:user, Logflare.User)
     has_many(:rules, Logflare.Rule)
+    field(:overflow_source, Ecto.UUID)
 
     timestamps()
   end
@@ -15,7 +16,7 @@ defmodule Logflare.Source do
   @doc false
   def changeset(source, attrs) do
     source
-    |> cast(attrs, [:name, :token, :public_token])
+    |> cast(attrs, [:name, :token, :public_token, :overflow_source])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)

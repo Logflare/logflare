@@ -13,7 +13,11 @@ defmodule Logflare.TableRateCounter do
   @ets_table_name :source_rates
 
   def start_link(website_table, init_rate) do
-    GenServer.start_link(__MODULE__, %{table: website_table, count: init_rate, current_rate: 0},
+    started_at = System.monotonic_time(:second)
+
+    GenServer.start_link(
+      __MODULE__,
+      %{table: website_table, count: init_rate, current_rate: 0, begin_time: started_at},
       name: name(website_table)
     )
   end
@@ -30,16 +34,34 @@ defmodule Logflare.TableRateCounter do
     previous_count = state.count
     current_rate = current_count - previous_count
 
-    :ets.insert(@ets_table_name, {state.table, current_rate})
+    time = System.monotonic_time(:second)
+    time_passed = time - state.begin_time
+    average_rate = Kernel.trunc(current_count / time_passed)
 
-    broadcast_rate(state.table, current_rate)
+    payload = %{current_rate: current_rate, average_rate: average_rate}
+
+    :ets.insert(@ets_table_name, {state.table, payload})
+
+    broadcast_rate(state.table, current_rate, average_rate)
     put_current_rate()
-    {:noreply, %{table: state.table, count: current_count, current_rate: current_rate}}
+
+    {:noreply,
+     %{
+       table: state.table,
+       count: current_count,
+       current_rate: current_rate,
+       begin_time: state.begin_time
+     }}
   end
 
   def get_rate(website_table) do
-    rate = :ets.lookup(@ets_table_name, website_table)
-    rate[website_table]
+    data = :ets.lookup(@ets_table_name, website_table)
+    data[website_table].current_rate
+  end
+
+  def get_avg_rate(website_table) do
+    data = :ets.lookup(@ets_table_name, website_table)
+    data[website_table].average_rate
   end
 
   defp setup_ets_table() do
@@ -57,9 +79,9 @@ defmodule Logflare.TableRateCounter do
     String.to_atom("#{website_table}" <> "-rate")
   end
 
-  defp broadcast_rate(website_table, rate) do
+  defp broadcast_rate(website_table, rate, average_rate) do
     website_table_string = Atom.to_string(website_table)
-    payload = %{source_token: website_table_string, rate: rate}
+    payload = %{source_token: website_table_string, rate: rate, average_rate: average_rate}
 
     LogflareWeb.Endpoint.broadcast(
       "dashboard:" <> website_table_string,
