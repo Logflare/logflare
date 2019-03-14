@@ -47,8 +47,6 @@ defmodule LogflareWeb.SourceController do
         |> Map.put(:avg, average_rate)
       end
 
-    sorted_sources = Enum.sort_by(sources, &Map.fetch(&1, :latest), &>=/2)
-
     render(conn, "dashboard.html", sources: sources)
   end
 

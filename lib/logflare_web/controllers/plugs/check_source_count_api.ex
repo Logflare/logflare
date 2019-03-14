@@ -9,8 +9,6 @@ defmodule LogflareWeb.Plugs.CheckSourceCountApi do
   end
 
   def call(conn, _params) do
-    headers = Enum.into(conn.req_headers, %{})
-
     user_id = conn.assigns.user.id
 
     query =
