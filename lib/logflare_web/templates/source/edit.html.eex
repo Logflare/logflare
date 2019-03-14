@@ -32,7 +32,7 @@
   <% end %>
 
   <h5 class="header-margin">Overflow Source</h5>
-  <p>This is the overflow source.</p>
+  <p>This is the overflow source. Coming soon...</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn fff -> %>
     <div class="form-group">
       <%= select fff, :overflow_source, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a source", class: "form-control" %>
