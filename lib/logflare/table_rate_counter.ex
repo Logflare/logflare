@@ -10,6 +10,7 @@ defmodule Logflare.TableRateCounter do
   alias Logflare.TableCounter
 
   @rate_period 1_000
+  @ets_table_name :source_rates
 
   def start_link(website_table, init_rate) do
     GenServer.start_link(__MODULE__, %{table: website_table, count: init_rate, current_rate: 0},
@@ -19,27 +20,33 @@ defmodule Logflare.TableRateCounter do
 
   def init(state) do
     Logger.info("Rate counter started: #{state.table}")
+    setup_ets_table()
     put_current_rate()
     {:ok, state}
-  end
-
-  def get_rate(website_table) do
-    name = name(website_table)
-    GenServer.call(name, :rate)
-  end
-
-  def handle_call(:rate, _from, state) do
-    rate = state.current_rate
-    {:reply, rate, state}
   end
 
   def handle_info(:put_rate, state) do
     {:ok, current_count} = TableCounter.get_inserts(state.table)
     previous_count = state.count
     current_rate = current_count - previous_count
+
+    :ets.insert(@ets_table_name, {state.table, current_rate})
+
     broadcast_rate(state.table, current_rate)
     put_current_rate()
     {:noreply, %{table: state.table, count: current_count, current_rate: current_rate}}
+  end
+
+  def get_rate(website_table) do
+    rate = :ets.lookup(@ets_table_name, website_table)
+    rate[website_table]
+  end
+
+  defp setup_ets_table() do
+    if :ets.info(@ets_table_name) == :undefined do
+      table_args = [:named_table, :public]
+      :ets.new(@ets_table_name, table_args)
+    end
   end
 
   defp put_current_rate() do

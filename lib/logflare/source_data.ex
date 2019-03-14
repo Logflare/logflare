@@ -1,4 +1,6 @@
 defmodule Logflare.SourceData do
+  alias Logflare.TableRateCounter
+
   def get_log_count(source) do
     log_table_info = :ets.info(String.to_atom(elem(Ecto.UUID.load(source.token), 1)))
 
@@ -13,15 +15,14 @@ defmodule Logflare.SourceData do
 
   def get_rate(source) do
     {:ok, token} = Ecto.UUID.load(source.token)
-    website_table = :"#{token}"
-    log_table_info = :ets.info(website_table)
+    website_table = String.to_atom(token)
 
-    case log_table_info do
+    case :ets.info(website_table) do
       :undefined ->
         0
 
       _ ->
-        Logflare.TableRateCounter.get_rate(website_table)
+        TableRateCounter.get_rate(website_table)
     end
   end
 
