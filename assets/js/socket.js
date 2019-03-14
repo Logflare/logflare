@@ -61,8 +61,10 @@ function swapBadge(event) {
 
 function swapRate(event) {
   var rate = document.getElementById(`${event.source_token}-rate`);
+  var avgRate = document.getElementById(`${event.source_token}-avg-rate`);
 
   rate.innerHTML = `${event.rate}`
+  avgRate.innerHTML = `${event.average_rate}`
 }
 
 window.createDashboardSocket = createDashboardSocket;

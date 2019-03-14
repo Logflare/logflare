@@ -41,6 +41,18 @@ defmodule LogflareWeb.LogController do
           conn.params["source_name"]
       end
 
+    # if source_over_threshold() do
+    #   over_threshold_table = "lookup over threshold table"
+
+    #   send_to_many_sources_by_rules(
+    #     over_threshold_table,
+    #     time_event,
+    #     log_entry,
+    #     source_name,
+    #     api_key
+    #   )
+    # end
+
     send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key)
 
     message = "Logged!"

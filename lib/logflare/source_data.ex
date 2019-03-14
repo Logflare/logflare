@@ -13,17 +13,15 @@ defmodule Logflare.SourceData do
     end
   end
 
-  def get_rate(source) do
-    {:ok, token} = Ecto.UUID.load(source.token)
+  def get_rate(%{id: _id, name: _name, token: source_token}) do
+    {:ok, token} = Ecto.UUID.load(source_token)
     website_table = String.to_atom(token)
 
-    case :ets.info(website_table) do
-      :undefined ->
-        0
+    get_rate_int(website_table)
+  end
 
-      _ ->
-        TableRateCounter.get_rate(website_table)
-    end
+  def get_rate(website_table) do
+    get_rate_int(website_table)
   end
 
   def get_logs(table_id) do
@@ -33,6 +31,19 @@ defmodule Logflare.SourceData do
 
       _ ->
         List.flatten(:ets.match(table_id, {:_, :"$1"}))
+    end
+  end
+
+  def get_avg_rate(%{id: _id, name: _name, token: source_token}) do
+    {:ok, token} = Ecto.UUID.load(source_token)
+    website_table = String.to_atom(token)
+
+    case :ets.info(website_table) do
+      :undefined ->
+        0
+
+      _ ->
+        TableRateCounter.get_avg_rate(website_table)
     end
   end
 
@@ -52,6 +63,16 @@ defmodule Logflare.SourceData do
           {timestamp, _unique_int, _monotime} ->
             timestamp
         end
+    end
+  end
+
+  defp get_rate_int(website_table) do
+    case :ets.info(website_table) do
+      :undefined ->
+        0
+
+      _ ->
+        TableRateCounter.get_rate(website_table)
     end
   end
 end

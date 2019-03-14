@@ -41,12 +41,15 @@
           events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
         </small>
         <small class="source-details">
+          avg: <span id="<%= source.token %>-avg-rate"><%= source.avg %></span>
+        </small>
+        <small class="source-details">
           latest:
           <%= if source.latest == 0 do %>
           <span class="">no logs</span>
-          <%= else %>
+          <% else %>
           <span class="log-datestamp"><%= source.latest %></span>
-          <%= end %>
+          <% end %>
         </small>
       </div>
       </li>

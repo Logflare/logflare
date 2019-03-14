@@ -30,7 +30,16 @@
     </div>
     <%= submit "Generate path", class: "btn btn-primary form-button" %>
   <% end %>
-</div>
+
+  <h5 class="header-margin">Overflow Source</h5>
+  <p>This is the overflow source.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn fff -> %>
+    <div class="form-group">
+      <%= select fff, :overflow_source, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a source", class: "form-control" %>
+      <%= error_tag fff, :overflow_source %>
+    </div>
+    <%= submit "Update overflow source", class: "btn btn-primary form-button" %>
+  <% end %>
 
 <script>
 var clipboard = new ClipboardJS('#copy-path')

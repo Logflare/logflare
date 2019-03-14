@@ -38,11 +38,13 @@ defmodule LogflareWeb.SourceController do
         rate = SourceData.get_rate(source)
         {:ok, token} = Ecto.UUID.load(source.token)
         timestamp = SourceData.get_latest_date(source)
+        average_rate = SourceData.get_avg_rate(source)
 
         Map.put(source, :log_count, log_count)
         |> Map.put(:rate, rate)
         |> Map.put(:token, token)
         |> Map.put(:latest, timestamp)
+        |> Map.put(:avg, average_rate)
       end
 
     sorted_sources = Enum.sort_by(sources, &Map.fetch(&1, :latest), &>=/2)
@@ -114,23 +116,31 @@ defmodule LogflareWeb.SourceController do
     source = Repo.get(Source, source_id)
     user_id = conn.assigns.user.id
     changeset = Source.changeset(source, %{})
+    disabled_source = source.token
 
     query =
       from(s in "sources",
         where: s.user_id == ^user_id,
+        order_by: s.name,
         select: %{
           name: s.name,
           id: s.id,
           token: s.token,
-          public_token: s.public_token
+          overflow_source: s.overflow_source
         }
       )
 
     sources =
       for source <- Repo.all(query) do
         {:ok, token} = Ecto.UUID.load(source.token)
-        Map.put(source, :token, token)
+        s = Map.put(source, :token, token)
+
+        if disabled_source == token,
+          do: Map.put(s, :disabled, true),
+          else: Map.put(s, :disabled, false)
       end
+
+    IO.inspect(sources)
 
     render(conn, "edit.html", changeset: changeset, source: source, sources: sources)
   end
