@@ -9,6 +9,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.TableCounter
   alias Logflare.SystemCounter
   alias Logflare.TableManager
+  alias Logflare.SourceData
 
   @system_counter :total_logs_logged
 
@@ -34,30 +35,50 @@ defmodule LogflareWeb.LogController do
     source_name =
       case conn.params["source_name"] == nil do
         true ->
-          source_table_string = Atom.to_string(source_table)
-          Repo.get_by(Source, token: source_table_string)
+          Repo.get_by(Source, token: Atom.to_string(source_table))
 
         false ->
           conn.params["source_name"]
       end
 
-    # if source_over_threshold() do
-    #   over_threshold_table = "lookup over threshold table"
+    source_record = Repo.get_by(Source, token: Atom.to_string(source_table))
 
-    #   send_to_many_sources_by_rules(
-    #     over_threshold_table,
-    #     time_event,
-    #     log_entry,
-    #     source_name,
-    #     api_key
-    #   )
-    # end
+    if is_nil(source_record.overflow_source) == false do
+      if source_over_threshold?(source_table) do
+        send_to_many_sources_by_rules(
+          String.to_atom(source_record.overflow_source),
+          time_event,
+          log_entry,
+          source_name,
+          api_key
+        )
+      end
+    end
 
     send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key)
 
     message = "Logged!"
 
     render(conn, "index.json", message: message)
+  end
+
+  def broadcast_log_count(source_table) do
+    {:ok, log_count} = TableCounter.log_count(source_table)
+    source_table_string = Atom.to_string(source_table)
+    payload = %{log_count: log_count, source_token: source_table_string}
+
+    LogflareWeb.Endpoint.broadcast(
+      "dashboard:" <> source_table_string,
+      "dashboard:#{source_table_string}:log_count",
+      payload
+    )
+  end
+
+  def broadcast_total_log_count() do
+    {:ok, log_count} = SystemCounter.log_count(@system_counter)
+    payload = %{total_logs_logged: log_count}
+
+    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
@@ -139,29 +160,8 @@ defmodule LogflareWeb.LogController do
     )
   end
 
-  def broadcast_log_count(source_table) do
-    {:ok, log_count} = TableCounter.log_count(source_table)
-    source_table_string = Atom.to_string(source_table)
-    payload = %{log_count: log_count, source_token: source_table_string}
-
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> source_table_string,
-      "dashboard:#{source_table_string}:log_count",
-      payload
-    )
-  end
-
-  def broadcast_total_log_count() do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    payload = %{total_logs_logged: log_count}
-
-    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
-  end
-
   defp create_source(source_table, source_name, api_key) do
-    source_table_string = Atom.to_string(source_table)
-
-    source = %{token: source_table_string, name: source_name}
+    source = %{token: Atom.to_string(source_table), name: source_name}
 
     Repo.get_by(User, api_key: api_key)
     |> Ecto.build_assoc(:sources)
@@ -178,6 +178,19 @@ defmodule LogflareWeb.LogController do
 
       _ ->
         source.token
+    end
+  end
+
+  defp source_over_threshold?(source) do
+    current_rate = SourceData.get_rate(source)
+    avg_rate = SourceData.get_avg_rate(source)
+
+    case avg_rate >= 1 do
+      true ->
+        IO.inspect(current_rate / 10 >= avg_rate)
+
+      false ->
+        false
     end
   end
 end
