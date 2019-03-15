@@ -10,6 +10,7 @@ defmodule LogflareWeb.SourceController do
   alias LogflareWeb.AuthController
   alias Logflare.SystemCounter
   alias Logflare.SourceData
+  alias Logflare.TableManager
 
   @system_counter :total_logs_logged
 
@@ -203,5 +204,14 @@ defmodule LogflareWeb.SourceController do
     conn
     |> put_flash(:info, "Source deleted!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
+  end
+
+  def clear_logs(conn, %{"id" => source_id}) do
+    source = Repo.get(Source, source_id)
+    {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+
+    conn
+    |> put_flash(:info, "Logs cleared!")
+    |> redirect(to: Routes.source_path(conn, :show, source_id))
   end
 end

@@ -30,8 +30,9 @@ defmodule Logflare.TableRateCounter do
 
   def init(state) do
     Logger.info("Rate counter started: #{state.table}")
-    setup_ets_table()
+    setup_ets_table(state)
     put_current_rate()
+
     {:ok, state}
   end
 
@@ -85,15 +86,19 @@ defmodule Logflare.TableRateCounter do
     data[website_table].max_rate
   end
 
-  defp setup_ets_table() do
+  defp setup_ets_table(state) do
+    payload = %{current_rate: 0, average_rate: 0, max_rate: 0}
+
     if :ets.info(@ets_table_name) == :undefined do
       table_args = [:named_table, :public]
       :ets.new(@ets_table_name, table_args)
     end
+
+    :ets.insert(@ets_table_name, {state.table, payload})
   end
 
-  defp put_current_rate() do
-    Process.send_after(self(), :put_rate, @rate_period)
+  defp put_current_rate(rate_period \\ @rate_period) do
+    Process.send_after(self(), :put_rate, rate_period)
   end
 
   defp name(website_table) do
