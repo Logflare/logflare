@@ -44,6 +44,9 @@
           avg: <span id="<%= source.token %>-avg-rate"><%= source.avg %></span>
         </small>
         <small class="source-details">
+          max: <span id="<%= source.token %>-max-rate"><%= source.max %></span>
+        </small>
+        <small class="source-details">
           latest:
           <%= if source.latest == 0 do %>
           <span class="">no logs</span>

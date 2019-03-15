@@ -17,7 +17,13 @@ defmodule Logflare.TableRateCounter do
 
     GenServer.start_link(
       __MODULE__,
-      %{table: website_table, count: init_rate, current_rate: 0, begin_time: started_at},
+      %{
+        table: website_table,
+        count: init_rate,
+        current_rate: 0,
+        begin_time: started_at,
+        max_rate: 0
+      },
       name: name(website_table)
     )
   end
@@ -34,15 +40,24 @@ defmodule Logflare.TableRateCounter do
     previous_count = state.count
     current_rate = current_count - previous_count
 
+    max_rate =
+      case state.max_rate < current_rate do
+        false ->
+          state.max_rate
+
+        true ->
+          current_rate
+      end
+
     time = System.monotonic_time(:second)
     time_passed = time - state.begin_time
     average_rate = Kernel.trunc(current_count / time_passed)
 
-    payload = %{current_rate: current_rate, average_rate: average_rate}
+    payload = %{current_rate: current_rate, average_rate: average_rate, max_rate: max_rate}
 
     :ets.insert(@ets_table_name, {state.table, payload})
 
-    broadcast_rate(state.table, current_rate, average_rate)
+    broadcast_rate(state.table, current_rate, average_rate, max_rate)
     put_current_rate()
 
     {:noreply,
@@ -50,7 +65,8 @@ defmodule Logflare.TableRateCounter do
        table: state.table,
        count: current_count,
        current_rate: current_rate,
-       begin_time: state.begin_time
+       begin_time: state.begin_time,
+       max_rate: max_rate
      }}
   end
 
@@ -62,6 +78,11 @@ defmodule Logflare.TableRateCounter do
   def get_avg_rate(website_table) do
     data = :ets.lookup(@ets_table_name, website_table)
     data[website_table].average_rate
+  end
+
+  def get_max_rate(website_table) do
+    data = :ets.lookup(@ets_table_name, website_table)
+    data[website_table].max_rate
   end
 
   defp setup_ets_table() do
@@ -79,9 +100,15 @@ defmodule Logflare.TableRateCounter do
     String.to_atom("#{website_table}" <> "-rate")
   end
 
-  defp broadcast_rate(website_table, rate, average_rate) do
+  defp broadcast_rate(website_table, rate, average_rate, max_rate) do
     website_table_string = Atom.to_string(website_table)
-    payload = %{source_token: website_table_string, rate: rate, average_rate: average_rate}
+
+    payload = %{
+      source_token: website_table_string,
+      rate: rate,
+      average_rate: average_rate,
+      max_rate: max_rate
+    }
 
     LogflareWeb.Endpoint.broadcast(
       "dashboard:" <> website_table_string,

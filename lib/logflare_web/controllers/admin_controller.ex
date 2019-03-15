@@ -23,12 +23,14 @@ defmodule LogflareWeb.AdminController do
         {:ok, token} = Ecto.UUID.load(source.token)
         timestamp = SourceData.get_latest_date(source)
         average_rate = SourceData.get_avg_rate(source)
+        max_rate = SourceData.get_max_rate(source)
 
         Map.put(source, :log_count, log_count)
         |> Map.put(:rate, rate)
         |> Map.put(:token, token)
         |> Map.put(:latest, timestamp)
         |> Map.put(:avg, average_rate)
+        |> Map.put(:max, max_rate)
       end
 
     sorted_sources = Enum.sort_by(sources, &Map.fetch(&1, :latest), &>=/2)

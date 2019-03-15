@@ -57,6 +57,19 @@ defmodule Logflare.SourceData do
     end
   end
 
+  def get_max_rate(%{id: _id, name: _name, token: source_token}) do
+    {:ok, token} = Ecto.UUID.load(source_token)
+    website_table = String.to_atom(token)
+
+    case :ets.info(website_table) do
+      :undefined ->
+        0
+
+      _ ->
+        TableRateCounter.get_max_rate(website_table)
+    end
+  end
+
   def get_latest_date(source, fallback \\ 0) do
     {:ok, token} = Ecto.UUID.load(source.token)
     website_table = String.to_atom(token)
