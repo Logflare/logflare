@@ -187,7 +187,7 @@ defmodule LogflareWeb.LogController do
 
     case avg_rate >= 1 do
       true ->
-        IO.inspect(current_rate / 10 >= avg_rate)
+        current_rate / 10 >= avg_rate
 
       false ->
         false
