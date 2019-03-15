@@ -12,14 +12,14 @@ defmodule Logflare.TableRateCounter do
   @rate_period 1_000
   @ets_table_name :source_rates
 
-  def start_link(website_table, init_rate) do
+  def start_link(website_table, init_count) do
     started_at = System.monotonic_time(:second)
 
     GenServer.start_link(
       __MODULE__,
       %{
         table: website_table,
-        count: init_rate,
+        previous_count: init_count,
         current_rate: 0,
         begin_time: started_at,
         max_rate: 0
@@ -37,7 +37,7 @@ defmodule Logflare.TableRateCounter do
 
   def handle_info(:put_rate, state) do
     {:ok, current_count} = TableCounter.get_inserts(state.table)
-    previous_count = state.count
+    previous_count = state.previous_count
     current_rate = current_count - previous_count
 
     max_rate =
@@ -63,7 +63,7 @@ defmodule Logflare.TableRateCounter do
     {:noreply,
      %{
        table: state.table,
-       count: current_count,
+       previous_count: current_count,
        current_rate: current_rate,
        begin_time: state.begin_time,
        max_rate: max_rate
