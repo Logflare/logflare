@@ -8,15 +8,22 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
   end
 
   def call(conn, _params) do
-    is_admin = conn.assigns.user.admin
+    cond do
+      is_nil(conn.assigns.user) ->
+        conn
+        |> put_flash(:error, "You're not an admin!")
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> halt()
 
-    if is_admin == true do
-      conn
-    else
-      conn
-      |> put_flash(:error, "You're not an admin!")
-      |> redirect(to: Routes.source_path(conn, :dashboard))
-      |> halt()
+      true ->
+        if conn.assigns.user.admin == true do
+          conn
+        else
+          conn
+          |> put_flash(:error, "You're not an admin!")
+          |> redirect(to: Routes.source_path(conn, :dashboard))
+          |> halt()
+        end
     end
   end
 end
