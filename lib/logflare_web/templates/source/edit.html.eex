@@ -1,5 +1,11 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
+        <li><a href="https://twitter.com/intent/tweet?text=%40chasers%20help%21"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
+      </ul>
+    </div>
     <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/edit</h5>
   </div>
 </div>
