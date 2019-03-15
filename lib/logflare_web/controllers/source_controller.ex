@@ -138,8 +138,6 @@ defmodule LogflareWeb.SourceController do
           else: Map.put(s, :disabled, false)
       end
 
-    IO.inspect(sources)
-
     render(conn, "edit.html", changeset: changeset, source: source, sources: sources)
   end
 
