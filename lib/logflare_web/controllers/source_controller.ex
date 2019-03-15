@@ -115,6 +115,7 @@ defmodule LogflareWeb.SourceController do
     user_id = conn.assigns.user.id
     changeset = Source.changeset(source, %{})
     disabled_source = source.token
+    avg_rate = SourceData.get_avg_rate(String.to_atom(source.token))
 
     query =
       from(s in "sources",
@@ -138,12 +139,42 @@ defmodule LogflareWeb.SourceController do
           else: Map.put(s, :disabled, false)
       end
 
-    render(conn, "edit.html", changeset: changeset, source: source, sources: sources)
+    render(conn, "edit.html",
+      changeset: changeset,
+      source: source,
+      sources: sources,
+      avg_rate: avg_rate
+    )
   end
 
   def update(conn, %{"id" => source_id, "source" => source}) do
     old_source = Repo.get(Source, source_id)
     changeset = Source.changeset(old_source, source)
+    user_id = conn.assigns.user.id
+    disabled_source = old_source.token
+    avg_rate = SourceData.get_avg_rate(String.to_atom(old_source.token))
+
+    query =
+      from(s in "sources",
+        where: s.user_id == ^user_id,
+        order_by: s.name,
+        select: %{
+          name: s.name,
+          id: s.id,
+          token: s.token,
+          overflow_source: s.overflow_source
+        }
+      )
+
+    sources =
+      for source <- Repo.all(query) do
+        {:ok, token} = Ecto.UUID.load(source.token)
+        s = Map.put(source, :token, token)
+
+        if disabled_source == token,
+          do: Map.put(s, :disabled, true),
+          else: Map.put(s, :disabled, false)
+      end
 
     case Repo.update(changeset) do
       {:ok, _source} ->
@@ -154,7 +185,12 @@ defmodule LogflareWeb.SourceController do
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
-        |> render("edit.html", changeset: changeset, source: old_source)
+        |> render("edit.html",
+          changeset: changeset,
+          source: old_source,
+          sources: sources,
+          avg_rate: avg_rate
+        )
     end
   end
 
