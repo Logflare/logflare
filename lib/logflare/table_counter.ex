@@ -34,6 +34,11 @@ defmodule Logflare.TableCounter do
     {:ok, table}
   end
 
+  def delete(table) do
+    :ets.delete(:counters, table)
+    {:ok, table}
+  end
+
   def get_inserts(table) do
     [{_table, inserts, _deletes}] = :ets.lookup(:counters, table)
     {:ok, inserts}

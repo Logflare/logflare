@@ -1,11 +1,12 @@
 defmodule Logflare.TableManager do
   @moduledoc """
-  Boots up a gen server per source table. Keeps a list of active tables in state. 
+  Boots up a gen server per source table. Keeps a list of active tables in state.
   """
 
   use GenServer
 
   alias Logflare.Repo
+  alias Logflare.TableCounter
 
   import Ecto.Query, only: [from: 2]
 
@@ -23,6 +24,9 @@ defmodule Logflare.TableManager do
 
   def delete_table(website_table) do
     GenServer.call(__MODULE__, {:stop, website_table})
+    tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
+    File.rm!(tab_path)
+    TableCounter.delete(website_table)
     {:ok, website_table}
   end
 
