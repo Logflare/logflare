@@ -3,7 +3,11 @@ defmodule LogflareWeb.SourceController do
   import Ecto.Query, only: [from: 2]
 
   plug(LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create])
-  plug(LogflareWeb.Plugs.VerifySourceOwner when action in [:show, :edit, :update, :delete])
+
+  plug(
+    LogflareWeb.Plugs.VerifySourceOwner
+    when action in [:show, :edit, :update, :delete, :clear_logs]
+  )
 
   alias Logflare.Source
   alias Logflare.Repo
