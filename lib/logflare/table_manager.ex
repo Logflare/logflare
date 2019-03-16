@@ -25,7 +25,7 @@ defmodule Logflare.TableManager do
   def delete_table(website_table) do
     GenServer.call(__MODULE__, {:stop, website_table})
     tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
-    File.rm!(tab_path)
+    File.rm(tab_path)
     TableCounter.delete(website_table)
     {:ok, website_table}
   end
