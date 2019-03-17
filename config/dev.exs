@@ -55,6 +55,7 @@ config :logflare, Logflare.Repo,
   password: "",
   database: "logtail_dev",
   hostname: "localhost",
-  pool_size: 10
+  pool_size: 10,
+  prepare: :unnamed
 
 import_config "dev.secret.exs"
