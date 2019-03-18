@@ -11,6 +11,7 @@ defmodule Logflare.Application do
       supervisor(Logflare.TableCounter, []),
       supervisor(Logflare.SystemCounter, []),
       supervisor(Logflare.TableManager, []),
+      supervisor(Logflare.AccountCache, []),
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 

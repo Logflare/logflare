@@ -6,6 +6,7 @@ defmodule LogflareWeb.AuthController do
 
   alias Logflare.User
   alias Logflare.Repo
+  alias Logflare.AccountCache
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
@@ -47,6 +48,8 @@ defmodule LogflareWeb.AuthController do
         changeset = User.changeset(user, user_params)
         Repo.update(changeset)
 
+        AccountCache.remove_account(old_api_key)
+
         conn
         |> put_flash(:info, "API key restored!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
@@ -59,6 +62,8 @@ defmodule LogflareWeb.AuthController do
 
         changeset = User.changeset(user, user_params)
         Repo.update(changeset)
+
+        AccountCache.remove_account(old_api_key)
 
         conn
         |> put_flash(:info, [
