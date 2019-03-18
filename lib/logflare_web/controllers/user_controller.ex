@@ -3,6 +3,7 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.AccountCache
 
   def edit(conn, _params) do
     user = conn.assigns.user
@@ -31,6 +32,7 @@ defmodule LogflareWeb.UserController do
   def delete(conn, _params) do
     user_id = conn.assigns.user.id
     Repo.get!(User, user_id) |> Repo.delete!()
+    AccountCache.remove_account(conn.assigns.user.api_key)
 
     conn
     |> put_flash(:info, "Account deleted!")
