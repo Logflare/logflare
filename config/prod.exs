@@ -67,7 +67,7 @@ config :phoenix, :serve_endpoints, true
 #
 
 config :logflare, Logflare.Repo,
-  pool_size: 22,
+  pool_size: 100,
   ssl: true,
   prepare: :unnamed
 
