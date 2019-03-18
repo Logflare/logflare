@@ -66,9 +66,15 @@ defmodule Logflare.TableManager do
   end
 
   def handle_call({:stop, website_table}, _from, state) do
-    GenServer.stop(website_table)
-    state = List.delete(state, website_table)
-    {:reply, website_table, state}
+    case Process.whereis(website_table) do
+      nil ->
+        {:reply, website_table, state}
+
+      _ ->
+        GenServer.stop(website_table)
+        state = List.delete(state, website_table)
+        {:reply, website_table, state}
+    end
   end
 
   def handle_info(:persist, state) do
