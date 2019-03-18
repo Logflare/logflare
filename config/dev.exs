@@ -50,7 +50,6 @@ config :phoenix, :stacktrace_depth, 20
 
 # Configure your database
 config :logflare, Logflare.Repo,
-  #  adapter: Ecto.Adapters.Postgres,
   username: "chasegranberry",
   password: "",
   database: "logtail_dev",
