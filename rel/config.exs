@@ -8,14 +8,13 @@
 |> Enum.map(&Code.eval_file(&1))
 
 use Mix.Releases.Config,
-    # This sets the default release built by `mix release`
-    default_release: :default,
-    # This sets the default environment used by `mix release`
-    default_environment: Mix.env()
+  # This sets the default release built by `mix release`
+  default_release: :default,
+  # This sets the default environment used by `mix release`
+  default_environment: Mix.env()
 
 # For a full list of config options for both releases
 # and environments, visit https://hexdocs.pm/distillery/config/distillery.html
-
 
 # You may define one or more environments in this file,
 # an environment's settings will override those of a release
@@ -29,16 +28,16 @@ environment :dev do
   # It is recommended that you build with MIX_ENV=prod and pass
   # the --env flag to Distillery explicitly if you want to use
   # dev mode.
-  set dev_mode: true
-  set include_erts: false
-  set cookie: :"q=5<;c0X!<z11cLM,ECzHbb$R6V@gI?BO%nnzQ*BNR,OflzOL?J)WCvm^HpmF7,K"
+  set(dev_mode: true)
+  set(include_erts: false)
+  set(cookie: :dev)
 end
 
 environment :prod do
-  set include_erts: true
-  set include_src: false
-  set cookie: :"83D00,P<GPWH&/Red(jJH,>NB*fi482b.UOV;SC[(xKt`[M[*~u<B8G,ytEGrTm8"
-  set vm_args: "rel/vm.args"
+  set(include_erts: true)
+  set(include_src: false)
+  set(cookie: System.get_env("COOKIE") > String.to_atom())
+  set(vm_args: "rel/vm.args")
 end
 
 # You may define one or more releases in this file.
@@ -47,9 +46,13 @@ end
 # will be used by default
 
 release :logflare do
-  set version: current_version(:logflare)
-  set applications: [
-    :runtime_tools
-  ]
+  set(version: current_version(:logflare))
+
+  set(
+    applications: [
+      :runtime_tools
+    ]
+  )
+
   # set pre_start_hooks: "rel/hooks/pre_start.sh"
 end

@@ -5,6 +5,9 @@
 ## Name of the node
 -name <%= release_name %>@127.0.0.1
 
+## For Remote Observer
+-kernel inet_dist_listen_min 9001 inet_dist_listen_max 9001
+
 ## Cookie for distributed erlang
 -setcookie <%= release.profile.cookie %>
 
