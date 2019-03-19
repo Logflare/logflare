@@ -57,8 +57,13 @@ defmodule Logflare.AccountCache do
   end
 
   def get_source(api_key, source_token) do
-    [{_api_key, sources}] = :ets.lookup(@table, api_key)
-    Enum.find(sources, fn source -> source.token == source_token end)
+    case :ets.lookup(@table, api_key) do
+      [{_api_key, sources}] ->
+        Enum.find(sources, fn source -> source.token == source_token end)
+
+      [] ->
+        nil
+    end
   end
 
   def get_source_by_name(api_key, source_name) do
