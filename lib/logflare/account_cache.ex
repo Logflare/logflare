@@ -3,9 +3,8 @@ defmodule Logflare.AccountCache do
 
   require Logger
 
-  import Ecto.Query, only: [from: 2]
-
   alias Logflare.Repo
+  alias Logflare.User
 
   @refresh_every 1_000
   @table :account_cache
@@ -45,6 +44,45 @@ defmodule Logflare.AccountCache do
     end
   end
 
+  def account_has_source?(api_key, source_token) do
+    [{_api_key, sources}] = :ets.lookup(@table, api_key)
+
+    Enum.any?(sources, fn s -> s.token == source_token end)
+  end
+
+  def count_sources(api_key) do
+    [{_api_key, sources}] = :ets.lookup(@table, api_key)
+
+    Enum.count(sources)
+  end
+
+  def get_source(api_key, source_token) do
+    [{_api_key, sources}] = :ets.lookup(@table, api_key)
+    Enum.find(sources, fn source -> source.token == source_token end)
+  end
+
+  def get_source_by_name(api_key, source_name) do
+    [{_api_key, sources}] = :ets.lookup(@table, api_key)
+    Enum.find(sources, fn source -> source.name == source_name end)
+  end
+
+  def get_rules(api_key, source_token) do
+    [{_api_key, sources}] = :ets.lookup(@table, api_key)
+    source = Enum.find(sources, fn source -> source.token == source_token end)
+    source.rules
+  end
+
+  def update_account(api_key) do
+    user = Repo.get_by(User, api_key: api_key) |> Repo.preload(:sources)
+
+    sources =
+      for source <- user.sources do
+        Repo.preload(source, :rules)
+      end
+
+    :ets.insert(@table, {user.api_key, sources})
+  end
+
   # Private Interface
 
   defp refresh() do
@@ -58,16 +96,15 @@ defmodule Logflare.AccountCache do
   end
 
   defp insert_all_accounts() do
-    api_keys =
-      from(u in "users",
-        select: %{
-          api_key: u.api_key
-        }
-      )
+    accounts = Repo.all(User) |> Repo.preload(:sources)
 
-    for key <- Repo.all(api_keys) do
-      sources = []
-      :ets.insert(@table, {key.api_key, sources})
+    for account <- accounts do
+      sources =
+        Enum.map(account.sources, fn source ->
+          Repo.preload(source, :rules)
+        end)
+
+      :ets.insert(@table, {account.api_key, sources})
     end
   end
 end

@@ -1,8 +1,6 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
 
-  import Ecto.Query, only: [from: 2]
-
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.User
@@ -10,6 +8,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.SystemCounter
   alias Logflare.TableManager
   alias Logflare.SourceData
+  alias Logflare.AccountCache
 
   @system_counter :total_logs_logged
 
@@ -25,23 +24,14 @@ defmodule LogflareWeb.LogController do
         true ->
           source_name = conn.params["source_name"]
 
-          lookup_or_gen_source_token(source_name)
+          lookup_or_create_source(api_key, source_name)
           |> String.to_atom()
 
         false ->
           String.to_atom(conn.params["source"])
       end
 
-    source_name =
-      case conn.params["source_name"] == nil do
-        true ->
-          Repo.get_by(Source, token: Atom.to_string(source_table))
-
-        false ->
-          conn.params["source_name"]
-      end
-
-    source_record = Repo.get_by(Source, token: Atom.to_string(source_table))
+    source_record = AccountCache.get_source(api_key, Atom.to_string(source_table))
 
     if is_nil(source_record.overflow_source) == false do
       if source_over_threshold?(source_table) do
@@ -49,13 +39,12 @@ defmodule LogflareWeb.LogController do
           String.to_atom(source_record.overflow_source),
           time_event,
           log_entry,
-          source_name,
           api_key
         )
       end
     end
 
-    send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key)
+    send_to_many_sources_by_rules(source_table, time_event, log_entry, api_key)
 
     message = "Logged!"
 
@@ -81,29 +70,8 @@ defmodule LogflareWeb.LogController do
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 
-  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, source_name, api_key) do
-    table_info =
-      case Repo.get_by(Source, token: Atom.to_string(source_table)) do
-        nil ->
-          {:ok, table_info} = create_source(source_table, source_name, api_key)
-          table_info
-
-        table_info ->
-          table_info
-      end
-
-    rules_query =
-      from(r in "rules",
-        where: r.source_id == ^table_info.id,
-        select: %{
-          id: r.id,
-          regex: r.regex,
-          sink: r.sink,
-          sink_id: r.source_id
-        }
-      )
-
-    rules = Repo.all(rules_query)
+  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, api_key) do
+    rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
 
     case rules == [] do
       true ->
@@ -115,8 +83,7 @@ defmodule LogflareWeb.LogController do
           fn x ->
             case Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
               true ->
-                {:ok, sink} = Ecto.UUID.load(x.sink)
-                sink_atom = String.to_atom(sink)
+                sink_atom = String.to_atom(x.sink)
                 insert_log(sink_atom, time_event, log_entry)
 
               false ->
@@ -160,8 +127,8 @@ defmodule LogflareWeb.LogController do
     )
   end
 
-  defp create_source(source_table, source_name, api_key) do
-    source = %{token: Atom.to_string(source_table), name: source_name}
+  defp create_source(source_name, api_key) do
+    source = %{token: Ecto.UUID.generate(), name: source_name}
 
     Repo.get_by(User, api_key: api_key)
     |> Ecto.build_assoc(:sources)
@@ -169,12 +136,15 @@ defmodule LogflareWeb.LogController do
     |> Repo.insert()
   end
 
-  defp lookup_or_gen_source_token(source_name) do
-    source = Repo.get_by(Source, name: source_name)
+  defp lookup_or_create_source(api_key, source_name) do
+    source = AccountCache.get_source_by_name(api_key, source_name)
 
     case source do
       nil ->
-        Ecto.UUID.generate()
+        {:ok, new_source} = create_source(source_name, api_key)
+        AccountCache.update_account(api_key)
+
+        new_source.token
 
       _ ->
         source.token
