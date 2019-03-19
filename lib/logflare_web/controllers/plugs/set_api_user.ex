@@ -14,14 +14,7 @@ defmodule LogflareWeb.Plugs.SetApiUser do
 
     case AccountCache.verify_account?(api_key) do
       true ->
-        cond do
-          # user = api_key && Repo.get_by(User, api_key: api_key) ->
-          user = api_key ->
-            assign(conn, :user, user)
-
-          true ->
-            assign(conn, :user, nil)
-        end
+        assign(conn, :user, api_key)
 
       false ->
         assign(conn, :user, nil)

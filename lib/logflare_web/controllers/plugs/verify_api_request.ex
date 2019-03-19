@@ -2,9 +2,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Logflare.Repo
-
-  alias Logflare.Source
+  alias Logflare.AccountCache
 
   def init(_opts) do
   end
@@ -13,12 +11,14 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     source = conn.params["source"]
     source_name = conn.params["source_name"]
     log_entry = conn.params["log_entry"]
+    headers = Enum.into(conn.req_headers, %{})
+    api_key = headers["x-api-key"]
 
     conn
     |> check_user()
     |> check_log_entry(log_entry)
     |> check_source_and_name(source, source_name)
-    |> check_source_token(source)
+    |> check_source_token(source, api_key)
   end
 
   defp check_user(conn) do
@@ -69,13 +69,13 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  defp check_source_token(conn, source) do
+  defp check_source_token(conn, source, api_key) do
     cond do
       is_nil(source) ->
         conn
 
       String.length(source) == 36 ->
-        case Repo.get_by(Source, token: source) do
+        case AccountCache.get_source(api_key, source) do
           nil ->
             message = "Check your source."
 
