@@ -74,22 +74,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
       is_nil(source) ->
         conn
 
-      String.length(source) == 36 ->
-        case AccountCache.get_source(api_key, source) do
-          nil ->
-            message = "Check your source."
-
-            conn
-            |> put_status(403)
-            |> put_view(LogflareWeb.LogView)
-            |> render("index.json", message: message)
-            |> halt()
-
-          _ ->
-            conn
-        end
-
-      true ->
+      is_nil(AccountCache.get_source(api_key, source)) ->
         message = "Check your source."
 
         conn
@@ -97,6 +82,9 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
         |> halt()
+
+      true ->
+        conn
     end
   end
 end
