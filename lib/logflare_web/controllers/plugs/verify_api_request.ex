@@ -1,29 +1,17 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequest do
-  import Plug.Conn
+  use Plug.Builder
   import Phoenix.Controller
 
   require Logger
 
   alias Logflare.AccountCache
 
-  def init(_opts) do
-  end
+  plug(:check_user)
+  plug(:check_log_entry)
+  plug(:check_source_and_name)
+  plug(:check_source_token)
 
-  def call(conn, _opts) do
-    source = conn.params["source"]
-    source_name = conn.params["source_name"]
-    log_entry = conn.params["log_entry"]
-    headers = Enum.into(conn.req_headers, %{})
-    api_key = headers["x-api-key"]
-
-    conn
-    |> check_user()
-    |> check_log_entry(log_entry)
-    |> check_source_and_name(source, source_name)
-    |> check_source_token(source, api_key)
-  end
-
-  defp check_user(conn) do
+  def check_user(conn, _opts) do
     case conn.assigns.user do
       nil ->
         message = "Unknown x-api-key."
@@ -39,7 +27,9 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  defp check_log_entry(conn, log_entry) do
+  def check_log_entry(conn, _opts) do
+    log_entry = conn.params["log_entry"]
+
     case log_entry == nil do
       true ->
         message = "Log entry needed."
@@ -55,7 +45,10 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  defp check_source_and_name(conn, source, source_name) do
+  def check_source_and_name(conn, _opts) do
+    source = conn.params["source"]
+    source_name = conn.params["source_name"]
+
     case [source, source_name] do
       [nil, nil] ->
         message = "Source or source_name needed."
@@ -71,15 +64,17 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  defp check_source_token(conn, source, api_key) do
+  def check_source_token(conn, _opts) do
+    headers = Enum.into(conn.req_headers, %{})
+    api_key = headers["x-api-key"]
+    source = conn.params["source"]
+
     cond do
       is_nil(source) ->
         conn
 
       is_nil(AccountCache.get_source(api_key, source)) ->
         message = "Check your source."
-
-        Logger.info(inspect(conn))
 
         conn
         |> put_status(403)
