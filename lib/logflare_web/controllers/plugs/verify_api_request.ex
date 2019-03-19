@@ -2,6 +2,8 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   import Plug.Conn
   import Phoenix.Controller
 
+  require Logger
+
   alias Logflare.AccountCache
 
   def init(_opts) do
@@ -76,6 +78,8 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
 
       is_nil(AccountCache.get_source(api_key, source)) ->
         message = "Check your source."
+
+        Logger.info(inspect(conn))
 
         conn
         |> put_status(403)
