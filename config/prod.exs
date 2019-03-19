@@ -69,6 +69,7 @@ config :phoenix, :serve_endpoints, true
 config :logflare, Logflare.Repo,
   pool_size: 15,
   ssl: true,
-  prepare: :unnamed
+  prepare: :unnamed,
+  timeout: 30_000
 
 import_config "prod.secret.exs"
