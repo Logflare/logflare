@@ -6,7 +6,7 @@ defmodule Logflare.AccountCache do
   alias Logflare.Repo
   alias Logflare.User
 
-  @refresh_every 60_000
+  @refresh_every 1_000
   @table :account_cache
 
   def start_link do
