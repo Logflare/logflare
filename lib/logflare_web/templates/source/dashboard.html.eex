@@ -170,6 +170,7 @@ function timeToggle(bool) {
 }
 
 function formatLocalTime(date) {
-  return dateFns.format(date, 'ddd MMM D YYYY hh:mm:ssa')
+  var dateWords = dateFns.distanceInWordsToNow(date)
+  return `${dateWords} ago`
 }
 </script>
