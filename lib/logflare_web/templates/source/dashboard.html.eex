@@ -15,6 +15,17 @@
   <ul class="list-group">
     <%= for source <- @sources do %>
       <li class="list-group-item">
+        <div class="favorite float-left">
+          <%= link to: Routes.source_path(@conn, :favorite, source.id) do %>
+            <span id="">
+              <%= if source.favorite == false do %>
+              <i class="far fa-star"></i>
+              <% else %>
+              <i class="fas fa-star"></i>
+              <% end %>
+            </span>
+          <% end %>
+        </div>
         <div>
           <div class="float-right">
             <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>

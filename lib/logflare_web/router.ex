@@ -69,6 +69,7 @@ defmodule LogflareWeb.Router do
       delete("/rules/:id", RuleController, :delete)
     end
 
+    get("/:id/favorite", SourceController, :favorite)
     get("/:id/clear", SourceController, :clear_logs)
   end
 

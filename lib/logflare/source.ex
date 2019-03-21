@@ -10,6 +10,7 @@ defmodule Logflare.Source do
     has_many(:rules, Logflare.Rule)
     field(:overflow_source, Ecto.UUID)
     field(:avg_rate, :integer, virtual: true)
+    field(:favorite, :boolean)
 
     timestamps()
   end
@@ -17,7 +18,7 @@ defmodule Logflare.Source do
   @doc false
   def changeset(source, attrs) do
     source
-    |> cast(attrs, [:name, :token, :public_token, :overflow_source, :avg_rate])
+    |> cast(attrs, [:name, :token, :public_token, :overflow_source, :avg_rate, :favorite])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)
