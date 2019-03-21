@@ -41,6 +41,10 @@ config :phoenix_oauth2_provider, PhoenixOauth2Provider,
   revoke_refresh_token_on_use: true,
   module: Logflare
 
+config :logflare, Logflare.Mailer,
+  adapter: Swoosh.Adapters.Mailgun,
+  domain: "logflare.app"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"

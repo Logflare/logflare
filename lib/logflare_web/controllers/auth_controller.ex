@@ -7,6 +7,8 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.User
   alias Logflare.Repo
   alias Logflare.AccountCache
+  alias Logflare.AccountEmail
+  alias Logflare.Mailer
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
@@ -79,6 +81,8 @@ defmodule LogflareWeb.AuthController do
 
     case insert_or_update_user(changeset) do
       {:ok, user} ->
+        AccountEmail.welcome(user) |> Mailer.deliver()
+
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
         |> put_session(:user_id, user.id)

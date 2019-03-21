@@ -57,7 +57,8 @@ defmodule Logflare.Mixfile do
       {:phoenix_oauth2_provider,
        github: "danschultzer/phoenix_oauth2_provider", branch: "phoenix-1-4"},
       {:poison, "~> 3.1"},
-      {:ueberauth_google, "~> 0.8"}
+      {:ueberauth_google, "~> 0.8"},
+      {:swoosh, "~> 0.23"}
     ]
   end
 
