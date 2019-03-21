@@ -70,7 +70,7 @@ defmodule LogflareWeb.SourceController do
         |> put_flash(:info, "Source updated!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
-      {:error, changeset} ->
+      {:error, _changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
         |> redirect(to: Routes.source_path(conn, :dashboard))

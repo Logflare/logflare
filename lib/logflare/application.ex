@@ -7,11 +7,11 @@ defmodule Logflare.Application do
     children = [
       supervisor(Logflare.Repo, []),
       supervisor(Logflare.AccountCache, []),
-      supervisor(LogflareWeb.Endpoint, []),
       # init TableCounter before TableManager as TableManager calls TableCounter through table create
       supervisor(Logflare.TableCounter, []),
       supervisor(Logflare.SystemCounter, []),
       supervisor(Logflare.TableManager, []),
+      supervisor(LogflareWeb.Endpoint, []),
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 

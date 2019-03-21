@@ -44,7 +44,7 @@
           </span>
         </div>
       </div>
-      <div>
+      <div class="source-meta-data">
         <small class="source-details">
           id: <%= source.token %>
         </small>
