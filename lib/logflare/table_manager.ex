@@ -71,6 +71,8 @@ defmodule Logflare.TableManager do
         {:reply, website_table, state}
 
       _ ->
+        rate_table_name = Atom.to_string(website_table) <> "-rate"
+        GenServer.stop(String.to_atom(rate_table_name))
         GenServer.stop(website_table)
         state = List.delete(state, website_table)
         {:reply, website_table, state}
