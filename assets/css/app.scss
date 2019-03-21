@@ -7,6 +7,20 @@ body {
   color: #7EF854;
 }
 
+.favorite {
+  width: 2em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.favorite a {
+  color: #fff200;
+}
+
+.favorite a:hover {
+  color: yellow;
+}
+
 .source-details {
   margin-right: 1em;
   color: #6c757d;
@@ -211,7 +225,6 @@ h4 {
 .log-settings a, .log-settings a:hover  {
   text-decoration: none;
   color: black;
-
 }
 
 .jumbotron {

@@ -6,7 +6,7 @@ defmodule LogflareWeb.SourceController do
 
   plug(
     LogflareWeb.Plugs.VerifySourceOwner
-    when action in [:show, :edit, :update, :delete, :clear_logs]
+    when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
   )
 
   alias Logflare.Source
@@ -29,11 +29,13 @@ defmodule LogflareWeb.SourceController do
     query =
       from(s in "sources",
         where: s.user_id == ^user_id,
+        order_by: [desc: s.favorite],
         order_by: s.name,
         select: %{
           name: s.name,
           id: s.id,
-          token: s.token
+          token: s.token,
+          favorite: s.favorite
         }
       )
 
@@ -55,6 +57,24 @@ defmodule LogflareWeb.SourceController do
       end
 
     render(conn, "dashboard.html", sources: sources)
+  end
+
+  def favorite(conn, %{"id" => source_id}) do
+    old_source = Repo.get(Source, source_id)
+    source = %{"favorite" => !old_source.favorite}
+    changeset = Source.changeset(old_source, source)
+
+    case Repo.update(changeset) do
+      {:ok, _source} ->
+        conn
+        |> put_flash(:info, "Source updated!")
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+
+      {:error, changeset} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+    end
   end
 
   def new(conn, _params) do
