@@ -224,6 +224,7 @@ defmodule LogflareWeb.SourceController do
   def delete(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
     source |> Repo.delete!()
+    {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
     conn
     |> put_flash(:info, "Source deleted!")
