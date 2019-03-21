@@ -1,4 +1,6 @@
 defmodule LogflareWeb.Plugs.VerifySourceOwner do
+  use Plug.Builder
+
   import Plug.Conn
   import Phoenix.Controller
 
@@ -6,15 +8,13 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
   alias Logflare.Source
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  def init(_params) do
-  end
+  plug(:verify_owner)
 
-  def call(conn, _opts) do
+  def verify_owner(conn, _opts) do
     source_id = get_source_id(conn)
-    user_id = conn.assigns.user.id
     source = Repo.get(Source, source_id)
 
-    continue(conn, user_id, source)
+    continue(conn, source)
   end
 
   defp get_source_id(conn) do
@@ -30,19 +30,22 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
     end
   end
 
-  defp continue(conn, _user_id, source) when is_nil(source) do
+  defp continue(conn, source) when is_nil(source) do
     conn
     |> put_flash(:error, "That's not yours!")
     |> redirect(to: Routes.source_path(conn, :index))
     |> halt()
   end
 
-  defp continue(conn, user_id, source) when is_nil(source) == false do
-    case user_id == source.user_id do
-      true ->
+  defp continue(conn, source) when is_nil(source) == false do
+    cond do
+      conn.assigns.user.admin ->
         conn
 
-      false ->
+      conn.assigns.user.id == source.user_id ->
+        conn
+
+      true ->
         conn
         |> put_flash(:error, "That's not yours!")
         |> redirect(to: Routes.source_path(conn, :index))
