@@ -1,13 +1,14 @@
 defmodule LogflareWeb.Plugs.CheckAdmin do
+  use Plug.Builder
+
   import Plug.Conn
   import Phoenix.Controller
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  def init(_params) do
-  end
+  plug(:verify_admin)
 
-  def call(conn, _params) do
+  def verify_admin(conn, _params) do
     cond do
       is_nil(conn.assigns.user) ->
         conn
