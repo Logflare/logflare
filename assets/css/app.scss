@@ -9,8 +9,8 @@ body {
 
 .favorite {
   width: 2em;
-  margin-top: 1em;
-  margin-bottom: 1em;
+  padding-top: .5em;
+  padding-bottom: 1.5em;
 }
 
 .favorite a {
@@ -79,7 +79,8 @@ body {
 }
 
 .source-link {
-  width: 75%;
+  margin-left: 2em;
+  width: 65%;
 }
 
 .btn-dark {
