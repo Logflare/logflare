@@ -1,5 +1,7 @@
 {
- "name": "App",
+ "name": "Logflare",
+ "start_url": "/dashboard",
+ "display": "standalone",
  "icons": [
   {
    "src": "\/images\/android-icon-36x36.png",
