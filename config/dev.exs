@@ -8,7 +8,8 @@ use Mix.Config
 # with brunch.io to recompile .js and .css sources.
 config :logflare, LogflareWeb.Endpoint,
   http: [port: 4000],
-  url: [host: "localhost", port: 4000, scheme: "http"],
+  # url: [host: "localhost", port: 4000, scheme: "http"],
+  url: [host: "dev.chasegranberry.net", scheme: "http"],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,

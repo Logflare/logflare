@@ -7,12 +7,16 @@ defmodule Logflare.AccountEmail do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
 
   def welcome(user) do
+    account_edit_link = LogflareWeb.Endpoint.static_url() <> Routes.user_path(Endpoint, :edit)
+
     new()
     |> to(user.email)
     |> from({"Logflare", "support@logflare.app"})
     |> subject("Welcome to Logflare!")
     |> text_body(
-      "Yo!\n\nThanks for checking out Logflare! Let me know if you have any issues :)\n\nIf you don't like it you can always delete your account here: https://logflare.app/account/edit"
+      "Yo!\n\nThanks for checking out Logflare! Let me know if you have any issues :)\n\nYou can always delete your account here: #{
+        account_edit_link
+      }"
     )
   end
 
