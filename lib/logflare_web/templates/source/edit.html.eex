@@ -27,7 +27,7 @@
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn ffff -> %>
     <div class="form-group">
 
-      <%= text_input ffff, :other_email_notifications, placeholder: "name@friend.com, name@company.com", class: "form-control" %>
+      <%= text_input ffff, :other_email_notifications, placeholder: "her@friend.com, him@company.com", class: "form-control" %>
       <small class="form-text text-muted">
         Comma separated list of emails please.
       </small>
