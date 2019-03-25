@@ -7,7 +7,7 @@ defmodule Logflare.AccountEmail do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
 
   def welcome(user) do
-    account_edit_link = LogflareWeb.Endpoint.static_url() <> Routes.user_path(Endpoint, :edit)
+    account_edit_link = build_host() <> Routes.user_path(Endpoint, :edit)
 
     new()
     |> to(user.email)
@@ -23,11 +23,10 @@ defmodule Logflare.AccountEmail do
   def source_notification(user, rate, source) do
     signature = Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, user.email)
 
-    source_link =
-      LogflareWeb.Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
+    source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
     unsubscribe_link =
-      LogflareWeb.Endpoint.static_url() <>
+      build_host() <>
         Routes.auth_path(Endpoint, :unsubscribe, source.id, signature)
 
     new()
@@ -44,14 +43,13 @@ defmodule Logflare.AccountEmail do
   def source_notification_for_others(email, rate, source) do
     signature = Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, email)
 
-    source_link =
-      LogflareWeb.Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
+    source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
     unsubscribe_link =
-      LogflareWeb.Endpoint.static_url() <>
+      build_host() <>
         Routes.auth_path(Endpoint, :unsubscribe_stranger, source.id, signature)
 
-    signup_link = LogflareWeb.Endpoint.static_url() <> Routes.auth_path(Endpoint, :login)
+    signup_link = build_host() <> Routes.auth_path(Endpoint, :login)
 
     new()
     |> to(email)
@@ -62,5 +60,10 @@ defmodule Logflare.AccountEmail do
         signup_link
       }\n\nUnsubscribe: #{unsubscribe_link}"
     )
+  end
+
+  defp build_host() do
+    host_info = LogflareWeb.Endpoint.struct_url()
+    host_info.scheme <> "://" <> host_info.host
   end
 end
