@@ -28,6 +28,8 @@
     <meta name="msapplication-TileColor" content="#7ef854">
     <meta name="msapplication-TileImage" content="/images/ms-icon-144x144.png">
     <meta name="theme-color" content="#7ef854">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
 
     <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
