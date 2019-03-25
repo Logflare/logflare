@@ -2,6 +2,8 @@
  "name": "Logflare",
  "start_url": "/dashboard",
  "display": "standalone",
+ "background_color": "#7ef854",
+ "theme_color": "#7ef854",
  "icons": [
   {
    "src": "\/images\/android-icon-36x36.png",
