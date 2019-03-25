@@ -58,6 +58,8 @@ defmodule LogflareWeb.Router do
   scope "/sources", LogflareWeb do
     pipe_through(:browser)
     get("/public/:public_token", SourceController, :public)
+    get("/:id/unsubscribe/:token", AuthController, :unsubscribe)
+    get("/:id/unsubscribe/stranger/:token", AuthController, :unsubscribe_stranger)
   end
 
   scope "/sources", LogflareWeb do

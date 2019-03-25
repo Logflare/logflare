@@ -16,20 +16,6 @@ defmodule Logflare.TableManager do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  ## Client
-
-  def new_table(website_table) do
-    GenServer.call(__MODULE__, {:create, website_table})
-  end
-
-  def delete_table(website_table) do
-    GenServer.call(__MODULE__, {:stop, website_table})
-    tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
-    File.rm(tab_path)
-    TableCounter.delete(website_table)
-    {:ok, website_table}
-  end
-
   def init(_state) do
     Logger.info("Table manager started!")
 
@@ -93,23 +79,19 @@ defmodule Logflare.TableManager do
     {:noreply, state}
   end
 
-  ## Private Functions
-
-  defp persist() do
-    Process.send_after(self(), :persist, 60000)
-  end
-
-  defp persist_tables(state) do
-    Enum.each(
-      state,
-      fn t ->
-        tab_path = "tables/" <> Atom.to_string(t) <> ".tab"
-        :ets.tab2file(t, String.to_charlist(tab_path))
-      end
-    )
-  end
-
   ## Public Functions
+
+  def new_table(website_table) do
+    GenServer.call(__MODULE__, {:create, website_table})
+  end
+
+  def delete_table(website_table) do
+    GenServer.call(__MODULE__, {:stop, website_table})
+    tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
+    File.rm(tab_path)
+    TableCounter.delete(website_table)
+    {:ok, website_table}
+  end
 
   def delete_all_tables() do
     state = :sys.get_state(Logflare.Main)
@@ -143,5 +125,21 @@ defmodule Logflare.TableManager do
     )
 
     {:ok}
+  end
+
+  ## Private Functions
+
+  defp persist() do
+    Process.send_after(self(), :persist, 60000)
+  end
+
+  defp persist_tables(state) do
+    Enum.each(
+      state,
+      fn t ->
+        tab_path = "tables/" <> Atom.to_string(t) <> ".tab"
+        :ets.tab2file(t, String.to_charlist(tab_path))
+      end
+    )
   end
 end

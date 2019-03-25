@@ -44,6 +44,8 @@ defmodule Logflare.Table do
         Logflare.TableRateCounter.start_link(state, 0)
     end
 
+    Logflare.TableMailer.start_link(state)
+
     check_ttl()
     prune()
 

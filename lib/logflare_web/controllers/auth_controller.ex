@@ -9,6 +9,10 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.AccountCache
   alias Logflare.AccountEmail
   alias Logflare.Mailer
+  alias Logflare.Source
+
+  @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
+  @max_age 86_400
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
@@ -125,6 +129,79 @@ defmodule LogflareWeb.AuthController do
     )
   end
 
+  def unsubscribe(conn, %{"id" => source_id, "token" => token}) do
+    source = Repo.get(Source, source_id)
+    source_changes = %{user_email_notifications: false}
+    changeset = Source.changeset(source, source_changes)
+
+    case verify_token(token) do
+      {:ok, _email} ->
+        case Repo.update(changeset) do
+          {:ok, _source} ->
+            conn
+            |> put_flash(:info, "Unsubscribed!")
+            |> redirect(to: Routes.source_path(conn, :index))
+
+          {:error, _changeset} ->
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> redirect(to: Routes.source_path(conn, :index))
+        end
+
+      {:error, :expired} ->
+        conn
+        |> put_flash(:error, "That link is expired!")
+        |> redirect(to: Routes.source_path(conn, :index))
+
+      {:error, :invalid} ->
+        conn
+        |> put_flash(:error, "Bad link!")
+        |> redirect(to: Routes.source_path(conn, :index))
+    end
+  end
+
+  def unsubscribe_stranger(conn, %{"id" => source_id, "token" => token}) do
+    case verify_token(token) do
+      {:ok, email} ->
+        source = Repo.get(Source, source_id)
+
+        source_changes = %{
+          other_email_notifications: filter_email(email, source.other_email_notifications)
+        }
+
+        changeset = Source.changeset(source, source_changes)
+
+        case Repo.update(changeset) do
+          {:ok, _source} ->
+            conn
+            |> put_flash(:info, "Unsubscribed!")
+            |> redirect(to: Routes.source_path(conn, :index))
+
+          {:error, _changeset} ->
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> redirect(to: Routes.source_path(conn, :index))
+        end
+
+      {:error, :expired} ->
+        conn
+        |> put_flash(:error, "That link is expired!")
+        |> redirect(to: Routes.source_path(conn, :index))
+
+      {:error, :invalid} ->
+        conn
+        |> put_flash(:error, "Bad link!")
+        |> redirect(to: Routes.source_path(conn, :index))
+    end
+  end
+
+  defp filter_email(email, other_emails) do
+    String.split(other_emails, ",")
+    |> Enum.map(fn e -> String.trim(e) end)
+    |> Enum.filter(fn e -> e != email end)
+    |> Enum.join(", ")
+  end
+
   defp insert_or_update_user(changeset) do
     case Repo.get_by(User, email: changeset.changes.email) do
       nil ->
@@ -134,4 +211,7 @@ defmodule LogflareWeb.AuthController do
         {:ok_found_user, user}
     end
   end
+
+  defp verify_token(token),
+    do: Phoenix.Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: @max_age)
 end
