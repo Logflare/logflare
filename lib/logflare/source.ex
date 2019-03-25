@@ -11,6 +11,8 @@ defmodule Logflare.Source do
     field(:overflow_source, Ecto.UUID)
     field(:avg_rate, :integer, virtual: true)
     field(:favorite, :boolean)
+    field(:user_email_notifications, :boolean)
+    field(:other_email_notifications, :string)
 
     timestamps()
   end
@@ -18,7 +20,16 @@ defmodule Logflare.Source do
   @doc false
   def changeset(source, attrs) do
     source
-    |> cast(attrs, [:name, :token, :public_token, :overflow_source, :avg_rate, :favorite])
+    |> cast(attrs, [
+      :name,
+      :token,
+      :public_token,
+      :overflow_source,
+      :avg_rate,
+      :favorite,
+      :user_email_notifications,
+      :other_email_notifications
+    ])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)
