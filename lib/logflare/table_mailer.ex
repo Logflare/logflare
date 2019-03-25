@@ -42,13 +42,17 @@ defmodule Logflare.TableMailer do
           end)
         end
 
-        other_emails = String.split(source.other_email_notifications, ",")
+        stranger_emails = source.other_email_notifications
 
-        for email <- other_emails do
-          Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-            AccountEmail.source_notification_for_others(String.trim(email), rate, source)
-            |> Mailer.deliver()
-          end)
+        if is_nil(stranger_emails) == false do
+          other_emails = String.split(stranger_emails, ",")
+
+          for email <- other_emails do
+            Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+              AccountEmail.source_notification_for_others(String.trim(email), rate, source)
+              |> Mailer.deliver()
+            end)
+          end
         end
 
         check_rate()
