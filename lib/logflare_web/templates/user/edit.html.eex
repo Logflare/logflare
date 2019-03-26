@@ -47,4 +47,8 @@
   <h5 class="header-margin">Delete Your Account</h5>
   <p>This will immediately delete everything associated with your account. There is no undo.</p>
   <%= link "Delete now", to: Routes.user_path(@conn, :delete), class: "btn btn-danger", method: :delete %>
+
+  <h5 class="header-margin">Reset Your API Key</h5>
+  <p>Immediately resest your API key. All future requests with your old API key will be rejected.</p>
+  <%= link "Reset now", to: Routes.auth_path(@conn, :new_api_key), class: "btn btn-danger" %></li>
 </div>
