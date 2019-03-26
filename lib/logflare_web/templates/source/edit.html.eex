@@ -14,34 +14,49 @@
 
   <h5 class="header-margin">Source Name</h5>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a good place to keep all bot logs. Route logs with regex using <%= link to: Routes.source_rule_path(@conn, :index, @source) do %>rules<% end %>.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn a -> %>
     <div class="form-group">
-      <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control" %>
-      <%= error_tag f, :name %>
+      <%= text_input a, :name, placeholder: "YourApp.SourceName", class: "form-control" %>
+      <%= error_tag a, :name %>
     </div>
     <%= submit "Save source", class: "btn btn-primary form-button" %>
   <% end %>
 
   <h5 class="header-margin">Email Alerts</h5>
-  <p>Send emails when this source gets new events. Add email addresses below. Sometimes sources can get a lot of events quickly. At most you will get one email per second.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn ffff -> %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn b -> %>
     <div class="form-group">
-
-      <%= text_input ffff, :other_email_notifications, placeholder: "her@friend.com, him@company.com", class: "form-control" %>
+      <p>Send emails when this source gets new events. Add email addresses below. Sometimes sources can get a lot of events quickly. At most you will get one email per second.</p>
+      <%= text_input b, :other_email_notifications, placeholder: "her@friend.com, him@company.com", class: "form-control" %>
       <small class="form-text text-muted">
         Comma separated list of emails please.
       </small>
-      <%= error_tag ffff, :other_email_notifications %>
-      <%= label ffff, :user_email_notifications, "Also send alerts to my preferred email ", class: "label-padding" %>
+      <%= error_tag b, :other_email_notifications %>
+      <%= label b, :user_email_notifications, "Also send alerts to my preferred email ", class: "label-padding" %>
       <%= if is_nil(@conn.assigns.user.email_preferred) do %>
       <%= link to: Routes.user_path(@conn, :edit) do "(add a preferred email)" end %>
       <% else %>
       <%= link to: Routes.user_path(@conn, :edit) do "(#{@conn.assigns.user.email_preferred})" end %>
       <% end %>
-      <%= checkbox ffff, :user_email_notifications %>
-      <%= error_tag ffff, :user_email_notifications %>
+      <%= checkbox b, :user_email_notifications %>
+      <%= error_tag b, :user_email_notifications %>
     </div>
-    <%= submit "Update alert preferences", class: "btn btn-primary form-button" %>
+    <%= submit "Update email preferences", class: "btn btn-primary form-button" %>
+  <% end %>
+
+  <h5 class="header-margin">SMS Alerts</h5>
+  <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one email per second.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
+    <div class="form-group">
+      <%= label c, :user_text_notifications, "Send SMS alerts to my phone number ", class: "label-padding" %>
+      <%= if is_nil(@conn.assigns.user.phone) do %>
+      <%= link to: Routes.user_path(@conn, :edit) do "(add a phone number)" end %>
+      <% else %>
+      <%= link to: Routes.user_path(@conn, :edit) do "(#{@conn.assigns.user.phone})" end %>
+      <% end %>
+      <%= checkbox c, :user_text_notifications %>
+      <%= error_tag c, :user_text_notifications %>
+    </div>
+    <%= submit "Update SMS preferences", class: "btn btn-primary form-button" %>
   <% end %>
 
   <h5 class="header-margin">Public Access</h5>
@@ -51,21 +66,21 @@
       <code>https://logflare.app/sources/public/<%= @source.public_token %></code> <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="https://logflare.app/sources/public/<%= @source.public_token %>">Copy path</button>
     </div>
   <% end %>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn ff -> %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn d -> %>
     <div class="form-group">
-      <%= hidden_input ff, :public_token, value: :crypto.strong_rand_bytes(12) |> Base.url_encode64, class: "form-control" %>
-      <%= error_tag ff, :public_token %>
+      <%= hidden_input d, :public_token, value: :crypto.strong_rand_bytes(12) |> Base.url_encode64, class: "form-control" %>
+      <%= error_tag d, :public_token %>
     </div>
     <%= submit "Generate path", class: "btn btn-primary form-button" %>
   <% end %>
 
   <h5 class="header-margin">Abnormal Volume Overflow</h5>
   <p>If this source gets more than 10x the average requests in a second those events will be copied to your overflow source. Select an overflow source.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn fff -> %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn df -> %>
     <div class="form-group">
-      <%= hidden_input fff, :avg_rate, value: @avg_rate, class: "form-control" %>
-      <%= select fff, :overflow_source, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a source", class: "form-control" %>
-      <%= error_tag fff, :avg_rate %>
+      <%= hidden_input df, :avg_rate, value: @avg_rate, class: "form-control" %>
+      <%= select df, :overflow_source, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a source", class: "form-control" %>
+      <%= error_tag df, :avg_rate %>
     </div>
     <%= submit "Update overflow source", class: "btn btn-primary form-button" %>
   <% end %>

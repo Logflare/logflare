@@ -14,6 +14,7 @@ defmodule Logflare.User do
     field(:email_me_product, :boolean)
     field(:admin, :boolean)
     has_many(:sources, Logflare.Source)
+    field(:phone, :string)
 
     timestamps()
   end
@@ -31,7 +32,8 @@ defmodule Logflare.User do
       :name,
       :image,
       :email_me_product,
-      :admin
+      :admin,
+      :phone
     ])
     |> validate_required([:email, :provider, :token, :api_key])
   end
