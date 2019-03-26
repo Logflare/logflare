@@ -13,6 +13,7 @@ defmodule Logflare.Source do
     field(:favorite, :boolean)
     field(:user_email_notifications, :boolean)
     field(:other_email_notifications, :string)
+    field(:user_text_notifications, :boolean)
 
     timestamps()
   end
@@ -28,7 +29,8 @@ defmodule Logflare.Source do
       :avg_rate,
       :favorite,
       :user_email_notifications,
-      :other_email_notifications
+      :other_email_notifications,
+      :user_text_notifications
     ])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)

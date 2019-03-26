@@ -20,12 +20,16 @@
       <%= label f, :email_preferred, "Preferred email", class: "label-padding" %>
       <%= email_input f, :email_preferred, placeholder: "Preferred email", class: "form-control"%>
       <small class="form-text text-muted">
-        This can be different from the account you authorized with. We'll only send you important product or account related emails.
+        Can be different from the account you authorized with. We'll only send you important product or account related emails.
       </small>
       <%= error_tag f, :email_preferred %>
+      <%= label f, :phone, "Phone number", class: "label-padding" %>
+      <%= text_input f, :phone, placeholder: "+15558675309", class: "form-control"%>
+      <small class="form-text text-muted">
+        Used to send you SMS alerts if enabled on a source.
+      </small>
       <%= label f, :email_me_product, "Email me product updates", class: "label-padding" %>
       <%= checkbox f, :email_me_product %>
-      <%= hidden_input f, :email, class: "form-control", disabled: "disabled" %>
     </div>
     <%= submit "Update preferences", class: "btn btn-primary form-button" %>
   <% end %>

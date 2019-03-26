@@ -45,6 +45,7 @@ defmodule Logflare.Table do
     end
 
     Logflare.TableMailer.start_link(state)
+    Logflare.TableTexter.start_link(state)
 
     check_ttl()
     prune()
