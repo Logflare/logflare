@@ -105,6 +105,7 @@
   <li><i class="fas fa-code-branch feature-icons"></i>Log routing</li>
   <li><i class="fas fa-clock feature-icons"></i>Local time & UTC</li>
   <li><i class="fas fa-book-open feature-icons"></i>Public urls for sources</li>
+  <li><i class="fas fa-bell feature-icons"></i></i>Email & SMS alerts</li>
 </ul>
 
 <div class="row footer">
