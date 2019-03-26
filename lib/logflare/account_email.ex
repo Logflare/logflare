@@ -21,7 +21,7 @@ defmodule Logflare.AccountEmail do
   end
 
   def source_notification(user, rate, source) do
-    signature = Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, user.email)
+    signature = Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, user.email_preferred)
 
     source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
@@ -30,7 +30,7 @@ defmodule Logflare.AccountEmail do
         Routes.auth_path(Endpoint, :unsubscribe, source.id, signature)
 
     new()
-    |> to(user.email)
+    |> to(user.email_preferred)
     |> from({"Logflare", "support@logflare.app"})
     |> subject("#{rate} New Logflare Event(s) for #{source.name}!")
     |> text_body(
