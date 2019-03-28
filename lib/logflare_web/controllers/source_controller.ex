@@ -94,7 +94,7 @@ defmodule LogflareWeb.SourceController do
 
     case Repo.insert(changeset) do
       {:ok, _source} ->
-        Logflare.BigQuery.create_table(String.to_atom(source["token"]))
+        TableManager.new_table(String.to_atom(source["token"]))
 
         case is_nil(oauth_params) do
           true ->
@@ -226,8 +226,8 @@ defmodule LogflareWeb.SourceController do
   def delete(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
 
-    case :ets.info(String.to_atom(source.token)) do
-      :undefined ->
+    case :ets.first(String.to_atom(source.token)) do
+      :"$end_of_table" ->
         source |> Repo.delete!()
         {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
@@ -235,34 +235,23 @@ defmodule LogflareWeb.SourceController do
         |> put_flash(:info, "Source deleted!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
-      _ ->
-        case :ets.first(String.to_atom(source.token)) do
-          :"$end_of_table" ->
-            source |> Repo.delete!()
-            {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+      {timestamp, _unique_int, _monotime} ->
+        now = System.os_time(:microsecond)
 
-            conn
-            |> put_flash(:info, "Source deleted!")
-            |> redirect(to: Routes.source_path(conn, :dashboard))
+        if now - timestamp < 3_600_000_000 do
+          source |> Repo.delete!()
+          {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
-          {timestamp, _unique_int, _monotime} ->
-            now = System.os_time(:microsecond)
-
-            if now - timestamp < 3_600_000_000 do
-              source |> Repo.delete!()
-              {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
-
-              conn
-              |> put_flash(:info, "Source deleted!")
-              |> redirect(to: Routes.source_path(conn, :dashboard))
-            else
-              conn
-              |> put_flash(
-                :error,
-                "Failed! Recent events found. Latest event must be greater than 24 hours old."
-              )
-              |> redirect(to: Routes.source_path(conn, :dashboard))
-            end
+          conn
+          |> put_flash(:info, "Source deleted!")
+          |> redirect(to: Routes.source_path(conn, :dashboard))
+        else
+          conn
+          |> put_flash(
+            :error,
+            "Failed! Recent events found. Latest event must be greater than 24 hours old."
+          )
+          |> redirect(to: Routes.source_path(conn, :dashboard))
         end
     end
   end

@@ -87,7 +87,6 @@ defmodule Logflare.TableManager do
 
   def new_table(website_table) do
     GenServer.call(__MODULE__, {:create, website_table})
-    BigQuery.create_table(website_table)
   end
 
   def delete_table(website_table) do
