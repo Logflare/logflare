@@ -224,32 +224,42 @@ defmodule LogflareWeb.SourceController do
   def delete(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
 
-    case :ets.first(String.to_atom(source.token)) do
-      :"$end_of_table" ->
+    case :ets.info(String.to_atom(source.token)) do
+      :undefined ->
         source |> Repo.delete!()
-        {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
         conn
         |> put_flash(:info, "Source deleted!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
-      {timestamp, _unique_int, _monotime} ->
-        now = System.os_time(:microsecond)
+      _ ->
+        case :ets.first(String.to_atom(source.token)) do
+          :"$end_of_table" ->
+            source |> Repo.delete!()
+            {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
-        if now - timestamp < 3_600_000_000 do
-          source |> Repo.delete!()
-          {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+            conn
+            |> put_flash(:info, "Source deleted!")
+            |> redirect(to: Routes.source_path(conn, :dashboard))
 
-          conn
-          |> put_flash(:info, "Source deleted!")
-          |> redirect(to: Routes.source_path(conn, :dashboard))
-        else
-          conn
-          |> put_flash(
-            :error,
-            "Failed! Recent events found. Latest event must be greater than 24 hours old."
-          )
-          |> redirect(to: Routes.source_path(conn, :dashboard))
+          {timestamp, _unique_int, _monotime} ->
+            now = System.os_time(:microsecond)
+
+            if now - timestamp < 3_600_000_000 do
+              source |> Repo.delete!()
+              {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+
+              conn
+              |> put_flash(:info, "Source deleted!")
+              |> redirect(to: Routes.source_path(conn, :dashboard))
+            else
+              conn
+              |> put_flash(
+                :error,
+                "Failed! Recent events found. Latest event must be greater than 24 hours old."
+              )
+              |> redirect(to: Routes.source_path(conn, :dashboard))
+            end
         end
     end
   end
