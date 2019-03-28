@@ -7,6 +7,7 @@ defmodule Logflare.TableManager do
 
   alias Logflare.Repo
   alias Logflare.TableCounter
+  alias Logflare.BigQuery
 
   import Ecto.Query, only: [from: 2]
 
@@ -37,7 +38,10 @@ defmodule Logflare.TableManager do
         end
       )
 
-    Enum.each(state, fn s -> Logflare.Table.start_link(s) end)
+    Enum.each(state, fn s ->
+      Logflare.Table.start_link(s)
+    end)
+
     persist()
 
     {:ok, state}
@@ -83,6 +87,7 @@ defmodule Logflare.TableManager do
 
   def new_table(website_table) do
     GenServer.call(__MODULE__, {:create, website_table})
+    BigQuery.create_table(website_table)
   end
 
   def delete_table(website_table) do
@@ -90,6 +95,8 @@ defmodule Logflare.TableManager do
     tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
     File.rm(tab_path)
     TableCounter.delete(website_table)
+    BigQuery.delete_table(website_table)
+
     {:ok, website_table}
   end
 

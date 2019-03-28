@@ -31,3 +31,5 @@ npm-debug.log
 
 /tables
 /system-table
+
+/config/secrets
