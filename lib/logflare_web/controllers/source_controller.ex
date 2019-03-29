@@ -245,7 +245,7 @@ defmodule LogflareWeb.SourceController do
           {timestamp, _unique_int, _monotime} ->
             now = System.os_time(:microsecond)
 
-            if now - timestamp < 3_600_000_000 do
+            if now - timestamp > 3_600_000_000 do
               source |> Repo.delete!()
               {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
