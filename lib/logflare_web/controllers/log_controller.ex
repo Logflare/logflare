@@ -9,7 +9,6 @@ defmodule LogflareWeb.LogController do
   alias Logflare.TableManager
   alias Logflare.SourceData
   alias Logflare.AccountCache
-  alias Logflare.BigQuery
 
   @system_counter :total_logs_logged
 
@@ -117,10 +116,6 @@ defmodule LogflareWeb.LogController do
     :ets.insert(source_table, {time_event, payload})
     TableCounter.incriment(source_table)
     SystemCounter.incriment(@system_counter)
-
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      BigQuery.stream_event(source_table, timestamp, log_entry)
-    end)
 
     broadcast_log_count(source_table)
     broadcast_total_log_count()

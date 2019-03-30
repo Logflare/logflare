@@ -247,7 +247,7 @@ defmodule LogflareWeb.SourceController do
           {timestamp, _unique_int, _monotime} ->
             now = System.os_time(:microsecond)
 
-            if IO.inspect(now - timestamp > 3_600_000_000) do
+            if now - timestamp > 3_600_000_000 do
               source |> Repo.delete!()
               {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
 
@@ -268,7 +268,7 @@ defmodule LogflareWeb.SourceController do
 
   def clear_logs(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
-    {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+    {:ok, _table} = TableManager.reset_table(String.to_atom(source.token))
 
     conn
     |> put_flash(:info, "Logs cleared!")

@@ -61,9 +61,12 @@ defmodule Logflare.TableManager do
         {:reply, website_table, state}
 
       _ ->
+        TableCounter.delete(website_table)
         rate_table_name = Atom.to_string(website_table) <> "-rate"
         GenServer.stop(String.to_atom(rate_table_name))
         GenServer.stop(website_table)
+        tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
+        File.rm(tab_path)
         state = List.delete(state, website_table)
         {:reply, website_table, state}
     end
@@ -91,10 +94,13 @@ defmodule Logflare.TableManager do
 
   def delete_table(website_table) do
     GenServer.call(__MODULE__, {:stop, website_table})
-    tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
-    File.rm(tab_path)
-    TableCounter.delete(website_table)
     BigQuery.delete_table(website_table)
+
+    {:ok, website_table}
+  end
+
+  def reset_table(website_table) do
+    GenServer.call(__MODULE__, {:stop, website_table})
 
     {:ok, website_table}
   end

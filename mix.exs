@@ -61,7 +61,8 @@ defmodule Logflare.Mixfile do
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
       {:google_api_big_query, "~> 0.0.1"},
-      {:goth, "~> 0.8.0"}
+      {:goth, "~> 0.8.0"},
+      {:broadway, "~> 0.1.0"}
     ]
   end
 

@@ -138,6 +138,25 @@ defmodule Logflare.BigQuery do
       )
   end
 
+  def stream_batch(source, batch) do
+    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
+    conn = GoogleApi.BigQuery.V2.Connection.new(token.token)
+    table_name = format_table_name(source)
+
+    body = %GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequest{
+      rows: batch
+    }
+
+    {:ok, _response} =
+      GoogleApi.BigQuery.V2.Api.Tabledata.bigquery_tabledata_insert_all(
+        conn,
+        @project_id,
+        @dataset_id,
+        table_name,
+        body: body
+      )
+  end
+
   def format_table_name(source) do
     string = Atom.to_string(source)
     String.replace(string, "-", "_")
