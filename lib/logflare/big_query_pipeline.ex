@@ -11,7 +11,7 @@ defmodule Logflare.BigQueryPipeline do
       name: name(website_table),
       producers: [
         ets: [
-          module: {BroadwayETS.Producer, table_name: website_table, config: []}
+          module: {BroadwayBuffer.Producer, table_name: website_table, config: []}
         ]
       ],
       processors: [
