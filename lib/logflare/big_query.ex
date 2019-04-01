@@ -6,7 +6,10 @@ defmodule Logflare.BigQuery do
   require Logger
 
   @project_id "logflare-232118"
-  @dataset_id "logflare_dev"
+  @dataset_id Application.get_env(:logflare, Logflare.BigQuery)[:dataset_id]
+
+  @table_ttl 604_800_000
+  # seven days
 
   def init_table(source) do
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
@@ -54,7 +57,7 @@ defmodule Logflare.BigQuery do
           description: nil,
           fields: nil,
           mode: nil,
-          name: "log_message",
+          name: "event_message",
           type: "STRING"
         }
       ]
@@ -66,11 +69,20 @@ defmodule Logflare.BigQuery do
       tableId: table_name
     }
 
+    partitioning = %GoogleApi.BigQuery.V2.Model.TimePartitioning{
+      type: "DAY",
+      expirationMs: @table_ttl
+    }
+
     GoogleApi.BigQuery.V2.Api.Tables.bigquery_tables_insert(
       conn,
       @project_id,
       @dataset_id,
-      body: %GoogleApi.BigQuery.V2.Model.Table{schema: schema, tableReference: reference}
+      body: %GoogleApi.BigQuery.V2.Model.Table{
+        schema: schema,
+        tableReference: reference,
+        timePartitioning: partitioning
+      }
     )
   end
 
@@ -117,7 +129,7 @@ defmodule Logflare.BigQuery do
     conn = GoogleApi.BigQuery.V2.Connection.new(token.token)
     table_name = format_table_name(source)
     {:ok, timestamp} = DateTime.from_unix(unix_timestamp, :microsecond)
-    row_json = %{"timestamp" => timestamp, "log_message" => message}
+    row_json = %{"timestamp" => timestamp, "event_message" => message}
 
     row = %GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows{
       insertId: Ecto.UUID.generate(),

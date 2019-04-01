@@ -52,8 +52,6 @@ defmodule BroadwayBuffer.Producer do
   end
 
   def ack(table, successful, _unsuccessful) do
-    Logger.info("Deleted messages")
-
     Enum.each(successful, fn _message ->
       # [object] = message.data
       TableBuffer.ack(table)
@@ -71,8 +69,6 @@ defmodule BroadwayBuffer.Producer do
         []
 
       _ ->
-        IO.inspect(event_message, label: "POP")
-
         [
           %Broadway.Message{
             data: event_message,

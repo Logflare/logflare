@@ -35,7 +35,7 @@ defmodule Logflare.BigQueryPipeline do
         {:value, {_time_event, payload}} = message.data
 
         {:ok, bq_timestamp} = DateTime.from_unix(payload.timestamp, :microsecond)
-        row_json = %{"timestamp" => bq_timestamp, "log_message" => payload.log_message}
+        row_json = %{"timestamp" => bq_timestamp, "event_message" => payload.log_message}
 
         %GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows{
           insertId: Ecto.UUID.generate(),
@@ -46,7 +46,6 @@ defmodule Logflare.BigQueryPipeline do
     table_atom = get_table(messages)
     BigQuery.stream_batch!(table_atom, rows)
 
-    Logger.info("Got batch from ETS")
     messages
   end
 
