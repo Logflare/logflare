@@ -6,28 +6,24 @@ defmodule Logflare.BigQueryPipeline do
   alias Broadway.Message
   alias Logflare.BigQuery
 
-  @table_name "da7660a6-447a-4735-b385-4d6dc8929857"
-
-  def start_link(_opts) do
+  def start_link(website_table) do
     Broadway.start_link(__MODULE__,
-      name: __MODULE__,
+      name: name(website_table),
       producers: [
         ets: [
-          module: {BroadwayETS.Producer, table_name: @table_name, config: []}
+          module: {BroadwayETS.Producer, table_name: website_table, config: []}
         ]
       ],
       processors: [
         default: [stages: 5]
       ],
       batchers: [
-        bq: [stages: 5, batch_size: 10, batch_timeout: 1000]
+        bq: [stages: 5, batch_size: 100, batch_timeout: 1000]
       ]
     )
   end
 
   def handle_message(_processor_name, message, _context) do
-    IO.inspect(message, label: "Message handled")
-
     message
     |> Message.update_data(&process_data/1)
     |> Message.put_batcher(:bq)
@@ -36,26 +32,36 @@ defmodule Logflare.BigQueryPipeline do
   def handle_batch(:bq, messages, _batch_info, _context) do
     rows =
       Enum.map(messages, fn message ->
-        {_module, table, _blah} = message.acknowledger
-        [{_time_event, payload}] = message.data
+        {:value, {_time_event, payload}} = message.data
 
         {:ok, bq_timestamp} = DateTime.from_unix(payload.timestamp, :microsecond)
         row_json = %{"timestamp" => bq_timestamp, "log_message" => payload.log_message}
 
-        row = %GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows{
+        %GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows{
           insertId: Ecto.UUID.generate(),
           json: row_json
         }
       end)
 
-    BigQuery.stream_batch(String.to_atom(@table_name), rows)
+    table_atom = get_table(messages)
+    BigQuery.stream_batch(table_atom, rows)
 
-    Logger.info("Bot batch from ETS")
+    Logger.info("Got batch from ETS")
     messages
   end
 
   defp process_data(data) do
     # Do some calculations, generate a JSON representation, process images.
-    IO.inspect(data, labe: "Data processed")
+    data
+  end
+
+  defp get_table(messages) do
+    message = Enum.at(messages, 0)
+    {_module, table, _unsuccessful} = message.acknowledger
+    table
+  end
+
+  defp name(website_table) do
+    String.to_atom("#{website_table}" <> "-pipeline")
   end
 end

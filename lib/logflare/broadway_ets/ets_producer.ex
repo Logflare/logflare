@@ -44,7 +44,9 @@ defmodule BroadwayETS.Producer do
 
   require Logger
 
-  @default_receive_interval 5000
+  alias Logflare.TableBuffer
+
+  @default_receive_interval 1000
 
   @impl true
   def init(opts) do
@@ -73,7 +75,7 @@ defmodule BroadwayETS.Producer do
   end
 
   def handle_receive_messages(%{receive_timer: nil, demand: demand} = state) when demand > 0 do
-    messages = receive_messages_from_ets(state, demand)
+    messages = receive_messages_from_buffer(state, demand)
     new_demand = demand - length(messages)
 
     receive_timer =
@@ -90,38 +92,34 @@ defmodule BroadwayETS.Producer do
     {:noreply, [], state}
   end
 
-  def ack(table, successful, blah) do
-    IO.inspect(successful, label: "ACK Status +++++++++++++++++")
-    IO.inspect(table, label: "ACK Table +++++++++++++++++")
+  def ack(table, successful, _unsuccessful) do
+    Logger.info("Deleted messages")
 
-    Enum.each(successful, fn message ->
-      [object] = message.data
-      :ets.delete_object(table, object)
+    Enum.each(successful, fn _message ->
+      # [object] = message.data
+      TableBuffer.ack(table)
     end)
   end
 
-  defp receive_messages_from_ets(state, total_demand) do
+  defp receive_messages_from_buffer(state, _total_demand) do
     {opts} = state.table_name
-    table = String.to_atom(opts[:table_name])
+    table = opts[:table_name]
 
-    case :ets.info(table) do
-      :undefined ->
+    event_message = TableBuffer.pop(table)
+
+    case event_message do
+      :empty ->
         []
 
       _ ->
-        key = :ets.last(table)
+        IO.inspect(event_message, label: "POP")
 
-        case key do
-          :"$end_of_table" ->
-            []
-
-          _ ->
-            event_message = :ets.lookup(table, key)
-
-            [
-              %Broadway.Message{data: event_message, acknowledger: {__MODULE__, table, "blah"}}
-            ]
-        end
+        [
+          %Broadway.Message{
+            data: event_message,
+            acknowledger: {__MODULE__, table, "unsuccessful"}
+          }
+        ]
     end
   end
 

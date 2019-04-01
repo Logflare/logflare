@@ -12,7 +12,6 @@ defmodule Logflare.Application do
       supervisor(Logflare.TableCounter, []),
       supervisor(Logflare.SystemCounter, []),
       supervisor(Logflare.TableManager, []),
-      {Logflare.BigQueryPipeline, []},
       supervisor(LogflareWeb.Endpoint, [])
     ]
 
