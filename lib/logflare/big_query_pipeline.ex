@@ -44,7 +44,7 @@ defmodule Logflare.BigQueryPipeline do
       end)
 
     table_atom = get_table(messages)
-    BigQuery.stream_batch(table_atom, rows)
+    BigQuery.stream_batch!(table_atom, rows)
 
     Logger.info("Got batch from ETS")
     messages

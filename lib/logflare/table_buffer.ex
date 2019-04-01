@@ -32,8 +32,14 @@ defmodule Logflare.TableBuffer do
     GenServer.call(name(website_table), :ack)
   end
 
+  def get_count(website_table) do
+    GenServer.call(name(website_table), :get_count)
+  end
+
   def handle_cast({:push, event}, state) do
     new_buffer = :queue.in(event, state.buffer)
+
+    broadcast_buffer(state.source, :queue.len(new_buffer))
 
     new_state = %{state | buffer: new_buffer}
     {:noreply, new_state}
@@ -47,6 +53,8 @@ defmodule Logflare.TableBuffer do
       false ->
         {event, new_buffer} = :queue.out(state.buffer)
         new_read_receipts = :queue.in(event, state.read_receipts)
+
+        broadcast_buffer(state.source, :queue.len(new_buffer))
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
         {:reply, event, new_state}
@@ -64,6 +72,26 @@ defmodule Logflare.TableBuffer do
         new_state = %{state | read_receipts: new_read_receipts}
         {:reply, event, new_state}
     end
+  end
+
+  def handle_call(:get_count, _from, state) do
+    count = :queue.len(state.buffer)
+    {:reply, count, state}
+  end
+
+  defp broadcast_buffer(website_table, count) do
+    website_table_string = Atom.to_string(website_table)
+
+    payload = %{
+      source_token: website_table_string,
+      buffer: count
+    }
+
+    LogflareWeb.Endpoint.broadcast(
+      "dashboard:" <> website_table_string,
+      "dashboard:#{website_table_string}:buffer",
+      payload
+    )
   end
 
   defp name(website_table) do

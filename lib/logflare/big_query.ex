@@ -138,7 +138,7 @@ defmodule Logflare.BigQuery do
       )
   end
 
-  def stream_batch(source, batch) do
+  def stream_batch!(source, batch) do
     {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
     conn = GoogleApi.BigQuery.V2.Connection.new(token.token)
     table_name = format_table_name(source)
