@@ -64,6 +64,9 @@
           <span class="log-datestamp"><%= source.latest %></span>
           <% end %>
         </small>
+        <small class="source-details">
+          buffer: <span id="<%= source.token %>-buffer"><%= source.buffer %></span>
+        </small>
       </div>
       </li>
     <% end %>

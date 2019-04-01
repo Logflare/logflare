@@ -32,7 +32,6 @@ defmodule Logflare.Table do
         log_count = info[:size]
         TableCounter.create(state)
         TableCounter.incriment(state, log_count)
-
         Logflare.TableRateCounter.start_link(state, log_count)
 
       {:error, _reason} ->
@@ -40,12 +39,14 @@ defmodule Logflare.Table do
         table_args = [:named_table, :ordered_set, :public]
         :ets.new(state, table_args)
         TableCounter.create(state)
-
         Logflare.TableRateCounter.start_link(state, 0)
     end
 
     Logflare.TableMailer.start_link(state)
     Logflare.TableTexter.start_link(state)
+    Logflare.BigQuery.init_table(state)
+    Logflare.TableBuffer.start_link(state)
+    Logflare.BigQueryPipeline.start_link(state)
 
     check_ttl()
     prune()

@@ -51,6 +51,7 @@ function createDashboardSocket(sourceToken) {
 
   channel.on(`dashboard:${sourceToken}:log_count`, swapBadge);
   channel.on(`dashboard:${sourceToken}:rate`, swapRate);
+  channel.on(`dashboard:${sourceToken}:buffer`, swapBuffer);
 };
 
 function swapBadge(event) {
@@ -67,6 +68,12 @@ function swapRate(event) {
   rate.innerHTML = `${event.rate}`
   avgRate.innerHTML = `${event.average_rate}`
   peakRate.innerHTML = `${event.max_rate}`
+}
+
+function swapBuffer(event) {
+  var buffer = document.getElementById(`${event.source_token}-buffer`);
+
+  buffer.innerHTML = `${event.buffer}`
 }
 
 window.createDashboardSocket = createDashboardSocket;

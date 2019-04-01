@@ -5,14 +5,14 @@ defmodule Logflare.Application do
     import Supervisor.Spec
 
     children = [
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Logflare.Repo, []),
       supervisor(Logflare.AccountCache, []),
       # init TableCounter before TableManager as TableManager calls TableCounter through table create
       supervisor(Logflare.TableCounter, []),
       supervisor(Logflare.SystemCounter, []),
       supervisor(Logflare.TableManager, []),
-      supervisor(LogflareWeb.Endpoint, []),
-      {Task.Supervisor, name: Logflare.TaskSupervisor}
+      supervisor(LogflareWeb.Endpoint, [])
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
