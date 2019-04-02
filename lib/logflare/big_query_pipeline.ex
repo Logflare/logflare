@@ -4,7 +4,7 @@ defmodule Logflare.BigQueryPipeline do
   require Logger
 
   alias Broadway.Message
-  alias Logflare.BigQuery
+  alias Logflare.Google.BigQuery
 
   def start_link(website_table) do
     Broadway.start_link(__MODULE__,

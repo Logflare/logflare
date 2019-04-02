@@ -72,6 +72,6 @@ config :logflare, Logflare.Repo,
   prepare: :unnamed,
   timeout: 30_000
 
-config :logflare, Logflare.BigQuery, dataset_id: "logflare_prod"
+config :logflare, Logflare.BigQuery, dataset_id_append: "_prod"
 
 import_config "prod.secret.exs"
