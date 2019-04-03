@@ -244,6 +244,14 @@ defmodule Logflare.Google.BigQuery do
     end
   end
 
+  @spec delete_dataset(integer) :: {}
+  def delete_dataset(account_id) do
+    conn = get_conn()
+    dataset_id = Integer.to_string(account_id) <> @dataset_id_append
+
+    Api.Datasets.bigquery_datasets_delete(conn, @project_id, dataset_id, deleteContents: true)
+  end
+
   def list_datasets() do
     conn = get_conn()
     Api.Datasets.bigquery_datasets_list(conn, @project_id)
