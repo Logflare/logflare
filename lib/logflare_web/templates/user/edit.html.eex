@@ -34,8 +34,8 @@
     <%= submit "Update preferences", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <h5 class="header-margin">Signed Up with <%= String.capitalize(@user.provider) %></h5>
-  <p>You signed up with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
+  <h5 class="header-margin">Signed In with <%= String.capitalize(@user.provider) %></h5>
+  <p>You signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
   <%= if @user.provider == "github" do %>
     <p>Review your authorized Oauth applications at Github.</p>
     <%= link "Visit Github", to: "https://github.com/settings/applications", class: "btn btn-primary form-button" %>

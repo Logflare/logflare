@@ -35,6 +35,6 @@ defmodule Logflare.User do
       :admin,
       :phone
     ])
-    |> validate_required([:email, :provider, :token, :api_key])
+    |> validate_required([:email, :provider, :token])
   end
 end

@@ -11,6 +11,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Mailer
   alias Logflare.Source
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.Google.BigQuery
 
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
@@ -95,6 +96,9 @@ defmodule LogflareWeb.AuthController do
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
+        CloudResourceManager.set_iam_policy!()
+        BigQuery.patch_dataset_access!(user.id)
+
         case is_nil(oauth_params) do
           true ->
             conn
@@ -210,7 +214,17 @@ defmodule LogflareWeb.AuthController do
         Repo.insert(changeset)
 
       user ->
-        {:ok_found_user, user}
+        updated_params = %{
+          token: changeset.changes.token,
+          provider: changeset.changes.provider,
+          image: changeset.changes.image
+        }
+
+        updated_changeset = User.changeset(user, updated_params)
+
+        Repo.update(updated_changeset)
+        updated_user = Repo.get_by(User, email: changeset.changes.email)
+        {:ok_found_user, updated_user}
     end
   end
 

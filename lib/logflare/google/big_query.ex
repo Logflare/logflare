@@ -244,6 +244,50 @@ defmodule Logflare.Google.BigQuery do
     end
   end
 
+  @spec patch_dataset_access!(Integer) :: {}
+  def patch_dataset_access!(user_id) do
+    conn = get_conn()
+    dataset_id = Integer.to_string(user_id) <> @dataset_id_append
+
+    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+      %Logflare.User{email: email, provider: provider} = Repo.get(User, user_id)
+
+      if provider == "google" do
+        access = [
+          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+            role: "READER",
+            userByEmail: email
+          },
+          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+            role: "WRITER",
+            specialGroup: "projectWriters"
+          },
+          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+            role: "OWNER",
+            specialGroup: "projectOwners"
+          },
+          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+            role: "OWNER",
+            userByEmail: "logflare@logflare-232118.iam.gserviceaccount.com"
+          },
+          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+            role: "READER",
+            specialGroup: "projectReaders"
+          }
+        ]
+
+        body = %Model.Dataset{
+          access: access
+        }
+
+        {:ok, _response} =
+          Api.Datasets.bigquery_datasets_patch(conn, @project_id, dataset_id, body: body)
+
+        Logger.info("Dataset patched: #{dataset_id} | #{email}")
+      end
+    end)
+  end
+
   @spec delete_dataset(integer) :: {}
   def delete_dataset(account_id) do
     conn = get_conn()
