@@ -7,7 +7,7 @@ defmodule Logflare.TableManager do
 
   alias Logflare.Repo
   alias Logflare.TableCounter
-  alias Logflare.BigQuery
+  alias Logflare.Google.BigQuery
 
   import Ecto.Query, only: [from: 2]
 

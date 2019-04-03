@@ -44,9 +44,9 @@ defmodule Logflare.Table do
 
     Logflare.TableMailer.start_link(state)
     Logflare.TableTexter.start_link(state)
-    Logflare.BigQuery.init_table(state)
+    Logflare.Google.BigQuery.init_table!(state)
     Logflare.TableBuffer.start_link(state)
-    Logflare.BigQueryPipeline.start_link(state)
+    Logflare.TableBigQueryPipeline.start_link(state)
 
     check_ttl()
     prune()

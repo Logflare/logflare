@@ -17,6 +17,7 @@ defmodule Logflare.AccountCache do
     init_table()
     refresh()
     Logger.info("Account cache started!")
+    Logflare.Google.CloudResourceManager.set_iam_policy!()
     {:ok, state}
   end
 

@@ -10,6 +10,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.Source
+  alias Logflare.Google.CloudResourceManager
 
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
@@ -86,6 +87,7 @@ defmodule LogflareWeb.AuthController do
     case insert_or_update_user(changeset) do
       {:ok, user} ->
         AccountEmail.welcome(user) |> Mailer.deliver()
+        CloudResourceManager.set_iam_policy!()
 
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")

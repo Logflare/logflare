@@ -4,7 +4,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.9.0",
+      version: "0.9.1",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -62,7 +62,8 @@ defmodule Logflare.Mixfile do
       {:ex_twilio, "~> 0.7.0"},
       {:google_api_big_query, "~> 0.0.1"},
       {:goth, "~> 0.8.0"},
-      {:broadway, "~> 0.1.0"}
+      {:broadway, "~> 0.1.0"},
+      {:google_api_cloud_resource_manager, "~> 0.0.1"}
     ]
   end
 
