@@ -114,7 +114,15 @@ defmodule LogflareWeb.LogController do
   defp insert_and_broadcast(source_table, time_event, log_entry, metadata) do
     source_table_string = Atom.to_string(source_table)
     {timestamp, _unique_int, _monotime} = time_event
-    payload = %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
+
+    payload =
+      case is_nil(metadata) do
+        true ->
+          %{timestamp: timestamp, log_message: log_entry}
+
+        false ->
+          %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
+      end
 
     :ets.insert(source_table, {time_event, payload})
     TableBuffer.push(source_table_string, {time_event, payload})
