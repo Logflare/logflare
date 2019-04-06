@@ -62,13 +62,16 @@ defmodule BroadwayBuffer.Producer do
     {opts} = state.table_name
     table = opts[:table_name]
 
-    event_message = TableBuffer.pop(table)
+    pop = TableBuffer.pop(table)
 
-    case event_message do
+    case pop do
       :empty ->
         []
 
       _ ->
+        {_time_event, event} = pop
+        event_message = %{table: table, event: event}
+
         [
           %Broadway.Message{
             data: event_message,
