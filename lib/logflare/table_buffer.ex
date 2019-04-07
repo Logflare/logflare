@@ -3,6 +3,8 @@ defmodule Logflare.TableBuffer do
 
   require Logger
 
+  @broadcast_every 1_000
+
   def start_link(website_table) do
     GenServer.start_link(
       __MODULE__,
@@ -17,6 +19,7 @@ defmodule Logflare.TableBuffer do
 
   def init(state) do
     Logger.info("Table buffer started: #{state.source}")
+    check_buffer()
     {:ok, state}
   end
 
@@ -39,7 +42,7 @@ defmodule Logflare.TableBuffer do
   def handle_cast({:push, event}, state) do
     new_buffer = :queue.in(event, state.buffer)
 
-    broadcast_buffer(state.source, :queue.len(new_buffer))
+    # broadcast_buffer(state.source, :queue.len(new_buffer))
 
     new_state = %{state | buffer: new_buffer}
     {:noreply, new_state}
@@ -54,7 +57,7 @@ defmodule Logflare.TableBuffer do
         {event, new_buffer} = :queue.out(state.buffer)
         new_read_receipts = :queue.in(event, state.read_receipts)
 
-        broadcast_buffer(state.source, :queue.len(new_buffer))
+        # broadcast_buffer(state.source, :queue.len(new_buffer))
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
         {:reply, event, new_state}
@@ -77,6 +80,16 @@ defmodule Logflare.TableBuffer do
   def handle_call(:get_count, _from, state) do
     count = :queue.len(state.buffer)
     {:reply, count, state}
+  end
+
+  def handle_info(:check_buffer, state) do
+    broadcast_buffer(state.source, :queue.len(state.buffer))
+    check_buffer()
+    {:noreply, state}
+  end
+
+  defp check_buffer() do
+    Process.send_after(self(), :check_buffer, @broadcast_every)
   end
 
   defp broadcast_buffer(website_table, count) do
