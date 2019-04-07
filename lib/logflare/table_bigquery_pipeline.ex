@@ -78,8 +78,8 @@ defmodule Logflare.TableBigQueryPipeline do
             {:ok, table_info} ->
               TableBigQuerySchema.update(table, table_info.schema)
 
-            {:error, _message} ->
-              Logger.error("Schema table mismatch!")
+            {:error, message} ->
+              Logger.error("Table schema error!")
           end
         end
 
