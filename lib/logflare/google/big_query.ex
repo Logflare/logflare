@@ -75,7 +75,7 @@ defmodule Logflare.Google.BigQuery do
         %Model.TableFieldSchema{
           description: nil,
           fields: nil,
-          mode: nil,
+          mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
         }
@@ -102,6 +102,17 @@ defmodule Logflare.Google.BigQuery do
         tableReference: reference,
         timePartitioning: partitioning
       }
+    )
+  end
+
+  @spec patch_table(:atom, Struct) :: {}
+  def patch_table(source, schema) do
+    conn = get_conn()
+    table_name = format_table_name(source)
+    dataset_id = get_account_id!(source) <> @dataset_id_append
+
+    Api.Tables.bigquery_tables_patch(conn, @project_id, dataset_id, table_name,
+      body: %Model.Table{schema: schema}
     )
   end
 
@@ -179,6 +190,7 @@ defmodule Logflare.Google.BigQuery do
     dataset_id = get_account_id!(source) <> @dataset_id_append
 
     body = %Model.TableDataInsertAllRequest{
+      ignoreUnknownValues: true,
       rows: batch
     }
 

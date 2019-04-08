@@ -48,6 +48,10 @@ defmodule Logflare.Table do
     Logflare.TableBuffer.start_link(state)
     Logflare.TableBigQueryPipeline.start_link(state)
 
+    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+      Logflare.TableBigQuerySchema.start_link(state)
+    end)
+
     check_ttl()
     prune()
 

@@ -39,6 +39,7 @@ defmodule Logflare.TableManager do
       )
 
     Enum.each(state, fn s ->
+      # Process.sleep(10_000)
       Logflare.Table.start_link(s)
     end)
 

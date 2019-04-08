@@ -20,6 +20,15 @@ defmodule LogflareWeb.LogController do
     time_event = {timestamp, unique_int, monotime}
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
+    metadata =
+      case is_map(conn.params["metadata"]) do
+        false ->
+          nil
+
+        true ->
+          for {key, val} <- conn.params["metadata"], into: %{}, do: {format_key_for_bq(key), val}
+      end
+
     source_table =
       case conn.params["source"] == nil do
         true ->
@@ -40,12 +49,13 @@ defmodule LogflareWeb.LogController do
           String.to_atom(source_record.overflow_source),
           time_event,
           log_entry,
+          metadata,
           api_key
         )
       end
     end
 
-    send_to_many_sources_by_rules(source_table, time_event, log_entry, api_key)
+    send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key)
 
     message = "Logged!"
 
@@ -71,12 +81,12 @@ defmodule LogflareWeb.LogController do
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 
-  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, api_key) do
+  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key) do
     rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
 
     case rules == [] do
       true ->
-        insert_log(source_table, time_event, log_entry)
+        insert_log(source_table, time_event, log_entry, metadata)
 
       false ->
         Enum.map(
@@ -85,7 +95,7 @@ defmodule LogflareWeb.LogController do
             case Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
               true ->
                 sink_atom = String.to_atom(x.sink)
-                insert_log(sink_atom, time_event, log_entry)
+                insert_log(sink_atom, time_event, log_entry, metadata)
 
               false ->
                 :ok
@@ -93,26 +103,34 @@ defmodule LogflareWeb.LogController do
           end
         )
 
-        insert_log(source_table, time_event, log_entry)
+        insert_log(source_table, time_event, log_entry, metadata)
     end
   end
 
-  defp insert_log(source_table, time_event, log_entry) do
+  defp insert_log(source_table, time_event, log_entry, metadata) do
     case :ets.info(source_table) do
       :undefined ->
         source_table
         |> TableManager.new_table()
-        |> insert_and_broadcast(time_event, log_entry)
+        |> insert_and_broadcast(time_event, log_entry, metadata)
 
       _ ->
-        insert_and_broadcast(source_table, time_event, log_entry)
+        insert_and_broadcast(source_table, time_event, log_entry, metadata)
     end
   end
 
-  defp insert_and_broadcast(source_table, time_event, log_entry) do
+  defp insert_and_broadcast(source_table, time_event, log_entry, metadata) do
     source_table_string = Atom.to_string(source_table)
     {timestamp, _unique_int, _monotime} = time_event
-    payload = %{timestamp: timestamp, log_message: log_entry}
+
+    payload =
+      case is_nil(metadata) do
+        true ->
+          %{timestamp: timestamp, log_message: log_entry}
+
+        false ->
+          %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
+      end
 
     :ets.insert(source_table, {time_event, payload})
     TableBuffer.push(source_table_string, {time_event, payload})
@@ -163,6 +181,29 @@ defmodule LogflareWeb.LogController do
 
       false ->
         false
+    end
+  end
+
+  defp format_key_for_bq(key) do
+    key
+    |> String.replace("-", "_")
+    |> trim_to_128()
+    |> remove_number_first()
+  end
+
+  defp trim_to_128(string) do
+    {key, _key} = String.split_at(string, 128)
+    key
+  end
+
+  defp remove_number_first(string) do
+    case String.contains?(String.first(string), ["1", "2", "3", "4", "5", "6", "7", "8", "9"]) do
+      true ->
+        {_drop, string} = String.split_at(string, 1)
+        remove_number_first(string)
+
+      false ->
+        string
     end
   end
 end

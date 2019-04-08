@@ -22,11 +22,21 @@
 
 <div class="container mx-auto" id="console-text">
 <ul id="logs-list" class="list-unstyled console-text-list">
-  <%= for log <- @logs do %>
+  <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
+
     <li>
       <mark class="log-datestamp"><%= log.timestamp %></mark> <%= log.log_message %>
+      <%= if Map.has_key?(log, :metadata) do %>
+      <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
+        metadata
+      </a>
+      <div class="collapse metadata" id="metadata-<%= inx %>">
+        <%= log.metadata %>
+      </div>
+      <% end %>
     </li>
-  <% end %>
+
+  <% end) %>
 </ul>
 
 <div id="no-logs-warning">
