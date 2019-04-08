@@ -70,15 +70,16 @@ defmodule Logflare.TableBigQueryPipeline do
 
     case Map.has_key?(payload, :metadata) do
       true ->
-        schema = build_schema(payload.metadata)
         old_schema = TableBigQuerySchema.get(table)
+        schema = build_schema(payload.metadata, old_schema)
 
         if same_schemas?(old_schema, schema) == false do
           case BigQuery.patch_table(table, schema) do
             {:ok, table_info} ->
               TableBigQuerySchema.update(table, table_info.schema)
+              Logger.info("Table schema updated!")
 
-            {:error, message} ->
+            {:error, _message} ->
               Logger.error("Table schema error!")
           end
         end
@@ -100,7 +101,7 @@ defmodule Logflare.TableBigQueryPipeline do
     String.to_atom("#{website_table}" <> "-pipeline")
   end
 
-  defp build_schema(metadata) do
+  defp build_schema(metadata, old_schema) do
     %Model.TableSchema{
       fields: [
         %Model.TableFieldSchema{
@@ -122,19 +123,22 @@ defmodule Logflare.TableBigQueryPipeline do
           mode: "REPEATED",
           name: "metadata",
           type: "RECORD",
-          fields: build_fields(metadata)
+          fields: build_fields(metadata, old_schema)
         }
       ]
     }
   end
 
-  defp build_fields(metadata) do
-    map_keys = Map.keys(metadata)
+  defp build_fields(metadata, old_schema) do
+    new_fields =
+      Enum.map(metadata, fn {k, v} ->
+        build_field(k, v)
+      end)
 
-    for field <- map_keys do
-      value = metadata[field]
-      build_field(field, value)
-    end
+    old_record = Enum.find(old_schema.fields, fn x -> x.name == "metadata" end)
+    old_fields = old_record.fields
+
+    Enum.uniq(new_fields ++ old_fields)
   end
 
   defp build_field(key, value) do
@@ -148,8 +152,8 @@ defmodule Logflare.TableBigQueryPipeline do
   end
 
   defp same_schemas?(old_schema, new_schema) do
-    old_record = Enum.find(old_schema.fields, fn x -> x.type == "RECORD" end)
-    new_record = Enum.find(new_schema.fields, fn x -> x.type == "RECORD" end)
+    old_record = Enum.find(old_schema.fields, fn x -> x.name == "metadata" end)
+    new_record = Enum.find(new_schema.fields, fn x -> x.name == "metadata" end)
 
     case is_nil(old_record) do
       true ->
