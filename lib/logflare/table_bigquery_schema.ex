@@ -11,25 +11,24 @@ defmodule Logflare.TableBigQuerySchema do
       __MODULE__,
       %{
         source: website_table,
-        schema:
-          schema = %Model.TableSchema{
-            fields: [
-              %Model.TableFieldSchema{
-                description: nil,
-                fields: nil,
-                mode: "REQUIRED",
-                name: "timestamp",
-                type: "TIMESTAMP"
-              },
-              %Model.TableFieldSchema{
-                description: nil,
-                fields: nil,
-                mode: "NULLABLE",
-                name: "event_message",
-                type: "STRING"
-              }
-            ]
-          }
+        schema: %Model.TableSchema{
+          fields: [
+            %Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "REQUIRED",
+              name: "timestamp",
+              type: "TIMESTAMP"
+            },
+            %Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "event_message",
+              type: "STRING"
+            }
+          ]
+        }
       },
       name: name(website_table)
     )
