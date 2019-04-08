@@ -7,16 +7,45 @@ defmodule Logflare.TableBigQuerySchema do
   alias GoogleApi.BigQuery.V2.Model
 
   def start_link(website_table) do
-    GenServer.start_link(__MODULE__, %{source: website_table, schema: %Model.TableSchema{}},
+    GenServer.start_link(
+      __MODULE__,
+      %{
+        source: website_table,
+        schema:
+          schema = %Model.TableSchema{
+            fields: [
+              %Model.TableFieldSchema{
+                description: nil,
+                fields: nil,
+                mode: "REQUIRED",
+                name: "timestamp",
+                type: "TIMESTAMP"
+              },
+              %Model.TableFieldSchema{
+                description: nil,
+                fields: nil,
+                mode: "NULLABLE",
+                name: "event_message",
+                type: "STRING"
+              }
+            ]
+          }
+      },
       name: name(website_table)
     )
   end
 
   def init(state) do
-    {:ok, table} = BigQuery.get_table(state.source)
-    schema = table.schema
-    Logger.info("Table schema manager started: #{state.source}")
-    {:ok, %{state | schema: schema}}
+    case BigQuery.get_table(state.source) do
+      {:ok, table} ->
+        schema = table.schema
+        Logger.info("Table schema manager started: #{state.source}")
+        {:ok, %{state | schema: schema}}
+
+      _ ->
+        Logger.info("Table schema manager started: #{state.source}")
+        {:ok, state}
+    end
   end
 
   def get(website_table) do

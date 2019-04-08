@@ -136,9 +136,16 @@ defmodule Logflare.TableBigQueryPipeline do
       end)
 
     old_record = Enum.find(old_schema.fields, fn x -> x.name == "metadata" end)
-    old_fields = old_record.fields
 
-    Enum.uniq(new_fields ++ old_fields)
+    case is_nil(old_record) do
+      true ->
+        new_fields
+
+      false ->
+        old_fields = old_record.fields
+
+        Enum.uniq(new_fields ++ old_fields)
+    end
   end
 
   defp build_field(key, value) do
