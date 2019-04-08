@@ -21,7 +21,13 @@ defmodule LogflareWeb.LogController do
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
     metadata =
-      for {key, val} <- conn.params["metadata"], into: %{}, do: {format_key_for_bq(key), val}
+      case is_nil(conn.params["metadata"]) do
+        true ->
+          nil
+
+        false ->
+          for {key, val} <- conn.params["metadata"], into: %{}, do: {format_key_for_bq(key), val}
+      end
 
     source_table =
       case conn.params["source"] == nil do
