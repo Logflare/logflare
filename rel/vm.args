@@ -23,7 +23,11 @@
 ##+SDio 5
 
 ## Increase number of concurrent ports/sockets
-#-env ERL_MAX_PORTS 4096
+## Erlang tries to auto detect this now. Check user limit with `ulimit -n`
+#+Q ERL_MAX_PORTS 4096
+
+## Set max number of ETS tables
+#+e 15000
 
 ## Tweak GC to run more often
 ##-env ERL_FULLSWEEP_AFTER 10
