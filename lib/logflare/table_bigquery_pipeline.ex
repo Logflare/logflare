@@ -151,11 +151,21 @@ defmodule Logflare.TableBigQueryPipeline do
   defp build_field(key, value) do
     type = check_type(value)
 
-    %Model.TableFieldSchema{
-      name: key,
-      type: type,
-      mode: "NULLABLE"
-    }
+    case type do
+      "ARRAY" ->
+        %Model.TableFieldSchema{
+          name: key,
+          type: "STRING",
+          mode: "REPEATED"
+        }
+
+      _ ->
+        %Model.TableFieldSchema{
+          name: key,
+          type: type,
+          mode: "NULLABLE"
+        }
+    end
   end
 
   defp same_schemas?(old_schema, new_schema) do
@@ -178,4 +188,5 @@ defmodule Logflare.TableBigQueryPipeline do
   defp check_type(value) when is_integer(value), do: "INTEGER"
   defp check_type(value) when is_binary(value), do: "STRING"
   defp check_type(value) when is_boolean(value), do: "BOOLEAN"
+  defp check_type(value) when is_list(value), do: "ARRAY"
 end
