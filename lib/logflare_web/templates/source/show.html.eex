@@ -31,7 +31,7 @@
         metadata
       </a>
       <div class="collapse metadata" id="metadata-<%= inx %>">
-        <%= log.metadata %>
+        <pre class="pre-metadata"><code><%= log.metadata %></code></pre>
       </div>
       <% end %>
     </li>

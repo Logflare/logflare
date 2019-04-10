@@ -127,7 +127,8 @@ defmodule LogflareWeb.SourceController do
     logs =
       Enum.map(SourceData.get_logs(table_id), fn log ->
         if Map.has_key?(log, :metadata) do
-          {:ok, encoded} = Jason.encode(log.metadata)
+          {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
+          IO.inspect(log.metadata)
           %{log | metadata: encoded}
         else
           log
