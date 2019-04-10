@@ -27,16 +27,45 @@ function renderLog(event) {
 
 function logTemplate(event) {
   var timestamp = `${event.timestamp}`
-  var logMessage = ` ${event.log_message}`
+  var logMessage = ` ${event.log_message} `
   var newLi = document.createElement("li");
   var newMark = document.createElement("mark");
+  var newDataExpand = document.createElement("a");
   var newTimestamp = document.createTextNode(timestamp);
   var newLogMessage = document.createTextNode(logMessage);
 
   newMark.appendChild(newTimestamp)
-  newMark.className = 'new-log';
+  newMark.className = 'new-log'
+
   newLi.appendChild(newMark)
   newLi.appendChild(newLogMessage)
+
+  if (event.metadata != undefined) {
+    var logData = JSON.stringify(event.metadata, null, 2)
+    var logDataLink = `metadata`
+    var newLogDataLink = document.createTextNode(logDataLink);
+    var newLogData = document.createTextNode(logData);
+
+    var expandId = makeid(10);
+
+    var newCode = document.createElement("code");
+    var newPre = document.createElement("pre");
+    newPre.className = 'pre-metadata';
+    var newDiv = document.createElement("div");
+    newDiv.className = 'collapse metadata';
+    newDiv.id = `${expandId}`
+    newCode.appendChild(newLogData)
+    newPre.appendChild(newCode)
+    newDiv.appendChild(newPre)
+
+    newDataExpand.appendChild(newLogDataLink)
+    newDataExpand.href = `#${expandId}`
+    newDataExpand.className = 'metadata-link'
+    newDataExpand.dataset.toggle = 'collapse'
+
+    newLi.appendChild(newDataExpand)
+    newLi.appendChild(newDiv)
+  }
 
   return newLi
 }
@@ -94,3 +123,13 @@ function swapCount(event) {
 }
 
 window.createEveryoneSocket = createEveryoneSocket;
+
+function makeid(length) {
+  var text = "";
+  var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+  for (var i = 0; i < length; i++)
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+
+  return text;
+}
