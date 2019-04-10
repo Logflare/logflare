@@ -194,7 +194,11 @@ defmodule Logflare.Google.BigQuery do
       rows: batch
     }
 
-    {:ok, _response} =
+    {:ok,
+     %Model.TableDataInsertAllResponse{
+       insertErrors: nil,
+       kind: _kind
+     }} =
       Api.Tabledata.bigquery_tabledata_insert_all(
         conn,
         @project_id,

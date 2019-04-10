@@ -11,7 +11,7 @@ defmodule Logflare.TableBuffer do
       %{
         source: website_table,
         buffer: :queue.new(),
-        read_receipts: :queue.new()
+        read_receipts: %{}
       },
       name: name(website_table)
     )
@@ -31,8 +31,8 @@ defmodule Logflare.TableBuffer do
     GenServer.call(name(website_table), :pop)
   end
 
-  def ack(website_table) do
-    GenServer.call(name(website_table), :ack)
+  def ack(website_table, time_event) do
+    GenServer.call(name(website_table), {:ack, time_event})
   end
 
   def get_count(website_table) do
@@ -41,9 +41,6 @@ defmodule Logflare.TableBuffer do
 
   def handle_cast({:push, event}, state) do
     new_buffer = :queue.in(event, state.buffer)
-
-    # broadcast_buffer(state.source, :queue.len(new_buffer))
-
     new_state = %{state | buffer: new_buffer}
     {:noreply, new_state}
   end
@@ -55,22 +52,22 @@ defmodule Logflare.TableBuffer do
 
       false ->
         {event, new_buffer} = :queue.out(state.buffer)
-        new_read_receipts = :queue.in(event, state.read_receipts)
-
-        # broadcast_buffer(state.source, :queue.len(new_buffer))
+        {:value, {time_event, data}} = event
+        new_read_receipts = Map.put(state.read_receipts, time_event, data)
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
         {:reply, event, new_state}
     end
   end
 
-  def handle_call(:ack, _from, state) do
-    case :queue.is_empty(state.read_receipts) do
+  def handle_call({:ack, time_event}, _from, state) do
+    case state.read_receipts == %{} do
       true ->
         {:reply, :empty, state}
 
       false ->
-        {event, new_read_receipts} = :queue.out(state.read_receipts)
+        {data, new_read_receipts} = Map.pop(state.read_receipts, time_event)
+        event = {time_event, data}
 
         new_state = %{state | read_receipts: new_read_receipts}
         {:reply, event, new_state}

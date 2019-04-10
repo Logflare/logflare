@@ -51,10 +51,16 @@ defmodule BroadwayBuffer.Producer do
     {:noreply, [], state}
   end
 
-  def ack(table, successful, _unsuccessful) do
-    Enum.each(successful, fn _message ->
-      # [object] = message.data
-      TableBuffer.ack(table)
+  def ack(table, successful, unsuccessful) do
+    Enum.each(successful, fn message ->
+      {time_event, _data} = message.data.event
+      TableBuffer.ack(table, time_event)
+    end)
+
+    Enum.each(unsuccessful, fn message ->
+      {time_event, _data} = message.data.event
+      event = TableBuffer.ack(table, time_event)
+      TableBuffer.push(table, event)
     end)
   end
 
@@ -75,7 +81,7 @@ defmodule BroadwayBuffer.Producer do
         [
           %Broadway.Message{
             data: event_message,
-            acknowledger: {__MODULE__, table, "unsuccessful"}
+            acknowledger: {__MODULE__, table, "no idea what this does"}
           }
         ]
     end
