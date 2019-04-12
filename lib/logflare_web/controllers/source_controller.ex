@@ -251,8 +251,8 @@ defmodule LogflareWeb.SourceController do
       _ ->
         case :ets.first(String.to_atom(source.token)) do
           :"$end_of_table" ->
-            source |> Repo.delete!()
             {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+            source |> Repo.delete!()
 
             conn
             |> put_flash(:info, "Source deleted!")
@@ -262,8 +262,8 @@ defmodule LogflareWeb.SourceController do
             now = System.os_time(:microsecond)
 
             if now - timestamp > 3_600_000_000 do
-              source |> Repo.delete!()
               {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+              source |> Repo.delete!()
 
               conn
               |> put_flash(:info, "Source deleted!")
