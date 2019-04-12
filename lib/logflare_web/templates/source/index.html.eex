@@ -101,7 +101,7 @@
   <li><i class="fas fa-binoculars feature-icons"></i>Watch log files with the agent</li>
   <li><i class="fas fa-list feature-icons"></i>7 days of logs per source</li>
   <li><i class="fas fa-database feature-icons"></i>Backed by Google Big Query</li>
-  <li><i class="fas fa-chart-bar feature-icons"></i>Automatically availalbe in your Google Data Studio</li>
+  <li><i class="fas fa-chart-bar feature-icons"></i>Available in your Google Data Studio</li>
   <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
   <li><i class="fas fa-code-branch feature-icons"></i>Log routing</li>
   <li><i class="fas fa-clock feature-icons"></i>Local time & UTC</li>
