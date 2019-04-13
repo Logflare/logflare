@@ -7,6 +7,8 @@ defmodule Logflare.TableBigQueryPipeline do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.TableBigQuerySchema
+  alias Logflare.BigQuery.TableSchemaBuilder
+  alias Logflare.BigQuery.EventUtils
 
   def start_link(website_table) do
     Broadway.start_link(__MODULE__,
@@ -47,11 +49,13 @@ defmodule Logflare.TableBigQueryPipeline do
 
             true ->
               %{
-                "timestamp" => bq_timestamp,
                 "event_message" => payload.log_message,
-                "metadata" => [payload.metadata]
+                "metadata" => [EventUtils.prepare_for_injest(payload.metadata)],
+                "timestamp" => bq_timestamp
               }
           end
+
+        IO.inspect(row_json)
 
         %Model.TableDataInsertAllRequestRows{
           insertId: Ecto.UUID.generate(),
@@ -60,7 +64,7 @@ defmodule Logflare.TableBigQueryPipeline do
       end)
 
     table_atom = get_table(messages)
-    BigQuery.stream_batch!(table_atom, rows)
+    IO.inspect(BigQuery.stream_batch!(table_atom, rows))
 
     messages
   end
@@ -71,12 +75,16 @@ defmodule Logflare.TableBigQueryPipeline do
     case Map.has_key?(payload, :metadata) do
       true ->
         old_schema = TableBigQuerySchema.get(table)
-        schema = build_schema(payload.metadata, old_schema)
+        schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
+
+        IO.inspect(payload.metadata)
+        IO.inspect(old_schema, label: "OLD")
+        IO.inspect(schema, label: "NEW")
 
         if same_schemas?(old_schema, schema) == false do
           case BigQuery.patch_table(table, schema) do
-            {:ok, table_info} ->
-              TableBigQuerySchema.update(table, table_info.schema)
+            {:ok, _table_info} ->
+              TableBigQuerySchema.update(table, schema)
               Logger.info("Table schema updated!")
 
             {:error, _message} ->
@@ -101,92 +109,7 @@ defmodule Logflare.TableBigQueryPipeline do
     String.to_atom("#{website_table}" <> "-pipeline")
   end
 
-  defp build_schema(metadata, old_schema) do
-    %Model.TableSchema{
-      fields: [
-        %Model.TableFieldSchema{
-          description: nil,
-          fields: nil,
-          mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
-        },
-        %Model.TableFieldSchema{
-          description: nil,
-          fields: nil,
-          mode: nil,
-          name: "event_message",
-          type: "STRING"
-        },
-        %Model.TableFieldSchema{
-          description: nil,
-          mode: "REPEATED",
-          name: "metadata",
-          type: "RECORD",
-          fields: build_fields(metadata, old_schema)
-        }
-      ]
-    }
-  end
-
-  defp build_fields(metadata, old_schema) do
-    new_fields =
-      Enum.map(metadata, fn {k, v} ->
-        build_field(k, v)
-      end)
-
-    old_record = Enum.find(old_schema.fields, fn x -> x.name == "metadata" end)
-
-    case is_nil(old_record) do
-      true ->
-        new_fields
-
-      false ->
-        old_fields = old_record.fields
-
-        Enum.uniq(new_fields ++ old_fields)
-    end
-  end
-
-  defp build_field(key, value) do
-    type = check_type(value)
-
-    case type do
-      "ARRAY" ->
-        %Model.TableFieldSchema{
-          name: key,
-          type: "STRING",
-          mode: "REPEATED"
-        }
-
-      _ ->
-        %Model.TableFieldSchema{
-          name: key,
-          type: type,
-          mode: "NULLABLE"
-        }
-    end
-  end
-
   defp same_schemas?(old_schema, new_schema) do
-    old_record = Enum.find(old_schema.fields, fn x -> x.name == "metadata" end)
-    new_record = Enum.find(new_schema.fields, fn x -> x.name == "metadata" end)
-
-    case is_nil(old_record) do
-      true ->
-        false
-
-      false ->
-        old_fields = Enum.sort_by(old_record.fields, fn f -> f.name end)
-        new_fields = Enum.sort_by(new_record.fields, fn f -> f.name end)
-
-        old_fields == new_fields
-    end
+    old_schema == new_schema
   end
-
-  defp check_type(value) when is_map(value), do: "RECORD"
-  defp check_type(value) when is_integer(value), do: "INTEGER"
-  defp check_type(value) when is_binary(value), do: "STRING"
-  defp check_type(value) when is_boolean(value), do: "BOOLEAN"
-  defp check_type(value) when is_list(value), do: "ARRAY"
 end
