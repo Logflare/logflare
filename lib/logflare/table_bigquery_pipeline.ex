@@ -55,8 +55,6 @@ defmodule Logflare.TableBigQueryPipeline do
               }
           end
 
-        IO.inspect(row_json)
-
         %Model.TableDataInsertAllRequestRows{
           insertId: Ecto.UUID.generate(),
           json: row_json
@@ -64,7 +62,7 @@ defmodule Logflare.TableBigQueryPipeline do
       end)
 
     table_atom = get_table(messages)
-    IO.inspect(BigQuery.stream_batch!(table_atom, rows))
+    BigQuery.stream_batch!(table_atom, rows)
 
     messages
   end
@@ -76,10 +74,6 @@ defmodule Logflare.TableBigQueryPipeline do
       true ->
         old_schema = TableBigQuerySchema.get(table)
         schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
-
-        IO.inspect(payload.metadata)
-        IO.inspect(old_schema, label: "OLD")
-        IO.inspect(schema, label: "NEW")
 
         if same_schemas?(old_schema, schema) == false do
           case BigQuery.patch_table(table, schema) do
