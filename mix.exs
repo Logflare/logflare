@@ -63,7 +63,8 @@ defmodule Logflare.Mixfile do
       {:google_api_big_query, "~> 0.0.1"},
       {:goth, "~> 0.8.0"},
       {:broadway, "~> 0.1.0"},
-      {:google_api_cloud_resource_manager, "~> 0.0.1"}
+      {:google_api_cloud_resource_manager, "~> 0.0.1"},
+      {:deep_merge, "~> 1.0"}
     ]
   end
 
@@ -77,7 +78,7 @@ defmodule Logflare.Mixfile do
     [
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate", "test"]
+      # test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
   end
 end
