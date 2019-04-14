@@ -105,27 +105,46 @@ defmodule Logflare.BigQuery.TableSchemaBuilder do
     Implements merge for schema key conflicts.
     Overwrites fields schemas that are present BOTH in old and new TFS structs and keeps fields schemas present ONLY in old.
     """
-    def resolve(
-          %TFS{fields: oldfs} = old,
-          %TFS{fields: newfs} = new,
-          resolver
-        )
-        when is_list(oldfs) and is_list(newfs) do
-      new_field_schemas_names = Enum.map(new.fields, & &1.name)
 
-      only_old_field_schemas =
-        for ofs <- old.fields, ofs.name not in new_field_schemas_names, do: ofs
-
-      new_with_all_field_schemas =
-        new
-        |> Map.from_struct()
-        |> Map.put(:fields, new.fields ++ only_old_field_schemas)
-
-      Map.merge(old, new_with_all_field_schemas, resolver)
+    @spec resolve(TFS.t(), TFS.t(), fun) :: TFS.t()
+    def resolve(old, new, _standard_resolver) do
+      resolve(old, new)
     end
 
-    def resolve(old, new, resolver) when is_map(new) do
-      Map.merge(old, new, resolver)
+    @spec resolve(TFS.t(), TFS.t()) :: TFS.t()
+    def resolve(
+          %TFS{fields: old_fields},
+          %TFS{fields: new_fields} = new_tfs
+        )
+        when is_list(old_fields)
+        when is_list(new_fields) do
+      # collect all names for new fields schemas
+      new_fields_names = Enum.map(new_fields, & &1.name)
+
+      # filter field schemas that are present only in old table field schema
+      uniq_old_fs = for fs <- old_fields, fs.name not in new_fields_names, do: fs
+
+      %{new_tfs | fields: resolve_list(old_fields, new_fields) ++ uniq_old_fs}
+    end
+
+    def resolve(_old, %TFS{} = new) do
+      new
+    end
+
+    @spec resolve_list(list(TFS.t()), list(TFS.t())) :: list(TFS.t())
+    def resolve_list(old_fields, new_fields)
+        when is_list(old_fields)
+        when is_list(new_fields) do
+      for %TFS{} = new_field <- new_fields do
+        old_fields
+        |> maybe_find_with_name(new_field)
+        |> resolve(new_field)
+      end
+    end
+
+    @spec maybe_find_with_name(list(TFS.t()), TFS.t()) :: TFS.t() | nil
+    def maybe_find_with_name(enumerable, %TFS{name: name}) do
+      Enum.find(enumerable, &(&1.name === name))
     end
   end
 end
