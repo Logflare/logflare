@@ -5,6 +5,7 @@ defmodule Logflare.TableBigQuerySchema do
 
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
+  alias Logflare.BigQuery.TableSchemaBuilder
 
   def start_link(website_table) do
     GenServer.start_link(
@@ -37,7 +38,7 @@ defmodule Logflare.TableBigQuerySchema do
   def init(state) do
     case BigQuery.get_table(state.source) do
       {:ok, table} ->
-        schema = table.schema
+        schema = TableSchemaBuilder.deep_sort_by_fields_name(table.schema)
         Logger.info("Table schema manager started: #{state.source}")
         {:ok, %{state | schema: schema}}
 
@@ -60,7 +61,7 @@ defmodule Logflare.TableBigQuerySchema do
   end
 
   def handle_cast({:update, schema}, state) do
-    {:noreply, %{state | schema: schema}}
+    {:noreply, %{state | schema: TableSchemaBuilder.deep_sort_by_fields_name(schema)}}
   end
 
   defp name(website_table) do

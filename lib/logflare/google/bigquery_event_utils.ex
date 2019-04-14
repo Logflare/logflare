@@ -1,10 +1,9 @@
-defmodule Logflare.BigQuery.EventUtils do
-
+defmodule Logflare.Google.BigQuery.EventUtils do
   @doc """
   Prepares an event for injest into BigQuery
   """
   def prepare_for_injest(event) do
-    wrap_fields(event)
+    [wrap_fields(event)]
   end
 
   defp wrap_fields(value) when is_map(value) do

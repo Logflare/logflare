@@ -8,7 +8,7 @@ defmodule Logflare.TableBigQueryPipeline do
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.TableBigQuerySchema
   alias Logflare.BigQuery.TableSchemaBuilder
-  alias Logflare.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.EventUtils
 
   def start_link(website_table) do
     Broadway.start_link(__MODULE__,
@@ -50,7 +50,7 @@ defmodule Logflare.TableBigQueryPipeline do
             true ->
               %{
                 "event_message" => payload.log_message,
-                "metadata" => [EventUtils.prepare_for_injest(payload.metadata)],
+                "metadata" => EventUtils.prepare_for_injest(payload.metadata),
                 "timestamp" => bq_timestamp
               }
           end
@@ -77,12 +77,12 @@ defmodule Logflare.TableBigQueryPipeline do
 
         if same_schemas?(old_schema, schema) == false do
           case BigQuery.patch_table(table, schema) do
-            {:ok, _table_info} ->
-              TableBigQuerySchema.update(table, schema)
+            {:ok, table_info} ->
+              TableBigQuerySchema.update(table, table_info.schema)
               Logger.info("Table schema updated!")
 
-            {:error, _message} ->
-              Logger.error("Table schema error!")
+            {:error, message} ->
+              Logger.error("Table schema update error!")
           end
         end
 
