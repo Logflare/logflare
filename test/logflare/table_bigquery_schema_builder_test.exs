@@ -23,6 +23,16 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
       assert new === expected
     end
 
+    test "correctly builds schemas for metadata with deeply nested keys removed" do
+      new =
+        metadatas().third_deep_nested_removed
+        |> SchemaBuilder.build_table_schema(schemas().second)
+
+      expected = schemas().second
+      assert deep_schema_to_field_names(new) === deep_schema_to_field_names(expected)
+      assert new === expected
+    end
+
     test "correctly builds schema from third params metadata" do
       new =
         metadatas().third
@@ -41,13 +51,12 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   """
   def deep_schema_to_field_names(%{fields: fields} = schema) when is_list(fields) do
     %{
-      fields: Enum.map(fields, &deep_schema_to_field_names/1),
-      name: Map.get(schema, :name, :top_level_schema)
+      Map.get(schema, :name, :top_level_schema) => Enum.map(fields, &deep_schema_to_field_names/1)
     }
   end
 
   def deep_schema_to_field_names(%{name: name}) do
-    %{name: name}
+    name
   end
 
   @doc """
@@ -64,7 +73,7 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   Utility function for a cleaner code
   """
   def metadatas() do
-    for id <- ~w(first second third)a, into: Map.new() do
+    for id <- ~w(first second third third_deep_nested_removed)a, into: Map.new() do
       {id, get_params(id)["metadata"]}
     end
   end
@@ -98,6 +107,30 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
               "street" => "123 W Main St"
             },
             "browser" => "Firefox",
+            "id" => 38,
+            "vip" => true
+          }
+        }
+      ],
+      "timestamp" => ~N[2019-04-12 16:41:56]
+    }
+  end
+
+  def get_params(:third_deep_nested_removed) do
+    %{
+      "event_message" => "This is an example.",
+      "metadata" => [
+        %{
+          "datacenter" => "aws",
+          "ip_address" => "100.100.100.100",
+          # "request_method" => "POST",
+          "user" => %{
+            "address" => %{
+              # "city" => "New York",
+              "st" => "NY",
+              "street" => "123 W Main St"
+            },
+            # "browser" => "Firefox",
             "id" => 38,
             "vip" => true
           }
