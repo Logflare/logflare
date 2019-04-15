@@ -197,7 +197,7 @@ defmodule LogflareWeb.LogController do
   end
 
   defp remove_number_first(string) do
-    case String.contains?(String.first(string), ["1", "2", "3", "4", "5", "6", "7", "8", "9"]) do
+    case String.contains?(String.first(string), ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]) do
       true ->
         {_drop, string} = String.split_at(string, 1)
         remove_number_first(string)
