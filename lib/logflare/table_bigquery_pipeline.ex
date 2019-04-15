@@ -81,7 +81,7 @@ defmodule Logflare.TableBigQueryPipeline do
               TableBigQuerySchema.update(table, table_info.schema)
               Logger.info("Table schema updated!")
 
-            {:error, message} ->
+            {:error, _message} ->
               Logger.error("Table schema update error!")
           end
         end

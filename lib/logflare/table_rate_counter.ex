@@ -58,7 +58,13 @@ defmodule Logflare.TableRateCounter do
 
     :ets.insert(@ets_table_name, {state.table, payload})
 
-    broadcast_rate(state.table, current_rate, average_rate, max_rate)
+    try do
+      :sys.get_status(:"Elixir.LogflareWeb.Endpoint")
+      broadcast_rate(state.table, current_rate, average_rate, max_rate)
+    catch
+      :exit, _ -> Logger.error("Endpoint not ready!")
+    end
+
     put_current_rate()
 
     {:noreply,
