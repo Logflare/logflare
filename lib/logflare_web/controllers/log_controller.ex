@@ -26,7 +26,7 @@ defmodule LogflareWeb.LogController do
           nil
 
         true ->
-          for {key, val} <- conn.params["metadata"], into: %{}, do: {format_key_for_bq(key), val}
+          conn.params["metadata"]
       end
 
     source_table =
@@ -181,29 +181,6 @@ defmodule LogflareWeb.LogController do
 
       false ->
         false
-    end
-  end
-
-  defp format_key_for_bq(key) do
-    key
-    |> String.replace("-", "_")
-    |> trim_to_128()
-    |> remove_number_first()
-  end
-
-  defp trim_to_128(string) do
-    {key, _key} = String.split_at(string, 128)
-    key
-  end
-
-  defp remove_number_first(string) do
-    case String.contains?(String.first(string), ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]) do
-      true ->
-        {_drop, string} = String.split_at(string, 1)
-        remove_number_first(string)
-
-      false ->
-        string
     end
   end
 end
