@@ -22,7 +22,7 @@ defmodule Logflare.TableBigQueryPipeline do
         default: [stages: 5]
       ],
       batchers: [
-        bq: [stages: 5, batch_size: 500, batch_timeout: 1000]
+        bq: [stages: 5, batch_size: 10, batch_timeout: 1000]
       ]
     )
   end
