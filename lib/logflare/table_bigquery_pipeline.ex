@@ -79,7 +79,7 @@ defmodule Logflare.TableBigQueryPipeline do
           case BigQuery.patch_table(table, schema) do
             {:ok, table_info} ->
               TableBigQuerySchema.update(table, table_info.schema)
-              Logger.info("Table schema updated!")
+              Logger.error("Table schema updated!")
 
             {:error, message} ->
               Logger.error("Table schema update error: #{message.body}")
