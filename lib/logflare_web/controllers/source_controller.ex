@@ -148,7 +148,17 @@ defmodule LogflareWeb.SourceController do
 
       false ->
         table_id = String.to_atom(source.token)
-        logs = SourceData.get_logs(table_id)
+
+        logs =
+          Enum.map(SourceData.get_logs(table_id), fn log ->
+            if Map.has_key?(log, :metadata) do
+              {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
+              %{log | metadata: encoded}
+            else
+              log
+            end
+          end)
+
         render(conn, "show.html", logs: logs, source: source, public_token: public_token)
     end
   end
