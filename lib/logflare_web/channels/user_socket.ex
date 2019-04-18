@@ -11,10 +11,6 @@ defmodule LogflareWeb.UserSocket do
   channel("dashboard:*", LogflareWeb.DashboardChannel)
   channel("everyone", LogflareWeb.EveryoneChannel)
 
-  def connect(%{"token" => "undefined"}, socket) do
-    {:ok, socket}
-  end
-
   def connect(%{"token" => "undefined", "public_token" => "undefined"}, socket) do
     {:ok, socket}
   end
@@ -37,6 +33,10 @@ defmodule LogflareWeb.UserSocket do
       {:error, _reason} ->
         :error
     end
+  end
+
+  def connect(%{"token" => "undefined"}, socket) do
+    {:ok, socket}
   end
 
   def id(_socket), do: nil

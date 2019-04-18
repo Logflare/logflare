@@ -11,14 +11,17 @@ defmodule LogflareWeb.SourceChannel do
 
   defp authorized?(source_token, socket) do
     cond do
+      socket.assigns == %{} ->
+        false
+
+      socket.assigns[:public_token] ->
+        true
+
       socket.assigns[:user].admin ->
         true
 
       socket.assigns[:user] ->
         Enum.map(socket.assigns[:user].sources, & &1.token) |> Enum.member?(source_token)
-
-      socket.assigns[:public_token] ->
-        true
 
       true ->
         false
