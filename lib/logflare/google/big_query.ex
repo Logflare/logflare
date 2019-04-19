@@ -22,29 +22,26 @@ defmodule Logflare.Google.BigQuery do
   def init_table!(source) do
     dataset_id = get_account_id!(source)
 
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      case create_dataset(dataset_id) do
-        {:ok, _} ->
-          Logger.info("BigQuery dataset created: #{dataset_id}")
-          {:ok, _} = create_table(source)
-          Logger.info("BigQuery table created: #{source}")
+    case create_dataset(dataset_id) do
+      {:ok, _} ->
+        Logger.info("BigQuery dataset created: #{dataset_id}")
+        {:ok, _} = create_table(source)
+        Logger.info("BigQuery table created: #{source}")
 
-        {:error, %Tesla.Env{status: 409}} ->
-          Logger.info("BigQuery dataset found: #{dataset_id}")
+      {:error, %Tesla.Env{status: 409}} ->
+        Logger.info("BigQuery dataset found: #{dataset_id}")
 
-          delete_table(source)
-          Logger.info("BigQuery table deleted: #{source}")
-          Process.sleep(5_000)
+        delete_table(source)
+        Logger.info("BigQuery table deleted: #{source}")
 
-          case create_table(source) do
-            {:ok, _} ->
-              Logger.info("BigQuery table created: #{source}")
+        case create_table(source) do
+          {:ok, _} ->
+            Logger.info("BigQuery table created: #{source}")
 
-            {:error, %Tesla.Env{status: 409}} ->
-              Logger.info("BigQuery table existed: #{source}")
-          end
-      end
-    end)
+          {:error, %Tesla.Env{status: 409}} ->
+            Logger.info("BigQuery table existed: #{source}")
+        end
+    end
   end
 
   @spec delete_table(:atom) :: {}
