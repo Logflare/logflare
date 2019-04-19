@@ -19,6 +19,7 @@ defmodule Logflare.TableBuffer do
 
   def init(state) do
     Logger.info("Table buffer started: #{state.source}")
+
     check_buffer()
     {:ok, state}
   end
@@ -97,11 +98,17 @@ defmodule Logflare.TableBuffer do
       buffer: count
     }
 
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> website_table_string,
-      "dashboard:#{website_table_string}:buffer",
-      payload
-    )
+    case :ets.info(LogflareWeb.Endpoint) do
+      :undefined ->
+        Logger.error("Endpoint not up yet!")
+
+      _ ->
+        LogflareWeb.Endpoint.broadcast(
+          "dashboard:" <> website_table_string,
+          "dashboard:#{website_table_string}:buffer",
+          payload
+        )
+    end
   end
 
   defp name(website_table) do

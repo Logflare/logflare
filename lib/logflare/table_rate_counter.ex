@@ -116,10 +116,16 @@ defmodule Logflare.TableRateCounter do
       max_rate: max_rate
     }
 
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> website_table_string,
-      "dashboard:#{website_table_string}:rate",
-      payload
-    )
+    case :ets.info(LogflareWeb.Endpoint) do
+      :undefined ->
+        Logger.error("Endpoint not up yet!")
+
+      _ ->
+        LogflareWeb.Endpoint.broadcast(
+          "dashboard:" <> website_table_string,
+          "dashboard:#{website_table_string}:rate",
+          payload
+        )
+    end
   end
 end

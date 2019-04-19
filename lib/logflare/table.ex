@@ -47,10 +47,7 @@ defmodule Logflare.Table do
     Logflare.Google.BigQuery.init_table!(state)
     Logflare.TableBuffer.start_link(state)
     Logflare.TableBigQueryPipeline.start_link(state)
-
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      Logflare.TableBigQuerySchema.start_link(state)
-    end)
+    Logflare.TableBigQuerySchema.start_link(state)
 
     check_ttl()
     prune()
