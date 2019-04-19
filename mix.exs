@@ -4,7 +4,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.10.8",
+      version: "0.10.9",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -65,7 +65,7 @@ defmodule Logflare.Mixfile do
       {:broadway, "~> 0.1.0"},
       {:google_api_cloud_resource_manager, "~> 0.0.1"},
       {:deep_merge, "~> 1.0"},
-      {:mix_test_watch, "~> 0.8", only: :dev, runtime: false}  
+      {:mix_test_watch, "~> 0.8", only: :dev, runtime: false}
     ]
   end
 
