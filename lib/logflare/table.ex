@@ -74,7 +74,14 @@ defmodule Logflare.Table do
 
           :ets.delete(website_table, first)
           TableCounter.decriment(website_table)
-          LogController.broadcast_log_count(website_table)
+
+          case :ets.info(LogflareWeb.Endpoint) do
+            :undefined ->
+              Logger.error("Endpoint not up yet!")
+
+            _ ->
+              LogController.broadcast_log_count(website_table)
+          end
         end
 
         check_ttl()
@@ -96,7 +103,14 @@ defmodule Logflare.Table do
           log = :ets.first(website_table)
           :ets.delete(website_table, log)
           TableCounter.decriment(website_table)
-          LogController.broadcast_log_count(website_table)
+
+          case :ets.info(LogflareWeb.Endpoint) do
+            :undefined ->
+              Logger.error("Endpoint not up yet!")
+
+            _ ->
+              LogController.broadcast_log_count(website_table)
+          end
         end
 
         prune()
