@@ -32,6 +32,10 @@ defmodule Logflare.Google.BigQuery do
         {:error, %Tesla.Env{status: 409}} ->
           Logger.info("BigQuery dataset found: #{dataset_id}")
 
+          delete_table(source)
+          Logger.info("BigQuery table deleted: #{source}")
+          Process.sleep(5_000)
+
           case create_table(source) do
             {:ok, _} ->
               Logger.info("BigQuery table created: #{source}")
