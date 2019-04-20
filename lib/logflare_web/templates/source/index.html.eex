@@ -10,35 +10,86 @@
 
 <div class="homepage-container mx-auto">
 <div class="value">
-<h4>Why?</h4>
+<h2>Why?</h2>
 <p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
 <%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/0dx0XgzHL91o1WtV", class: "btn btn-secondary", role: "button" %>
 </div>
 
-<!--
+<blockquote class="blockquote text-center">
+  <p class="mb-0" id="total-logged"><span><%= @log_count %></span></p>
+  <footer class="blockquote-footer">logs logged to date</footer>
+</blockquote>
+<h2>Already on Cloudflare?</h2>
+<p>Just install our Cloudflare App and you're good to go!</p>
+<iframe
+  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+  allowTransparency="true"
+  scroll="no"
+  frameBorder="0"
+  style="height: 48px; width: 180px">
+</iframe>
+
 <div class="marketing">
 
   <div class="row">
     <div class="col-lg-4">
-      <img class="rounded-circle" src="data:image/gif;base64,R0lGODlhAQABAIAAAHd3dwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==" alt="Generic placeholder image" width="140" height="140">
-      <h2>Heading</h2>
-      <p>Donec sed odio dui. Etiam porta sem malesuada magna mollis euismod. Nullam id dolor id nibh ultricies vehicula ut id elit. Morbi leo risus, porta ac consectetur ac, vestibulum at eros. Praesent commodo cursus magna.</p>
-      <p><a class="btn btn-secondary" href="#" role="button">View details »</a></p>
+      <center><i class="fas fa-money-bill feature-icons feature-icons-large"></i></center>
+      <h2>Free Forever</h2>
+      <p>Using Logflare is free. We believe in providing a useful free product for indepentant creators and developeres. However, if you need enterprise class features or event volume let us manage your logs.</p>
+      <p><a class="btn btn-secondary" href="#" role="button">Paid plans (soon) »</a></p>
     </div>
     <div class="col-lg-4">
-      <img class="rounded-circle" src="data:image/gif;base64,R0lGODlhAQABAIAAAHd3dwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==" alt="Generic placeholder image" width="140" height="140">
-      <h2>Heading</h2>
-      <p>Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Cras mattis consectetur purus sit amet fermentum. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh.</p>
-      <p><a class="btn btn-secondary" href="#" role="button">View details »</a></p>
+      <center><i class="fas fa-list feature-icons feature-icons-large"></i></center>
+      <h2>7 day Event History</h2>
+      <p>Loglfare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days.</p>
     </div>
     <div class="col-lg-4">
-      <img class="rounded-circle" src="data:image/gif;base64,R0lGODlhAQABAIAAAHd3dwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==" alt="Generic placeholder image" width="140" height="140">
-      <h2>Heading</h2>
-      <p>Donec sed odio dui. Cras justo odio, dapibus ac facilisis in, egestas eget quam. Vestibulum id ligula porta felis euismod semper. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa justo sit amet risus.</p>
-      <p><a class="btn btn-secondary" href="#" role="button">View details »</a></p>
+      <center><i class="fas fa-chart-bar feature-icons feature-icons-large"></i></center>
+      <h2>Chart in Data Studio</h2>
+      <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with DataStudio using your new BigQuery table.</p>
+      <p><a class="btn btn-secondary" href="#" role="button">Show me more (soon) »</a></p>
     </div>
   </div>
 
+  <div class="row">
+    <div class="col-lg-4">
+      <center><i class="fas fa-balance-scale feature-icons feature-icons-large"></i></i></center>
+      <h2>Open Source</h2>
+      <p>Our entire product is open source. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)</p>
+      <p><a class="btn btn-secondary" href="https://github.com/Logflare" role="button">Github profile »</a></p>
+    </div>
+    <div class="col-lg-4">
+      <center><i class="fas fa-code-branch feature-icons feature-icons-large"></i></center>
+      <h2>Log Routing</h2>
+      <p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
+    </div>
+    <div class="col-lg-4">
+      <center><i class="fas fa-bell feature-icons feature-icons-large"></i></i></center>
+      <h2>Email & SMS Alerts</h2>
+      <p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-4">
+      <center><i class="fas fa-book-open feature-icons feature-icons-large"></i></center>
+      <h2>Public URLs</h2>
+      <p>Easily generate a public url for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
+      <p><a class="btn btn-secondary" href="https://logflare.app/sources/public/0dx0XgzHL91o1WtV" role="button">Public source demo »</a></p>
+    </div>
+    <div class="col-lg-4">
+      <center><i class="fas fa-code feature-icons feature-icons-large"></i></center>
+      <h2>Structured Logging</h2>
+      <p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
+    </div>
+    <div class="col-lg-4">
+      <center><i class="fas fa-binoculars feature-icons feature-icons-large"></i></center>
+      <h2>Events from Anywhere</h2>
+      <p>Send events via our Cloudflare app. Watch log files with our agent, or send in custom logs via our API.</p>
+    </div>
+  </div>
+
+  <!--
   <hr class="featurette-divider">
 
   <div class="row featurette">
@@ -78,35 +129,13 @@
   <hr class="featurette-divider">
 </div>
 -->
-<blockquote class="blockquote text-center">
-  <p class="mb-0" id="total-logged"><span><%= @log_count %></span></p>
-  <footer class="blockquote-footer">logs logged to date</footer>
-</blockquote>
-<h4>Already on Cloudflare?</h4>
-<p>Just install our Cloudflare App and you're good to go!</p>
-<iframe
-  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
-  allowTransparency="true"
-  scroll="no"
-  frameBorder="0"
-  style="height: 48px; width: 180px">
-</iframe>
 
-<h4>Features</h4>
+</div>
+<h2>Also notable</h2>
 <ul id="feature-list" class="list-unstyled">
-  <li><i class="fas fa-money-bill feature-icons"></i>Free</li>
-  <li><i class="fas fa-balance-scale feature-icons"></i></i>Open source</li>
-  <li><i class="fas fa-stream feature-icons"></i>Stream logs to your browser</li>
-  <li><i class="fas fa-code feature-icons"></i>Send custom logs via API request</li>
-  <li><i class="fas fa-binoculars feature-icons"></i>Watch log files with the agent</li>
-  <li><i class="fas fa-list feature-icons"></i>7 days of logs per source</li>
-  <li><i class="fas fa-database feature-icons"></i>Backed by Google Big Query</li>
-  <li><i class="fas fa-chart-bar feature-icons"></i>Available in your Google Data Studio</li>
+  <li><i class="fas fa-stream feature-icons"></i>Everything is streamed to your browser in realtime</li>
   <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
-  <li><i class="fas fa-code-branch feature-icons"></i>Log routing</li>
-  <li><i class="fas fa-clock feature-icons"></i>Local time & UTC</li>
-  <li><i class="fas fa-book-open feature-icons"></i>Public urls for sources</li>
-  <li><i class="fas fa-bell feature-icons"></i></i>Email & SMS alerts</li>
+  <li><i class="fas fa-clock feature-icons"></i>Display timestamps in local time & UTC</li>
 </ul>
 
 <div class="row footer">
@@ -150,7 +179,7 @@
     </ul>
   </div>
 
-</div>
+
 </div>
 </div>
 <script>
