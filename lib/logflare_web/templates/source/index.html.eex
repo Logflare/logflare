@@ -133,7 +133,7 @@
 </div>
 <h2>Also notable</h2>
 <ul id="feature-list" class="list-unstyled">
-  <li><i class="fas fa-stream feature-icons"></i>Everything is streamed to your browser in realtime</li>
+  <li><i class="fas fa-stream feature-icons"></i>Streamed to your browser in realtime</li>
   <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
   <li><i class="fas fa-clock feature-icons"></i>Display timestamps in local time & UTC</li>
 </ul>
