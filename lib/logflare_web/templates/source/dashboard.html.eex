@@ -10,7 +10,13 @@
     <h5>~/logs</h5>
   </div>
 </div>
+
 <div class="container mx-auto">
+  <%= if @user.provider == "google" do %>
+  <div id="explore-dashboard"><center><a href="https://datastudio.google.com" target=”_blank”>Explore in Google Data Studio!</a></center></div>
+  <% else %>
+  <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
+  <% end %>
   <ul class="list-group">
     <%= for source <- @sources do %>
       <li class="list-group-item">
