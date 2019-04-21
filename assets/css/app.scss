@@ -52,7 +52,7 @@ body {
 
 .blockquote {
   margin-top: 2em;
-  margin-bottom: 2em;
+  margin-bottom: .5em;
   font-size: 1.75em;
 }
 
@@ -158,7 +158,6 @@ body {
 
 .feature-icons-large {
   font-size: 2em;
-  margin-bottom: 1em;
 }
 
 .col-lg-4 {
@@ -213,6 +212,12 @@ code {
 
 h2 {
   color: #0cf;
+
+}
+
+h3 {
+  color: #0cf;
+  margin-top: 1.5em;
 }
 
 h4 {
@@ -555,5 +560,12 @@ mark {
     color: #00ccff;
   }
   100% {
+  }
+}
+
+@media (min-width: 992px) {
+  .value {
+    margin-right: 15%;
+    margin-left: 15%;
   }
 }

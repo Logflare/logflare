@@ -1,51 +1,59 @@
 
 <div class="no-subhead">
 <div id="homepage-header">
-<div id="homepage-header-text">
-  <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
-  <h2>Edge Logs for Everyone</h2>
-  <p class="lead"><code>tail -f</code> your Cloudflare logs for <u>free</u>!</p>
-</div>
+  <div id="homepage-header-text">
+    <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
+    <h2>Cloudflare Log Inspector</h2>
+    <p class="lead"><code>tail -f</code> your Cloudflare logs!</p>
+  </div>
 </div>
 
 <div class="homepage-container mx-auto">
 <div class="value">
-<h2>Why?</h2>
-<p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
-<%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/0dx0XgzHL91o1WtV", class: "btn btn-secondary", role: "button" %>
+  <h3>Why?</h3>
+  <p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
+  <%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/0dx0XgzHL91o1WtV", class: "btn btn-secondary", role: "button" %>
+
+  <blockquote class="blockquote text-center">
+    <p class="mb-0" id="total-logged"><span><%= @log_count %></span></p>
+    <footer class="blockquote-footer">logs logged to date</footer>
+  </blockquote>
+
+  <div class="row">
+    <div class="col-md-6 text-right">
+      <h3>Already on Cloudflare?</h3>
+      <p>Just install our Cloudflare App and you're good to go!</p>
+      <iframe
+        src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+        allowTransparency="true"
+        scroll="no"
+        frameBorder="0"
+        style="height: 48px; width: 180px">
+      </iframe>
+    </div>
+    <div class="col-md-6">
+      <h3>Not using Cloudflare?</h3>
+      <p>Logflare is a general log managemnt, ETL and data plaform anyone can use. Use our agent or API to send logs from anywhere. Easily get data into BigQuery and build dashbaords from event data with Google Data Studio.</p>
+    </div>
+  </div>
 </div>
 
-<blockquote class="blockquote text-center">
-  <p class="mb-0" id="total-logged"><span><%= @log_count %></span></p>
-  <footer class="blockquote-footer">logs logged to date</footer>
-</blockquote>
-<h2>Already on Cloudflare?</h2>
-<p>Just install our Cloudflare App and you're good to go!</p>
-<iframe
-  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
-  allowTransparency="true"
-  scroll="no"
-  frameBorder="0"
-  style="height: 48px; width: 180px">
-</iframe>
-
 <div class="marketing">
-
   <div class="row">
     <div class="col-lg-4">
       <center><i class="fas fa-money-bill feature-icons feature-icons-large"></i></center>
-      <h2>Free Forever</h2>
+      <h3>Free Forever</h3>
       <p>Using Logflare is free. We believe in providing a useful free product for indepentant creators and developeres. However, if you need enterprise class features or event volume let us manage your logs.</p>
       <p><a class="btn btn-secondary" href="#" role="button">Paid plans (soon) »</a></p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-list feature-icons feature-icons-large"></i></center>
-      <h2>7 day Event History</h2>
+      <h3>7 day Event History</h3>
       <p>Loglfare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days.</p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-chart-bar feature-icons feature-icons-large"></i></center>
-      <h2>Chart in Data Studio</h2>
+      <h3>Chart in Data Studio</h3>
       <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with DataStudio using your new BigQuery table.</p>
       <p><a class="btn btn-secondary" href="#" role="button">Show me more (soon) »</a></p>
     </div>
@@ -54,18 +62,18 @@
   <div class="row">
     <div class="col-lg-4">
       <center><i class="fas fa-balance-scale feature-icons feature-icons-large"></i></i></center>
-      <h2>Open Source</h2>
+      <h3>Open Source</h3>
       <p>Our entire product is open source. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)</p>
       <p><a class="btn btn-secondary" href="https://github.com/Logflare" role="button">Github profile »</a></p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-code-branch feature-icons feature-icons-large"></i></center>
-      <h2>Log Routing</h2>
+      <h3>Log Routing</h3>
       <p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-bell feature-icons feature-icons-large"></i></i></center>
-      <h2>Email & SMS Alerts</h2>
+      <h3>Email & SMS Alerts</h3>
       <p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
     </div>
   </div>
@@ -73,18 +81,18 @@
   <div class="row">
     <div class="col-lg-4">
       <center><i class="fas fa-book-open feature-icons feature-icons-large"></i></center>
-      <h2>Public URLs</h2>
+      <h3>Public URLs</h3>
       <p>Easily generate a public url for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
       <p><a class="btn btn-secondary" href="https://logflare.app/sources/public/0dx0XgzHL91o1WtV" role="button">Public source demo »</a></p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-code feature-icons feature-icons-large"></i></center>
-      <h2>Structured Logging</h2>
+      <h3>Structured Logging</h3>
       <p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-binoculars feature-icons feature-icons-large"></i></center>
-      <h2>Events from Anywhere</h2>
+      <h3>Events from Anywhere</h3>
       <p>Send events via our Cloudflare app. Watch log files with our agent, or send in custom logs via our API.</p>
     </div>
   </div>
@@ -131,15 +139,15 @@
 -->
 
 </div>
-<h2>Also notable</h2>
-<ul id="feature-list" class="list-unstyled">
-  <li><i class="fas fa-stream feature-icons"></i>Streamed to your browser in realtime</li>
-  <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
-  <li><i class="fas fa-clock feature-icons"></i>Display timestamps in local time & UTC</li>
-</ul>
+
+<h3>Also notable</h3>
+  <ul id="feature-list" class="list-unstyled">
+    <li><i class="fas fa-stream feature-icons"></i>Streamed to your browser in realtime</li>
+    <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
+    <li><i class="fas fa-clock feature-icons"></i>Display timestamps in local time & UTC</li>
+  </ul>
 
 <div class="row footer">
-
   <div class="col-lg-3">
     <h5>Logflare</h5>
     <ul class="list-unstyled">
@@ -178,7 +186,6 @@
       </li>
     </ul>
   </div>
-
 
 </div>
 </div>
