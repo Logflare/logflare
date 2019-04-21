@@ -54,7 +54,7 @@
     <div class="col-lg-4">
       <center><i class="fas fa-chart-bar feature-icons feature-icons-large"></i></center>
       <h3>Chart in Data Studio</h3>
-      <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with DataStudio using your new BigQuery table.</p>
+      <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
       <p><a class="btn btn-secondary" href="#" role="button">Show me more (soon) »</a></p>
     </div>
   </div>
