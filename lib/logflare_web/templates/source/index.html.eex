@@ -49,7 +49,7 @@
     <div class="col-lg-4">
       <center><i class="fas fa-list feature-icons feature-icons-large"></i></center>
       <h3>7 day Event History</h3>
-      <p>Loglfare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days.</p>
+      <p>Loglfare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-chart-bar feature-icons feature-icons-large"></i></center>
