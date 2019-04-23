@@ -14,7 +14,7 @@ defmodule Logflare.AccountEmail do
     |> from({"Logflare", "support@logflare.app"})
     |> subject("Welcome to Logflare!")
     |> text_body(
-      "Yo!\n\nThanks for checking out Logflare! Let me know if you have any issues :)\n\nYou can always delete your account here: #{
+      "Heya!\n\nThanks for checking out Logflare! Let me know if you have any issues :)\n\nYou can always delete your account here: #{
         account_edit_link
       }"
     )
