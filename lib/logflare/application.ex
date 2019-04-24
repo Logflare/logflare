@@ -6,6 +6,7 @@ defmodule Logflare.Application do
 
     children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
+      {Task.Supervisor, name: Logflare.TableSupervisor},
       supervisor(Logflare.Repo, []),
       supervisor(Logflare.AccountCache, []),
       # init TableCounter before TableManager as TableManager calls TableCounter through table create

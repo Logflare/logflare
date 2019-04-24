@@ -7,7 +7,7 @@ use Mix.Config
 # watchers to your application. For example, we use it
 # with brunch.io to recompile .js and .css sources.
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: "infinity", num_acceptors: 1_000]],
+  http: [port: 4000, transport_options: [max_connections: "infinity", num_acceptors: 10]],
   # url: [host: "localhost", port: 4000, scheme: "http"],
   url: [host: "dev.chasegranberry.net", scheme: "http"],
   debug_errors: true,

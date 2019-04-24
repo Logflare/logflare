@@ -39,7 +39,9 @@ defmodule Logflare.TableManager do
       )
 
     Enum.each(state, fn s ->
-      Logflare.Table.start_link(s)
+      Task.Supervisor.start_child(Logflare.TableSupervisor, fn ->
+        Logflare.Table.start_link(s)
+      end)
     end)
 
     persist()
