@@ -1,5 +1,6 @@
 defmodule Logflare.SourceData do
   alias Logflare.TableRateCounter
+  alias Logflare.TableBuffer
 
   def get_log_count(source) do
     log_table_info = :ets.info(String.to_atom(elem(Ecto.UUID.load(source.token), 1)))
@@ -86,6 +87,16 @@ defmodule Logflare.SourceData do
           {timestamp, _unique_int, _monotime} ->
             timestamp
         end
+    end
+  end
+
+  def get_buffer(token, fallback \\ 0) do
+    case Process.whereis(String.to_atom(token <> "-buffer")) do
+      nil ->
+        fallback
+
+      _ ->
+        TableBuffer.get_count(token)
     end
   end
 

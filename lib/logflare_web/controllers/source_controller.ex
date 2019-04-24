@@ -15,7 +15,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.SystemCounter
   alias Logflare.SourceData
   alias Logflare.TableManager
-  alias Logflare.TableBuffer
 
   @system_counter :total_logs_logged
 
@@ -49,7 +48,7 @@ defmodule LogflareWeb.SourceController do
         timestamp = SourceData.get_latest_date(source)
         average_rate = SourceData.get_avg_rate(source)
         max_rate = SourceData.get_max_rate(source)
-        buffer_count = TableBuffer.get_count(token)
+        buffer_count = SourceData.get_buffer(token)
 
         Map.put(source, :log_count, log_count)
         |> Map.put(:rate, rate)
