@@ -72,6 +72,9 @@ config :logflare, Logflare.Repo,
   prepare: :unnamed,
   timeout: 30_000
 
-config :logflare, Logflare.BigQuery, dataset_id_append: "_prod"
+config :logflare, Logflare.Google,
+  dataset_id_append: "_dev",
+  project_number: "1074203751359",
+  project_id: "logflare-232118"
 
 import_config "prod.secret.exs"

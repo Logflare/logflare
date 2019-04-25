@@ -8,7 +8,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias GoogleApi.CloudResourceManager.V1.Connection
   alias Logflare.Repo
 
-  @project_number "1074203751359"
+  @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
 
   def get_iam_policy() do
     conn = get_conn()

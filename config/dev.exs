@@ -59,6 +59,9 @@ config :logflare, Logflare.Repo,
   pool_size: 10,
   prepare: :unnamed
 
-config :logflare, Logflare.BigQuery, dataset_id_append: "_dev"
+config :logflare, Logflare.Google,
+  dataset_id_append: "_dev",
+  project_number: "1023172132421",
+  project_id: "logflare-dev-238720"
 
 import_config "dev.secret.exs"
