@@ -75,6 +75,7 @@ config :logflare, Logflare.Repo,
 config :logflare, Logflare.Google,
   dataset_id_append: "_dev",
   project_number: "1074203751359",
-  project_id: "logflare-232118"
+  project_id: "logflare-232118",
+  service_account: "logflare@logflare-232118.iam.gserviceaccount.com"
 
 import_config "prod.secret.exs"

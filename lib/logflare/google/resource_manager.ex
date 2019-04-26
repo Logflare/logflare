@@ -9,6 +9,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.Repo
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
+  @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
 
   def get_iam_policy() do
     conn = get_conn()
@@ -26,7 +27,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
       bindings = [
         %Model.Binding{
-          members: ["serviceAccount:logflare@logflare-232118.iam.gserviceaccount.com"],
+          members: ["serviceAccount:#{@service_account}"],
           role: "roles/bigquery.admin"
         },
         %Model.Binding{
@@ -38,7 +39,7 @@ defmodule Logflare.Google.CloudResourceManager do
           role: "roles/owner"
         },
         %Model.Binding{
-          members: ["serviceAccount:logflare@logflare-232118.iam.gserviceaccount.com"],
+          members: ["serviceAccount:#{@service_account}"],
           role: "roles/resourcemanager.projectIamAdmin"
         }
       ]
