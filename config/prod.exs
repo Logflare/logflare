@@ -73,7 +73,7 @@ config :logflare, Logflare.Repo,
   timeout: 30_000
 
 config :logflare, Logflare.Google,
-  dataset_id_append: "_dev",
+  dataset_id_append: "_prod",
   project_number: "1074203751359",
   project_id: "logflare-232118",
   service_account: "logflare@logflare-232118.iam.gserviceaccount.com"
