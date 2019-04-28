@@ -19,7 +19,9 @@ config :logflare, LogflareWeb.Endpoint,
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:user_id]
+  metadata: [:user_id],
+  handle_otp_reports: true,
+  handle_sasl_reports: true
 
 config :ueberauth, Ueberauth,
   providers: [
