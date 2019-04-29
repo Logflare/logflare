@@ -224,7 +224,7 @@
     var timestamps = document.getElementsByClassName("new-log");
     var last = timestamps[timestamps.length - 1];
     local_time = formatLocalTime(last.innerHTML / 1000);
-    utc_time = utc_time = (date = new Date()) => {
+    utc_time = (date = new Date()) => {
       return new Date((last.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
     }
 
