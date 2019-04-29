@@ -200,8 +200,10 @@
         for (var i = 0; i < timestamps.length; i++) {
           time = timestamps[i];
           local_time = formatLocalTime(time.innerHTML / 1000);
-          utc_time = time.innerHTML
-          timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
+          utc_time = (date = new Date()) => {
+            return new Date((time.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
+          }
+          timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())}</span>`;
           };
       break;
       case false:
@@ -210,8 +212,10 @@
         for (var i = 0; i < timestamps.length; i++) {
           time = timestamps[i];
           local_time = formatLocalTime(time.innerHTML / 1000);
-          utc_time = time.innerHTML
-          timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
+          utc_time = (date = new Date()) => {
+            return new Date((time.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
+          }
+          timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())}</span>`;
           };
     };
   }
@@ -220,14 +224,16 @@
     var timestamps = document.getElementsByClassName("new-log");
     var last = timestamps[timestamps.length - 1];
     local_time = formatLocalTime(last.innerHTML / 1000);
-    utc_time = last.innerHTML
+    utc_time = utc_time = (date = new Date()) => {
+      return new Date((last.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
+    }
 
     switch (window.localTime) {
       case true:
-      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
+      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())}</span>`;
       break;
       case false:
-      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
+      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())}</span>`;
     };
   }
 
@@ -240,6 +246,7 @@
         return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
     };
   }
+
 
   function formatLocalTime(date) {
     return dateFns.format(date, 'ddd MMM D YYYY hh:mm:ssa')

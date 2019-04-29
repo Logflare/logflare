@@ -3,7 +3,7 @@
     <div class="log-settings float-right">
       <ul>
         <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span>Your API key is <code class="pointer-cursor" id="api-key" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
-        <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
+
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
     </div>
@@ -128,8 +128,7 @@ function toggleApiKey(bool) {
 
 function dateSwap() {
   window.localTime = ! window.localTime
-  document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
-
+  
   var utcs = document.getElementsByClassName("utc");
 
   for (var i = 0; i < utcs.length; i++) {
@@ -167,15 +166,6 @@ function dateAdd() {
   };
 }
 
-function timeToggle(bool) {
-  switch (bool) {
-    case true:
-      return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`;
-    break;
-    case false:
-      return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
-  };
-}
 
 function formatLocalTime(date) {
   var dateWords = dateFns.distanceInWordsToNow(date)
