@@ -97,7 +97,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         message = "Check your metadata!"
 
         conn
-        |> put_status(403)
+        |> put_status(400)
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
         |> halt()
