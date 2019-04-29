@@ -94,7 +94,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
 
     case Validator.valid?(metadata) do
       false ->
-        message = "Check your metadata!"
+        message = "Metadata keys failed validation. Check your metadata!"
 
         conn
         |> put_status(400)
