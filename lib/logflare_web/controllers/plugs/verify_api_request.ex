@@ -92,18 +92,24 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   def validate_metadata(conn, _opts) do
     metadata = conn.params["metadata"]
 
-    case Validator.valid?(metadata) do
-      false ->
-        message = "Metadata keys failed validation. Check your metadata!"
-
-        conn
-        |> put_status(400)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
+    case is_nil(metadata) do
       true ->
         conn
+
+      false ->
+        case Validator.valid?(metadata) do
+          false ->
+            message = "Metadata keys failed validation. Check your metadata!"
+
+            conn
+            |> put_status(400)
+            |> put_view(LogflareWeb.LogView)
+            |> render("index.json", message: message)
+            |> halt()
+
+          true ->
+            conn
+        end
     end
   end
 end
