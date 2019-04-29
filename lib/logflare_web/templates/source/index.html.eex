@@ -148,8 +148,26 @@
   </ul>
 
 <h3>Testimonials</h3>
-      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Big shoutout and 🙏 to <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>  for his super cool <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in our latest app release that my team couldn&#39;t figure out. They introduced a small change that created recursive (infinite) API calls</p>&mdash; Hamlet 🇩🇴 (@hamletbatista) <a href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a></blockquote>
-      <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+  <div id="testimonials">
+    <div class="row">
+      <div class="col-md-6">
+        <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Big shoutout and 🙏 to <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>  for his super cool <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in our latest app release that my team couldn&#39;t figure out. They introduced a small change that created recursive (infinite) API calls</p>&mdash; Hamlet 🇩🇴 (@hamletbatista) <a href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a></blockquote>
+      </div>
+      <div class="col-md-6">
+        <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses CloudFlare to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>&mdash; 🍌 John 🍌 (@JohnMu) <a href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a></blockquote>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-md-6">
+        <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">You&#39;re using CloudFlare, right?  If not, you should!  However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem.  Enter Logflare! <a href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a></blockquote>
+      </div>
+      <div class="col-md-6">
+      </div>
+    </div>
+  </div>
+
 
 <div class="row footer">
   <div class="col-lg-3">
@@ -198,3 +216,4 @@
     window.createEveryoneSocket();
   });
 </script>
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
