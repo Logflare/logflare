@@ -10,7 +10,7 @@ defmodule Logflare.TableRateCounter do
   alias Logflare.TableCounter
 
   @rate_period 1_000
-  @ets_table_name :source_rates
+  @ets_table_name :table_rate_counters
 
   def start_link(website_table, init_count) do
     started_at = System.monotonic_time(:second)
