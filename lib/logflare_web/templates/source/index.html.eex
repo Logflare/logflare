@@ -168,6 +168,18 @@
     </div>
   </div>
 
+<div class="value">
+  <h3>Why Log at the Edge?</h3>
+  <h5>You can send Logflare events from anywhere, but edge logging can provide additional benefits to traditional server side logging.</h5>
+  <ul>
+    <li>Nothing to install on your servers. With Logflare and our Cloudflare app you can start logging everything with a few clicks.</li>
+    <li>Zero risk. You can uninstall our app as quickly as you installed it.</li>
+    <li>All your requests all the time. If you have lots of servers sometimes logging systems have issues on a node or two. When you log at the edge you know you're always seeing all requests.</li>
+    <li>Zero additional load on your system. Logflare's workers run on Cloudflares cloud. Our worker sees the request, passes it through to your system and asynchronously logs the event to Logflare with no additional latency involved and no added load to your servers.</li>
+  </ul>
+  <center><%= link "Sign up now", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %></center>
+</div>
+
 
 <div class="row footer">
   <div class="col-lg-3">
