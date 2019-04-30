@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
+
       </ul>
     </div>
     <h5>~/admin</h5>
@@ -71,7 +71,6 @@ document.addEventListener("DOMContentLoaded", function(){
 
 function dateSwap() {
   window.localTime = ! window.localTime
-  document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
 
   var utcs = document.getElementsByClassName("utc");
 
@@ -107,16 +106,6 @@ function dateAdd() {
         utc_time = time.innerHTML
         timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
         };
-  };
-}
-
-function timeToggle(bool) {
-  switch (bool) {
-    case true:
-      return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`;
-    break;
-    case false:
-      return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
   };
 }
 
