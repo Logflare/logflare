@@ -203,7 +203,7 @@
           utc_time = (date = new Date()) => {
             return new Date((time.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
           }
-          timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())}</span>`;
+          timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`;
           };
       break;
       case false:
@@ -215,7 +215,7 @@
           utc_time = (date = new Date()) => {
             return new Date((time.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
           }
-          timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())}</span>`;
+          timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`;
           };
     };
   }
@@ -230,10 +230,10 @@
 
     switch (window.localTime) {
       case true:
-      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())}</span>`;
+      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`;
       break;
       case false:
-      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())}</span>`;
+      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`;
     };
   }
 
