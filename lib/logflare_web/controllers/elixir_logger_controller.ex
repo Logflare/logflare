@@ -13,19 +13,19 @@ defmodule LogflareWeb.ElixirLoggerController do
 
   @system_counter :total_logs_logged
 
-  def create(conn, %{"batch" => batch, "source" => source}) do
+  def create(conn, %{"batch" => batch, "source_name" => source_name}) do
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
     message = "Logged!"
 
     for log_entry <- batch do
-      process_log(log_entry, %{source: source, api_key: api_key})
+      process_log(log_entry, %{source: source_name, api_key: api_key})
     end
 
     render(conn, "index.json", message: message)
   end
 
-  def process_log(log_entry, %{api_key: api_key, source: source}) do
+  def process_log(log_entry, %{api_key: api_key, source: source_name}) do
     %{"message" => m, "metadata" => metadata, "timestamp" => ts, "level" => lv} = log_entry
     monotime = System.monotonic_time(:nanosecond)
     timestamp = ts * 1_000_000
@@ -36,7 +36,7 @@ defmodule LogflareWeb.ElixirLoggerController do
 
     source_table =
       api_key
-      |> lookup_or_create_source(source)
+      |> lookup_or_create_source(source_name)
       |> String.to_atom()
 
     %{overflow_source: overflow_source} =
