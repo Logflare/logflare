@@ -68,12 +68,33 @@
         <p>Send logs via an HTTP request.</p>
         <pre class="pre-scrollable">
           <code>
-    curl -X "POST" "https://logflare.app/api/logs" \
+    curl -X "POST" "https://api.logflare.app/logs" \
     -H 'Content-Type: application/json' \
     -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN IN FIRST" end %>' \
     -d $'{
       "source": "<%= @source.token %>",
-      "log_entry": "This is another log message."
+      "log_entry": "This is another log message.",
+      "metadata": {
+        "ip_address": "100.100.100.100",
+        "request_method": "POST",
+        "custom_user_data": {
+          "vip": true,
+          "id": 38,
+          "login_count": 154,
+          "company": "Apple",
+          "address": {
+            "zip": "11111",
+            "st": "NY",
+            "street": "123 W Main St",
+            "city": "New York"
+          }
+        },
+        "datacenter": "aws",
+        "request_headers": {
+          "connection": "close",
+          "user_agent": "chrome"
+        }
+      }
     }'
           </code>
         </pre>
@@ -106,7 +127,7 @@
         body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
       }
 
-      event.waitUntil(fetch("https://logflare.app/api/logs", init))
+      event.waitUntil(fetch("https://api.logflare.app/logs", init))
 
       return response
     }
