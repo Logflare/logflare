@@ -30,7 +30,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   end
 
   def check_log_entry(conn, _opts) do
-    log_entry = conn.params["log_entry"]
+    log_entry = conn.params["log_entry"] || conn.params["batch"]
 
     case log_entry == nil do
       true ->
