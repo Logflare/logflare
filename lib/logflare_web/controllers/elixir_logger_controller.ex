@@ -17,37 +17,32 @@ defmodule LogflareWeb.ElixirLoggerController do
     send_resp(conn, 200, "ok")
   end
 
-  def create(conn, %{"log_entry" => log_entry}) do
+  def create(conn, %{"log_entry" => log_entry} = params) do
     monotime = System.monotonic_time(:nanosecond)
     timestamp = System.system_time(:microsecond)
     unique_int = System.unique_integer([:monotonic])
     time_event = {timestamp, unique_int, monotime}
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
-    metadata =
-      case is_map(conn.params["metadata"]) do
-        false ->
-          nil
+    metadata = params["metadata"]
+    metadata = if is_map(metadata), do: metadata
 
-        true ->
-          conn.params["metadata"]
-      end
+    source = params["source"]
 
     source_table =
-      case conn.params["source"] == nil do
-        true ->
-          source_name = conn.params["source_name"]
+      if source do
+        String.to_atom(source)
+      else
+        source_name = params["source_name"]
 
-          lookup_or_create_source(api_key, source_name)
-          |> String.to_atom()
-
-        false ->
-          String.to_atom(conn.params["source"])
+        api_key
+        |> lookup_or_create_source(source_name)
+        |> String.to_atom()
       end
 
     source_record = AccountCache.get_source(api_key, Atom.to_string(source_table))
 
-    if is_nil(source_record.overflow_source) == false do
+    if source_record.overflow_source do
       if source_over_threshold?(source_table) do
         send_to_many_sources_by_rules(
           String.to_atom(source_record.overflow_source),
@@ -88,21 +83,18 @@ defmodule LogflareWeb.ElixirLoggerController do
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key) do
     rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
 
-    case rules == [] do
-      true ->
+    case rules do
+      [] ->
         insert_log(source_table, time_event, log_entry, metadata)
 
-      false ->
-        Enum.map(
+      _ ->
+        Enum.each(
           rules,
           fn x ->
-            case Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
-              true ->
-                sink_atom = String.to_atom(x.sink)
-                insert_log(sink_atom, time_event, log_entry, metadata)
-
-              false ->
-                :ok
+            if Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
+              x.sink
+              |> String.to_atom()
+              |> insert_log(time_event, log_entry, metadata)
             end
           end
         )
@@ -154,7 +146,8 @@ defmodule LogflareWeb.ElixirLoggerController do
   defp create_source(source_name, api_key) do
     source = %{token: Ecto.UUID.generate(), name: source_name}
 
-    Repo.get_by(User, api_key: api_key)
+    User
+    |> Repo.get_by(api_key: api_key)
     |> Ecto.build_assoc(:sources)
     |> Source.changeset(source)
     |> Repo.insert()
@@ -163,15 +156,13 @@ defmodule LogflareWeb.ElixirLoggerController do
   defp lookup_or_create_source(api_key, source_name) do
     source = AccountCache.get_source_by_name(api_key, source_name)
 
-    case source do
-      nil ->
-        {:ok, new_source} = create_source(source_name, api_key)
-        AccountCache.update_account(api_key)
+    if source do
+      source.token
+    else
+      {:ok, new_source} = create_source(source_name, api_key)
+      AccountCache.update_account(api_key)
 
-        new_source.token
-
-      _ ->
-        source.token
+      new_source.token
     end
   end
 
@@ -179,12 +170,10 @@ defmodule LogflareWeb.ElixirLoggerController do
     current_rate = SourceData.get_rate(source)
     avg_rate = SourceData.get_avg_rate(source)
 
-    case avg_rate >= 1 do
-      true ->
-        current_rate / 10 >= avg_rate
-
-      false ->
-        false
+    if avg_rate >= 1 do
+      current_rate / 10 >= avg_rate
+    else
+      false
     end
   end
 end
