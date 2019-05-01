@@ -14,49 +14,43 @@ defmodule LogflareWeb.ElixirLoggerController do
   @system_counter :total_logs_logged
 
   def create(conn, %{"batch" => batch, "source" => source}) do
-    send_resp(conn, 200, "ok")
-  end
-
-  def create(conn, %{"log_entry" => log_entry} = params) do
-    monotime = System.monotonic_time(:nanosecond)
-    timestamp = System.system_time(:microsecond)
-    unique_int = System.unique_integer([:monotonic])
-    time_event = {timestamp, unique_int, monotime}
     api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
 
-    metadata = params["metadata"]
-    metadata = if is_map(metadata), do: metadata
+    message = "Logged!"
 
-    source = params["source"]
+    for log_entry <- batch do
+      process_log(log_entry, %{source: source, api_key: api_key})
+    end
+
+    render(conn, "index.json", message: message)
+  end
+
+  def process_log(log_entry, %{api_key: api_key, source: source}) do
+    %{"message" => m, "metadata" => metadata, "timestamp" => ts, "level" => lv} = log_entry
+    monotime = System.monotonic_time(:nanosecond)
+    timestamp = ts * 1_000_000
+    unique_int = System.unique_integer([:monotonic])
+    time_event = {timestamp, unique_int, monotime}
+
+    metadata = metadata |> Map.put("level", lv)
 
     source_table =
-      source
-      |> if do
-        source
-      else
-        source_name = params["source_name"]
-        lookup_or_create_source(api_key, source_name)
-      end
+      api_key
+      |> lookup_or_create_source(source)
       |> String.to_atom()
 
     %{overflow_source: overflow_source} =
       AccountCache.get_source(api_key, Atom.to_string(source_table))
 
-    if overflow_source and source_over_threshold?(source_table) do
-      send_to_many_sources_by_rules(
-        String.to_atom(overflow_source),
-        time_event,
-        log_entry,
-        metadata,
-        api_key
-      )
+    send_with_data = &send_to_many_sources_by_rules(&1, time_event, m, metadata, api_key)
+
+    if overflow_source && source_over_threshold?(source_table) do
+      overflow_source
+      |> String.to_atom()
+      |> send_with_data.()
     end
 
-    send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key)
-
-    message = "Logged!"
-
-    render(conn, "index.json", message: message)
+    send_with_data.(source_table)
   end
 
   def broadcast_log_count(source_table) do
