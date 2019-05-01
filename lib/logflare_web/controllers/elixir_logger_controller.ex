@@ -30,28 +30,26 @@ defmodule LogflareWeb.ElixirLoggerController do
     source = params["source"]
 
     source_table =
-      if source do
-        String.to_atom(source)
+      source
+      |> if do
+        source
       else
         source_name = params["source_name"]
+        lookup_or_create_source(api_key, source_name)
+      end
+      |> String.to_atom()
 
+    %{overflow_source: overflow_source} =
+      AccountCache.get_source(api_key, Atom.to_string(source_table))
+
+    if overflow_source and source_over_threshold?(source_table) do
+      send_to_many_sources_by_rules(
+        String.to_atom(overflow_source),
+        time_event,
+        log_entry,
+        metadata,
         api_key
-        |> lookup_or_create_source(source_name)
-        |> String.to_atom()
-      end
-
-    source_record = AccountCache.get_source(api_key, Atom.to_string(source_table))
-
-    if source_record.overflow_source do
-      if source_over_threshold?(source_table) do
-        send_to_many_sources_by_rules(
-          String.to_atom(source_record.overflow_source),
-          time_event,
-          log_entry,
-          metadata,
-          api_key
-        )
-      end
+      )
     end
 
     send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key)
@@ -83,36 +81,29 @@ defmodule LogflareWeb.ElixirLoggerController do
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key) do
     rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
 
-    case rules do
-      [] ->
-        insert_log(source_table, time_event, log_entry, metadata)
+    Enum.each(
+      rules,
+      fn x ->
+        if Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
+          x.sink
+          |> String.to_atom()
+          |> insert_log(time_event, log_entry, metadata)
+        end
+      end
+    )
 
-      _ ->
-        Enum.each(
-          rules,
-          fn x ->
-            if Regex.match?(~r{#{x.regex}}, "#{log_entry}") do
-              x.sink
-              |> String.to_atom()
-              |> insert_log(time_event, log_entry, metadata)
-            end
-          end
-        )
-
-        insert_log(source_table, time_event, log_entry, metadata)
-    end
+    insert_log(source_table, time_event, log_entry, metadata)
   end
 
   defp insert_log(source_table, time_event, log_entry, metadata) do
-    case :ets.info(source_table) do
-      :undefined ->
+    source_table =
+      if :ets.info(source_table) == :undefined do
+        TableManager.new_table(source_table)
+      else
         source_table
-        |> TableManager.new_table()
-        |> insert_and_broadcast(time_event, log_entry, metadata)
+      end
 
-      _ ->
-        insert_and_broadcast(source_table, time_event, log_entry, metadata)
-    end
+    insert_and_broadcast(source_table, time_event, log_entry, metadata)
   end
 
   defp insert_and_broadcast(source_table, time_event, log_entry, metadata) do
@@ -120,12 +111,10 @@ defmodule LogflareWeb.ElixirLoggerController do
     {timestamp, _unique_int, _monotime} = time_event
 
     payload =
-      case is_nil(metadata) do
-        true ->
-          %{timestamp: timestamp, log_message: log_entry}
-
-        false ->
-          %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
+      if metadata do
+        %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
+      else
+        %{timestamp: timestamp, log_message: log_entry}
       end
 
     :ets.insert(source_table, {time_event, payload})
@@ -156,24 +145,23 @@ defmodule LogflareWeb.ElixirLoggerController do
   defp lookup_or_create_source(api_key, source_name) do
     source = AccountCache.get_source_by_name(api_key, source_name)
 
-    if source do
-      source.token
-    else
-      {:ok, new_source} = create_source(source_name, api_key)
-      AccountCache.update_account(api_key)
+    source =
+      if source do
+        source
+      else
+        {:ok, new_source} = create_source(source_name, api_key)
+        AccountCache.update_account(api_key)
 
-      new_source.token
-    end
+        new_source
+      end
+
+    source.token
   end
 
   defp source_over_threshold?(source) do
     current_rate = SourceData.get_rate(source)
     avg_rate = SourceData.get_avg_rate(source)
 
-    if avg_rate >= 1 do
-      current_rate / 10 >= avg_rate
-    else
-      false
-    end
+    avg_rate >= 1 and current_rate / 10 >= avg_rate
   end
 end
