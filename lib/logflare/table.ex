@@ -9,6 +9,13 @@ defmodule Logflare.Table do
   alias Logflare.TableCounter
   alias LogflareWeb.LogController
   alias Logflare.SourceData
+  alias Logflare.TableRateCounter
+  alias Logflare.Google.BigQuery
+  alias Logflare.TableMailer
+  alias Logflare.TableTexter
+  alias Logflare.TableBuffer
+  alias Logflare.TableBigQueryPipeline
+  alias Logflare.TableBigQuerySchema
 
   require Logger
 
@@ -37,7 +44,7 @@ defmodule Logflare.Table do
     website_table = state[:table]
     tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
 
-    Logflare.Google.BigQuery.init_table!(website_table)
+    BigQuery.init_table!(website_table)
 
     case :ets.tabfile_info(String.to_charlist(tab_path)) do
       {:ok, _info} ->
@@ -53,11 +60,11 @@ defmodule Logflare.Table do
         fresh_table(website_table)
     end
 
-    Logflare.TableMailer.start_link(website_table)
-    Logflare.TableTexter.start_link(website_table)
-    Logflare.TableBuffer.start_link(website_table)
-    Logflare.TableBigQueryPipeline.start_link(website_table)
-    Logflare.TableBigQuerySchema.start_link(website_table)
+    TableMailer.start_link(website_table)
+    TableTexter.start_link(website_table)
+    TableBuffer.start_link(website_table)
+    TableBigQueryPipeline.start_link(website_table)
+    TableBigQuerySchema.start_link(website_table)
 
     {:noreply, state}
   end
@@ -126,7 +133,7 @@ defmodule Logflare.Table do
     TableCounter.create(website_table)
     TableCounter.incriment_ets_count(website_table, ets_count)
     TableCounter.incriment_total_count(website_table, log_count)
-    Logflare.TableRateCounter.start_link(website_table, ets_count)
+    TableRateCounter.start_link(website_table, ets_count)
   end
 
   defp fresh_table(website_table) do
@@ -136,7 +143,7 @@ defmodule Logflare.Table do
     :ets.new(website_table, table_args)
     TableCounter.create(website_table)
     TableCounter.incriment_total_count(website_table, log_count)
-    Logflare.TableRateCounter.start_link(website_table, 0)
+    TableRateCounter.start_link(website_table, 0)
   end
 
   defp check_ttl() do
