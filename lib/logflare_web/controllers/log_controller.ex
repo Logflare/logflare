@@ -10,6 +10,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.SourceData
   alias Logflare.AccountCache
   alias Logflare.TableBuffer
+  alias Logflare.Table
 
   @system_counter :total_logs_logged
 
@@ -132,7 +133,12 @@ defmodule LogflareWeb.LogController do
           %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
       end
 
-    :ets.insert(source_table, {time_event, payload})
+    if :ets.info(source_table) == :undefined do
+      Table.push(source_table, {time_event, payload})
+    else
+      :ets.insert(source_table, {time_event, payload})
+    end
+
     TableBuffer.push(source_table_string, {time_event, payload})
     TableCounter.incriment(source_table)
     SystemCounter.incriment(@system_counter)

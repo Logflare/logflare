@@ -38,6 +38,10 @@ defmodule Logflare.Table do
     {:ok, state, {:continue, :boot}}
   end
 
+  def push(website_table, event) do
+    GenServer.cast(website_table, {:push, website_table, event})
+  end
+
   ## Server
 
   def handle_continue(:boot, state) do
@@ -66,6 +70,11 @@ defmodule Logflare.Table do
     TableBigQueryPipeline.start_link(website_table)
     TableBigQuerySchema.start_link(website_table)
 
+    {:noreply, state}
+  end
+
+  def handle_cast({:push, website_table, event}, state) do
+    :ets.insert(website_table, event)
     {:noreply, state}
   end
 

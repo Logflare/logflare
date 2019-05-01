@@ -111,7 +111,12 @@ defmodule LogflareWeb.ElixirLoggerController do
         %{timestamp: timestamp, log_message: log_entry}
       end
 
-    :ets.insert(source_table, {time_event, payload})
+    if :ets.info(source_table) == :undefined do
+      Table.push(source_table, {time_event, payload})
+    else
+      :ets.insert(source_table, {time_event, payload})
+    end
+
     TableBuffer.push(source_table_string, {time_event, payload})
     TableCounter.incriment(source_table)
     SystemCounter.incriment(@system_counter)
