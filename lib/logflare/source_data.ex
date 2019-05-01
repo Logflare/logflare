@@ -1,9 +1,39 @@
 defmodule Logflare.SourceData do
   alias Logflare.TableRateCounter
   alias Logflare.TableBuffer
+  alias Logflare.TableCounter
+  alias Logflare.Google.BigQuery
 
-  def get_log_count(source) do
-    log_table_info = :ets.info(String.to_atom(elem(Ecto.UUID.load(source.token), 1)))
+  @spec get_log_count(:atom) :: {}
+  def get_log_count(token) do
+    case BigQuery.get_table(token) do
+      {:ok, table_info} ->
+        table_rows = String.to_integer(table_info.numRows)
+
+        buffer_rows =
+          case is_nil(table_info.streamingBuffer) do
+            true ->
+              0
+
+            false ->
+              case is_nil(table_info.streamingBuffer.estimatedRows) do
+                true ->
+                  0
+
+                false ->
+                  String.to_integer(table_info.streamingBuffer.estimatedRows)
+              end
+          end
+
+        table_rows + buffer_rows
+
+      {:error, _message} ->
+        0
+    end
+  end
+
+  def get_ets_count(token) do
+    log_table_info = :ets.info(token)
 
     case log_table_info do
       :undefined ->
@@ -11,6 +41,19 @@ defmodule Logflare.SourceData do
 
       _ ->
         log_table_info[:size]
+    end
+  end
+
+  def get_total_inserts(token) do
+    log_table_info = :ets.info(String.to_atom(token))
+
+    case log_table_info do
+      :undefined ->
+        0
+
+      _ ->
+        {:ok, inserts} = TableCounter.get_total_inserts(String.to_atom(token))
+        inserts
     end
   end
 

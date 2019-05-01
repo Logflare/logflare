@@ -8,6 +8,7 @@ defmodule Logflare.Table do
 
   alias Logflare.TableCounter
   alias LogflareWeb.LogController
+  alias Logflare.SourceData
 
   require Logger
 
@@ -23,40 +24,59 @@ defmodule Logflare.Table do
   ## Client
 
   def init(state) do
-    tab_path = "tables/" <> Atom.to_string(state) <> ".tab"
-
-    case :ets.tabfile_info(String.to_charlist(tab_path)) do
-      {:ok, info} ->
-        Logger.info("Loaded table: #{state}")
-        :ets.file2tab(String.to_charlist(tab_path))
-        log_count = info[:size]
-        TableCounter.create(state)
-        TableCounter.incriment(state, log_count)
-        Logflare.TableRateCounter.start_link(state, log_count)
-
-      {:error, _reason} ->
-        Logger.info("Created table: #{state}")
-        table_args = [:named_table, :ordered_set, :public]
-        :ets.new(state, table_args)
-        TableCounter.create(state)
-        Logflare.TableRateCounter.start_link(state, 0)
-    end
-
-    Logflare.TableMailer.start_link(state)
-    Logflare.TableTexter.start_link(state)
-    Logflare.Google.BigQuery.init_table!(state)
-    Logflare.TableBuffer.start_link(state)
-    Logflare.TableBigQueryPipeline.start_link(state)
-    Logflare.TableBigQuerySchema.start_link(state)
-
     check_ttl()
     prune()
 
     state = [{:table, state}]
-    {:ok, state}
+    {:ok, state, {:continue, :boot}}
   end
 
   ## Server
+
+  def handle_continue(:boot, state) do
+    website_table = state[:table]
+    tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
+
+    Logflare.Google.BigQuery.init_table!(website_table)
+
+    case :ets.tabfile_info(String.to_charlist(tab_path)) do
+      {:ok, _info} ->
+        Logger.info("Loaded table: #{website_table}")
+
+        case :ets.file2tab(String.to_charlist(tab_path), verify: true) do
+          {:ok, _table} ->
+            log_count = SourceData.get_log_count(website_table)
+            ets_count = SourceData.get_ets_count(website_table)
+            TableCounter.create(website_table)
+            TableCounter.incriment_ets_count(website_table, ets_count)
+            TableCounter.incriment_total_count(website_table, log_count)
+            Logflare.TableRateCounter.start_link(website_table, ets_count)
+
+          {:error, reason} ->
+            Logger.error("Bad tab file: #{reason}")
+            Logger.info("Created table: #{website_table}")
+            table_args = [:named_table, :ordered_set, :public]
+            :ets.new(website_table, table_args)
+            TableCounter.create(website_table)
+            Logflare.TableRateCounter.start_link(website_table, 0)
+        end
+
+      {:error, _reason} ->
+        Logger.info("Created table: #{website_table}")
+        table_args = [:named_table, :ordered_set, :public]
+        :ets.new(website_table, table_args)
+        TableCounter.create(website_table)
+        Logflare.TableRateCounter.start_link(website_table, 0)
+    end
+
+    Logflare.TableMailer.start_link(website_table)
+    Logflare.TableTexter.start_link(website_table)
+    Logflare.TableBuffer.start_link(website_table)
+    Logflare.TableBigQueryPipeline.start_link(website_table)
+    Logflare.TableBigQuerySchema.start_link(website_table)
+
+    {:noreply, state}
+  end
 
   def handle_info(:ttl, state) do
     website_table = state[:table]
@@ -97,20 +117,12 @@ defmodule Logflare.Table do
     website_table = state[:table]
     {:ok, count} = TableCounter.log_count(website_table)
 
-    case count > 1000 do
+    case count > 100 do
       true ->
-        for _log <- 1001..count do
+        for _log <- 101..count do
           log = :ets.first(website_table)
           :ets.delete(website_table, log)
           TableCounter.decriment(website_table)
-
-          case :ets.info(LogflareWeb.Endpoint) do
-            :undefined ->
-              Logger.error("Endpoint not up yet!")
-
-            _ ->
-              LogController.broadcast_log_count(website_table)
-          end
         end
 
         prune()

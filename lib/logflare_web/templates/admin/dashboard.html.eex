@@ -19,7 +19,7 @@
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
           <span id="<%= source.token %>">
             <small class="my-badge">
-              <%= source.log_count %>
+              <%= source.inserts %>
             </small>
           </span>
         </div>

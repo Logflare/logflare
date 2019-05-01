@@ -25,8 +25,14 @@ defmodule Logflare.Google.BigQuery do
     case create_dataset(dataset_id) do
       {:ok, _} ->
         Logger.info("BigQuery dataset created: #{dataset_id}")
-        {:ok, _} = create_table(source)
-        Logger.info("BigQuery table created: #{source}")
+
+        case create_table(source) do
+          {:ok, _} ->
+            Logger.info("BigQuery table created: #{source}")
+
+          {:error, message} ->
+            Logger.error("Init error: #{message.body}")
+        end
 
       {:error, %Tesla.Env{status: 409}} ->
         Logger.info("BigQuery dataset found: #{dataset_id}")
@@ -37,7 +43,13 @@ defmodule Logflare.Google.BigQuery do
 
           {:error, %Tesla.Env{status: 409}} ->
             Logger.info("BigQuery table existed: #{source}")
+
+          {:error, message} ->
+            Logger.error("Init error: #{message.body}")
         end
+
+      {:error, message} ->
+        Logger.error("Init error: #{message.body}")
     end
   end
 

@@ -17,7 +17,15 @@ defmodule Logflare.TableManager do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  def init(_state) do
+  def init(state) do
+    persist()
+
+    {:ok, state, {:continue, :boot}}
+  end
+
+  ## Server
+
+  def handle_continue(:boot, _state) do
     Logger.info("Table manager started!")
 
     query =
@@ -39,20 +47,15 @@ defmodule Logflare.TableManager do
       )
 
     Enum.each(state, fn s ->
-      Task.Supervisor.start_child(Logflare.TableSupervisor, fn ->
-        Logflare.Table.start_link(s)
-      end)
+      Logflare.Table.start_link(s)
     end)
 
-    persist()
-
-    {:ok, state}
+    {:noreply, state}
   end
-
-  ## Server
 
   def handle_call({:create, website_table}, _from, state) do
     Logflare.Table.start_link(website_table)
+
     state = Enum.uniq([website_table | state])
     {:reply, website_table, state}
   end

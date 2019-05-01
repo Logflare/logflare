@@ -44,7 +44,7 @@
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
           <span id="<%= source.token %>">
             <small class="my-badge">
-              <%= source.log_count %>
+              <%= source.inserts %>
             </small>
           </span>
         </div>
@@ -128,7 +128,7 @@ function toggleApiKey(bool) {
 
 function dateSwap() {
   window.localTime = ! window.localTime
-  
+
   var utcs = document.getElementsByClassName("utc");
 
   for (var i = 0; i < utcs.length; i++) {

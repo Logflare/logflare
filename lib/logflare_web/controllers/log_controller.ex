@@ -63,7 +63,7 @@ defmodule LogflareWeb.LogController do
   end
 
   def broadcast_log_count(source_table) do
-    {:ok, log_count} = TableCounter.log_count(source_table)
+    {:ok, log_count} = TableCounter.get_total_inserts(source_table)
     source_table_string = Atom.to_string(source_table)
     payload = %{log_count: log_count, source_token: source_table_string}
 
