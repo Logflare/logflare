@@ -75,7 +75,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
       is_nil(source) ->
         conn
 
-      is_nil(AccountCache.get_source(api_key, source)) ->
+      is_nil(AccountCache.get_source_by_name(api_key, source)) ->
         message = "Check your source."
 
         conn
