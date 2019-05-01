@@ -41,32 +41,16 @@ defmodule Logflare.Table do
 
     case :ets.tabfile_info(String.to_charlist(tab_path)) do
       {:ok, _info} ->
-        Logger.info("Loaded table: #{website_table}")
-
         case :ets.file2tab(String.to_charlist(tab_path), verify: true) do
           {:ok, _table} ->
-            log_count = SourceData.get_log_count(website_table)
-            ets_count = SourceData.get_ets_count(website_table)
-            TableCounter.create(website_table)
-            TableCounter.incriment_ets_count(website_table, ets_count)
-            TableCounter.incriment_total_count(website_table, log_count)
-            Logflare.TableRateCounter.start_link(website_table, ets_count)
+            restore_table(website_table)
 
-          {:error, reason} ->
-            Logger.error("Bad tab file: #{reason}")
-            Logger.info("Created table: #{website_table}")
-            table_args = [:named_table, :ordered_set, :public]
-            :ets.new(website_table, table_args)
-            TableCounter.create(website_table)
-            Logflare.TableRateCounter.start_link(website_table, 0)
+          {:error, _reason} ->
+            fresh_table(website_table)
         end
 
       {:error, _reason} ->
-        Logger.info("Created table: #{website_table}")
-        table_args = [:named_table, :ordered_set, :public]
-        :ets.new(website_table, table_args)
-        TableCounter.create(website_table)
-        Logflare.TableRateCounter.start_link(website_table, 0)
+        fresh_table(website_table)
     end
 
     Logflare.TableMailer.start_link(website_table)
@@ -135,6 +119,25 @@ defmodule Logflare.Table do
   end
 
   ## Private Functions
+  defp restore_table(website_table) do
+    Logger.info("Loaded table: #{website_table}")
+    log_count = SourceData.get_log_count(website_table)
+    ets_count = SourceData.get_ets_count(website_table)
+    TableCounter.create(website_table)
+    TableCounter.incriment_ets_count(website_table, ets_count)
+    TableCounter.incriment_total_count(website_table, log_count)
+    Logflare.TableRateCounter.start_link(website_table, ets_count)
+  end
+
+  defp fresh_table(website_table) do
+    Logger.info("Created table: #{website_table}")
+    log_count = SourceData.get_log_count(website_table)
+    table_args = [:named_table, :ordered_set, :public]
+    :ets.new(website_table, table_args)
+    TableCounter.create(website_table)
+    TableCounter.incriment_total_count(website_table, log_count)
+    Logflare.TableRateCounter.start_link(website_table, 0)
+  end
 
   defp check_ttl() do
     Process.send_after(self(), :ttl, @ttl_timer)

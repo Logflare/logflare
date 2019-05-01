@@ -106,6 +106,7 @@ defmodule Logflare.TableManager do
 
   def reset_table(website_table) do
     GenServer.call(__MODULE__, {:stop, website_table})
+    GenServer.call(__MODULE__, {:create, website_table})
 
     {:ok, website_table}
   end
