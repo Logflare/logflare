@@ -33,3 +33,14 @@ npm-debug.log
 /system-table
 
 /config/secrets
+
+# Local secrets
+
+gcloud.json
+
+# IDEs
+
+/.elixir_ls/
+/.idea/
+
+

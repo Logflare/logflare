@@ -132,5 +132,6 @@ defmodule LogflareWeb.Router do
   scope "/logs", LogflareWeb do
     pipe_through([:api, :require_api_auth])
     post("/", LogController, :create)
+    post("/elixir/logger", ElixirLoggerController, :create)
   end
 end
