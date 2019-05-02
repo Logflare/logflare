@@ -1,7 +1,7 @@
 {
  "name": "Logflare",
  "start_url": "/dashboard",
- "display": "standalone",
+ "display": "minimal_ui",
  "background_color": "#7ef854",
  "theme_color": "#7ef854",
  "icons": [

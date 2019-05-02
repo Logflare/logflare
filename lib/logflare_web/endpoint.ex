@@ -11,7 +11,7 @@ defmodule LogflareWeb.Endpoint do
     at: "/",
     from: :logflare,
     gzip: false,
-    only: ~w(css fonts images js favicon.ico robots.txt)
+    only: ~w(css fonts images js favicon.ico robots.txt worker.js manifest.json)
   )
 
   # Code reloading can be explicitly enabled under the
