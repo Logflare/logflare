@@ -2,6 +2,7 @@
  "name": "Logflare",
  "start_url": "/dashboard",
  "display": "minimal-ui",
+ "short_name": "Logflare",
  "background_color": "#7ef854",
  "theme_color": "#7ef854",
  "icons": [
@@ -36,8 +37,14 @@
    "density": "3.0"
   },
   {
-   "src": "\/images\/android-icon-192x192.png",
+   "src": "\/images\/logflare-icon-192x192.png",
    "sizes": "192x192",
+   "type": "image\/png",
+   "density": "4.0"
+  },
+  {
+   "src": "\/images\/logflare-icon-512x512.png",
+   "sizes": "512x512",
    "type": "image\/png",
    "density": "4.0"
   }
