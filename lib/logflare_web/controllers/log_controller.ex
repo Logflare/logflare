@@ -63,25 +63,6 @@ defmodule LogflareWeb.LogController do
     render(conn, "index.json", message: message)
   end
 
-  def broadcast_log_count(source_table) do
-    {:ok, log_count} = TableCounter.get_total_inserts(source_table)
-    source_table_string = Atom.to_string(source_table)
-    payload = %{log_count: log_count, source_token: source_table_string}
-
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> source_table_string,
-      "dashboard:#{source_table_string}:log_count",
-      payload
-    )
-  end
-
-  def broadcast_total_log_count() do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    payload = %{total_logs_logged: log_count}
-
-    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
-  end
-
   defp send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key) do
     rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
 
@@ -139,8 +120,8 @@ defmodule LogflareWeb.LogController do
     TableCounter.incriment(source_table)
     SystemCounter.incriment(@system_counter)
 
-    broadcast_log_count(source_table)
-    broadcast_total_log_count()
+    Logs.broadcast_log_count(source_table)
+    Logs.broadcast_total_log_count()
 
     LogflareWeb.Endpoint.broadcast(
       "source:" <> source_table_string,

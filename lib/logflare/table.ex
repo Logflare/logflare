@@ -7,7 +7,7 @@ defmodule Logflare.Table do
   use GenServer
 
   alias Logflare.TableCounter
-  alias LogflareWeb.LogController
+  alias Logflare.Logs
   alias Logflare.SourceData
   alias Logflare.TableRateCounter
   alias Logflare.Google.BigQuery
@@ -100,7 +100,7 @@ defmodule Logflare.Table do
               Logger.error("Endpoint not up yet!")
 
             _ ->
-              LogController.broadcast_log_count(website_table)
+              Logs.broadcast_log_count(website_table)
           end
         end
 
