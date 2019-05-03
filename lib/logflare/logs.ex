@@ -19,7 +19,11 @@ defmodule Logflare.Logs do
   def broadcast_log_count(source_table) do
     {:ok, log_count} = TableCounter.get_total_inserts(source_table)
     source_table_string = Atom.to_string(source_table)
-    payload = %{log_count: log_count, source_token: source_table_string}
+
+    payload = %{
+      log_count: Delimit.number_to_delimited(log_count),
+      source_token: source_table_string
+    }
 
     LogflareWeb.Endpoint.broadcast(
       "dashboard:" <> source_table_string,

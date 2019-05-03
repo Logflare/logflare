@@ -44,12 +44,12 @@ defmodule LogflareWeb.SourceController do
       for source <- Repo.all(query) do
         {:ok, token} = Ecto.UUID.load(source.token)
 
-        rate = SourceData.get_rate(source)
+        rate = Delimit.number_to_delimited(SourceData.get_rate(source))
         timestamp = SourceData.get_latest_date(source)
-        average_rate = SourceData.get_avg_rate(source)
-        max_rate = SourceData.get_max_rate(source)
-        buffer_count = SourceData.get_buffer(token)
-        event_inserts = SourceData.get_total_inserts(token)
+        average_rate = Delimit.number_to_delimited(SourceData.get_avg_rate(source))
+        max_rate = Delimit.number_to_delimited(SourceData.get_max_rate(source))
+        buffer_count = Delimit.number_to_delimited(SourceData.get_buffer(token))
+        event_inserts = Delimit.number_to_delimited(SourceData.get_total_inserts(token))
 
         source
         |> Map.put(:rate, rate)

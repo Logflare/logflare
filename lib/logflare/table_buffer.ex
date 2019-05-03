@@ -1,6 +1,8 @@
 defmodule Logflare.TableBuffer do
   use GenServer
 
+  alias Number.Delimit
+
   require Logger
 
   @broadcast_every 1_000
@@ -95,7 +97,7 @@ defmodule Logflare.TableBuffer do
 
     payload = %{
       source_token: website_table_string,
-      buffer: count
+      buffer: Delimit.number_to_delimited(count)
     }
 
     case :ets.info(LogflareWeb.Endpoint) do
