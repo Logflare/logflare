@@ -2,6 +2,7 @@ defmodule Logflare.Logs do
   alias Logflare.Table
   alias Logflare.TableCounter
   alias Logflare.SystemCounter
+  alias Number.Delimit
 
   @system_counter :total_logs_logged
 
@@ -29,7 +30,7 @@ defmodule Logflare.Logs do
 
   def broadcast_total_log_count() do
     {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    payload = %{total_logs_logged: log_count}
+    payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
 
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end

@@ -50,6 +50,13 @@ config :logflare, Logflare.Mailer,
 config :tesla,
   adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery]}
 
+config :number,
+  delimit: [
+    precision: 0,
+    delimiter: ",",
+    separator: "."
+  ]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"
