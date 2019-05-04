@@ -12,17 +12,9 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
-  alias Logflare.SystemCounter
   alias Logflare.SourceData
   alias Logflare.TableManager
   alias Number.Delimit
-
-  @system_counter :total_logs_logged
-
-  def index(conn, _params) do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    render(conn, "index.html", log_count: Delimit.number_to_delimited(log_count))
-  end
 
   def dashboard(conn, _params) do
     user_id = conn.assigns.user.id

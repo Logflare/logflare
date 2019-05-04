@@ -47,7 +47,7 @@ defmodule LogflareWeb.Router do
 
   scope "/", LogflareWeb do
     pipe_through(:browser)
-    get("/", SourceController, :index)
+    get("/", MarketingController, :index)
   end
 
   scope "/", LogflareWeb do
