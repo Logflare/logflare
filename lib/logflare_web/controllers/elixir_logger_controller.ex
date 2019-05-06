@@ -29,7 +29,8 @@ defmodule LogflareWeb.ElixirLoggerController do
   def process_log(log_entry, %{api_key: api_key, source: source_name}) do
     %{"message" => m, "metadata" => metadata, "timestamp" => ts, "level" => lv} = log_entry
     monotime = System.monotonic_time(:nanosecond)
-    timestamp = ts * 1_000_000
+    datetime = Timex.parse!(ts, "{ISO:Extended}")
+    timestamp = Timex.to_unix(datetime) * 1_000_000
     unique_int = System.unique_integer([:monotonic])
     time_event = {timestamp, unique_int, monotime}
 
