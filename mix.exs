@@ -67,7 +67,7 @@ defmodule Logflare.Mixfile do
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
       {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
-      {:number, "~> 1.0.0"}
+      {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"}
     ]
   end
