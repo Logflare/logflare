@@ -145,6 +145,7 @@
     <li><i class="fas fa-stream feature-icons"></i>Streamed to your browser in realtime</li>
     <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
     <li><i class="fas fa-clock feature-icons"></i>Display timestamps in local time & UTC</li>
+    <li><i class="fas fa-download feature-icons"></i>App-like experience with our progressive web app</li>
   </ul>
 
 <h3>Mentions</h3>
@@ -178,8 +179,15 @@
     <li>Zero additional load on your system. Logflare's workers run on Cloudflares cloud. Our worker sees the request, passes it through to your system and asynchronously logs the event to Logflare with no additional latency involved and no added load to your servers.</li>
   </ul>
   <center><%= link "Sign up now", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %></center>
-</div>
 
+  <div id="pwa">
+    <img src="/images/install-logflare-pwa.png" alt="Logflare screenshot" height="150" width="364">
+    <div>
+    <h3>Install the Progressive Web App</h3>
+    <h5>For an app like experience install our PWA. Add to your homescreen on Android and iOS. Install Logflare on Chrome desktop.</h5>
+  </div>
+  </div>
+</div>
 
 <div class="row footer">
   <div class="col-lg-3">
