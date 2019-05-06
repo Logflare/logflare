@@ -79,6 +79,11 @@
               <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
             </li>
             <% end %>
+          <%= if @user.admin do %>
+          <li class="nav-item">
+            <%= link "Admin", to: Routes.admin_path(@conn, :dashboard), class: "nav-link" %>
+          </li>
+          <% end %>
           <li class="nav-item">
             <%= link "Preferences", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
           </li>
@@ -102,5 +107,22 @@
     </main>
 
     <script src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
+    <script>
+    window.addEventListener('load', () => {
+      if (!('serviceWorker' in navigator)) {
+        // service workers not supported 😣
+        return
+      }
+
+      navigator.serviceWorker.register('/worker.js').then(
+        () => {
+          // registered! 👍🏼
+        },
+        err => {
+          console.error('SW registration failed! 😱', err)
+        }
+      )
+    })
+  </script>
   </body>
 </html>

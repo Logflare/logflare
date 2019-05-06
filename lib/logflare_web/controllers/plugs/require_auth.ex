@@ -21,7 +21,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
       is_nil(conn.assigns[:user]) ->
         conn
         |> put_flash(:error, "You must be logged in.")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
         |> halt()
     end
   end

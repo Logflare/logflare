@@ -11,6 +11,30 @@ body {
   margin-bottom: 1em;
 }
 
+#pwa {
+  display: flex;
+  margin-top: 40px;
+}
+
+#pwa h3 {
+  margin-top: 0px;
+}
+
+#pwa img {
+  margin-right: 2em;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.secondary-header {
+  padding-top: 5em;
+  padding-bottom: 5em;
+  background-color: #1d1d1d;
+}
+
+.secondary-header h2 {
+}
+
 .favorite {
   width: 2em;
   padding-top: .5em;
@@ -168,12 +192,12 @@ body {
 }
 
 #homepage-header {
-  height: 250px;
   background-color: #1d1d1d;
 }
 
 #homepage-header-text {
   padding-top: 5em;
+  padding-bottom: 5em;
   padding-left: 5%;
 }
 
@@ -195,6 +219,7 @@ body {
 
 main {
   margin-top: 110px;
+  padding-bottom: 10px;
 }
 
 .alert-info a {
@@ -452,14 +477,6 @@ mark {
   margin-top: -55px;
 }
 
-@media screen and (max-width: 990px) {
-
-    .hide-on-mobile {
-      display: none!important;
-    }
-
-}
-
 .fade-in {
   animation: fadeIn ease 1s;
   -webkit-animation: fadeIn ease 1s;
@@ -568,4 +585,21 @@ mark {
     margin-right: 15%;
     margin-left: 15%;
   }
+
+}
+
+@media screen and (max-width: 990px) {
+
+    .hide-on-mobile {
+      display: none!important;
+    }
+
+    #pwa {
+      flex-direction: column;
+    }
+
+    #pwa h3 {
+      margin-top: 1.5em;
+    }
+
 }

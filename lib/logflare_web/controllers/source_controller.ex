@@ -12,16 +12,9 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
-  alias Logflare.SystemCounter
   alias Logflare.SourceData
   alias Logflare.TableManager
-
-  @system_counter :total_logs_logged
-
-  def index(conn, _params) do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    render(conn, "index.html", log_count: log_count)
-  end
+  alias Number.Delimit
 
   def dashboard(conn, _params) do
     user_id = conn.assigns.user.id
@@ -43,12 +36,12 @@ defmodule LogflareWeb.SourceController do
       for source <- Repo.all(query) do
         {:ok, token} = Ecto.UUID.load(source.token)
 
-        rate = SourceData.get_rate(source)
+        rate = Delimit.number_to_delimited(SourceData.get_rate(source))
         timestamp = SourceData.get_latest_date(source)
-        average_rate = SourceData.get_avg_rate(source)
-        max_rate = SourceData.get_max_rate(source)
-        buffer_count = SourceData.get_buffer(token)
-        event_inserts = SourceData.get_total_inserts(token)
+        average_rate = Delimit.number_to_delimited(SourceData.get_avg_rate(source))
+        max_rate = Delimit.number_to_delimited(SourceData.get_max_rate(source))
+        buffer_count = Delimit.number_to_delimited(SourceData.get_buffer(token))
+        event_inserts = Delimit.number_to_delimited(SourceData.get_total_inserts(token))
 
         source
         |> Map.put(:rate, rate)
@@ -144,7 +137,7 @@ defmodule LogflareWeb.SourceController do
       true ->
         conn
         |> put_flash(:error, "Public path not found!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
 
       false ->
         table_id = String.to_atom(source.token)

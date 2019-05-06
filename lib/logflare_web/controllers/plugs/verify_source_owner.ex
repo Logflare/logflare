@@ -33,7 +33,7 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
   defp continue(conn, source) when is_nil(source) do
     conn
     |> put_flash(:error, "That's not yours!")
-    |> redirect(to: Routes.source_path(conn, :index))
+    |> redirect(to: Routes.marketing_path(conn, :index))
     |> halt()
   end
 
@@ -48,7 +48,7 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
       true ->
         conn
         |> put_flash(:error, "That's not yours!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
         |> halt()
     end
   end

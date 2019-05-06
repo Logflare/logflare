@@ -47,7 +47,8 @@ defmodule LogflareWeb.Router do
 
   scope "/", LogflareWeb do
     pipe_through(:browser)
-    get("/", SourceController, :index)
+    get("/", MarketingController, :index)
+    get("/bigquery+datastudio", MarketingController, :big_query)
   end
 
   scope "/", LogflareWeb do

@@ -7,7 +7,7 @@ defmodule Logflare.Table do
   use GenServer
 
   alias Logflare.TableCounter
-  alias LogflareWeb.LogController
+  alias Logflare.Logs
   alias Logflare.SourceData
   alias Logflare.TableRateCounter
   alias Logflare.Google.BigQuery
@@ -36,6 +36,10 @@ defmodule Logflare.Table do
 
     state = [{:table, state}]
     {:ok, state, {:continue, :boot}}
+  end
+
+  def push(website_table, event) do
+    GenServer.cast(website_table, {:push, website_table, event})
   end
 
   ## Server
@@ -69,6 +73,11 @@ defmodule Logflare.Table do
     {:noreply, state}
   end
 
+  def handle_cast({:push, website_table, event}, state) do
+    :ets.insert(website_table, event)
+    {:noreply, state}
+  end
+
   def handle_info(:ttl, state) do
     website_table = state[:table]
     first = :ets.first(website_table)
@@ -91,7 +100,7 @@ defmodule Logflare.Table do
               Logger.error("Endpoint not up yet!")
 
             _ ->
-              LogController.broadcast_log_count(website_table)
+              Logs.broadcast_log_count(website_table)
           end
         end
 

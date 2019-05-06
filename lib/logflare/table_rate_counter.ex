@@ -8,6 +8,7 @@ defmodule Logflare.TableRateCounter do
   require Logger
 
   alias Logflare.TableCounter
+  alias Number.Delimit
 
   @rate_period 1_000
   @ets_table_name :table_rate_counters
@@ -111,9 +112,9 @@ defmodule Logflare.TableRateCounter do
 
     payload = %{
       source_token: website_table_string,
-      rate: rate,
-      average_rate: average_rate,
-      max_rate: max_rate
+      rate: Delimit.number_to_delimited(rate),
+      average_rate: Delimit.number_to_delimited(average_rate),
+      max_rate: Delimit.number_to_delimited(max_rate)
     }
 
     case :ets.info(LogflareWeb.Endpoint) do

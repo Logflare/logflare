@@ -40,6 +40,6 @@ defmodule LogflareWeb.UserController do
 
     conn
     |> put_flash(:info, "Account deleted!")
-    |> redirect(to: Routes.source_path(conn, :index))
+    |> redirect(to: Routes.marketing_path(conn, :index))
   end
 end
