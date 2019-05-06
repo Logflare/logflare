@@ -38,7 +38,7 @@ defmodule LogflareWeb.AuthController do
   def logout(conn, _params) do
     conn
     |> configure_session(drop: true)
-    |> redirect(to: Routes.source_path(conn, :index))
+    |> redirect(to: Routes.marketing_path(conn, :index))
   end
 
   def login(conn, _params) do
@@ -114,7 +114,7 @@ defmodule LogflareWeb.AuthController do
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Error signing in.")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
     end
   end
 
@@ -146,23 +146,23 @@ defmodule LogflareWeb.AuthController do
           {:ok, _source} ->
             conn
             |> put_flash(:info, "Unsubscribed!")
-            |> redirect(to: Routes.source_path(conn, :index))
+            |> redirect(to: Routes.marketing_path(conn, :index))
 
           {:error, _changeset} ->
             conn
             |> put_flash(:error, "Something went wrong!")
-            |> redirect(to: Routes.source_path(conn, :index))
+            |> redirect(to: Routes.marketing_path(conn, :index))
         end
 
       {:error, :expired} ->
         conn
         |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
 
       {:error, :invalid} ->
         conn
         |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
     end
   end
 
@@ -181,23 +181,23 @@ defmodule LogflareWeb.AuthController do
           {:ok, _source} ->
             conn
             |> put_flash(:info, "Unsubscribed!")
-            |> redirect(to: Routes.source_path(conn, :index))
+            |> redirect(to: Routes.marketing_path(conn, :index))
 
           {:error, _changeset} ->
             conn
             |> put_flash(:error, "Something went wrong!")
-            |> redirect(to: Routes.source_path(conn, :index))
+            |> redirect(to: Routes.marketing_path(conn, :index))
         end
 
       {:error, :expired} ->
         conn
         |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
 
       {:error, :invalid} ->
         conn
         |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
     end
   end
 

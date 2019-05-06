@@ -137,7 +137,7 @@ defmodule LogflareWeb.SourceController do
       true ->
         conn
         |> put_flash(:error, "Public path not found!")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> redirect(to: Routes.marketing_path(conn, :index))
 
       false ->
         table_id = String.to_atom(source.token)
