@@ -67,10 +67,16 @@ defmodule Logflare.BigQuery.TableSchemaBuilder do
   defp build_fields_schemas({params_key, params_value}) do
     case to_schema_type(params_value) do
       "ARRAY" ->
+        fields =
+          params_value
+          |> hd()
+          |> Enum.map(&build_fields_schemas/1)
+
         %TFS{
           name: params_key,
-          type: "STRING",
-          mode: "REPEATED"
+          type: "RECORD",
+          mode: "REPEATED",
+          fields: fields
         }
 
       type ->

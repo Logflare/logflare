@@ -587,7 +587,8 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
                 }
               ],
               mode: "REPEATED",
-              name: "stacktrace"
+              name: "stacktrace",
+              type: "RECORD"
             }
           ],
           mode: "REPEATED",
