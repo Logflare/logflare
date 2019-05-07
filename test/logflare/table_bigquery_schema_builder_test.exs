@@ -43,6 +43,17 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
       assert deep_schema_to_field_names(new) === deep_schema_to_field_names(expected)
       assert new === expected
     end
+
+    test "correctly builds schema for lists of maps" do
+      new =
+        metadatas().list_of_maps
+        |> SchemaBuilder.build_table_schema(schemas().initial)
+
+      expected = schemas().list_of_maps
+
+      assert deep_schema_to_field_names(new) === deep_schema_to_field_names(expected)
+      assert new === expected
+    end
   end
 
   @doc """
@@ -63,7 +74,7 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   Utility function for a cleaner code
   """
   def schemas() do
-    for id <- ~w(initial first second third)a, into: Map.new() do
+    for id <- ~w(initial first second third list_of_maps)a, into: Map.new() do
       sorted_schema = id |> get_schema() |> SchemaBuilder.deep_sort_by_fields_name()
       {id, sorted_schema}
     end
@@ -73,7 +84,7 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   Utility function for a cleaner code
   """
   def metadatas() do
-    for id <- ~w(first second third third_deep_nested_removed)a, into: Map.new() do
+    for id <- ~w(first second third third_deep_nested_removed list_of_maps)a, into: Map.new() do
       {id, get_params(id)["metadata"]}
     end
   end
@@ -161,6 +172,36 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
         }
       ],
       "timestamp" => ~N[2019-04-12 16:44:38]
+    }
+  end
+
+  def get_params(:list_of_maps) do
+    %{
+      "event_message" => "This is an example.",
+      "metadata" => [
+        %{
+          "datacenter" => "aws",
+          "ip_address" => "100.100.100.100",
+          "request_method" => "POST",
+          "stacktrace" => [
+            %{
+              "arity_or_args" => 0,
+              "file" => "lib/logflare_pinger/log_pinger.ex",
+              "function" => "-handle_info/2-fun-0-/0",
+              "line" => 18,
+              "module" => "LogflareLoggerPinger.Server"
+            },
+            %{
+              "arity_or_args" => 2,
+              "file" => "lib/logflare_pinger/log_pinger.ex",
+              "function" => "-handle_info/2-fun-0-/0",
+              "line" => 25,
+              "module" => "LogflareLoggerPinger.Server"
+            }
+          ]
+        }
+      ],
+      "timestamp" => ~N[2019-04-12 16:38:37]
     }
   end
 
@@ -455,6 +496,98 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
               mode: "REPEATED",
               name: "user",
               type: "RECORD"
+            }
+          ],
+          mode: "REPEATED",
+          name: "metadata",
+          type: "RECORD"
+        }
+      ]
+    }
+  end
+
+  def get_schema(:list_of_maps) do
+    %GoogleApi.BigQuery.V2.Model.TableSchema{
+      fields: [
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "timestamp",
+          type: "TIMESTAMP"
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          description: nil,
+          fields: nil,
+          mode: "NULLABLE",
+          name: "event_message",
+          type: "STRING"
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          description: nil,
+          fields: [
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "datacenter",
+              type: "STRING"
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "ip_address",
+              type: "STRING"
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "request_method",
+              type: "STRING"
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: [
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "arity_or_args",
+                  type: "INTEGER"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "function",
+                  type: "STRING"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "file",
+                  type: "STRING"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "module",
+                  type: "STRING"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "line",
+                  type: "INTEGER"
+                }
+              ],
+              mode: "REPEATED",
+              name: "stacktrace"
             }
           ],
           mode: "REPEATED",
