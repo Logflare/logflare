@@ -51,9 +51,9 @@ defmodule Logflare.Google.BigQuery.TableSchemaBuilderTest do
       expected = [
         %TFS{
           description: nil,
-          mode: "NULLABLE",
+          mode: "REPEATED",
           name: "map_lvl_2",
-          type: "REPEATED",
+          type: "RECORD",
           fields: [
             %TFS{
               description: nil,
