@@ -1,4 +1,5 @@
 defmodule Logflare.BigQuery.TableSchemaBuilder do
+  use Publicist
   require Logger
   alias GoogleApi.BigQuery.V2.Model
   alias Model.TableFieldSchema, as: TFS
@@ -64,19 +65,20 @@ defmodule Logflare.BigQuery.TableSchemaBuilder do
     }
   end
 
+  defp build_fields_schemas(maps) when is_list(maps) do
+    maps
+    |> Enum.reduce(%{}, &DeepMerge.deep_merge/2)
+    |> Enum.map(&build_fields_schemas/1)
+  end
+
   defp build_fields_schemas({params_key, params_value}) do
     case to_schema_type(params_value) do
       "ARRAY" ->
-        fields =
-          params_value
-          |> hd()
-          |> Enum.map(&build_fields_schemas/1)
-
         %TFS{
           name: params_key,
           type: "RECORD",
           mode: "REPEATED",
-          fields: fields
+          fields: build_fields_schemas(params_value)
         }
 
       type ->
