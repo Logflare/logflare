@@ -54,6 +54,17 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
       assert deep_schema_to_field_names(new) === deep_schema_to_field_names(expected)
       assert new === expected
     end
+
+    @tag run: true
+    test "correctly builds schema for lists of maps with various shapes" do
+      %{schema: expected, metadata: metadata} =
+        schema_and_payload_metadata(:list_of_maps_of_varying_shapes)
+
+      new = SchemaBuilder.build_table_schema(metadata, schemas().initial)
+
+      assert deep_schema_to_field_names(new) === deep_schema_to_field_names(expected)
+      assert new === expected
+    end
   end
 
   @doc """
@@ -203,6 +214,220 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
       ],
       "timestamp" => ~N[2019-04-12 16:38:37]
     }
+  end
+
+  def schema_and_payload_metadata(:list_of_maps_of_varying_shapes) do
+    metadata = [
+      %{
+        "datacenter" => "aws",
+        "ip_address" => "100.100.100.100",
+        "request_method" => "POST",
+        "miscellaneous" => [
+          %{
+            "string1key" => "string1val",
+            "string2key" => "string2val"
+          },
+          %{
+            "int1" => 1,
+            "int2" => 2
+          },
+          %{
+            "map1" => %{
+              "nested_map_lvl_1" => 1,
+              "nested_map_lvl_2" => [
+                %{
+                  "nested_map_lvl_4" => %{"string40key" => "string"}
+                },
+                %{
+                  "nested_map_lvl_5" => %{"string5key" => "string"},
+                  "nested_map_lvl_4" => %{"string41key" => "string"}
+                },
+                %{
+                  "nested_map_lvl_4" => %{"string42key" => "string"},
+                  "nested_map_lvl_6" => %{"string6key" => "string"}
+                }
+              ]
+            },
+            "int3" => 3
+          }
+        ]
+      }
+    ]
+
+    schema = %GoogleApi.BigQuery.V2.Model.TableSchema{
+      fields: [
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          description: nil,
+          fields: nil,
+          mode: "NULLABLE",
+          name: "event_message",
+          type: "STRING"
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          description: nil,
+          mode: "REPEATED",
+          name: "metadata",
+          type: "RECORD",
+          fields: [
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "datacenter",
+              type: "STRING"
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "ip_address",
+              type: "STRING"
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              mode: "REPEATED",
+              name: "miscellaneous",
+              type: "RECORD",
+              fields: [
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "int1",
+                  type: "INTEGER"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "int2",
+                  type: "INTEGER"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "int3",
+                  type: "INTEGER"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  mode: "REPEATED",
+                  name: "map1",
+                  type: "RECORD",
+                  fields: [
+                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                      description: nil,
+                      fields: nil,
+                      mode: "NULLABLE",
+                      name: "nested_map_lvl_1",
+                      type: "INTEGER"
+                    },
+                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                      description: nil,
+                      mode: "REPEATED",
+                      name: "nested_map_lvl_2",
+                      type: "RECORD",
+                      fields: [
+                        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                          description: nil,
+                          mode: "REPEATED",
+                          name: "nested_map_lvl_4",
+                          type: "RECORD",
+                          fields: [
+                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                              description: nil,
+                              fields: nil,
+                              mode: "NULLABLE",
+                              type: "STRING",
+                              name: "string40key"
+                            },
+                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                              description: nil,
+                              fields: nil,
+                              mode: "NULLABLE",
+                              name: "string41key",
+                              type: "STRING"
+                            },
+                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                              description: nil,
+                              fields: nil,
+                              mode: "NULLABLE",
+                              name: "string42key",
+                              type: "STRING"
+                            }
+                          ]
+                        },
+                        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                          description: nil,
+                          fields: [
+                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                              description: nil,
+                              fields: nil,
+                              mode: "NULLABLE",
+                              name: "string5key",
+                              type: "STRING"
+                            }
+                          ],
+                          mode: "REPEATED",
+                          name: "nested_map_lvl_5",
+                          type: "RECORD"
+                        },
+                        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                          description: nil,
+                          fields: [
+                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                              description: nil,
+                              fields: nil,
+                              mode: "NULLABLE",
+                              name: "string6key",
+                              type: "STRING"
+                            }
+                          ],
+                          mode: "REPEATED",
+                          name: "nested_map_lvl_6",
+                          type: "RECORD"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "string1key",
+                  type: "STRING"
+                },
+                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                  description: nil,
+                  fields: nil,
+                  mode: "NULLABLE",
+                  name: "string2key",
+                  type: "STRING"
+                }
+              ]
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "request_method",
+              type: "STRING"
+            }
+          ]
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "timestamp",
+          type: "TIMESTAMP"
+        }
+      ]
+    }
+
+    %{metadata: metadata, schema: schema}
   end
 
   def get_schema(:initial) do
