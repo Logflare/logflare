@@ -15,6 +15,8 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.SourceData
   alias Logflare.TableManager
   alias Number.Delimit
+  alias Logflare.Google.BigQuery
+  alias Logflare.User
 
   def dashboard(conn, _params) do
     user_id = conn.assigns.user.id
@@ -193,9 +195,9 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def update(conn, %{"id" => source_id, "source" => source}) do
+  def update(conn, %{"id" => source_id, "source" => updated_params}) do
     old_source = Repo.get(Source, source_id)
-    changeset = Source.changeset(old_source, source)
+    changeset = Source.changeset(old_source, updated_params)
     user_id = conn.assigns.user.id
     disabled_source = old_source.token
     avg_rate = SourceData.get_avg_rate(String.to_atom(old_source.token))
@@ -223,7 +225,18 @@ defmodule LogflareWeb.SourceController do
       end
 
     case Repo.update(changeset) do
-      {:ok, _source} ->
+      {:ok, source} ->
+        case updated_params do
+          %{"bigquery_table_ttl" => ttl} ->
+            %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
+
+            ttl = String.to_integer(ttl) * 86_400_000
+            BigQuery.patch_table_ttl(String.to_atom(source.token), ttl, project_id)
+
+          _ ->
+            nil
+        end
+
         conn
         |> put_flash(:info, "Source updated!")
         |> redirect(to: Routes.source_path(conn, :edit, source_id))

@@ -19,15 +19,15 @@ defmodule Logflare.Google.BigQuery do
   @table_ttl 604_800_000
   # seven days
 
-  @spec init_table!(:atom) :: {}
-  def init_table!(source) do
-    dataset_id = get_account_id!(source)
+  @spec init_table!(:atom, String.t(), integer()) :: {}
+  def init_table!(source, project_id, ttl) do
+    dataset_id = get_account_id(source)
 
-    case create_dataset(dataset_id) do
+    case create_dataset(dataset_id, project_id) do
       {:ok, _} ->
         Logger.info("BigQuery dataset created: #{dataset_id}")
 
-        case create_table(source) do
+        case create_table(source, project_id, ttl) do
           {:ok, _} ->
             Logger.info("BigQuery table created: #{source}")
 
@@ -38,7 +38,7 @@ defmodule Logflare.Google.BigQuery do
       {:error, %Tesla.Env{status: 409}} ->
         Logger.info("BigQuery dataset found: #{dataset_id}")
 
-        case create_table(source) do
+        case create_table(source, project_id, ttl) do
           {:ok, _} ->
             Logger.info("BigQuery table created: #{source}")
 
@@ -58,7 +58,7 @@ defmodule Logflare.Google.BigQuery do
   def delete_table(source, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_delete(
       conn,
@@ -72,7 +72,7 @@ defmodule Logflare.Google.BigQuery do
   def create_table(source, project_id \\ @project_id, table_ttl \\ @table_ttl) do
     conn = get_conn()
     table_name = format_table_name(source)
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     schema = %Model.TableSchema{
       fields: [
@@ -111,8 +111,26 @@ defmodule Logflare.Google.BigQuery do
       body: %Model.Table{
         schema: schema,
         tableReference: reference,
-        timePartitioning: partitioning
+        timePartitioning: partitioning,
+        description: "Managed by Logflare",
+        labels: %{"managed_by" => "logflare"}
       }
+    )
+  end
+
+  @spec patch_table_ttl(:atom, integer()) :: {}
+  def patch_table_ttl(source, table_ttl, project_id \\ @project_id) do
+    conn = get_conn()
+    table_name = format_table_name(source)
+    dataset_id = get_account_id(source) <> @dataset_id_append
+
+    partitioning = %Model.TimePartitioning{
+      type: "DAY",
+      expirationMs: table_ttl
+    }
+
+    Api.Tables.bigquery_tables_patch(conn, project_id, dataset_id, table_name,
+      body: %Model.Table{timePartitioning: partitioning}
     )
   end
 
@@ -120,7 +138,7 @@ defmodule Logflare.Google.BigQuery do
   def patch_table(source, schema, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_patch(conn, project_id, dataset_id, table_name,
       body: %Model.Table{schema: schema}
@@ -131,7 +149,7 @@ defmodule Logflare.Google.BigQuery do
   def get_table(source, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_get(
       conn,
@@ -141,11 +159,11 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec get_table(:atom) :: {}
+  @spec get_events(:atom) :: {}
   def get_events(source, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     sql =
       "SELECT * FROM [#{project_id}:#{dataset_id}.#{table_name}] ORDER BY timestamp LIMIT 100"
@@ -173,7 +191,7 @@ defmodule Logflare.Google.BigQuery do
     table_name = format_table_name(source)
     {:ok, timestamp} = DateTime.from_unix(unix_timestamp, :microsecond)
     row_json = %{"timestamp" => timestamp, "event_message" => message}
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     row = %Model.TableDataInsertAllRequestRows{
       insertId: Ecto.UUID.generate(),
@@ -198,7 +216,7 @@ defmodule Logflare.Google.BigQuery do
   def stream_batch!(source, batch, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
-    dataset_id = get_account_id!(source) <> @dataset_id_append
+    dataset_id = get_account_id(source) <> @dataset_id_append
 
     body = %Model.TableDataInsertAllRequest{
       ignoreUnknownValues: true,
@@ -257,7 +275,9 @@ defmodule Logflare.Google.BigQuery do
 
         body = %Model.Dataset{
           datasetReference: reference,
-          access: access
+          access: access,
+          description: "Managed by Logflare",
+          labels: %{"managed_by" => "logflare"}
         }
 
         Api.Datasets.bigquery_datasets_insert(conn, project_id, body: body)
@@ -346,9 +366,10 @@ defmodule Logflare.Google.BigQuery do
     Connection.new(token.token)
   end
 
-  @spec get_account_id!(:atom) :: String.t()
-  def get_account_id!(source) do
+  @spec get_account_id(:atom) :: String.t()
+  def get_account_id(source) do
     %Logflare.Source{user_id: account_id} = Repo.get_by(Source, token: Atom.to_string(source))
     "#{account_id}"
   end
+
 end
