@@ -34,6 +34,19 @@
     <%= submit "Update preferences", class: "btn btn-primary form-button" %>
   <% end %>
 
+  <h5 class="header-margin">BigQuery Backend</h5>
+  <p>Setup your own Big Query tables.</p>
+  <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
+    <div class="form-group">
+      <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control" %>
+      <%= error_tag e, :bigquery_project_id %>
+      <small class="form-text text-muted">
+        Your Google Cloud Platform project ID.
+      </small>
+    </div>
+    <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>
+  <% end %>
+
   <h5 class="header-margin">Signed In with <%= String.capitalize(@user.provider) %></h5>
   <p>You signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
   <%= if @user.provider == "github" do %>
@@ -46,9 +59,9 @@
   <% end %>
   <h5 class="header-margin">Delete Your Account</h5>
   <p>This will immediately delete everything associated with your account. There is no undo.</p>
-  <%= link "Delete now", to: Routes.user_path(@conn, :delete), class: "btn btn-danger", method: :delete %>
+  <%= link "Delete now", to: Routes.user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>
 
   <h5 class="header-margin">Reset Your API Key</h5>
   <p>Immediately resest your API key. All future requests with your old API key will be rejected.</p>
-  <%= link "Reset now", to: Routes.auth_path(@conn, :new_api_key), class: "btn btn-danger" %></li>
+  <%= link "Reset now", to: Routes.auth_path(@conn, :new_api_key), class: "btn btn-danger form-button" %></li>
 </div>

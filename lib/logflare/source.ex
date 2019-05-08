@@ -14,6 +14,7 @@ defmodule Logflare.Source do
     field(:user_email_notifications, :boolean)
     field(:other_email_notifications, :string)
     field(:user_text_notifications, :boolean)
+    field(:bigquery_table_ttl, :integer)
 
     timestamps()
   end
@@ -30,7 +31,8 @@ defmodule Logflare.Source do
       :favorite,
       :user_email_notifications,
       :other_email_notifications,
-      :user_text_notifications
+      :user_text_notifications,
+      :bigquery_table_ttl
     ])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)

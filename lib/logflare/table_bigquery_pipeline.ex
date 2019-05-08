@@ -10,12 +10,12 @@ defmodule Logflare.TableBigQueryPipeline do
   alias Logflare.BigQuery.TableSchemaBuilder
   alias Logflare.Google.BigQuery.EventUtils
 
-  def start_link(website_table) do
+  def start_link(state) do
     Broadway.start_link(__MODULE__,
-      name: name(website_table),
+      name: name(state[:source_token]),
       producers: [
         ets: [
-          module: {BroadwayBuffer.Producer, table_name: website_table, config: []}
+          module: {BroadwayBuffer.Producer, table_name: state[:source_token], config: []}
         ]
       ],
       processors: [
@@ -23,7 +23,8 @@ defmodule Logflare.TableBigQueryPipeline do
       ],
       batchers: [
         bq: [stages: 5, batch_size: 100, batch_timeout: 1000]
-      ]
+      ],
+      context: state
     )
   end
 
@@ -33,7 +34,7 @@ defmodule Logflare.TableBigQueryPipeline do
     |> Message.put_batcher(:bq)
   end
 
-  def handle_batch(:bq, messages, _batch_info, _context) do
+  def handle_batch(:bq, messages, _batch_info, context) do
     rows =
       Enum.map(messages, fn message ->
         %{event: {_time_event, payload}, table: _table} = message.data
@@ -61,8 +62,7 @@ defmodule Logflare.TableBigQueryPipeline do
         }
       end)
 
-    table_atom = get_table(messages)
-    BigQuery.stream_batch!(table_atom, rows)
+    BigQuery.stream_batch!(context[:source_token], rows, context[:bigquery_project_id])
 
     messages
   end
@@ -72,11 +72,13 @@ defmodule Logflare.TableBigQueryPipeline do
 
     case Map.has_key?(payload, :metadata) do
       true ->
-        old_schema = TableBigQuerySchema.get(table)
+        schema_state = TableBigQuerySchema.get_state(table)
+        old_schema = schema_state.schema
+        bigquery_project_id = schema_state.bigquery_project_id
         schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
         if same_schemas?(old_schema, schema) == false do
-          case BigQuery.patch_table(table, schema) do
+          case BigQuery.patch_table(table, schema, bigquery_project_id) do
             {:ok, table_info} ->
               TableBigQuerySchema.update(table, table_info.schema)
               Logger.info("Table schema updated!")
@@ -91,12 +93,6 @@ defmodule Logflare.TableBigQueryPipeline do
       false ->
         message
     end
-  end
-
-  defp get_table(messages) do
-    message = Enum.at(messages, 0)
-    {_module, table, _unsuccessful} = message.acknowledger
-    table
   end
 
   defp name(website_table) do

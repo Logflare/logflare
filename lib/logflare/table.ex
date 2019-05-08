@@ -16,6 +16,7 @@ defmodule Logflare.Table do
   alias Logflare.TableBuffer
   alias Logflare.TableBigQueryPipeline
   alias Logflare.TableBigQuerySchema
+  alias Logflare.Google.BigQuery.GenUtils
 
   require Logger
 
@@ -34,7 +35,7 @@ defmodule Logflare.Table do
     check_ttl()
     prune()
 
-    state = [{:table, state}]
+    state = [{:source_token, state}]
     {:ok, state, {:continue, :boot}}
   end
 
@@ -45,30 +46,34 @@ defmodule Logflare.Table do
   ## Server
 
   def handle_continue(:boot, state) do
-    website_table = state[:table]
+    website_table = state[:source_token]
+    bigquery_project_id = GenUtils.get_project_id(website_table)
+    bigquery_table_ttl = GenUtils.get_table_ttl(website_table)
     tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
 
-    BigQuery.init_table!(website_table)
+    BigQuery.init_table!(website_table, bigquery_project_id, bigquery_table_ttl)
 
     case :ets.tabfile_info(String.to_charlist(tab_path)) do
       {:ok, _info} ->
         case :ets.file2tab(String.to_charlist(tab_path), verify: true) do
           {:ok, _table} ->
-            restore_table(website_table)
+            restore_table(website_table, bigquery_project_id)
 
           {:error, _reason} ->
-            fresh_table(website_table)
+            fresh_table(website_table, bigquery_project_id)
         end
 
       {:error, _reason} ->
-        fresh_table(website_table)
+        fresh_table(website_table, bigquery_project_id)
     end
+
+    state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
     TableMailer.start_link(website_table)
     TableTexter.start_link(website_table)
     TableBuffer.start_link(website_table)
-    TableBigQueryPipeline.start_link(website_table)
-    TableBigQuerySchema.start_link(website_table)
+    TableBigQueryPipeline.start_link(state)
+    TableBigQuerySchema.start_link(state)
 
     {:noreply, state}
   end
@@ -79,7 +84,7 @@ defmodule Logflare.Table do
   end
 
   def handle_info(:ttl, state) do
-    website_table = state[:table]
+    website_table = state[:source_token]
     first = :ets.first(website_table)
 
     case first != :"$end_of_table" do
@@ -114,7 +119,7 @@ defmodule Logflare.Table do
   end
 
   def handle_info(:prune, state) do
-    website_table = state[:table]
+    website_table = state[:source_token]
     {:ok, count} = TableCounter.log_count(website_table)
 
     case count > 100 do
@@ -135,9 +140,9 @@ defmodule Logflare.Table do
   end
 
   ## Private Functions
-  defp restore_table(website_table) do
-    Logger.info("Loaded table: #{website_table}")
-    log_count = SourceData.get_log_count(website_table)
+  defp restore_table(website_table, bigquery_project_id) do
+    Logger.info("ETS loaded table: #{website_table}")
+    log_count = SourceData.get_log_count(website_table, bigquery_project_id)
     ets_count = SourceData.get_ets_count(website_table)
     TableCounter.create(website_table)
     TableCounter.incriment_ets_count(website_table, ets_count)
@@ -145,9 +150,9 @@ defmodule Logflare.Table do
     TableRateCounter.start_link(website_table, ets_count)
   end
 
-  defp fresh_table(website_table) do
-    Logger.info("Created table: #{website_table}")
-    log_count = SourceData.get_log_count(website_table)
+  defp fresh_table(website_table, bigquery_project_id) do
+    Logger.info("ETS created table: #{website_table}")
+    log_count = SourceData.get_log_count(website_table, bigquery_project_id)
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(website_table, table_args)
     TableCounter.create(website_table)
