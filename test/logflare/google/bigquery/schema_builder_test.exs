@@ -1,6 +1,7 @@
 defmodule Logflare.Google.BigQuery.TableSchemaBuilderTest do
   import Logflare.BigQuery.TableSchemaBuilder
   import Logflare.Google.BigQuery.TestUtils
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   use ExUnit.Case, async: true
 
@@ -13,14 +14,14 @@ defmodule Logflare.Google.BigQuery.TableSchemaBuilderTest do
         ])
 
       assert tfs == [
-               %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+               %TFS{
                  description: nil,
                  fields: nil,
                  mode: "NULLABLE",
                  name: "string1",
                  type: "STRING"
                },
-               %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+               %TFS{
                  description: nil,
                  fields: nil,
                  mode: "NULLABLE",
@@ -30,7 +31,6 @@ defmodule Logflare.Google.BigQuery.TableSchemaBuilderTest do
              ]
     end
 
-    @tag run: true
     test "build_table_schema/1 @list(map) of depth 2" do
       tfs =
         build_fields_schemas([
@@ -89,5 +89,30 @@ defmodule Logflare.Google.BigQuery.TableSchemaBuilderTest do
 
       assert_equal_schemas(tfs, expected)
     end
+  end
+
+  test "build_fields_schema/1 @list(String) of depth 1" do
+    tfs =
+      build_fields_schemas([
+        %{"string1" => ["string", "string"]},
+        %{"string2" => ["string1", "string2"]}
+      ])
+
+    assert tfs == [
+             %TFS{
+               description: nil,
+               fields: nil,
+               mode: "NULLABLE",
+               name: "string1",
+               type: "STRING"
+             },
+             %TFS{
+               description: nil,
+               fields: nil,
+               mode: "NULLABLE",
+               name: "string2",
+               type: "STRING"
+             }
+           ]
   end
 end

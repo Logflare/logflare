@@ -74,12 +74,22 @@ defmodule Logflare.BigQuery.TableSchemaBuilder do
   defp build_fields_schemas({params_key, params_value}) do
     case to_schema_type(params_value) do
       "ARRAY" ->
-        %TFS{
-          name: params_key,
-          type: "RECORD",
-          mode: "REPEATED",
-          fields: build_fields_schemas(params_value)
-        }
+        case hd(params_value) do
+          x when is_map(x) ->
+            %TFS{
+              name: params_key,
+              type: "RECORD",
+              mode: "REPEATED",
+              fields: build_fields_schemas(params_value)
+            }
+
+          x when is_binary(x) ->
+            %TFS{
+              name: params_key,
+              type: "STRING",
+              mode: "NULLABLE",
+            }
+        end
 
       type ->
         %TFS{
