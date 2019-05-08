@@ -21,13 +21,17 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     end
   end
 
+  @spec get_table_ttl(:atom) :: String.t()
   def get_table_ttl(source) do
-    %Logflare.Source{bigquery_table_ttl: ttl} = Repo.get_by(Source, token: Atom.to_string(source))
+    %Logflare.Source{user_id: user_id, bigquery_table_ttl: ttl} =
+      Repo.get_by(Source, token: Atom.to_string(source))
 
-    if is_nil(ttl) do
-      @table_ttl
-    else
-      ttl * 86_400_000
+    %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
+
+    cond do
+      is_nil(project_id) -> @table_ttl
+      is_nil(ttl) -> @table_ttl
+      true -> ttl * 86_400_000
     end
   end
 end
