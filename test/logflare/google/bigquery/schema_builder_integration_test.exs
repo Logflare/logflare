@@ -1,4 +1,6 @@
 defmodule Logflare.TableBigQuerySchemaBuilderTest do
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.BigQuery.TableSchemaBuilder, as: SchemaBuilder
   use ExUnit.Case
 
@@ -254,102 +256,102 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
       }
     ]
 
-    schema = %GoogleApi.BigQuery.V2.Model.TableSchema{
+    schema = %TS{
       fields: [
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           mode: "REPEATED",
           name: "metadata",
           type: "RECORD",
           fields: [
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "datacenter",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "ip_address",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               mode: "REPEATED",
               name: "miscellaneous",
               type: "RECORD",
               fields: [
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "int1",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "int2",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "int3",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   mode: "REPEATED",
                   name: "map1",
                   type: "RECORD",
                   fields: [
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
                       name: "nested_map_lvl_1",
                       type: "INTEGER"
                     },
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       mode: "REPEATED",
                       name: "nested_map_lvl_2",
                       type: "RECORD",
                       fields: [
-                        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                        %TFS{
                           description: nil,
                           mode: "REPEATED",
                           name: "nested_map_lvl_4",
                           type: "RECORD",
                           fields: [
-                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                            %TFS{
                               description: nil,
                               fields: nil,
                               mode: "NULLABLE",
                               type: "STRING",
                               name: "string40key"
                             },
-                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                            %TFS{
                               description: nil,
                               fields: nil,
                               mode: "NULLABLE",
                               name: "string41key",
                               type: "STRING"
                             },
-                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                            %TFS{
                               description: nil,
                               fields: nil,
                               mode: "NULLABLE",
@@ -358,10 +360,10 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
                             }
                           ]
                         },
-                        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                        %TFS{
                           description: nil,
                           fields: [
-                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                            %TFS{
                               description: nil,
                               fields: nil,
                               mode: "NULLABLE",
@@ -373,10 +375,10 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
                           name: "nested_map_lvl_5",
                           type: "RECORD"
                         },
-                        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                        %TFS{
                           description: nil,
                           fields: [
-                            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                            %TFS{
                               description: nil,
                               fields: nil,
                               mode: "NULLABLE",
@@ -392,14 +394,14 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
                     }
                   ]
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "string1key",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
@@ -408,7 +410,7 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
                 }
               ]
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
@@ -417,7 +419,7 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
             }
           ]
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "REQUIRED",
@@ -431,16 +433,16 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   end
 
   def get_schema(:initial) do
-    %GoogleApi.BigQuery.V2.Model.TableSchema{
+    %TS{
       fields: [
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "NULLABLE",
@@ -452,40 +454,40 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   end
 
   def get_schema(:first) do
-    %GoogleApi.BigQuery.V2.Model.TableSchema{
+    %TS{
       fields: [
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: [
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "datacenter",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "ip_address",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
@@ -502,88 +504,88 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   end
 
   def get_schema(:second) do
-    %GoogleApi.BigQuery.V2.Model.TableSchema{
+    %TS{
       fields: [
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: [
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "datacenter",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "ip_address",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "request_method",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: [
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "browser",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "id",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "vip",
                   type: "BOOLEAN"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: [
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
                       name: "street",
                       type: "STRING"
                     },
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
                       name: "city",
                       type: "STRING"
                     },
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
@@ -610,102 +612,102 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   end
 
   def get_schema(:third) do
-    %GoogleApi.BigQuery.V2.Model.TableSchema{
+    %TS{
       fields: [
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: [
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "datacenter",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "ip_address",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "request_method",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: [
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "browser",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "id",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "vip",
                   type: "BOOLEAN"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "company",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "login_count",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: [
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
                       name: "street",
                       type: "STRING"
                     },
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
                       name: "city",
                       type: "STRING"
                     },
-                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                    %TFS{
                       description: nil,
                       fields: nil,
                       mode: "NULLABLE",
@@ -732,78 +734,78 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
   end
 
   def get_schema(:list_of_maps) do
-    %GoogleApi.BigQuery.V2.Model.TableSchema{
+    %TS{
       fields: [
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: nil,
           mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
         },
-        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+        %TFS{
           description: nil,
           fields: [
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "datacenter",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "ip_address",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "request_method",
               type: "STRING"
             },
-            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            %TFS{
               description: nil,
               fields: [
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "arity_or_args",
                   type: "INTEGER"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "function",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "file",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
                   name: "module",
                   type: "STRING"
                 },
-                %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                %TFS{
                   description: nil,
                   fields: nil,
                   mode: "NULLABLE",
