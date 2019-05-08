@@ -12,10 +12,10 @@ defmodule Logflare.TableBigQueryPipeline do
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
-      name: name(state[:table]),
+      name: name(state[:source_token]),
       producers: [
         ets: [
-          module: {BroadwayBuffer.Producer, table_name: state[:table], config: []}
+          module: {BroadwayBuffer.Producer, table_name: state[:source_token], config: []}
         ]
       ],
       processors: [
@@ -62,7 +62,7 @@ defmodule Logflare.TableBigQueryPipeline do
         }
       end)
 
-    BigQuery.stream_batch!(context[:table], rows, context[:bigquery_project_id])
+    BigQuery.stream_batch!(context[:source_token], rows, context[:bigquery_project_id])
 
     messages
   end
