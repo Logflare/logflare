@@ -4,9 +4,9 @@ defmodule Logflare.SourceData do
   alias Logflare.TableCounter
   alias Logflare.Google.BigQuery
 
-  @spec get_log_count(:atom) :: {}
-  def get_log_count(token) do
-    case BigQuery.get_table(token) do
+  @spec get_log_count(:atom, String.t()) :: {}
+  def get_log_count(token, bigquery_project_id) do
+    case BigQuery.get_table(token, bigquery_project_id) do
       {:ok, table_info} ->
         table_rows = String.to_integer(table_info.numRows)
 
