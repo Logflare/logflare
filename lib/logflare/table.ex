@@ -141,7 +141,7 @@ defmodule Logflare.Table do
 
   ## Private Functions
   defp restore_table(website_table, bigquery_project_id) do
-    Logger.info("Loaded table: #{website_table}")
+    Logger.info("ETS loaded table: #{website_table}")
     log_count = SourceData.get_log_count(website_table, bigquery_project_id)
     ets_count = SourceData.get_ets_count(website_table)
     TableCounter.create(website_table)
@@ -151,7 +151,7 @@ defmodule Logflare.Table do
   end
 
   defp fresh_table(website_table, bigquery_project_id) do
-    Logger.info("Created table: #{website_table}")
+    Logger.info("ETS created table: #{website_table}")
     log_count = SourceData.get_log_count(website_table, bigquery_project_id)
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(website_table, table_args)
