@@ -1,0 +1,25 @@
+<h1>Your applications</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Callback URL</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+<%= for application <- @applications do %>
+    <tr>
+      <td><%= link application.name, to: Routes.oauth_application_path(@conn, :show, application) %></td>
+      <td><%= application.redirect_uri %></td>
+      <td>
+        <%= link "Edit", to: Routes.oauth_application_path(@conn, :edit, application) %>
+        <%= link "Delete", to: Routes.oauth_application_path(@conn, :delete, application), method: :delete, data: [confirm: "Are you sure?"] %>
+      </td>
+    </tr>
+<% end %>
+  </tbody>
+</table>
+
+<span><%= link "New Application", to: Routes.oauth_application_path(@conn, :new) %></span>

@@ -32,16 +32,18 @@ config :ueberauth, Ueberauth,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :phoenix_oauth2_provider, PhoenixOauth2Provider,
-  current_resource_owner: :user,
+config :logflare, ExOauth2Provider,
   repo: Logflare.Repo,
   resource_owner: Logflare.User,
   grant_flows: ~w(authorization_code),
   use_refresh_token: true,
   default_scopes: ~w(public),
   optional_scopes: ~w(read write),
-  revoke_refresh_token_on_use: true,
-  module: Logflare
+  revoke_refresh_token_on_use: true
+
+config :logflare, PhoenixOauth2Provider,
+  current_resource_owner: :user,
+  web_module: LogflareWeb
 
 config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,

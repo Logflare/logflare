@@ -1,3 +1,3 @@
-defmodule PhoenixOauth2Provider.AuthorizedApplicationView do
-  use Logflare.PhoenixOauth2Provider.Web, :view
+defmodule LogflareWeb.PhoenixOauth2Provider.AuthorizedApplicationView do
+  use LogflareWeb, :view
 end

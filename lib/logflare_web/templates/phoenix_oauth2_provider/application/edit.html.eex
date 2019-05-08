@@ -1,0 +1,5 @@
+<h1>Edit Application</h1>
+
+<%= render "form.html", Map.put(assigns, :action, Routes.oauth_application_path(@conn, :update, @changeset.data)) %>
+
+<span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>

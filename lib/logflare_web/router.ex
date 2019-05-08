@@ -36,13 +36,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/" do
-    pipe_through(:oauth_public)
-    oauth_routes(:public)
+    pipe_through([:api, :oauth_public])
+    oauth_api_routes()
   end
 
   scope "/" do
     pipe_through([:browser, :require_auth])
-    oauth_routes(:protected)
+    oauth_routes()
   end
 
   scope "/", LogflareWeb do
