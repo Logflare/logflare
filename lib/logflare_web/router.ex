@@ -28,6 +28,7 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :oauth_public do
+    plug(:accepts, ["json"])
     plug(:put_secure_browser_headers)
   end
 
