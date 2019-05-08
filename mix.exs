@@ -69,7 +69,8 @@ defmodule Logflare.Mixfile do
       {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
-      {:publicist, "1.1.0"}
+      {:publicist, "1.1.0"},
+      {:iteraptor, ">= 0.0.0"}
     ]
   end
 
