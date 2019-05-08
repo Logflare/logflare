@@ -37,6 +37,8 @@ defmodule Logflare.TableBigQuerySchema do
   end
 
   def init(state) do
+    Process.flag(:trap_exit, true)
+
     case BigQuery.get_table(state.source_token, state.bigquery_project_id) do
       {:ok, table} ->
         schema = TableSchemaBuilder.deep_sort_by_fields_name(table.schema)
