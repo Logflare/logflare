@@ -1,0 +1,40 @@
+<h1>Show Application</h1>
+
+<ul>
+  <li>
+    <strong>Name:</strong>
+    <%= @application.name %>
+  </li>
+  <li>
+    <strong>ID:</strong>
+    <%= @application.uid %>
+  </li>
+  <li>
+    <strong>Secret:</strong>
+    <%= @application.secret %>
+  </li>
+  <li>
+    <strong>Scopes:</strong>
+    <%= @application.scopes %>
+  </li>
+  <li>
+    <strong>Callback urls:</strong>
+    <table class="table">
+      <tbody>
+<%= for redirect_uri <- String.split(@application.redirect_uri) do %>
+        <tr>
+          <td>
+            <code><%= redirect_uri %></code>
+          </td>
+          <td>
+            <%= link "Authorize", to: Routes.oauth_authorization_path(@conn, :new, client_id: @application.uid, redirect_uri: redirect_uri, response_type: "code", scope: @application.scopes), target: '_blank' %>
+          </td>
+        </tr>
+<% end %>
+      </tbody>
+    </table>
+  </li>
+</ul>
+
+<span><%= link "Edit", to: Routes.oauth_application_path(@conn, :edit, @application) %></span>
+<span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>
