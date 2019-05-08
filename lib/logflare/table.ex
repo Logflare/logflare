@@ -35,7 +35,7 @@ defmodule Logflare.Table do
     check_ttl()
     prune()
 
-    state = [{:table, state}]
+    state = [{:source_token, state}]
     {:ok, state, {:continue, :boot}}
   end
 
@@ -46,7 +46,7 @@ defmodule Logflare.Table do
   ## Server
 
   def handle_continue(:boot, state) do
-    website_table = state[:table]
+    website_table = state[:source_token]
     bigquery_project_id = GenUtils.get_project_id(website_table)
     bigquery_table_ttl = GenUtils.get_table_ttl(website_table)
     tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
@@ -84,7 +84,7 @@ defmodule Logflare.Table do
   end
 
   def handle_info(:ttl, state) do
-    website_table = state[:table]
+    website_table = state[:source_token]
     first = :ets.first(website_table)
 
     case first != :"$end_of_table" do
@@ -119,7 +119,7 @@ defmodule Logflare.Table do
   end
 
   def handle_info(:prune, state) do
-    website_table = state[:table]
+    website_table = state[:source_token]
     {:ok, count} = TableCounter.log_count(website_table)
 
     case count > 100 do

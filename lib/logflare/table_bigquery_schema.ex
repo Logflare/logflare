@@ -11,7 +11,7 @@ defmodule Logflare.TableBigQuerySchema do
     GenServer.start_link(
       __MODULE__,
       %{
-        source: state[:table],
+        source_token: state[:source_token],
         bigquery_project_id: state[:bigquery_project_id],
         schema: %Model.TableSchema{
           fields: [
@@ -32,29 +32,29 @@ defmodule Logflare.TableBigQuerySchema do
           ]
         }
       },
-      name: name(state[:table])
+      name: name(state[:source_token])
     )
   end
 
   def init(state) do
-    case BigQuery.get_table(state.source, state.bigquery_project_id) do
+    case BigQuery.get_table(state.source_token, state.bigquery_project_id) do
       {:ok, table} ->
         schema = TableSchemaBuilder.deep_sort_by_fields_name(table.schema)
-        Logger.info("Table schema manager started: #{state.source}")
+        Logger.info("Table schema manager started: #{state.source_token}")
         {:ok, %{state | schema: schema}}
 
       _ ->
-        Logger.info("Table schema manager started: #{state.source}")
+        Logger.info("Table schema manager started: #{state.source_token}")
         {:ok, state}
     end
   end
 
-  def get_state(website_table) do
-    GenServer.call(name(website_table), :get)
+  def get_state(source_token) do
+    GenServer.call(name(source_token), :get)
   end
 
-  def update(website_table, schema) do
-    GenServer.cast(name(website_table), {:update, schema})
+  def update(source_token, schema) do
+    GenServer.cast(name(source_token), {:update, schema})
   end
 
   def handle_call(:get, _from, state) do
@@ -65,7 +65,7 @@ defmodule Logflare.TableBigQuerySchema do
     {:noreply, %{state | schema: TableSchemaBuilder.deep_sort_by_fields_name(schema)}}
   end
 
-  defp name(website_table) do
-    String.to_atom("#{website_table}" <> "-schema")
+  defp name(source_token) do
+    String.to_atom("#{source_token}" <> "-schema")
   end
 end
