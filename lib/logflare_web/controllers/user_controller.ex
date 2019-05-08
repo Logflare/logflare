@@ -6,6 +6,7 @@ defmodule LogflareWeb.UserController do
   alias Logflare.AccountCache
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.TableManager
 
   def edit(conn, _params) do
     user = conn.assigns.user
@@ -14,12 +15,20 @@ defmodule LogflareWeb.UserController do
     render(conn, "edit.html", changeset: changeset, user: user)
   end
 
-  def update(conn, %{"user" => user}) do
+  def update(conn, %{"user" => params}) do
     old_user = conn.assigns.user
-    changeset = User.changeset(old_user, user)
+    changeset = User.changeset(old_user, params)
 
     case Repo.update(changeset) do
       {:ok, _user} ->
+        case params do
+          %{"bigquery_project_id" => _project_id} ->
+            TableManager.reset_all_user_tables(old_user)
+
+          _ ->
+            nil
+        end
+
         conn
         |> put_flash(:info, "Account updated!")
         |> redirect(to: Routes.user_path(conn, :edit))

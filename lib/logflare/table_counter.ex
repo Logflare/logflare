@@ -56,20 +56,35 @@ defmodule Logflare.TableCounter do
 
   @spec get_inserts(:atom) :: {}
   def get_inserts(table) do
-    [{_table, inserts, _deletes, _total_inserts}] = :ets.lookup(@ets_table_name, table)
-    {:ok, inserts}
+    case :ets.lookup(@ets_table_name, table) do
+      [{_table, inserts, _deletes, _total_inserts}] ->
+        {:ok, inserts}
+
+      _ ->
+        {:ok, 0}
+    end
   end
 
   @spec get_total_inserts(:atom) :: {}
   def get_total_inserts(table) do
-    [{_table, _inserts, _deletes, total_inserts}] = :ets.lookup(@ets_table_name, table)
-    {:ok, total_inserts}
+    case :ets.lookup(@ets_table_name, table) do
+      [{_table, _inserts, _deletes, total_inserts}] ->
+        {:ok, total_inserts}
+
+      _ ->
+        {:ok, 0}
+    end
   end
 
   @spec log_count(:atom) :: {}
   def log_count(table) do
-    [{_table, inserts, deletes, _total_inserts}] = :ets.lookup(@ets_table_name, table)
-    count = inserts - deletes
-    {:ok, count}
+    case :ets.lookup(@ets_table_name, table) do
+      [{_table, inserts, deletes, _total_inserts}] ->
+        count = inserts - deletes
+        {:ok, count}
+
+      _ ->
+        {:ok, 0}
+    end
   end
 end

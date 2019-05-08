@@ -66,11 +66,12 @@ defmodule Logflare.TableManager do
         {:reply, website_table, state}
 
       _ ->
-        TableCounter.delete(website_table)
-        rate_table_name = Atom.to_string(website_table) <> "-rate"
-        GenServer.stop(String.to_atom(rate_table_name))
+        website_table_string = Atom.to_string(website_table)
+        tab_path = "tables/" <> website_table_string <> ".tab"
+
         GenServer.stop(website_table)
-        tab_path = "tables/" <> Atom.to_string(website_table) <> ".tab"
+
+        TableCounter.delete(website_table)
         File.rm(tab_path)
         state = List.delete(state, website_table)
         {:reply, website_table, state}
@@ -109,6 +110,11 @@ defmodule Logflare.TableManager do
     GenServer.call(__MODULE__, {:create, website_table})
 
     {:ok, website_table}
+  end
+
+  def reset_all_user_tables(user) do
+    sources = Repo.all(Ecto.assoc(user, :sources))
+    Enum.each(sources, fn s -> reset_table(String.to_atom(s.token)) end)
   end
 
   def delete_all_tables() do

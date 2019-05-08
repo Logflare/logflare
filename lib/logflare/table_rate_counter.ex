@@ -74,18 +74,30 @@ defmodule Logflare.TableRateCounter do
   end
 
   def get_rate(website_table) do
-    data = :ets.lookup(@ets_table_name, website_table)
-    data[website_table].current_rate
+    if :ets.info(@ets_table_name) == :undefined do
+      0
+    else
+      data = :ets.lookup(@ets_table_name, website_table)
+      data[website_table].current_rate
+    end
   end
 
   def get_avg_rate(website_table) do
-    data = :ets.lookup(@ets_table_name, website_table)
-    data[website_table].average_rate
+    if :ets.info(@ets_table_name) == :undefined do
+      0
+    else
+      data = :ets.lookup(@ets_table_name, website_table)
+      data[website_table].average_rate
+    end
   end
 
   def get_max_rate(website_table) do
-    data = :ets.lookup(@ets_table_name, website_table)
-    data[website_table].max_rate
+    if :ets.info(@ets_table_name) == :undefined do
+      0
+    else
+      data = :ets.lookup(@ets_table_name, website_table)
+      data[website_table].max_rate
+    end
   end
 
   defp setup_ets_table(state) do
