@@ -1,4 +1,3 @@
-
 <div class="no-subhead">
 <div id="homepage-header">
   <div id="homepage-header-text">
@@ -189,56 +188,8 @@
   </div>
 </div>
 
-<div class="row footer">
-  <div class="col-lg-3">
-    <h5>Logflare</h5>
-    <ul class="list-unstyled">
-      <li>
-        <a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
-      </li>
-      <li>
-        <a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">Help</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare/blob/master/legal/terms.md">Terms of Service</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare/blob/master/legal/privacy.md">Privacy Policy</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare/blob/master/legal/cookies.md">Cookie Policy</a>
-      </li>
-    </ul>
-  </div>
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>
 
-  <div class="col-lg-3">
-    <h5>Open Source</h5>
-    <ul class="list-unstyled">
-      <li>
-        <a href="https://github.com/Logflare/logflare">Logflare Web</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare-agent">Logflare Agent</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/cloudflare-app">Cloudflare App</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
-      </li>
-    </ul>
-  </div>
-
-  <div class="col-lg-3">
-    <h5>Guides</h5>
-    <ul class="list-unstyled">
-      <li>
-        <%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
-      </li>
-    </ul>
-  </div>
-
-</div>
 </div>
 <script>
   document.addEventListener("DOMContentLoaded", function(){

@@ -12,10 +12,14 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def big_query(conn, _params) do
-    render(conn, "bigquery-datastudio.html")
+    render(conn, "bigquery_datastudio.html")
   end
 
   def big_query_setup(conn, _params) do
-    render(conn, "bigquery-setup.html")
+    render(conn, "bigquery_setup.html")
+  end
+
+  def data_studio_setup(conn, _params) do
+    render(conn, "data_studio_setup.html")
   end
 end
