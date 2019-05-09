@@ -10,6 +10,16 @@ defmodule Logflare.TableRateCounter do
   alias Logflare.TableCounter
   alias Number.Delimit
 
+  use TypedStruct
+
+  typedstruct do
+    field :table, atom()
+    field :previous_count, non_neg_integer()
+    field :current_rate, non_neg_integer()
+    field :begin_time, non_neg_integer()
+    field :max_rate, non_neg_integer()
+  end
+
   @rate_period 1_000
   @ets_table_name :table_rate_counters
 

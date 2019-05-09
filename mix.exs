@@ -52,7 +52,7 @@ defmodule Logflare.Mixfile do
       {:plug, "~> 1.7"},
       {:jason, "~> 1.0"},
       {:distillery, "~> 2.0"},
-      {:edeliver, ">= 1.6.0"},
+     {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider, "~> 0.5.1"},
       {:poison, "~> 3.1"},
@@ -68,7 +68,8 @@ defmodule Logflare.Mixfile do
       {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
-      {:mox, "~> 0.5", only: :test}
+      {:mox, "~> 0.5", only: :test},
+      {:typed_struct, "~> 0.1"}
     ]
   end
 
