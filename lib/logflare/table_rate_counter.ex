@@ -11,13 +11,14 @@ defmodule Logflare.TableRateCounter do
   alias Number.Delimit
 
   use TypedStruct
+  use Publicist
 
   typedstruct do
-    field :table, atom()
-    field :previous_count, non_neg_integer()
-    field :current_rate, non_neg_integer()
-    field :begin_time, non_neg_integer()
-    field :max_rate, non_neg_integer()
+    field :table, atom(), enforce: true
+    field :previous_count, non_neg_integer(), enforce: true
+    field :current_rate, non_neg_integer(), default: 0
+    field :begin_time, non_neg_integer(), enforce: true
+    field :max_rate, non_neg_integer(), default: 0
   end
 
   @rate_period 1_000
@@ -28,7 +29,7 @@ defmodule Logflare.TableRateCounter do
 
     GenServer.start_link(
       __MODULE__,
-      %{
+      %__MODULE__{
         table: source,
         previous_count: init_count,
         current_rate: 0,
@@ -53,12 +54,10 @@ defmodule Logflare.TableRateCounter do
     current_rate = current_count - previous_count
 
     max_rate =
-      case state.max_rate < current_rate do
-        false ->
-          state.max_rate
-
-        true ->
-          current_rate
+      if state.max_rate < current_rate do
+        current_rate
+      else
+        state.max_rate
       end
 
     time = System.monotonic_time(:second)
@@ -67,7 +66,7 @@ defmodule Logflare.TableRateCounter do
 
     payload = %{current_rate: current_rate, average_rate: average_rate, max_rate: max_rate}
 
-    :ets.insert(@ets_table_name, {state.table, payload})
+    insert_to_ets_table(state.table, payload)
 
     broadcast_rate(state.table, current_rate, average_rate, max_rate)
 
@@ -85,32 +84,17 @@ defmodule Logflare.TableRateCounter do
 
   @spec get_rate(atom) :: integer
   def get_rate(source) do
-    if :ets.info(@ets_table_name) == :undefined do
-      0
-    else
-      data = :ets.lookup(@ets_table_name, source)
-      data[source].current_rate
-    end
+    get_x(source, :current_rate)
   end
 
   @spec get_avg_rate(atom) :: integer
   def get_avg_rate(source) do
-    if :ets.info(@ets_table_name) == :undefined do
-      0
-    else
-      data = :ets.lookup(@ets_table_name, source)
-      data[source].average_rate
-    end
+    get_x(source, :average_rate)
   end
 
   @spec get_max_rate(atom) :: integer
   def get_max_rate(source) do
-    if :ets.info(@ets_table_name) == :undefined do
-      0
-    else
-      data = :ets.lookup(@ets_table_name, source)
-      data[source].max_rate
-    end
+    get_x(source, :max_rate)
   end
 
   defp setup_ets_table(state) do
@@ -121,7 +105,20 @@ defmodule Logflare.TableRateCounter do
       :ets.new(@ets_table_name, table_args)
     end
 
-    :ets.insert(@ets_table_name, {state.table, payload})
+    insert_to_ets_table(state.table, payload)
+  end
+
+  def insert_to_ets_table(table, payload) do
+    :ets.insert(@ets_table_name, {table, payload})
+  end
+
+  def get_x(source, x) when is_atom(x) do
+    if :ets.info(@ets_table_name) == :undefined do
+      0
+    else
+      data = :ets.lookup(@ets_table_name, source)
+      Map.get(data[source], x)
+    end
   end
 
   defp put_current_rate(rate_period \\ @rate_period) do
