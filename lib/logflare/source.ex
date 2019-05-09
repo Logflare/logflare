@@ -15,6 +15,7 @@ defmodule Logflare.Source do
     field(:other_email_notifications, :string)
     field(:user_text_notifications, :boolean)
     field(:bigquery_table_ttl, :integer)
+    field(:api_quota, :integer)
 
     timestamps()
   end

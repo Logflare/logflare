@@ -18,6 +18,7 @@ defmodule Logflare.User do
     has_many(:sources, Logflare.Source)
     field(:phone, :string)
     field(:bigquery_project_id, :string)
+    field(:api_quota, :integer)
 
     timestamps()
   end
