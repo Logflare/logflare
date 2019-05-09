@@ -54,7 +54,7 @@ defmodule Logflare.Mixfile do
       {:distillery, "~> 2.0"},
       {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
-      {:phoenix_oauth2_provider, "~> 0.5.0"},
+      {:phoenix_oauth2_provider, "~> 0.5.1"},
       {:poison, "~> 3.1"},
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
