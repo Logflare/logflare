@@ -48,7 +48,7 @@ defmodule Logflare.TableRateCounter do
   end
 
   def handle_info(:put_rate, state) do
-    {:ok, current_count} = TableCounter.get_inserts(state.table)
+    {:ok, current_count} = table_counter().get_inserts(state.table)
     previous_count = state.previous_count
     current_rate = current_count - previous_count
 
@@ -152,6 +152,14 @@ defmodule Logflare.TableRateCounter do
           "dashboard:#{source_string}:rate",
           payload
         )
+    end
+  end
+
+  def table_counter do
+    if Mix.env() == :test do
+      Logflare.TableCounterMock
+    else
+      Logflare.TableCounter
     end
   end
 end
