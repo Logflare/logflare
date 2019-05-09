@@ -13,19 +13,19 @@ defmodule Logflare.TableRateCounter do
   @rate_period 1_000
   @ets_table_name :table_rate_counters
 
-  def start_link(website_table, init_count) do
+  def start_link(source, init_count) do
     started_at = System.monotonic_time(:second)
 
     GenServer.start_link(
       __MODULE__,
       %{
-        table: website_table,
+        table: source,
         previous_count: init_count,
         current_rate: 0,
         begin_time: started_at,
         max_rate: 0
       },
-      name: name(website_table)
+      name: name(source)
     )
   end
 
@@ -74,32 +74,32 @@ defmodule Logflare.TableRateCounter do
   end
 
   @spec get_rate(atom) :: integer
-  def get_rate(website_table) do
+  def get_rate(source) do
     if :ets.info(@ets_table_name) == :undefined do
       0
     else
-      data = :ets.lookup(@ets_table_name, website_table)
-      data[website_table].current_rate
+      data = :ets.lookup(@ets_table_name, source)
+      data[source].current_rate
     end
   end
 
   @spec get_avg_rate(atom) :: integer
-  def get_avg_rate(website_table) do
+  def get_avg_rate(source) do
     if :ets.info(@ets_table_name) == :undefined do
       0
     else
-      data = :ets.lookup(@ets_table_name, website_table)
-      data[website_table].average_rate
+      data = :ets.lookup(@ets_table_name, source)
+      data[source].average_rate
     end
   end
 
   @spec get_max_rate(atom) :: integer
-  def get_max_rate(website_table) do
+  def get_max_rate(source) do
     if :ets.info(@ets_table_name) == :undefined do
       0
     else
-      data = :ets.lookup(@ets_table_name, website_table)
-      data[website_table].max_rate
+      data = :ets.lookup(@ets_table_name, source)
+      data[source].max_rate
     end
   end
 
@@ -118,15 +118,15 @@ defmodule Logflare.TableRateCounter do
     Process.send_after(self(), :put_rate, rate_period)
   end
 
-  defp name(website_table) do
-    String.to_atom("#{website_table}" <> "-rate")
+  defp name(source) do
+    String.to_atom("#{source}" <> "-rate")
   end
 
-  defp broadcast_rate(website_table, rate, average_rate, max_rate) do
-    website_table_string = Atom.to_string(website_table)
+  defp broadcast_rate(source, rate, average_rate, max_rate) do
+    source_string = Atom.to_string(source)
 
     payload = %{
-      source_token: website_table_string,
+      source_token: source_string,
       rate: Delimit.number_to_delimited(rate),
       average_rate: Delimit.number_to_delimited(average_rate),
       max_rate: Delimit.number_to_delimited(max_rate)
@@ -138,8 +138,8 @@ defmodule Logflare.TableRateCounter do
 
       _ ->
         LogflareWeb.Endpoint.broadcast(
-          "dashboard:" <> website_table_string,
-          "dashboard:#{website_table_string}:rate",
+          "dashboard:" <> source_string,
+          "dashboard:#{source_string}:rate",
           payload
         )
     end
