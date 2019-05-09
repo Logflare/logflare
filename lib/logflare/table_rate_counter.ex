@@ -73,6 +73,7 @@ defmodule Logflare.TableRateCounter do
      }}
   end
 
+  @spec get_rate(atom) :: integer
   def get_rate(website_table) do
     if :ets.info(@ets_table_name) == :undefined do
       0
@@ -82,6 +83,7 @@ defmodule Logflare.TableRateCounter do
     end
   end
 
+  @spec get_avg_rate(atom) :: integer
   def get_avg_rate(website_table) do
     if :ets.info(@ets_table_name) == :undefined do
       0
@@ -91,6 +93,7 @@ defmodule Logflare.TableRateCounter do
     end
   end
 
+  @spec get_max_rate(atom) :: integer
   def get_max_rate(website_table) do
     if :ets.info(@ets_table_name) == :undefined do
       0
