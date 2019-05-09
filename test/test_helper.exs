@@ -1,4 +1,5 @@
 ExUnit.start()
 
-Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
+Mox.defmock(Logflare.Users.APIMock, for: Logflare.Users.API)
 
+Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
