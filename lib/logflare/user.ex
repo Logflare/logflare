@@ -1,24 +1,25 @@
 defmodule Logflare.User do
   use Ecto.Schema
   import Ecto.Changeset
+  @default_user_api_quota 1000
 
   alias Logflare.Google.BigQuery
 
   schema "users" do
-    field(:email, :string)
-    field(:provider, :string)
-    field(:token, :string)
-    field(:api_key, :string)
-    field(:old_api_key, :string)
-    field(:email_preferred, :string)
-    field(:name, :string)
-    field(:image, :string)
-    field(:email_me_product, :boolean)
-    field(:admin, :boolean)
-    has_many(:sources, Logflare.Source)
-    field(:phone, :string)
-    field(:bigquery_project_id, :string)
-    field(:api_quota, :integer)
+    field :email, :string
+    field :provider, :string
+    field :token, :string
+    field :api_key, :string
+    field :old_api_key, :string
+    field :email_preferred, :string
+    field :name, :string
+    field :image, :string
+    field :email_me_product, :boolean
+    field :admin, :boolean
+    has_many :sources, Logflare.Source
+    field :phone, :string
+    field :bigquery_project_id, :string
+    field :api_quota, :integer, default: @default_user_api_quota
 
     timestamps()
   end
