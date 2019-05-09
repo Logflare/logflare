@@ -70,6 +70,7 @@ defmodule Logflare.Mixfile do
       {:timex, "~> 3.1"},
       {:mox, "~> 0.5", only: :test},
       {:typed_struct, "~> 0.1"}
+      {:lqueue, "~> 1.1"}  
     ]
   end
 
