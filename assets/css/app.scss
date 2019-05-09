@@ -26,6 +26,11 @@ body {
   min-width: 0;
 }
 
+.guide-img {
+  max-width: 500px;
+  border: 20px solid #333333;
+}
+
 .secondary-header {
   padding-top: 5em;
   padding-bottom: 5em;
@@ -601,6 +606,10 @@ mark {
 
     #pwa h3 {
       margin-top: 1.5em;
+    }
+
+    .guide-img {
+      max-width: 100%;
     }
 
 }

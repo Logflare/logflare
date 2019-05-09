@@ -1,0 +1,80 @@
+
+<div class="no-subhead">
+<div class="secondary-header">
+  <center>
+    <h2>Setup a BigQuery Backend</h2>
+    <p class="lead">The easiest ETL pipeline ever.</p>
+  </center>
+</div>
+</div>
+
+<div class="homepage-container mx-auto">
+<div class="value">
+  <h3>Dead Simple Setup</h3>
+  <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner permissions. Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
+  <h3>Navigate to IAM</h3>
+  <img class="img-fluid guide-img" src="/images/marketing/navigate-to-iam.png">
+  <h3>Add a Member</h3>
+  <img class="img-fluid guide-img" src="/images/marketing/add-a-member.png">
+  <h3>Add Our Service Account with BigQuery Data Owner Permissions</h3>
+  <img class="img-fluid guide-img" src="/images/marketing/add-service-account-with-permissions.png">
+  <h3>Set the Project ID in Logflare</h3>
+  <p>Navigate to your account preferences.</p>
+  <img class="img-fluid guide-img" src="/images/marketing/set-project-id.png">
+  <h3>Update the Source TTL</h3>
+  <p>Edit a source and set the TTL.</p>
+  <img class="img-fluid guide-img" src="/images/marketing/set-source-ttl.png">
+</div>
+
+
+<div class="row footer">
+  <div class="col-lg-3">
+    <h5>Logflare</h5>
+    <ul class="list-unstyled">
+      <li>
+        <a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
+      </li>
+      <li>
+        <a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">Help</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/logflare/blob/master/legal/terms.md">Terms of Service</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/logflare/blob/master/legal/privacy.md">Privacy Policy</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/logflare/blob/master/legal/cookies.md">Cookie Policy</a>
+      </li>
+    </ul>
+  </div>
+
+  <div class="col-lg-3">
+    <h5>Open Source</h5>
+    <ul class="list-unstyled">
+      <li>
+        <a href="https://github.com/Logflare/logflare">Logflare Web</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/logflare-agent">Logflare Agent</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/cloudflare-app">Cloudflare App</a>
+      </li>
+      <li>
+        <a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
+      </li>
+    </ul>
+  </div>
+
+  <div class="col-lg-3">
+    <h5>Guides</h5>
+    <ul class="list-unstyled">
+      <li>
+        <%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
+      </li>
+    </ul>
+  </div>
+
+</div>
+</div>

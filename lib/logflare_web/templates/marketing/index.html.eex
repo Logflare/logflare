@@ -229,6 +229,15 @@
     </ul>
   </div>
 
+  <div class="col-lg-3">
+    <h5>Guides</h5>
+    <ul class="list-unstyled">
+      <li>
+        <%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
+      </li>
+    </ul>
+  </div>
+
 </div>
 </div>
 <script>
