@@ -1,10 +1,12 @@
 defmodule Logflare.Application do
   use Application
+  alias Logflare.Users
 
   def start(_type, _args) do
     import Supervisor.Spec
 
     children = [
+      {Cachex, Users.Cache},
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Task.Supervisor, name: Logflare.TableSupervisor},
       supervisor(Logflare.Repo, []),
