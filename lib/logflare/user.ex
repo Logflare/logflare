@@ -14,8 +14,8 @@ defmodule Logflare.User do
     field :email_preferred, :string
     field :name, :string
     field :image, :string
-    field :email_me_product, :boolean
-    field :admin, :boolean
+    field :email_me_product, :boolean, default: true
+    field :admin, :boolean, default: false
     has_many :sources, Logflare.Source
     field :phone, :string
     field :bigquery_project_id, :string
