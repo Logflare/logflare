@@ -3,17 +3,25 @@ defmodule Logflare.Users.CacheTest do
   alias Logflare.Users.Cache
   import Cache
   use ExUnit.Case
-  alias Logflare.{Repo, User}
+  alias Logflare.{Repo, User, Source}
 
   setup do
-    {:ok, user} = Repo.insert(%User{})
-    {:ok, user: user}
+    source = %Source{token: Faker.UUID.v4()}
+    {:ok, user} = Repo.insert(%User{sources: [source]})
+    {:ok, user: user, source: source}
   end
 
   describe "users cache" do
     test "get_by_id/1", %{user: user} do
       assert get_by_id(user.id) == user
+      assert get_by_id(user.id) == user
+    end
+
+    test "get_by_id/1 returns user with sources preloaded", %{user: user, source: source} do
+      user = get_by_id(user.id)
+      assert is_list(user.sources)
+      assert length(user.sources) > 0
+      assert source == hd(user.sources)
     end
   end
-
 end
