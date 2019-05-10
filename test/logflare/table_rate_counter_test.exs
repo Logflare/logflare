@@ -62,5 +62,30 @@ defmodule Logflare.TableRateCounterTest do
       assert state.max_rate == 45
       assert state.last_rate == 10
     end
+
+    test "source rate metrics are correctly written into ets table", %{state: state} do
+      %{table: table} = state
+
+      state = update_state(state, 5)
+      update_ets_table(state)
+
+      assert get_rate(table) == 5
+      assert get_avg_rate(table) == 5
+      assert get_max_rate(table) == 5
+
+      state = update_state(state, 50)
+      update_ets_table(state)
+
+      assert get_rate(table) == 45
+      assert get_avg_rate(table) == 25
+      assert get_max_rate(table) == 45
+
+      state = update_state(state, 60)
+      update_ets_table(state)
+
+      assert get_rate(table) == 10
+      assert get_avg_rate(table) == 20
+      assert get_max_rate(table) == 45
+    end
   end
 end
