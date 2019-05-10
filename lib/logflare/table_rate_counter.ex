@@ -18,7 +18,7 @@ defmodule Logflare.TableRateCounter do
 
   typedstruct do
     field :source_id, atom(), enforce: true
-    field :count, non_neg_integer(), enforce: true
+    field :count, non_neg_integer(), default: 0
     field :last_rate, non_neg_integer(), default: 0
     field :begin_time, non_neg_integer(), enforce: true
     field :max_rate, non_neg_integer(), default: 0
@@ -32,57 +32,56 @@ defmodule Logflare.TableRateCounter do
   @rate_period 1_000
   @ets_table_name :table_rate_counters
 
-  def start_link(source, init_count) do
-    started_at = System.monotonic_time(:second)
-
+  def start_link(source_id, init_count) when is_atom(source_id) and is_integer(init_count) do
     GenServer.start_link(
       __MODULE__,
-      %__MODULE__{
-        source_id: source,
-        count: init_count,
-        begin_time: started_at
-      },
-      name: name(source)
+      source_id,
+      name: name(source_id)
     )
   end
 
-  def init(state) do
-    Logger.info("Rate counter started: #{state.source_id}")
-    setup_ets_table(state)
+  def init(source_id) do
+    Logger.info("Rate counter started: #{source_id}")
+    setup_ets_table(source_id)
     put_current_rate()
 
-    {:ok, state}
+    {:ok, source_id}
   end
 
-  def handle_info(:put_rate, state) do
+  def handle_info(:put_rate, source_id) when is_atom(source_id) do
     put_current_rate()
 
-    {:ok, new_count} = get_new_insert_count(state)
+    {:ok, new_count} = get_new_insert_count(source_id)
+    state = get(source_id)
 
     state = update_state(state, new_count)
 
     update_ets_table(state)
     broadcast(state)
 
-    {:noreply, state}
+    {:noreply, source_id}
   end
 
-  def get_new_insert_count(state) do
-    table_counter().get_inserts(state.source_id)
+  def new(source_id) do
+    %TRC{begin_time: System.monotonic_time(), source_id: source_id}
   end
 
-  def update_state(state, new_count) do
+  def get_new_insert_count(source_id) when is_atom(source_id) do
+    table_counter().get_inserts(source_id)
+  end
+
+  def update_state(%TRC{} = state, new_count) do
     state
     |> update_current_rate(new_count)
     |> update_max_rate()
     |> update_buckets()
   end
 
-  def update_ets_table(state) do
+  def update_ets_table(%TRC{} = state) do
     insert_to_ets_table(state.source_id, state)
   end
 
-  def state_to_external(state) do
+  def state_to_external(%TRC{} = state) do
     %{
       last_rate: lr,
       max_rate: mr,
@@ -96,15 +95,15 @@ defmodule Logflare.TableRateCounter do
     %{last_rate: lr, average_rate: avg, max_rate: mr}
   end
 
-  def update_max_rate(%{max_rate: mx, last_rate: lr} = s) do
+  def update_max_rate(%TRC{max_rate: mx, last_rate: lr} = s) do
     %{s | max_rate: Enum.max([mx, lr])}
   end
 
-  def update_current_rate(state, new_count) do
+  def update_current_rate(%TRC{} = state, new_count) do
     %{state | last_rate: new_count - state.count, count: new_count}
   end
 
-  def update_buckets(%__MODULE__{} = state) do
+  def update_buckets(%TRC{} = state) do
     Map.update!(state, :buckets, fn buckets ->
       for {length, bucket} <- buckets, into: Map.new() do
         new_queue = LQueue.push(bucket.queue, state.last_rate)
@@ -128,8 +127,8 @@ defmodule Logflare.TableRateCounter do
   @doc """
   Gets last rate
   """
-  def get_rate(source) do
-    source
+  def get_rate(source_id) do
+    source_id
     |> get()
     |> Map.get(:last_rate)
   end
@@ -138,8 +137,8 @@ defmodule Logflare.TableRateCounter do
   @doc """
   Gets average rate for the default bucket
   """
-  def get_avg_rate(source) do
-    source
+  def get_avg_rate(source_id) do
+    source_id
     |> get()
     |> Map.get(:buckets)
     |> Map.get(@default_bucket_width)
@@ -147,37 +146,49 @@ defmodule Logflare.TableRateCounter do
   end
 
   @spec get_max_rate(atom) :: integer
-  def get_max_rate(source) do
-    source
+  def get_max_rate(source_id) do
+    source_id
     |> get()
     |> Map.get(:max_rate)
   end
 
-  defp setup_ets_table(state) do
-    payload = %{last_rate: 0, average_rate: 0, max_rate: 0}
+  defp setup_ets_table(source_id) when is_atom(source_id) do
+    started_at = System.monotonic_time(:second)
+
+    initial = %TRC{
+      source_id: source_id,
+      count: 0,
+      last_rate: 0,
+      begin_time: started_at,
+      max_rate: 0
+    }
 
     if ets_table_is_undefined?() do
       table_args = [:named_table, :public]
       :ets.new(@ets_table_name, table_args)
     end
 
-    insert_to_ets_table(state.source_id, payload)
+    insert_to_ets_table(source_id, initial)
   end
 
   def ets_table_is_undefined?() do
     :ets.info(@ets_table_name) == :undefined
   end
 
+  def lookup_ets(source_id) do
+    :ets.lookup(@ets_table_name, source_id)
+  end
+
   def insert_to_ets_table(source_id, payload) do
     :ets.insert(@ets_table_name, {source_id, payload})
   end
 
-  def get(source) do
+  def get(source_id) do
     if ets_table_is_undefined?() do
       0
     else
-      data = :ets.lookup(@ets_table_name, source)
-      data[source]
+      data = :ets.lookup(@ets_table_name, source_id)
+      data[source_id]
     end
   end
 
@@ -185,11 +196,11 @@ defmodule Logflare.TableRateCounter do
     Process.send_after(self(), :put_rate, rate_period)
   end
 
-  defp name(source) do
-    String.to_atom("#{source}" <> "-rate")
+  defp name(source_id) do
+    String.to_atom("#{source_id}" <> "-rate")
   end
 
-  defp broadcast(state) do
+  defp broadcast(%TRC{} = state) do
     payload = state_to_external(state)
     source_string = Atom.to_string(state.source_id)
 
