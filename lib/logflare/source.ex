@@ -9,10 +9,10 @@ defmodule Logflare.Source do
     field :public_token, :string
     field :overflow_source, Ecto.UUID
     field :avg_rate, :integer, virtual: true
-    field :favorite, :boolean
-    field :user_email_notifications, :boolean
+    field :favorite, :boolean, default: false
+    field :user_email_notifications, :boolean, default: false
     field :other_email_notifications, :string
-    field :user_text_notifications, :boolean
+    field :user_text_notifications, :boolean, default: false
     field :bigquery_table_ttl, :integer
     field :api_quota, :integer, default: @default_source_api_quota
 
