@@ -54,7 +54,8 @@ defmodule Logflare.TableRateCounter do
     {:ok, new_count} = get_new_insert_count(source_id)
     state = get(source_id)
 
-    state = update_state(state, new_count)
+    %TRC{} = state = update_state(state, new_count)
+
 
     update_ets_table(state)
     broadcast(state)
@@ -62,7 +63,7 @@ defmodule Logflare.TableRateCounter do
     {:noreply, source_id}
   end
 
-  def new(source_id) do
+  def new(source_id) when is_atom(source_id) do
     %TRC{begin_time: System.monotonic_time(), source_id: source_id}
   end
 
@@ -137,7 +138,7 @@ defmodule Logflare.TableRateCounter do
   @doc """
   Gets average rate for the default bucket
   """
-  def get_avg_rate(source_id) do
+  def get_avg_rate(source_id) when is_atom(source_id) do
     source_id
     |> get()
     |> Map.get(:buckets)
@@ -146,22 +147,14 @@ defmodule Logflare.TableRateCounter do
   end
 
   @spec get_max_rate(atom) :: integer
-  def get_max_rate(source_id) do
+  def get_max_rate(source_id) when is_atom(source_id) do
     source_id
     |> get()
     |> Map.get(:max_rate)
   end
 
   defp setup_ets_table(source_id) when is_atom(source_id) do
-    started_at = System.monotonic_time(:second)
-
-    initial = %TRC{
-      source_id: source_id,
-      count: 0,
-      last_rate: 0,
-      begin_time: started_at,
-      max_rate: 0
-    }
+    initial = TRC.new(source_id)
 
     if ets_table_is_undefined?() do
       table_args = [:named_table, :public]
@@ -179,7 +172,10 @@ defmodule Logflare.TableRateCounter do
     :ets.lookup(@ets_table_name, source_id)
   end
 
-  def insert_to_ets_table(source_id, payload) do
+  def insert_to_ets_table(source_id, payload) when is_atom(source_id) do
+    if ets_table_is_undefined? do
+      Logger.debug("#{@ets_table_name} should be defined but it isn't" )
+    end
     :ets.insert(@ets_table_name, {source_id, payload})
   end
 
