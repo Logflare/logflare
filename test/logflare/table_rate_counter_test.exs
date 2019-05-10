@@ -1,5 +1,6 @@
 defmodule Logflare.TableRateCounterTest do
   alias Logflare.TableRateCounter, as: TRC
+  import TRC
   use ExUnit.Case
 
   import Mox
@@ -8,21 +9,25 @@ defmodule Logflare.TableRateCounterTest do
 
   setup_all do
     Mox.defmock(Logflare.TableCounterMock, for: Logflare.TableCounter)
+
+    :ok
   end
 
   setup do
     table = :some_non_existing_table
 
-    state = %{
+    state = %TRC{
       table: table,
-      previous_count: 0,
+      count: 0,
       max_rate: 0,
       begin_time: System.monotonic_time(:second) - 1
     }
 
+    {:ok, table_counter_agent} = Agent.start_link(fn -> 0 end)
+
     TRC.setup_ets_table(state)
 
-    {:ok, state: state}
+    {:ok, state: state, agent: table_counter_agent}
   end
 
   describe "table rate counter" do
@@ -31,18 +36,25 @@ defmodule Logflare.TableRateCounterTest do
       table = state.table
       {:noreply, state} = TRC.handle_info(:put_rate, state)
 
-      assert %{
+      assert %TRC{
                table: ^table,
-               previous_count: 10,
-               current_rate: 10,
+               count: 10,
+               last_rate: 10,
                begin_time: _,
-               max_rate: 10
+               max_rate: 10,
+               buckets: %{
+                 60 => %{
+                   queue: queue
+                 }
+               }
              } = state
     end
 
-    test "get_* functions", %{state: state}  do
+    test "get_* functions", %{state: state} do
       expect(Logflare.TableCounterMock, :get_inserts, 1, fn _table ->
-        {:ok, 5} end)
+        {:ok, 5}
+      end)
+
       _ = TRC.handle_info(:put_rate, state)
       %{table: table} = state
       assert TRC.get_rate(table) == 5
