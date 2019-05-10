@@ -9,10 +9,11 @@ defmodule Logflare.Users.Cache do
     end
   end
 
-  def list_sources(id) do
+  def list_source_ids(id) do
     id
     |> get_by_id()
     |> Map.get(:sources)
+    |> Enum.map(& &1.token)
   end
 
   def get_api_quotas(user_id, source_id) do
