@@ -21,7 +21,18 @@ defmodule Logflare.Users.CacheTest do
       user = get_by_id(user.id)
       assert is_list(user.sources)
       assert length(user.sources) > 0
-      assert source == hd(user.sources)
+      source_db = hd(user.sources)
+      assert source_db.token == source.token
+      assert source_db.user_id == user.id
+    end
+
+    test "list_sources/1 returns a list of sources", %{user: user, source: source} do
+      sources_db = Enum.map(list_sources(user.id), & &1.token)
+      assert sources_db == [source.token]
+    end
+
+    test "get_api_quotas/2 returns a quota map", %{user: user, source: source} do
+      assert get_api_quotas(user.id, source.token) == %{source: 25, user: 1000}
     end
   end
 end
