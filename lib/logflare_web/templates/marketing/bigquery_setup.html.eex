@@ -9,18 +9,29 @@
 
 <div class="homepage-container mx-auto">
   <div class="value">
-    <h3>Dead Simple Setup</h3>
-    <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner permissions. Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
-    <h3>Navigate to IAM</h3>
+    <p>
+      <%= link "Dead Simple Setup", to: "#simple-setup" %> >
+      <%= link "Navigate to IAM", to: "#nav-to-iam" %> >
+      <%= link "Add a Member", to: "#add-member" %> >
+      <%= link "Add Our Service Account", to: "#add-service-account" %> >
+      <%= link "Set the Project ID", to: "#set-project-id" %> >
+      <%= link "Update Source TTL", to: "#update-ttl" %>
+    </p>
+    <h3 id="simple-setup">Dead Simple Setup</h3>
+    <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner permissions.</p>
+    <h3 id="nav-to-iam">Navigate to IAM</h3>
     <img class="img-fluid guide-img" src="/images/marketing/navigate-to-iam.png">
-    <h3>Add a Member</h3>
+    <h3 id="add-member">Add a Member</h3>
     <img class="img-fluid guide-img" src="/images/marketing/add-a-member.png">
-    <h3>Add Our Service Account with BigQuery Data Owner Permissions</h3>
+    <h3 id="add-service-account">Add Our Service Account with BigQuery Data Owner Permissions</h3>
+    <p>Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
     <img class="img-fluid guide-img" src="/images/marketing/add-service-account-with-permissions.png">
-    <h3>Set the Project ID in Logflare</h3>
-    <p>Navigate to your account preferences.</p>
+    <h3 id="set-project-id">Set the Project ID in Logflare</h3>
+    <p>Find your Google Cloud Platform project ID on <%= link "your GCP dashboard", to: "https://console.cloud.google.com/home/dashboard" %>.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/get-project-id.png">
+    <p>Navigate to <%= link "your account preferences", to: Routes.user_path(@conn, :edit) %> and add your GCP project ID.</p>
     <img class="img-fluid guide-img" src="/images/marketing/set-project-id.png">
-    <h3>Update the Source TTL</h3>
+    <h3 id="update-ttl">Update the Source TTL</h3>
     <p>Edit a source and set the TTL.</p>
     <img class="img-fluid guide-img" src="/images/marketing/set-source-ttl.png">
   </div>

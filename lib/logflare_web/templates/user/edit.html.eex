@@ -35,7 +35,7 @@
   <% end %>
 
   <h5 class="header-margin">BigQuery Backend</h5>
-  <p>Setup your own BigQuery tables. Add our service account (<code>logflare@logflare-232118.iam.gserviceaccount.com</code>) to IAM with BigQuery Data Owner permissions.</p>
+  <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code>logflare@logflare-232118.iam.gserviceaccount.com</code>) to IAM with BigQuery Data Owner permissions.</p>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
     <div class="form-group">
       <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control" %>
