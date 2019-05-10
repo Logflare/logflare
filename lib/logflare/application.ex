@@ -18,6 +18,17 @@ defmodule Logflare.Application do
       supervisor(LogflareWeb.Endpoint, [])
     ]
 
+    children =
+      if Mix.env() == :test do
+        [
+          {Cachex, Users.Cache},
+          supervisor(Logflare.Repo, []),
+          supervisor(LogflareWeb.Endpoint, [])
+        ]
+      else
+        children
+      end
+
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Logflare.Supervisor]
