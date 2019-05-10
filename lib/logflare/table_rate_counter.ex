@@ -6,19 +6,27 @@ defmodule Logflare.TableRateCounter do
   use GenServer
 
   require Logger
+  alias __MODULE__, as: TRC
 
   alias Logflare.TableCounter
   alias Number.Delimit
+
+  @default_bucket_width 60
 
   use TypedStruct
   use Publicist
 
   typedstruct do
     field :table, atom(), enforce: true
-    field :previous_count, non_neg_integer(), enforce: true
-    field :current_rate, non_neg_integer(), default: 0
+    field :count, non_neg_integer(), enforce: true
+    field :last_rate, non_neg_integer(), default: 0
     field :begin_time, non_neg_integer(), enforce: true
     field :max_rate, non_neg_integer(), default: 0
+
+    field :buckets, map,
+      default: %{
+        @default_bucket_width => %{queue: LQueue.new(@default_bucket_width), average_rate: 0}
+      }
   end
 
   @rate_period 1_000
@@ -31,10 +39,8 @@ defmodule Logflare.TableRateCounter do
       __MODULE__,
       %__MODULE__{
         table: source,
-        previous_count: init_count,
-        current_rate: 0,
-        begin_time: started_at,
-        max_rate: 0
+        count: init_count,
+        begin_time: started_at
       },
       name: name(source)
     )
@@ -49,58 +55,108 @@ defmodule Logflare.TableRateCounter do
   end
 
   def handle_info(:put_rate, state) do
-    {:ok, current_count} = table_counter().get_inserts(state.table)
-    previous_count = state.previous_count
-    current_rate = current_count - previous_count
-
-    max_rate =
-      if state.max_rate < current_rate do
-        current_rate
-      else
-        state.max_rate
-      end
-
-    time = System.monotonic_time(:second)
-    time_passed = time - state.begin_time
-    average_rate = Kernel.trunc(current_count / time_passed)
-
-    payload = %{current_rate: current_rate, average_rate: average_rate, max_rate: max_rate}
-
-    insert_to_ets_table(state.table, payload)
-
-    broadcast_rate(state.table, current_rate, average_rate, max_rate)
-
     put_current_rate()
 
-    {:noreply,
-     %{
-       table: state.table,
-       previous_count: current_count,
-       current_rate: current_rate,
-       begin_time: state.begin_time,
-       max_rate: max_rate
-     }}
+    {:ok, new_count} = get_new_insert_count(state)
+
+    state = update_state(state, new_count)
+
+    update_ets_table(state)
+    broadcast(state)
+
+    {:noreply, state}
+  end
+
+  def get_new_insert_count(state) do
+    table_counter().get_inserts(state.table)
+  end
+
+  def update_state(state, new_count) do
+    state
+    |> update_current_rate(new_count)
+    |> update_max_rate()
+    |> update_buckets()
+  end
+
+  def update_ets_table(state) do
+    insert_to_ets_table(state.table, state)
+  end
+
+  def state_to_external(state) do
+    %{
+      last_rate: lr,
+      max_rate: mr,
+      buckets: %{
+        @default_bucket_width => %{
+          average: avg
+        }
+      }
+    } = state
+
+    %{last_rate: lr, average_rate: avg, max_rate: mr}
+  end
+
+  def update_max_rate(%{max_rate: mx, last_rate: lr} = s) do
+    %{s | max_rate: Enum.max([mx, lr])}
+  end
+
+  def update_current_rate(state, new_count) do
+    %{state | last_rate: new_count - state.count, count: new_count}
+  end
+
+  def update_buckets(%__MODULE__{} = state) do
+    Map.update!(state, :buckets, fn buckets ->
+      for {length, bucket} <- buckets, into: Map.new() do
+        new_queue = LQueue.push(bucket.queue, state.last_rate)
+
+        average =
+          new_queue
+          |> Enum.to_list()
+          |> average()
+          |> round()
+
+        {length,
+         %{
+           queue: new_queue,
+           average: average
+         }}
+      end
+    end)
   end
 
   @spec get_rate(atom) :: integer
+  @doc """
+  Gets last rate
+  """
   def get_rate(source) do
-    get_x(source, :current_rate)
+    source
+    |> get()
+    |> Map.get(:last_rate)
   end
 
   @spec get_avg_rate(atom) :: integer
+  @doc """
+  Gets average rate for the default bucket
+  """
   def get_avg_rate(source) do
-    get_x(source, :average_rate)
+    source
+    |> get()
+    |> Map.get(:buckets)
+    |> Map.get(@default_bucket_width)
+    |> Map.get(:average)
   end
 
   @spec get_max_rate(atom) :: integer
   def get_max_rate(source) do
-    get_x(source, :max_rate)
+    source
+    |> get()
+    |> Map.get(:max_rate)
   end
 
   defp setup_ets_table(state) do
-    payload = %{current_rate: 0, average_rate: 0, max_rate: 0}
+    payload = %{last_rate: 0, average_rate: 0, max_rate: 0}
 
-    if :ets.info(@ets_table_name) == :undefined do
+    if ets_table_is_undefined?() do
       table_args = [:named_table, :public]
       :ets.new(@ets_table_name, table_args)
     end
@@ -108,16 +164,20 @@ defmodule Logflare.TableRateCounter do
     insert_to_ets_table(state.table, payload)
   end
 
+  def ets_table_is_undefined?() do
+    :ets.info(@ets_table_name) == :undefined
+  end
+
   def insert_to_ets_table(table, payload) do
     :ets.insert(@ets_table_name, {table, payload})
   end
 
-  def get_x(source, x) when is_atom(x) do
-    if :ets.info(@ets_table_name) == :undefined do
+  def get(source) do
+    if ets_table_is_undefined?() do
       0
     else
       data = :ets.lookup(@ets_table_name, source)
-      Map.get(data[source], x)
+      data[source]
     end
   end
 
@@ -129,14 +189,15 @@ defmodule Logflare.TableRateCounter do
     String.to_atom("#{source}" <> "-rate")
   end
 
-  defp broadcast_rate(source, rate, average_rate, max_rate) do
-    source_string = Atom.to_string(source)
+  defp broadcast(state) do
+    payload = state_to_external(state)
+    source_string = Atom.to_string(state.table)
 
     payload = %{
       source_token: source_string,
-      rate: Delimit.number_to_delimited(rate),
-      average_rate: Delimit.number_to_delimited(average_rate),
-      max_rate: Delimit.number_to_delimited(max_rate)
+      rate: Delimit.number_to_delimited(payload.last_rate),
+      average_rate: Delimit.number_to_delimited(payload.average_rate),
+      max_rate: Delimit.number_to_delimited(payload.max_rate)
     }
 
     case :ets.info(LogflareWeb.Endpoint) do
@@ -158,5 +219,9 @@ defmodule Logflare.TableRateCounter do
     else
       Logflare.TableCounter
     end
+  end
+
+  def average(xs) when is_list(xs) do
+    Enum.sum(xs) / length(xs)
   end
 end
