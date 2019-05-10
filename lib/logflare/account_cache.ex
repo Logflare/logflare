@@ -31,11 +31,13 @@ defmodule Logflare.AccountCache do
   # Public Interface
 
   @spec remove_account(String.t()) :: true
+  @deprecated "Use Users.Cache module instead"
   def remove_account(api_key) do
     :ets.delete(@table, api_key)
   end
 
   @spec verify_account?(String.t()) :: boolean
+  @deprecated "Use Users.Cache module instead"
   def verify_account?(api_key) do
     case :ets.lookup(@table, api_key) do
       [{_api_key, _sources}] ->
@@ -47,6 +49,7 @@ defmodule Logflare.AccountCache do
   end
 
   @spec account_has_source?(String.t(), String.t()) :: boolean
+  @deprecated "Use Users.Cache module instead"
   def account_has_source?(api_key, source_token) do
     [{_api_key, sources}] = :ets.lookup(@table, api_key)
 
@@ -54,6 +57,7 @@ defmodule Logflare.AccountCache do
   end
 
   @spec count_sources(String.t()) :: integer
+  @deprecated "Use Users.Cache module instead"
   def count_sources(api_key) do
     [{_api_key, sources}] = :ets.lookup(@table, api_key)
 
@@ -61,6 +65,7 @@ defmodule Logflare.AccountCache do
   end
 
   @spec get_source(String.t(), String.t()) :: Source.t()
+  @deprecated "Use Users.Cache module instead"
   def get_source(api_key, source_token) do
     case :ets.lookup(@table, api_key) do
       [{_api_key, sources}] ->
@@ -72,17 +77,20 @@ defmodule Logflare.AccountCache do
   end
 
   @spec get_source_by_name(String.t(), String.t()) :: Source.t()
+  @deprecated "Use Users.Cache module instead"
   def get_source_by_name(api_key, source_name) do
     [{_api_key, sources}] = :ets.lookup(@table, api_key)
     Enum.find(sources, fn source -> source.name == source_name end)
   end
 
+  @deprecated "Use Users.Cache module instead"
   def get_rules(api_key, source_token) do
     [{_api_key, sources}] = :ets.lookup(@table, api_key)
     source = Enum.find(sources, fn source -> source.token == source_token end)
     source.rules
   end
 
+  @deprecated "Use Users.Cache module instead"
   def update_account(api_key) do
     user = Repo.get_by(User, api_key: api_key) |> Repo.preload(:sources)
 
