@@ -1,6 +1,6 @@
-defmodule Logflare.TableRateCounterTest do
-  alias Logflare.TableRateCounter, as: TRC
-  import TRC
+defmodule Logflare.SourceRateCounterTest do
+  alias Logflare.SourceRateCounter, as: SRC
+  import SRC
   use ExUnit.Case
 
   import Mox
@@ -19,7 +19,7 @@ defmodule Logflare.TableRateCounterTest do
     state = %{}
     {:ok, table_counter_agent} = Agent.start_link(fn -> 0 end)
 
-    TRC.setup_ets_table(source_id)
+    SRC.setup_ets_table(source_id)
 
     {:ok, source_id: source_id, agent: table_counter_agent}
   end
@@ -27,13 +27,13 @@ defmodule Logflare.TableRateCounterTest do
   describe "source_id rate counter" do
     test "init and handle_info(:put_rate, state)/2", %{source_id: source_id} do
       expect(Logflare.TableCounterMock, :get_inserts, fn _ -> {:ok, 10} end)
-      {:noreply, sid} = TRC.handle_info(:put_rate, source_id)
+      {:noreply, sid} = SRC.handle_info(:put_rate, source_id)
 
       assert sid == source_id
 
       new_state = get(source_id)
 
-      assert new_state == %Logflare.TableRateCounter{
+      assert new_state == %Logflare.SourceRateCounter{
                begin_time: new_state.begin_time,
                buckets: %{60 => %{average: 10, queue: new_state.buckets[60].queue}},
                count: 10,
@@ -48,10 +48,10 @@ defmodule Logflare.TableRateCounterTest do
         {:ok, 5}
       end)
 
-      _ = TRC.handle_info(:put_rate, source_id)
-      assert TRC.get_rate(source_id) == 5
-      assert TRC.get_avg_rate(source_id) == 5
-      assert TRC.get_max_rate(source_id) == 5
+      _ = SRC.handle_info(:put_rate, source_id)
+      assert SRC.get_rate(source_id) == 5
+      assert SRC.get_avg_rate(source_id) == 5
+      assert SRC.get_max_rate(source_id) == 5
     end
 
     test "bucket data is calculated correctly", %{source_id: source_id} do

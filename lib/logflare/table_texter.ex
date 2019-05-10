@@ -6,7 +6,7 @@ defmodule Logflare.TableTexter do
   alias Logflare.Repo
   alias Logflare.Source
   alias Logflare.User
-  alias Logflare.TableRateCounter
+  alias Logflare.SourceRateCounter
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
 
@@ -31,7 +31,7 @@ defmodule Logflare.TableTexter do
   end
 
   def handle_info(:check_rate, state) do
-    rate = TableRateCounter.get_rate(state.source)
+    rate = SourceRateCounter.get_rate(state.source)
 
     case rate > 0 do
       true ->

@@ -8,7 +8,7 @@ defmodule Logflare.TableMailer do
   alias Logflare.User
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.TableRateCounter
+  alias Logflare.SourceRateCounter
 
   @check_rate_every 1_000
 
@@ -30,7 +30,7 @@ defmodule Logflare.TableMailer do
   end
 
   def handle_info(:check_rate, state) do
-    rate = TableRateCounter.get_rate(state.source)
+    rate = SourceRateCounter.get_rate(state.source)
 
     case rate > 0 do
       true ->

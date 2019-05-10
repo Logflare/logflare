@@ -9,7 +9,7 @@ defmodule Logflare.Table do
   alias Logflare.TableCounter
   alias Logflare.Logs
   alias Logflare.SourceData
-  alias Logflare.TableRateCounter
+  alias Logflare.SourceRateCounter
   alias Logflare.Google.BigQuery
   alias Logflare.TableMailer
   alias Logflare.TableTexter
@@ -147,7 +147,7 @@ defmodule Logflare.Table do
     TableCounter.create(website_table)
     TableCounter.incriment_ets_count(website_table, ets_count)
     TableCounter.incriment_total_count(website_table, log_count)
-    TableRateCounter.start_link(website_table, ets_count)
+    SourceRateCounter.start_link(website_table, ets_count)
   end
 
   defp fresh_table(website_table, bigquery_project_id) do
@@ -157,7 +157,7 @@ defmodule Logflare.Table do
     :ets.new(website_table, table_args)
     TableCounter.create(website_table)
     TableCounter.incriment_total_count(website_table, log_count)
-    TableRateCounter.start_link(website_table, 0)
+    SourceRateCounter.start_link(website_table, 0)
   end
 
   defp check_ttl() do
