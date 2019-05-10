@@ -27,12 +27,15 @@ defmodule Logflare.Users.CacheTest do
     end
 
     test "list_sources/1 returns a list of sources", %{user: user, source: source} do
-      sources_db = Enum.map(list_sources(user.id), & &1.token)
+      sources_db = list_source_ids(user.id)
       assert sources_db == [source.token]
     end
 
     test "get_api_quotas/2 returns a quota map", %{user: user, source: source} do
-      assert get_api_quotas(user.id, source.token) == %{source: 25, user: 1000}
+      assert get_api_quotas(user.id, source.token) == {:ok, %{
+               source: source.api_quota,
+               user: user.api_quota
+             }}
     end
   end
 end
