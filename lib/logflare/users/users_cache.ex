@@ -17,11 +17,21 @@ defmodule Logflare.Users.Cache do
 
   def get_api_quotas(user_id, source_id) do
     user = get_by_id(user_id)
-    source = Enum.find(user.sources, &(&1.token == source_id))
 
-    %{
-      user: user.api_quota,
-      source: source.api_quota
-    }
+    source = Enum.find(user.sources, &(String.to_atom(&1.token) == source_id))
+
+    cond do
+      is_nil(user) ->
+        {:error, :user_is_nil}
+
+      is_nil(source) ->
+        {:error, :source_is_nil}
+
+      true ->
+        {:ok, %{
+          user: user.api_quota,
+          source: source.api_quota
+        }}
+    end
   end
 end
