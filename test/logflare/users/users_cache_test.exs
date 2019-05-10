@@ -2,7 +2,7 @@ defmodule Logflare.Users.CacheTest do
   @moduledoc false
   alias Logflare.Users.Cache
   import Cache
-  use ExUnit.Case
+  use Logflare.DataCase
   alias Logflare.{Repo, User, Source}
 
   setup do

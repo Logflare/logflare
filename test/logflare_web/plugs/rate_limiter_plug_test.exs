@@ -11,6 +11,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
   setup_all do
     Mox.defmock(Logflare.Users.APIMock, for: Logflare.Users.API)
+    :ok 
   end
 
   describe "rate limiter plug works correctly" do

@@ -5,9 +5,9 @@ defmodule Logflare.Users.APIIntegrationTest do
   alias Logflare.TableRateCounter, as: TRC
   import Logflare.DummyFactory
 
-  use ExUnit.Case
+  use Logflare.DataCase
 
-  setup_all do
+  setup do
     source_id = Faker.UUID.v4()
     source = insert(:source, token: source_id)
     source_id_atom = source.token |> String.to_atom()

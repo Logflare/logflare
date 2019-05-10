@@ -3,7 +3,9 @@ defmodule Logflare.Users.Cache do
   @cache __MODULE__
 
   def get_by_id(id) do
-    case Cachex.fetch(@cache, id, &Users.get_user_by_id/1) do
+    case Cachex.fetch(@cache, id, fn id ->
+           {:commit, Users.get_user_by_id(id)}
+         end) do
       {:commit, value} -> value
       {:ok, value} -> value
     end
@@ -19,11 +21,13 @@ defmodule Logflare.Users.Cache do
   @spec get_api_quotas(integer, atom) :: {:ok, %{user: integer, source: integer}} | {:error, term}
   def get_api_quotas(user_id, source_id) do
     user = get_by_id(user_id)
-    source_id = if is_atom(source_id) do
-      source_id
-    else
-      String.to_atom(source_id)
-    end
+
+    source_id =
+      if is_atom(source_id) do
+        source_id
+      else
+        String.to_atom(source_id)
+      end
 
     # FIXME handle the string vs atom for token
     source = Enum.find(user.sources, &(String.to_atom(&1.token) == source_id))
@@ -36,10 +40,11 @@ defmodule Logflare.Users.Cache do
         {:error, :source_is_nil}
 
       true ->
-        {:ok, %{
-          user: user.api_quota,
-          source: source.api_quota
-        }}
+        {:ok,
+         %{
+           user: user.api_quota,
+           source: source.api_quota
+         }}
     end
   end
 end
