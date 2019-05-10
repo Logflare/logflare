@@ -14,10 +14,10 @@ defmodule Logflare.TableRateCounterTest do
   end
 
   setup do
-    table = :some_non_existing_table
+    source_id = :some_non_existing_table
 
     state = %TRC{
-      table: table,
+      source_id: source_id,
       count: 0,
       max_rate: 0,
       begin_time: System.monotonic_time(:second) - 1
@@ -30,14 +30,14 @@ defmodule Logflare.TableRateCounterTest do
     {:ok, state: state, agent: table_counter_agent}
   end
 
-  describe "table rate counter" do
+  describe "source_id rate counter" do
     test "init and handle_info(:put_rate, state)/2", %{state: state} do
       expect(Logflare.TableCounterMock, :get_inserts, fn _ -> {:ok, 10} end)
-      table = state.table
+      source_id = state.source_id
       {:noreply, state} = TRC.handle_info(:put_rate, state)
 
       assert %TRC{
-               table: ^table,
+               source_id: ^source_id,
                count: 10,
                last_rate: 10,
                begin_time: _,
@@ -56,10 +56,10 @@ defmodule Logflare.TableRateCounterTest do
       end)
 
       _ = TRC.handle_info(:put_rate, state)
-      %{table: table} = state
-      assert TRC.get_rate(table) == 5
-      assert TRC.get_avg_rate(table) == 5
-      assert TRC.get_max_rate(table) == 5
+      %{source_id: source_id} = state
+      assert TRC.get_rate(source_id) == 5
+      assert TRC.get_avg_rate(source_id) == 5
+      assert TRC.get_max_rate(source_id) == 5
     end
 
     test "bucket data is calculated correctly", %{state: state} do
@@ -69,35 +69,35 @@ defmodule Logflare.TableRateCounterTest do
         |> update_state(50)
         |> update_state(60)
 
-      %{table: table} = state
+      %{source_id: source_id} = state
       assert state.buckets[60].average == 20
       assert state.max_rate == 45
       assert state.last_rate == 10
     end
 
-    test "source rate metrics are correctly written into ets table", %{state: state} do
-      %{table: table} = state
+    test "source rate metrics are correctly written into ets source_id", %{state: state} do
+      %{source_id: source_id} = state
 
       state = update_state(state, 5)
       update_ets_table(state)
 
-      assert get_rate(table) == 5
-      assert get_avg_rate(table) == 5
-      assert get_max_rate(table) == 5
+      assert get_rate(source_id) == 5
+      assert get_avg_rate(source_id) == 5
+      assert get_max_rate(source_id) == 5
 
       state = update_state(state, 50)
       update_ets_table(state)
 
-      assert get_rate(table) == 45
-      assert get_avg_rate(table) == 25
-      assert get_max_rate(table) == 45
+      assert get_rate(source_id) == 45
+      assert get_avg_rate(source_id) == 25
+      assert get_max_rate(source_id) == 45
 
       state = update_state(state, 60)
       update_ets_table(state)
 
-      assert get_rate(table) == 10
-      assert get_avg_rate(table) == 20
-      assert get_max_rate(table) == 45
+      assert get_rate(source_id) == 10
+      assert get_avg_rate(source_id) == 20
+      assert get_max_rate(source_id) == 45
     end
   end
 end

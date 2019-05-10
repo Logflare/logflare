@@ -17,7 +17,7 @@ defmodule Logflare.TableRateCounter do
   use Publicist
 
   typedstruct do
-    field :table, atom(), enforce: true
+    field :source_id, atom(), enforce: true
     field :count, non_neg_integer(), enforce: true
     field :last_rate, non_neg_integer(), default: 0
     field :begin_time, non_neg_integer(), enforce: true
@@ -38,7 +38,7 @@ defmodule Logflare.TableRateCounter do
     GenServer.start_link(
       __MODULE__,
       %__MODULE__{
-        table: source,
+        source_id: source,
         count: init_count,
         begin_time: started_at
       },
@@ -47,7 +47,7 @@ defmodule Logflare.TableRateCounter do
   end
 
   def init(state) do
-    Logger.info("Rate counter started: #{state.table}")
+    Logger.info("Rate counter started: #{state.source_id}")
     setup_ets_table(state)
     put_current_rate()
 
@@ -68,7 +68,7 @@ defmodule Logflare.TableRateCounter do
   end
 
   def get_new_insert_count(state) do
-    table_counter().get_inserts(state.table)
+    table_counter().get_inserts(state.source_id)
   end
 
   def update_state(state, new_count) do
@@ -79,7 +79,7 @@ defmodule Logflare.TableRateCounter do
   end
 
   def update_ets_table(state) do
-    insert_to_ets_table(state.table, state)
+    insert_to_ets_table(state.source_id, state)
   end
 
   def state_to_external(state) do
@@ -161,15 +161,15 @@ defmodule Logflare.TableRateCounter do
       :ets.new(@ets_table_name, table_args)
     end
 
-    insert_to_ets_table(state.table, payload)
+    insert_to_ets_table(state.source_id, payload)
   end
 
   def ets_table_is_undefined?() do
     :ets.info(@ets_table_name) == :undefined
   end
 
-  def insert_to_ets_table(table, payload) do
-    :ets.insert(@ets_table_name, {table, payload})
+  def insert_to_ets_table(source_id, payload) do
+    :ets.insert(@ets_table_name, {source_id, payload})
   end
 
   def get(source) do
@@ -191,7 +191,7 @@ defmodule Logflare.TableRateCounter do
 
   defp broadcast(state) do
     payload = state_to_external(state)
-    source_string = Atom.to_string(state.table)
+    source_string = Atom.to_string(state.source_id)
 
     payload = %{
       source_token: source_string,
