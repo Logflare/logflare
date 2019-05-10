@@ -16,53 +16,47 @@ defmodule Logflare.TableRateCounterTest do
   setup do
     source_id = :some_non_existing_table
 
-    state = %TRC{
-      source_id: source_id,
-      count: 0,
-      max_rate: 0,
-      begin_time: System.monotonic_time(:second) - 1
-    }
-
+    state = %{}
     {:ok, table_counter_agent} = Agent.start_link(fn -> 0 end)
 
-    TRC.setup_ets_table(state)
+    TRC.setup_ets_table(source_id)
 
-    {:ok, state: state, agent: table_counter_agent}
+    {:ok, source_id: source_id, agent: table_counter_agent}
   end
 
   describe "source_id rate counter" do
-    test "init and handle_info(:put_rate, state)/2", %{state: state} do
+    test "init and handle_info(:put_rate, state)/2", %{source_id: source_id} do
       expect(Logflare.TableCounterMock, :get_inserts, fn _ -> {:ok, 10} end)
-      source_id = state.source_id
-      {:noreply, state} = TRC.handle_info(:put_rate, state)
+      {:noreply, sid} = TRC.handle_info(:put_rate, source_id)
 
-      assert %TRC{
-               source_id: ^source_id,
+      assert sid == source_id
+
+      new_state = get(source_id)
+
+      assert new_state == %Logflare.TableRateCounter{
+               begin_time: new_state.begin_time,
+               buckets: %{60 => %{average: 10, queue: new_state.buckets[60].queue}},
                count: 10,
                last_rate: 10,
-               begin_time: _,
                max_rate: 10,
-               buckets: %{
-                 60 => %{
-                   queue: queue
-                 }
-               }
-             } = state
+               source_id: :some_non_existing_table
+             }
     end
 
-    test "get_* functions", %{state: state} do
+    test "get_* functions", %{source_id: source_id} do
       expect(Logflare.TableCounterMock, :get_inserts, 1, fn _table ->
         {:ok, 5}
       end)
 
-      _ = TRC.handle_info(:put_rate, state)
-      %{source_id: source_id} = state
+      _ = TRC.handle_info(:put_rate, source_id)
       assert TRC.get_rate(source_id) == 5
       assert TRC.get_avg_rate(source_id) == 5
       assert TRC.get_max_rate(source_id) == 5
     end
 
-    test "bucket data is calculated correctly", %{state: state} do
+    test "bucket data is calculated correctly", %{source_id: source_id} do
+      state = new(source_id)
+
       state =
         state
         |> update_state(5)
@@ -75,8 +69,8 @@ defmodule Logflare.TableRateCounterTest do
       assert state.last_rate == 10
     end
 
-    test "source rate metrics are correctly written into ets source_id", %{state: state} do
-      %{source_id: source_id} = state
+    test "source rate metrics are correctly written into ets source_id", %{source_id: source_id} do
+      state = new(source_id)
 
       state = update_state(state, 5)
       update_ets_table(state)
