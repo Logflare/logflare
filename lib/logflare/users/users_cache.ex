@@ -8,4 +8,20 @@ defmodule Logflare.Users.Cache do
       {:ok, value} -> value
     end
   end
+
+  def list_sources(id) do
+    id
+    |> get_by_id()
+    |> Map.get(:sources)
+  end
+
+  def get_api_quotas(user_id, source_id) do
+    user = get_by_id(user_id)
+    source = Enum.find(user.sources, &(&1.token == source_id))
+
+    %{
+      user: user.api_quota,
+      source: source.api_quota
+    }
+  end
 end
