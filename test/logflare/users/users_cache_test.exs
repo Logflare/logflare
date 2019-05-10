@@ -6,7 +6,7 @@ defmodule Logflare.Users.CacheTest do
   alias Logflare.{Repo, User, Source}
 
   setup do
-    source = %Source{token: Faker.UUID.v4()}
+    source = %Source{token: Faker.UUID.v4() |> String.to_atom()}
     {:ok, user} = Repo.insert(%User{sources: [source]})
     {:ok, user: user, source: source}
   end

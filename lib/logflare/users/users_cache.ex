@@ -19,18 +19,10 @@ defmodule Logflare.Users.Cache do
   end
 
   @spec get_api_quotas(integer, atom) :: {:ok, %{user: integer, source: integer}} | {:error, term}
-  def get_api_quotas(user_id, source_id) do
+  def get_api_quotas(user_id, source_id) when is_atom(source_id) do
     user = get_by_id(user_id)
 
-    source_id =
-      if is_atom(source_id) do
-        source_id
-      else
-        String.to_atom(source_id)
-      end
-
-    # FIXME handle the string vs atom for token
-    source = Enum.find(user.sources, &(String.to_atom(&1.token) == source_id))
+    source = Enum.find(user.sources, &(&1.token == source_id))
 
     cond do
       is_nil(user) ->

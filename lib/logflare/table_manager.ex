@@ -41,8 +41,8 @@ defmodule Logflare.TableManager do
       Enum.map(
         sources,
         fn s ->
-          {:ok, source} = Ecto.UUID.load(s.token)
-          String.to_atom(source)
+          {:ok, source} = Ecto.UUID.Atom.load(s.token)
+          source
         end
       )
 
@@ -114,7 +114,7 @@ defmodule Logflare.TableManager do
 
   def reset_all_user_tables(user) do
     sources = Repo.all(Ecto.assoc(user, :sources))
-    Enum.each(sources, fn s -> reset_table(String.to_atom(s.token)) end)
+    Enum.each(sources, fn s -> reset_table(s.token) end)
   end
 
   def delete_all_tables() do

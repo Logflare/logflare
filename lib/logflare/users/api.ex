@@ -6,13 +6,6 @@ defmodule Logflare.Users.API do
   def action_allowed?(%{type: @api_call_logs} = action) do
     %{source_id: sid, user: user} = action
 
-    sid =
-      if is_atom(sid) do
-        sid
-      else
-        String.to_existing_atom(sid)
-      end
-
     source_rate = Sources.get_api_rate_by_id(sid, bucket: :default)
     user_rate = get_total_user_api_rate(user.id)
 
@@ -30,7 +23,6 @@ defmodule Logflare.Users.API do
   def get_total_user_api_rate(user) do
     user
     |> Users.Cache.list_source_ids()
-    |> Enum.map(&String.to_atom/1)
     |> Enum.map(&Sources.get_api_rate_by_id(&1, bucket: :default))
     |> Enum.sum()
   end

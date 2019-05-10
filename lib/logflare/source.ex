@@ -5,7 +5,7 @@ defmodule Logflare.Source do
 
   schema "sources" do
     field :name, :string
-    field :token, Ecto.UUID
+    field :token, Ecto.UUID.Atom
     field :public_token, :string
     field :overflow_source, Ecto.UUID
     field :avg_rate, :integer, virtual: true
