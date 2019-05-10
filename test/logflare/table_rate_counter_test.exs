@@ -49,5 +49,18 @@ defmodule Logflare.TableRateCounterTest do
       assert TRC.get_avg_rate(table) == 5
       assert TRC.get_max_rate(table) == 5
     end
+
+    test "bucket data is calculated correctly", %{state: state} do
+      state =
+        state
+        |> update_state(5)
+        |> update_state(50)
+        |> update_state(60)
+
+      %{table: table} = state
+      assert state.buckets[60].average == 20
+      assert state.max_rate == 45
+      assert state.last_rate == 10
+    end
   end
 end
