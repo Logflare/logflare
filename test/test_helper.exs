@@ -1,6 +1,6 @@
 ExUnit.start()
+Faker.start()
 
-Mox.defmock(Logflare.Users.APIMock, for: Logflare.Users.API)
-Mox.defmock(Logflare.TableCounterMock, for: Logflare.TableCounter)
+Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :auto)
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)

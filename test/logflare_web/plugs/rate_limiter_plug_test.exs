@@ -9,6 +9,10 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
   setup :verify_on_exit!
 
+  setup_all do
+    Mox.defmock(Logflare.Users.APIMock, for: Logflare.Users.API)
+  end
+
   describe "rate limiter plug works correctly" do
     test "doesn't halt when POST logs action is allowed" do
       expect(Logflare.Users.APIMock, :action_allowed?, fn _ -> true end)
@@ -22,7 +26,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
       assert conn.halted == false
     end
 
-    test "halts when POST logs action is allowed" do
+    test "halts when POST logs action is not allowed" do
       expect(Logflare.Users.APIMock, :action_allowed?, fn _ -> false end)
 
       conn =

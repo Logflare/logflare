@@ -6,6 +6,10 @@ defmodule Logflare.TableRateCounterTest do
 
   setup :verify_on_exit!
 
+  setup_all do
+    Mox.defmock(Logflare.TableCounterMock, for: Logflare.TableCounter)
+  end
+
   setup do
     table = :some_non_existing_table
 
