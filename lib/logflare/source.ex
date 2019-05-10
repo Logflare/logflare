@@ -35,7 +35,8 @@ defmodule Logflare.Source do
       :user_email_notifications,
       :other_email_notifications,
       :user_text_notifications,
-      :bigquery_table_ttl
+      :bigquery_table_ttl,
+      :api_quota
     ])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)

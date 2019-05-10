@@ -39,7 +39,8 @@ defmodule Logflare.User do
       :email_me_product,
       :admin,
       :phone,
-      :bigquery_project_id
+      :bigquery_project_id,
+      :api_quota
     ])
     |> validate_required([:email, :provider, :token])
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
