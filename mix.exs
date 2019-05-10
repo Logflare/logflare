@@ -72,6 +72,7 @@ defmodule Logflare.Mixfile do
       {:typed_struct, "~> 0.1"}
       {:lqueue, "~> 1.1"}  
       {:cachex, "~> 3.1"}
+      {:faker, "~> 0.12", only: :test}  
     ]
   end
 
