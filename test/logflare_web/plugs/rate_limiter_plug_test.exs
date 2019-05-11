@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Plugs.RateLimiterTest do
+  @moduledoc false
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.RateLimiter
 
@@ -11,7 +12,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
   setup_all do
     Mox.defmock(Logflare.Users.APIMock, for: Logflare.Users.API)
-    :ok 
+    :ok
   end
 
   describe "rate limiter plug works correctly" do
@@ -23,6 +24,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
         |> Plug.Conn.assign(:user, %{id: 1})
         |> RateLimiter.call(@params)
 
+      assert {"X-Rate-Limit-Limit", 100} in conn.resp_headers
+      assert {"X-Rate-Limit-Remaining", 100} in conn.resp_headers
       assert conn.status == nil
       assert conn.halted == false
     end
@@ -35,6 +38,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
         |> Plug.Conn.assign(:user, %{id: 1})
         |> RateLimiter.call(@params)
 
+      assert {"X-Rate-Limit-Limit", 100} in conn.resp_headers
+      assert {"X-Rate-Limit-Remaining", 0} in conn.resp_headers
       assert conn.status == 429
       assert conn.halted == true
     end
