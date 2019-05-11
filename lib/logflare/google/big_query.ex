@@ -165,8 +165,7 @@ defmodule Logflare.Google.BigQuery do
     table_name = format_table_name(source)
     dataset_id = get_account_id(source) <> @dataset_id_append
 
-    sql =
-      "SELECT * FROM [#{project_id}:#{dataset_id}.#{table_name}] ORDER BY timestamp LIMIT 100"
+    sql = "SELECT * FROM [#{project_id}:#{dataset_id}.#{table_name}] ORDER BY timestamp LIMIT 100"
 
     {:ok, response} =
       Api.Jobs.bigquery_jobs_query(
@@ -356,7 +355,7 @@ defmodule Logflare.Google.BigQuery do
   end
 
   @spec format_table_name(:atom) :: String.t()
-  defp format_table_name(source) do
+  def format_table_name(source) do
     string = Atom.to_string(source)
     String.replace(string, "-", "_")
   end
@@ -371,5 +370,4 @@ defmodule Logflare.Google.BigQuery do
     %Logflare.Source{user_id: account_id} = Repo.get_by(Source, token: Atom.to_string(source))
     "#{account_id}"
   end
-
 end
