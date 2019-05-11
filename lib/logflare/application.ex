@@ -1,32 +1,38 @@
 defmodule Logflare.Application do
   use Application
-  alias Logflare.Users
+  alias Logflare.{Users, Sources}
 
   def start(_type, _args) do
     import Supervisor.Spec
 
     children = [
-      {Cachex, Users.Cache},
+      %{
+        id: :cachex_users_cache,
+        start: {Cachex, :start_link, [Users.Cache]}
+      },
+      %{
+        id: :cachex_sources_cache,
+        start: {Cachex, :start_link, [Sources.Cache]}
+      },
+      supervisor(Logflare.Repo, []),
+      supervisor(LogflareWeb.Endpoint, [])
+    ]
+
+    dev_prod_children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Task.Supervisor, name: Logflare.TableSupervisor},
-      supervisor(Logflare.Repo, []),
       supervisor(Logflare.AccountCache, []),
       # init TableCounter before TableManager as TableManager calls TableCounter through table create
       supervisor(Logflare.TableCounter, []),
       supervisor(Logflare.SystemCounter, []),
-      supervisor(Logflare.TableManager, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(Logflare.TableManager, [])
     ]
 
     children =
       if Mix.env() == :test do
-        [
-          {Cachex, Users.Cache},
-          supervisor(Logflare.Repo, []),
-          supervisor(LogflareWeb.Endpoint, [])
-        ]
-      else
         children
+      else
+        children ++ dev_prod_children
       end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
