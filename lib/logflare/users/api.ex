@@ -1,10 +1,26 @@
 defmodule Logflare.Users.API do
-  @callback action_allowed?(map) :: boolean
+  @type api_rates_quotas :: %{
+          message: String.t(),
+          metrics: %{
+            user: %{
+              remaining: integer(),
+              limit: integer()
+            },
+            source: %{
+              remaining: integer(),
+              limit: integer()
+            }
+          }
+        }
+
+  @type ok_err_tup :: {:ok, api_rates_quotas} | {:error, api_rates_quotas}
+
+  @callback action_allowed?(map) :: ok_err_tup
 
   alias Logflare.{Users, Sources}
   @api_call_logs {:api_call, :logs_post}
 
-  def action_allowed?(%{type: @api_call_logs} = action) do
+  @spec verify_api_rates_quotas(map) :: ok_err_tup
   def verify_api_rates_quotas(%{type: @api_call_logs} = action) do
     %{source_id: sid, user: user} = action
 
