@@ -35,7 +35,12 @@ defmodule Logflare.SourceRateCounterTest do
 
       assert new_state == %Logflare.SourceRateCounter{
                begin_time: new_state.begin_time,
-               buckets: %{60 => %{average: 10, queue: new_state.buckets[60].queue}},
+               buckets: %{60 => %{
+                 sum: 10,
+                 duration: 60,
+                 average: 10,
+                  queue: new_state.buckets[60].queue
+                 }},
                count: 10,
                last_rate: 10,
                max_rate: 10,
@@ -69,7 +74,7 @@ defmodule Logflare.SourceRateCounterTest do
       assert state.last_rate == 10
     end
 
-    test "source rate metrics are correctly written into ets source_id", %{source_id: source_id} do
+    test "get_metrics and get_x functions", %{source_id: source_id} do
       state = new(source_id)
 
       state = update_state(state, 5)
@@ -78,6 +83,7 @@ defmodule Logflare.SourceRateCounterTest do
       assert get_rate(source_id) == 5
       assert get_avg_rate(source_id) == 5
       assert get_max_rate(source_id) == 5
+      assert get_metrics(source_id) == %{average: 5, sum: 5, duration: 60}
 
       state = update_state(state, 50)
       update_ets_table(state)
@@ -85,6 +91,7 @@ defmodule Logflare.SourceRateCounterTest do
       assert get_rate(source_id) == 45
       assert get_avg_rate(source_id) == 25
       assert get_max_rate(source_id) == 45
+      assert get_metrics(source_id) == %{average: 25, sum: 50, duration: 60}
 
       state = update_state(state, 60)
       update_ets_table(state)
@@ -92,6 +99,7 @@ defmodule Logflare.SourceRateCounterTest do
       assert get_rate(source_id) == 10
       assert get_avg_rate(source_id) == 20
       assert get_max_rate(source_id) == 45
+      assert get_metrics(source_id) == %{average: 20, sum: 60, duration: 60}
     end
   end
 end
