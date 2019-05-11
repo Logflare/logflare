@@ -1,5 +1,6 @@
 defmodule LogflareWeb.Plugs.SetApiUser do
   import Plug.Conn
+  alias Logflare.{Users, User}
 
   # alias Logflare.Repo
   # alias Logflare.User
@@ -12,23 +13,14 @@ defmodule LogflareWeb.Plugs.SetApiUser do
     headers = Enum.into(conn.req_headers, %{})
     api_key = headers["x-api-key"]
 
-    case verify_account?(api_key) do
-      true ->
+    user = Users.Cache.find_user_by_api_key(api_key)
+    case user do
+      %User{api_key: api_key} ->
         assign(conn, :user, api_key)
 
-      false ->
+      _ ->
         assign(conn, :user, nil)
     end
   end
 
-  def verify_account?(api_key) do
-    mod =
-      if Mix.env() == :test do
-        Logflare.AccountCacheMock
-      else
-        Logflare.AccountCache
-      end
-
-    mod.verify_account?(api_key)
-  end
 end
