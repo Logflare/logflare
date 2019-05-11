@@ -37,7 +37,16 @@ defmodule Logflare.Users.APIIntegrationTest do
       }
 
       SRC.update_ets_table(src)
-      assert action_allowed?(action) == :ok
+
+      assert verify_api_rates_quotas(action) ==
+               {:ok,
+                %{
+                  message: nil,
+                  metrics: %{
+                    source: %{limit: 1500, remaining: 900},
+                    user: %{limit: 660, remaining: 60}
+                  }
+                }}
     end
 
     test "action_allowed?/1 returns true for api_quota of 9 and average rate of 10", %{
@@ -55,7 +64,16 @@ defmodule Logflare.Users.APIIntegrationTest do
 
       SRC.update_ets_table(src)
       SRC.get_avg_rate(source_id)
-      assert action_allowed?(action) == {:error, "User rate is over the API quota"}
+
+      assert verify_api_rates_quotas(action) ==
+               {:error,
+                %{
+                  message: "User rate is over the API quota",
+                  metrics: %{
+                    source: %{limit: 1500, remaining: 900},
+                    user: %{limit: 540, remaining: -60}
+                  }
+                }}
     end
   end
 end
