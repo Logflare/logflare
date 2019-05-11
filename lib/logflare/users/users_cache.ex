@@ -1,5 +1,5 @@
 defmodule Logflare.Users.Cache do
-  alias Logflare.Users
+  alias Logflare.{Users, User}
   @cache __MODULE__
 
   def get_by_id(id) do
@@ -9,6 +9,11 @@ defmodule Logflare.Users.Cache do
       {:commit, value} -> value
       {:ok, value} -> value
     end
+  end
+
+  @spec source_id_owned?(User.t(), String.t()) :: User.t()
+  def source_id_owned?(user, source_id) do
+    source_id in Enum.map(user.sources, & &1.token)
   end
 
   @spec find_user_by_api_key(String.t()) :: User.t()
