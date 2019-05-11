@@ -11,6 +11,20 @@ defmodule Logflare.Users.Cache do
     end
   end
 
+  @spec find_user_by_api_key(String.t()) :: User.t()
+  def find_user_by_api_key(api_key) do
+    fetch_or_commit({:api_key, [api_key]}, &Users.find_user_by_api_key/1)
+  end
+
+  def fetch_or_commit({type, args}, fun) when is_list(args) and is_atom(type) do
+    case Cachex.fetch(@cache, {type, args}, fn {_type, args} ->
+           {:commit, apply(fun, args)}
+         end) do
+      {:commit, value} -> value
+      {:ok, value} -> value
+    end
+  end
+
   def list_source_ids(id) do
     id
     |> get_by_id()
