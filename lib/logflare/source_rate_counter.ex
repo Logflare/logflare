@@ -25,7 +25,12 @@ defmodule Logflare.SourceRateCounter do
 
     field :buckets, map,
       default: %{
-        @default_bucket_width => %{queue: LQueue.new(@default_bucket_width), average_rate: 0}
+        @default_bucket_width => %{
+          queue: LQueue.new(@default_bucket_width),
+          average: 0,
+          sum: 0,
+          duration: @default_bucket_width
+        }
       }
   end
 
@@ -114,11 +119,12 @@ defmodule Logflare.SourceRateCounter do
           |> average()
           |> round()
 
-        {length,
-         %{
-           queue: new_queue,
-           average: average
-         }}
+        sum =
+          new_queue
+          |> Enum.to_list()
+          |> Enum.sum()
+
+        {length, %{bucket | queue: new_queue, average: average, sum: sum}}
       end
     end)
   end
