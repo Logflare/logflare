@@ -158,6 +158,15 @@ defmodule Logflare.SourceRateCounter do
     |> Map.get(:max_rate)
   end
 
+  @spec get_metrics(atom, atom) :: map
+  def get_metrics(source_id, bucket \\ :default) when bucket == :default do
+    source_id
+    |> get()
+    |> Map.get(:buckets)
+    |> Map.get(@default_bucket_width)
+    |> Map.drop([:queue])
+  end
+
   defp setup_ets_table(source_id) when is_atom(source_id) do
     initial = SRC.new(source_id)
 
