@@ -7,7 +7,7 @@ defmodule Logflare.Users.CacheTest do
 
   setup do
     source = %Source{token: Faker.UUID.v4() |> String.to_atom()}
-    {:ok, user} = Repo.insert(%User{sources: [source]})
+    {:ok, user} = Repo.insert(%User{sources: [source], api_key: Faker.String.base64()})
     {:ok, user: user, source: source}
   end
 
@@ -36,6 +36,12 @@ defmodule Logflare.Users.CacheTest do
                source: source.api_quota,
                user: user.api_quota
              }}
+    end
+
+    test "find_user_by_api_key/1", %{user: right_user} do
+      left_user = find_user_by_api_key(right_user.api_key)
+      assert left_user.id == right_user.id
+      assert find_user_by_api_key("nil") == nil
     end
   end
 end
