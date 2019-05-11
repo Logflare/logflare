@@ -74,7 +74,8 @@ defmodule Logflare.Mixfile do
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
       {:faker, "~> 0.12", only: :test},
-      {:ex_machina, "~> 2.3"}
+      {:ex_machina, "~> 2.3"},
+      {:iteraptor, "~> 1.8.0"}
     ]
   end
 
