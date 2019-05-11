@@ -11,7 +11,8 @@ defmodule Logflare.Sources do
   end
 
   def get_by_id(source_id) when is_atom(source_id) do
-    Repo.get_by(Source, token: source_id)
+    Source
+    |> Repo.get_by(token: source_id)
+    |> Repo.preload(:rules)
   end
-
 end

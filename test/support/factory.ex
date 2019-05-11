@@ -1,6 +1,6 @@
 defmodule Logflare.DummyFactory do
   use ExMachina.Ecto, repo: Logflare.Repo
-  alias Logflare.{User, Source}
+  alias Logflare.{User, Source, Rule}
 
   def user_factory do
     %User{
@@ -13,5 +13,9 @@ defmodule Logflare.DummyFactory do
     %Source{
       token: Faker.UUID.v4()
     }
+  end
+
+  def rule_factory do
+    %Rule{}
   end
 end
