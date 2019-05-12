@@ -5,142 +5,142 @@ defmodule LogflareWeb.Router do
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
-    plug(:accepts, ["html"])
-    plug(:fetch_session)
-    plug(:fetch_flash)
-    plug(:protect_from_forgery)
-    plug(:put_secure_browser_headers)
-    plug(LogflareWeb.Plugs.SetUser)
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_flash
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug LogflareWeb.Plugs.SetUser
   end
 
   pipeline :api do
-    plug(:accepts, ["json"])
-    plug(LogflareWeb.Plugs.SetApiUser)
+    plug :accepts, ["json"]
+    plug LogflareWeb.Plugs.SetApiUser
   end
 
   pipeline :require_api_auth do
-    plug(LogflareWeb.Plugs.VerifyApiRequest)
-    plug(LogflareWeb.Plugs.CheckSourceCountApi)
+    plug LogflareWeb.Plugs.VerifyApiRequest
+    plug LogflareWeb.Plugs.CheckSourceCountApi
     plug LogflareWeb.Plugs.RateLimiter
   end
 
   pipeline :require_auth do
-    plug(LogflareWeb.Plugs.RequireAuth)
+    plug LogflareWeb.Plugs.RequireAuth
   end
 
   pipeline :oauth_public do
-    plug(:accepts, ["json"])
-    plug(:put_secure_browser_headers)
+    plug :accepts, ["json"]
+    plug :put_secure_browser_headers
   end
 
   pipeline :check_admin do
-    plug(LogflareWeb.Plugs.CheckAdmin)
+    plug LogflareWeb.Plugs.CheckAdmin
   end
 
   scope "/" do
-    pipe_through([:api, :oauth_public])
+    pipe_through [:api, :oauth_public]
     oauth_api_routes()
   end
 
   scope "/" do
-    pipe_through([:browser, :require_auth])
+    pipe_through [:browser, :require_auth]
     oauth_routes()
   end
 
   scope "/", LogflareWeb do
     pipe_through(:browser)
-    get("/", MarketingController, :index)
-    get("/bigquery-datastudio", MarketingController, :big_query)
+    get "/", MarketingController, :index
+    get "/bigquery-datastudio", MarketingController, :big_query
   end
 
   scope "/guides", LogflareWeb do
     pipe_through(:browser)
-    get("/bigquery-setup", MarketingController, :big_query_setup)
-    get("/data-studio-setup", MarketingController, :data_studio_setup)
+    get "/bigquery-setup", MarketingController, :big_query_setup
+    get "/data-studio-setup", MarketingController, :data_studio_setup
   end
 
   scope "/", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-    get("/dashboard", SourceController, :dashboard)
+    pipe_through [:browser, :require_auth]
+    get "/dashboard", SourceController, :dashboard
   end
 
   scope "/sources", LogflareWeb do
-    pipe_through(:browser)
-    get("/public/:public_token", SourceController, :public)
-    get("/:id/unsubscribe/:token", AuthController, :unsubscribe)
-    get("/:id/unsubscribe/stranger/:token", AuthController, :unsubscribe_stranger)
+    pipe_through :browser
+    get "/public/:public_token", SourceController, :public
+    get "/:id/unsubscribe/:token", AuthController, :unsubscribe
+    get "/:id/unsubscribe/stranger/:token", AuthController, :unsubscribe_stranger
   end
 
   scope "/sources", LogflareWeb do
-    pipe_through([:browser, :require_auth])
+    pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
       post("/rules", RuleController, :create)
-      get("/rules", RuleController, :index)
+      get "/rules", RuleController, :index
       delete("/rules/:id", RuleController, :delete)
     end
 
-    get("/:id/favorite", SourceController, :favorite)
-    get("/:id/clear", SourceController, :clear_logs)
+    get "/:id/favorite", SourceController, :favorite
+    get "/:id/clear", SourceController, :clear_logs
   end
 
   scope "/account", LogflareWeb do
-    pipe_through([:browser, :require_auth])
+    pipe_through [:browser, :require_auth]
 
-    get("/edit", UserController, :edit)
+    get "/edit", UserController, :edit
     put("/edit", UserController, :update)
     delete("/", UserController, :delete)
   end
 
   scope "/admin", LogflareWeb do
-    pipe_through([:browser, :check_admin])
+    pipe_through [:browser, :check_admin]
 
-    get("/dashboard", AdminController, :dashboard)
+    get "/dashboard", AdminController, :dashboard
   end
 
   scope "/auth", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-    get("/new-api-key", AuthController, :new_api_key)
+    pipe_through [:browser, :require_auth]
+    get "/new-api-key", AuthController, :new_api_key
   end
 
   scope "/auth", LogflareWeb do
-    pipe_through(:browser)
+    pipe_through :browser
 
-    get("/login", AuthController, :login)
-    get("/logout", AuthController, :logout)
-    get("/:provider", AuthController, :request)
-    get("/:provider/callback", AuthController, :callback)
+    get "/login", AuthController, :login
+    get "/logout", AuthController, :logout
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
   end
 
   # deprecate
   scope "/api", LogflareWeb do
-    pipe_through(:api)
-    post("/cloudflare/event", CloudflareController, :event)
-    post("/v1/cloudflare/event", CloudflareControllerV1, :event)
+    pipe_through :api
+    post "/cloudflare/event", CloudflareController, :event
+    post "/v1/cloudflare/event", CloudflareControllerV1, :event
   end
 
   # deprecate
   scope "/v1", LogflareWeb do
-    pipe_through(:api)
-    post("/cloudflare/event", CloudflareControllerV1, :event)
+    pipe_through :api
+    post "/cloudflare/event", CloudflareControllerV1, :event
   end
 
   # deprecate
   scope "/api", LogflareWeb do
-    pipe_through([:api, :require_api_auth])
-    post("/logs", LogController, :create)
+    pipe_through [:api, :require_api_auth]
+    post "/logs", LogController, :create
   end
 
   # deprecate "/event" in here
   scope "/cloudflare", LogflareWeb do
-    pipe_through(:api)
-    post("/event", CloudflareController, :event)
-    post("/v1/event", CloudflareControllerV1, :event)
+    pipe_through :api
+    post "/event", CloudflareController, :event
+    post "/v1/event", CloudflareControllerV1, :event
   end
 
   scope "/logs", LogflareWeb do
-    pipe_through([:api, :require_api_auth])
-    post("/", LogController, :create)
-    post("/elixir/logger", ElixirLoggerController, :create)
+    pipe_through [:api, :require_api_auth]
+    post "/", LogController, :create
+    post "/elixir/logger", ElixirLoggerController, :create
   end
 end
