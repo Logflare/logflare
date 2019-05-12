@@ -1,6 +1,7 @@
 defmodule LogflareWeb.LogsRouteTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  alias Logflare.TableBuffer
   alias Logflare.TableManager
   import Logflare.DummyFactory
 
@@ -8,9 +9,13 @@ defmodule LogflareWeb.LogsRouteTest do
     :ok = Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     s = insert(:source, token: Faker.UUID.v4())
     u = insert(:user, api_key: Faker.String.base64(), sources: [s])
+
     Logflare.TableCounter.start_link()
     Logflare.SystemCounter.start_link()
     TableManager.start_link([s.token])
+
+    # Sleep to make sure that table manager has time to init all GenServers
+    Process.sleep(3_000)
     {:ok, user: u, sources: [s]}
   end
 
@@ -53,6 +58,15 @@ defmodule LogflareWeb.LogsRouteTest do
       conn = post_logs(conn, u, s, "log binary message", metadata)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
+    test "succeeds and puts 10 log entries in the TableBuffer", %{
+      conn: conn,
+      user: u,
+      sources: [s]
+    } do
+      post_with_index = &post_logs(conn, u, s, "log binary message #{&1}")
+      Enum.each(1..10, post_with_index)
+      assert TableBuffer.get_count(s.token) == 10
     end
   end
 
