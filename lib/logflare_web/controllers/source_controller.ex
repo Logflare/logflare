@@ -154,6 +154,8 @@ defmodule LogflareWeb.SourceController do
   def public(conn, %{"public_token" => public_token}) do
     source = Repo.get_by(Source, public_token: public_token)
 
+    explore_link = ""
+
     case source == nil do
       true ->
         conn
@@ -173,7 +175,12 @@ defmodule LogflareWeb.SourceController do
             end
           end)
 
-        render(conn, "show.html", logs: logs, source: source, public_token: public_token)
+        render(conn, "show.html",
+          logs: logs,
+          source: source,
+          public_token: public_token,
+          explore_link: explore_link
+        )
     end
   end
 
