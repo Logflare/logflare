@@ -7,6 +7,7 @@ defmodule Logflare.Users.APIIntegrationTest do
 
   use Logflare.DataCase
 
+  @moduletag integration: true
   setup do
     source_id = Faker.UUID.v4()
     source = insert(:source, token: source_id)

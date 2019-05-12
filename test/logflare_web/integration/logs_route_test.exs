@@ -2,7 +2,7 @@ defmodule LogflareWeb.LogsRouteTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.TableBuffer
-  alias Logflare.TableManager
+  @moduletag integration: true
   alias Logflare.{TableBuffer, TableManager, SourceRateCounter}
   import Logflare.DummyFactory
 
