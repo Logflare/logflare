@@ -1,6 +1,20 @@
 defmodule Logflare.Users.Cache do
   alias Logflare.{Users, User}
+  import Cachex.Spec
+  @ttl :timer.minutes(5)
+
   @cache __MODULE__
+
+  def child_spec(_) do
+    cachex_opts = [
+      expiration: expiration(default: @ttl)
+    ]
+
+    %{
+      id: :cachex_users_cache,
+      start: {Cachex, :start_link, [Users.Cache, cachex_opts]}
+    }
+  end
 
   def get_by_id(id) do
     case Cachex.fetch(@cache, id, fn id ->

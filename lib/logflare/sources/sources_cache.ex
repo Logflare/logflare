@@ -1,6 +1,20 @@
 defmodule Logflare.Sources.Cache do
   alias Logflare.{Sources}
+  import Cachex.Spec
+  @ttl :timer.minutes(5)
+
   @cache __MODULE__
+
+  def child_spec(_) do
+    cachex_opts = [
+      expiration: expiration(default: @ttl)
+    ]
+
+    %{
+      id: :cachex_sources_cache,
+      start: {Cachex, :start_link, [Sources.Cache, cachex_opts]}
+    }
+  end
 
   def get_by_id(source_id) when is_atom(source_id) do
     fetch_or_commit({:source_id, [source_id]}, &Sources.get_by_id/1)

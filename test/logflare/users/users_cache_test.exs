@@ -32,10 +32,12 @@ defmodule Logflare.Users.CacheTest do
     end
 
     test "get_api_quotas/2 returns a quota map", %{user: user, source: source} do
-      assert get_api_quotas(user.id, source.token) == {:ok, %{
-               source: source.api_quota,
-               user: user.api_quota
-             }}
+      assert get_api_quotas(user.id, source.token) ==
+               {:ok,
+                %{
+                  source: source.api_quota,
+                  user: user.api_quota
+                }}
     end
 
     test "find_user_by_api_key/1", %{user: right_user} do

@@ -6,14 +6,8 @@ defmodule Logflare.Application do
     import Supervisor.Spec
 
     children = [
-      %{
-        id: :cachex_users_cache,
-        start: {Cachex, :start_link, [Users.Cache]}
-      },
-      %{
-        id: :cachex_sources_cache,
-        start: {Cachex, :start_link, [Sources.Cache]}
-      },
+      Logflare.Users.Cache,
+      Logflare.Sources.Cache,
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, [])
     ]
