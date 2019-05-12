@@ -2,6 +2,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
   @moduledoc """
   A plug that allows or denies API action based on the API request rate rules for user/source
   """
+  alias Logflare.Users
   import Plug.Conn
 
   def init(_params) do
@@ -9,16 +10,14 @@ defmodule LogflareWeb.Plugs.RateLimiter do
 
   def call(conn, params) do
     user = conn.assigns.user
+    user = Users.Cache.find_user_by_api_key(user)
     source_token = params["source"]
     source_name = params["source_name"]
 
     result =
       users_api().verify_api_rates_quotas(%{
         user: user,
-        source: %{
-          id: source_token,
-          name: source_name
-        },
+        source_id: conn.assigns.source_id,
         type: {:api_call, :logs_post}
       })
 
