@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequest do
   use Plug.Builder
   import Phoenix.Controller
+  alias Logflare.Users
 
   require Logger
 
@@ -69,19 +70,21 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   def check_source_token(conn, _opts) do
     headers = Enum.into(conn.req_headers, %{})
     api_key = headers["x-api-key"]
-    source_id = conn.params["source"]
+    source_id = conn.params["source"] |> String.to_atom()
 
     user = Users.Cache.find_user_by_api_key(api_key)
-    if Users.Cache.source_id_owned?(user, source_id) do
-        conn
-      else
-        message = "Check your source."
 
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
+    if Users.Cache.source_id_owned?(user, source_id) do
+      conn
+      |> assign(:source_id, source_id)
+    else
+      message = "Check your source."
+
+      conn
+      |> put_status(403)
+      |> put_view(LogflareWeb.LogView)
+      |> render("index.json", message: message)
+      |> halt()
     end
   end
 
