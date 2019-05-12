@@ -1,4 +1,5 @@
 defmodule LogflareWeb.LogsRouteTest do
+  @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.TableManager
   import Logflare.DummyFactory
@@ -6,10 +7,10 @@ defmodule LogflareWeb.LogsRouteTest do
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     s = insert(:source, token: Faker.UUID.v4())
+    u = insert(:user, api_key: Faker.String.base64(), sources: [s])
     Logflare.TableCounter.start_link()
     Logflare.SystemCounter.start_link()
     TableManager.start_link([s.token])
-    u = insert(:user, api_key: Faker.String.base64(), sources: [s])
     {:ok, user: u, sources: [s]}
   end
 
@@ -41,16 +42,51 @@ defmodule LogflareWeb.LogsRouteTest do
 
       assert json_response(conn3, 403) == %{"message" => "Log entry needed."}
     end
+
+    test "succeeds with log entry and no metadata ", %{conn: conn, user: u, sources: [s]} do
+      conn = post_logs(conn, u, s, "log binary message")
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
+
+    test "succeeds with log entry and metadata ", %{conn: conn, user: u, sources: [s]} do
+      conn = post_logs(conn, u, s, "log binary message", metadata)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
   end
 
-  def post_logs(conn, user, source, log_entry) do
+  defp post_logs(conn, user, source, log_entry, metadata \\ %{}) do
     conn
     |> put_api_key_header(user.api_key)
-    |> post("/logs", %{"log_entry" => [], "source" => Atom.to_string(source.token)})
+    |> post("/logs", %{"log_entry" => log_entry, "source" => Atom.to_string(source.token),
+      "metadata" =>  metadata
+    })
   end
 
-  def put_api_key_header(conn, api_key) do
+  defp put_api_key_header(conn, api_key) do
     conn
     |> put_req_header("x-api-key", api_key)
+  end
+
+  defp metadata() do
+    %{
+      "datacenter" => "aws",
+      "ip_address" => "100.100.100.100",
+      "request_headers" => %{
+        "connection" => "close",
+        "servers" => %{
+          "blah" => "water",
+          "home" => "not home",
+          "deep_nest" => [
+            %{"more_deep_nest" => %{"a" => 1}},
+            %{"more_deep_nest2" => %{"a" => 2}}
+          ]
+        },
+        "user_agent" => "chrome"
+      },
+      "request_method" => "POST"
+    }
+
   end
 end
