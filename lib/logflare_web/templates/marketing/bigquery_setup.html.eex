@@ -1,0 +1,56 @@
+<div class="no-subhead">
+  <div class="secondary-header">
+    <center>
+      <h2>Setup a BigQuery Backend</h2>
+      <p class="lead">The easiest ETL pipeline ever.</p>
+    </center>
+  </div>
+</div>
+
+<div class="homepage-container mx-auto">
+  <div class="value">
+    <p>
+      <%= link "Dead Simple Setup", to: "#simple-setup" %> >
+      <%= link "Navigate to IAM", to: "#nav-to-iam" %> >
+      <%= link "Add a Member", to: "#add-member" %> >
+      <%= link "Add Our Service Account", to: "#add-service-account" %> >
+      <%= link "Set the Project ID", to: "#set-project-id" %> >
+      <%= link "Update Source TTL", to: "#update-ttl" %> >
+      <%= link "Query BigQuery", to: "#query" %>
+    </p>
+    <h3 id="simple-setup">Dead Simple Setup</h3>
+    <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner permissions.</p>
+    <h3 id="nav-to-iam">Navigate to IAM</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/navigate-to-iam.png">
+    <h3 id="add-member">Add a Member</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/add-a-member.png">
+    <h3 id="add-service-account">Add Our Service Account with BigQuery Data Owner Permissions</h3>
+    <p>Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/add-service-account-with-permissions.png">
+    <h3 id="set-project-id">Set the Project ID in Logflare</h3>
+    <p>Find your Google Cloud Platform project ID on <%= link "your GCP dashboard", to: "https://console.cloud.google.com/home/dashboard" %>.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/get-project-id.png">
+    <p>Navigate to <%= link "your account preferences", to: Routes.user_path(@conn, :edit) %> and add your GCP project ID.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/set-project-id.png">
+    <h3 id="update-ttl">Update the Source TTL</h3>
+    <p>Edit a source and set the TTL.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/set-source-ttl.png">
+    <h3 id="query">Query BigQuery</h3>
+    <p>You can query any Logflare managed BigQuery table directly if you need to.</p>
+    <p>BigQuery has great support for nested records and Standard SQL both of wich we take advantage of. To query inside a nested record you must <code>UNNEST</code> it like so:</p>
+    <pre>
+      <code>
+    SELECT timestamp, req.url, h.cf_cache_status
+    FROM `your_project_id.your_dataset_name.your_table_name`,
+    UNNEST(metadata) m,
+    UNNEST(m.request) req,
+    UNNEST(m.response) resp,
+    UNNEST(resp.headers) h
+    WHERE DATE(_PARTITIONTIME) = "2019-05-09"
+    ORDER BY timestamp DESC
+    LIMIT 10
+      </code>
+    </pre>
+  </div>
+  <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+</div>

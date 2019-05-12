@@ -1,0 +1,79 @@
+<div class="no-subhead">
+  <div class="secondary-header">
+    <center>
+      <h2>Using Logflare with Google Data Studio</h2>
+      <p class="lead">Make dashboards and get insights out of your event data.</p>
+    </center>
+  </div>
+</div>
+
+<div class="homepage-container mx-auto">
+  <div class="value">
+    <p>
+      <%= link "Automatically Shared", to: "#auto-shared" %> >
+      <%= link "Open Data Studio and Add a Source", to: "#open-ds" %> >
+      <%= link "Select the BigQuery Connector", to: "#select-connector" %> >
+      <%= link "Find your Logflare Source", to: "#find-logflare-source" %> >
+      <%= link "Select Partitioned Table Time Dimension", to: "#partitioned-table" %> >
+      <%= link "Connect", to: "#connect" %> >
+      <%= link "Set Timestamp Type to Date Hour", to: "#datehour-timestamp" %> >
+      <%= link "Create Report & Configure Settings", to: "#create-report-settings" %> >
+      <%= link "Select Report Data Source", to: "#select-data-source" %> >
+      <%= link "Set Default Report Date Range", to: "#set-default-date-range" %> >
+      <%= link "Create Your First Chart", to: "#create-first-chart" %> >
+      <%= link "Learn More", to: "#learn-more" %>
+    </p>
+    <h3 id="auto-shared">Automatically Shared</h3>
+    <p>When you log into Logflare with your Google account we automatically give you access to the underlying Big Query tables associated with all your sources.</p>
+    <p>Even if you've never used Data Studio before it's fairly painless to get up and going quickly.</p>
+    <h3 id="open-ds">Open Data Studio and Add a Data Source</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/add-data-source.png">
+    <h3 id="select-connector">Select the BigQuery Connector</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/select-bigquery-connector.png">
+    <h3 id="find-logflare-source">Find Your Logflare Source</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/find-logflare-source.png">
+    <h3 id="partitioned-table">Select Partitioned Table Time Dimension</h3>
+    <p>Keeping this selected will make your reports faster and let you effectively use the date range picker in a report.</p>
+    <p>If you just started sending data to your Logflare source, you may not see anything in Data Studio with this selected. In this case it's best to wait 15 minutes so you have some data to play with in Data Studio.</p>
+    <p>Keeping this selected will also help with ongoing BigQuery costs associated with queries.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/select-partition-option.png">
+    <h5>What are Partitioned Tables Exactly?</h5>
+    <p>Partitioned tables are very cool and provide a lot of benefits when you're using the BigQuery platform and Data Studio.</p>
+    <ul>
+      <li>Data storage is half price when data in a partitioned table is older than 90 days. When a table hasn't been modified in 90 days you only get charged half the normal rate. Because when you partition a table, it separates that table into many different underlying tables, you automatically benefit from this discount.</li>
+      <li>Potentially large savings on query costs. When you partition a table you can limit your queries by the partition and BigQuery will only scan the data in the selected column / parition combination. This prevents BigQuery from scanning everything for the entire column, which saves money and makes your queries more responsive.</li>
+      <li>Data Studio's cache is highly optimized for time based paritioned tables so you automatically get these query optimizations when you use Data Studio and BigQuery.</li>
+    </ul>
+    <p>The only caveat is data in the streaming buffer isn't returned with paritioned queries by default and Data Studio doesn't include streaming buffered data at all when you opt for using partitioned table optimized queries. If you're building your own system on top of BigQuery you can query the streaming buffer direclty with a query like this as data in the streaming buffer has a NULL value for the _PARTITIONTIME column (<%= link "source", to: "https://stackoverflow.com/questions/41864257/how-to-query-for-data-in-streaming-buffer-only-in-bigquery" %>):</p>
+    <pre>
+      <code>
+    SELECT
+      fields
+    FROM
+      `dataset.partitioned_table_name`
+    WHERE
+      _PARTITIONTIME IS NULL
+      </code>
+    </pre>
+    <%= link "Learn more about BigQuery and partitioned tables", to: "https://cloud.google.com/bigquery/docs/partitioned-tables", class: "btn btn-primary", role: "button" %>
+    <h3 id="connect">Connect</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/connect.png">
+    <h3 id="datehour-timestamp">Set Timestamp Type to Date Hour</h3>
+    <p>This is optional, but lets you see more fine grained fluctuations in your data.</p>
+    <p>If you'd like to mix hourly and daily data in your reports you can <code>duplicate</code> that field and set one to <code>Date Hour</code> and keep one as <code>Date</code>.</p>
+    <img class="img-fluid guide-img" src="/images/marketing/set-timestamp-to-date-hour.png">
+    <h3 id="create-report-settings">Create Report & Configure Settings</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/create-report.png">
+    <img class="img-fluid guide-img" src="/images/marketing/select-report-settings.png">
+    <h3 id="select-data-source">Select Report Data Source</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/select-data-source.png">
+    <h3 id="set-default-date-range">Set Default Report Date Range</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/select-data-source-and-default-date-range.png">
+    <h3 id="create-first-chart">Create Your First Chart</h3>
+    <img class="img-fluid guide-img" src="/images/marketing/add-chart.png">
+    <h3 id="learn-more">Learn More</h3>
+    <p>Google Data Studio has extensive documenation and lots of tutorials where you can learn more.</p>
+    <%= link "Data Studio docs", to: "https://support.google.com/datastudio", class: "btn btn-primary", role: "button" %>
+  </div>
+  <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+</div>

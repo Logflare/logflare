@@ -1,0 +1,24 @@
+<div class="no-subhead">
+  <div class="secondary-header">
+    <center>
+      <h2>Logflare + BigQuery + Data Studio = ❤️</h2>
+      <p class="lead">The easiest way to get insights out of event data.</p>
+    </center>
+  </div>
+</div>
+
+<div class="homepage-container mx-auto">
+  <div class="value">
+    <h3>Data Pipelines for Everyone</h3>
+    <h3>Bring Your own Backend™</h3>
+    <h3>Dyanamically Managed Schema</h3>
+    <h3>Compared to the Usual ELK Based Solution</h3>
+    <h3>Streaming or Batched Inserts</h3>
+    <h3>Dead Simple Setup</h3>
+    <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner permissions.</p>
+    <%= link "Read the guide", to: Routes.marketing_path(@conn, :big_query_setup), class: "btn btn-primary", role: "button" %>
+    <h3>Example Report</h3>
+    <iframe width="600" height="338" src="https://datastudio.google.com/embed/reporting/13RuctakHg44iyk3pZ65ojUkJrK7UOlpv/page/paQn" frameborder="0" style="border:0" allowfullscreen></iframe>
+  </div>
+  <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+</div>
