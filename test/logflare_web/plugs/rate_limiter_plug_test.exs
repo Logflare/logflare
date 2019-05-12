@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Plugs.RateLimiterTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  alias Logflare.User
   alias LogflareWeb.Plugs.RateLimiter
 
   @verify_true {:ok,
@@ -51,7 +52,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
       conn =
         build_conn(:get, "/api")
-        |> Plug.Conn.assign(:user, %{id: 1})
+        |> Plug.Conn.assign(:user, %User{id: 1})
+        |> Plug.Conn.assign(:source_id, @existing_source_id)
         |> RateLimiter.call(@params)
 
       assert {"x-rate-limit-user_limit", "100"} in conn.resp_headers
@@ -67,7 +69,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
       conn =
         build_conn(:get, "/api")
-        |> Plug.Conn.assign(:user, %{id: 1})
+        |> Plug.Conn.assign(:user, %User{id: 1})
+        |> Plug.Conn.assign(:source_id, @existing_source_id)
         |> RateLimiter.call(@params)
 
       assert {"x-rate-limit-user_limit", "100"} in conn.resp_headers
