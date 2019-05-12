@@ -37,7 +37,8 @@ defmodule Logflare.Users.Cache do
     |> Enum.map(& &1.token)
   end
 
-  @spec get_api_quotas(integer, atom) :: {:ok, %{user: integer, source: integer}} | {:error, term}
+  @spec get_api_quotas(integer, atom) ::
+          {:ok, %{user: integer, source: integer}} | {:error, :user_is_nil | :source_is_nil}
   def get_api_quotas(user_id, source_id) when is_atom(source_id) do
     user = get_by_id(user_id)
 

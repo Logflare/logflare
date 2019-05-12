@@ -15,7 +15,7 @@ defmodule Logflare.Users.API do
 
   @type ok_err_tup :: {:ok, api_rates_quotas} | {:error, api_rates_quotas}
 
-  @callback action_allowed?(map) :: ok_err_tup
+  @callback verify_api_rates_quotas(map) :: ok_err_tup
 
   alias Logflare.{Users, Sources}
   @api_call_logs {:api_call, :logs_post}
