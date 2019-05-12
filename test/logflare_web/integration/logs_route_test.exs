@@ -3,6 +3,7 @@ defmodule LogflareWeb.LogsRouteTest do
   use LogflareWeb.ConnCase
   alias Logflare.TableBuffer
   alias Logflare.TableManager
+  alias Logflare.{TableBuffer, TableManager, SourceRateCounter}
   import Logflare.DummyFactory
 
   setup do
@@ -67,14 +68,21 @@ defmodule LogflareWeb.LogsRouteTest do
       post_with_index = &post_logs(conn, u, s, "log binary message #{&1}")
       Enum.each(1..10, post_with_index)
       assert TableBuffer.get_count(s.token) == 10
+      Process.sleep(1_000)
+      # sleep needed by SourceRateCounter to send itself
+      # a message to get and calculate metrics
+      assert SourceRateCounter.get_metrics(s.token) == %{average: 5, duration: 60, sum: 10}
+    end
     end
   end
 
-  defp post_logs(conn, user, source, log_entry, metadata \\ %{}) do
+  defp post_logs(conn, user, source, log_entry, metadata \\ nil) do
     conn
     |> put_api_key_header(user.api_key)
-    |> post("/logs", %{"log_entry" => log_entry, "source" => Atom.to_string(source.token),
-      "metadata" =>  metadata
+    |> post("/logs", %{
+      "log_entry" => log_entry,
+      "source" => Atom.to_string(source.token),
+      "metadata" => metadata
     })
   end
 
