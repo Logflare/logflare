@@ -21,7 +21,7 @@ defmodule LogflareWeb.Plugs.SetApiUserTest do
   end
 
   describe "Plugs.SetApiUser" do
-    test "sets api user correctly", users: %{} do
+    test "sets api user correctly", %{users: _} do
       conn =
         build_conn(:post, "/")
         |> put_req_header("x-api-key", @api_key)
