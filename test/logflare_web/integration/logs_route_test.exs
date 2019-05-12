@@ -22,19 +22,35 @@ defmodule LogflareWeb.LogsRouteTest do
     test "fails without source or source_name", %{conn: conn, user: user} do
       conn =
         conn
-        |> put_req_header("x-api-key", user.api_key)
+        |> put_api_key_header(user.api_key)
         |> post("/logs", %{"log_entry" => %{}})
 
       assert json_response(conn, 403) == %{"message" => "Source or source_name needed."}
     end
 
-    test "succeeds with api_key and source", %{conn: conn, user: user, sources: [s]} do
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> post("/logs", %{"log_entry" => %{}, "source" => s.token})
+    test "fails with an empty-ish log_entry", %{conn: conn, user: u, sources: [s]} do
+      conn1 = post_logs(conn, u, s, %{})
 
-      assert json_response(conn, 200) == %{}
+      assert json_response(conn1, 403) == %{"message" => "Log entry needed."}
+
+      conn2 = post_logs(conn, u, s, nil)
+
+      assert json_response(conn2, 403) == %{"message" => "Log entry needed."}
+
+      conn3 = post_logs(conn, u, s, [])
+
+      assert json_response(conn3, 403) == %{"message" => "Log entry needed."}
     end
+  end
+
+  def post_logs(conn, user, source, log_entry) do
+    conn
+    |> put_api_key_header(user.api_key)
+    |> post("/logs", %{"log_entry" => [], "source" => Atom.to_string(source.token)})
+  end
+
+  def put_api_key_header(conn, api_key) do
+    conn
+    |> put_req_header("x-api-key", api_key)
   end
 end
