@@ -36,7 +36,7 @@ defmodule LogflareWeb.SourceController do
 
     sources =
       for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.load(source.token)
+        {:ok, token} = source.token
 
         rate = Delimit.number_to_delimited(SourceData.get_rate(source))
         timestamp = SourceData.get_latest_date(source)
@@ -142,7 +142,7 @@ defmodule LogflareWeb.SourceController do
         |> redirect(to: Routes.marketing_path(conn, :index))
 
       false ->
-        table_id = String.to_atom(source.token)
+        table_id = source.token
 
         logs =
           Enum.map(SourceData.get_logs(table_id), fn log ->
