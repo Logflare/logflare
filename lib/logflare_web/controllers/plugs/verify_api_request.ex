@@ -8,11 +8,11 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   alias Logflare.AccountCache
   alias Logflare.Google.BigQuery.EventUtils.Validator
 
-  plug(:check_user)
-  plug(:check_log_entry)
-  plug(:check_source_and_name)
-  plug(:check_source_token)
-  plug(:validate_metadata)
+  plug :check_user
+  plug :check_source_and_name
+  plug :check_source_token
+  plug :check_log_entry
+  plug :validate_metadata
 
   def check_user(conn, _opts) do
     case conn.assigns.user do
@@ -33,18 +33,16 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   def check_log_entry(conn, _opts) do
     log_entry = conn.params["log_entry"] || conn.params["batch"]
 
-    case log_entry == nil do
-      true ->
-        message = "Log entry needed."
+    if is_nil(log_entry) || log_entry in [%{}, []] do
+      message = "Log entry needed."
 
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
-      false ->
-        conn
+      conn
+      |> put_status(403)
+      |> put_view(LogflareWeb.LogView)
+      |> render("index.json", message: message)
+      |> halt()
+    else
+      conn
     end
   end
 
