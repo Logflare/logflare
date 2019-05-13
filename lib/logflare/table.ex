@@ -143,11 +143,10 @@ defmodule Logflare.Table do
   defp restore_table(source_id, bigquery_project_id) when is_atom(source_id) do
     Logger.info("ETS loaded table: #{source_id}")
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
-    ets_count = SourceData.get_ets_count(source_id)
     TableCounter.create(source_id)
-    TableCounter.incriment_ets_count(source_id, ets_count)
+    TableCounter.incriment_ets_count(source_id, 0)
     TableCounter.incriment_total_count(source_id, log_count)
-    SourceRateCounter.start_link(source_id, ets_count)
+    SourceRateCounter.start_link(source_id, 0)
   end
 
   defp fresh_table(source_id, bigquery_project_id) when is_atom(source_id) do
