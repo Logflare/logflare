@@ -18,7 +18,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
     result =
       verify_api_rates_quotas(%{
         user: user,
-        source_id: conn.assigns.source_id,
+        source_id: conn.assigns.source.token,
         type: {:api_call, :logs_post}
       })
 
