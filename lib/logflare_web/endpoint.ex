@@ -18,11 +18,11 @@ defmodule LogflareWeb.Endpoint do
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
     socket("/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket)
-    plug(Phoenix.LiveReloader)
-    plug(Phoenix.CodeReloader)
+    plug Phoenix.LiveReloader
+    plug Phoenix.CodeReloader
   end
 
-  plug(Plug.Logger)
+  plug Plug.Logger
 
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
@@ -30,8 +30,8 @@ defmodule LogflareWeb.Endpoint do
     json_decoder: Jason
   )
 
-  plug(Plug.MethodOverride)
-  plug(Plug.Head)
+  plug Plug.MethodOverride
+  plug Plug.Head
 
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
@@ -42,7 +42,7 @@ defmodule LogflareWeb.Endpoint do
     signing_salt: "INPMyhPE"
   )
 
-  plug(LogflareWeb.Router)
+  plug LogflareWeb.Router
 
   @doc """
   Callback invoked for dynamically configuring the endpoint.

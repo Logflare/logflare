@@ -2,7 +2,7 @@ defmodule LogflareWeb.AuthController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
-  plug(Ueberauth)
+  plug Ueberauth
 
   alias Logflare.User
   alias Logflare.Repo
