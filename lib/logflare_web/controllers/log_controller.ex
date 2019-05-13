@@ -36,7 +36,6 @@ defmodule LogflareWeb.LogController do
           source_name = conn.params["source_name"]
 
           lookup_or_create_source(api_key, source_name)
-          |> String.to_atom()
 
         false ->
           String.to_atom(conn.params["source"])
