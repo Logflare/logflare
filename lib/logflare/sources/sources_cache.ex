@@ -1,7 +1,7 @@
 defmodule Logflare.Sources.Cache do
   alias Logflare.{Sources}
   import Cachex.Spec
-  @ttl :timer.minutes(5)
+  @ttl 500
 
   @cache __MODULE__
 
