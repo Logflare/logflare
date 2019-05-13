@@ -20,6 +20,10 @@ defmodule Logflare.Sources.Cache do
     fetch_or_commit({:source_id, [source_id]}, &Sources.get_by_id/1)
   end
 
+  def get_by_name(source_name) do
+    fetch_or_commit({:source_name, [source_name]}, &Sources.get_by_name/1)
+  end
+
   def fetch_or_commit({type, args}, fun) when is_list(args) and is_atom(type) do
     case Cachex.fetch(@cache, {type, args}, fn {_type, args} ->
            {:commit, apply(fun, args)}
