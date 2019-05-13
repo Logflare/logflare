@@ -3,6 +3,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   use LogflareWeb.ConnCase
   alias Logflare.User
   alias LogflareWeb.Plugs.RateLimiter
+  import Logflare.DummyFactory
 
   @verify_true {:ok,
                 %{
@@ -36,48 +37,49 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
   import Mox
 
-  @existing_source_id :dummy_source_id
-  @params %{"source" => Atom.to_string(@existing_atom)}
-
   setup :verify_on_exit!
 
-  setup_all do
-    Mox.defmock(Logflare.Users.APIMock, for: Logflare.Users.API)
-    :ok
+  setup do
+    s1 = insert(:source, token: Faker.UUID.v4())
+    s2 = insert(:source, token: Faker.UUID.v4())
+    u1 = insert(:user, sources: [s1], api_key: "dummy_key", api_quota: 5)
+    u2 = insert(:user, sources: [s2], api_key: "other_dummy_key", api_quota: 0)
+    {:ok, _} = Logflare.SourceRateCounter.start_link(s1.token, 0)
+    {:ok, _} = Logflare.SourceRateCounter.start_link(s2.token, 0)
+    {:ok, users: [u1, u2], sources: [s1, s2]}
   end
 
   describe "rate limiter plug works correctly" do
-    test "doesn't halt when POST logs action is allowed" do
-      expect(Logflare.Users.APIMock, :verify_api_rates_quotas, fn _ -> @verify_true end)
-
+    test "doesn't halt when POST logs action is allowed", %{users: [u | _], sources: [s, _]} do
       conn =
         build_conn(:get, "/api")
-        |> Plug.Conn.assign(:user, %User{id: 1})
-        |> Plug.Conn.assign(:source_id, @existing_source_id)
+        |> assign(:user, u)
+        |> assign(:source_id, s.token)
         |> RateLimiter.call(@params)
 
-      assert {"x-rate-limit-user_limit", "100"} in conn.resp_headers
-      assert {"x-rate-limit-user_remaining", "50"} in conn.resp_headers
-      assert {"x-rate-limit-source_limit", "100"} in conn.resp_headers
-      assert {"x-rate-limit-source_remaining", "50"} in conn.resp_headers
+      assert {"x-rate-limit-user_limit", "300"} in conn.resp_headers
+      assert {"x-rate-limit-user_remaining", "300"} in conn.resp_headers
+      assert {"x-rate-limit-source_limit", "1500"} in conn.resp_headers
+      assert {"x-rate-limit-source_remaining", "1500"} in conn.resp_headers
       assert conn.status == nil
       assert conn.halted == false
     end
 
-    test "halts when POST logs action is not allowed" do
-      expect(Logflare.Users.APIMock, :verify_api_rates_quotas, fn _ -> @verify_false end)
-
+    test "halts when POST logs action is not allowed", %{users: [_, u], sources: [_, s]} do
       conn =
         build_conn(:get, "/api")
-        |> Plug.Conn.assign(:user, %User{id: 1})
-        |> Plug.Conn.assign(:source_id, @existing_source_id)
+        |> Plug.Conn.assign(:user, u)
+        |> Plug.Conn.assign(:source_id, s.token)
         |> RateLimiter.call(@params)
 
-      assert {"x-rate-limit-user_limit", "100"} in conn.resp_headers
-      assert {"x-rate-limit-user_remaining", "-1"} in conn.resp_headers
-      assert {"x-rate-limit-source_limit", "100"} in conn.resp_headers
-      assert {"x-rate-limit-source_remaining", "20"} in conn.resp_headers
-      assert conn.resp_body == "ERR"
+      assert {"x-rate-limit-user_limit", "0"} in conn.resp_headers
+      assert {"x-rate-limit-user_remaining", "0"} in conn.resp_headers
+      assert {"x-rate-limit-source_limit", "1500"} in conn.resp_headers
+      assert {"x-rate-limit-source_remaining", "1500"} in conn.resp_headers
+
+      assert conn.resp_body ==
+               "User rate is over the API quota. Email support@logflare.app to increase your rate limit."
+
       assert conn.status == 429
       assert conn.halted == true
     end

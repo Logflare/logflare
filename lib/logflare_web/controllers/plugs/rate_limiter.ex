@@ -16,7 +16,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
       end
 
     result =
-      users_api().verify_api_rates_quotas(%{
+      verify_api_rates_quotas(%{
         user: user,
         source_id: conn.assigns.source_id,
         type: {:api_call, :logs_post}
@@ -45,11 +45,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
     |> put_resp_header("x-rate-limit-source_remaining", metrics.source.remaining)
   end
 
-  def users_api do
-    if Mix.env() == :test do
-      Logflare.Users.APIMock
-    else
-      Logflare.Users.API
-    end
+  def verify_api_rates_quotas(action) do
+    Logflare.Users.API.verify_api_rates_quotas(action)
   end
 end
