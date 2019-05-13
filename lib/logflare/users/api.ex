@@ -43,10 +43,10 @@ defmodule Logflare.Users.API do
     {status, message} =
       cond do
         source_remaining <= 0 ->
-          {:error, "Source rate is over the API quota"}
+          {:error, @source_rate_message}
 
         user_remaining <= 0 ->
-          {:error, "User rate is over the API quota"}
+          {:error, @user_rate_message}
 
         source_remaining > 0 and user_remaining > 0 ->
           {:ok, nil}

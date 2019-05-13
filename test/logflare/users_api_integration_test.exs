@@ -69,7 +69,8 @@ defmodule Logflare.Users.APIIntegrationTest do
       assert verify_api_rates_quotas(action) ==
                {:error,
                 %{
-                  message: "User rate is over the API quota",
+                  message:
+                    "User rate is over the API quota. Email support@logflare.app to increase your rate limit.",
                   metrics: %{
                     source: %{limit: 1500, remaining: 900},
                     user: %{limit: 540, remaining: -60}
