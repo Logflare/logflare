@@ -13,6 +13,9 @@ defmodule Logflare.Users.API do
           }
         }
 
+  @source_rate_message "Source rate is over the API quota. Email support@logflare.app to increase your rate limit."
+  @user_rate_message "User rate is over the API quota. Email support@logflare.app to increase your rate limit."
+
   @type ok_err_tup :: {:ok, api_rates_quotas} | {:error, api_rates_quotas}
 
   @callback verify_api_rates_quotas(map) :: ok_err_tup
