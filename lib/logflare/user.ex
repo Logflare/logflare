@@ -1,7 +1,7 @@
 defmodule Logflare.User do
   use Ecto.Schema
   import Ecto.Changeset
-  @default_user_api_quota 1000
+  @default_user_api_quota 125
 
   alias Logflare.Google.BigQuery
 

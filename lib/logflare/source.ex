@@ -1,7 +1,7 @@
 defmodule Logflare.Source do
   use Ecto.Schema
   import Ecto.Changeset
-  @default_source_api_quota 25
+  @default_source_api_quota 5
 
   schema "sources" do
     field :name, :string
