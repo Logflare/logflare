@@ -1,5 +1,6 @@
 defmodule Logflare.SourceRateCounterTest do
   alias Logflare.SourceRateCounter, as: SRC
+  alias Logflare.TableCounter
   import SRC
   use ExUnit.Case
 
@@ -7,26 +8,20 @@ defmodule Logflare.SourceRateCounterTest do
 
   setup :verify_on_exit!
 
-  setup_all do
-    Mox.defmock(Logflare.TableCounterMock, for: Logflare.TableCounter)
-
-    :ok
-  end
-
   setup do
     source_id = :some_non_existing_table
 
     state = %{}
-    {:ok, table_counter_agent} = Agent.start_link(fn -> 0 end)
 
+    TableCounter.start_link()
     SRC.setup_ets_table(source_id)
 
-    {:ok, source_id: source_id, agent: table_counter_agent}
+    {:ok, source_id: source_id}
   end
 
   describe "source_id rate counter" do
     test "init and handle_info(:put_rate, state)/2", %{source_id: source_id} do
-      expect(Logflare.TableCounterMock, :get_inserts, fn _ -> {:ok, 10} end)
+      TableCounter.incriment_ets_count(source_id, 10)
       {:noreply, sid} = SRC.handle_info(:put_rate, source_id)
 
       assert sid == source_id
@@ -35,12 +30,14 @@ defmodule Logflare.SourceRateCounterTest do
 
       assert new_state == %Logflare.SourceRateCounter{
                begin_time: new_state.begin_time,
-               buckets: %{60 => %{
-                 sum: 10,
-                 duration: 60,
-                 average: 10,
-                  queue: new_state.buckets[60].queue
-                 }},
+               buckets: %{
+                 60 => %{
+                   sum: 10,
+                   duration: 60,
+                   average: 10,
+                   queue: new_state.buckets[60].queue
+                 }
+               },
                count: 10,
                last_rate: 10,
                max_rate: 10,
@@ -49,10 +46,7 @@ defmodule Logflare.SourceRateCounterTest do
     end
 
     test "get_* functions", %{source_id: source_id} do
-      expect(Logflare.TableCounterMock, :get_inserts, 1, fn _table ->
-        {:ok, 5}
-      end)
-
+      TableCounter.incriment_ets_count(source_id, 5)
       _ = SRC.handle_info(:put_rate, source_id)
       assert SRC.get_rate(source_id) == 5
       assert SRC.get_avg_rate(source_id) == 5

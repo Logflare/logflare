@@ -56,7 +56,7 @@ defmodule Logflare.SourceRateCounter do
   def handle_info(:put_rate, source_id) when is_atom(source_id) do
     put_current_rate()
 
-    {:ok, new_count} = get_new_insert_count(source_id)
+    {:ok, new_count} = get_insert_count(source_id)
     state = get(source_id)
 
     %SRC{} = state = update_state(state, new_count)
@@ -69,10 +69,6 @@ defmodule Logflare.SourceRateCounter do
 
   def new(source_id) when is_atom(source_id) do
     %SRC{begin_time: System.monotonic_time(), source_id: source_id}
-  end
-
-  def get_new_insert_count(source_id) when is_atom(source_id) do
-    table_counter().get_inserts(source_id)
   end
 
   def update_state(%SRC{} = state, new_count) do
@@ -161,7 +157,7 @@ defmodule Logflare.SourceRateCounter do
   @spec get_metrics(atom, atom) :: map
   def get_metrics(source_id, bucket \\ :default) when bucket == :default do
     source_id
-    |> get()
+    |> get_data_from_ets()
     |> Map.get(:buckets)
     |> Map.get(@default_bucket_width)
     |> Map.drop([:queue])
@@ -176,6 +172,15 @@ defmodule Logflare.SourceRateCounter do
     end
 
     insert_to_ets_table(source_id, initial)
+  end
+
+  def get_data_from_ets(source_id) do
+    if ets_table_is_undefined?() do
+      {:error, "ETS table #{@ets_table_name} is undefined"}
+    else
+      data = :ets.lookup(@ets_table_name, source_id)
+      data[source_id]
+    end
   end
 
   def ets_table_is_undefined?() do
@@ -235,12 +240,9 @@ defmodule Logflare.SourceRateCounter do
     end
   end
 
-  def table_counter do
-    if Mix.env() == :test do
-      Logflare.TableCounterMock
-    else
-      Logflare.TableCounter
-    end
+  @spec get_insert_count(atom) :: non_neg_integer()
+  def get_insert_count(source_id) when is_atom(source_id) do
+    Logflare.TableCounter.get_inserts(source_id)
   end
 
   def average(xs) when is_list(xs) do
