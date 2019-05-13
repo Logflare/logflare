@@ -22,8 +22,10 @@ defmodule Logflare.Application do
       supervisor(Logflare.TableManager, [])
     ]
 
+    env = Application.get_env(:logflare, :env)
+
     children =
-      if Mix.env() == :test do
+      if env == :test do
         children
       else
         children ++ dev_prod_children

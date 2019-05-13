@@ -72,6 +72,7 @@ config :logflare, Logflare.Repo,
   prepare: :unnamed,
   timeout: 30_000
 
+config :logflare, env: :prod
 config :logflare, Logflare.Google,
   dataset_id_append: "_prod",
   project_number: "1074203751359",

@@ -9,6 +9,7 @@ config :logflare, LogflareWeb.Endpoint,
 # Print only warnings and errors during test
 config :logger, level: :warn
 
+config :logflare, env: :test
 # Configure your database
 config :logflare, Logflare.Repo,
   #  adapter: Ecto.Adapters.Postgres,
