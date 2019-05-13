@@ -5,12 +5,11 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
 
   require Logger
 
-  alias Logflare.AccountCache
+  alias Logflare.Sources
   alias Logflare.Google.BigQuery.EventUtils.Validator
 
   plug :check_user
-  plug :check_source_and_name
-  plug :check_source_token
+  plug :check_source_token_and_name
   plug :check_log_entry
   plug :validate_metadata
 
@@ -46,12 +45,18 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  def check_source_and_name(conn, _opts) do
-    source = conn.params["source"]
+  def check_source_token_and_name(conn, _opts) do
+    source_token = conn.params["source"]
     source_name = conn.params["source_name"]
 
-    case [source, source_name] do
-      [nil, nil] ->
+    headers = Enum.into(conn.req_headers, %{})
+    api_key = headers["x-api-key"]
+
+    user = Users.Cache.find_user_by_api_key(api_key)
+    sources_strings = Enum.map(user.sources, &Atom.to_string(&1.token))
+
+    cond do
+      is_nil(source_token) and is_nil(source_name) ->
         message = "Source or source_name needed."
 
         conn
@@ -60,29 +65,39 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         |> render("index.json", message: message)
         |> halt()
 
-      _ ->
+      source_token in sources_strings ->
+        source =
+          source_token
+          |> String.to_existing_atom()
+          |> Sources.Cache.get_by_id()
+
         conn
-    end
-  end
+        |> assign(:source, source)
 
-  def check_source_token(conn, _opts) do
-    headers = Enum.into(conn.req_headers, %{})
-    api_key = headers["x-api-key"]
-    source_id = conn.params["source"] |> String.to_atom()
+      source_name ->
+        source = Sources.Cache.get_by_name(source_name)
 
-    user = Users.Cache.find_user_by_api_key(api_key)
+        if Atom.to_string(source.token) in sources_strings do
+          conn
+          |> assign(:source, source)
+        else
+          message = "Source #{source.token} is not owned by this user."
 
-    if Users.Cache.source_id_owned?(user, source_id) do
-      conn
-      |> assign(:source_id, source_id)
-    else
-      message = "Check your source."
+          conn
+          |> put_status(403)
+          |> put_view(LogflareWeb.LogView)
+          |> render("index.json", message: message)
+          |> halt()
+        end
 
-      conn
-      |> put_status(403)
-      |> put_view(LogflareWeb.LogView)
-      |> render("index.json", message: message)
-      |> halt()
+      true ->
+        message = "Source is not owned by this user."
+
+        conn
+        |> put_status(403)
+        |> put_view(LogflareWeb.LogView)
+        |> render("index.json", message: message)
+        |> halt()
     end
   end
 

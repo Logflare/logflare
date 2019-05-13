@@ -54,7 +54,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
       conn =
         build_conn(:get, "/api")
         |> assign(:user, u)
-        |> assign(:source_id, s.token)
+        |> assign(:source, s)
         |> RateLimiter.call(@params)
 
       assert {"x-rate-limit-user_limit", "300"} in conn.resp_headers
@@ -69,7 +69,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
       conn =
         build_conn(:get, "/api")
         |> Plug.Conn.assign(:user, u)
-        |> Plug.Conn.assign(:source_id, s.token)
+        |> Plug.Conn.assign(:source, s)
         |> RateLimiter.call(@params)
 
       assert {"x-rate-limit-user_limit", "0"} in conn.resp_headers

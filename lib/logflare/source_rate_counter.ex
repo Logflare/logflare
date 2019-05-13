@@ -157,7 +157,7 @@ defmodule Logflare.SourceRateCounter do
   end
 
   @spec get_metrics(atom, atom) :: map
-  def get_metrics(source_id, bucket \\ :default) when bucket == :default do
+  def get_metrics(source_id, bucket \\ :default) when bucket == :default and is_atom(source_id) do
     source_id
     |> get_data_from_ets()
     |> Map.get(:buckets)
