@@ -4,7 +4,7 @@ defmodule Logflare.SourceData do
   alias Logflare.TableCounter
   alias Logflare.Google.BigQuery
 
-  @spec get_log_count(:atom, String.t()) :: integer()
+  @spec get_log_count(atom, String.t()) :: non_neg_integer()
   def get_log_count(token, bigquery_project_id) do
     case BigQuery.get_table(token, bigquery_project_id) do
       {:ok, table_info} ->
@@ -32,7 +32,9 @@ defmodule Logflare.SourceData do
     end
   end
 
-  def get_ets_count(token) do
+
+  @spec get_ets_count(atom) :: non_neg_integer
+  def get_ets_count(token) when is_atom(token) do
     log_table_info = :ets.info(token)
 
     case log_table_info do
@@ -44,113 +46,117 @@ defmodule Logflare.SourceData do
     end
   end
 
-  #
-  #   # def get_total_inserts(token) do
-  #   #   log_table_info = :ets.info(String.to_atom(token))
-  #   #
-  #   #   case log_table_info do
-  #   #     :undefined ->
-  #   #       0
-  #   #
-  #   #     _ ->
-  #   #       {:ok, inserts} = TableCounter.get_total_inserts(String.to_atom(token))
-  #   #       inserts
-  #   #   end
-  #   # end
-  #
-  #   # def get_rate(%{id: _id, name: _name, token: source_token}) do
-  #   #   {:ok, token} = Ecto.UUID.load(source_token)
-  #   #   website_table = String.to_atom(token)
-  #   #
-  #   #   get_rate_int(website_table)
-  #   # end
-  #
-  #   def get_rate(website_table) do
-  #     get_rate_int(website_table)
-  #   end
-  #
-  #   def get_logs(table_id) do
-  #     case :ets.info(table_id) do
-  #       :undefined ->
-  #         []
-  #
-  #       _ ->
-  #         List.flatten(:ets.match(table_id, {:_, :"$1"}))
-  #     end
-  #   end
-  #
-  #   # def get_avg_rate(%{id: _id, name: _name, token: source_token}) do
-  #   #   {:ok, token} = Ecto.UUID.load(source_token)
-  #   #   website_table = String.to_atom(token)
-  #   #
-  #   #   case :ets.info(website_table) do
-  #   #     :undefined ->
-  #   #       0
-  #   #
-  #   #     _ ->
-  #   #       SourceRateCounter.get_avg_rate(website_table)
-  #   #   end
-  #   # end
-  #   #
-  #   # def get_avg_rate(website_table) do
-  #   #   case :ets.info(website_table) do
-  #   #     :undefined ->
-  #   #       0
-  #   #
-  #   #     _ ->
-  #   #       SourceRateCounter.get_avg_rate(website_table)
-  #   #   end
-  #   # end
-  #   #
-  #   # def get_max_rate(%{id: _id, name: _name, token: source_token}) do
-  #   #   {:ok, token} = Ecto.UUID.load(source_token)
-  #   #   website_table = String.to_atom(token)
-  #   #
-  #   #   case :ets.info(website_table) do
-  #   #     :undefined ->
-  #   #       0
-  #   #
-  #   #     _ ->
-  #   #       SourceRateCounter.get_max_rate(website_table)
-  #   #   end
-  #   # ed
-  #
-  #   def get_latest_date(source, fallback \\ 0) do
-  #     {:ok, token} = Ecto.UUID.load(source.token)
-  #     website_table = String.to_atom(token)
-  #
-  #     case :ets.info(website_table) do
-  #       :undefined ->
-  #         fallback
-  #
-  #       _ ->
-  #         case :ets.last(website_table) do
-  #           :"$end_of_table" ->
-  #             fallback
-  #
-  #           {timestamp, _unique_int, _monotime} ->
-  #             timestamp
-  #         end
-  #     end
-  #   end
-  #
-  #   def get_buffer(token, fallback \\ 0) do
-  #     case Process.whereis(String.to_atom(token <> "-buffer")) do
-  #       nil ->
-  #         fallback
-  #
-  #       _ ->
-  #         TableBuffer.get_count(token)
-  #     end
-  #   end
-  #
-  #   defp get_rate_int(website_table) do
-  #     case :ets.info(website_table) do
-  #       :undefined ->
-  #         0
-  #
-  #       _ ->
-  #         SourceRateCounter.get_rate(website_table)
-  #     end
-  #   end
+  @spec get_total_inserts(atom) :: non_neg_integer
+  def get_total_inserts(source_id) when is_atom(source_id) do
+    log_table_info = :ets.info(source_id)
+
+    case log_table_info do
+      :undefined ->
+        0
+
+      _ ->
+        {:ok, inserts} = TableCounter.get_total_inserts(source_id)
+        inserts
+    end
+  end
+
+  @spec get_rate(map) :: non_neg_integer
+  def get_rate(%{id: _id, name: _name, token: source_token}) do
+    {:ok, source_id} = Ecto.UUID.Atom.load(source_token)
+
+    get_rate_int(source_id)
+  end
+
+  @spec get_rate() :: non_neg_integer
+  def get_rate(website_table) do
+    get_rate_int(website_table)
+  end
+
+  @spec get_logs(atom) :: list(term)
+  def get_logs(source_id) when is_atom(source_id) do
+    case :ets.info(source_id) do
+      :undefined ->
+        []
+
+      _ ->
+        List.flatten(:ets.match(source_id, {:_, :"$1"}))
+    end
+  end
+
+  @spec get_avg_rate(map) :: non_neg_integer
+  def get_avg_rate(%{id: _id, name: _name, token: source_token}) do
+    {:ok, source_id} = Ecto.UUID.Atom.load(source_token)
+
+    case :ets.info(source_id) do
+      :undefined ->
+        0
+
+      _ ->
+        SourceRateCounter.get_avg_rate(website_table)
+    end
+  end
+
+  @spec get_avg_rate(atom) :: non_neg_integer
+  def get_avg_rate(source_id) when is_atom(source_id) do
+    case :ets.info(source_id) do
+      :undefined ->
+        0
+
+      _ ->
+        SourceRateCounter.get_avg_rate(source_id)
+    end
+  end
+
+  @spec get_max_rate(map) :: non_neg_integer
+  def get_max_rate(%{id: _id, name: _name, token: source_token}) do
+    {:ok, source_id} = Ecto.UUID.Atom.load(source_token)
+
+    case :ets.info(source_id) do
+      :undefined ->
+        0
+
+      _ ->
+        SourceRateCounter.get_max_rate(source_id)
+    end
+  end
+
+  @spec get_latest_date(map) :: non_neg_integer
+  def get_latest_date(source, fallback \\ 0) do
+    {:ok, source_id} = Ecto.UUID.Atom.load(source.token)
+
+    case :ets.info(source_id) do
+      :undefined ->
+        fallback
+
+      _ ->
+        case :ets.last(source_id) do
+          :"$end_of_table" ->
+            fallback
+
+          {timestamp, _unique_int, _monotime} ->
+            timestamp
+        end
+    end
+  end
+
+  def get_buffer(token, fallback \\ 0) do
+    case Process.whereis(String.to_atom("#{token}-buffer")) do
+      nil ->
+        fallback
+
+      _ ->
+        TableBuffer.get_count(token)
+    end
+  end
+
+  @spec get_rate_int(atom) :: non_neg_integer
+  defp get_rate_int(source_id) do
+    case :ets.info(source_id) do
+      :undefined ->
+        0
+
+      _ ->
+        SourceRateCounter.get_rate(source_id)
+    end
+  end
 end
