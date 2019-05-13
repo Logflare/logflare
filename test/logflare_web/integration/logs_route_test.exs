@@ -52,6 +52,17 @@ defmodule LogflareWeb.LogsRouteTest do
       assert json_response(conn3, 403) == %{"message" => "Log entry needed."}
     end
 
+    test "succeeds with no source but with source_name ", %{conn: conn, user: u, sources: [s]} do
+      conn = conn
+      |> put_api_key_header(u.api_key)
+      |> post("/logs", %{
+        "log_entry" => "log binary message",
+        "source_name" => s.name,
+        "metadata" => metadata
+      })
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
     test "succeeds with log entry and no metadata ", %{conn: conn, user: u, sources: [s]} do
       conn = post_logs(conn, u, s, "log binary message")
 
