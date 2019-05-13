@@ -118,7 +118,6 @@ defmodule LogflareWeb.SourceController do
 
   def show(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
-    table_id = String.to_atom(source.token)
     user_id = conn.assigns.user.id
     user_email = conn.assigns.user.email
 
@@ -129,7 +128,7 @@ defmodule LogflareWeb.SourceController do
         @project_id
       end
 
-    explore_link = generate_explore_link(user_id, user_email, table_id, bigquery_project_id)
+    explore_link = generate_explore_link(user_id, user_email, source.token, bigquery_project_id)
 
     logs =
       Enum.map(SourceData.get_logs(source.token), fn log ->
@@ -203,7 +202,7 @@ defmodule LogflareWeb.SourceController do
 
     sources =
       for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.load(source.token)
+        {:ok, token} = Ecto.UUID.Atom.load(source.token)
         s = Map.put(source, :token, token)
 
         if disabled_source == token,
@@ -332,16 +331,17 @@ defmodule LogflareWeb.SourceController do
   defp generate_explore_link(
          user_id,
          user_email,
-         table_id,
+         source_id,
          project_id
          # billing_project_id
-       ) do
+       )
+       when is_atom(source_id) do
     dataset_id = Integer.to_string(user_id) <> @dataset_id_append
 
     {:ok, explore_link_config} =
       Jason.encode(%{
         "projectId" => project_id,
-        "tableId" => BigQuery.format_table_name(table_id),
+        "tableId" => BigQuery.format_table_name(source_id),
         "datasetId" => dataset_id,
         # billingProjectId" => billing_project_id,
         "connectorType" => "BIG_QUERY",
