@@ -67,9 +67,9 @@ defmodule Logflare.SourceData do
     get_rate_int(source_id)
   end
 
-  @spec get_rate() :: non_neg_integer
-  def get_rate(website_table) do
-    get_rate_int(website_table)
+  @spec get_rate(atom) :: non_neg_integer
+  def get_rate(source_id) when is_atom(source_id) do
+    get_rate_int(source_id)
   end
 
   @spec get_logs(atom) :: list(term)
@@ -92,7 +92,7 @@ defmodule Logflare.SourceData do
         0
 
       _ ->
-        SourceRateCounter.get_avg_rate(website_table)
+        SourceRateCounter.get_avg_rate(source_id)
     end
   end
 

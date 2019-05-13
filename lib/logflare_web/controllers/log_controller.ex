@@ -47,7 +47,7 @@ defmodule LogflareWeb.LogController do
     if is_nil(source.overflow_source) == false do
       if source_over_threshold?(source_id) do
         send_to_many_sources_by_rules(
-          String.to_atom(source_id.overflow_source),
+          String.to_atom(source.overflow_source),
           time_event,
           log_entry,
           metadata,
