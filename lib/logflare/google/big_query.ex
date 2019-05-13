@@ -357,7 +357,7 @@ defmodule Logflare.Google.BigQuery do
   end
 
   @spec format_table_name(atom) :: String.t()
-  defp format_table_name(source) do
+  def format_table_name(source) do
     string = Atom.to_string(source)
     String.replace(string, "-", "_")
   end
