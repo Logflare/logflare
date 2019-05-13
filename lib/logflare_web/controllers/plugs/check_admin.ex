@@ -6,7 +6,7 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  plug(:verify_admin)
+  plug :verify_admin
 
   def verify_admin(conn, _params) do
     cond do

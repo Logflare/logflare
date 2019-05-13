@@ -15,7 +15,7 @@ defmodule LogflareWeb.DashboardChannel do
   end
 
   defp has_source?(source_token, socket) do
-    Enum.map(socket.assigns[:user].sources, & &1.token) |> Enum.member?(source_token)
+    Enum.map(socket.assigns[:user].sources, & &1.token) |> Enum.member?(String.to_existing_atom(source_token))
   end
 
   defp is_admin?(socket) do

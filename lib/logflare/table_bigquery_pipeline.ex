@@ -95,8 +95,8 @@ defmodule Logflare.TableBigQueryPipeline do
     end
   end
 
-  defp name(website_table) do
-    String.to_atom("#{website_table}" <> "-pipeline")
+  defp name(source_id) when is_atom(source_id) do
+    String.to_atom("#{source_id}" <> "-pipeline")
   end
 
   defp same_schemas?(old_schema, new_schema) do

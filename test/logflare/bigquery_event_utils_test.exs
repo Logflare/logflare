@@ -1,10 +1,10 @@
 defmodule Logflare.BigQuery.EventUtilsTest do
-  alias Logflare.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.EventUtils
   use ExUnit.Case
 
   describe "event utils" do
     test "wraps maps with lists to be injested by BigQuery" do
-      assert EventUtils.prepare_for_injest(raw()) === wrapped()
+      assert EventUtils.prepare_for_injest(raw()) === [wrapped()]
     end
   end
 

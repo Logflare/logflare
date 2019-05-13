@@ -1,7 +1,7 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
 
-  alias Logflare.Source
+  alias Logflare.{Source, Sources}
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.TableCounter
@@ -30,7 +30,7 @@ defmodule LogflareWeb.LogController do
           conn.params["metadata"]
       end
 
-    source_table =
+    source_id =
       case conn.params["source"] == nil do
         true ->
           source_name = conn.params["source_name"]
@@ -42,12 +42,12 @@ defmodule LogflareWeb.LogController do
           String.to_atom(conn.params["source"])
       end
 
-    source_record = AccountCache.get_source(api_key, Atom.to_string(source_table))
+    source = Sources.Cache.get_by_id(source_id)
 
-    if is_nil(source_record.overflow_source) == false do
-      if source_over_threshold?(source_table) do
+    if is_nil(source.overflow_source) == false do
+      if source_over_threshold?(source_id) do
         send_to_many_sources_by_rules(
-          String.to_atom(source_record.overflow_source),
+          String.to_atom(source.overflow_source),
           time_event,
           log_entry,
           metadata,
@@ -56,19 +56,19 @@ defmodule LogflareWeb.LogController do
       end
     end
 
-    send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key)
+    send_to_many_sources_by_rules(source_id, time_event, log_entry, metadata, api_key)
 
     message = "Logged!"
 
     render(conn, "index.json", message: message)
   end
 
-  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key) do
-    rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
+  defp send_to_many_sources_by_rules(source_id, time_event, log_entry, metadata, _api_key) do
+    rules = Sources.Cache.get_by_id(source_id).rules
 
     case rules == [] do
       true ->
-        insert_log(source_table, time_event, log_entry, metadata)
+        insert_log(source_id, time_event, log_entry, metadata)
 
       false ->
         Enum.map(
@@ -85,7 +85,7 @@ defmodule LogflareWeb.LogController do
           end
         )
 
-        insert_log(source_table, time_event, log_entry, metadata)
+        insert_log(source_id, time_event, log_entry, metadata)
     end
   end
 

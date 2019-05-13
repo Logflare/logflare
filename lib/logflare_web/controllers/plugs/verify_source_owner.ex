@@ -8,7 +8,7 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
   alias Logflare.Source
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  plug(:verify_owner)
+  plug :verify_owner
 
   def verify_owner(conn, _opts) do
     source_id = get_source_id(conn)

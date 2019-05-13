@@ -1,20 +1,23 @@
 defmodule Logflare.Source do
   use Ecto.Schema
   import Ecto.Changeset
+  @default_source_api_quota 25
 
   schema "sources" do
-    field(:name, :string)
-    field(:token, Ecto.UUID)
-    field(:public_token, :string)
-    belongs_to(:user, Logflare.User)
-    has_many(:rules, Logflare.Rule)
-    field(:overflow_source, Ecto.UUID)
-    field(:avg_rate, :integer, virtual: true)
-    field(:favorite, :boolean)
-    field(:user_email_notifications, :boolean)
-    field(:other_email_notifications, :string)
-    field(:user_text_notifications, :boolean)
-    field(:bigquery_table_ttl, :integer)
+    field :name, :string
+    field :token, Ecto.UUID.Atom
+    field :public_token, :string
+    field :overflow_source, Ecto.UUID
+    field :avg_rate, :integer, virtual: true
+    field :favorite, :boolean, default: false
+    field :user_email_notifications, :boolean, default: false
+    field :other_email_notifications, :string
+    field :user_text_notifications, :boolean, default: false
+    field :bigquery_table_ttl, :integer
+    field :api_quota, :integer, default: @default_source_api_quota
+
+    belongs_to :user, Logflare.User
+    has_many :rules, Logflare.Rule
 
     timestamps()
   end
@@ -32,7 +35,8 @@ defmodule Logflare.Source do
       :user_email_notifications,
       :other_email_notifications,
       :user_text_notifications,
-      :bigquery_table_ttl
+      :bigquery_table_ttl,
+      :api_quota
     ])
     |> validate_required([:name, :token])
     |> unique_constraint(:name)

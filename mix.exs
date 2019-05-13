@@ -67,7 +67,15 @@ defmodule Logflare.Mixfile do
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
       {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
-      {:timex, "~> 3.1"}
+      {:timex, "~> 3.1"},
+      {:mox, "~> 0.5", only: :test},
+      {:typed_struct, "~> 0.1"},
+      {:publicist, "~> 1.1.0"},
+      {:lqueue, "~> 1.1"},
+      {:cachex, "~> 3.1"},
+      {:faker, "~> 0.12", only: :test},
+      {:ex_machina, "~> 2.3"},
+      {:iteraptor, "~> 1.8.0"}
     ]
   end
 

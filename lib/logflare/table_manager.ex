@@ -13,19 +13,19 @@ defmodule Logflare.TableManager do
 
   require Logger
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(source_ids \\ []) do
+    GenServer.start_link(__MODULE__, source_ids, name: __MODULE__)
   end
 
-  def init(state) do
+  def init(source_ids) do
     persist()
 
-    {:ok, state, {:continue, :boot}}
+    {:ok, source_ids, {:continue, :boot}}
   end
 
   ## Server
 
-  def handle_continue(:boot, _state) do
+  def handle_continue(:boot, []) do
     Logger.info("Table manager started!")
 
     query =
@@ -41,8 +41,8 @@ defmodule Logflare.TableManager do
       Enum.map(
         sources,
         fn s ->
-          {:ok, source} = Ecto.UUID.load(s.token)
-          String.to_atom(source)
+          {:ok, source} = Ecto.UUID.Atom.load(s.token)
+          source
         end
       )
 
@@ -51,6 +51,16 @@ defmodule Logflare.TableManager do
     end)
 
     {:noreply, state}
+  end
+
+  def handle_continue(:boot, source_ids) do
+    Logger.info("Table manager started!")
+
+    Enum.each(source_ids, fn s ->
+      Logflare.Table.start_link(s)
+    end)
+
+    {:noreply, source_ids}
   end
 
   def handle_call({:create, website_table}, _from, state) do
@@ -114,7 +124,7 @@ defmodule Logflare.TableManager do
 
   def reset_all_user_tables(user) do
     sources = Repo.all(Ecto.assoc(user, :sources))
-    Enum.each(sources, fn s -> reset_table(String.to_atom(s.token)) end)
+    Enum.each(sources, fn s -> reset_table(s.token) end)
   end
 
   def delete_all_tables() do

@@ -1,23 +1,25 @@
 defmodule Logflare.User do
   use Ecto.Schema
   import Ecto.Changeset
+  @default_user_api_quota 1000
 
   alias Logflare.Google.BigQuery
 
   schema "users" do
-    field(:email, :string)
-    field(:provider, :string)
-    field(:token, :string)
-    field(:api_key, :string)
-    field(:old_api_key, :string)
-    field(:email_preferred, :string)
-    field(:name, :string)
-    field(:image, :string)
-    field(:email_me_product, :boolean)
-    field(:admin, :boolean)
-    has_many(:sources, Logflare.Source)
-    field(:phone, :string)
-    field(:bigquery_project_id, :string)
+    field :email, :string
+    field :provider, :string
+    field :token, :string
+    field :api_key, :string
+    field :old_api_key, :string
+    field :email_preferred, :string
+    field :name, :string
+    field :image, :string
+    field :email_me_product, :boolean, default: true
+    field :admin, :boolean, default: false
+    has_many :sources, Logflare.Source
+    field :phone, :string
+    field :bigquery_project_id, :string
+    field :api_quota, :integer, default: @default_user_api_quota
 
     timestamps()
   end
@@ -37,7 +39,8 @@ defmodule Logflare.User do
       :email_me_product,
       :admin,
       :phone,
-      :bigquery_project_id
+      :bigquery_project_id,
+      :api_quota
     ])
     |> validate_required([:email, :provider, :token])
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)

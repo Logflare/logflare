@@ -1,17 +1,18 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequest do
   use Plug.Builder
   import Phoenix.Controller
+  alias Logflare.Users
 
   require Logger
 
   alias Logflare.AccountCache
   alias Logflare.Google.BigQuery.EventUtils.Validator
 
-  plug(:check_user)
-  plug(:check_log_entry)
-  plug(:check_source_and_name)
-  plug(:check_source_token)
-  plug(:validate_metadata)
+  plug :check_user
+  plug :check_source_and_name
+  plug :check_source_token
+  plug :check_log_entry
+  plug :validate_metadata
 
   def check_user(conn, _opts) do
     case conn.assigns.user do
@@ -32,18 +33,16 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   def check_log_entry(conn, _opts) do
     log_entry = conn.params["log_entry"] || conn.params["batch"]
 
-    case log_entry == nil do
-      true ->
-        message = "Log entry needed."
+    if is_nil(log_entry) || log_entry in [%{}, []] do
+      message = "Log entry needed."
 
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
-      false ->
-        conn
+      conn
+      |> put_status(403)
+      |> put_view(LogflareWeb.LogView)
+      |> render("index.json", message: message)
+      |> halt()
+    else
+      conn
     end
   end
 
@@ -69,23 +68,21 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   def check_source_token(conn, _opts) do
     headers = Enum.into(conn.req_headers, %{})
     api_key = headers["x-api-key"]
-    source = conn.params["source"]
+    source_id = conn.params["source"] |> String.to_atom()
 
-    cond do
-      is_nil(source) ->
-        conn
+    user = Users.Cache.find_user_by_api_key(api_key)
 
-      is_nil(AccountCache.get_source(api_key, source)) ->
-        message = "Check your source."
+    if Users.Cache.source_id_owned?(user, source_id) do
+      conn
+      |> assign(:source_id, source_id)
+    else
+      message = "Check your source."
 
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
-      true ->
-        conn
+      conn
+      |> put_status(403)
+      |> put_view(LogflareWeb.LogView)
+      |> render("index.json", message: message)
+      |> halt()
     end
   end
 
