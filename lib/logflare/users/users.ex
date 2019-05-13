@@ -22,7 +22,7 @@ defmodule Logflare.Users do
   @spec find_user_by_api_key(String.t()) :: User.t() | nil
   def find_user_by_api_key(nil), do: nil
 
-  def find_user_by_api_key(api_key) do
+  def find_user_by_api_key(api_key) when is_binary(api_key) do
     User
     |> Repo.get_by(api_key: api_key)
     |> Repo.preload(:sources)

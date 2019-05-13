@@ -25,8 +25,8 @@ defmodule Logflare.Users.Cache do
     end
   end
 
-  @spec source_id_owned?(User.t(), String.t()) :: User.t()
-  def source_id_owned?(user, source_id) do
+  @spec source_id_owned?(User.t(), atom) :: User.t()
+  def source_id_owned?(user, source_id) when is_atom(source_id) do
     source_id in Enum.map(user.sources, & &1.token)
   end
 
