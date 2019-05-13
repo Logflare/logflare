@@ -2,12 +2,10 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  plug(LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create])
+  plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
-  plug(
-    LogflareWeb.Plugs.VerifySourceOwner
-    when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
-  )
+  plug LogflareWeb.Plugs.VerifySourceOwner
+       when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
 
   alias Logflare.Source
   alias Logflare.Repo
@@ -36,7 +34,7 @@ defmodule LogflareWeb.SourceController do
 
     sources =
       for source <- Repo.all(query) do
-        {:ok, token} = source.token
+        {:ok, token} = Ecto.UUID.Atom.load(source.token)
 
         rate = Delimit.number_to_delimited(SourceData.get_rate(source))
         timestamp = SourceData.get_latest_date(source)
@@ -117,10 +115,8 @@ defmodule LogflareWeb.SourceController do
   def show(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
 
-    table_id = String.to_atom(source.token)
-
     logs =
-      Enum.map(SourceData.get_logs(table_id), fn log ->
+      Enum.map(SourceData.get_logs(source.token), fn log ->
         if Map.has_key?(log, :metadata) do
           {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
           %{log | metadata: encoded}
@@ -163,7 +159,7 @@ defmodule LogflareWeb.SourceController do
     user_id = conn.assigns.user.id
     changeset = Source.changeset(source, %{})
     disabled_source = source.token
-    avg_rate = SourceData.get_avg_rate(String.to_atom(source.token))
+    avg_rate = SourceData.get_avg_rate(source.token)
 
     query =
       from(s in "sources",
@@ -200,7 +196,7 @@ defmodule LogflareWeb.SourceController do
     changeset = Source.changeset(old_source, updated_params)
     user_id = conn.assigns.user.id
     disabled_source = old_source.token
-    avg_rate = SourceData.get_avg_rate(String.to_atom(old_source.token))
+    avg_rate = SourceData.get_avg_rate(old_source.token)
 
     query =
       from(s in "sources",
@@ -216,7 +212,7 @@ defmodule LogflareWeb.SourceController do
 
     sources =
       for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.load(source.token)
+        {:ok, token} = Ecto.UUID.Atom.load(source.token)
         s = Map.put(source, :token, token)
 
         if disabled_source == token,
@@ -231,7 +227,7 @@ defmodule LogflareWeb.SourceController do
             %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
 
             ttl = String.to_integer(ttl) * 86_400_000
-            BigQuery.patch_table_ttl(String.to_atom(source.token), ttl, project_id)
+            BigQuery.patch_table_ttl(source.token, ttl, project_id)
 
           _ ->
             nil
@@ -256,7 +252,7 @@ defmodule LogflareWeb.SourceController do
   def delete(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
 
-    case :ets.info(String.to_atom(source.token)) do
+    case :ets.info(source.token) do
       :undefined ->
         source |> Repo.delete!()
 
@@ -265,9 +261,9 @@ defmodule LogflareWeb.SourceController do
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
       _ ->
-        case :ets.first(String.to_atom(source.token)) do
+        case :ets.first(source.token) do
           :"$end_of_table" ->
-            {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+            {:ok, _table} = TableManager.delete_table(source.token)
             source |> Repo.delete!()
 
             conn
@@ -278,7 +274,7 @@ defmodule LogflareWeb.SourceController do
             now = System.os_time(:microsecond)
 
             if now - timestamp > 3_600_000_000 do
-              {:ok, _table} = TableManager.delete_table(String.to_atom(source.token))
+              {:ok, _table} = TableManager.delete_table(source.token)
               source |> Repo.delete!()
 
               conn
@@ -298,7 +294,7 @@ defmodule LogflareWeb.SourceController do
 
   def clear_logs(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
-    {:ok, _table} = TableManager.reset_table(String.to_atom(source.token))
+    {:ok, _table} = TableManager.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
