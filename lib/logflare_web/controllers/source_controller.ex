@@ -16,8 +16,12 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Google.BigQuery
   alias Logflare.User
 
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+
   def dashboard(conn, _params) do
     user_id = conn.assigns.user.id
+    user_email = conn.assigns.user.email
 
     query =
       from(s in "sources",
@@ -53,7 +57,7 @@ defmodule LogflareWeb.SourceController do
         |> Map.put(:inserts, event_inserts)
       end
 
-    render(conn, "dashboard.html", sources: sources)
+    render(conn, "dashboard.html", sources: sources, user_email: user_email)
   end
 
   def favorite(conn, %{"id" => source_id}) do
@@ -114,6 +118,18 @@ defmodule LogflareWeb.SourceController do
 
   def show(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
+    table_id = String.to_atom(source.token)
+    user_id = conn.assigns.user.id
+    user_email = conn.assigns.user.email
+
+    bigquery_project_id =
+      if conn.assigns.user.bigquery_project_id do
+        conn.assigns.user.bigquery_project_id
+      else
+        @project_id
+      end
+
+    explore_link = generate_explore_link(user_id, user_email, table_id, bigquery_project_id)
 
     logs =
       Enum.map(SourceData.get_logs(source.token), fn log ->
@@ -125,11 +141,18 @@ defmodule LogflareWeb.SourceController do
         end
       end)
 
-    render(conn, "show.html", logs: logs, source: source, public_token: nil)
+    render(conn, "show.html",
+      logs: logs,
+      source: source,
+      public_token: nil,
+      explore_link: explore_link
+    )
   end
 
   def public(conn, %{"public_token" => public_token}) do
     source = Repo.get_by(Source, public_token: public_token)
+
+    explore_link = ""
 
     case source == nil do
       true ->
@@ -150,7 +173,12 @@ defmodule LogflareWeb.SourceController do
             end
           end)
 
-        render(conn, "show.html", logs: logs, source: source, public_token: public_token)
+        render(conn, "show.html",
+          logs: logs,
+          source: source,
+          public_token: public_token,
+          explore_link: explore_link
+        )
     end
   end
 
@@ -299,5 +327,29 @@ defmodule LogflareWeb.SourceController do
     conn
     |> put_flash(:info, "Logs cleared!")
     |> redirect(to: Routes.source_path(conn, :show, source_id))
+  end
+
+  defp generate_explore_link(
+         user_id,
+         user_email,
+         table_id,
+         project_id
+         # billing_project_id
+       ) do
+    dataset_id = Integer.to_string(user_id) <> @dataset_id_append
+
+    {:ok, explore_link_config} =
+      Jason.encode(%{
+        "projectId" => project_id,
+        "tableId" => BigQuery.format_table_name(table_id),
+        "datasetId" => dataset_id,
+        # billingProjectId" => billing_project_id,
+        "connectorType" => "BIG_QUERY",
+        "sqlType" => "STANDARD_SQL"
+      })
+
+    explore_link_prefix = "https://datastudio.google.com/explorer?authuser=#{user_email}&config="
+
+    explore_link_prefix <> URI.encode(explore_link_config)
   end
 end

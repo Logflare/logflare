@@ -8,11 +8,13 @@ defmodule LogflareWeb.UserController do
   alias Logflare.Google.CloudResourceManager
   alias Logflare.TableManager
 
+  @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
+
   def edit(conn, _params) do
     user = conn.assigns.user
     changeset = User.changeset(user, %{})
 
-    render(conn, "edit.html", changeset: changeset, user: user)
+    render(conn, "edit.html", changeset: changeset, user: user, service_account: @service_account)
   end
 
   def update(conn, %{"user" => params}) do
@@ -36,7 +38,11 @@ defmodule LogflareWeb.UserController do
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
-        |> render("edit.html", changeset: changeset, user: old_user)
+        |> render("edit.html",
+          changeset: changeset,
+          user: old_user,
+          service_account: @service_account
+        )
     end
   end
 

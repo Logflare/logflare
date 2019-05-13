@@ -13,7 +13,7 @@
 
 <div class="container mx-auto">
   <%= if @user.provider == "google" do %>
-  <div id="explore-dashboard"><center><a href="https://datastudio.google.com" target=”_blank”>Explore in Google Data Studio!</a></center></div>
+  <div id="explore-dashboard"><center><%= link "Explore in Google Data Studio!", to: "https://datastudio.google.com/?authuser=#{@user_email}", target: "_blank" %></center></div>
   <% else %>
   <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
   <% end %>
