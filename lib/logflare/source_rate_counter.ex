@@ -8,7 +8,6 @@ defmodule Logflare.SourceRateCounter do
   require Logger
   alias __MODULE__, as: SRC
 
-  alias Logflare.TableCounter
   alias Number.Delimit
 
   @default_bucket_width 60
@@ -45,7 +44,7 @@ defmodule Logflare.SourceRateCounter do
     )
   end
 
-  def init(source_id) do
+  def init(source_id) when is_atom(source_id) do
     Logger.info("Rate counter started: #{source_id}")
     setup_ets_table(source_id)
     put_current_rate()
@@ -67,10 +66,12 @@ defmodule Logflare.SourceRateCounter do
     {:noreply, source_id}
   end
 
+  @spec new(atom) :: __MODULE__.t()
   def new(source_id) when is_atom(source_id) do
     %SRC{begin_time: System.monotonic_time(), source_id: source_id}
   end
 
+  @spec update_state(SRC.t(), non_neg_integer) :: SRC.t()
   def update_state(%SRC{} = state, new_count) do
     state
     |> update_current_rate(new_count)
@@ -107,6 +108,7 @@ defmodule Logflare.SourceRateCounter do
   def update_buckets(%SRC{} = state) do
     Map.update!(state, :buckets, fn buckets ->
       for {length, bucket} <- buckets, into: Map.new() do
+        # TODO: optimize by not recalculating total sum and average
         new_queue = LQueue.push(bucket.queue, state.last_rate)
 
         average =
@@ -240,7 +242,7 @@ defmodule Logflare.SourceRateCounter do
     end
   end
 
-  @spec get_insert_count(atom) :: non_neg_integer()
+  @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
   def get_insert_count(source_id) when is_atom(source_id) do
     Logflare.TableCounter.get_inserts(source_id)
   end
