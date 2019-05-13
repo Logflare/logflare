@@ -2,7 +2,7 @@ defmodule LogflareWeb.RuleController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  plug(LogflareWeb.Plugs.VerifySourceOwner when action in [:index, :delete])
+  plug LogflareWeb.Plugs.VerifySourceOwner when action in [:index, :delete]
 
   alias Logflare.Rule
   alias Logflare.Source
@@ -42,7 +42,7 @@ defmodule LogflareWeb.RuleController do
 
     sources =
       for source <- Repo.all(sources_query) do
-        {:ok, token} = Ecto.UUID.load(source.token)
+        {:ok, token} = Ecto.UUID.Atom.load(source.token)
         s = Map.put(source, :token, token)
 
         if disabled_source == token,
@@ -111,7 +111,7 @@ defmodule LogflareWeb.RuleController do
 
     sources =
       for source <- Repo.all(sources_query) do
-        {:ok, token} = Ecto.UUID.load(source.token)
+        {:ok, token} = Ecto.UUID.Atom.load(source.token)
         s = Map.put(source, :token, token)
 
         case token do
