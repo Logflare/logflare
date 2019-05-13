@@ -1,8 +1,11 @@
 defmodule LogflareWeb.LogsRouteTest do
   @moduledoc false
+  @seed 0
   use LogflareWeb.ConnCase
-  alias Logflare.TableBuffer
+  alias Logflare.{TableCounter, SystemCounter}
+  use Phoenix.ChannelTest
   @moduletag integration: true
+  alias LogflareWeb.{UserSocket, DashboardChannel}
   alias Logflare.{TableBuffer, TableManager, SourceRateCounter}
   import Logflare.DummyFactory
 
@@ -11,8 +14,8 @@ defmodule LogflareWeb.LogsRouteTest do
     s = insert(:source, token: Faker.UUID.v4())
     u = insert(:user, api_key: Faker.String.base64(), sources: [s])
 
-    Logflare.TableCounter.start_link()
-    Logflare.SystemCounter.start_link()
+    TableCounter.start_link()
+    SystemCounter.start_link()
     TableManager.start_link([s.token])
 
     # Sleep to make sure that table manager has time to init all GenServers
@@ -60,6 +63,7 @@ defmodule LogflareWeb.LogsRouteTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
+
     test "succeeds and puts 10 log entries in the TableBuffer", %{
       conn: conn,
       user: u,
@@ -68,11 +72,10 @@ defmodule LogflareWeb.LogsRouteTest do
       post_with_index = &post_logs(conn, u, s, "log binary message #{&1}")
       Enum.each(1..10, post_with_index)
       assert TableBuffer.get_count(s.token) == 10
-      Process.sleep(1_000)
+      Process.sleep(1000)
       # sleep needed by SourceRateCounter to send itself
       # a message to get and calculate metrics
       assert SourceRateCounter.get_metrics(s.token) == %{average: 5, duration: 60, sum: 10}
-    end
     end
   end
 
@@ -109,6 +112,5 @@ defmodule LogflareWeb.LogsRouteTest do
       },
       "request_method" => "POST"
     }
-
   end
 end
