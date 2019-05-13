@@ -11,7 +11,7 @@ defmodule LogflareWeb.LogsRouteTest do
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
-    s = insert(:source, token: Faker.UUID.v4())
+    s = insert(:source, token: Faker.UUID.v4(), name: "source-name-1")
     u = insert(:user, api_key: Faker.String.base64(), sources: [s])
 
     TableCounter.start_link()
