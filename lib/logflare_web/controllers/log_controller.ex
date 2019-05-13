@@ -139,13 +139,11 @@ defmodule LogflareWeb.LogController do
   end
 
   defp lookup_or_create_source(api_key, source_name) do
-    source = AccountCache.get_source_by_name(api_key, source_name)
+    source = Sources.Cache.get_by_name(source_name)
 
     case source do
       nil ->
         {:ok, new_source} = create_source(source_name, api_key)
-        AccountCache.update_account(api_key)
-
         new_source.token
 
       _ ->
