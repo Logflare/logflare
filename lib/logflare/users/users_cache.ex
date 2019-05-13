@@ -1,7 +1,7 @@
 defmodule Logflare.Users.Cache do
   alias Logflare.{Users, User}
   import Cachex.Spec
-  @ttl :timer.minutes(5)
+  @ttl 500
 
   @cache __MODULE__
 

@@ -77,11 +77,11 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
       source_name ->
         source = Sources.Cache.get_by_name(source_name)
 
-        if Atom.to_string(source.token) in sources_strings do
+        if not is_nil(source) and Atom.to_string(source.token) in sources_strings do
           conn
           |> assign(:source, source)
         else
-          message = "Source #{source.token} is not owned by this user."
+          message = "Source is not owned by this user."
 
           conn
           |> put_status(403)
