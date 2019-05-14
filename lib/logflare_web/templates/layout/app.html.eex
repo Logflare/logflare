@@ -7,7 +7,7 @@
     <meta name="description" content="Easily access your Cloudflare logs in a centralized web-based log management solution.">
     <meta name="author" content="">
 
-    <title>Logflare | Tail -f Cloudflare Logs </title>
+    <title><%= page_title(assigns) %></title>
 
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
 
