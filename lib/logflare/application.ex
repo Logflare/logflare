@@ -1,6 +1,5 @@
 defmodule Logflare.Application do
   use Application
-  alias Logflare.{Users, Sources}
 
   def start(_type, _args) do
     import Supervisor.Spec

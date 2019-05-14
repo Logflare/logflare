@@ -1,6 +1,5 @@
 defmodule Logflare.Users do
   alias Logflare.{User, Source}
-  import Ecto.Query
   alias Logflare.Repo
   @moduledoc false
 
