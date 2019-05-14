@@ -19,3 +19,9 @@ config :logflare, Logflare.Repo,
   hostname: "localhost",
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
+
+config :logflare, Logflare.Google,
+  dataset_id_append: "_test",
+  project_number: "1023172132421",
+  project_id: "logflare-dev-238720",
+  service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
