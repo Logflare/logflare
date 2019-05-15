@@ -54,7 +54,10 @@ defmodule LogflareWeb.ElixirLoggerControllerTest do
       Process.sleep(1000)
       # sleep needed by SourceRateCounter to send itself
       # a message to get and calculate metrics
-      assert SourceRateCounter.get_metrics(s.token) == %{average: 2, duration: 60, sum: 3}
+      %{average: avg, duration: duration, sum: sum} = SourceRateCounter.get_metrics(s.token)
+      assert avg in [1, 2]
+      assert duration == 60
+      assert sum == 3
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
   end
