@@ -14,7 +14,11 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :api do
-    plug :accepts, ["json"]
+    plug Plug.Parsers,
+      parsers: [:json, :bert],
+      json_decoder: Jason
+
+    plug :accepts, ["json", "bert"]
     plug LogflareWeb.Plugs.SetApiUser
   end
 
