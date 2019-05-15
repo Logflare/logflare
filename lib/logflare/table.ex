@@ -69,11 +69,16 @@ defmodule Logflare.Table do
 
     state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
-    TableMailer.start_link(source_id)
-    TableTexter.start_link(source_id)
-    TableBuffer.start_link(source_id)
-    TableBigQueryPipeline.start_link(state)
-    TableBigQuerySchema.start_link(state)
+    children = [
+      {TableMailer, source_id},
+      {TableTexter, source_id},
+      {TableBuffer, source_id},
+      {TableBigQueryPipeline, state},
+      {TableBigQuerySchema, state},
+      {SourceRateCounter, source_id}
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_all)
 
     {:noreply, state}
   end
@@ -146,7 +151,6 @@ defmodule Logflare.Table do
     TableCounter.create(source_id)
     TableCounter.incriment_ets_count(source_id, 0)
     TableCounter.incriment_total_count(source_id, log_count)
-    SourceRateCounter.start_link(source_id, 0)
   end
 
   defp fresh_table(source_id, bigquery_project_id) when is_atom(source_id) do
@@ -156,7 +160,6 @@ defmodule Logflare.Table do
     :ets.new(source_id, table_args)
     TableCounter.create(source_id)
     TableCounter.incriment_total_count(source_id, log_count)
-    SourceRateCounter.start_link(source_id, 0)
   end
 
   defp check_ttl() do
