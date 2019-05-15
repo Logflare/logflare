@@ -36,7 +36,7 @@ defmodule Logflare.SourceRateCounter do
   @rate_period 1_000
   @ets_table_name :table_rate_counters
 
-  def start_link(source_id, init_count) when is_atom(source_id) and is_integer(init_count) do
+  def start_link(source_id) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       source_id,
