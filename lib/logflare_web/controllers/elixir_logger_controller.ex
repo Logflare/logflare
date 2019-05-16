@@ -1,24 +1,23 @@
 defmodule LogflareWeb.ElixirLoggerController do
   use LogflareWeb, :controller
 
-  alias Logflare.{Sources, Source}
-  alias Logflare.TableCounter
-  alias Logflare.SystemCounter
-  alias Logflare.TableManager
-  alias Logflare.SourceData
-  alias Logflare.TableBuffer
-  alias Logflare.Logs
+  alias Logflare.Google.BigQuery
+  alias Logflare.{TableCounter, SystemCounter, Sources, Source, SourceData, TableBuffer, Logs}
 
   @system_counter :total_logs_logged
 
-  def create(conn, %{"batch" => batch}) do
+  def create(conn, %{"batch" => batch} = params) do
     message = "Logged!"
 
-    for log_entry <- batch do
-      process_log(log_entry, conn.assigns.source)
-    end
+    if BigQuery.Validator.NestedValues.valid?(params) do
+      for log_entry <- batch do
+        process_log(log_entry, conn.assigns.source)
+      end
 
-    render(conn, "index.json", message: message)
+      render(conn, "index.json", message: message)
+    else
+      send_resp(conn, 406, "Nested values must be of the same type")
+    end
   end
 
   def process_log(log_entry, %Source{} = source) do
