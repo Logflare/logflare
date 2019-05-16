@@ -1,32 +1,26 @@
 defmodule LogflareWeb.ElixirLoggerController do
   use LogflareWeb, :controller
 
-  alias Logflare.Source
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.TableCounter
-  alias Logflare.SystemCounter
-  alias Logflare.TableManager
-  alias Logflare.SourceData
-  alias Logflare.AccountCache
-  alias Logflare.TableBuffer
-  alias Logflare.Logs
+  alias Logflare.Google.BigQuery
+  alias Logflare.{TableCounter, SystemCounter, Sources, Source, SourceData, TableBuffer, Logs}
 
   @system_counter :total_logs_logged
 
-  def create(conn, %{"batch" => batch, "source_name" => source_name}) do
-    api_key = Enum.into(conn.req_headers, %{})["x-api-key"]
-
+  def create(conn, %{"batch" => batch} = params) do
     message = "Logged!"
 
-    for log_entry <- batch do
-      process_log(log_entry, %{source: source_name, api_key: api_key})
-    end
+    if BigQuery.Validator.NestedValues.valid?(params) do
+      for log_entry <- batch do
+        process_log(log_entry, conn.assigns.source)
+      end
 
-    render(conn, "index.json", message: message)
+      render(conn, "index.json", message: message)
+    else
+      send_resp(conn, 406, "Nested values must be of the same type")
+    end
   end
 
-  def process_log(log_entry, %{api_key: api_key, source: source_name}) do
+  def process_log(log_entry, %Source{} = source) do
     %{"message" => m, "metadata" => metadata, "timestamp" => ts, "level" => lv} = log_entry
     monotime = System.monotonic_time(:nanosecond)
     datetime = Timex.parse!(ts, "{ISO:Extended}")
@@ -36,27 +30,21 @@ defmodule LogflareWeb.ElixirLoggerController do
 
     metadata = metadata |> Map.put("level", lv)
 
-    source_table =
-      api_key
-      |> lookup_or_create_source(source_name)
-      |> String.to_atom()
+    send_with_data = &send_to_many_sources_by_rules(&1, time_event, m, metadata)
 
-    %{overflow_source: overflow_source} =
-      AccountCache.get_source(api_key, Atom.to_string(source_table))
+    if source.overflow_source && source_over_threshold?(source) do
+      source_id = source.overflow_source |> String.to_atom()
 
-    send_with_data = &send_to_many_sources_by_rules(&1, time_event, m, metadata, api_key)
-
-    if overflow_source && source_over_threshold?(source_table) do
-      overflow_source
-      |> String.to_atom()
+      source_id
+      |> Sources.Cache.get_by_id()
       |> send_with_data.()
     end
 
-    send_with_data.(source_table)
+    send_with_data.(source)
   end
 
-  defp send_to_many_sources_by_rules(source_table, time_event, log_entry, metadata, api_key) do
-    rules = AccountCache.get_rules(api_key, Atom.to_string(source_table))
+  defp send_to_many_sources_by_rules(%Source{} = source, time_event, log_entry, metadata) do
+    rules = source.rules
 
     Enum.each(
       rules,
@@ -69,76 +57,38 @@ defmodule LogflareWeb.ElixirLoggerController do
       end
     )
 
-    insert_log(source_table, time_event, log_entry, metadata)
+    insert_log(source, time_event, log_entry, metadata)
   end
 
-  defp insert_log(source_table, time_event, log_entry, metadata) do
-    source_table =
-      if :ets.info(source_table) == :undefined do
-        TableManager.new_table(source_table)
-      else
-        source_table
-      end
-
-    insert_and_broadcast(source_table, time_event, log_entry, metadata)
+  defp insert_log(%Source{} = source, time_event, log_entry, metadata) do
+    insert_and_broadcast(source, time_event, log_entry, metadata)
   end
 
-  defp insert_and_broadcast(source_table, time_event, log_entry, metadata) do
-    source_table_string = Atom.to_string(source_table)
+  defp insert_and_broadcast(%Source{} = source, time_event, log_entry, metadata) do
+    source_table_string = Atom.to_string(source.token)
     {timestamp, _unique_int, _monotime} = time_event
 
-    payload =
-      if metadata do
-        %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
-      else
-        %{timestamp: timestamp, log_message: log_entry}
-      end
+    payload = %{timestamp: timestamp, log_message: log_entry, metadata: metadata}
 
-    Logs.insert_or_push(source_table, {time_event, payload})
+    Logs.insert_or_push(source.token, {time_event, payload})
 
     TableBuffer.push(source_table_string, {time_event, payload})
-    TableCounter.incriment(source_table)
+    TableCounter.incriment(source.token)
     SystemCounter.incriment(@system_counter)
 
-    Logs.broadcast_log_count(source_table)
+    Logs.broadcast_log_count(source.token)
     Logs.broadcast_total_log_count()
 
     LogflareWeb.Endpoint.broadcast(
-      "source:" <> source_table_string,
-      "source:#{source_table_string}:new",
+      "source:#{source.token}",
+      "source:#{source.token}:new",
       payload
     )
   end
 
-  defp create_source(source_name, api_key) do
-    source = %{token: Ecto.UUID.generate(), name: source_name}
-
-    User
-    |> Repo.get_by(api_key: api_key)
-    |> Ecto.build_assoc(:sources)
-    |> Source.changeset(source)
-    |> Repo.insert()
-  end
-
-  defp lookup_or_create_source(api_key, source_name) do
-    source = AccountCache.get_source_by_name(api_key, source_name)
-
-    source =
-      if source do
-        source
-      else
-        {:ok, new_source} = create_source(source_name, api_key)
-        AccountCache.update_account(api_key)
-
-        new_source
-      end
-
-    source.token
-  end
-
-  defp source_over_threshold?(source) do
-    current_rate = SourceData.get_rate(source)
-    avg_rate = SourceData.get_avg_rate(source)
+  defp source_over_threshold?(%Source{} = source) do
+    current_rate = SourceData.get_rate(source.token)
+    avg_rate = SourceData.get_avg_rate(source.token)
 
     avg_rate >= 1 and current_rate / 10 >= avg_rate
   end
