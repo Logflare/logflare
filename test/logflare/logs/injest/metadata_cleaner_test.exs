@@ -13,7 +13,7 @@ defmodule Logflare.Logs.Injest.MetadataCleanerTest do
         |> put_in(~w(request headers host), %{})
         |> put_in(~w(response headers vary), [])
 
-      meta_cleaned = Cleaner.reject_empty_kvs(meta_with_nils)
+      meta_cleaned = Cleaner.deep_reject_nil_and_empty(meta_with_nils)
 
       get_keys_in = &Map.keys(get_in(meta_cleaned, &1))
 
@@ -38,7 +38,7 @@ defmodule Logflare.Logs.Injest.MetadataCleanerTest do
         |> update_in(["stacktrace"], &(&1 ++ [%{}, nil, [], "", {}]))
         |> put_in(["pid"], nil)
 
-      meta_cleaned = Cleaner.reject_empty_kvs(meta_with_nils)
+      meta_cleaned = Cleaner.deep_reject_nil_and_empty(meta_with_nils)
 
       assert length(meta_cleaned["stacktrace"]) == 2
       assert "pid" not in Map.keys(meta_cleaned)
