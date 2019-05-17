@@ -44,8 +44,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
     s2 = insert(:source, token: Faker.UUID.v4())
     u1 = insert(:user, sources: [s1], api_key: "dummy_key", api_quota: 5)
     u2 = insert(:user, sources: [s2], api_key: "other_dummy_key", api_quota: 0)
-    {:ok, _} = Logflare.SourceRateCounter.start_link(s1.token, 0)
-    {:ok, _} = Logflare.SourceRateCounter.start_link(s2.token, 0)
+    {:ok, _} = Logflare.SourceRateCounter.start_link(s1.token)
+    {:ok, _} = Logflare.SourceRateCounter.start_link(s2.token)
     {:ok, users: [u1, u2], sources: [s1, s2]}
   end
 
@@ -59,8 +59,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
       assert {"x-rate-limit-user_limit", "300"} in conn.resp_headers
       assert {"x-rate-limit-user_remaining", "300"} in conn.resp_headers
-      assert {"x-rate-limit-source_limit", "1500"} in conn.resp_headers
-      assert {"x-rate-limit-source_remaining", "1500"} in conn.resp_headers
+      assert {"x-rate-limit-source_limit", "3000"} in conn.resp_headers
+      assert {"x-rate-limit-source_remaining", "3000"} in conn.resp_headers
       assert conn.status == nil
       assert conn.halted == false
     end
@@ -74,8 +74,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
 
       assert {"x-rate-limit-user_limit", "0"} in conn.resp_headers
       assert {"x-rate-limit-user_remaining", "0"} in conn.resp_headers
-      assert {"x-rate-limit-source_limit", "1500"} in conn.resp_headers
-      assert {"x-rate-limit-source_remaining", "1500"} in conn.resp_headers
+      assert {"x-rate-limit-source_limit", "3000"} in conn.resp_headers
+      assert {"x-rate-limit-source_remaining", "3000"} in conn.resp_headers
 
       assert conn.resp_body ==
                "User rate is over the API quota. Email support@logflare.app to increase your rate limit."

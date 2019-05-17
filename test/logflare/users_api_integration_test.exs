@@ -8,6 +8,7 @@ defmodule Logflare.Users.APIIntegrationTest do
   use Logflare.DataCase
 
   @moduletag integration: true
+
   setup do
     source_id = Faker.UUID.v4()
     source = insert(:source, token: source_id)
@@ -44,7 +45,7 @@ defmodule Logflare.Users.APIIntegrationTest do
                 %{
                   message: nil,
                   metrics: %{
-                    source: %{limit: 1500, remaining: 900},
+                    source: %{limit: 3000, remaining: 2400},
                     user: %{limit: 660, remaining: 60}
                   }
                 }}
@@ -72,7 +73,7 @@ defmodule Logflare.Users.APIIntegrationTest do
                   message:
                     "User rate is over the API quota. Email support@logflare.app to increase your rate limit.",
                   metrics: %{
-                    source: %{limit: 1500, remaining: 900},
+                    source: %{limit: 3000, remaining: 2400},
                     user: %{limit: 540, remaining: -60}
                   }
                 }}
