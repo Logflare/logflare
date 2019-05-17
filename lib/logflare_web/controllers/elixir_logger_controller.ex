@@ -3,6 +3,7 @@ defmodule LogflareWeb.ElixirLoggerController do
 
   alias Logflare.Google.BigQuery
   alias Logflare.{TableCounter, SystemCounter, Sources, Source, SourceData, TableBuffer, Logs}
+  alias Logflare.Logs.Injest
 
   @system_counter :total_logs_logged
 
@@ -28,7 +29,10 @@ defmodule LogflareWeb.ElixirLoggerController do
     unique_int = System.unique_integer([:monotonic])
     time_event = {timestamp, unique_int, monotime}
 
-    metadata = metadata |> Map.put("level", lv)
+    metadata =
+      metadata
+      |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
+      |> Map.put("level", lv)
 
     send_with_data = &send_to_many_sources_by_rules(&1, time_event, m, metadata)
 
