@@ -1,10 +1,16 @@
 defmodule LogflareWeb.CloudflareControllerV1 do
+  @moduledoc """
+  Handles webhooks from Cloudlfare.
+  """
   use LogflareWeb, :controller
 
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.OauthAccessTokens.OauthAccessToken
 
+  @doc """
+  Takes the conn and params and builds a response based on the authentication token from Cloudflare.
+  """
   def event(conn, params) do
     user_token = params["authentications"]["account"]["token"]["token"]
 
