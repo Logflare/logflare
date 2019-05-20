@@ -17,10 +17,9 @@ defmodule LogflareWeb.UserSocket do
 
   def connect(%{"token" => _token, "public_token" => public_token}, socket)
       when public_token != "undefined" do
-    if {:ok, public_token} = verify_token(public_token) do
-      {:ok, assign(socket, :public_token, public_token)}
-    else
-      :error
+    case verify_token(public_token) do
+      {:ok, public_token} -> {:ok, assign(socket, :public_token, public_token)}
+      {:error, _reason} -> :error
     end
   end
 
