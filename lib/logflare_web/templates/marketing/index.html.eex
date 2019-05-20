@@ -32,7 +32,7 @@
     </div>
     <div class="col-md-6">
       <h3>Not using Cloudflare?</h3>
-      <p>Logflare is a general log managemnt, ETL and data plaform anyone can use. Use our agent or API to send logs from anywhere. Easily get data into BigQuery and build dashbaords from event data with Google Data Studio.</p>
+      <p>Logflare is a general log management, ETL and data plaform anyone can use. Use our agent or API to send logs from anywhere. Easily get data into BigQuery and build dashboards from event data with Google Data Studio.</p>
     </div>
   </div>
 </div>
@@ -48,7 +48,7 @@
     <div class="col-lg-4">
       <center><i class="fas fa-list feature-icons feature-icons-large"></i></center>
       <h3>7 day Event History</h3>
-      <p>Loglfare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
+      <p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
     </div>
     <div class="col-lg-4">
       <center><i class="fas fa-chart-bar feature-icons feature-icons-large"></i></center>
