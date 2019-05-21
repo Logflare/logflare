@@ -93,7 +93,11 @@ defmodule Logflare.TableBigQueryPipeline do
           message
         rescue
           _e ->
-            err = "Injest error, most probably due to the field schema change"
+            err =
+              "Injest error, most probably due to the field schema change. Payload: #{
+                Jason.encode!(payload)
+              }"
+
             Logger.error(err)
 
             new_payload = %{payload | metadata: %{"error" => err}}
