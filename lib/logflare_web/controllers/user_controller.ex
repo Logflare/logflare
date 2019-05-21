@@ -3,7 +3,6 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.AccountCache
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
   alias Logflare.TableManager
@@ -49,7 +48,6 @@ defmodule LogflareWeb.UserController do
   def delete(conn, _params) do
     user_id = conn.assigns.user.id
     Repo.get!(User, user_id) |> Repo.delete!()
-    AccountCache.remove_account(conn.assigns.user.api_key)
     BigQuery.delete_dataset(user_id)
     CloudResourceManager.set_iam_policy!()
 

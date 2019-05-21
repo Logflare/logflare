@@ -6,7 +6,6 @@ defmodule LogflareWeb.AuthController do
 
   alias Logflare.User
   alias Logflare.Repo
-  alias Logflare.AccountCache
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.Source
@@ -56,8 +55,6 @@ defmodule LogflareWeb.AuthController do
         changeset = User.changeset(user, user_params)
         Repo.update(changeset)
 
-        AccountCache.remove_account(old_api_key)
-
         conn
         |> put_flash(:info, "API key restored!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
@@ -70,8 +67,6 @@ defmodule LogflareWeb.AuthController do
 
         changeset = User.changeset(user, user_params)
         Repo.update(changeset)
-
-        AccountCache.remove_account(old_api_key)
 
         conn
         |> put_flash(:info, [
