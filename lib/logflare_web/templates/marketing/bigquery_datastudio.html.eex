@@ -2,23 +2,31 @@
   <div class="secondary-header">
     <center>
       <h2>Logflare + BigQuery + Data Studio = ❤️</h2>
-      <p class="lead">The easiest way to get insights out of event data.</p>
+      <p class="lead">Easy & cost effective insights out of event data.</p>
     </center>
   </div>
 </div>
 
 <div class="homepage-container mx-auto">
   <div class="value">
-    <h3>Data Pipelines for Everyone</h3>
+    <h3>Fed Up with Expensive ELK Based Log Management Solutions</h3>
+    <p>Lucene based log management systems were great before we had scalable cloud NoSQL databases. A full text search engine was also very useful for unstructured log files.</p>
+    <p>Today we have multiple scalable database options. In particular BigQuery was built by Google in house to store and analyze petabytes of event based data. We also have lots of ways to easily structure log data.</p>
+    <p>It doesn't make any sense to keep log data in a Lucene based datastore anymore. Mostly because it gets prohibitively expensive very quickly and you end up having to ship that data somewhere else anyways if you want to analyze it over the long term.</p>
+    <p>With Logflare and the native BigQuery backend you pay for the storage and query costs yourself so you can keep as much as you like. And BigQuery is very inexpensive if you keep your queries under control allowing you keep orders of magnitude more data.</p>
+    <p>Not only can devops inspect and alert on events in real-time but the product owner or analyst can query and build dashboards based on years of high resolution data.</p>
     <h3>Bring Your own Backend™</h3>
-    <h3>Dyanamically Managed Schema</h3>
-    <h3>Compared to the Usual ELK Based Solution</h3>
+    <p>Use your own BigQuery tables with Logflare and pay for your storage and query costs directly. Pay us only for managing the pipeline and throughput.</p>
+    <p>Keep all your data in your own Google Cloud Platform account.</p>
+    <h3>Schemaless BigQuery</h3>
+    <p>Using Logflare to insert events into BigQuery makes it easy because Logflare dynamcially manages the underlying BigQuery table schema.</p>
+    <p>When we see new fields in your payload metadata, we detect the data type, merge the current schema and the new fields and update the BigQuery schema for you automatically.</p>
     <h3>Streaming or Batched Inserts</h3>
+    <p>We can insert data into BigQuery by streaming or batching files for bulk loading. You pick.</p>
     <h3>Dead Simple Setup</h3>
-    <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner permissions.</p>
+    <p>Just add your project ID to your Logflare account and your data immediately starts inserting into your new tables in your BigQuery account.</p>
     <%= link "Read the guide", to: Routes.marketing_path(@conn, :big_query_setup), class: "btn btn-primary", role: "button" %>
-    <h3>Example Report</h3>
-    <iframe width="600" height="338" src="https://datastudio.google.com/embed/reporting/13RuctakHg44iyk3pZ65ojUkJrK7UOlpv/page/paQn" frameborder="0" style="border:0" allowfullscreen></iframe>
+
   </div>
   <%= render LogflareWeb.SharedView, "footer.html", assigns %>
 </div>
