@@ -7,6 +7,7 @@ defmodule Logflare.Google.BigQuery.SchemaUpdateTest do
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
   describe "schema update" do
+    @tag :skip
     test "schema builder errors on " do
       fun = fn ->
         build_table_schema(

@@ -68,27 +68,38 @@ defmodule Logflare.TableBigQueryPipeline do
   end
 
   defp process_data(message) do
-    %{event: {_time_event, payload}, table: table} = message
+    %{event: {time_event, payload}, table: table} = message
 
     case Map.has_key?(payload, :metadata) do
       true ->
         schema_state = TableBigQuerySchema.get_state(table)
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
-        schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
-        if same_schemas?(old_schema, schema) == false do
-          case BigQuery.patch_table(table, schema, bigquery_project_id) do
-            {:ok, table_info} ->
-              TableBigQuerySchema.update(table, table_info.schema)
-              Logger.info("Table schema updated!")
+        try do
+          schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
-            {:error, message} ->
-              Logger.error("Table schema update error: #{message.body}")
+          if same_schemas?(old_schema, schema) == false do
+            case BigQuery.patch_table(table, schema, bigquery_project_id) do
+              {:ok, table_info} ->
+                TableBigQuerySchema.update(table, table_info.schema)
+                Logger.info("Table schema updated!")
+
+              {:error, message} ->
+                Logger.error("Table schema update error: #{message.body}")
+            end
           end
-        end
 
-        message
+          message
+        rescue
+          _e ->
+            err = "Injest error, most probably due to the field schema change"
+            Logger.error(err)
+
+            new_payload = %{payload | metadata: %{"error" => err}}
+
+            Map.put(message, :event, {time_event, new_payload})
+        end
 
       false ->
         message
