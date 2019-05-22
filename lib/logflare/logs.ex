@@ -109,4 +109,79 @@ defmodule Logflare.Logs do
     unique_int = System.unique_integer([:monotonic])
     {timestamp_mcs, unique_int, monotime}
   end
+
+  defp insert_log_to_source(log_entry, %Source{} = source) do
+    %{"message" => m, "metadata" => metadata, "timestamp" => ts, "level" => lv} = log_entry
+    time_event = build_time_event(ts)
+
+    metadata =
+      metadata
+      |> Map.put("level", lv)
+      |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
+
+    send_with_data = &send_to_many_sources_by_rules(&1, time_event, m, metadata)
+
+    # TODO: Should it send data to both source and overflow_source or not?
+    if source.overflow_source && source_over_threshold?(source) do
+      source_id =
+        source.overflow_source
+        |> String.to_atom()
+
+      source_id
+      |> Sources.Cache.get_by_id()
+      |> send_with_data.()
+    else
+      send_with_data.(source)
+    end
+  end
+
+  defp send_to_many_sources_by_rules(%Source{} = source, time_event, log_message, metadata)
+       when is_binary(log_message) do
+    rules = source.rules
+
+    Enum.each(
+      rules,
+      fn x ->
+        if Regex.match?(~r{#{x.regex}}, "#{log_message}") do
+          x.sink
+          |> String.to_atom()
+          |> insert_and_broadcast(time_event, log_message, metadata)
+        end
+      end
+    )
+
+    insert_and_broadcast(source, time_event, log_message, metadata)
+  end
+
+  defp insert_and_broadcast(%Source{} = source, time_event, log_message, metadata)
+       when is_binary(log_message) do
+    source_table_string = Atom.to_string(source.token)
+    {timestamp, _unique_int, _monotime} = time_event
+
+    payload = %{timestamp: timestamp, log_message: log_message, metadata: metadata}
+
+    log_event = {time_event, payload}
+
+    Logs.insert_or_push(source.token, log_event)
+
+    TableBuffer.push(source_table_string, log_event)
+    TableCounter.incriment(source.token)
+    SystemCounter.incriment(@system_counter)
+
+    broadcast_log_count(source.token)
+    broadcast_total_log_count()
+
+    LogflareWeb.Endpoint.broadcast(
+      "source:#{source.token}",
+      "source:#{source.token}:new",
+      payload
+    )
+  end
+
+  defp source_over_threshold?(%Source{} = source) do
+    current_rate = SourceData.get_rate(source.token)
+    avg_rate = SourceData.get_avg_rate(source.token)
+
+    avg_rate >= 1 and current_rate / 10 >= avg_rate
+  end
 end
