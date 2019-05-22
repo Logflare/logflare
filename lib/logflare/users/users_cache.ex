@@ -17,12 +17,7 @@ defmodule Logflare.Users.Cache do
   end
 
   def get_by_id(id) do
-    case Cachex.fetch(@cache, id, fn id ->
-           {:commit, Users.get_user_by_id(id)}
-         end) do
-      {:commit, value} -> value
-      {:ok, value} -> value
-    end
+    fetch_or_commit({:id, [id]}, &Users.get_user_by_id/1)
   end
 
   @spec source_id_owned?(User.t(), atom) :: User.t()

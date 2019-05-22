@@ -1,6 +1,6 @@
-defmodule Logflare.Google.BigQuery.Validator.NestedValuesTest do
+defmodule Logflare.Validator.DeepFieldTypesTest do
   use ExUnit.Case
-  import Logflare.Google.BigQuery.Validator.NestedValues
+  import Logflare.Validator.DeepFieldTypes
 
   describe "nested values validation" do
     test "diverging types in key0.[0,1].key1.key2" do

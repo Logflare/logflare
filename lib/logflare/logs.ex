@@ -177,11 +177,4 @@ defmodule Logflare.Logs do
       payload
     )
   end
-
-  defp source_over_threshold?(%Source{} = source) do
-    current_rate = SourceData.get_rate(source.token)
-    avg_rate = SourceData.get_avg_rate(source.token)
-
-    avg_rate >= 1 and current_rate / 10 >= avg_rate
-  end
 end

@@ -1,7 +1,7 @@
-defmodule Logflare.Google.BigQuery.EventUtils.ValidatorTest do
+defmodule Logflare.Validator.BigQuery.TableMetadataTest do
+  @moduledoc false
   use ExUnit.Case
-  alias Logflare.Google.BigQuery.EventUtils.Validator
-  import Validator
+  import Logflare.Validator.BigQuery.TableMetadata
 
   @valid_payload %{
     "datacenter" => "aws",

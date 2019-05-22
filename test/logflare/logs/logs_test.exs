@@ -1,7 +1,14 @@
 defmodule Logflare.LogsTest do
   @moduledoc false
-  use ExUnit.Case
+  use Logflare.DataCase
+  import Logflare.DummyFactory
   import Logflare.Logs
+
+  setup do
+    s = insert(:source, token: Faker.UUID.v4(), rules: [])
+
+    {:ok, sources: [s]}
+  end
 
   describe "Logs context" do
     test "build_time_event/1 for ISO:Extended" do
@@ -20,7 +27,7 @@ defmodule Logflare.LogsTest do
     test "build_time_event/1 for integer timestamp" do
       timestamp = System.system_time(:microsecond)
 
-      {timestamp, unique_int, monotime} = build_time_event(now_timestamp)
+      {timestamp, unique_int, monotime} = build_time_event(timestamp)
 
       assert is_integer(timestamp)
     end
@@ -33,7 +40,7 @@ defmodule Logflare.LogsTest do
         "level" => "info"
       }
 
-      {:ok, val} = validate_log_entry(le)
+      :ok = validate_log_entry(le)
     end
 
     test "validate_log_entry/1 succeeds with simple valid metadata" do
@@ -43,11 +50,14 @@ defmodule Logflare.LogsTest do
           "host" => "example.org",
           "user" => %{
             "id" => 1,
-            "sources" => [%{
-              "id" => 1
-            }, %{
-              "id" => 2
-            }]
+            "sources" => [
+              %{
+                "id" => 1
+              },
+              %{
+                "id" => 2
+              }
+            ]
           }
         },
         "message" => "param validation",
@@ -55,7 +65,7 @@ defmodule Logflare.LogsTest do
         "level" => "info"
       }
 
-      {:ok, val} = validate_log_entry(le)
+      :ok = validate_log_entry(le)
     end
 
     test "validate_all/1 succeeds with empty metadata log entries " do
@@ -74,7 +84,7 @@ defmodule Logflare.LogsTest do
         }
       ]
 
-      assert validate_all(xs) === :ok
+      assert validate_log_entries(xs) === :ok
     end
   end
 

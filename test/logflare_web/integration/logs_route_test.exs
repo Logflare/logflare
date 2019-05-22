@@ -54,15 +54,19 @@ defmodule LogflareWeb.LogsRouteTest do
 
     test "succeeds with no source but with source_name ", %{conn: conn, user: u, sources: [s]} do
       conn = conn
-      |> put_api_key_header(u.api_key)
-      |> post("/logs", %{
-        "log_entry" => "log binary message",
-        "source_name" => s.name,
-        "metadata" => metadata
-      })
+             |> put_api_key_header(u.api_key)
+             |> post(
+                  "/logs",
+                  %{
+                    "log_entry" => "log binary message",
+                    "source_name" => s.name,
+                    "metadata" => metadata
+                  }
+                )
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
+
     test "succeeds with log entry and no metadata ", %{conn: conn, user: u, sources: [s]} do
       conn = post_logs(conn, u, s, "log binary message")
 
@@ -93,11 +97,14 @@ defmodule LogflareWeb.LogsRouteTest do
   defp post_logs(conn, user, source, log_entry, metadata \\ nil) do
     conn
     |> put_api_key_header(user.api_key)
-    |> post("/logs", %{
-      "log_entry" => log_entry,
-      "source" => Atom.to_string(source.token),
-      "metadata" => metadata
-    })
+    |> post(
+         "/logs",
+         %{
+           "log_entry" => log_entry,
+           "source" => Atom.to_string(source.token),
+           "metadata" => metadata
+         }
+       )
   end
 
   defp put_api_key_header(conn, api_key) do
@@ -115,8 +122,16 @@ defmodule LogflareWeb.LogsRouteTest do
           "blah" => "water",
           "home" => "not home",
           "deep_nest" => [
-            %{"more_deep_nest" => %{"a" => 1}},
-            %{"more_deep_nest2" => %{"a" => 2}}
+            %{
+              "more_deep_nest" => %{
+                "a" => 1
+              }
+            },
+            %{
+              "more_deep_nest2" => %{
+                "a" => 2
+              }
+            }
           ]
         },
         "user_agent" => "chrome"
