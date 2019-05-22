@@ -1,6 +1,6 @@
 %{
   "approximate_histogram": {:hex, :approximate_histogram, "0.1.1", "198eb36681e763ed4baab6ca0682acec4ef642f60ba272f251d3059052f4f378", [:mix], [], "hexpm"},
-  "artificery": {:hex, :artificery, "0.4.1", "90b1fcedb9034853b36dbea2174f9fc1172bd50b0686a723178103def5c9c1c8", [:mix], [], "hexpm"},
+  "artificery": {:hex, :artificery, "0.4.2", "3ded6e29e13113af52811c72f414d1e88f711410cac1b619ab3a2666bbd7efd4", [:mix], [], "hexpm"},
   "base64url": {:hex, :base64url, "0.0.1", "36a90125f5948e3afd7be97662a1504b934dd5dac78451ca6e9abf85a10286be", [:rebar], [], "hexpm"},
   "bertex": {:hex, :bertex, "1.3.0", "0ad0df9159b5110d9d2b6654f72fbf42a54884ef43b6b651e6224c0af30ba3cb", [:mix], [], "hexpm"},
   "broadway": {:hex, :broadway, "0.1.0", "e21ccf0db6175fef890ea51fbd3eb44f171657f8a04e34a1c2b08fdb4a3476b3", [:mix], [{:gen_stage, "~> 0.14", [hex: :gen_stage, repo: "hexpm", optional: false]}], "hexpm"},
@@ -15,7 +15,7 @@
   "db_connection": {:hex, :db_connection, "2.0.6", "bde2f85d047969c5b5800cb8f4b3ed6316c8cb11487afedac4aa5f93fd39abfa", [:mix], [{:connection, "~> 1.0.2", [hex: :connection, repo: "hexpm", optional: false]}], "hexpm"},
   "decimal": {:hex, :decimal, "1.7.0", "30d6b52c88541f9a66637359ddf85016df9eb266170d53105f02e4a67e00c5aa", [:mix], [], "hexpm"},
   "deep_merge": {:hex, :deep_merge, "1.0.0", "b4aa1a0d1acac393bdf38b2291af38cb1d4a52806cf7a4906f718e1feb5ee961", [:mix], [], "hexpm"},
-  "distillery": {:hex, :distillery, "2.0.13", "4b76d7071f47fd227fbcf27e8fd6f41cfbb2ed24d8867d15d455d600347f5e22", [:mix], [{:artificery, "~> 0.2", [hex: :artificery, repo: "hexpm", optional: false]}], "hexpm"},
+  "distillery": {:hex, :distillery, "2.0.14", "25fc1cdad06282334dbf4a11b6e869cc002855c4e11825157498491df2eed594", [:mix], [{:artificery, "~> 0.2", [hex: :artificery, repo: "hexpm", optional: false]}], "hexpm"},
   "ecto": {:hex, :ecto, "3.0.9", "f01922a0b91a41d764d4e3a914d7f058d99a03460d3082c61dd2dcadd724c934", [:mix], [{:decimal, "~> 1.6", [hex: :decimal, repo: "hexpm", optional: false]}, {:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: true]}, {:poison, "~> 2.2 or ~> 3.0", [hex: :poison, repo: "hexpm", optional: true]}], "hexpm"},
   "ecto_sql": {:hex, :ecto_sql, "3.0.5", "7e44172b4f7aca4469f38d7f6a3da394dbf43a1bcf0ca975e958cb957becd74e", [:mix], [{:db_connection, "~> 2.0", [hex: :db_connection, repo: "hexpm", optional: false]}, {:ecto, "~> 3.0.6", [hex: :ecto, repo: "hexpm", optional: false]}, {:mariaex, "~> 0.9.1", [hex: :mariaex, repo: "hexpm", optional: true]}, {:postgrex, "~> 0.14.0", [hex: :postgrex, repo: "hexpm", optional: true]}, {:telemetry, "~> 0.3.0", [hex: :telemetry, repo: "hexpm", optional: false]}], "hexpm"},
   "edeliver": {:hex, :edeliver, "1.6.0", "8bfdde1b7ff57deb12fa604c4087b4e15a7aa72d7b3d3d310602ca92c038f3ff", [:mix], [{:distillery, "~> 2.0", [hex: :distillery, repo: "hexpm", optional: true]}], "hexpm"},
