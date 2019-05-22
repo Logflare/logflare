@@ -17,12 +17,26 @@ defmodule Logflare.Logs do
   }
 
   alias Logflare.Logs.Injest
+
   alias Logflare.TableCounter
   alias Logflare.SystemCounter
   alias Number.Delimit
 
   @system_counter :total_logs_logged
 
+
+  @spec insert_logs(list(map), Source.t()) :: :ok | {:error, term}
+  def insert_logs(batch, %Source{} = source) when is_list(batch) do
+    case validate_log_entries(batch) do
+      :ok ->
+        Enum.each(batch, &insert_log_to_source(&1, source))
+        :ok
+
+      {:invalid, reason} ->
+        {:error, reason}
+    end
+  end
+  
   @spec insert_or_push(atom(), {tuple(), map()}) :: true
   def insert_or_push(source_token, event) do
     if :ets.info(source_token) == :undefined do
