@@ -178,10 +178,18 @@ defmodule Logflare.SourceRateCounter do
 
   def get_data_from_ets(source_id) do
     if ets_table_is_undefined?() do
-      {:error, "ETS table #{@ets_table_name} is undefined"}
+      Logger.error("ETS table #{@ets_table_name} is undefined")
+      data = [{source_id, SRC.new(source_id)}]
+      data[source_id]
     else
       data = :ets.lookup(@ets_table_name, source_id)
-      data[source_id]
+
+      if data[source_id] do
+        data[source_id]
+      else
+        data = [{source_id, SRC.new(source_id)}]
+        data[source_id]
+      end
     end
   end
 
