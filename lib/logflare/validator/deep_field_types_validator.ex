@@ -1,4 +1,8 @@
 defmodule Logflare.Validator.DeepFieldTypes do
+  @moduledoc """
+  Validates that types of values for the same field path are the same
+  """
+  @spec valid?(map()) :: boolean()
   def valid?(map) when is_map(map) do
     try do
       map
@@ -11,6 +15,7 @@ defmodule Logflare.Validator.DeepFieldTypes do
     end
   end
 
+  @spec deep_merge_enums(list(map) | map) :: map
   def deep_merge_enums(map) when is_map(map) do
     for {k, v} <- map, into: Map.new() do
       v = if is_list(v), do: deep_merge_enums(v), else: v

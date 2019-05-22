@@ -21,6 +21,7 @@ defmodule Logflare.Validator.BigQuery.TableMetadata do
   """
   defguard is_enum?(v) when is_map(v) or is_list(v)
 
+  @spec valid?(map) :: boolean()
   def valid?(payload) when is_map(payload) do
     Enum.reduce(
       payload,
@@ -32,6 +33,7 @@ defmodule Logflare.Validator.BigQuery.TableMetadata do
     )
   end
 
+  @spec valid?(list(map)) :: boolean()
   def valid?(payload) when is_list(payload) do
     Enum.reduce(payload, true, &(&2 && valid?(&1)))
   end
