@@ -24,7 +24,6 @@ defmodule Logflare.Logs do
 
   @system_counter :total_logs_logged
 
-
   @spec insert_logs(list(map), Source.t()) :: :ok | {:error, term}
   def insert_logs(batch, %Source{} = source) when is_list(batch) do
     case validate_log_entries(batch) do
@@ -36,7 +35,7 @@ defmodule Logflare.Logs do
         {:error, reason}
     end
   end
-  
+
   @spec insert_or_push(atom(), {tuple(), map()}) :: true
   def insert_or_push(source_token, event) do
     if :ets.info(source_token) == :undefined do
@@ -70,9 +69,6 @@ defmodule Logflare.Logs do
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 
-  defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
-    monotime = System.monotonic_time(:nanosecond)
-
   @spec validate_log_entries(list(map)) :: :ok | {:invalid, term()}
   def validate_log_entries(batch) when is_list(batch) do
     Enum.reduce_while(
@@ -100,29 +96,41 @@ defmodule Logflare.Logs do
     end
   end
 
+  @spec build_time_event(String.t()) :: {non_neg_integer, integer, integer}
+  defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
     unix =
       iso_datetime
       |> Timex.parse!("{ISO:Extended}")
       |> Timex.to_unix()
 
     timestamp_mcs = unix * 1_000_000
+
+    monotime = System.monotonic_time(:nanosecond)
     unique_int = System.unique_integer([:monotonic])
     {timestamp_mcs, unique_int, monotime}
   end
 
   defp insert_log_to_source(log_entry, %Source{} = source) do
-    %{"message" => m, "metadata" => metadata, "timestamp" => ts, "level" => lv} = log_entry
-    time_event = build_time_event(ts)
+    message = log_entry["log_entry"] || log_entry["message"]
+    metadata = log_entry["metadata"] || %{}
+
+    time_event =
+      log_entry
+      |> Map.get("timestamp", System.system_time(:microsecond))
+      |> build_time_event()
 
     metadata =
-      metadata
-      |> Map.put("level", lv)
+      if lv = log_entry["level"] do
+        Map.put(metadata, "level", lv)
+      else
+        metadata
+      end
       |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
 
-    send_to_many_sources_by_rules(source, time_event, m, metadata)
+    send_with_rules(source, time_event, message, metadata)
   end
 
-  defp send_to_many_sources_by_rules(%Source{} = source, time_event, log_message, metadata)
+  defp send_with_rules(%Source{} = source, time_event, log_message, metadata)
        when is_binary(log_message) do
     rules = source.rules
 
