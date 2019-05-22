@@ -4,7 +4,7 @@ defmodule Logflare.LogsTest do
   import Logflare.Logs
 
   describe "Logs context" do
-    test "build_time_event/1" do
+    test "build_time_event/1 for ISO:Extended" do
       now = NaiveDateTime.utc_now()
 
       iso_datetime =
@@ -13,6 +13,14 @@ defmodule Logflare.LogsTest do
         |> Timex.format!("{ISO:Extended}")
 
       {timestamp, unique_int, monotime} = build_time_event(iso_datetime)
+
+      assert is_integer(timestamp)
+    end
+
+    test "build_time_event/1 for integer timestamp" do
+      timestamp = System.system_time(:microsecond)
+
+      {timestamp, unique_int, monotime} = build_time_event(now_timestamp)
 
       assert is_integer(timestamp)
     end

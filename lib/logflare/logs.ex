@@ -96,7 +96,12 @@ defmodule Logflare.Logs do
     end
   end
 
-  @spec build_time_event(String.t()) :: {non_neg_integer, integer, integer}
+  @spec build_time_event(String.t()| non_neg_integer) :: {non_neg_integer, integer, integer}
+  defp build_time_event(timestamp) when is_integer(timestamp) do
+    import System
+    {timestamp, unique_integer([:monotonic]), monotonic_time(:nanosecond)}
+  end
+
   defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
     unix =
       iso_datetime
