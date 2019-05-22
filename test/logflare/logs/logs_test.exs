@@ -17,9 +17,31 @@ defmodule Logflare.LogsTest do
       assert is_integer(timestamp)
     end
 
-    test "validate_log_entry/2 succeeds with empty metadata" do
+    test "validate_log_entry/1 succeeds with empty metadata" do
       le = %{
         "metadata" => %{},
+        "message" => "param validation",
+        "timestamp" => generate_timestamp_param(),
+        "level" => "info"
+      }
+
+      {:ok, val} = validate_log_entry(le)
+    end
+
+    test "validate_log_entry/1 succeeds with simple valid metadata" do
+      le = %{
+        "metadata" => %{
+          "ip" => "8.8.8.8",
+          "host" => "example.org",
+          "user" => %{
+            "id" => 1,
+            "sources" => [%{
+              "id" => 1
+            }, %{
+              "id" => 2
+            }]
+          }
+        },
         "message" => "param validation",
         "timestamp" => generate_timestamp_param(),
         "level" => "info"
