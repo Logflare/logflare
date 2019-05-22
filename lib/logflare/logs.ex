@@ -38,4 +38,17 @@ defmodule Logflare.Logs do
 
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
+
+  defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
+    monotime = System.monotonic_time(:nanosecond)
+
+    unix =
+      iso_datetime
+      |> Timex.parse!("{ISO:Extended}")
+      |> Timex.to_unix()
+
+    timestamp_mcs = unix * 1_000_000
+    unique_int = System.unique_integer([:monotonic])
+    {timestamp_mcs, unique_int, monotime}
+  end
 end
