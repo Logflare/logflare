@@ -1,4 +1,4 @@
-defmodule Logflare.Google.BigQuery.EventUtils.Validator do
+defmodule Logflare.Validator.BigQuery.TableMetadata do
   import Ecto.Changeset
 
   @doc """
@@ -13,7 +13,7 @@ defmodule Logflare.Google.BigQuery.EventUtils.Validator do
 
   _TABLE_
   _FILE_
-  _PARTITION
+  _PARTITION_
 
   Duplicate column names are not allowed even if the case differs. For example, a column named Column1 is considered identical to a column named column1.
 

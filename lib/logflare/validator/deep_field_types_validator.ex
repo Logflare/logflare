@@ -1,4 +1,4 @@
-defmodule Logflare.Google.BigQuery.Validator.NestedValues do
+defmodule Logflare.Validator.DeepFieldTypes do
   def valid?(map) when is_map(map) do
     try do
       map
@@ -6,7 +6,7 @@ defmodule Logflare.Google.BigQuery.Validator.NestedValues do
       |> deep_merge_enums()
       |> is_map
     rescue
-      e in RuntimeError ->
+      _e in RuntimeError ->
         false
     end
   end
