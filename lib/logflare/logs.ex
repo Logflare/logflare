@@ -59,6 +59,20 @@ defmodule Logflare.Logs do
   defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
     monotime = System.monotonic_time(:nanosecond)
 
+  @spec validate_log_entries(list(map)) :: :ok | {:invalid, term()}
+  def validate_log_entries(batch) when is_list(batch) do
+    Enum.reduce_while(
+      batch,
+      :ok,
+      fn log_entry, _ ->
+        case validate_log_entry(log_entry) do
+          :ok -> {:cont, :ok}
+          {:invalid, message} -> {:halt, {:error, message}}
+        end
+      end
+    )
+  end
+
   @spec validate_log_entry(map()) :: :ok | {:invalid, String.t()}
   def validate_log_entry(log_entry) when is_map(log_entry) do
     %{"metadata" => metadata} = log_entry
