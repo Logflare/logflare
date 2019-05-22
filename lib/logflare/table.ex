@@ -70,12 +70,12 @@ defmodule Logflare.Table do
     state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
     children = [
+      {SourceRateCounter, source_id},
       {TableMailer, source_id},
       {TableTexter, source_id},
       {TableBuffer, source_id},
       {TableBigQueryPipeline, state},
-      {TableBigQuerySchema, state},
-      {SourceRateCounter, source_id}
+      {TableBigQuerySchema, state}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
