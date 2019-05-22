@@ -1,5 +1,22 @@
 defmodule Logflare.Logs do
-  alias Logflare.Table
+  use Publicist
+  alias Logflare.Validator.{DeepFieldTypes, BigQuery}
+
+  @dft_user_err "Metadata validation error: values with the same field path must have the same type."
+  @bg_tm_user_err "Log entry metadata contains keys or values that are forbidden for the Google BigQuery table schema. Learn more at https://cloud.google.com/bigquery/docs/schemas"
+
+  alias Logflare.{
+    Table,
+    TableCounter,
+    SystemCounter,
+    Sources,
+    Source,
+    SourceData,
+    TableBuffer,
+    Logs
+  }
+
+  alias Logflare.Logs.Injest
   alias Logflare.TableCounter
   alias Logflare.SystemCounter
   alias Number.Delimit
@@ -41,6 +58,19 @@ defmodule Logflare.Logs do
 
   defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
     monotime = System.monotonic_time(:nanosecond)
+
+  @spec validate_log_entry(map()) :: :ok | {:invalid, String.t()}
+  def validate_log_entry(log_entry) when is_map(log_entry) do
+    %{"metadata" => metadata} = log_entry
+
+    with {:dft, true} <- {:dft, DeepFieldTypes.valid?(metadata)},
+         {:bq_tm, true} <- {:bq_tm, BigQuery.TableMetadata.valid?(metadata)} do
+      :ok
+    else
+      {:dft, false} -> {:invalid, @dft_user_err}
+      {:bg_tm, false} -> {:invalid, @bg_tm_user_err}
+    end
+  end
 
     unix =
       iso_datetime
