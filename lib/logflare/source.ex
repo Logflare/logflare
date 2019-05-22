@@ -7,7 +7,6 @@ defmodule Logflare.Source do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string
-    field :overflow_source, Ecto.UUID
     field :avg_rate, :integer, virtual: true
     field :favorite, :boolean, default: false
     field :user_email_notifications, :boolean, default: false
@@ -29,7 +28,6 @@ defmodule Logflare.Source do
       :name,
       :token,
       :public_token,
-      :overflow_source,
       :avg_rate,
       :favorite,
       :user_email_notifications,

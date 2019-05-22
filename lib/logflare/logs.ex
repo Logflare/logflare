@@ -119,20 +119,7 @@ defmodule Logflare.Logs do
       |> Map.put("level", lv)
       |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
 
-    send_with_data = &send_to_many_sources_by_rules(&1, time_event, m, metadata)
-
-    # TODO: Should it send data to both source and overflow_source or not?
-    if source.overflow_source && source_over_threshold?(source) do
-      source_id =
-        source.overflow_source
-        |> String.to_atom()
-
-      source_id
-      |> Sources.Cache.get_by_id()
-      |> send_with_data.()
-    else
-      send_with_data.(source)
-    end
+    send_to_many_sources_by_rules(source, time_event, m, metadata)
   end
 
   defp send_to_many_sources_by_rules(%Source{} = source, time_event, log_message, metadata)

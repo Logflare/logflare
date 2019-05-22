@@ -196,7 +196,6 @@ defmodule LogflareWeb.SourceController do
           name: s.name,
           id: s.id,
           token: s.token,
-          overflow_source: s.overflow_source
         }
       )
 
@@ -233,7 +232,6 @@ defmodule LogflareWeb.SourceController do
           name: s.name,
           id: s.id,
           token: s.token,
-          overflow_source: s.overflow_source
         }
       )
 
