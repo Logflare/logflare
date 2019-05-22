@@ -12,11 +12,15 @@ defmodule Logflare.Application do
     ]
 
     dev_prod_children = [
+      Logflare.Users.Cache,
+      Logflare.Sources.Cache,
+      supervisor(Logflare.Repo, []),
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       # init TableCounter before TableManager as TableManager calls TableCounter through table create
       supervisor(Logflare.TableCounter, []),
       supervisor(Logflare.SystemCounter, []),
-      supervisor(Logflare.TableManager, [])
+      supervisor(Logflare.TableManager, []),
+      supervisor(LogflareWeb.Endpoint, [])
     ]
 
     env = Application.get_env(:logflare, :env)
@@ -25,7 +29,7 @@ defmodule Logflare.Application do
       if env == :test do
         children
       else
-        children ++ dev_prod_children
+        dev_prod_children
       end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
