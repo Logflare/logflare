@@ -49,6 +49,25 @@ defmodule Logflare.LogsTest do
 
       {:ok, val} = validate_log_entry(le)
     end
+
+    test "validate_all/1 succeeds with empty metadata log entries " do
+      xs = [
+        %{
+          "metadata" => %{},
+          "message" => "param validation",
+          "timestamp" => generate_timestamp_param(),
+          "level" => "info"
+        },
+        %{
+          "metadata" => %{},
+          "message" => "param validation",
+          "timestamp" => generate_timestamp_param(),
+          "level" => "info"
+        }
+      ]
+
+      assert validate_all(xs) === :ok
+    end
   end
 
   def generate_timestamp_param() do
