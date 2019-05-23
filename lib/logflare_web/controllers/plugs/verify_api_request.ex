@@ -29,10 +29,10 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  def check_log_entry(conn, _opts) do
-    log_entry = conn.params["log_entry"] || conn.params["batch"]
+  def check_log_entry(%{"params" => params} = conn, _opts) do
+    log_entry = params["log_entry"] || params["batch"]
 
-    if is_nil(log_entry) || log_entry in [%{}, []] do
+    if log_entry in [%{}, [], "", nil] do
       message = "Log entry needed."
 
       conn
@@ -41,7 +41,13 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
       |> render("index.json", message: message)
       |> halt()
     else
+      raw_logs =
+        params
+        |> Map.get("batch", params)
+        |> List.wrap()
+
       conn
+      |> assign(:raw_logs, raw_logs)
     end
   end
 
