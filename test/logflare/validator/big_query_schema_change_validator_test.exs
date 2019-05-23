@@ -7,10 +7,10 @@ defmodule Logflare.Validator.BigQuery.SchemaChangeTest do
   describe "bigquery bigquery schema change validation" do
     test "correctly creates a typemap from schema" do
       schema = build(:table, :third)
-      typemap = bq_schema_to_typemap(schema)
+      typemap = to_typemap(schema)
 
       assert typemap === %{
-               timestamp: %{t: :timestamp},
+               timestamp: %{t: :datetime},
                event_message: %{t: :string},
                metadata: %{
                  t: :map,
@@ -29,11 +29,10 @@ defmodule Logflare.Validator.BigQuery.SchemaChangeTest do
                        address: %{
                          t: :map,
                          fields: %{
-                           street: %{
-                             t: %{t: :string},
-                             city: %{city: :string},
+                           street: %{t: :string},
+                             city: %{t: :string},
                              st: %{t: :string}
-                           }
+
                          }
                        }
                      }
