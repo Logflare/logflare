@@ -41,5 +41,37 @@ defmodule Logflare.Validator.BigQuery.SchemaChangeTest do
                }
              }
     end
+
+    test "correctly builds a typemap from metadata" do
+      schema = build(:table, :third)
+
+      metadata = %{
+        "event_message" => "This is an example.",
+        "metadata" => [
+          %{
+            "ip_address" => "100.100.100.100",
+            "datacenter" => "aws",
+            "request_method" => "POST",
+            "user" => %{
+              "address" => %{
+                "city" => "New York",
+                "st" => "NY",
+                "street" => "123 W Main St"
+              },
+              "browser" => "Firefox",
+              "company" => "Apple",
+              "id" => 38,
+              "login_count" => 154,
+              "vip" => true
+            }
+          }
+        ],
+        "timestamp" => ~N[2019-04-12 16:44:38]
+      }
+
+      typemap = to_typemap(metadata)
+
+      assert typemap == build(:table, :third) |> to_typemap()
+    end
   end
 end
