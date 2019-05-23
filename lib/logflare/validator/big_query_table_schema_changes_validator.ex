@@ -3,11 +3,15 @@ defmodule Logflare.Validator.BigQuery.SchemaChange do
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
-  def to_typemap(%TS{fields: fields} = schema) when is_map(schema) do
-    to_typemap(fields)
+  def valid?(metadata, existing_schema) do
+    to_typemap(metadata) == to_typemap(existing_schema, from: :bigquery_schema)
   end
 
-  def to_typemap(fields) when is_list(fields) do
+  def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
+    to_typemap(fields, from: :bigquery_schema)
+  end
+
+  def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     fields
     |> Enum.map(fn
       %TFS{fields: fields, name: n, type: t} ->
@@ -17,7 +21,7 @@ defmodule Logflare.Validator.BigQuery.SchemaChange do
 
         v =
           if fields do
-            Map.put(v, :fields, to_typemap(fields))
+            Map.put(v, :fields, to_typemap(fields, from: :bigquery_schema))
           else
             v
           end
@@ -27,7 +31,7 @@ defmodule Logflare.Validator.BigQuery.SchemaChange do
     |> Enum.into(Map.new())
   end
 
-  def to_typemap(metadata) do
+  def to_typemap(metadata) when is_map(metadata) do
     for {k, v} <- metadata, into: Map.new() do
       v =
         cond do
@@ -48,7 +52,14 @@ defmodule Logflare.Validator.BigQuery.SchemaChange do
             %{t: type_of(v)}
         end
 
-      {String.to_existing_atom(k), v}
+      k =
+        if is_atom(k) do
+          k
+        else
+          String.to_existing_atom(k)
+        end
+
+      {k, v}
     end
   end
 
