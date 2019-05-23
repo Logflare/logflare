@@ -11,7 +11,6 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   plug :check_user
   plug :check_source_token_and_name
   plug :check_log_entry
-  plug :validate_metadata
 
   def check_user(conn, _opts) do
     case conn.assigns.user do
@@ -77,8 +76,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
           |> String.to_existing_atom()
           |> Sources.Cache.get_by_id()
 
-        conn
-        |> assign(:source, source)
+        assign(conn, :source, source)
 
       source_name ->
         source = Sources.Cache.get_by_name(source_name)
@@ -104,30 +102,6 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
         |> halt()
-    end
-  end
-
-  def validate_metadata(conn, _opts) do
-    metadata = conn.params["metadata"]
-
-    case is_nil(metadata) do
-      true ->
-        conn
-
-      false ->
-        case Validator.valid?(metadata) do
-          false ->
-            message = "Metadata keys failed validation. Check your metadata!"
-
-            conn
-            |> put_status(400)
-            |> put_view(LogflareWeb.LogView)
-            |> render("index.json", message: message)
-            |> halt()
-
-          true ->
-            conn
-        end
     end
   end
 end
