@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  import Logflare.DummyFactory
   alias LogflareWeb.Plugs.LogEventParamsValidation
 
   setup do
@@ -20,7 +21,7 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
         |> assign(:user, u)
         |> assign(:source, s)
         |> LogEventParamsValidation.call(%{
-          batch => [
+          "batch" => [
             %{
               "valid_batch" => true
             }
@@ -36,7 +37,7 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
         |> assign(:user, u)
         |> assign(:source, s)
         |> LogEventParamsValidation.call(%{
-          batch => [
+          "batch" => [
             %{
               "valid_batch" => false
             }
