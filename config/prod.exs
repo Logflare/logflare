@@ -19,7 +19,13 @@ config :logflare, LogflareWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
   code_reloader: false,
-  version: Application.spec(:logflare, :vsn)
+  version: Application.spec(:logflare, :vsn),
+  check_origin: [
+    "//*.logflare.app",
+    "//logflare.app",
+    "//www.logflarelogs.com",
+    "//logflarelogs.com"
+  ]
 
 #  secret_key_base: System.get_env("SECRET_KEY_BASE"),
 #  session_cookie_name: System.get_env("SESSION_COOKIE_NAME"),
@@ -73,6 +79,7 @@ config :logflare, Logflare.Repo,
   timeout: 30_000
 
 config :logflare, env: :prod
+
 config :logflare, Logflare.Google,
   dataset_id_append: "_prod",
   project_number: "1074203751359",
