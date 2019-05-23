@@ -9,22 +9,44 @@ defmodule Logflare.Validator.BigQuery.SchemaChangeTest do
     end
 
     test "correctly creates a typemap from schema" do
-        assert :schema
-               |> build(:third)
-               |> to_typemap(from: :bigquery_schema) == typemap_for_third()
+      assert :schema
+             |> build(variant: :third)
+             |> to_typemap(from: :bigquery_schema) == typemap_for_third()
     end
 
     test "correctly builds a typemap from metadata" do
-        assert :metadata
-               |> build(:third)
-               |> to_typemap(from: :bigquery_schema) == typemap_for_third()
+      assert :metadata
+             |> build(variant: :third)
+             |> to_typemap() == typemap_for_third()
     end
 
     test "valid? returns true for correct metadata and schema" do
-      schema = build(:schema, :third)
-      metadata = build(:metadata, :third)
+      schema = build(:schema, variant: :third)
+      metadata = build(:metadata, variant: :third)
 
       assert valid?(metadata, schema)
+    end
+
+    test "valid? returns false for various changed nested field types" do
+      schema = build(:schema, variant: :third)
+
+      event = build(:metadata, variant: :third)
+
+      metadata =
+        event
+        |> put_in(~w[metadata user address city], 1000)
+
+      metadata2 =
+        event
+        |> put_in(~w[metadata user vip], :not_boolean_atom)
+
+      metadata3 =
+        event
+        |> put_in(~w[metadata ip_address], %{"field" => 1})
+
+      refute valid?(metadata, schema)
+      refute valid?(metadata2, schema)
+      refute valid?(metadata3, schema)
     end
   end
 
