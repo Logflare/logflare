@@ -11,11 +11,6 @@ defmodule LogflareWeb.LogController do
       |> List.wrap()
       |> Logs.insert_logs(conn.assigns.source)
 
-    with :ok <- result do
-      render(conn, "index.json", message: message)
-    else
-      {:error, message} ->
-        send_resp(conn, 406, message)
-    end
+    render(conn, "index.json", message: message)
   end
 end
