@@ -22,10 +22,10 @@ defmodule LogflareWeb.SourceControllerTest do
         |> assign(:user, u)
         |> get("/dashboard")
 
-      dash_sources = conn.assigns.sources
+      dash_sources = Enum.map(conn.assigns.sources, & &1.metrics)
       dash_source_1 = hd(dash_sources)
 
-      source_stat_fields = ~w[avg buffer inserts latest max name rate favorite id token]a
+      source_stat_fields = ~w[avg buffer inserts latest max rate id]a
 
       assert is_list(dash_sources)
       assert source_stat_fields -- Map.keys(dash_source_1) === []

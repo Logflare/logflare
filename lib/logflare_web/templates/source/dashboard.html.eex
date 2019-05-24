@@ -44,9 +44,10 @@
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
           <span id="<%= source.token %>">
             <small class="my-badge">
-              <%= source.inserts %>
+              <%= source.metrics.inserts %>
             </small>
           </span>
+          <i class="far fa-star"></i>
         </div>
       </div>
       <div class="source-meta-data">
@@ -54,24 +55,24 @@
           id: <span class="pointer-cursor" id="<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>" data-clipboard-text="<%= source.token %>"><%= source.token %></span>
         </small>
         <small class="source-details">
-          events/sec: <span id="<%= source.token %>-rate"><%= source.rate %></span>
+          events/sec: <span id="<%= source.token %>-rate"><%= source.metrics.rate %></span>
         </small>
         <small class="source-details">
-          avg: <span id="<%= source.token %>-avg-rate"><%= source.avg %></span>
+          avg: <span id="<%= source.token %>-avg-rate"><%= source.metrics.avg %></span>
         </small>
         <small class="source-details">
-          max: <span id="<%= source.token %>-max-rate"><%= source.max %></span>
+          max: <span id="<%= source.token %>-max-rate"><%= source.metrics.max %></span>
         </small>
         <small class="source-details">
           latest:
-          <%= if source.latest == 0 do %>
+          <%= if source.metrics.latest == 0 do %>
           <span class="">no logs</span>
           <% else %>
-          <span class="log-datestamp"><%= source.latest %></span>
+          <span class="log-datestamp"><%= source.metrics.latest %></span>
           <% end %>
         </small>
         <small class="source-details">
-          buffer: <span id="<%= source.token %>-buffer"><%= source.buffer %></span>
+          buffer: <span id="<%= source.token %>-buffer"><%= source.metrics.buffer %></span>
         </small>
       </div>
       </li>

@@ -12,7 +12,6 @@ defmodule LogflareWeb.SourceController do
   alias LogflareWeb.AuthController
   alias Logflare.SourceData
   alias Logflare.TableManager
-  alias Number.Delimit
   alias Logflare.Google.BigQuery
   alias Logflare.User
 
@@ -21,25 +20,9 @@ defmodule LogflareWeb.SourceController do
 
   def dashboard(conn, _params) do
     sources =
-      for source <- Users.get_sources(conn.assigns.user) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-
-        rate = Delimit.number_to_delimited(SourceData.get_rate(source))
-        timestamp = SourceData.get_latest_date(source)
-        average_rate = Delimit.number_to_delimited(SourceData.get_avg_rate(source))
-        max_rate = Delimit.number_to_delimited(SourceData.get_max_rate(source))
-        buffer_count = Delimit.number_to_delimited(SourceData.get_buffer(token))
-        event_inserts = Delimit.number_to_delimited(SourceData.get_total_inserts(token))
-
-        source
-        |> Map.put(:rate, rate)
-        |> Map.put(:token, token)
-        |> Map.put(:latest, timestamp)
-        |> Map.put(:avg, average_rate)
-        |> Map.put(:max, max_rate)
-        |> Map.put(:buffer, buffer_count)
-        |> Map.put(:inserts, event_inserts)
-      end
+      conn.assigns.user
+      |> Users.get_sources()
+      |> Enum.map(&Source.update_metrics_latest/1)
 
     user_email = conn.assigns.user.email
 
