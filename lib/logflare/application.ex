@@ -6,6 +6,7 @@ defmodule Logflare.Application do
 
     children = [
       Logflare.Users.Cache,
+      Logflare.Logs.RejectedEvents,
       Logflare.Sources.Cache,
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, [])
