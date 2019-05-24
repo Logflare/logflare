@@ -7,7 +7,7 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.VerifySourceOwner
        when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
 
-  alias Logflare.Source
+  alias Logflare.{Source, Users}
   alias Logflare.Repo
   alias LogflareWeb.AuthController
   alias Logflare.SourceData
@@ -20,24 +20,8 @@ defmodule LogflareWeb.SourceController do
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   def dashboard(conn, _params) do
-    user_id = conn.assigns.user.id
-    user_email = conn.assigns.user.email
-
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: [desc: s.favorite],
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-          favorite: s.favorite
-        }
-      )
-
     sources =
-      for source <- Repo.all(query) do
+      for source <- Users.get_sources(conn.assigns.user) do
         {:ok, token} = Ecto.UUID.Atom.load(source.token)
 
         rate = Delimit.number_to_delimited(SourceData.get_rate(source))
@@ -56,6 +40,8 @@ defmodule LogflareWeb.SourceController do
         |> Map.put(:buffer, buffer_count)
         |> Map.put(:inserts, event_inserts)
       end
+
+    user_email = conn.assigns.user.email
 
     render(conn, "dashboard.html", sources: sources, user_email: user_email)
   end

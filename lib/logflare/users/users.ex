@@ -1,5 +1,6 @@
 defmodule Logflare.Users do
   alias Logflare.{User, Source}
+  import Ecto.Query
   alias Logflare.Repo
   @moduledoc false
 
@@ -25,5 +26,19 @@ defmodule Logflare.Users do
     User
     |> Repo.get_by(api_key: api_key)
     |> Repo.preload(:sources)
+  end
+
+  def get_sources(%User{id: user_id}) do
+      (from s in "sources",
+        where: s.user_id == ^user_id,
+        order_by: [desc: s.favorite],
+        order_by: s.name,
+        select: %{
+          name: s.name,
+          id: s.id,
+          token: s.token,
+          favorite: s.favorite
+        })
+      |> Repo.all()
   end
 end
