@@ -2,6 +2,7 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   import Logflare.DummyFactory
+  alias Logflare.Repo
   alias LogflareWeb.Plugs.LogEventParamsValidation
 
   setup do
@@ -19,14 +20,23 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
       conn =
         build_conn(:post, "/logs")
         |> assign(:user, u)
-        |> assign(:source, s)
-        |> LogEventParamsValidation.call(%{
-          "batch" => [
-            %{
-              "valid_batch" => true
-            }
-          ]
-        })
+        |> assign(:source, %{s | user: u})
+        |> assign(:log_events, [
+          %{
+            "metadata" => %{
+              "users" => [
+                %{
+                  "id" => 1
+                },
+                %{
+                  "id" => "2"
+                }
+              ]
+            },
+            "log_entry" => true
+          }
+        ])
+        |> LogEventParamsValidation.call(%{})
 
       assert conn.halted == true
     end
@@ -36,13 +46,19 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
         build_conn(:post, "/logs")
         |> assign(:user, u)
         |> assign(:source, s)
-        |> LogEventParamsValidation.call(%{
-          "batch" => [
-            %{
-              "valid_batch" => false
-            }
-          ]
-        })
+        |> assign(:log_events, [
+          %{
+            "users" => [
+              %{
+                "id" => 1
+              },
+              %{
+                "id" => 2
+              }
+            ]
+          }
+        ])
+        |> LogEventParamsValidation.call(%{})
 
       assert conn.halted == false
     end
