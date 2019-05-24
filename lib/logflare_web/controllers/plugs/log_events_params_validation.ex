@@ -7,7 +7,7 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidation do
   end
 
   def call(conn, _opts) do
-    case Logs.validate_params(conn.assigns.raw_logs) do
+    case Logs.validate_batch_params(conn.assigns.log_events) do
       :ok ->
         conn
 

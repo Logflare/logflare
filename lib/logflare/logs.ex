@@ -77,7 +77,7 @@ defmodule Logflare.Logs do
       fn log_entry, _ ->
         case validate_params(log_entry) do
           :ok -> {:cont, :ok}
-          {:invalid, message} -> {:halt, {:error, message}}
+          invalid_tup -> {:halt, invalid_tup}
         end
       end
     )
@@ -85,7 +85,7 @@ defmodule Logflare.Logs do
 
   @spec validate_params(map()) :: :ok | {:invalid, String.t()}
   def validate_params(log_entry) when is_map(log_entry) do
-    %{"metadata" => metadata} = log_entry
+    metadata = log_entry["metadata"] || %{}
 
     with {:dft, true} <- {:dft, DeepFieldTypes.valid?(metadata)},
          {:bq_tm, true} <- {:bq_tm, BigQuery.TableMetadata.valid?(metadata)} do

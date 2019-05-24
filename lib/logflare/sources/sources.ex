@@ -9,6 +9,7 @@ defmodule Logflare.Sources do
   def get_by_name(source_name) when is_binary(source_name) do
     Source
     |> Repo.get_by(name: source_name)
+    |> Repo.preload(:user)
     |> Repo.preload(:rules)
   end
 
@@ -19,6 +20,7 @@ defmodule Logflare.Sources do
   def get_by_id(source_id) when is_atom(source_id) do
     Source
     |> Repo.get_by(token: source_id)
+    |> Repo.preload(:user)
     |> Repo.preload(:rules)
   end
 end

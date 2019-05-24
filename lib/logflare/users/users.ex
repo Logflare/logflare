@@ -29,13 +29,13 @@ defmodule Logflare.Users do
   end
 
   def get_sources(%User{id: user_id}) do
-    q =
-      from s in Source,
-        where: s.user_id == ^user_id,
-        order_by: [desc: s.favorite],
-        # TODO: maybe order by latest events?
-        order_by: s.name
-
-    Repo.all(q)
+    from(s in Source,
+      where: s.user_id == ^user_id,
+      order_by: [desc: s.favorite],
+      # TODO: maybe order by latest events?
+      order_by: s.name
+    )
+    |> Repo.all()
+    |> Repo.preload(:user)
   end
 end
