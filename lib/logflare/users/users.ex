@@ -29,16 +29,13 @@ defmodule Logflare.Users do
   end
 
   def get_sources(%User{id: user_id}) do
-      (from s in "sources",
+    q =
+      from s in Source,
         where: s.user_id == ^user_id,
         order_by: [desc: s.favorite],
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-          favorite: s.favorite
-        })
-      |> Repo.all()
+        # TODO: maybe order by latest events?
+        order_by: s.name
+
+    Repo.all(q)
   end
 end
