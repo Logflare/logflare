@@ -58,6 +58,31 @@ defmodule Logflare.Source do
     |> validate_min_avg_source_rate(:avg_rate)
   end
 
+  def update_metrics_latest(%__MODULE__{token: token} = source) do
+    import SourceData
+
+    metrics =
+      %Metrics{
+        rate: get_rate(token),
+        latest: get_latest_date(token),
+        avg: get_avg_rate(token),
+        max: get_max_rate(token),
+        buffer: get_buffer(token),
+        inserts: get_total_inserts(token)
+      }
+      |> Map.from_struct()
+      |> Enum.map(fn
+        {k, v} when k in ~w[rate latest avg max buffer inserts]a ->
+          {k, Delimit.number_to_delimited(v)}
+
+        x ->
+          x
+      end)
+      |> Map.new()
+
+    %{source | metrics: metrics}
+  end
+
   def validate_min_avg_source_rate(changeset, field, options \\ []) do
     validate_change(changeset, field, fn _, avg_rate ->
       case avg_rate >= 1 do
