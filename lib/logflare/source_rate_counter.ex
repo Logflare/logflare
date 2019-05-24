@@ -56,7 +56,7 @@ defmodule Logflare.SourceRateCounter do
     put_current_rate()
 
     {:ok, new_count} = get_insert_count(source_id)
-    state = get(source_id)
+    state = get_data_from_ets(source_id)
 
     %SRC{} = state = update_state(state, new_count)
 
@@ -133,7 +133,7 @@ defmodule Logflare.SourceRateCounter do
   """
   def get_rate(source_id) do
     source_id
-    |> get()
+    |> get_data_from_ets()
     |> Map.get(:last_rate)
   end
 
@@ -143,7 +143,7 @@ defmodule Logflare.SourceRateCounter do
   """
   def get_avg_rate(source_id) when is_atom(source_id) do
     source_id
-    |> get()
+    |> get_data_from_ets()
     |> Map.get(:buckets)
     |> Map.get(@default_bucket_width)
     |> Map.get(:average)
@@ -152,7 +152,7 @@ defmodule Logflare.SourceRateCounter do
   @spec get_max_rate(atom) :: integer
   def get_max_rate(source_id) when is_atom(source_id) do
     source_id
-    |> get()
+    |> get_data_from_ets()
     |> Map.get(:max_rate)
   end
 
@@ -176,6 +176,7 @@ defmodule Logflare.SourceRateCounter do
     insert_to_ets_table(source_id, initial)
   end
 
+  @spec get_data_from_ets(atom) :: map
   def get_data_from_ets(source_id) do
     if ets_table_is_undefined?() do
       Logger.error("ETS table #{@ets_table_name} is undefined")
@@ -207,15 +208,6 @@ defmodule Logflare.SourceRateCounter do
     end
 
     :ets.insert(@ets_table_name, {source_id, payload})
-  end
-
-  def get(source_id) do
-    if ets_table_is_undefined?() do
-      0
-    else
-      data = :ets.lookup(@ets_table_name, source_id)
-      data[source_id]
-    end
   end
 
   defp put_current_rate(rate_period \\ @rate_period) do
