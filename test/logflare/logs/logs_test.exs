@@ -32,7 +32,7 @@ defmodule Logflare.LogsTest do
       assert is_integer(timestamp)
     end
 
-    test "validate_log_entry/1 succeeds with empty metadata" do
+    test "validate_params/1 succeeds with empty metadata" do
       le = %{
         "metadata" => %{},
         "message" => "param validation",
@@ -40,10 +40,10 @@ defmodule Logflare.LogsTest do
         "level" => "info"
       }
 
-      :ok = validate_log_entry(le)
+      :ok = validate_params(le)
     end
 
-    test "validate_log_entry/1 succeeds with simple valid metadata" do
+    test "validate_params/1 succeeds with simple valid metadata" do
       le = %{
         "metadata" => %{
           "ip" => "8.8.8.8",
@@ -65,7 +65,7 @@ defmodule Logflare.LogsTest do
         "level" => "info"
       }
 
-      :ok = validate_log_entry(le)
+      :ok = validate_params(le)
     end
 
     test "validate_all/1 succeeds with empty metadata log entries " do
@@ -84,7 +84,7 @@ defmodule Logflare.LogsTest do
         }
       ]
 
-      assert validate_log_entries(xs) === :ok
+      assert validate_batch_params(xs) === :ok
     end
   end
 
