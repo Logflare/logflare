@@ -16,12 +16,21 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard" do
-    test "renders dashboard", %{conn: conn, users: [u]} do
+    test "renders dashboard", %{conn: conn, users: [u], sources: [s1, s2]} do
       conn =
         conn
         |> assign(:user, u)
         |> get("/dashboard")
 
+      dash_sources = conn.assigns.sources
+      dash_source_1 = hd(dash_sources)
+
+      source_stat_fields = ~w[avg buffer inserts latest max name rate favorite id token]a
+
+      assert is_list(dash_sources)
+      assert source_stat_fields -- Map.keys(dash_source_1) === []
+      assert hd(conn.assigns.sources).id == s1.id
+      assert hd(conn.assigns.sources).token == s1.token
       assert html_response(conn, 200) =~ "dashboard"
     end
   end
