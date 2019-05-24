@@ -15,6 +15,7 @@ defmodule Logflare.Source do
       field :max, :integer
       field :buffer, :integer
       field :inserts, :integer
+      field :rejected, :integer
     end
   end
 
@@ -33,6 +34,7 @@ defmodule Logflare.Source do
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
     field :metrics, :map, virtual: true
+    field :has_rejected_events?, :boolean, default: false, virtual: true
 
     timestamps()
   end
@@ -60,6 +62,7 @@ defmodule Logflare.Source do
 
   def update_metrics_latest(%__MODULE__{token: token} = source) do
     import SourceData
+    rejected_count = Logs.Rejected.get_by_source(source)
 
     metrics =
       %Metrics{
@@ -68,7 +71,8 @@ defmodule Logflare.Source do
         avg: get_avg_rate(token),
         max: get_max_rate(token),
         buffer: get_buffer(token),
-        inserts: get_total_inserts(token)
+        inserts: get_total_inserts(token),
+        rejected: rejected_count
       }
       |> Map.from_struct()
       |> Enum.map(fn
@@ -80,7 +84,7 @@ defmodule Logflare.Source do
       end)
       |> Map.new()
 
-    %{source | metrics: metrics}
+    %{source | metrics: metrics, has_rejected?: rejected_count > 0}
   end
 
   def validate_min_avg_source_rate(changeset, field, options \\ []) do
