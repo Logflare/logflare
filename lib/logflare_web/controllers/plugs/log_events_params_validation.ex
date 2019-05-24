@@ -7,14 +7,14 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidation do
   end
 
   def call(conn, _opts) do
-    case Logs.validate_log_entries(conn.assigns.raw_logs) do
+    case Logs.validate_params(conn.assigns.raw_logs) do
       :ok ->
         conn
 
       {:invalid, reason} ->
-        Logs.Rejected.injest(%{
+        Logs.RejectedEvents.injest(%{
           reason: reason,
-          raw_logs: conn.assigns.raw_logs,
+          log_events: conn.assigns.log_events,
           source: conn.assigns.source
         })
 

@@ -1,6 +1,7 @@
 defmodule Logflare.Source do
   use Ecto.Schema
   alias Logflare.SourceData
+  alias Logflare.Logs.RejectedEvents
   alias Number.Delimit
   import Ecto.Changeset
   @default_source_api_quota 50
@@ -62,7 +63,7 @@ defmodule Logflare.Source do
 
   def update_metrics_latest(%__MODULE__{token: token} = source) do
     import SourceData
-    rejected_count = Logs.Rejected.get_by_source(source)
+    rejected_count = RejectedEvents.get_by_source(source)
 
     metrics =
       %Metrics{
@@ -84,7 +85,7 @@ defmodule Logflare.Source do
       end)
       |> Map.new()
 
-    %{source | metrics: metrics, has_rejected?: rejected_count > 0}
+    %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
   end
 
   def validate_min_avg_source_rate(changeset, field, options \\ []) do

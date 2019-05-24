@@ -26,7 +26,7 @@ defmodule Logflare.Logs do
 
   @spec insert_logs(list(map), Source.t()) :: :ok | {:error, term}
   def insert_logs(batch, %Source{} = source) when is_list(batch) do
-    case validate_log_entries(batch) do
+    case validate_batch_params(batch) do
       :ok ->
         Enum.each(batch, &insert_log_to_source(&1, source))
         :ok
@@ -69,13 +69,13 @@ defmodule Logflare.Logs do
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 
-  @spec validate_log_entries(list(map)) :: :ok | {:invalid, term()}
-  def validate_log_entries(batch) when is_list(batch) do
+  @spec validate_batch_params(list(map)) :: :ok | {:invalid, term()}
+  def validate_batch_params(batch) when is_list(batch) do
     Enum.reduce_while(
       batch,
       :ok,
       fn log_entry, _ ->
-        case validate_log_entry(log_entry) do
+        case validate_params(log_entry) do
           :ok -> {:cont, :ok}
           {:invalid, message} -> {:halt, {:error, message}}
         end
@@ -83,8 +83,8 @@ defmodule Logflare.Logs do
     )
   end
 
-  @spec validate_log_entry(map()) :: :ok | {:invalid, String.t()}
-  def validate_log_entry(log_entry) when is_map(log_entry) do
+  @spec validate_params(map()) :: :ok | {:invalid, String.t()}
+  def validate_params(log_entry) when is_map(log_entry) do
     %{"metadata" => metadata} = log_entry
 
     with {:dft, true} <- {:dft, DeepFieldTypes.valid?(metadata)},
