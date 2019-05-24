@@ -47,7 +47,11 @@
               <%= source.metrics.inserts %>
             </small>
           </span>
-          <i class="far fa-star"></i>
+          <% if source.has_rejected_events? do %>
+          <span class="dashboard-row-aligned-icon" style="color: yellow;"> 
+            <i class="far fa-exclamation-circle" style="font-size: 1.3em;"></i>
+          </span>
+          <% end %>
         </div>
       </div>
       <div class="source-meta-data">
