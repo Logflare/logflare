@@ -19,13 +19,15 @@ config :logflare, LogflareWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
   code_reloader: false,
-  version: Application.spec(:logflare, :vsn),
-  check_origin: [
-    "//*.logflare.app",
-    "//logflare.app",
-    "//www.logflarelogs.com",
-    "//logflarelogs.com"
-  ]
+  version: Application.spec(:logflare, :vsn)
+
+#  Seems to cause issues with Ueberauth callback when users login?
+#  check_origin: [
+#    "//*.logflare.app",
+#    "//logflare.app",
+#    "//www.logflarelogs.com",
+#    "//logflarelogs.com"
+#  ]
 
 #  secret_key_base: System.get_env("SECRET_KEY_BASE"),
 #  session_cookie_name: System.get_env("SESSION_COOKIE_NAME"),
