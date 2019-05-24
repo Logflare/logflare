@@ -1,7 +1,22 @@
 defmodule Logflare.Source do
   use Ecto.Schema
+  alias Logflare.SourceData
+  alias Number.Delimit
   import Ecto.Changeset
   @default_source_api_quota 50
+
+  defmodule Metrics do
+    use Ecto.Schema
+
+    embedded_schema do
+      field :rate, :integer
+      field :latest, :integer
+      field :avg, :integer
+      field :max, :integer
+      field :buffer, :integer
+      field :inserts, :integer
+    end
+  end
 
   schema "sources" do
     field :name, :string
@@ -17,6 +32,7 @@ defmodule Logflare.Source do
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
+    field :metrics, :map, virtual: true
 
     timestamps()
   end
