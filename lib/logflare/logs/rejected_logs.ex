@@ -13,10 +13,8 @@ defmodule Logflare.Logs.RejectedEvents do
   end
 
   @spec get_by_source(Logflare.Source.t()) :: map
-  def get_by_source(%Source{user: %User{} = user} = source) do
-    user
-    |> get_by_user()
-    |> Enum.find(fn {k, _} -> k === source.token end)
+  def get_by_source(%Source{token: token}) do
+    get!(token)
   end
 
   @doc """
@@ -32,16 +30,14 @@ defmodule Logflare.Logs.RejectedEvents do
 
   defp get!(key) do
     {:ok, val} = Cachex.get(@cache, key)
-    val || %{}
+    val
   end
 
-  def insert(%Source{token: token, user: user} = source, error, value) do
-    %{^token => cached} =
-      Cachex.get_and_update!(@cache, source.user.id, fn
-        %{^token => logs} = val -> %{val | token => Enum.take([value | logs], 100)}
-        map -> Map.put(map || %{}, token, value)
-      end)
-
-    cached
+  @spec insert(Logflare.Source.t(), atom, list(map)) :: map
+  def insert(%Source{token: token}, error, value) do
+    Cachex.get_and_update!(@cache, token, fn
+      %{^error => logs} = val -> %{val | error => Enum.take([value | logs], 100)}
+      map -> Map.put(map || %{}, error, value)
+    end)
   end
 end
