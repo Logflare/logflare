@@ -7,9 +7,11 @@ defmodule Logflare.Logs.RejectedEvents do
     %{id: @cache, start: {Cachex, :start_link, [@cache, []]}}
   end
 
-  @spec get_by_user(Logflare.User.t()) :: {atom(), any()}
-  def get_by_user(%User{token: token} = user) do
-    get!(token)
+  @spec get_by_user(Logflare.User.t()) :: map
+  def get_by_user(%User{sources: sources}) do
+    for source <- sources, into: Map.new() do
+      {source.token, get_by_source(source)}
+    end
   end
 
   @spec get_by_source(Logflare.Source.t()) :: map
