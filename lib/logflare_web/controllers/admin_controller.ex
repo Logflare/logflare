@@ -8,14 +8,13 @@ defmodule LogflareWeb.AdminController do
 
   def dashboard(conn, _params) do
     query =
-      from(s in "sources",
+      from s in Source,
         order_by: s.name,
-        select: %{
+        select: %Source{
           name: s.name,
           id: s.id,
           token: s.token
         }
-      )
 
     sources =
       for source <- Repo.all(query) do
