@@ -10,7 +10,14 @@ defmodule Logflare.Mixfile do
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      test_coverage: [tool: ExCoveralls],
+      preferred_cli_env: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
+      ]
     ]
   end
 
@@ -76,7 +83,8 @@ defmodule Logflare.Mixfile do
       {:faker, "~> 0.12", only: :test},
       {:ex_machina, "~> 2.3"},
       {:iteraptor, "~> 1.8.0"},
-      {:bertex, ">= 0.0.0"}
+      {:bertex, ">= 0.0.0"},
+      {:excoveralls, "~> 0.11", only: :test}
     ]
   end
 
