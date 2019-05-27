@@ -133,7 +133,7 @@ defmodule LogflareWeb.LogController do
 
     Repo.get_by(User, api_key: api_key)
     |> Ecto.build_assoc(:sources)
-    |> Source.changeset(source)
+    |> Source.update_by_user_changeset(source)
     |> Repo.insert()
   end
 
