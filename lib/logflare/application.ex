@@ -16,8 +16,8 @@ defmodule Logflare.Application do
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
-      # init TableCounter before TableManager as TableManager calls TableCounter through table create
-      supervisor(Logflare.TableCounter, []),
+      # init SourceCounter before TableManager as TableManager calls SourceCounter through table create
+      supervisor(Logflare.SourceCounter, []),
       supervisor(Logflare.SystemCounter, []),
       supervisor(Logflare.TableManager, []),
       supervisor(LogflareWeb.Endpoint, [])

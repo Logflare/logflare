@@ -244,7 +244,7 @@ defmodule Logflare.SourceRateCounter do
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
   def get_insert_count(source_id) when is_atom(source_id) do
-    Logflare.TableCounter.get_inserts(source_id)
+    Logflare.SourceCounter.get_inserts(source_id)
   end
 
   def average(xs) when is_list(xs) do

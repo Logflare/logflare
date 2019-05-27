@@ -6,7 +6,7 @@ defmodule Logflare.Table do
 
   use GenServer
 
-  alias Logflare.TableCounter
+  alias Logflare.SourceCounter
   alias Logflare.Logs
   alias Logflare.SourceData
   alias Logflare.SourceRateCounter
@@ -103,7 +103,7 @@ defmodule Logflare.Table do
           # https://github.com/ericmj/ex2ms
 
           :ets.delete(source_id, first)
-          TableCounter.decriment(source_id)
+          SourceCounter.decriment(source_id)
 
           case :ets.info(LogflareWeb.Endpoint) do
             :undefined ->
@@ -125,14 +125,14 @@ defmodule Logflare.Table do
 
   def handle_info(:prune, state) do
     source_id = state[:source_token]
-    {:ok, count} = TableCounter.log_count(source_id)
+    {:ok, count} = SourceCounter.log_count(source_id)
 
     case count > 100 do
       true ->
         for _log <- 101..count do
           log = :ets.first(source_id)
           :ets.delete(source_id, log)
-          TableCounter.decriment(source_id)
+          SourceCounter.decriment(source_id)
         end
 
         prune()
@@ -148,9 +148,9 @@ defmodule Logflare.Table do
   defp restore_table(source_id, bigquery_project_id) when is_atom(source_id) do
     Logger.info("ETS loaded table: #{source_id}")
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
-    TableCounter.create(source_id)
-    TableCounter.incriment_ets_count(source_id, 0)
-    TableCounter.incriment_total_count(source_id, log_count)
+    SourceCounter.create(source_id)
+    SourceCounter.incriment_ets_count(source_id, 0)
+    SourceCounter.incriment_total_count(source_id, log_count)
   end
 
   defp fresh_table(source_id, bigquery_project_id) when is_atom(source_id) do
@@ -158,8 +158,8 @@ defmodule Logflare.Table do
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
-    TableCounter.create(source_id)
-    TableCounter.incriment_total_count(source_id, log_count)
+    SourceCounter.create(source_id)
+    SourceCounter.incriment_total_count(source_id, log_count)
   end
 
   defp check_ttl() do

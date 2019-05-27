@@ -6,7 +6,7 @@ defmodule Logflare.TableManager do
   use GenServer
 
   alias Logflare.Repo
-  alias Logflare.TableCounter
+  alias Logflare.SourceCounter
   alias Logflare.Google.BigQuery
 
   import Ecto.Query, only: [from: 2]
@@ -81,7 +81,7 @@ defmodule Logflare.TableManager do
 
         GenServer.stop(website_table)
 
-        TableCounter.delete(website_table)
+        SourceCounter.delete(website_table)
         File.rm(tab_path)
         state = List.delete(state, website_table)
         {:reply, website_table, state}

@@ -2,7 +2,7 @@ defmodule LogflareWeb.ElixirLoggerController do
   use LogflareWeb, :controller
 
   alias Logflare.Google.BigQuery
-  alias Logflare.{TableCounter, SystemCounter, Sources, Source, SourceData, TableBuffer, Logs}
+  alias Logflare.{SourceCounter, SystemCounter, Sources, Source, SourceData, TableBuffer, Logs}
   alias Logflare.Logs.Injest
 
   @system_counter :total_logs_logged
@@ -77,7 +77,7 @@ defmodule LogflareWeb.ElixirLoggerController do
     Logs.insert_or_push(source.token, {time_event, payload})
 
     TableBuffer.push(source_table_string, {time_event, payload})
-    TableCounter.incriment(source.token)
+    SourceCounter.incriment(source.token)
     SystemCounter.incriment(@system_counter)
 
     Logs.broadcast_log_count(source.token)
