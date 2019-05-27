@@ -33,8 +33,8 @@ defmodule Logflare.SourceTexter do
 
     case rate > 0 do
       true ->
-        source = Sources.get_by_id(state.source)
-        user = Users.get_user_by_id(source.user_id)
+        source = Sources.Cache.get_by_id(state.source)
+        user = Users.Cache.get_by_id(source.user_id)
         source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
         {target_number, body} =

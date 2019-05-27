@@ -32,8 +32,8 @@ defmodule Logflare.SourceMailer do
 
     case rate > 0 do
       true ->
-        source = Sources.get_by_id(state.source)
-        user = Users.get_user_by_id(source.user_id)
+        source = Sources.Cache.get_by_id(state.source)
+        user = Users.Cache.get_by_id(source.user_id)
 
         if source.user_email_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->

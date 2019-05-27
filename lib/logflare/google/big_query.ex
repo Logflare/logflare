@@ -12,9 +12,7 @@ defmodule Logflare.Google.BigQuery do
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model
   alias GoogleApi.BigQuery.V2.Connection
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.User
+  alias Logflare.{Sources, Users}
 
   @table_ttl 604_800_000
   # seven days
@@ -241,7 +239,7 @@ defmodule Logflare.Google.BigQuery do
   def create_dataset(dataset_id, project_id \\ @project_id) do
     conn = get_conn()
     user_id = String.to_integer(dataset_id)
-    %Logflare.User{email: email, provider: provider} = Repo.get(User, user_id)
+    %Logflare.User{email: email, provider: provider} = Users.Cache.get_by_id(user_id)
 
     reference = %Model.DatasetReference{
       datasetId: dataset_id <> @dataset_id_append,
@@ -297,7 +295,7 @@ defmodule Logflare.Google.BigQuery do
     dataset_id = Integer.to_string(user_id) <> @dataset_id_append
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      %Logflare.User{email: email, provider: provider} = Repo.get(User, user_id)
+      %Logflare.User{email: email, provider: provider} = Users.Cache.get_by_id(user_id)
 
       if provider == "google" do
         access = [
@@ -368,8 +366,8 @@ defmodule Logflare.Google.BigQuery do
   end
 
   @spec get_account_id(atom) :: String.t()
-  def get_account_id(source) do
-    %Logflare.Source{user_id: account_id} = Repo.get_by(Source, token: Atom.to_string(source))
+  def get_account_id(source_id) do
+    %Logflare.Source{user_id: account_id} = Sources.Cache.get_by_id(source_id)
     "#{account_id}"
   end
 end
