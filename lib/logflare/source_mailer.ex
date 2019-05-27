@@ -10,14 +10,14 @@ defmodule Logflare.SourceMailer do
 
   @check_rate_every 1_000
 
-  def start_link(website_table) do
+  def start_link(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source: website_table,
+        source: source_id,
         events: []
       },
-      name: name(website_table)
+      name: name(source_id)
     )
   end
 
@@ -67,7 +67,7 @@ defmodule Logflare.SourceMailer do
     Process.send_after(self(), :check_rate, @check_rate_every)
   end
 
-  defp name(website_table) do
-    String.to_atom("#{website_table}" <> "-mailer")
+  defp name(source_id) do
+    String.to_atom("#{source_id}" <> "-mailer")
   end
 end

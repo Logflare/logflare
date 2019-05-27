@@ -7,15 +7,15 @@ defmodule Logflare.SourceBuffer do
 
   @broadcast_every 1_000
 
-  def start_link(website_table) do
+  def start_link(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source: website_table,
+        source: source_id,
         buffer: :queue.new(),
         read_receipts: %{}
       },
-      name: name(website_table)
+      name: name(source_id)
     )
   end
 
@@ -26,20 +26,20 @@ defmodule Logflare.SourceBuffer do
     {:ok, state}
   end
 
-  def push(website_table, event) do
-    GenServer.cast(name(website_table), {:push, event})
+  def push(source_id, event) do
+    GenServer.cast(name(source_id), {:push, event})
   end
 
-  def pop(website_table) do
-    GenServer.call(name(website_table), :pop)
+  def pop(source_id) do
+    GenServer.call(name(source_id), :pop)
   end
 
-  def ack(website_table, time_event) do
-    GenServer.call(name(website_table), {:ack, time_event})
+  def ack(source_id, time_event) do
+    GenServer.call(name(source_id), {:ack, time_event})
   end
 
-  def get_count(website_table) do
-    GenServer.call(name(website_table), :get_count)
+  def get_count(source_id) do
+    GenServer.call(name(source_id), :get_count)
   end
 
   def handle_cast({:push, event}, state) do
@@ -92,11 +92,11 @@ defmodule Logflare.SourceBuffer do
     Process.send_after(self(), :check_buffer, @broadcast_every)
   end
 
-  defp broadcast_buffer(website_table, count) do
-    website_table_string = Atom.to_string(website_table)
+  defp broadcast_buffer(source_id, count) do
+    source_id_string = Atom.to_string(source_id)
 
     payload = %{
-      source_token: website_table_string,
+      source_token: source_id_string,
       buffer: Delimit.number_to_delimited(count)
     }
 
@@ -106,14 +106,14 @@ defmodule Logflare.SourceBuffer do
 
       _ ->
         LogflareWeb.Endpoint.broadcast(
-          "dashboard:" <> website_table_string,
-          "dashboard:#{website_table_string}:buffer",
+          "dashboard:" <> source_id_string,
+          "dashboard:#{source_id_string}:buffer",
           payload
         )
     end
   end
 
-  defp name(website_table) do
-    String.to_atom("#{website_table}" <> "-buffer")
+  defp name(source_id) do
+    String.to_atom("#{source_id}" <> "-buffer")
   end
 end
