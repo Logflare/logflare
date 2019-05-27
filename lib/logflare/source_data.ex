@@ -1,6 +1,6 @@
 defmodule Logflare.SourceData do
   alias Logflare.SourceRateCounter
-  alias Logflare.TableBuffer
+  alias Logflare.SourceBuffer
   alias Logflare.SourceCounter
   alias Logflare.Google.BigQuery
 
@@ -145,7 +145,7 @@ defmodule Logflare.SourceData do
         fallback
 
       _ ->
-        TableBuffer.get_count(token)
+        SourceBuffer.get_count(token)
     end
   end
 

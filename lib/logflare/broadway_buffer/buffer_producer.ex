@@ -3,7 +3,7 @@ defmodule BroadwayBuffer.Producer do
 
   require Logger
 
-  alias Logflare.TableBuffer
+  alias Logflare.SourceBuffer
 
   @default_receive_interval 1000
 
@@ -54,13 +54,13 @@ defmodule BroadwayBuffer.Producer do
   def ack(table, successful, unsuccessful) do
     Enum.each(successful, fn message ->
       {time_event, _data} = message.data.event
-      TableBuffer.ack(table, time_event)
+      SourceBuffer.ack(table, time_event)
     end)
 
     Enum.each(unsuccessful, fn message ->
       {time_event, _data} = message.data.event
-      event = TableBuffer.ack(table, time_event)
-      TableBuffer.push(table, event)
+      event = SourceBuffer.ack(table, time_event)
+      SourceBuffer.push(table, event)
     end)
   end
 
@@ -68,7 +68,7 @@ defmodule BroadwayBuffer.Producer do
     {opts} = state.table_name
     table = opts[:table_name]
 
-    pop = TableBuffer.pop(table)
+    pop = SourceBuffer.pop(table)
 
     case pop do
       :empty ->

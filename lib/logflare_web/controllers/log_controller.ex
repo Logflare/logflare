@@ -9,7 +9,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.TableManager
   alias Logflare.SourceData
   alias Logflare.AccountCache
-  alias Logflare.TableBuffer
+  alias Logflare.SourceBuffer
   alias Logflare.Logs
 
   @system_counter :total_logs_logged
@@ -115,7 +115,7 @@ defmodule LogflareWeb.LogController do
 
     Logs.insert_or_push(source_table, {time_event, payload})
 
-    TableBuffer.push(source_table_string, {time_event, payload})
+    SourceBuffer.push(source_table_string, {time_event, payload})
     SourceCounter.incriment(source_table)
     SystemCounter.incriment(@system_counter)
 
