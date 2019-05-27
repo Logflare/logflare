@@ -6,7 +6,7 @@ defmodule LogflareWeb.LogController do
   alias Logflare.User
   alias Logflare.SourceCounter
   alias Logflare.SystemCounter
-  alias Logflare.TableManager
+  alias Logflare.SourceManager
   alias Logflare.SourceData
   alias Logflare.AccountCache
   alias Logflare.SourceBuffer
@@ -92,7 +92,7 @@ defmodule LogflareWeb.LogController do
     case :ets.info(source_table) do
       :undefined ->
         source_table
-        |> TableManager.new_table()
+        |> SourceManager.new_table()
         |> insert_and_broadcast(time_event, log_entry, metadata)
 
       _ ->

@@ -1,4 +1,4 @@
-defmodule Logflare.TableManager do
+defmodule Logflare.SourceManager do
   @moduledoc """
   Boots up a gen server per source table. Keeps a list of active tables in state.
   """

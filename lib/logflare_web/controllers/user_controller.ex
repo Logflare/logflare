@@ -5,7 +5,7 @@ defmodule LogflareWeb.UserController do
   alias Logflare.User
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
-  alias Logflare.TableManager
+  alias Logflare.SourceManager
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
 
@@ -24,7 +24,7 @@ defmodule LogflareWeb.UserController do
       {:ok, _user} ->
         case params do
           %{"bigquery_project_id" => _project_id} ->
-            TableManager.reset_all_user_tables(old_user)
+            SourceManager.reset_all_user_tables(old_user)
 
           _ ->
             nil
