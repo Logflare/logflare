@@ -15,7 +15,7 @@ defmodule Logflare.Table do
   alias Logflare.SourceTexter
   alias Logflare.SourceBuffer
   alias Logflare.TableBigQueryPipeline
-  alias Logflare.TableBigQuerySchema
+  alias Logflare.SourceBigQuerySchema
   alias Logflare.Google.BigQuery.GenUtils
 
   require Logger
@@ -75,7 +75,7 @@ defmodule Logflare.Table do
       {SourceTexter, source_id},
       {SourceBuffer, source_id},
       {TableBigQueryPipeline, state},
-      {TableBigQuerySchema, state}
+      {SourceBigQuerySchema, state}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)

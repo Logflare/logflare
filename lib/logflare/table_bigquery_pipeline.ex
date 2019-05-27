@@ -6,7 +6,7 @@ defmodule Logflare.TableBigQueryPipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.TableBigQuerySchema
+  alias Logflare.SourceBigQuerySchema
   alias Logflare.BigQuery.TableSchemaBuilder
   alias Logflare.Google.BigQuery.EventUtils
 
@@ -72,7 +72,7 @@ defmodule Logflare.TableBigQueryPipeline do
 
     case Map.has_key?(payload, :metadata) do
       true ->
-        schema_state = TableBigQuerySchema.get_state(table)
+        schema_state = SourceBigQuerySchema.get_state(table)
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
 
@@ -82,7 +82,7 @@ defmodule Logflare.TableBigQueryPipeline do
           if same_schemas?(old_schema, schema) == false do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
-                TableBigQuerySchema.update(table, table_info.schema)
+                SourceBigQuerySchema.update(table, table_info.schema)
                 Logger.info("Table schema updated!")
 
               {:error, message} ->

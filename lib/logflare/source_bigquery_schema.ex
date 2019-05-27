@@ -1,4 +1,4 @@
-defmodule Logflare.TableBigQuerySchema do
+defmodule Logflare.SourceBigQuerySchema do
   use GenServer
 
   require Logger
