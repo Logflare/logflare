@@ -11,8 +11,8 @@ defmodule Logflare.Table do
   alias Logflare.SourceData
   alias Logflare.SourceRateCounter
   alias Logflare.Google.BigQuery
-  alias Logflare.TableMailer
-  alias Logflare.TableTexter
+  alias Logflare.SourceMailer
+  alias Logflare.SourceTexter
   alias Logflare.TableBuffer
   alias Logflare.TableBigQueryPipeline
   alias Logflare.TableBigQuerySchema
@@ -71,8 +71,8 @@ defmodule Logflare.Table do
 
     children = [
       {SourceRateCounter, source_id},
-      {TableMailer, source_id},
-      {TableTexter, source_id},
+      {SourceMailer, source_id},
+      {SourceTexter, source_id},
       {TableBuffer, source_id},
       {TableBigQueryPipeline, state},
       {TableBigQuerySchema, state}
