@@ -1,4 +1,4 @@
-defmodule Logflare.TableBigQueryPipeline do
+defmodule Logflare.SourceBigQueryPipeline do
   use Broadway
 
   require Logger

@@ -14,7 +14,7 @@ defmodule Logflare.Table do
   alias Logflare.SourceMailer
   alias Logflare.SourceTexter
   alias Logflare.SourceBuffer
-  alias Logflare.TableBigQueryPipeline
+  alias Logflare.SourceBigQueryPipeline
   alias Logflare.SourceBigQuerySchema
   alias Logflare.Google.BigQuery.GenUtils
 
@@ -74,7 +74,7 @@ defmodule Logflare.Table do
       {SourceMailer, source_id},
       {SourceTexter, source_id},
       {SourceBuffer, source_id},
-      {TableBigQueryPipeline, state},
+      {SourceBigQueryPipeline, state},
       {SourceBigQuerySchema, state}
     ]
 
