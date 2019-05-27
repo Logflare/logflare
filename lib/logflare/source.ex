@@ -38,6 +38,25 @@ defmodule Logflare.Source do
       :bigquery_table_ttl,
       :api_quota
     ])
+    |> default_validations()
+  end
+
+  def update_by_user_changeset(source, attrs) do
+    source
+    |> cast(attrs, [
+      :name,
+      :public_token,
+      :favorite,
+      :user_email_notifications,
+      :other_email_notifications,
+      :user_text_notifications,
+      :bigquery_table_ttl
+    ])
+    |> default_validations()
+  end
+
+  def default_validations(changeset) do
+    changeset
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)

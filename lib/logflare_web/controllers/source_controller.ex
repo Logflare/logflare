@@ -63,7 +63,7 @@ defmodule LogflareWeb.SourceController do
   def favorite(conn, %{"id" => source_id}) do
     old_source = Repo.get(Source, source_id)
     source = %{"favorite" => !old_source.favorite}
-    changeset = Source.changeset(old_source, source)
+    changeset = Source.update_by_user_changeset(old_source, source)
 
     case Repo.update(changeset) do
       {:ok, _source} ->
@@ -79,7 +79,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def new(conn, _params) do
-    changeset = Source.changeset(%Source{}, %{})
+    changeset = Source.update_by_user_changeset(%Source{}, %{})
     render(conn, "new.html", changeset: changeset)
   end
 
@@ -89,7 +89,7 @@ defmodule LogflareWeb.SourceController do
     changeset =
       user
       |> Ecto.build_assoc(:sources)
-      |> Source.changeset(source)
+      |> Source.update_by_user_changeset(source)
 
     oauth_params = get_session(conn, :oauth_params)
 
@@ -184,7 +184,7 @@ defmodule LogflareWeb.SourceController do
   def edit(conn, %{"id" => source_id}) do
     source = Repo.get(Source, source_id)
     user_id = conn.assigns.user.id
-    changeset = Source.changeset(source, %{})
+    changeset = Source.update_by_user_changeset(source, %{})
     disabled_source = source.token
     avg_rate = SourceData.get_avg_rate(source.token)
 
@@ -220,7 +220,7 @@ defmodule LogflareWeb.SourceController do
 
   def update(conn, %{"id" => source_id, "source" => updated_params}) do
     old_source = Repo.get(Source, source_id)
-    changeset = Source.changeset(old_source, updated_params)
+    changeset = Source.update_by_user_changeset(old_source, updated_params)
     user_id = conn.assigns.user.id
     disabled_source = old_source.token
     avg_rate = SourceData.get_avg_rate(old_source.token)

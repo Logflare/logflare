@@ -43,6 +43,27 @@ defmodule Logflare.User do
       :api_quota
     ])
     |> validate_required([:email, :provider, :token])
+    |> default_validations(user)
+  end
+
+  def update_by_user_changeset(user, attrs) do
+    user
+    |> cast(attrs, [
+      :email,
+      :provider,
+      :email_preferred,
+      :name,
+      :image,
+      :email_me_product,
+      :phone,
+      :bigquery_project_id
+    ])
+    |> default_validations(user)
+  end
+
+  def default_validations(changeset, user) do
+    changeset
+    |> validate_required([:email, :provider, :token])
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
   end
 
