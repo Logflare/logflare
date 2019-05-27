@@ -58,5 +58,21 @@ defmodule LogflareWeb.SourceControllerTest do
                }
              ] = conn.assigns.logs
     end
+
+    test "update with valid params", %{conn: conn, users: [u], sources: [s1, s2]} do
+      new_name = Faker.String.base64()
+      params = %{"id" => s1.id, "source" => %{"favorite" => true, "name" => new_name}}
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> patch("/sources/#{s1.id}", params)
+
+      s1_new = Sources.get_by_id(s1.token)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert s1_new.name == new_name
+      assert s1_new.favorite == true
+    end
   end
 end
