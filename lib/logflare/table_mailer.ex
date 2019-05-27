@@ -3,9 +3,7 @@ defmodule Logflare.TableMailer do
 
   require Logger
 
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.User
+  alias Logflare.{Sources, Users}
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.SourceRateCounter
@@ -34,7 +32,8 @@ defmodule Logflare.TableMailer do
 
     case rate > 0 do
       true ->
-        {:ok, user, source} = get_user_and_source(state.source)
+        source = Sources.get_by_id(state.source)
+        user = Users.get_user_by_id(source.user_id)
 
         if source.user_email_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
@@ -62,12 +61,6 @@ defmodule Logflare.TableMailer do
         check_rate()
         {:noreply, state}
     end
-  end
-
-  defp get_user_and_source(website_table) do
-    source = Repo.get_by(Source, token: Atom.to_string(website_table))
-    user = Repo.get(User, source.user_id)
-    {:ok, user, source}
   end
 
   defp check_rate() do
