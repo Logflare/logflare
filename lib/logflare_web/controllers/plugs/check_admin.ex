@@ -21,6 +21,7 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
           conn
         else
           conn
+          |> put_status(401)
           |> put_flash(:error, "You're not an admin!")
           |> redirect(to: Routes.source_path(conn, :dashboard))
           |> halt()
