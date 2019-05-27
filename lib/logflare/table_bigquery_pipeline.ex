@@ -7,7 +7,7 @@ defmodule Logflare.TableBigQueryPipeline do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.SourceBigQuerySchema
-  alias Logflare.BigQuery.TableSchemaBuilder
+  alias Logflare.BigQuery.SourceSchemaBuilder
   alias Logflare.Google.BigQuery.EventUtils
 
   def start_link(state) do
@@ -77,7 +77,7 @@ defmodule Logflare.TableBigQueryPipeline do
         bigquery_project_id = schema_state.bigquery_project_id
 
         try do
-          schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
+          schema = SourceSchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
           if same_schemas?(old_schema, schema) == false do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do

@@ -1,4 +1,4 @@
-defmodule Logflare.BigQuery.TableSchemaBuilder do
+defmodule Logflare.BigQuery.SourceSchemaBuilder do
   use Publicist
   require Logger
   alias GoogleApi.BigQuery.V2.Model
