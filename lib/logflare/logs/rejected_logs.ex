@@ -22,12 +22,13 @@ defmodule Logflare.Logs.RejectedEvents do
   @doc """
   Expected to be called only in a log event params validation plug
   """
-  def injest(%{
-        reason: reason,
-        log_events: log_events,
-        source: source
-      }) do
-    insert(source, reason, log_events)
+  def injest(%{error: error, batch: batch, source: %Source{token: token}}) do
+    log = %{
+      message: error.message(),
+      payload: batch
+    }
+
+    insert(token, log)
   end
 
   defp get!(key) do
@@ -35,11 +36,11 @@ defmodule Logflare.Logs.RejectedEvents do
     val
   end
 
-  @spec insert(Logflare.Source.t(), atom, list(map)) :: map
-  def insert(%Source{token: token}, error, value) do
+  @spec insert(atom, map) :: list(map)
+  def insert(token, log) do
     Cachex.get_and_update!(@cache, token, fn
-      %{^error => logs} = val -> %{val | error => Enum.take([value | logs], 100)}
-      map -> Map.put(map || %{}, error, value)
+      xs when is_list(xs) -> Enum.take([log | xs], 500)
+      _ -> [log]
     end)
   end
 end
