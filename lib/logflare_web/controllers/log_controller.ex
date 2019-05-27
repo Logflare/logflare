@@ -8,7 +8,6 @@ defmodule LogflareWeb.LogController do
   alias Logflare.SystemCounter
   alias Logflare.SourceManager
   alias Logflare.SourceData
-  alias Logflare.AccountCache
   alias Logflare.SourceBuffer
   alias Logflare.Logs
 
