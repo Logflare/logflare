@@ -1,4 +1,4 @@
-defmodule Logflare.TableBuffer do
+defmodule Logflare.SourceBuffer do
   use GenServer
 
   alias Number.Delimit

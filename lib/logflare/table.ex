@@ -13,7 +13,7 @@ defmodule Logflare.Table do
   alias Logflare.Google.BigQuery
   alias Logflare.SourceMailer
   alias Logflare.SourceTexter
-  alias Logflare.TableBuffer
+  alias Logflare.SourceBuffer
   alias Logflare.TableBigQueryPipeline
   alias Logflare.TableBigQuerySchema
   alias Logflare.Google.BigQuery.GenUtils
@@ -73,7 +73,7 @@ defmodule Logflare.Table do
       {SourceRateCounter, source_id},
       {SourceMailer, source_id},
       {SourceTexter, source_id},
-      {TableBuffer, source_id},
+      {SourceBuffer, source_id},
       {TableBigQueryPipeline, state},
       {TableBigQuerySchema, state}
     ]
