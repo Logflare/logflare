@@ -3,7 +3,7 @@ defmodule LogflareWeb.SourceControllerTest do
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
 
-  alias Logflare.{SystemCounter, Sources, Repo}
+  alias Logflare.{SystemCounter, Sources, Repo, Users}
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
 
@@ -73,6 +73,22 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 302) =~ "redirected"
       assert s1_new.name == new_name
       assert s1_new.favorite == true
+    end
+
+    test "update action with invalid params", %{conn: conn, users: [u], sources: [s1, s2]} do
+      new_name = "this should never be inserted"
+      params = %{"id" => s1.id, "source" => %{"favorite" => 1, "name" => new_name}}
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> patch("/sources/#{s1.id}", params)
+
+      s1_new = Sources.get_by_id(s1.token)
+
+      assert s1_new.name != new_name
+      assert get_flash(conn, :error) == "Something went wrong!"
+      assert html_response(conn, 406) =~ "Source Name"
     end
   end
 end
