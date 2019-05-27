@@ -8,6 +8,7 @@ defmodule Logflare.SourceManager do
   alias Logflare.Repo
   alias Logflare.SourceCounter
   alias Logflare.Google.BigQuery
+  alias Logflare.SourceRecentLogs
 
   import Ecto.Query, only: [from: 2]
 
@@ -47,7 +48,7 @@ defmodule Logflare.SourceManager do
       )
 
     Enum.each(state, fn s ->
-      Logflare.Table.start_link(s)
+      SourceRecentLogs.start_link(s)
     end)
 
     {:noreply, state}
@@ -57,14 +58,14 @@ defmodule Logflare.SourceManager do
     Logger.info("Table manager started!")
 
     Enum.each(source_ids, fn s ->
-      Logflare.Table.start_link(s)
+      SourceRecentLogs.start_link(s)
     end)
 
     {:noreply, source_ids}
   end
 
   def handle_call({:create, website_table}, _from, state) do
-    Logflare.Table.start_link(website_table)
+    SourceRecentLogs.start_link(website_table)
 
     state = Enum.uniq([website_table | state])
     {:reply, website_table, state}

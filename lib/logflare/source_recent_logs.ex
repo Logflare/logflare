@@ -1,4 +1,4 @@
-defmodule Logflare.Table do
+defmodule Logflare.SourceRecentLogs do
   @moduledoc """
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
