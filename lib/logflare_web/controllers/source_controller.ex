@@ -150,42 +150,6 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def edit(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
-    user_id = conn.assigns.user.id
-    changeset = Source.changeset(source, %{})
-    disabled_source = source.token
-    avg_rate = SourceData.get_avg_rate(source.token)
-
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-        }
-      )
-
-    sources =
-      for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-        s = Map.put(source, :token, token)
-
-        if disabled_source == token,
-          do: Map.put(s, :disabled, true),
-          else: Map.put(s, :disabled, false)
-      end
-
-    render(conn, "edit.html",
-      changeset: changeset,
-      source: source,
-      sources: sources,
-      avg_rate: avg_rate
-    )
-  end
-
   def update(conn, %{"id" => source_id, "source" => updated_params}) do
     old_source = Repo.get(Source, source_id)
     changeset = Source.changeset(old_source, updated_params)
