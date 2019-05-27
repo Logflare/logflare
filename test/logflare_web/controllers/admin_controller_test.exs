@@ -12,6 +12,8 @@ defmodule LogflareWeb.AdminControllerTest do
       s1u2 = insert(:source, token: Faker.UUID.v4(), rules: [])
       u2 = insert(:user, sources: [s1u2])
 
+      a1 = insert(:user, admin: true)
+
       sources = [s1u1, s1u2]
       users = [u1, u2]
 
@@ -22,7 +24,7 @@ defmodule LogflareWeb.AdminControllerTest do
 
       Process.sleep(1_000)
 
-      {:ok, users: users, sources: sources}
+      {:ok, users: users, sources: sources, admins: [a1]}
     end
 
     test "halts and returns 401 for non-admin user", %{
@@ -37,6 +39,21 @@ defmodule LogflareWeb.AdminControllerTest do
 
       assert conn.halted == true
       assert conn.status == 401
+    end
+
+    test "renders dashboard for admin", %{
+      conn: conn,
+      admins: [a1],
+      sources: sources
+    } do
+      conn =
+        conn
+        |> assign(:user, a1)
+        |> get("/admin/dashboard")
+
+      assert conn.halted == false
+      assert html_response(conn, 200) =~ "~/admin"
+      assert html_response(conn, 200) =~ "source"
     end
   end
 end
