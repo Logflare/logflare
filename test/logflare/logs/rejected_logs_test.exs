@@ -27,10 +27,11 @@ defmodule Logflare.Logs.RejectedEventsTest do
 
       error = Logflare.Validator.DeepFieldTypes.Error
 
-      _ = RejectedEvents.insert(source, error, raw_logs)
+      _ = RejectedEvents.injest(%{source: source, error: error, batch: raw_logs})
+
       cached = RejectedEvents.get_by_source(source)
 
-      assert cached[error] === raw_logs
+      assert cached === [%{message: error.message, payload: raw_logs}]
     end
 
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
@@ -56,14 +57,22 @@ defmodule Logflare.Logs.RejectedEventsTest do
 
       error = Logflare.Validator.DeepFieldTypes.Error
 
-      _ = RejectedEvents.insert(source1, error, raw_logs_source_1)
-      _ = RejectedEvents.insert(source2, error, raw_logs_source_2)
+      _ = RejectedEvents.injest(%{source: source1, error: error, batch: raw_logs_source_1})
+      _ = RejectedEvents.injest(%{source: source1, error: error, batch: raw_logs_source_1})
+      _ = RejectedEvents.injest(%{source: source2, error: error, batch: raw_logs_source_2})
 
       result = RejectedEvents.get_by_user(u1)
 
       assert map_size(result) == 2
-      assert result[source1.token][error] == raw_logs_source_1
-      assert result[source2.token][error] == raw_logs_source_2
+
+      assert result[s1.token] === [
+               %{message: error.message, payload: raw_logs_source_1},
+               %{message: error.message, payload: raw_logs_source_1}
+             ]
+
+      assert result[s2.token] === [
+               %{message: error.message, payload: raw_logs_source_2}
+             ]
     end
   end
 end
