@@ -4,6 +4,7 @@ defmodule LogflareWeb.SourceControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.{SystemCounter, Sources, Repo}
+  alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
 
   setup do
@@ -32,6 +33,30 @@ defmodule LogflareWeb.SourceControllerTest do
       assert hd(conn.assigns.sources).id == s1.id
       assert hd(conn.assigns.sources).token == s1.token
       assert html_response(conn, 200) =~ "dashboard"
+    end
+
+    test "renders rejected logs page", %{conn: conn, users: [u], sources: [s1, s2]} do
+      RejectedEvents.injest(%{
+        error: Logflare.Validator.DeepFieldTypes,
+        batch: [%{"no_log_entry" => true, "timestamp" => ""}],
+        source: s1
+      })
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> get("/sources/#{s1.id}/rejected")
+
+      assert html_response(conn, 200) =~ "dashboard"
+
+      assert [
+               %{
+                 message:
+                   "Metadata validation error: values with the same field path must have the same type.",
+                 payload: [%{"no_log_entry" => true, "timestamp" => ""}],
+                 timestamp: _
+               }
+             ] = conn.assigns.logs
     end
   end
 end
