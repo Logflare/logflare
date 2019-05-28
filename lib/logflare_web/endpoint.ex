@@ -7,12 +7,12 @@ defmodule LogflareWeb.Endpoint do
   #
   # You should set gzip to true if you are running phoenix.digest
   # when deploying your static files in production.
-  plug(Plug.Static,
+  plug Plug.Static,
     at: "/",
     from: :logflare,
     gzip: false,
-    only: ~w(css fonts images js favicon.ico robots.txt worker.js manifest.json)
-  )
+    only: ~w(css fonts images js favicon.ico robots.txt worker.js manifest.json),
+    only_matching: ~w(manifest)
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
