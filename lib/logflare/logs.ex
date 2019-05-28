@@ -7,7 +7,7 @@ defmodule Logflare.Logs do
 
   alias Logflare.{
     Table,
-    TableCounter,
+    SourceCounter,
     SystemCounter,
     Sources,
     Source,
@@ -18,7 +18,7 @@ defmodule Logflare.Logs do
 
   alias Logflare.Logs.Injest
 
-  alias Logflare.TableCounter
+  alias Logflare.SourceCounter
   alias Logflare.SystemCounter
   alias Number.Delimit
 
@@ -47,7 +47,7 @@ defmodule Logflare.Logs do
   end
 
   def broadcast_log_count(source_table) do
-    {:ok, log_count} = TableCounter.get_total_inserts(source_table)
+    {:ok, log_count} = SourceCounter.get_total_inserts(source_table)
     source_table_string = Atom.to_string(source_table)
 
     payload = %{
@@ -165,7 +165,7 @@ defmodule Logflare.Logs do
     Logs.insert_or_push(source.token, log_event)
 
     TableBuffer.push(source_table_string, log_event)
-    TableCounter.incriment(source.token)
+    SourceCounter.incriment(source.token)
     SystemCounter.incriment(@system_counter)
 
     broadcast_log_count(source.token)

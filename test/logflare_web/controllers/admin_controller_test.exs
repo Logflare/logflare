@@ -2,7 +2,7 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   import Logflare.DummyFactory
   alias Logflare.{Repo, Source}
-  alias Logflare.{TableCounter, SystemCounter, TableManager}
+  alias Logflare.{SourceCounter, SystemCounter, SourceManager}
   use LogflareWeb.ConnCase
 
   describe "Admin controller" do
@@ -17,10 +17,10 @@ defmodule LogflareWeb.AdminControllerTest do
       sources = [s1u1, s1u2]
       users = [u1, u2]
 
-      TableCounter.start_link()
+      SourceCounter.start_link()
       SystemCounter.start_link()
-      TableManager.start_link([s1u1.token])
-      TableManager.start_link([s1u2.token])
+      SourceManager.start_link([s1u1.token])
+      SourceManager.start_link([s1u2.token])
 
       Process.sleep(1_000)
 

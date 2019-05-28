@@ -1,7 +1,7 @@
 defmodule Logflare.SourceRateCounterTest do
   alias Logflare.SourceRateCounter, as: SRC
-  alias Logflare.TableCounter
   import SRC
+  alias Logflare.SourceCounter
   use ExUnit.Case
 
   import Mox
@@ -13,7 +13,7 @@ defmodule Logflare.SourceRateCounterTest do
 
     state = %{}
 
-    TableCounter.start_link()
+    SourceCounter.start_link()
     SRC.setup_ets_table(source_id)
 
     {:ok, source_id: source_id}
@@ -21,12 +21,12 @@ defmodule Logflare.SourceRateCounterTest do
 
   describe "source_id rate counter" do
     test "init and handle_info(:put_rate, state)/2", %{source_id: source_id} do
-      TableCounter.incriment_ets_count(source_id, 10)
+      SourceCounter.incriment_ets_count(source_id, 10)
       {:noreply, sid} = SRC.handle_info(:put_rate, source_id)
 
       assert sid == source_id
 
-      new_state = get(source_id)
+      new_state = get_data_from_ets(source_id)
 
       assert new_state == %Logflare.SourceRateCounter{
                begin_time: new_state.begin_time,
@@ -46,7 +46,7 @@ defmodule Logflare.SourceRateCounterTest do
     end
 
     test "get_* functions", %{source_id: source_id} do
-      TableCounter.incriment_ets_count(source_id, 5)
+      SourceCounter.incriment_ets_count(source_id, 5)
       _ = SRC.handle_info(:put_rate, source_id)
       assert SRC.get_rate(source_id) == 5
       assert SRC.get_avg_rate(source_id) == 5

@@ -1,7 +1,7 @@
 defmodule Logflare.Google.BigQuery.SchemaUpdateTest do
   @moduledoc false
   use ExUnit.Case
-  import Logflare.BigQuery.TableSchemaBuilder
+  import Logflare.BigQuery.SourceSchemaBuilder
   import Logflare.Google.BigQuery.TestUtils
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
