@@ -3,6 +3,7 @@ defmodule Logflare.User do
   import Ecto.Changeset
   @default_user_api_quota 150
 
+  alias Logflare.Source
   alias Logflare.Google.BigQuery
 
   schema "users" do
@@ -16,7 +17,7 @@ defmodule Logflare.User do
     field :image, :string
     field :email_me_product, :boolean, default: true
     field :admin, :boolean, default: false
-    has_many :sources, Logflare.Source
+    has_many :sources, Source
     field :phone, :string
     field :bigquery_project_id, :string
     field :api_quota, :integer, default: @default_user_api_quota

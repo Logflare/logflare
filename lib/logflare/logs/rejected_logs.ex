@@ -1,7 +1,6 @@
 defmodule Logflare.Logs.RejectedEvents do
   alias Logflare.{Source, User}
   @cache __MODULE__
-  import Cachex.Spec
 
   @type rejected_log_event :: %{
           message: String.t(),

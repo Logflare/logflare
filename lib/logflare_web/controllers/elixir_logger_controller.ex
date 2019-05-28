@@ -5,7 +5,7 @@ defmodule LogflareWeb.ElixirLoggerController do
   def create(conn, %{"batch" => batch}) do
     message = "Logged!"
 
-    result = Logs.insert_logs(batch, conn.assigns.source)
+    Logs.insert_logs(batch, conn.assigns.source)
 
     render(conn, "index.json", message: message)
   end

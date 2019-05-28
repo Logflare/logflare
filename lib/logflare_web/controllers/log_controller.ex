@@ -5,11 +5,10 @@ defmodule LogflareWeb.LogController do
   def create(conn, %{"log_entry" => _} = params) do
     message = "Logged!"
 
-    result =
-      params
-      |> Map.take(~w[log_entry metadata timestamp])
-      |> List.wrap()
-      |> Logs.insert_logs(conn.assigns.source)
+    params
+    |> Map.take(~w[log_entry metadata timestamp])
+    |> List.wrap()
+    |> Logs.insert_logs(conn.assigns.source)
 
     render(conn, "index.json", message: message)
   end

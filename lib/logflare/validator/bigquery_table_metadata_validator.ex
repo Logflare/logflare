@@ -1,4 +1,6 @@
 defmodule Logflare.Validator.BigQuery.TableMetadata do
+  @moduledoc false
+
   import Ecto.Changeset
 
   @doc """

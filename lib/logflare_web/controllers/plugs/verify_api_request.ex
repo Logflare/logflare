@@ -6,7 +6,6 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   require Logger
 
   alias Logflare.Sources
-  alias Logflare.Google.BigQuery.EventUtils.Validator
 
   plug :check_user
   plug :check_source_token_and_name

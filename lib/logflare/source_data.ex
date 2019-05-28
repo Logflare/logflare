@@ -106,7 +106,7 @@ defmodule Logflare.SourceData do
     end
   end
 
-  @spec get_max_rate(map) :: non_neg_integer
+  @spec get_max_rate(atom) :: integer
   def get_max_rate(source_id) do
     case :ets.info(source_id) do
       :undefined ->
@@ -117,7 +117,7 @@ defmodule Logflare.SourceData do
     end
   end
 
-  @spec get_latest_date(map) :: non_neg_integer
+  @spec get_latest_date(atom) :: any
   def get_latest_date(source_id, fallback \\ 0) do
     case :ets.info(source_id) do
       :undefined ->
@@ -134,6 +134,7 @@ defmodule Logflare.SourceData do
     end
   end
 
+  @spec get_buffer(atom, integer) :: integer
   def get_buffer(token, fallback \\ 0) do
     case Process.whereis(String.to_atom("#{token}-buffer")) do
       nil ->
