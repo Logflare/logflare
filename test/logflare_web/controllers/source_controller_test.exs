@@ -90,5 +90,39 @@ defmodule LogflareWeb.SourceControllerTest do
       assert get_flash(conn, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
     end
+
+    test "users can't update restricted fields", %{
+      conn: conn,
+      users: [u],
+      sources: [s1, s2]
+    } do
+      nope_token = Faker.UUID.v4()
+      nope_api_quota = 1337
+      nope_user_id = 1
+
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "name" => s1.name,
+          "token" => nope_token,
+          "api_quota" => nope_api_quota,
+          "user_id" => nope_user_id
+        }
+      }
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> patch("/sources/#{s1.id}", params)
+
+      s1_new = Sources.get_by_pk(s1.id)
+
+      refute conn.assigns[:changeset]
+      refute s1_new.token == nope_token
+      refute s1_new.api_quota == nope_api_quota
+      refute s1_new.user_id == nope_user_id
+      assert conn.status == 200
+      assert html_response(conn, 401) =~ "Not allowed"
+    end
   end
 end
