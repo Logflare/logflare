@@ -11,16 +11,20 @@ defmodule LogflareWeb.SourceControllerTest do
     :ok = Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
     s1 = insert(:source, token: Faker.UUID.v4())
     s2 = insert(:source, token: Faker.UUID.v4())
-    u = insert(:user, sources: [s1, s2])
+    s3 = insert(:source, token: Faker.UUID.v4())
+    u1 = insert(:user, sources: [s1, s2])
+    u2 = insert(:user, sources: [s3])
+    users = [u1, u2]
+    sources = [s1, s2, s3]
     SystemCounter.start_link()
-    {:ok, users: [u], sources: [s1, s2], conn: Phoenix.ConnTest.build_conn()}
+    {:ok, users: users, sources: sources, conn: Phoenix.ConnTest.build_conn()}
   end
 
   describe "dashboard" do
-    test "renders dashboard", %{conn: conn, users: [u], sources: [s1, s2]} do
+    test "renders dashboard", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
       conn =
         conn
-        |> assign(:user, u)
+        |> assign(:user, u1)
         |> get("/dashboard")
 
       dash_sources = Enum.map(conn.assigns.sources, & &1.metrics)
@@ -35,7 +39,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "dashboard"
     end
 
-    test "renders rejected logs page", %{conn: conn, users: [u], sources: [s1, s2]} do
+    test "renders rejected logs page", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
       RejectedEvents.injest(%{
         error: Logflare.Validator.DeepFieldTypes,
         batch: [%{"no_log_entry" => true, "timestamp" => ""}],
@@ -44,7 +48,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       conn =
         conn
-        |> assign(:user, u)
+        |> assign(:user, u1)
         |> get("/sources/#{s1.id}/rejected")
 
       assert html_response(conn, 200) =~ "dashboard"
@@ -59,29 +63,31 @@ defmodule LogflareWeb.SourceControllerTest do
              ] = conn.assigns.logs
     end
 
-    test "update with valid params", %{conn: conn, users: [u], sources: [s1, s2]} do
+    test "update with valid params", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
       new_name = Faker.String.base64()
       params = %{"id" => s1.id, "source" => %{"favorite" => true, "name" => new_name}}
 
       conn =
         conn
-        |> assign(:user, u)
+        |> assign(:user, u1)
         |> patch("/sources/#{s1.id}", params)
 
       s1_new = Sources.get_by_id(s1.token)
 
       assert html_response(conn, 302) =~ "redirected"
+      assert get_flash(conn, :info) == "Source updated!"
       assert s1_new.name == new_name
       assert s1_new.favorite == true
     end
 
-    test "update action with invalid params", %{conn: conn, users: [u], sources: [s1, s2]} do
+    @tag :skip
+    test "update action with invalid params", %{conn: conn, users: [u1, u2], sources: [s1, s2]} do
       new_name = "this should never be inserted"
       params = %{"id" => s1.id, "source" => %{"favorite" => 1, "name" => new_name}}
 
       conn =
         conn
-        |> assign(:user, u)
+        |> assign(:user, u1)
         |> patch("/sources/#{s1.id}", params)
 
       s1_new = Sources.get_by_id(s1.token)
@@ -93,8 +99,8 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "users can't update restricted fields", %{
       conn: conn,
-      users: [u],
-      sources: [s1, s2]
+      users: [u1, u2],
+      sources: [s1, s2 | _]
     } do
       nope_token = Faker.UUID.v4()
       nope_api_quota = 1337
@@ -112,7 +118,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       conn =
         conn
-        |> assign(:user, u)
+        |> assign(:user, u1)
         |> patch("/sources/#{s1.id}", params)
 
       s1_new = Sources.get_by_pk(s1.id)
@@ -123,6 +129,27 @@ defmodule LogflareWeb.SourceControllerTest do
       refute s1_new.user_id == nope_user_id
       assert conn.status == 200
       assert html_response(conn, 401) =~ "Not allowed"
+    end
+
+    test "users can't update sources of other users", %{
+      conn: conn,
+      users: [u1, u2],
+      sources: [s1, s2, u2s1]
+    } do
+      conn =
+        conn
+        |> assign(:user, u1)
+        |> patch("/sources/#{u2s1.id}", %{
+        "source" => %{
+          "name" => "it's mine now!"
+        }
+      })
+
+      s1_new = Sources.get_by_pk(s1.id)
+
+      refute s1_new.name == "it's mine now!"
+      assert get_flash(conn, :error) =~ "That's not yours!"
+      assert redirected_to(conn, 401) =~ "Not allowed"
     end
   end
 end
