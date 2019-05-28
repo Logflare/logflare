@@ -86,13 +86,7 @@ defmodule LogflareWeb.SourceController do
     logs =
       source.token
       |> SourceData.get_logs()
-      |> Enum.map(fn
-        %{metadata: m} = log ->
-          %{log | metadata: Jason.encode!(m, pretty: true)}
-
-        log ->
-          log
-      end)
+      |> Enum.map(&maybe_encode_log_metadata/1)
 
     render(conn, "show.html",
       logs: logs,
@@ -103,28 +97,16 @@ defmodule LogflareWeb.SourceController do
   end
 
   def public(conn, %{"public_token" => public_token}) do
-    source = Repo.get_by(Source, public_token: public_token)
-
     explore_link = ""
 
-    case source == nil do
-      true ->
-        conn
-        |> put_flash(:error, "Public path not found!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
-
-      false ->
-        table_id = source.token
-
+    public_token
+    |> Sources.Cache.get_by_public_token()
+    |> case do
+      %{token: token} = source ->
         logs =
-          Enum.map(SourceData.get_logs(table_id), fn log ->
-            if Map.has_key?(log, :metadata) do
-              {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
-              %{log | metadata: encoded}
-            else
-              log
-            end
-          end)
+          token
+          |> SourceData.get_logs()
+          |> Enum.map(&maybe_encode_log_metadata/1)
 
         render(conn, "show.html",
           logs: logs,
@@ -132,6 +114,11 @@ defmodule LogflareWeb.SourceController do
           public_token: public_token,
           explore_link: explore_link
         )
+
+      _ ->
+        conn
+        |> put_flash(:error, "Public path not found!")
+        |> redirect(to: Routes.marketing_path(conn, :index))
     end
   end
 
