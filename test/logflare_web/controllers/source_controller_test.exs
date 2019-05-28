@@ -8,14 +8,16 @@ defmodule LogflareWeb.SourceControllerTest do
   import Logflare.DummyFactory
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
     s1 = insert(:source, token: Faker.UUID.v4())
     s2 = insert(:source, token: Faker.UUID.v4())
     s3 = insert(:source, token: Faker.UUID.v4())
     u1 = insert(:user, sources: [s1, s2])
     u2 = insert(:user, sources: [s3])
-    users = [u1, u2]
+
+    users = Repo.preload([u1, u2], :sources)
+
     sources = [s1, s2, s3]
+
     SystemCounter.start_link()
     {:ok, users: users, sources: sources, conn: Phoenix.ConnTest.build_conn()}
   end
@@ -24,7 +26,7 @@ defmodule LogflareWeb.SourceControllerTest do
     test "renders dashboard", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
       conn =
         conn
-        |> assign(:user, u1)
+        |> login_user(u1)
         |> get("/dashboard")
 
       dash_sources = Enum.map(conn.assigns.sources, & &1.metrics)
@@ -48,7 +50,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> login_user(u1)
         |> get("/sources/#{s1.id}/rejected")
 
       assert html_response(conn, 200) =~ "dashboard"
@@ -65,11 +67,18 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "update with valid params", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
       new_name = Faker.String.base64()
-      params = %{"id" => s1.id, "source" => %{"favorite" => true, "name" => new_name}}
+
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "favorite" => true,
+          "name" => new_name
+        }
+      }
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
       s1_new = Sources.get_by_id(s1.token)
@@ -83,11 +92,18 @@ defmodule LogflareWeb.SourceControllerTest do
     @tag :skip
     test "update action with invalid params", %{conn: conn, users: [u1, u2], sources: [s1, s2]} do
       new_name = "this should never be inserted"
-      params = %{"id" => s1.id, "source" => %{"favorite" => 1, "name" => new_name}}
+
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "favorite" => 1,
+          "name" => new_name
+        }
+      }
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
       s1_new = Sources.get_by_id(s1.token)
@@ -118,7 +134,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
       s1_new = Sources.get_by_pk(s1.id)
@@ -138,18 +154,27 @@ defmodule LogflareWeb.SourceControllerTest do
     } do
       conn =
         conn
-        |> assign(:user, u1)
-        |> patch("/sources/#{u2s1.id}", %{
-        "source" => %{
-          "name" => "it's mine now!"
-        }
-      })
+        |> login_user(u1)
+        |> patch(
+          "/sources/#{u2s1.id}",
+          %{
+            "source" => %{
+              "name" => "it's mine now!"
+            }
+          }
+        )
 
       s1_new = Sources.get_by_pk(s1.id)
 
       refute s1_new.name == "it's mine now!"
+      assert conn.halted === true
       assert get_flash(conn, :error) =~ "That's not yours!"
       assert redirected_to(conn, 401) =~ "Not allowed"
     end
+  end
+
+  def login_user(conn, u) do
+    conn
+    |> assign(:user, u)
   end
 end
