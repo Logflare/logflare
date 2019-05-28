@@ -173,6 +173,20 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "show" do
+    test "a source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
+      conn =
+        conn
+        |> login_user(u1)
+        |> get(source_path(conn, :show, s1.id), %{
+          "source" => %{
+            "name" => Faker.Name.name()
+          }
+        })
+
+      assert html_response(conn, 200) =~ s1.name
+    end
+  end
   describe "create" do
     test "with valid params", %{conn: conn, users: [u1 | _]} do
       conn =
