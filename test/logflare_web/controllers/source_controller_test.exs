@@ -186,7 +186,21 @@ defmodule LogflareWeb.SourceControllerTest do
 
       assert html_response(conn, 200) =~ s1.name
     end
+
+    test "returns 401 for a source for unauthorized user", %{
+      conn: conn,
+      users: [u1, u2 | _],
+      sources: [s1 | _]
+    } do
+      conn =
+        conn
+        |> login_user(u2)
+        |> get(source_path(conn, :show, s1.id))
+
+      assert redirected_to(conn, 401) === "/"
+    end
   end
+
   describe "create" do
     test "with valid params", %{conn: conn, users: [u1 | _]} do
       conn =
