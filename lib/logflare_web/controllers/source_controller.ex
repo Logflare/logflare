@@ -5,15 +5,11 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
   plug LogflareWeb.Plugs.VerifySourceOwner
-       when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
+       when action in [:show, :update, :delete, :clear_logs, :favorite]
 
-  alias Logflare.{Source, Users}
-  alias Logflare.Repo
+  alias Logflare.{Source, Users, Sources, Repo, SourceData, SourceManager, Google.BigQuery, User}
+  alias Logflare.Logs.RejectedEvents
   alias LogflareWeb.AuthController
-  alias Logflare.SourceData
-  alias Logflare.SourceManager
-  alias Logflare.Google.BigQuery
-  alias Logflare.User
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -52,36 +48,33 @@ defmodule LogflareWeb.SourceController do
     render(conn, "new.html", changeset: changeset)
   end
 
-  def create(conn, %{"source" => source}) do
-    user = conn.assigns.user
+  def create(%{assigns: %{user: user}} = conn, %{"source" => source}) do
+    user
+    |> Ecto.build_assoc(:sources)
+    |> Source.update_by_user_changeset(source)
+    |> Repo.insert()
+    |> case do
+      {:ok, source} ->
+        spawn(fn ->
+          SourceManager.new_table(source.token)
+        end)
 
-    changeset =
-      user
-      |> Ecto.build_assoc(:sources)
-      |> Source.update_by_user_changeset(source)
-
-    oauth_params = get_session(conn, :oauth_params)
-
-    case Repo.insert(changeset) do
-      {:ok, _source} ->
-        SourceManager.new_table(String.to_atom(source["token"]))
-
-        case is_nil(oauth_params) do
-          true ->
-            conn
-            |> put_flash(:info, "Source created!")
-            |> redirect(to: Routes.source_path(conn, :dashboard))
-
-          false ->
-            conn
-            |> put_flash(:info, "Source created!")
-            |> AuthController.redirect_for_oauth(user)
+        if get_session(conn, :oauth_params) do
+          conn
+          |> put_flash(:info, "Source created!")
+          |> AuthController.redirect_for_oauth(user)
+        else
+          conn
+          |> put_flash(:info, "Source created!")
+          |> redirect(to: Routes.source_path(conn, :dashboard))
         end
 
       {:error, changeset} ->
         conn
+        |> put_status(406)
         |> put_flash(:error, "Something went wrong!")
-        |> render("new.html", changeset: changeset)
+        |> assign(:changeset, changeset)
+        |> redirect(to: Routes.source_path(conn, :new))
     end
   end
 
