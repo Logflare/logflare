@@ -3,7 +3,7 @@ defmodule LogflareWeb.SourceControllerTest do
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
 
-  alias Logflare.{SystemCounter, Sources, Repo, Users}
+  alias Logflare.{SourceManager, SystemCounter, Sources, Repo, Users}
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
 
@@ -170,6 +170,23 @@ defmodule LogflareWeb.SourceControllerTest do
       assert conn.halted === true
       assert get_flash(conn, :error) =~ "That's not yours!"
       assert redirected_to(conn, 401) =~ "Not allowed"
+    end
+  end
+
+  describe "create" do
+    test "with valid params", %{conn: conn, users: [u1 | _]} do
+      conn =
+        conn
+        |> login_user(u1)
+        |> post("/sources", %{
+          "source" => %{
+            "name" => Faker.Name.name(),
+            "token" => Faker.UUID.v4()
+          }
+        })
+
+      refute conn.assigns[:changeset]
+      assert redirected_to(conn, 302) === source_path(conn, :dashboard)
     end
   end
 
