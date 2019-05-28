@@ -53,7 +53,7 @@ defmodule Logflare.Google.BigQuery do
     end
   end
 
-  @spec delete_table(atom, atom) :: ok_err_tup
+  @spec delete_table(atom, binary) :: {:error, Tesla.Env.t()} | {:ok, term}
   def delete_table(source, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -67,7 +67,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec create_table(atom, atom) :: ok_err_tup
+  @spec create_table(atom, binary, integer) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
   def create_table(source, project_id \\ @project_id, table_ttl \\ @table_ttl) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -117,7 +118,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec patch_table_ttl(atom, integer()) :: ok_err_tup
+  @spec patch_table_ttl(atom, any, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
   def patch_table_ttl(source, table_ttl, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -133,7 +135,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec patch_table(atom, struct(), atom) :: ok_err_tup
+  @spec patch_table(atom, any, String.t()) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
   def patch_table(source, schema, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -144,7 +147,7 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec get_table(atom, atom) :: ok_err_tup
+  @spec get_table(atom, binary) :: {:error, Tesla.Env.t()} | {:ok, term}
   def get_table(source, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -158,7 +161,7 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec get_events(atom, atom) :: ok_err_tup
+  @spec get_events(atom, binary) :: :ok
   def get_events(source, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -183,7 +186,8 @@ defmodule Logflare.Google.BigQuery do
     end)
   end
 
-  @spec stream_event(atom, integer, tuple, atom) :: ok_err_tup
+  @spec stream_event(atom, integer, any, binary) ::
+          {:ok, GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse.t()}
   def stream_event(source, unix_timestamp, message, project_id \\ @project_id) do
     conn = get_conn()
     table_name = format_table_name(source)
@@ -235,7 +239,8 @@ defmodule Logflare.Google.BigQuery do
       )
   end
 
-  @spec create_dataset(String.t(), atom) :: ok_err_tup
+  @spec create_dataset(binary, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Dataset.t()}
   def create_dataset(dataset_id, project_id \\ @project_id) do
     conn = get_conn()
     user_id = String.to_integer(dataset_id)
@@ -333,7 +338,6 @@ defmodule Logflare.Google.BigQuery do
     end)
   end
 
-  @spec delete_dataset(integer, atom) :: ok_err_tup
   def delete_dataset(account_id, project_id \\ @project_id) do
     conn = get_conn()
     dataset_id = Integer.to_string(account_id) <> @dataset_id_append
@@ -341,13 +345,14 @@ defmodule Logflare.Google.BigQuery do
     Api.Datasets.bigquery_datasets_delete(conn, project_id, dataset_id, deleteContents: true)
   end
 
-  @spec list_datasets(atom) :: list(String.t())
+  @spec list_datasets(binary) :: {:error, Tesla.Env.t()} | {:ok, term}
   def list_datasets(project_id \\ @project_id) do
     conn = get_conn()
     Api.Datasets.bigquery_datasets_list(conn, project_id)
   end
 
-  @spec get_dataset(integer) :: String.t()
+  @spec get_dataset(any, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, term}
   def get_dataset(account_id, project_id \\ @project_id) do
     dataset_id = "#{account_id}" <> @dataset_id_append
     conn = get_conn()
