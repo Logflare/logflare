@@ -25,6 +25,10 @@ defmodule Logflare.Users.Cache do
     end
   end
 
+  def delete_cache_key_by_id(id) do
+    Cachex.del(@cache, id)
+  end
+
   @spec source_id_owned?(User.t(), atom) :: User.t()
   def source_id_owned?(user, source_id) when is_atom(source_id) do
     source_id in Enum.map(user.sources, & &1.token)

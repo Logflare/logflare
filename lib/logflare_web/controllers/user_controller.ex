@@ -3,6 +3,7 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Users
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
   alias Logflare.SourceManager
@@ -22,6 +23,8 @@ defmodule LogflareWeb.UserController do
 
     case Repo.update(changeset) do
       {:ok, _user} ->
+        Users.Cache.delete_cache_key_by_id(old_user.id)
+
         case params do
           %{"bigquery_project_id" => _project_id} ->
             SourceManager.reset_all_user_tables(old_user)
