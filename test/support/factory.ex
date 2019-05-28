@@ -5,12 +5,15 @@ defmodule Logflare.DummyFactory do
   def user_factory do
     %User{
       name: "JaneJohn Jones",
-      email: sequence(:email, &"email-#{&1}@example.com")
+      email: sequence(:email, &"email-#{&1}@example.com"),
+      provider: "google",
+      token: Faker.String.base64(64)
     }
   end
 
   def source_factory do
     %Source{
+      name: Faker.Superhero.name(),
       token: Faker.UUID.v4()
     }
   end
