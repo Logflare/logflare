@@ -2,9 +2,6 @@ defmodule Logflare.Logs do
   use Publicist
   alias Logflare.Validator.{DeepFieldTypes, BigQuery}
 
-  @dft_user_err "Metadata validation error: values with the same field path must have the same type."
-  @bg_tm_user_err "Log entry metadata contains keys or values that are forbidden for the Google BigQuery table schema. Learn more at https://cloud.google.com/bigquery/docs/schemas"
-
   alias Logflare.{
     Table,
     SourceCounter,
@@ -83,20 +80,22 @@ defmodule Logflare.Logs do
     )
   end
 
-  @spec validate_params(map()) :: :ok | {:invalid, String.t()}
+  @spec validate_params(map()) :: :ok | {:invalid, atom}
   def validate_params(log_entry) when is_map(log_entry) do
     metadata = log_entry["metadata"] || %{}
 
-    with {:dft, true} <- {:dft, DeepFieldTypes.valid?(metadata)},
-         {:bq_tm, true} <- {:bq_tm, BigQuery.TableMetadata.valid?(metadata)} do
-      :ok
-    else
-      {:dft, false} -> {:invalid, @dft_user_err}
-      {:bg_tm, false} -> {:invalid, @bg_tm_user_err}
-    end
+    validators = [DeepFieldTypes, BigQuery.TableMetadata]
+
+    Enum.reduce_while(validators, true, fn validator, _ ->
+      if validator.valid?(metadata) do
+        {:cont, :ok}
+      else
+        {:halt, {:invalid, validator}}
+      end
+    end)
   end
 
-  @spec build_time_event(String.t()| non_neg_integer) :: {non_neg_integer, integer, integer}
+  @spec build_time_event(String.t() | non_neg_integer) :: {non_neg_integer, integer, integer}
   defp build_time_event(timestamp) when is_integer(timestamp) do
     import System
     {timestamp, unique_integer([:monotonic]), monotonic_time(:nanosecond)}
