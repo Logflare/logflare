@@ -78,28 +78,20 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def show(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
-    user_id = conn.assigns.user.id
-    user_email = conn.assigns.user.email
-
-    bigquery_project_id =
-      if conn.assigns.user.bigquery_project_id do
-        conn.assigns.user.bigquery_project_id
-      else
-        @project_id
-      end
-
-    explore_link = generate_explore_link(user_id, user_email, source.token, bigquery_project_id)
+  def show(%{assigns: %{user: user}} = conn, %{"id" => pk}) do
+    source = Sources.get_by_pk(pk)
+    bigquery_project_id = user.bigquery_project_id || @project_id
+    explore_link = generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
     logs =
-      Enum.map(SourceData.get_logs(source.token), fn log ->
-        if Map.has_key?(log, :metadata) do
-          {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
-          %{log | metadata: encoded}
-        else
+      source.token
+      |> SourceData.get_logs()
+      |> Enum.map(fn
+        %{metadata: m} = log ->
+          %{log | metadata: Jason.encode!(m, pretty: true)}
+
+        log ->
           log
-        end
       end)
 
     render(conn, "show.html",
