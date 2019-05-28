@@ -236,6 +236,16 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "public" do
+    test "shows a source page", %{conn: conn, sources: [s1 | _]} do
+      conn =
+        conn
+        |> get(source_path(conn, :public, s1.public_token))
+
+      assert html_response(conn, 200) =~ s1.name
+    end
+  end
+
   def login_user(conn, u) do
     conn
     |> assign(:user, u)
