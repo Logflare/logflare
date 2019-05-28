@@ -3,53 +3,21 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
 
   import Plug.Conn
   import Phoenix.Controller
-
-  alias Logflare.Repo
-  alias Logflare.Source
+  alias Logflare.Users
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  plug :verify_owner
+  def call(%{assigns: %{user: %{admin: true}}} = conn, _opts), do: conn
 
-  def verify_owner(conn, _opts) do
-    source_id = get_source_id(conn)
-    source = Repo.get(Source, source_id)
+  def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
+    pk = params["id"] || params["source_id"]
 
-    continue(conn, source)
-  end
-
-  defp get_source_id(conn) do
-    cond do
-      conn.params["source_id"] ->
-        conn.params["source_id"]
-
-      conn.params["id"] ->
-        conn.params["id"]
-
-      true ->
-        nil
-    end
-  end
-
-  defp continue(conn, source) when is_nil(source) do
-    conn
-    |> put_flash(:error, "That's not yours!")
-    |> redirect(to: Routes.marketing_path(conn, :index))
-    |> halt()
-  end
-
-  defp continue(conn, source) when is_nil(source) == false do
-    cond do
-      conn.assigns.user.admin ->
-        conn
-
-      conn.assigns.user.id == source.user_id ->
-        conn
-
-      true ->
-        conn
-        |> put_flash(:error, "That's not yours!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
-        |> halt()
+    if Users.find_user_source_by_pk(user, pk) do
+      conn
+    else
+      conn
+      |> put_flash(:error, "That's not yours!")
+      |> redirect(to: Routes.marketing_path(conn, :index))
+      |> halt()
     end
   end
 end
