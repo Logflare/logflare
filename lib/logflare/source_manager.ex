@@ -1,4 +1,4 @@
-defmodule Logflare.TableManager do
+defmodule Logflare.SourceManager do
   @moduledoc """
   Boots up a gen server per source table. Keeps a list of active tables in state.
   """
@@ -6,8 +6,9 @@ defmodule Logflare.TableManager do
   use GenServer
 
   alias Logflare.Repo
-  alias Logflare.TableCounter
+  alias Logflare.SourceCounter
   alias Logflare.Google.BigQuery
+  alias Logflare.SourceRecentLogs
 
   import Ecto.Query, only: [from: 2]
 
@@ -47,7 +48,7 @@ defmodule Logflare.TableManager do
       )
 
     Enum.each(state, fn s ->
-      Logflare.Table.start_link(s)
+      SourceRecentLogs.start_link(s)
     end)
 
     {:noreply, state}
@@ -57,34 +58,34 @@ defmodule Logflare.TableManager do
     Logger.info("Table manager started!")
 
     Enum.each(source_ids, fn s ->
-      Logflare.Table.start_link(s)
+      SourceRecentLogs.start_link(s)
     end)
 
     {:noreply, source_ids}
   end
 
-  def handle_call({:create, website_table}, _from, state) do
-    Logflare.Table.start_link(website_table)
+  def handle_call({:create, source_id}, _from, state) do
+    SourceRecentLogs.start_link(source_id)
 
-    state = Enum.uniq([website_table | state])
-    {:reply, website_table, state}
+    state = Enum.uniq([source_id | state])
+    {:reply, source_id, state}
   end
 
-  def handle_call({:stop, website_table}, _from, state) do
-    case Process.whereis(website_table) do
+  def handle_call({:stop, source_id}, _from, state) do
+    case Process.whereis(source_id) do
       nil ->
-        {:reply, website_table, state}
+        {:reply, source_id, state}
 
       _ ->
-        website_table_string = Atom.to_string(website_table)
-        tab_path = "tables/" <> website_table_string <> ".tab"
+        source_id_string = Atom.to_string(source_id)
+        tab_path = "tables/" <> source_id_string <> ".tab"
 
-        GenServer.stop(website_table)
+        GenServer.stop(source_id)
 
-        TableCounter.delete(website_table)
+        SourceCounter.delete(source_id)
         File.rm(tab_path)
-        state = List.delete(state, website_table)
-        {:reply, website_table, state}
+        state = List.delete(state, source_id)
+        {:reply, source_id, state}
     end
   end
 
@@ -104,22 +105,22 @@ defmodule Logflare.TableManager do
 
   ## Public Functions
 
-  def new_table(website_table) do
-    GenServer.call(__MODULE__, {:create, website_table})
+  def new_table(source_id) do
+    GenServer.call(__MODULE__, {:create, source_id})
   end
 
-  def delete_table(website_table) do
-    GenServer.call(__MODULE__, {:stop, website_table})
-    BigQuery.delete_table(website_table)
+  def delete_table(source_id) do
+    GenServer.call(__MODULE__, {:stop, source_id})
+    BigQuery.delete_table(source_id)
 
-    {:ok, website_table}
+    {:ok, source_id}
   end
 
-  def reset_table(website_table) do
-    GenServer.call(__MODULE__, {:stop, website_table})
-    GenServer.call(__MODULE__, {:create, website_table})
+  def reset_table(source_id) do
+    GenServer.call(__MODULE__, {:stop, source_id})
+    GenServer.call(__MODULE__, {:create, source_id})
 
-    {:ok, website_table}
+    {:ok, source_id}
   end
 
   def reset_all_user_tables(user) do

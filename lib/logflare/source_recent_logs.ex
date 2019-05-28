@@ -1,4 +1,4 @@
-defmodule Logflare.Table do
+defmodule Logflare.SourceRecentLogs do
   @moduledoc """
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
@@ -6,16 +6,16 @@ defmodule Logflare.Table do
 
   use GenServer
 
-  alias Logflare.TableCounter
+  alias Logflare.SourceCounter
   alias Logflare.Logs
   alias Logflare.SourceData
   alias Logflare.SourceRateCounter
   alias Logflare.Google.BigQuery
-  alias Logflare.TableMailer
-  alias Logflare.TableTexter
-  alias Logflare.TableBuffer
-  alias Logflare.TableBigQueryPipeline
-  alias Logflare.TableBigQuerySchema
+  alias Logflare.SourceMailer
+  alias Logflare.SourceTexter
+  alias Logflare.SourceBuffer
+  alias Logflare.SourceBigQueryPipeline
+  alias Logflare.SourceBigQuerySchema
   alias Logflare.Google.BigQuery.GenUtils
 
   require Logger
@@ -70,12 +70,12 @@ defmodule Logflare.Table do
     state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
     children = [
-      {TableMailer, source_id},
-      {TableTexter, source_id},
-      {TableBuffer, source_id},
-      {TableBigQueryPipeline, state},
-      {TableBigQuerySchema, state},
-      {SourceRateCounter, source_id}
+      {SourceRateCounter, source_id},
+      {SourceMailer, source_id},
+      {SourceTexter, source_id},
+      {SourceBuffer, source_id},
+      {SourceBigQueryPipeline, state},
+      {SourceBigQuerySchema, state}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
@@ -103,7 +103,7 @@ defmodule Logflare.Table do
           # https://github.com/ericmj/ex2ms
 
           :ets.delete(source_id, first)
-          TableCounter.decriment(source_id)
+          SourceCounter.decriment(source_id)
 
           case :ets.info(LogflareWeb.Endpoint) do
             :undefined ->
@@ -125,14 +125,14 @@ defmodule Logflare.Table do
 
   def handle_info(:prune, state) do
     source_id = state[:source_token]
-    {:ok, count} = TableCounter.log_count(source_id)
+    {:ok, count} = SourceCounter.log_count(source_id)
 
     case count > 100 do
       true ->
         for _log <- 101..count do
           log = :ets.first(source_id)
           :ets.delete(source_id, log)
-          TableCounter.decriment(source_id)
+          SourceCounter.decriment(source_id)
         end
 
         prune()
@@ -148,9 +148,9 @@ defmodule Logflare.Table do
   defp restore_table(source_id, bigquery_project_id) when is_atom(source_id) do
     Logger.info("ETS loaded table: #{source_id}")
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
-    TableCounter.create(source_id)
-    TableCounter.incriment_ets_count(source_id, 0)
-    TableCounter.incriment_total_count(source_id, log_count)
+    SourceCounter.create(source_id)
+    SourceCounter.incriment_ets_count(source_id, 0)
+    SourceCounter.incriment_total_count(source_id, log_count)
   end
 
   defp fresh_table(source_id, bigquery_project_id) when is_atom(source_id) do
@@ -158,8 +158,8 @@ defmodule Logflare.Table do
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
-    TableCounter.create(source_id)
-    TableCounter.incriment_total_count(source_id, log_count)
+    SourceCounter.create(source_id)
+    SourceCounter.incriment_total_count(source_id, log_count)
   end
 
   defp check_ttl() do

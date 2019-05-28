@@ -2,17 +2,15 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @doc """
   Generic utils for BigQuery.
   """
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.User
+  alias Logflare.{Sources, Users}
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @table_ttl 604_800_000
 
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
-    %Logflare.Source{user_id: user_id} = Repo.get_by(Source, token: source_id)
-    %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
+    %Logflare.Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
+    %Logflare.User{bigquery_project_id: project_id} = Users.Cache.get_by_id(user_id)
 
     if is_nil(project_id) do
       @project_id
@@ -24,9 +22,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @spec get_table_ttl(atom()) :: non_neg_integer()
   def get_table_ttl(source_id) when is_atom(source_id) do
     %Logflare.Source{user_id: user_id, bigquery_table_ttl: ttl} =
-      Repo.get_by(Source, token: source_id)
+      Sources.Cache.get_by_id(source_id)
 
-    %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
+    %Logflare.User{bigquery_project_id: project_id} = Users.Cache.get_by_id(user_id)
 
     cond do
       is_nil(project_id) -> @table_ttl

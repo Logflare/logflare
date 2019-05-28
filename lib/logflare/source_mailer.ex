@@ -1,25 +1,23 @@
-defmodule Logflare.TableMailer do
+defmodule Logflare.SourceMailer do
   use GenServer
 
   require Logger
 
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.User
+  alias Logflare.{Sources, Users}
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.SourceRateCounter
 
   @check_rate_every 1_000
 
-  def start_link(website_table) do
+  def start_link(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source: website_table,
+        source: source_id,
         events: []
       },
-      name: name(website_table)
+      name: name(source_id)
     )
   end
 
@@ -34,7 +32,8 @@ defmodule Logflare.TableMailer do
 
     case rate > 0 do
       true ->
-        {:ok, user, source} = get_user_and_source(state.source)
+        source = Sources.Cache.get_by_id(state.source)
+        user = Users.Cache.get_by_id(source.user_id)
 
         if source.user_email_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
@@ -64,17 +63,11 @@ defmodule Logflare.TableMailer do
     end
   end
 
-  defp get_user_and_source(website_table) do
-    source = Repo.get_by(Source, token: Atom.to_string(website_table))
-    user = Repo.get(User, source.user_id)
-    {:ok, user, source}
-  end
-
   defp check_rate() do
     Process.send_after(self(), :check_rate, @check_rate_every)
   end
 
-  defp name(website_table) do
-    String.to_atom("#{website_table}" <> "-mailer")
+  defp name(source_id) do
+    String.to_atom("#{source_id}" <> "-mailer")
   end
 end

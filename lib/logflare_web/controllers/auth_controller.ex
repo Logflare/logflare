@@ -133,7 +133,7 @@ defmodule LogflareWeb.AuthController do
   def unsubscribe(conn, %{"id" => source_id, "token" => token}) do
     source = Repo.get(Source, source_id)
     source_changes = %{user_email_notifications: false}
-    changeset = Source.changeset(source, source_changes)
+    changeset = Source.update_by_user_changeset(source, source_changes)
 
     case verify_token(token) do
       {:ok, _email} ->
@@ -170,7 +170,7 @@ defmodule LogflareWeb.AuthController do
           other_email_notifications: filter_email(email, source.other_email_notifications)
         }
 
-        changeset = Source.changeset(source, source_changes)
+        changeset = Source.update_by_user_changeset(source, source_changes)
 
         case Repo.update(changeset) do
           {:ok, _source} ->

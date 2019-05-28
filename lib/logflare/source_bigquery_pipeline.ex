@@ -1,4 +1,4 @@
-defmodule Logflare.TableBigQueryPipeline do
+defmodule Logflare.SourceBigQueryPipeline do
   use Broadway
 
   require Logger
@@ -6,8 +6,8 @@ defmodule Logflare.TableBigQueryPipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.TableBigQuerySchema
-  alias Logflare.BigQuery.TableSchemaBuilder
+  alias Logflare.SourceBigQuerySchema
+  alias Logflare.BigQuery.SourceSchemaBuilder
   alias Logflare.Google.BigQuery.EventUtils
 
   def start_link(state) do
@@ -72,17 +72,17 @@ defmodule Logflare.TableBigQueryPipeline do
 
     case Map.has_key?(payload, :metadata) do
       true ->
-        schema_state = TableBigQuerySchema.get_state(table)
+        schema_state = SourceBigQuerySchema.get_state(table)
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
 
         try do
-          schema = TableSchemaBuilder.build_table_schema(payload.metadata, old_schema)
+          schema = SourceSchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
           if same_schemas?(old_schema, schema) == false do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
-                TableBigQuerySchema.update(table, table_info.schema)
+                SourceBigQuerySchema.update(table, table_info.schema)
                 Logger.info("Table schema updated!")
 
               {:error, message} ->
@@ -93,7 +93,11 @@ defmodule Logflare.TableBigQueryPipeline do
           message
         rescue
           _e ->
-            err = "Injest error, most probably due to the field schema change"
+            err =
+              "Injest error, most probably due to the field schema change. Payload: #{
+                Jason.encode!(payload)
+              }"
+
             Logger.error(err)
 
             new_payload = %{payload | metadata: %{"error" => err}}

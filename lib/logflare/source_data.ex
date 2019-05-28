@@ -1,7 +1,7 @@
 defmodule Logflare.SourceData do
   alias Logflare.SourceRateCounter
-  alias Logflare.TableBuffer
-  alias Logflare.TableCounter
+  alias Logflare.SourceBuffer
+  alias Logflare.SourceCounter
   alias Logflare.Google.BigQuery
 
   @spec get_log_count(atom, String.t()) :: non_neg_integer()
@@ -54,7 +54,7 @@ defmodule Logflare.SourceData do
         0
 
       _ ->
-        {:ok, inserts} = TableCounter.get_total_inserts(source_id)
+        {:ok, inserts} = SourceCounter.get_total_inserts(source_id)
         inserts
     end
   end
@@ -140,7 +140,7 @@ defmodule Logflare.SourceData do
         fallback
 
       _ ->
-        TableBuffer.get_count(token)
+        SourceBuffer.get_count(token)
     end
   end
 

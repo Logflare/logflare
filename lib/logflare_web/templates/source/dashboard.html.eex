@@ -95,13 +95,11 @@ var clipboard = new ClipboardJS('#api-key');
 var <%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %> = new ClipboardJS('#<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>')
 
 <%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>.on('success', function(e) {
-    showApiKey();
     alert('Copied: ' + '<%= source.token %>');
     e.clearSelection();
 });
 
 <%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>.on('error', function(e) {
-    showApiKey();
     e.clearSelection();
 });
 <% end %>

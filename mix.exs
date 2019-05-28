@@ -4,7 +4,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.12.8",
+      version: "0.12.11",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -58,7 +58,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_github, "~> 0.7"},
       {:plug, "~> 1.7"},
       {:jason, "~> 1.0"},
-      {:distillery, "~> 2.0"},
+      {:distillery, "~> 2.0.14"},
       {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider, "~> 0.5.1"},

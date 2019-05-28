@@ -5,26 +5,26 @@ defmodule LogflareWeb.UserController do
   alias Logflare.User
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
-  alias Logflare.TableManager
+  alias Logflare.SourceManager
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
 
   def edit(conn, _params) do
     user = conn.assigns.user
-    changeset = User.changeset(user, %{})
+    changeset = User.update_by_user_changeset(user, %{})
 
     render(conn, "edit.html", changeset: changeset, user: user, service_account: @service_account)
   end
 
   def update(conn, %{"user" => params}) do
     old_user = conn.assigns.user
-    changeset = User.changeset(old_user, params)
+    changeset = User.update_by_user_changeset(old_user, params)
 
     case Repo.update(changeset) do
       {:ok, _user} ->
         case params do
           %{"bigquery_project_id" => _project_id} ->
-            TableManager.reset_all_user_tables(old_user)
+            SourceManager.reset_all_user_tables(old_user)
 
           _ ->
             nil

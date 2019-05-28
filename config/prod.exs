@@ -21,6 +21,14 @@ config :logflare, LogflareWeb.Endpoint,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)
 
+#  Seems to cause issues with Ueberauth callback when users login?
+#  check_origin: [
+#    "//*.logflare.app",
+#    "//logflare.app",
+#    "//www.logflarelogs.com",
+#    "//logflarelogs.com"
+#  ]
+
 #  secret_key_base: System.get_env("SECRET_KEY_BASE"),
 #  session_cookie_name: System.get_env("SESSION_COOKIE_NAME"),
 #  session_cookie_signing_salt: System.get_env("SESSION_COOKIE_SIGNING_SALT"),
@@ -73,6 +81,7 @@ config :logflare, Logflare.Repo,
   timeout: 30_000
 
 config :logflare, env: :prod
+
 config :logflare, Logflare.Google,
   dataset_id_append: "_prod",
   project_number: "1074203751359",
