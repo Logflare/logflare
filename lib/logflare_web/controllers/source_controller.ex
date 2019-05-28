@@ -169,6 +169,7 @@ defmodule LogflareWeb.SourceController do
 
       {:error, changeset} ->
         conn
+        |> put_status(406)
         |> put_flash(:error, "Something went wrong!")
         |> render("edit.html",
           changeset: changeset,
@@ -255,4 +256,10 @@ defmodule LogflareWeb.SourceController do
 
     explore_link_prefix <> URI.encode(explore_link_config)
   end
+
+  defp maybe_encode_log_metadata(%{metadata: m} = log) do
+    %{log | metadata: Jason.encode!(m, pretty: true)}
+  end
+
+  defp maybe_encode_log_metadata(log), do: log
 end
