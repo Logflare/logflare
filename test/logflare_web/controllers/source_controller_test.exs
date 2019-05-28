@@ -188,6 +188,24 @@ defmodule LogflareWeb.SourceControllerTest do
       refute conn.assigns[:changeset]
       assert redirected_to(conn, 302) === source_path(conn, :dashboard)
     end
+
+    test "with invalid params", %{conn: conn, users: [u1 | _]} do
+      conn =
+        conn
+        |> login_user(u1)
+        |> post("/sources", %{
+          "source" => %{
+            "name" => Faker.Name.name()
+            # "token" => Faker.UUID.v4()
+          }
+        })
+
+      assert conn.assigns[:changeset].errors === [
+               token: {"can't be blank", [validation: :required]}
+             ]
+
+      assert redirected_to(conn, 406) === source_path(conn, :new)
+    end
   end
 
   def login_user(conn, u) do
