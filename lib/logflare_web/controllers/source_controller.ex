@@ -209,6 +209,15 @@ defmodule LogflareWeb.SourceController do
     explore_link_prefix <> URI.encode(explore_link_config)
   end
 
+  def rejected_logs(conn, %{"id" => id}) do
+    source = Sources.Cache.get_by_pk(id)
+
+    render(conn, "show_rejected.html",
+      logs: RejectedEvents.get_by_source(source),
+      source: source
+    )
+  end
+
   defp maybe_encode_log_metadata(%{metadata: m} = log) do
     %{log | metadata: Jason.encode!(m, pretty: true)}
   end
