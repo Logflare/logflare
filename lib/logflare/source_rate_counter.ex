@@ -212,9 +212,9 @@ defmodule Logflare.SourceRateCounter do
   def insert_to_ets_table(source_id, payload) when is_atom(source_id) do
     if ets_table_is_undefined?() do
       Logger.debug("#{@ets_table_name} should be defined but it isn't")
+    else
+      :ets.insert(@ets_table_name, {source_id, payload})
     end
-
-    :ets.insert(@ets_table_name, {source_id, payload})
   end
 
   defp put_current_rate(rate_period \\ @rate_period) do

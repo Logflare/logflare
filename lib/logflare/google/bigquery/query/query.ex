@@ -20,18 +20,7 @@ defmodule Logflare.Google.BigQuery.Query do
     conn = GenUtils.get_conn()
     sql = gen_sql_for_ets(source, project_id, datetime, streaming_buffer)
 
-    query =
-      Api.Jobs.bigquery_jobs_query(
-        conn,
-        project_id,
-        body: %Model.QueryRequest{
-          query: sql,
-          useLegacySql: false,
-          useQueryCache: true
-        }
-      )
-
-    case query do
+    case query(conn, project_id, sql) do
       {:ok, response} ->
         if response.rows do
           Logflare.Google.BigQuery.SchemaUtils.merge_rows_with_schema(
@@ -68,6 +57,18 @@ defmodule Logflare.Google.BigQuery.Query do
 
         [{time_event, payload}]
     end
+  end
+
+  defp query(conn, project_id, sql) do
+    Api.Jobs.bigquery_jobs_query(
+      conn,
+      project_id,
+      body: %Model.QueryRequest{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: true
+      }
+    )
   end
 
   defp gen_sql_for_ets(source, project_id, datetime, streaming_buffer) do
