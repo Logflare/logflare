@@ -13,8 +13,8 @@ defmodule LogflareWeb.UserControllerTest do
     {:ok, users: [u1, u2], conn: Phoenix.ConnTest.build_conn()}
   end
 
-  describe "UserController" do
-    test "users can't update restricted fields", %{
+  describe "UserController update" do
+    test "of restricted fields fails", %{
       conn: conn,
       users: [u1 | _]
     } do
@@ -25,14 +25,17 @@ defmodule LogflareWeb.UserControllerTest do
       conn =
         conn
         |> assign(:user, u1)
-        |> put("/account/edit", %{
-          "user" => %{
-            "name" => u1.name,
-            "token" => nope_token,
-            "api_quota" => nope_api_quota,
-            "id" => nope_user_id
+        |> put(
+          "/account/edit",
+          %{
+            "user" => %{
+              "name" => u1.name,
+              "token" => nope_token,
+              "api_quota" => nope_api_quota,
+              "id" => nope_user_id
+            }
           }
-        })
+        )
 
       s1_new = Users.get_by_id(u1.id)
 
@@ -40,7 +43,7 @@ defmodule LogflareWeb.UserControllerTest do
       refute s1_new.token == nope_token
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.id == nope_user_id
-      assert html_response(conn, 401) =~ "Not allowed"
+      assert redirected_to(conn, 302) =~ user_path(conn, :edit)
     end
 
     test "of allowed fields succeeds", %{
