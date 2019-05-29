@@ -107,38 +107,4 @@ defmodule Logflare.SourceManager do
     sources = Repo.all(Ecto.assoc(user, :sources))
     Enum.each(sources, fn s -> reset_table(s.token) end)
   end
-
-  def delete_all_tables() do
-    state = :sys.get_state(Logflare.Main)
-
-    Enum.map(
-      state,
-      fn t ->
-        delete_table(t)
-      end
-    )
-
-    {:ok}
-  end
-
-  def delete_all_empty_tables() do
-    state = :sys.get_state(Logflare.Main)
-
-    Enum.each(
-      state,
-      fn t ->
-        first = :ets.first(t)
-
-        case first == :"$end_of_table" do
-          true ->
-            delete_table(t)
-
-          false ->
-            :ok
-        end
-      end
-    )
-
-    {:ok}
-  end
 end

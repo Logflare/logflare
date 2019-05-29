@@ -34,7 +34,7 @@ defmodule Logflare.SourceRateCounter do
   end
 
   @rate_period 1_000
-  @ets_table_name :table_rate_counters
+  @ets_table_name :source_rate_counters
 
   def start_link(source_id) when is_atom(source_id) do
     GenServer.start_link(
