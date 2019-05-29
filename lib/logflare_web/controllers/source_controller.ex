@@ -40,9 +40,7 @@ defmodule LogflareWeb.SourceController do
           {:error, "Something went wrong!"}
       end
 
-    conn
-    |> put_flash(flash_key, message)
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    put_flash_and_redirect_to_dashboard(conn, flash_key, message)
   end
 
   def new(conn, _params) do
@@ -66,9 +64,7 @@ defmodule LogflareWeb.SourceController do
           |> put_flash(:info, "Source created!")
           |> AuthController.redirect_for_oauth(user)
         else
-          conn
-          |> put_flash(:info, "Source created!")
-          |> redirect(to: Routes.source_path(conn, :dashboard))
+          put_flash_and_redirect_to_dashboard(conn, :info, "Source created!")
         end
 
       {:error, changeset} ->
@@ -85,13 +81,8 @@ defmodule LogflareWeb.SourceController do
     bigquery_project_id = user.bigquery_project_id || @project_id
     explore_link = generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
-    logs =
-      source.token
-      |> SourceData.get_logs()
-      |> Enum.map(&maybe_encode_log_metadata/1)
-
     render(conn, "show.html",
-      logs: logs,
+      logs: get_and_encode_logs(source),
       source: source,
       public_token: nil,
       explore_link: explore_link
@@ -105,13 +96,8 @@ defmodule LogflareWeb.SourceController do
     |> Sources.Cache.get_by_public_token()
     |> case do
       %{token: token} = source ->
-        logs =
-          token
-          |> SourceData.get_logs()
-          |> Enum.map(&maybe_encode_log_metadata/1)
-
         render(conn, "show.html",
-          logs: logs,
+          logs: get_and_encode_logs(source),
           source: source,
           public_token: public_token,
           explore_link: explore_link
@@ -182,44 +168,31 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def delete(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
+  def delete(conn, %{"id" => pk}) do
+    source = Sources.get_by_pk(pk)
 
     case :ets.info(source.token) do
       :undefined ->
-        source |> Repo.delete!()
-
-        conn
-        |> put_flash(:info, "Source deleted!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        del_and_redirect_with_info(conn, source)
 
       _ ->
         case :ets.first(source.token) do
           :"$end_of_table" ->
             {:ok, _table} = SourceManager.delete_table(source.token)
-            source |> Repo.delete!()
-
-            conn
-            |> put_flash(:info, "Source deleted!")
-            |> redirect(to: Routes.source_path(conn, :dashboard))
+            del_and_redirect_with_info(conn, source)
 
           {timestamp, _unique_int, _monotime} ->
             now = System.os_time(:microsecond)
 
             if now - timestamp > 3_600_000_000 do
               {:ok, _table} = SourceManager.delete_table(source.token)
-              source |> Repo.delete!()
-
-              conn
-              |> put_flash(:info, "Source deleted!")
-              |> redirect(to: Routes.source_path(conn, :dashboard))
+              del_and_redirect_with_info(conn, source)
             else
-              conn
-              |> put_flash(
+              put_flash_and_redirect_to_dashboard(
+                conn,
                 :error,
                 "Failed! Recent events found. Latest event must be greater than 24 hours old."
               )
-              |> redirect(to: Routes.source_path(conn, :dashboard))
             end
         end
     end
@@ -264,4 +237,21 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp maybe_encode_log_metadata(log), do: log
+
+  defp get_and_encode_logs(%Source{} = source) do
+    source.token
+    |> SourceData.get_logs()
+    |> Enum.map(&maybe_encode_log_metadata/1)
+  end
+
+  defp del_source_and_redirect_with_info(conn, source) do
+    Repo.delete!(source)
+    put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
+  end
+
+  defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do
+    conn
+    |> put_flash(flash_level, flash_message)
+    |> redirect(to: Routes.source_path(conn, :dashboard))
+  end
 end
