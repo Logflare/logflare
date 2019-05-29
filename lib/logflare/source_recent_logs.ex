@@ -65,8 +65,8 @@ defmodule Logflare.SourceRecentLogs do
 
     Supervisor.start_link(children, strategy: :one_for_all)
 
-    load_logs_from_bigquery(source_id, bigquery_project_id)
     init_counters(source_id, bigquery_project_id)
+    load_logs_from_bigquery(source_id, bigquery_project_id)
     Logger.info("ETS table started: #{source_id}")
     {:noreply, state}
   end
@@ -162,7 +162,21 @@ defmodule Logflare.SourceRecentLogs do
       end
 
     Enum.each(logs, fn log ->
+      {_time_event, payload} = log
       Logs.insert_or_push(source_id, log)
+      source_table_string = Atom.to_string(source_id)
+
+      case :ets.info(LogflareWeb.Endpoint) do
+        :undefined ->
+          Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
+
+        _ ->
+          LogflareWeb.Endpoint.broadcast(
+            "source:" <> source_table_string,
+            "source:#{source_table_string}:new",
+            payload
+          )
+      end
     end)
   end
 
