@@ -25,22 +25,24 @@ defmodule LogflareWeb.SourceController do
     render(conn, "dashboard.html", sources: sources, user_email: user_email)
   end
 
-  def favorite(conn, %{"id" => source_id}) do
-    old_source = Repo.get(Source, source_id)
-    source = %{"favorite" => !old_source.favorite}
-    changeset = Source.update_by_user_changeset(old_source, source)
+  def favorite(conn, %{"id" => source_pk}) do
+    old_source = Sources.get_by_pk(source_pk)
 
-    case Repo.update(changeset) do
-      {:ok, _source} ->
-        conn
-        |> put_flash(:info, "Source updated!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+    {flash_key, message} =
+      old_source
+      |> Source.update_by_user_changeset(%{"favorite" => not old_source.favorite})
+      |> Repo.update()
+      |> case do
+        {:ok, _source} ->
+          {:info, "Source updated!"}
 
-      {:error, _changeset} ->
-        conn
-        |> put_flash(:error, "Something went wrong!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
-    end
+        {:error, _changeset} ->
+          {:error, "Something went wrong!"}
+      end
+
+    conn
+    |> put_flash(flash_key, message)
+    |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
   def new(conn, _params) do
