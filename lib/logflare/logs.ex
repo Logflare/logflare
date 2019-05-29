@@ -3,13 +3,11 @@ defmodule Logflare.Logs do
   alias Logflare.Validator.{DeepFieldTypes, BigQuery}
 
   alias Logflare.{
-    Table,
+    SourceRecentLogs,
     SourceCounter,
     SystemCounter,
-    Sources,
+    SourceBuffer,
     Source,
-    SourceData,
-    TableBuffer,
     Logs
   }
 
@@ -36,7 +34,7 @@ defmodule Logflare.Logs do
   @spec insert_or_push(atom(), {tuple(), map()}) :: true
   def insert_or_push(source_token, event) do
     if :ets.info(source_token) == :undefined do
-      Table.push(source_token, event)
+      SourceRecentLogs.push(source_token, event)
       true
     else
       :ets.insert(source_token, event)
@@ -59,6 +57,7 @@ defmodule Logflare.Logs do
     )
   end
 
+  @spec broadcast_total_log_count() :: :ok | {:error, any()}
   def broadcast_total_log_count() do
     {:ok, log_count} = SystemCounter.log_count(@system_counter)
     payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
@@ -155,15 +154,14 @@ defmodule Logflare.Logs do
   defp insert_and_broadcast(%Source{} = source, time_event, log_message, metadata)
        when is_binary(log_message) do
     source_table_string = Atom.to_string(source.token)
+
     {timestamp, _unique_int, _monotime} = time_event
-
     payload = %{timestamp: timestamp, log_message: log_message, metadata: metadata}
-
     log_event = {time_event, payload}
 
     Logs.insert_or_push(source.token, log_event)
 
-    TableBuffer.push(source_table_string, log_event)
+    SourceBuffer.push(source_table_string, log_event)
     SourceCounter.incriment(source.token)
     SystemCounter.incriment(@system_counter)
 
