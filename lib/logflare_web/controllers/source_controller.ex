@@ -16,13 +16,10 @@ defmodule LogflareWeb.SourceController do
 
   def dashboard(conn, _params) do
     sources =
-      conn.assigns.user
-      |> Users.get_sources()
+      conn.assigns.user.sources
       |> Enum.map(&Source.update_metrics_latest/1)
 
-    user_email = conn.assigns.user.email
-
-    render(conn, "dashboard.html", sources: sources, user_email: user_email)
+    render(conn, "dashboard.html", sources: sources, user_email: conn.assigns.user.email)
   end
 
   def favorite(conn, %{"id" => source_pk}) do
@@ -30,7 +27,7 @@ defmodule LogflareWeb.SourceController do
 
     {flash_key, message} =
       old_source
-      |> Source.update_by_user_changeset(%{"favorite" => not old_source.favorite})
+      |> Source.update_by_user_changeset(%{"favorite" => !old_source.favorite})
       |> Repo.update()
       |> case do
         {:ok, _source} ->
@@ -78,30 +75,27 @@ defmodule LogflareWeb.SourceController do
 
   def show(%{assigns: %{user: user}} = conn, %{"id" => pk}) do
     source = Sources.get_by_pk(pk)
+    render_show_with_assigns(conn, user, source)
+  end
+
+  def render_show_with_assigns(conn, user, source) do
     bigquery_project_id = user.bigquery_project_id || @project_id
     explore_link = generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
     render(conn, "show.html",
       logs: get_and_encode_logs(source),
       source: source,
-      public_token: nil,
+      public_token: source.public_token,
       explore_link: explore_link
     )
   end
 
   def public(conn, %{"public_token" => public_token}) do
-    explore_link = ""
-
     public_token
     |> Sources.Cache.get_by_public_token()
     |> case do
-      %{token: token} = source ->
-        render(conn, "show.html",
-          logs: get_and_encode_logs(source),
-          source: source,
-          public_token: public_token,
-          explore_link: explore_link
-        )
+      %Source{} = source ->
+        render_show_with_assigns(conn, conn.assigns.user, source)
 
       _ ->
         conn
@@ -110,50 +104,33 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def update(conn, %{"id" => source_id, "source" => updated_params}) do
-    old_source = Repo.get(Source, source_id)
-    changeset = Source.update_by_user_changeset(old_source, updated_params)
-    user_id = conn.assigns.user.id
+  def update(conn, %{"id" => pk, "source" => source_params}) do
+    old_source = Sources.get_by_pk(pk)
+    changeset = Source.update_by_user_changeset(old_source, source_params)
+
+    user = conn.assigns.user
     disabled_source = old_source.token
     avg_rate = SourceData.get_avg_rate(old_source.token)
 
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-        }
-      )
-
     sources =
-      for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-        s = Map.put(source, :token, token)
-
-        if disabled_source == token,
-          do: Map.put(s, :disabled, true),
-          else: Map.put(s, :disabled, false)
-      end
+      conn.user.sources
+      |> Enum.map(&Map.put(&1, :disabled, disabled_source === &1.token))
 
     case Repo.update(changeset) do
       {:ok, source} ->
-        case updated_params do
-          %{"bigquery_table_ttl" => ttl} ->
-            %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
+        ttl = source_params["bigquery_table_ttl"]
 
-            ttl = String.to_integer(ttl) * 86_400_000
-            BigQuery.patch_table_ttl(source.token, ttl, project_id)
-
-          _ ->
-            nil
+        if ttl do
+          BigQuery.patch_table_ttl(
+            source.token,
+            String.to_integer(ttl) * 86_400_000,
+            user.bigquery_project_id
+          )
         end
 
         conn
         |> put_flash(:info, "Source updated!")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
 
       {:error, changeset} ->
         conn
@@ -173,20 +150,20 @@ defmodule LogflareWeb.SourceController do
 
     case :ets.info(source.token) do
       :undefined ->
-        del_and_redirect_with_info(conn, source)
+        del_source_and_redirect_with_info(conn, source)
 
       _ ->
         case :ets.first(source.token) do
           :"$end_of_table" ->
             {:ok, _table} = SourceManager.delete_table(source.token)
-            del_and_redirect_with_info(conn, source)
+            del_source_and_redirect_with_info(conn, source)
 
           {timestamp, _unique_int, _monotime} ->
             now = System.os_time(:microsecond)
 
             if now - timestamp > 3_600_000_000 do
               {:ok, _table} = SourceManager.delete_table(source.token)
-              del_and_redirect_with_info(conn, source)
+              del_source_and_redirect_with_info(conn, source)
             else
               put_flash_and_redirect_to_dashboard(
                 conn,
@@ -198,13 +175,13 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def clear_logs(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
+  def clear_logs(conn, %{"id" => pk}) do
+    source = Sources.get_by_pk(pk)
     {:ok, _table} = SourceManager.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
-    |> redirect(to: Routes.source_path(conn, :show, source_id))
+    |> redirect(to: Routes.source_path(conn, :show, pk))
   end
 
   defp generate_explore_link(
