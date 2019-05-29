@@ -21,8 +21,6 @@ defmodule Logflare.SourceRecentLogs do
   require Logger
 
   # one month
-  @ttl 2_592_000_000_000
-  @ttl_timer 1_000
   @prune_timer 1_000
 
   def start_link(source_id) when is_atom(source_id) do
@@ -32,7 +30,6 @@ defmodule Logflare.SourceRecentLogs do
   ## Client
 
   def init(state) do
-    check_ttl()
     prune()
 
     state = [{:source_token, state}]
@@ -49,23 +46,11 @@ defmodule Logflare.SourceRecentLogs do
     source_id = state[:source_token]
     bigquery_project_id = GenUtils.get_project_id(source_id)
     bigquery_table_ttl = GenUtils.get_table_ttl(source_id)
-    tab_path = "tables/" <> Atom.to_string(source_id) <> ".tab"
 
     BigQuery.init_table!(source_id, bigquery_project_id, bigquery_table_ttl)
 
-    case :ets.tabfile_info(String.to_charlist(tab_path)) do
-      {:ok, _info} ->
-        case :ets.file2tab(String.to_charlist(tab_path), verify: true) do
-          {:ok, _table} ->
-            restore_table(source_id, bigquery_project_id)
-
-          {:error, _reason} ->
-            fresh_table(source_id, bigquery_project_id)
-        end
-
-      {:error, _reason} ->
-        fresh_table(source_id, bigquery_project_id)
-    end
+    table_args = [:named_table, :ordered_set, :public]
+    :ets.new(source_id, table_args)
 
     state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
@@ -80,47 +65,15 @@ defmodule Logflare.SourceRecentLogs do
 
     Supervisor.start_link(children, strategy: :one_for_all)
 
+    init_counters(source_id, bigquery_project_id)
+    load_logs_from_bigquery(source_id, bigquery_project_id)
+    Logger.info("ETS table started: #{source_id}")
     {:noreply, state}
   end
 
   def handle_cast({:push, source_id, event}, state) do
     :ets.insert(source_id, event)
     {:noreply, state}
-  end
-
-  def handle_info(:ttl, state) do
-    source_id = state[:source_token]
-    first = :ets.first(source_id)
-
-    case first != :"$end_of_table" do
-      true ->
-        {timestamp, _unique_int, _monotime} = first
-        now = System.os_time(:microsecond)
-        day_ago = now - @ttl
-
-        if timestamp < day_ago do
-          # :ets.delete_match(source_id) I'm too dumb for this
-          # https://github.com/ericmj/ex2ms
-
-          :ets.delete(source_id, first)
-          SourceCounter.decriment(source_id)
-
-          case :ets.info(LogflareWeb.Endpoint) do
-            :undefined ->
-              Logger.error("Endpoint not up yet!")
-
-            _ ->
-              Logs.broadcast_log_count(source_id)
-          end
-        end
-
-        check_ttl()
-        {:noreply, state}
-
-      false ->
-        check_ttl()
-        {:noreply, state}
-    end
   end
 
   def handle_info(:prune, state) do
@@ -145,25 +98,99 @@ defmodule Logflare.SourceRecentLogs do
   end
 
   ## Private Functions
-  defp restore_table(source_id, bigquery_project_id) when is_atom(source_id) do
-    Logger.info("ETS loaded table: #{source_id}")
+  defp load_logs_from_bigquery(source_id, bigquery_project_id) do
+    logs =
+      with [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(),
+               true
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(),
+               false
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(-1),
+               false
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(-2),
+               false
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(-3),
+               false
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(-4),
+               false
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(-5),
+               false
+             ),
+           [] <-
+             BigQuery.Query.get_events_for_ets(
+               source_id,
+               bigquery_project_id,
+               get_datetime(-6),
+               false
+             ) do
+        []
+      else
+        logs -> logs
+      end
+
+    Enum.each(logs, fn log ->
+      {_time_event, payload} = log
+      Logs.insert_or_push(source_id, log)
+      # source_table_string = Atom.to_string(source_id)
+
+      # case :ets.info(LogflareWeb.Endpoint) do
+      #  :undefined ->
+      #    Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
+
+      #  _ ->
+      #    LogflareWeb.Endpoint.broadcast(
+      #      "source:" <> source_table_string,
+      #      "source:#{source_table_string}:new",
+      #      payload
+      #    )
+      # end
+    end)
+  end
+
+  defp get_datetime(adjustment \\ 0) do
+    datetime = DateTime.utc_now()
+    seconds = 86_400 * adjustment
+    DateTime.add(datetime, seconds, :second)
+  end
+
+  defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
     SourceCounter.create(source_id)
     SourceCounter.incriment_ets_count(source_id, 0)
     SourceCounter.incriment_total_count(source_id, log_count)
-  end
-
-  defp fresh_table(source_id, bigquery_project_id) when is_atom(source_id) do
-    Logger.info("ETS created table: #{source_id}")
-    log_count = SourceData.get_log_count(source_id, bigquery_project_id)
-    table_args = [:named_table, :ordered_set, :public]
-    :ets.new(source_id, table_args)
-    SourceCounter.create(source_id)
-    SourceCounter.incriment_total_count(source_id, log_count)
-  end
-
-  defp check_ttl() do
-    Process.send_after(self(), :ttl, @ttl_timer)
   end
 
   defp prune() do

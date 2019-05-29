@@ -247,7 +247,7 @@ defmodule LogflareWeb.SourceController do
     {:ok, explore_link_config} =
       Jason.encode(%{
         "projectId" => project_id,
-        "tableId" => BigQuery.format_table_name(source_id),
+        "tableId" => BigQuery.GenUtils.format_table_name(source_id),
         "datasetId" => dataset_id,
         # billingProjectId" => billing_project_id,
         "connectorType" => "BIG_QUERY",

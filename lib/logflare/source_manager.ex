@@ -19,8 +19,6 @@ defmodule Logflare.SourceManager do
   end
 
   def init(source_ids) do
-    persist()
-
     {:ok, source_ids, {:continue, :boot}}
   end
 
@@ -89,20 +87,6 @@ defmodule Logflare.SourceManager do
     end
   end
 
-  def handle_info(:persist, state) do
-    case File.stat("tables") do
-      {:ok, _stats} ->
-        persist_tables(state)
-
-      {:error, _reason} ->
-        File.mkdir("tables")
-        persist_tables(state)
-    end
-
-    persist()
-    {:noreply, state}
-  end
-
   ## Public Functions
 
   def new_table(source_id) do
@@ -160,21 +144,5 @@ defmodule Logflare.SourceManager do
     )
 
     {:ok}
-  end
-
-  ## Private Functions
-
-  defp persist() do
-    Process.send_after(self(), :persist, 60000)
-  end
-
-  defp persist_tables(state) do
-    Enum.each(
-      state,
-      fn t ->
-        tab_path = "tables/" <> Atom.to_string(t) <> ".tab"
-        :ets.tab2file(t, String.to_charlist(tab_path))
-      end
-    )
   end
 end
