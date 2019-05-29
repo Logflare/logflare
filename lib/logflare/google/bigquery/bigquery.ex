@@ -11,8 +11,9 @@ defmodule Logflare.Google.BigQuery do
 
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model
-  alias GoogleApi.BigQuery.V2.Connection
-  alias Logflare.{Sources, Users}
+
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.{Users}
 
   @table_ttl 604_800_000
   # seven days
@@ -20,7 +21,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec init_table!(atom, String.t(), integer()) :: ok_err_tup
   def init_table!(source, project_id, ttl) do
-    dataset_id = get_account_id(source)
+    dataset_id = GenUtils.get_account_id(source)
 
     case create_dataset(dataset_id, project_id) do
       {:ok, _} ->
@@ -55,9 +56,9 @@ defmodule Logflare.Google.BigQuery do
 
   @spec delete_table(atom, atom) :: ok_err_tup
   def delete_table(source, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_delete(
       conn,
@@ -69,9 +70,9 @@ defmodule Logflare.Google.BigQuery do
 
   @spec create_table(atom, atom) :: ok_err_tup
   def create_table(source, project_id \\ @project_id, table_ttl \\ @table_ttl) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     schema = %Model.TableSchema{
       fields: [
@@ -119,9 +120,9 @@ defmodule Logflare.Google.BigQuery do
 
   @spec patch_table_ttl(atom, integer()) :: ok_err_tup
   def patch_table_ttl(source, table_ttl, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     partitioning = %Model.TimePartitioning{
       type: "DAY",
@@ -135,9 +136,9 @@ defmodule Logflare.Google.BigQuery do
 
   @spec patch_table(atom, struct(), atom) :: ok_err_tup
   def patch_table(source, schema, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_patch(conn, project_id, dataset_id, table_name,
       body: %Model.Table{schema: schema}
@@ -146,9 +147,9 @@ defmodule Logflare.Google.BigQuery do
 
   @spec get_table(atom, atom) :: ok_err_tup
   def get_table(source, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_get(
       conn,
@@ -158,38 +159,13 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec get_events(atom, atom) :: ok_err_tup
-  def get_events(source, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
-
-    sql = "SELECT * FROM [#{project_id}:#{dataset_id}.#{table_name}] ORDER BY timestamp LIMIT 100"
-
-    {:ok, response} =
-      Api.Jobs.bigquery_jobs_query(
-        conn,
-        project_id,
-        body: %Model.QueryRequest{query: sql}
-      )
-
-    response.rows
-    |> Enum.each(fn row ->
-      row.f
-      |> Enum.with_index()
-      |> Enum.each(fn {cell, i} ->
-        IO.puts("#{Enum.at(response.schema.fields, i).name}: #{cell.v}")
-      end)
-    end)
-  end
-
   @spec stream_event(atom, integer, tuple, atom) :: ok_err_tup
   def stream_event(source, unix_timestamp, message, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
     {:ok, timestamp} = DateTime.from_unix(unix_timestamp, :microsecond)
     row_json = %{"timestamp" => timestamp, "event_message" => message}
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     row = %Model.TableDataInsertAllRequestRows{
       insertId: Ecto.UUID.generate(),
@@ -212,9 +188,9 @@ defmodule Logflare.Google.BigQuery do
 
   @spec stream_batch!(atom, list(map), atom) :: ok_err_tup
   def stream_batch!(source, batch, project_id \\ @project_id) do
-    conn = get_conn()
-    table_name = format_table_name(source)
-    dataset_id = get_account_id(source) <> @dataset_id_append
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source)
+    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     body = %Model.TableDataInsertAllRequest{
       ignoreUnknownValues: true,
@@ -237,7 +213,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec create_dataset(String.t(), atom) :: ok_err_tup
   def create_dataset(dataset_id, project_id \\ @project_id) do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
     user_id = String.to_integer(dataset_id)
     %Logflare.User{email: email, provider: provider} = Users.Cache.get_by_id(user_id)
 
@@ -291,7 +267,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec patch_dataset_access!(Integer, atom) :: ok_err_tup
   def patch_dataset_access!(user_id, project_id \\ @project_id) do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
     dataset_id = Integer.to_string(user_id) <> @dataset_id_append
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
@@ -335,7 +311,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec delete_dataset(integer, atom) :: ok_err_tup
   def delete_dataset(account_id, project_id \\ @project_id) do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
     dataset_id = Integer.to_string(account_id) <> @dataset_id_append
 
     Api.Datasets.bigquery_datasets_delete(conn, project_id, dataset_id, deleteContents: true)
@@ -343,31 +319,14 @@ defmodule Logflare.Google.BigQuery do
 
   @spec list_datasets(atom) :: list(String.t())
   def list_datasets(project_id \\ @project_id) do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
     Api.Datasets.bigquery_datasets_list(conn, project_id)
   end
 
   @spec get_dataset(integer) :: String.t()
   def get_dataset(account_id, project_id \\ @project_id) do
     dataset_id = "#{account_id}" <> @dataset_id_append
-    conn = get_conn()
+    conn = GenUtils.get_conn()
     Api.Datasets.bigquery_datasets_get(conn, project_id, dataset_id)
-  end
-
-  @spec format_table_name(atom) :: String.t()
-  def format_table_name(source) do
-    string = Atom.to_string(source)
-    String.replace(string, "-", "_")
-  end
-
-  defp get_conn() do
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
-    Connection.new(token.token)
-  end
-
-  @spec get_account_id(atom) :: String.t()
-  def get_account_id(source_id) do
-    %Logflare.Source{user_id: account_id} = Sources.Cache.get_by_id(source_id)
-    "#{account_id}"
   end
 end

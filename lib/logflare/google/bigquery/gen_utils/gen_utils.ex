@@ -3,6 +3,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   Generic utils for BigQuery.
   """
   alias Logflare.{Sources, Users}
+  alias GoogleApi.BigQuery.V2.Connection
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @table_ttl 604_800_000
@@ -31,5 +32,22 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       is_nil(ttl) -> @table_ttl
       true -> ttl * 86_400_000
     end
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source) do
+    string = Atom.to_string(source)
+    String.replace(string, "-", "_")
+  end
+
+  def get_conn() do
+    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
+    Connection.new(token.token)
+  end
+
+  @spec get_account_id(atom) :: String.t()
+  def get_account_id(source_id) do
+    %Logflare.Source{user_id: account_id} = Sources.Cache.get_by_id(source_id)
+    "#{account_id}"
   end
 end
