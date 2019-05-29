@@ -236,6 +236,20 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "favorite" do
+    test "favorite action flips field value", %{conn: conn, sources: [s1 | _]} do
+      conn =
+        conn
+        |> get(source_path(conn, :favorite, s1.id))
+
+      new_s1 = Source.get_by_id(s1.id)
+
+      assert new_s1.favorite == not s1.favorite
+      assert get_flash(conn, :info) == "Source updated!"
+      assert redirected_to(conn, 302) =~ source_path(conn, :dashboard)
+    end
+  end
+
   describe "public" do
     test "shows a source page", %{conn: conn, sources: [s1 | _]} do
       conn =
