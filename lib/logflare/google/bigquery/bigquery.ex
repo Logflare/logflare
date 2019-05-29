@@ -54,7 +54,8 @@ defmodule Logflare.Google.BigQuery do
     end
   end
 
-  @spec delete_table(atom, atom) :: ok_err_tup
+  @spec delete_table(atom, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, term}
   def delete_table(source, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
@@ -68,7 +69,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec create_table(atom, atom) :: ok_err_tup
+  @spec create_table(atom, binary, any) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
   def create_table(source, project_id \\ @project_id, table_ttl \\ @table_ttl) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
@@ -134,7 +136,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec patch_table(atom, struct(), atom) :: ok_err_tup
+  @spec patch_table(atom, any, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
   def patch_table(source, schema, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
@@ -145,7 +148,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec get_table(atom, atom) :: ok_err_tup
+  @spec get_table(atom, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, term}
   def get_table(source, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
@@ -159,7 +163,8 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec stream_event(atom, integer, tuple, atom) :: ok_err_tup
+  @spec stream_event(atom, integer, any, binary) ::
+          {:ok, GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse.t()}
   def stream_event(source, unix_timestamp, message, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
@@ -211,7 +216,8 @@ defmodule Logflare.Google.BigQuery do
       )
   end
 
-  @spec create_dataset(String.t(), atom) :: ok_err_tup
+  @spec create_dataset(binary, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Dataset.t()}
   def create_dataset(dataset_id, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     user_id = String.to_integer(dataset_id)
@@ -317,13 +323,15 @@ defmodule Logflare.Google.BigQuery do
     Api.Datasets.bigquery_datasets_delete(conn, project_id, dataset_id, deleteContents: true)
   end
 
-  @spec list_datasets(atom) :: list(String.t())
+  @spec list_datasets(binary) ::
+          {:error, Tesla.Env.t()} | {:ok, %{:__struct__ => atom, optional(atom) => any}}
   def list_datasets(project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     Api.Datasets.bigquery_datasets_list(conn, project_id)
   end
 
-  @spec get_dataset(integer) :: String.t()
+  @spec get_dataset(any, binary) ::
+          {:error, Tesla.Env.t()} | {:ok, %{:__struct__ => atom, optional(atom) => any}}
   def get_dataset(account_id, project_id \\ @project_id) do
     dataset_id = "#{account_id}" <> @dataset_id_append
     conn = GenUtils.get_conn()

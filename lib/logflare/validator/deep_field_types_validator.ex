@@ -16,7 +16,7 @@ defmodule Logflare.Validator.DeepFieldTypes do
   end
 
   @spec deep_merge_enums(list(map) | map) :: map
-  def deep_merge_enums(map) when is_map(map) do
+  defp deep_merge_enums(map) when is_map(map) do
     for {k, v} <- map, into: Map.new() do
       v = if is_list(v), do: deep_merge_enums(v), else: v
 
@@ -24,7 +24,7 @@ defmodule Logflare.Validator.DeepFieldTypes do
     end
   end
 
-  def deep_merge_enums(maps) do
+  defp deep_merge_enums(maps) do
     resolver = fn
       _, original, override when is_list(original) and is_list(override) ->
         deep_merge_enums(original ++ override)

@@ -125,8 +125,8 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
     }
   end
 
-  def metadata_factory(%{variant: :third} = opts) do
-    log_event = %{
+  def metadata_factory(%{variant: :third}) do
+    %{
       "event_message" => "This is an example.",
       "metadata" => %{
         "ip_address" => "100.100.100.100",

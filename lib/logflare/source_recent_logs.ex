@@ -162,7 +162,7 @@ defmodule Logflare.SourceRecentLogs do
       end
 
     Enum.each(logs, fn log ->
-      {_time_event, payload} = log
+      {_time_event, _payload} = log
       Logs.insert_or_push(source_id, log)
       # source_table_string = Atom.to_string(source_id)
 
