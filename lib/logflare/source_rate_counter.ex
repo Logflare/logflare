@@ -34,7 +34,7 @@ defmodule Logflare.SourceRateCounter do
   end
 
   @rate_period 1_000
-  @ets_table_name :table_rate_counters
+  @ets_table_name :source_rate_counters
 
   def start_link(source_id) when is_atom(source_id) do
     GenServer.start_link(
@@ -46,6 +46,7 @@ defmodule Logflare.SourceRateCounter do
 
   def init(source_id) when is_atom(source_id) do
     Logger.info("Rate counter started: #{source_id}")
+    Process.flag(:trap_exit, true)
     setup_ets_table(source_id)
     put_current_rate()
 
@@ -64,6 +65,12 @@ defmodule Logflare.SourceRateCounter do
     broadcast(state)
 
     {:noreply, source_id}
+  end
+
+  def terminate(reason, _state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{__MODULE__}")
+    reason
   end
 
   @spec new(atom) :: __MODULE__.t()

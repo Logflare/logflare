@@ -51,6 +51,12 @@ defmodule Logflare.SourceBigQuerySchema do
     end
   end
 
+  def terminate(reason, _state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{__MODULE__}")
+    reason
+  end
+
   def get_state(source_token) do
     GenServer.call(name(source_token), :get)
   end
