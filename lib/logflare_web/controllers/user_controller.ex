@@ -17,17 +17,13 @@ defmodule LogflareWeb.UserController do
   end
 
   def update(conn, %{"user" => params}) do
-    old_user = conn.assigns.user
-    changeset = User.update_by_user_changeset(old_user, params)
-
-    case Repo.update(changeset) do
-      {:ok, _user} ->
-        case params do
-          %{"bigquery_project_id" => _project_id} ->
-            SourceManager.reset_all_user_tables(old_user)
-
-          _ ->
-            nil
+    conn.assigns.user
+    |> User.update_by_user_changeset(params)
+    |> Repo.update()
+    |> case do
+      {:ok, user} ->
+        if params["bigquery_project_id"] do
+          SourceManager.reset_all_user_tables(user)
         end
 
         conn
@@ -39,7 +35,7 @@ defmodule LogflareWeb.UserController do
         |> put_flash(:error, "Something went wrong!")
         |> render("edit.html",
           changeset: changeset,
-          user: old_user,
+          user: conn.assigns.user,
           service_account: @service_account
         )
     end
