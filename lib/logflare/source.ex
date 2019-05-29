@@ -45,6 +45,7 @@ defmodule Logflare.Source do
     source
     |> cast(attrs, [
       :name,
+      :token,
       :public_token,
       :favorite,
       :user_email_notifications,
