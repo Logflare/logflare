@@ -67,7 +67,11 @@ defmodule Logflare.SourceRecentLogs do
     Supervisor.start_link(children, strategy: :one_for_all)
 
     init_counters(source_id, bigquery_project_id)
-    load_logs_from_bigquery(source_id, bigquery_project_id)
+
+    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+      load_logs_from_bigquery(source_id, bigquery_project_id)
+    end)
+
     Logger.info("ETS table started: #{source_id}")
     {:noreply, state}
   end
