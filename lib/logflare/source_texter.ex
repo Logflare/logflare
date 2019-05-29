@@ -24,6 +24,7 @@ defmodule Logflare.SourceTexter do
 
   def init(state) do
     Logger.info("Table texter started: #{state.source}")
+    Process.flag(:trap_exit, true)
     check_rate()
     {:ok, state}
   end
@@ -53,6 +54,12 @@ defmodule Logflare.SourceTexter do
         check_rate()
         {:noreply, state}
     end
+  end
+
+  def terminate(reason, _state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{__MODULE__}")
+    reason
   end
 
   defp check_rate() do

@@ -30,6 +30,7 @@ defmodule Logflare.SourceRecentLogs do
   ## Client
 
   def init(state) do
+    Process.flag(:trap_exit, true)
     prune()
 
     state = [{:source_token, state}]
@@ -95,6 +96,12 @@ defmodule Logflare.SourceRecentLogs do
         prune()
         {:noreply, state}
     end
+  end
+
+  def terminate(reason, state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{state[:source_token]}")
+    reason
   end
 
   ## Private Functions
@@ -164,19 +171,19 @@ defmodule Logflare.SourceRecentLogs do
     Enum.each(logs, fn log ->
       {_time_event, payload} = log
       Logs.insert_or_push(source_id, log)
-      # source_table_string = Atom.to_string(source_id)
+      source_table_string = Atom.to_string(source_id)
 
-      # case :ets.info(LogflareWeb.Endpoint) do
-      #  :undefined ->
-      #    Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
+      case :ets.info(LogflareWeb.Endpoint) do
+        :undefined ->
+          Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
 
-      #  _ ->
-      #    LogflareWeb.Endpoint.broadcast(
-      #      "source:" <> source_table_string,
-      #      "source:#{source_table_string}:new",
-      #      payload
-      #    )
-      # end
+        _ ->
+          LogflareWeb.Endpoint.broadcast(
+            "source:" <> source_table_string,
+            "source:#{source_table_string}:new",
+            payload
+          )
+      end
     end)
   end
 

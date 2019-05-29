@@ -14,17 +14,18 @@ defmodule Logflare.SourceManager do
 
   require Logger
 
-  def start_link(source_ids \\ []) do
-    GenServer.start_link(__MODULE__, source_ids, name: __MODULE__)
+  def start_link do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def init(source_ids) do
+    Process.flag(:trap_exit, true)
     {:ok, source_ids, {:continue, :boot}}
   end
 
   ## Server
 
-  def handle_continue(:boot, []) do
+  def handle_continue(:boot, _source_ids) do
     Logger.info("Table manager started!")
 
     query =
@@ -43,22 +44,11 @@ defmodule Logflare.SourceManager do
 
     children =
       Enum.map(source_ids, fn source_id ->
-        Supervisor.child_spec({SourceRecentLogs, source_id}, id: source_id)
+        Supervisor.child_spec({SourceRecentLogs, source_id}, id: source_id, restart: :transient)
       end)
 
-    IO.inspect(children)
-
     Supervisor.start_link(children, strategy: :one_for_one)
 
-    {:noreply, source_ids}
-  end
-
-  def handle_continue(:boot, source_ids) do
-    children = Enum.map(source_ids, fn source_id -> {SourceRecentLogs, source_id} end)
-
-    Supervisor.start_link(children, strategy: :one_for_one)
-
-    Logger.info("Table manager started!")
     {:noreply, source_ids}
   end
 
@@ -69,22 +59,24 @@ defmodule Logflare.SourceManager do
     {:reply, source_id, state}
   end
 
-  def handle_call({:stop, source_id}, _from, state) do
+  def handle_call({:delete, source_id}, _from, state) do
     case Process.whereis(source_id) do
       nil ->
         {:reply, source_id, state}
 
       _ ->
-        source_id_string = Atom.to_string(source_id)
-        tab_path = "tables/" <> source_id_string <> ".tab"
-
         GenServer.stop(source_id)
-
         SourceCounter.delete(source_id)
-        File.rm(tab_path)
+
         state = List.delete(state, source_id)
         {:reply, source_id, state}
     end
+  end
+
+  def terminate(reason, _state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{__MODULE__}")
+    reason
   end
 
   ## Public Functions
@@ -94,14 +86,14 @@ defmodule Logflare.SourceManager do
   end
 
   def delete_table(source_id) do
-    GenServer.call(__MODULE__, {:stop, source_id})
+    GenServer.call(__MODULE__, {:delete, source_id})
     BigQuery.delete_table(source_id)
 
     {:ok, source_id}
   end
 
   def reset_table(source_id) do
-    GenServer.call(__MODULE__, {:stop, source_id})
+    GenServer.call(__MODULE__, {:delete, source_id})
     GenServer.call(__MODULE__, {:create, source_id})
 
     {:ok, source_id}
