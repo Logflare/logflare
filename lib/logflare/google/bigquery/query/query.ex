@@ -30,8 +30,8 @@ defmodule Logflare.Google.BigQuery.Query do
           |> Enum.reverse()
           |> Enum.map(fn row ->
             unique_integer = System.unique_integer([:monotonic])
-            time_event = {0, unique_integer, 0}
             payload = string_keys_to_atoms(row)
+            time_event = {payload.timestamp, unique_integer, 0}
 
             {time_event, payload}
           end)
