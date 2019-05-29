@@ -53,7 +53,11 @@ defmodule Logflare.SourceManager do
   end
 
   def handle_call({:create, source_id}, _from, state) do
-    SourceRecentLogs.start_link(source_id)
+    children = [
+      Supervisor.child_spec({SourceRecentLogs, source_id}, id: source_id, restart: :transient)
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one)
 
     state = Enum.uniq([source_id | state])
     {:reply, source_id, state}
