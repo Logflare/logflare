@@ -7,6 +7,8 @@ defmodule Logflare.Google.BigQuery.Query do
   alias GoogleApi.BigQuery.V2.{Api, Model}
   alias Logflare.Google.BigQuery.{GenUtils}
   alias Logflare.SourceBigQuerySchema
+  alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.Endpoint
 
   @spec get_events_for_ets(atom, atom) :: []
   def get_events_for_ets(
@@ -55,12 +57,13 @@ defmodule Logflare.Google.BigQuery.Query do
 
         payload = %{
           timestamp: System.system_time(:microsecond),
-          log_message: "If you're seeing this there was an issue populating the cache from
+          log_message:
+            "If you're seeing this there was an issue populating the cache from
             BigQuery. This doesn't affect log ingestion. It could be a temporary
             timeout. If this message persists and you have your own BigQuery backed
             setup you may need to add `BigQuery Job User` permissions to the
             Logflare service account via Google CLoud Platform console IAM.
-            Email support@logflare.app if you need help."
+            See: #{Routes.marketing_url(Endpoint, :big_query_setup)} or email support@logflare.app if you need help."
         }
 
         [{time_event, payload}]
