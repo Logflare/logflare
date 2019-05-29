@@ -34,31 +34,31 @@ defmodule Logflare.SourceManager do
         }
       )
 
-    sources = Repo.all(query)
+    source_ids =
+      Repo.all(query)
+      |> Enum.map(fn s ->
+        {:ok, source} = Ecto.UUID.Atom.load(s.token)
+        source
+      end)
 
-    state =
-      Enum.map(
-        sources,
-        fn s ->
-          {:ok, source} = Ecto.UUID.Atom.load(s.token)
-          source
-        end
-      )
+    children =
+      Enum.map(source_ids, fn source_id ->
+        Supervisor.child_spec({SourceRecentLogs, source_id}, id: source_id)
+      end)
 
-    Enum.each(state, fn s ->
-      SourceRecentLogs.start_link(s)
-    end)
+    IO.inspect(children)
 
-    {:noreply, state}
+    Supervisor.start_link(children, strategy: :one_for_one)
+
+    {:noreply, source_ids}
   end
 
   def handle_continue(:boot, source_ids) do
+    children = Enum.map(source_ids, fn source_id -> {SourceRecentLogs, source_id} end)
+
+    Supervisor.start_link(children, strategy: :one_for_one)
+
     Logger.info("Table manager started!")
-
-    Enum.each(source_ids, fn s ->
-      SourceRecentLogs.start_link(s)
-    end)
-
     {:noreply, source_ids}
   end
 
