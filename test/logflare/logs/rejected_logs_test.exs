@@ -14,7 +14,7 @@ defmodule Logflare.Logs.RejectedEventsTest do
   end
 
   describe "rejected logs module" do
-    test "inserts logs for source and error", %{sources: [s1, _]} do
+    test "inserts logs for source and validator", %{sources: [s1, _]} do
       source = Sources.get_by_id(s1.token)
 
       raw_logs = [
@@ -25,13 +25,14 @@ defmodule Logflare.Logs.RejectedEventsTest do
         }
       ]
 
-      error = Logflare.Validator.DeepFieldTypes.Error
+      validator = Logflare.Validator.DeepFieldTypes
+      validator_message = validator.message()
 
-      _ = RejectedEvents.injest(%{source: source, error: error, batch: raw_logs})
+      _ = RejectedEvents.injest(%{source: source, error: validator, batch: raw_logs})
 
       cached = RejectedEvents.get_by_source(source)
 
-      assert cached === [%{message: error.message, payload: raw_logs}]
+      assert [%{message: validator_message, payload: raw_logs, timestamp: _}] = cached
     end
 
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
@@ -55,24 +56,25 @@ defmodule Logflare.Logs.RejectedEventsTest do
         }
       ]
 
-      error = Logflare.Validator.DeepFieldTypes.Error
+      validator = Logflare.Validator.DeepFieldTypes
+      validator_message = validator.message()
 
-      _ = RejectedEvents.injest(%{source: source1, error: error, batch: raw_logs_source_1})
-      _ = RejectedEvents.injest(%{source: source1, error: error, batch: raw_logs_source_1})
-      _ = RejectedEvents.injest(%{source: source2, error: error, batch: raw_logs_source_2})
+      _ = RejectedEvents.injest(%{source: source1, error: validator, batch: raw_logs_source_1})
+      _ = RejectedEvents.injest(%{source: source1, error: validator, batch: raw_logs_source_1})
+      _ = RejectedEvents.injest(%{source: source2, error: validator, batch: raw_logs_source_2})
 
       result = RejectedEvents.get_by_user(u1)
 
       assert map_size(result) == 2
 
-      assert result[s1.token] === [
-               %{message: error.message, payload: raw_logs_source_1},
-               %{message: error.message, payload: raw_logs_source_1}
-             ]
+      assert [
+               %{message: validator_message, payload: raw_logs_source_1, timestamp: _},
+               %{message: validator_message, payload: raw_logs_source_1, timestamp: _}
+             ] = result[s1.token]
 
-      assert result[s2.token] === [
-               %{message: error.message, payload: raw_logs_source_2}
-             ]
+      assert [
+               %{message: validator_message, payload: raw_logs_source_2, timestamp: _}
+             ] = result[s2.token]
     end
   end
 end
