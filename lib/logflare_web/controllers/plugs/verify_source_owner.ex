@@ -11,10 +11,11 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
   def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
     pk = params["id"] || params["source_id"]
 
-    if Users.find_user_source_by_pk(user, pk) do
+    if Users.find_source_by_pk(user, pk) do
       conn
     else
       conn
+      |> put_status(401)
       |> put_flash(:error, "That's not yours!")
       |> redirect(to: Routes.marketing_path(conn, :index))
       |> halt()

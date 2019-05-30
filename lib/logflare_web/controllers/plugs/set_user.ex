@@ -19,6 +19,8 @@ defmodule LogflareWeb.Plugs.SetUser do
     assign(conn, :user, user)
   end
 
+  defp maybe_parse_binary_to_int(int) when is_integer(int), do: int
+
   defp maybe_parse_binary_to_int(session_user_id) do
     session_user_id && Integer.parse(session_user_id)
   end

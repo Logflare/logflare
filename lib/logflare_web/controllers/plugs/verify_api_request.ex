@@ -23,7 +23,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     |> halt()
   end
 
-  def check_log_entry(%{"params" => params} = conn, _opts) do
+  def check_log_entry(%{params: params} = conn, _opts) do
     log_entry = params["log_entry"] || params["batch"]
 
     if log_entry in [%{}, [], "", nil] do
@@ -41,7 +41,7 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
         |> List.wrap()
 
       conn
-      |> assign(:raw_logs, raw_logs)
+      |> assign(:log_events, raw_logs)
     end
   end
 
