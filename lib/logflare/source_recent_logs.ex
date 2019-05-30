@@ -17,6 +17,7 @@ defmodule Logflare.SourceRecentLogs do
   alias Logflare.SourceBigQueryPipeline
   alias Logflare.SourceBigQuerySchema
   alias Logflare.Google.BigQuery.GenUtils
+  alias Number.Delimit
 
   require Logger
 
@@ -120,7 +121,7 @@ defmodule Logflare.SourceRecentLogs do
       source_table_string = Atom.to_string(source_id)
 
       log_message =
-        "Initialized and waiting for new events. #{log_count} archived and available to explore."
+        "Initialized and waiting for new events. #{Delimit.number_to_delimited(log_count)} archived and available to explore."
 
       payload = %{timestamp: timestamp, log_message: log_message}
       log = {time_event, payload}
