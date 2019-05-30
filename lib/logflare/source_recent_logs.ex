@@ -110,67 +110,7 @@ defmodule Logflare.SourceRecentLogs do
 
   ## Private Functions
   defp load_logs_from_bigquery(source_id, bigquery_project_id) do
-    logs =
-      with [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(),
-               true
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-1),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-2),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-3),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-4),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-5),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-6),
-               false
-             ) do
-        []
-      else
-        logs -> logs
-      end
+    logs = BigQuery.Query.get_events_for_ets(source_id, bigquery_project_id)
 
     Enum.each(logs, fn log ->
       {_time_event, payload} = log
@@ -189,12 +129,6 @@ defmodule Logflare.SourceRecentLogs do
           )
       end
     end)
-  end
-
-  defp get_datetime(adjustment \\ 0) do
-    datetime = DateTime.utc_now()
-    seconds = 86_400 * adjustment
-    DateTime.add(datetime, seconds, :second)
   end
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do

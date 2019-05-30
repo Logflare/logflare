@@ -30,7 +30,8 @@ defmodule Logflare.SourceBigQuerySchema do
               type: "STRING"
             }
           ]
-        }
+        },
+        schema_not_sorted: %{}
       },
       name: name(state[:source_token])
     )
@@ -43,7 +44,7 @@ defmodule Logflare.SourceBigQuerySchema do
       {:ok, table} ->
         schema = SourceSchemaBuilder.deep_sort_by_fields_name(table.schema)
         Logger.info("Table schema manager started: #{state.source_token}")
-        {:ok, %{state | schema: schema}}
+        {:ok, %{state | schema: schema, schema_not_sorted: table.schema}}
 
       _ ->
         Logger.info("Table schema manager started: #{state.source_token}")
