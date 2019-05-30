@@ -76,4 +76,18 @@ defmodule LogflareWeb.UserControllerTest do
       assert html_response(conn, 302) =~ user_path(conn, :edit)
     end
   end
+
+  describe "UserController delete" do
+    test "succeeds", %{conn: conn, users: [u1 | _]} do
+      conn =
+        conn
+        |> assign(:user, u1)
+        |> delete(user_path(conn, :delete))
+
+      u1_updated = Users.get_by_id(u1.id)
+      refute u1_updated
+      assert get_flash(conn, :info) == "Account deleted!"
+      assert redirected_to(conn, 302) == marketing_path(conn, :index)
+    end
+  end
 end
