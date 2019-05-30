@@ -1,61 +1,61 @@
 defmodule Logflare.Google.BigQuery.Query do
   require Logger
 
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id] || ""
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] || ""
-
-  alias GoogleApi.BigQuery.V2.{Api}
-  alias Logflare.Google.BigQuery.{GenUtils}
-  alias Logflare.SourceBigQuerySchema
-  alias Logflare.Google.BigQuery
-
-  @spec get_events_for_ets(atom, atom) :: []
-  def get_events_for_ets(
-        source,
-        project_id \\ @project_id
-      ) do
-    schema = SourceBigQuerySchema.get_state(source).schema_not_sorted
-
-    case list_table_rows(source, project_id) do
-      {:ok, response} ->
-        if response.rows do
-          BigQuery.SchemaUtils.merge_rows_with_schema(
-            schema,
-            response.rows
-          )
-          |> Enum.map(fn row ->
-            %{"timestamp" => timestamp, "event_message" => log_message, "metadata" => metadata} =
-              row
-
-            unique_integer = System.unique_integer([:monotonic])
-            time_event = {timestamp, unique_integer, 0}
-
-            {time_event, %{timestamp: timestamp, log_message: log_message, metadata: metadata}}
-          end)
-        else
-          []
-        end
-
-      {:error, _response} ->
-        []
-    end
-  end
-
-  def list_table_rows(
-        source,
-        project_id \\ @project_id
-      ) do
-    conn = GenUtils.get_conn()
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
-    table_name = GenUtils.format_table_name(source)
-
-    Api.Tabledata.bigquery_tabledata_list(conn, project_id, dataset_id, table_name,
-      maxResults: 100,
-      alt: "JSON",
-      selectedFields: "event_message, metadata, timestamp"
-    )
-  end
-
+  #  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id] || ""
+  #  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] || ""
+  #
+  #  alias GoogleApi.BigQuery.V2.{Api}
+  #  alias Logflare.Google.BigQuery.{GenUtils}
+  #  alias Logflare.SourceBigQuerySchema
+  #  alias Logflare.Google.BigQuery
+  #
+  #  @spec get_events_for_ets(atom, atom) :: []
+  #  def get_events_for_ets(
+  #        source,
+  #        project_id \\ @project_id
+  #      ) do
+  #    schema = SourceBigQuerySchema.get_state(source).schema_not_sorted
+  #
+  #    case list_table_rows(source, project_id) do
+  #      {:ok, response} ->
+  #        if response.rows do
+  #          BigQuery.SchemaUtils.merge_rows_with_schema(
+  #            schema,
+  #            response.rows
+  #          )
+  #          |> Enum.map(fn row ->
+  #            %{"timestamp" => timestamp, "event_message" => log_message, "metadata" => metadata} =
+  #              row
+  #
+  #            unique_integer = System.unique_integer([:monotonic])
+  #            time_event = {timestamp, unique_integer, 0}
+  #
+  #            {time_event, %{timestamp: timestamp, log_message: log_message, metadata: metadata}}
+  #          end)
+  #        else
+  #          []
+  #        end
+  #
+  #      {:error, _response} ->
+  #        []
+  #    end
+  #  end
+  #
+  #  def list_table_rows(
+  #        source,
+  #        project_id \\ @project_id
+  #      ) do
+  #    conn = GenUtils.get_conn()
+  #    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+  #    table_name = GenUtils.format_table_name(source)
+  #
+  #    Api.Tabledata.bigquery_tabledata_list(conn, project_id, dataset_id, table_name,
+  #      maxResults: 100,
+  #      alt: "JSON",
+  #      selectedFields: "event_message, metadata, timestamp"
+  #    )
+  #  end
+  #
   #  defp query(conn, project_id, sql) do
   #    Api.Jobs.bigquery_jobs_query(
   #      conn,

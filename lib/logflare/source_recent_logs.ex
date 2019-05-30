@@ -69,7 +69,7 @@ defmodule Logflare.SourceRecentLogs do
     init_counters(source_id, bigquery_project_id)
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      load_logs_from_bigquery(source_id, bigquery_project_id)
+      load_init_log_message(source_id, bigquery_project_id)
     end)
 
     Logger.info("ETS table started: #{source_id}")
@@ -109,13 +109,23 @@ defmodule Logflare.SourceRecentLogs do
   end
 
   ## Private Functions
-  defp load_logs_from_bigquery(source_id, bigquery_project_id) do
-    logs = BigQuery.Query.get_events_for_ets(source_id, bigquery_project_id)
 
-    Enum.each(logs, fn log ->
-      {_time_event, payload} = log
-      Logs.insert_or_push(source_id, log)
+  defp load_init_log_message(source_id, bigquery_project_id) do
+    log_count = Logflare.SourceData.get_log_count(source_id, bigquery_project_id)
+
+    if log_count > 0 do
+      unique_integer = System.unique_integer([:monotonic])
+      timestamp = System.system_time(:microsecond)
+      time_event = {timestamp, unique_integer, 0}
       source_table_string = Atom.to_string(source_id)
+
+      log_message =
+        "Initialized and waiting for new events. #{log_count} archived and available to explore."
+
+      payload = %{timestamp: timestamp, log_message: log_message}
+      log = {time_event, payload}
+
+      Logs.insert_or_push(source_id, log)
 
       case :ets.info(LogflareWeb.Endpoint) do
         :undefined ->
@@ -128,7 +138,7 @@ defmodule Logflare.SourceRecentLogs do
             payload
           )
       end
-    end)
+    end
   end
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
