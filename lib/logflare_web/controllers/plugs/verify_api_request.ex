@@ -1,7 +1,7 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequest do
   use Plug.Builder
   import Phoenix.Controller
-  alias Logflare.Users
+  alias Logflare.{Users, User}
 
   require Logger
 
@@ -11,20 +11,16 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
   plug :check_source_token_and_name
   plug :check_log_entry
 
-  def check_user(conn, _opts) do
-    case conn.assigns.user do
-      nil ->
-        message = "Unknown x-api-key."
+  def check_user(%{assigns: %{user: %User{}}} = conn, _opts), do: conn
 
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
+  def check_user(%{assigns: %{user: nil}} = conn, _opts) do
+    message = "Error: please set API token"
 
-      _ ->
-        conn
-    end
+    conn
+    |> put_status(401)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: message)
+    |> halt()
   end
 
   def check_log_entry(%{"params" => params} = conn, _opts) do
@@ -49,14 +45,9 @@ defmodule LogflareWeb.Plugs.VerifyApiRequest do
     end
   end
 
-  def check_source_token_and_name(conn, _opts) do
+  def check_source_token_and_name(%{assigns: %{user: user}} = conn, _opts) do
     source_token = conn.params["source"]
     source_name = conn.params["source_name"]
-
-    headers = Enum.into(conn.req_headers, %{})
-    api_key = headers["x-api-key"]
-
-    user = Users.Cache.find_user_by_api_key(api_key)
     sources_strings = Enum.map(user.sources, &Atom.to_string(&1.token))
 
     cond do
