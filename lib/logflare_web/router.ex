@@ -61,6 +61,7 @@ defmodule LogflareWeb.Router do
     pipe_through(:browser)
     get "/bigquery-setup", MarketingController, :big_query_setup
     get "/data-studio-setup", MarketingController, :data_studio_setup
+    get "/event-analytics", MarketingController, :event_analytics_demo
   end
 
   scope "/", LogflareWeb do
