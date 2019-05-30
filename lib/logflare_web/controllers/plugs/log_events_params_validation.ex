@@ -3,23 +3,22 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidation do
 
   alias Logflare.{Logs}
 
-  def init(_params) do
-  end
+  def init(_opts), do: nil
 
   def call(conn, _opts) do
     case Logs.validate_batch_params(conn.assigns.log_events) do
       :ok ->
         conn
 
-      {:invalid, reason} ->
+      {:invalid, validator} ->
         Logs.RejectedEvents.injest(%{
-          reason: reason,
-          log_events: conn.assigns.log_events,
+          error: validator,
+          batch: conn.assigns.log_events,
           source: conn.assigns.source
         })
 
         conn
-        |> send_resp(406, reason)
+        |> send_resp(406, validator.message)
         |> halt()
     end
   end
