@@ -1,22 +1,16 @@
 defmodule LogflareWeb.Plugs.SetApiUser do
   import Plug.Conn
-  alias Logflare.{Users, User}
+  alias Logflare.Users
 
-  def init(_params) do
-  end
+  def init(_opts), do: nil
 
-  def call(conn, _params) do
-    headers = Enum.into(conn.req_headers, %{})
-    api_key = headers["x-api-key"]
+  def call(conn, _opts) do
+    user =
+      conn.req_headers
+      |> Enum.into(%{})
+      |> Map.get("x-api-key")
+      |> Users.Cache.find_user_by_api_key()
 
-    user = Users.Cache.find_user_by_api_key(api_key)
-
-    case user do
-      %User{api_key: api_key} ->
-        assign(conn, :user, api_key)
-
-      _ ->
-        assign(conn, :user, nil)
-    end
+    assign(conn, :user, user)
   end
 end
