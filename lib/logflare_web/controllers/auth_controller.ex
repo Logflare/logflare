@@ -83,7 +83,7 @@ defmodule LogflareWeb.AuthController do
     case insert_or_update_user(changeset) do
       {:ok, user} ->
         AccountEmail.welcome(user) |> Mailer.deliver()
-        CloudResourceManager.set_iam_policy!()
+        CloudResourceManager.set_iam_policy()
 
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
@@ -91,7 +91,7 @@ defmodule LogflareWeb.AuthController do
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
-        CloudResourceManager.set_iam_policy!()
+        CloudResourceManager.set_iam_policy()
         BigQuery.patch_dataset_access!(user.id)
 
         case is_nil(oauth_params) do

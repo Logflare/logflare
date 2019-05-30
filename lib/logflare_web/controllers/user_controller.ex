@@ -52,7 +52,7 @@ defmodule LogflareWeb.UserController do
     user_id = conn.assigns.user.id
     Repo.get!(User, user_id) |> Repo.delete!()
     BigQuery.delete_dataset(user_id)
-    CloudResourceManager.set_iam_policy!()
+    CloudResourceManager.set_iam_policy()
 
     conn
     |> put_flash(:info, "Account deleted!")

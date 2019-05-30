@@ -19,7 +19,7 @@ defmodule Logflare.Google.CloudResourceManager do
     Api.Projects.cloudresourcemanager_projects_get_iam_policy(conn, @project_number, body: body)
   end
 
-  def set_iam_policy!() do
+  def set_iam_policy() do
     conn = get_conn()
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
@@ -52,10 +52,7 @@ defmodule Logflare.Google.CloudResourceManager do
         policy: policy
       }
 
-      {:ok, _response} =
-        Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, @project_number,
-          body: body
-        )
+      Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, @project_number, body: body)
 
       Logger.info("IAM policy set: #{Enum.count(members)} accounts")
     end)
