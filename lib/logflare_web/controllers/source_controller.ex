@@ -1,13 +1,11 @@
 defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
-  import Ecto.Query, only: [from: 2]
-
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
   plug LogflareWeb.Plugs.VerifySourceOwner
        when action in [:show, :update, :delete, :clear_logs, :favorite]
 
-  alias Logflare.{Source, Users, Sources, Repo, SourceData, SourceManager, Google.BigQuery, User}
+  alias Logflare.{Source, Sources, Repo, SourceData, SourceManager, Google.BigQuery}
   alias Logflare.Logs.RejectedEvents
   alias LogflareWeb.AuthController
 
@@ -79,14 +77,17 @@ defmodule LogflareWeb.SourceController do
   end
 
   def render_show_with_assigns(conn, user, source) do
-    bigquery_project_id = user.bigquery_project_id || @project_id
-    explore_link = generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
+    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
+
+    explore_link =
+      bigquery_project_id &&
+        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
     render(conn, "show.html",
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link
+      explore_link: explore_link || ""
     )
   end
 
@@ -113,7 +114,7 @@ defmodule LogflareWeb.SourceController do
     avg_rate = SourceData.get_avg_rate(old_source.token)
 
     sources =
-      conn.user.sources
+      conn.assigns.user.sources
       |> Enum.map(&Map.put(&1, :disabled, disabled_source === &1.token))
 
     case Repo.update(changeset) do

@@ -8,7 +8,7 @@ defmodule LogflareWeb.SourceControllerTest do
   import Logflare.DummyFactory
 
   setup do
-    s1 = insert(:source, token: Faker.UUID.v4())
+    s1 = insert(:source, token: Faker.UUID.v4(), public_token: Faker.String.base64(16))
     s2 = insert(:source, token: Faker.UUID.v4())
     s3 = insert(:source, token: Faker.UUID.v4())
     u1 = insert(:user, sources: [s1, s2])
@@ -64,7 +64,9 @@ defmodule LogflareWeb.SourceControllerTest do
                }
              ] = conn.assigns.logs
     end
+  end
 
+  describe "update" do
     test "update with valid params", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
       new_name = Faker.String.base64()
 
@@ -81,7 +83,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
-      s1_new = Sources.get_by_id(s1.token)
+      s1_new = Sources.get_by(token: s1.token)
 
       assert html_response(conn, 302) =~ "redirected"
       assert get_flash(conn, :info) == "Source updated!"
@@ -106,7 +108,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
-      s1_new = Sources.get_by_id(s1.token)
+      s1_new = Sources.get_by(token: s1.token)
 
       assert s1_new.name != new_name
       assert get_flash(conn, :error) == "Something went wrong!"
@@ -137,14 +139,13 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
-      s1_new = Sources.get_by_pk(s1.id)
+      s1_new = Sources.get_by(id: s1.id)
 
       refute conn.assigns[:changeset]
       refute s1_new.token == nope_token
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.user_id == nope_user_id
-      assert conn.status == 200
-      assert html_response(conn, 401) =~ "Not allowed"
+      assert redirected_to(conn, 302) =~ source_path(conn, :edit, s1.id)
     end
 
     test "users can't update sources of other users", %{
@@ -164,12 +165,12 @@ defmodule LogflareWeb.SourceControllerTest do
           }
         )
 
-      s1_new = Sources.get_by_pk(s1.id)
+      s1_new = Sources.get_by(id: s1.id)
 
-      refute s1_new.name == "it's mine now!"
+      refute s1_new.name === "it's mine now!"
       assert conn.halted === true
       assert get_flash(conn, :error) =~ "That's not yours!"
-      assert redirected_to(conn, 401) =~ "Not allowed"
+      assert redirected_to(conn, 401) =~ marketing_path(conn, :index)
     end
   end
 
@@ -237,16 +238,17 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    test "favorite action flips field value", %{conn: conn, sources: [s1 | _]} do
+    test "favorite action flips field value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
-        |> get(source_path(conn, :favorite, s1.id))
+        |> login_user(u1)
+        |> get(source_path(conn, :favorite, Integer.to_string(s1.id)))
 
-      new_s1 = Source.get_by_id(s1.id)
+      new_s1 = Sources.get_by(id: s1.id)
 
-      assert new_s1.favorite == not s1.favorite
       assert get_flash(conn, :info) == "Source updated!"
       assert redirected_to(conn, 302) =~ source_path(conn, :dashboard)
+      assert new_s1.favorite == not s1.favorite
     end
   end
 
