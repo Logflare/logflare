@@ -17,6 +17,7 @@ defmodule Logflare.SourceRecentLogs do
   alias Logflare.SourceBigQueryPipeline
   alias Logflare.SourceBigQuerySchema
   alias Logflare.Google.BigQuery.GenUtils
+  alias Number.Delimit
 
   require Logger
 
@@ -30,6 +31,7 @@ defmodule Logflare.SourceRecentLogs do
   ## Client
 
   def init(state) do
+    Process.flag(:trap_exit, true)
     prune()
 
     state = [{:source_token, state}]
@@ -66,7 +68,11 @@ defmodule Logflare.SourceRecentLogs do
     Supervisor.start_link(children, strategy: :one_for_all)
 
     init_counters(source_id, bigquery_project_id)
-    load_logs_from_bigquery(source_id, bigquery_project_id)
+
+    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+      load_init_log_message(source_id, bigquery_project_id)
+    end)
+
     Logger.info("ETS table started: #{source_id}")
     {:noreply, state}
   end
@@ -97,93 +103,43 @@ defmodule Logflare.SourceRecentLogs do
     end
   end
 
-  ## Private Functions
-  defp load_logs_from_bigquery(source_id, bigquery_project_id) do
-    logs =
-      with [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(),
-               true
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-1),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-2),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-3),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-4),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-5),
-               false
-             ),
-           [] <-
-             BigQuery.Query.get_events_for_ets(
-               source_id,
-               bigquery_project_id,
-               get_datetime(-6),
-               false
-             ) do
-        []
-      else
-        logs -> logs
-      end
-
-    Enum.each(logs, fn log ->
-      {_time_event, _payload} = log
-      Logs.insert_or_push(source_id, log)
-      # source_table_string = Atom.to_string(source_id)
-
-      # case :ets.info(LogflareWeb.Endpoint) do
-      #  :undefined ->
-      #    Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
-
-      #  _ ->
-      #    LogflareWeb.Endpoint.broadcast(
-      #      "source:" <> source_table_string,
-      #      "source:#{source_table_string}:new",
-      #      payload
-      #    )
-      # end
-    end)
+  def terminate(reason, state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{state[:source_token]}")
+    reason
   end
 
-  defp get_datetime(adjustment \\ 0) do
-    datetime = DateTime.utc_now()
-    seconds = 86_400 * adjustment
-    DateTime.add(datetime, seconds, :second)
+  ## Private Functions
+
+  defp load_init_log_message(source_id, bigquery_project_id) do
+    log_count = Logflare.SourceData.get_log_count(source_id, bigquery_project_id)
+
+    if log_count > 0 do
+      unique_integer = System.unique_integer([:monotonic])
+      timestamp = System.system_time(:microsecond)
+      time_event = {timestamp, unique_integer, 0}
+      source_table_string = Atom.to_string(source_id)
+
+      log_message =
+        "Initialized and waiting for new events. #{Delimit.number_to_delimited(log_count)} archived and available to explore."
+
+      payload = %{timestamp: timestamp, log_message: log_message}
+      log = {time_event, payload}
+
+      Logs.insert_or_push(source_id, log)
+
+      case :ets.info(LogflareWeb.Endpoint) do
+        :undefined ->
+          Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
+
+        _ ->
+          LogflareWeb.Endpoint.broadcast(
+            "source:" <> source_table_string,
+            "source:#{source_table_string}:new",
+            payload
+          )
+      end
+    end
   end
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do

@@ -22,4 +22,8 @@ defmodule LogflareWeb.MarketingController do
   def data_studio_setup(conn, _params) do
     render(conn, "data_studio_setup.html")
   end
+
+  def event_analytics_demo(conn, _params) do
+    render(conn, "event_analytics_demo.html")
+  end
 end

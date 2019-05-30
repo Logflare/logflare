@@ -21,6 +21,7 @@ defmodule Logflare.SourceBuffer do
 
   def init(state) do
     Logger.info("Table buffer started: #{state.source}")
+    Process.flag(:trap_exit, true)
 
     check_buffer()
     {:ok, state}
@@ -86,6 +87,12 @@ defmodule Logflare.SourceBuffer do
     broadcast_buffer(state.source, :queue.len(state.buffer))
     check_buffer()
     {:noreply, state}
+  end
+
+  def terminate(reason, _state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down: #{__MODULE__}")
+    reason
   end
 
   defp check_buffer() do
