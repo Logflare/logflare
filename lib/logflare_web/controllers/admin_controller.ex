@@ -2,7 +2,7 @@ defmodule LogflareWeb.AdminController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source}
+  alias Logflare.{Repo, Source, Sources}
 
   def dashboard(conn, _params) do
     query =
@@ -17,7 +17,7 @@ defmodule LogflareWeb.AdminController do
     sorted_sources =
       query
       |> Repo.all()
-      |> Enum.map(&Source.update_metrics_latest/1)
+      |> Enum.map(&Sources.default_preloads/1)
       |> Enum.sort_by(&Map.fetch(&1, :latest), &>=/2)
 
     render(conn, "dashboard.html", sources: sorted_sources)

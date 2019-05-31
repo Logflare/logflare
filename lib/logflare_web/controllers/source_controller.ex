@@ -15,9 +15,12 @@ defmodule LogflareWeb.SourceController do
   def dashboard(conn, _params) do
     sources =
       conn.assigns.user.sources
-      |> Enum.map(&Source.update_metrics_latest/1)
+      |> Enum.map(&Sources.preload_defaults/1)
 
-    render(conn, "dashboard.html", sources: sources, user_email: conn.assigns.user.email)
+    render(conn, "dashboard.html",
+      sources: sources,
+      user_email: conn.assigns.user.email
+    )
   end
 
   def favorite(conn, %{"id" => id}) do

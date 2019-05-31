@@ -1,8 +1,5 @@
 defmodule Logflare.Source do
   use Ecto.Schema
-  alias Logflare.SourceData
-  alias Logflare.Logs.RejectedEvents
-  alias Number.Delimit
   import Ecto.Changeset
   @default_source_api_quota 50
 
@@ -79,33 +76,6 @@ defmodule Logflare.Source do
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)
     |> validate_min_avg_source_rate(:avg_rate)
-  end
-
-  def update_metrics_latest(%__MODULE__{token: token} = source) do
-    import SourceData
-    rejected_count = RejectedEvents.get_by_source(source)
-
-    metrics =
-      %Metrics{
-        rate: get_rate(token),
-        latest: get_latest_date(token),
-        avg: get_avg_rate(token),
-        max: get_max_rate(token),
-        buffer: get_buffer(token),
-        inserts: get_total_inserts(token),
-        rejected: rejected_count
-      }
-      |> Map.from_struct()
-      |> Enum.map(fn
-        {k, v} when k in ~w[rate latest avg max buffer inserts]a ->
-          {k, Delimit.number_to_delimited(v)}
-
-        x ->
-          x
-      end)
-      |> Map.new()
-
-    %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
   end
 
   def validate_min_avg_source_rate(changeset, field, options \\ []) do
