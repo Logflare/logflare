@@ -19,10 +19,10 @@ defmodule LogflareWeb.Router do
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
-    plug LogflareWeb.Plugs.SetApiUser
   end
 
   pipeline :require_api_auth do
+    plug LogflareWeb.Plugs.SetUser
     plug LogflareWeb.Plugs.VerifyApiRequest
     plug LogflareWeb.Plugs.LogEventParamsValidation
     plug LogflareWeb.Plugs.CheckSourceCountApi
