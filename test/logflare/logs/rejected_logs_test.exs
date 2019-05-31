@@ -9,13 +9,13 @@ defmodule Logflare.Logs.RejectedEventsTest do
     s1 = insert(:source)
     s2 = insert(:source)
     sources = [s1, s2]
-    u1 = insert(:user, api_key: @api_key, sources: sources)
+    u1 = insert(:user, sources: sources)
     {:ok, users: [u1], sources: sources}
   end
 
   describe "rejected logs module" do
     test "inserts logs for source and validator", %{sources: [s1, _]} do
-      source = Sources.get_by_id(s1.token)
+      source = Sources.get_by(token: s1.token)
 
       raw_logs = [
         %{"log_entry" => "test", "metadata" => %{"ip" => "0.0.0.0"}},
@@ -36,9 +36,9 @@ defmodule Logflare.Logs.RejectedEventsTest do
     end
 
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
-      source1 = Sources.get_by_id(s1.token)
-      source2 = Sources.get_by_id(s2.token)
-      user = Users.get_user_by_id(u1.id)
+      source1 = Sources.get_by(token: s1.token)
+      source2 = Sources.get_by(token: s2.token)
+      _user = Users.get_by(id: u1.id)
 
       raw_logs_source_1 = [
         %{"log_entry" => "case1", "metadata" => %{"ip" => "0.0.0.0"}},

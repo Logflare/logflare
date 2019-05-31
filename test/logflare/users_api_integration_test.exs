@@ -21,13 +21,12 @@ defmodule Logflare.Users.APIIntegrationTest do
         SRC.update_state(acc, 10 * n)
       end)
 
-    {:ok, source_id: source_id_atom, source: source, src: src_state}
+    {:ok, source: source, src: src_state}
   end
 
   describe "API context" do
     test "action_allowed?/1 returns true for api_quota of 11 and average rate of 10", %{
       src: src,
-      source_id: source_id,
       source: source
     } do
       user = insert(:user, api_quota: 11, sources: [source])
@@ -35,7 +34,7 @@ defmodule Logflare.Users.APIIntegrationTest do
       action = %{
         type: {:api_call, :logs_post},
         user: user,
-        source_id: source_id
+        source: source
       }
 
       SRC.update_ets_table(src)
