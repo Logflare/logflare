@@ -21,7 +21,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def favorite(conn, %{"id" => source_pk}) do
-    old_source = Sources.get_by_pk(source_pk)
+    old_source = Sources.get_by(id: source_pk)
 
     {flash_key, message} =
       old_source
@@ -71,8 +71,8 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def show(%{assigns: %{user: user}} = conn, %{"id" => pk}) do
-    source = Sources.get_by_pk(pk)
+  def show(%{assigns: %{user: user}} = conn, %{"id" => id}) do
+    source = Sources.get_by(id: id)
     render_show_with_assigns(conn, user, source)
   end
 
@@ -106,7 +106,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def update(conn, %{"id" => pk, "source" => source_params}) do
-    old_source = Sources.get_by_pk(pk)
+    old_source = Sources.get_by(id: pk)
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
     user = conn.assigns.user
@@ -146,8 +146,8 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def delete(conn, %{"id" => pk}) do
-    source = Sources.get_by_pk(pk)
+  def delete(conn, %{"id" => id}) do
+    source = Sources.get_by(id: id)
 
     case :ets.info(source.token) do
       :undefined ->

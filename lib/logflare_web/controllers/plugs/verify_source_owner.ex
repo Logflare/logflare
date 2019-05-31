@@ -3,7 +3,7 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
 
   import Plug.Conn
   import Phoenix.Controller
-  alias Logflare.Users
+  alias Logflare.{Users, Sources}
   alias LogflareWeb.Router.Helpers, as: Routes
 
   def call(%{assigns: %{user: %{admin: true}}} = conn, _opts), do: conn
@@ -11,7 +11,7 @@ defmodule LogflareWeb.Plugs.VerifySourceOwner do
   def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
     pk = params["id"] || params["source_id"]
 
-    if Users.find_source_by_pk(user, pk) do
+    if Sources.get_by(id: pk).user_id == user.id do
       conn
     else
       conn
