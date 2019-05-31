@@ -26,7 +26,7 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetVerifySource
     plug LogflareWeb.Plugs.RateLimiter
     plug LogflareWeb.Plugs.VerifyApiRequest
-    plug LogflareWeb.Plugs.LogEventParamsValidation
+    # plug LogflareWeb.Plugs.CheckSourceCountApi
     plug LogflareWeb.Plugs.CheckSourceCountApi
   end
 
@@ -87,6 +87,7 @@ defmodule LogflareWeb.Router do
       delete("/rules/:id", RuleController, :delete)
     end
 
+    get "/:id/rejected", SourceController, :rejected_logs
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
   end
@@ -141,6 +142,6 @@ defmodule LogflareWeb.Router do
     pipe_through [:api, :require_api_auth]
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
-    post "/elixir/logger", ElixirLoggerController, :create
+    post "/elixir/logger", LogController, :elixir_logger
   end
 end
