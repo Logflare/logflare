@@ -33,4 +33,48 @@ defmodule LogflareWeb.Plugs.VerifyApiRequestTest do
     end
   end
 
+  describe "check log entry" do
+    test "halts on nil or empty log_entry or batch", %{conn: conn, users: [u1, u2]} do
+      conn = conn
+        |> assign(:params, %{"metadata" => %{}, "key" => 0})
+        |> fetch_query_params()
+        |> VerifyApiRequest.check_log_entry()
+
+      assert conn.halted
+      assert conn.status == 422
+      assert conn.assigns.message === "Log entry needed."
+
+      conn = conn
+        |> assign(:params, %{"log_entry" => ""})
+        |> fetch_query_params()
+        |> VerifyApiRequest.check_log_entry()
+
+      assert conn.halted
+      assert conn.status == 422
+      assert conn.assigns.message === "Log entry needed."
+
+      conn = conn
+        |> assign(:params, %{"batch" => []})
+        |> fetch_query_params()
+        |> VerifyApiRequest.check_log_entry()
+
+      assert conn.halted
+      assert conn.status == 422
+      assert conn.assigns.message === "Log entry needed."
+    end
+
+    test "doesn't halt with log_entry present ", %{conn: conn, users: [u1, u2]} do
+      conn = conn
+      |> assign(:params, %{"log_entry" => "string log entry"})
+
+      refute conn.halted
+    end
+
+    test "doesn't halt with batch param present", %{conn: conn, users: [u1, u2]} do
+      conn = conn
+      |> assign(:params, %{"batch" => [%{"log_entry" => "string log entry"}]})
+
+      refute conn.halted
+    end
+  end
 end
