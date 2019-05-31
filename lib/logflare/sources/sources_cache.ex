@@ -6,42 +6,26 @@ defmodule Logflare.Sources.Cache do
   @cache __MODULE__
 
   def child_spec(_) do
-    cachex_opts = [
-      expiration: expiration(default: @ttl)
-    ]
-
     %{
       id: :cachex_sources_cache,
-      start: {Cachex, :start_link, [Sources.Cache, cachex_opts]}
+      start: {
+        Cachex,
+        :start_link,
+        [
+          Sources.Cache, [ expiration: expiration(default: @ttl) ]
+        ]
+      }
     }
   end
 
-  def get_by_id(source_id) when is_atom(source_id) do
-    fetch_or_commit({:source_id, [source_id]}, &Sources.get_by_id/1)
-  end
+  def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
+  def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
+  def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)
+  def get_by_name(arg) when is_binary(arg), do: get_by(name: arg)
+  def get_by_pk(arg), do: get_by(id: arg)
+  def get_by_public_token(arg), do: get_by(public_token: arg)
 
-  def get_by_name(source_name) do
-    fetch_or_commit({:source_name, [source_name]}, &Sources.get_by_name/1)
-  end
-
-  def get_by_pk(arg), do: apply_repo_fun(__ENV__.function, [arg])
-  def get_by_public_token(arg), do: apply_repo_fun(__ENV__.function, [arg])
-
-  defp apply_repo_fun({fun, arity}, args) do
-    case Cachex.fetch(@cache, {{fun, arity}, args}, fn {_type, args} ->
-           {:commit, apply(Sources, fun, args)}
-         end) do
-      {:commit, value} -> value
-      {:ok, value} -> value
-    end
-  end
-
-  def fetch_or_commit({type, args}, fun) when is_list(args) and is_atom(type) do
-    case Cachex.fetch(@cache, {type, args}, fn {_type, args} ->
-           {:commit, apply(fun, args)}
-         end) do
-      {:commit, value} -> value
-      {:ok, value} -> value
-    end
+  defp apply_repo_fun(arg1, arg2) do
+    Logflare.ContextCache.apply_repo_fun(Sources, arg1, arg2)
   end
 end
