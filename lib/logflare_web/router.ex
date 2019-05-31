@@ -54,13 +54,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/", LogflareWeb do
-    pipe_through(:browser)
+    pipe_through :browser
     get "/", MarketingController, :index
     get "/bigquery-datastudio", MarketingController, :big_query
   end
 
   scope "/guides", LogflareWeb do
-    pipe_through(:browser)
+    pipe_through :browser
     get "/bigquery-setup", MarketingController, :big_query_setup
     get "/data-studio-setup", MarketingController, :data_studio_setup
     get "/event-analytics", MarketingController, :event_analytics_demo
@@ -82,12 +82,13 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
-      post("/rules", RuleController, :create)
+      post "/rules", RuleController, :create
       get "/rules", RuleController, :index
-      delete("/rules/:id", RuleController, :delete)
+      delete "/rules/:id", RuleController, :delete
     end
 
     get "/:id/rejected", SourceController, :rejected_logs
+
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
   end
@@ -96,8 +97,8 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     get "/edit", UserController, :edit
-    put("/edit", UserController, :update)
-    delete("/", UserController, :delete)
+    put "/edit", UserController, :update
+    delete "/", UserController, :delete
   end
 
   scope "/admin", LogflareWeb do
