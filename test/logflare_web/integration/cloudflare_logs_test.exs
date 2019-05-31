@@ -12,13 +12,13 @@ defmodule LogflareWeb.CloudflareLogsTest do
     {:ok, users: [u1, u2], sources: [s]}
   end
 
-  describe "/logs/cloudflare POST request" do
-    test "fails without an API token", %{conn: conn, users: [u | _], sources: [s | _]} do
+  describe "/logs/cloudflare POST request fails" do
+    test "without an API token", %{conn: conn, users: [u | _], sources: [s | _]} do
       conn = post(conn, log_path(conn, :create), %{"log_entry" => "valid log entry"})
       assert json_response(conn, 401) == %{"message" => "Error: please set API token"}
     end
 
-    test "fails without source or source_name", %{conn: conn, users: [u | _], sources: [s | _]} do
+    test "without source or source_name", %{conn: conn, users: [u | _], sources: [s | _]} do
       conn =
         conn
         |> put_req_header("x-api-key", u.api_key)
@@ -27,7 +27,7 @@ defmodule LogflareWeb.CloudflareLogsTest do
       assert json_response(conn, 406) == %{"message" => "Source or source_name needed."}
     end
 
-    test "fails with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do
+    test "with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do
       err_message = %{"message" => "Log entry needed."}
 
       for log_entry <- [%{}, nil, [], ""] do
@@ -45,6 +45,24 @@ defmodule LogflareWeb.CloudflareLogsTest do
       end
     end
 
+    test "fails for unauthorized user", %{conn: conn, users: [u1, u2], sources: [s]} do
+      conn =
+        conn
+        |> put_req_header("x-api-key", u2.api_key)
+        |> post(
+             log_path(conn, :create),
+             %{
+               "log_entry" => "log binary message",
+               "source" => Atom.to_string(s.token),
+               "metadata" => metadata()
+             }
+           )
+
+      assert json_response(conn, 403) == %{"message" => "Source is not owned by this user."}
+    end
+  end
+
+  describe "/logs/cloudflare POST request succeeds" do
     test "succeeds with source_name", %{conn: conn, users: [u | _], sources: [s]} do
       conn =
         conn
@@ -61,7 +79,7 @@ defmodule LogflareWeb.CloudflareLogsTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
 
-    test "succeeds with source (source token)", %{conn: conn, users: [u | _], sources: [s]} do
+    test "succeeds with source (token)", %{conn: conn, users: [u | _], sources: [s]} do
       conn =
         conn
         |> put_req_header("x-api-key", u.api_key)
@@ -76,6 +94,7 @@ defmodule LogflareWeb.CloudflareLogsTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
+
   end
 
   def metadata() do
