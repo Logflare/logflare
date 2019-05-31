@@ -6,6 +6,7 @@ defmodule Logflare.Logs.RejectedEvents do
           message: String.t(),
           payload: list(map) | map
         }
+
   def child_spec(_) do
     %{id: @cache, start: {Cachex, :start_link, [@cache, []]}}
   end
@@ -29,7 +30,8 @@ defmodule Logflare.Logs.RejectedEvents do
   def injest(%{error: error, batch: batch, source: %Source{token: token}}) do
     log = %{
       message: error.message(),
-      payload: batch
+      payload: batch,
+      timestamp: 1_000_000 * (Timex.now() |> Timex.to_unix())
     }
 
     insert(token, log)

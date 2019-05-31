@@ -41,41 +41,21 @@ defmodule Logflare.Logs do
     end
   end
 
-  def broadcast_log_count(source_table) do
-    {:ok, log_count} = SourceCounter.get_total_inserts(source_table)
-    source_table_string = Atom.to_string(source_table)
-
-    payload = %{
-      log_count: Delimit.number_to_delimited(log_count),
-      source_token: source_table_string
-    }
-
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> source_table_string,
-      "dashboard:#{source_table_string}:log_count",
-      payload
-    )
-  end
-
-  @spec broadcast_total_log_count() :: :ok | {:error, any()}
-  def broadcast_total_log_count() do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
-
-    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
-  end
 
   @spec validate_batch_params(list(map)) :: :ok | {:invalid, term()}
   def validate_batch_params(batch) when is_list(batch) do
-    Enum.reduce_while(
-      batch,
-      :ok,
+    reducer =
       fn log_entry, _ ->
         case validate_params(log_entry) do
           :ok -> {:cont, :ok}
           invalid_tup -> {:halt, invalid_tup}
         end
       end
+
+    Enum.reduce_while(
+      batch,
+      :ok,
+      reducer
     )
   end
 
@@ -135,18 +115,13 @@ defmodule Logflare.Logs do
 
   defp send_with_rules(%Source{} = source, time_event, log_message, metadata)
        when is_binary(log_message) do
-    rules = source.rules
-
-    Enum.each(
-      rules,
-      fn x ->
-        if Regex.match?(~r{#{x.regex}}, "#{log_message}") do
-          x.sink
+    for rule <- source.rules do
+        if Regex.match?(~r{#{rule.regex}}, "#{log_message}") do
+          rule.sink
           |> String.to_atom()
           |> insert_and_broadcast(time_event, log_message, metadata)
         end
-      end
-    )
+    end
 
     insert_and_broadcast(source, time_event, log_message, metadata)
   end
@@ -159,7 +134,7 @@ defmodule Logflare.Logs do
     payload = %{timestamp: timestamp, log_message: log_message, metadata: metadata}
     log_event = {time_event, payload}
 
-    Logs.insert_or_push(source.token, log_event)
+    insert_or_push(source.token, log_event)
 
     SourceBuffer.push(source_table_string, log_event)
     SourceCounter.incriment(source.token)
@@ -173,5 +148,29 @@ defmodule Logflare.Logs do
       "source:#{source.token}:new",
       payload
     )
+  end
+
+  def broadcast_log_count(source_table) do
+    {:ok, log_count} = SourceCounter.get_total_inserts(source_table)
+    source_table_string = Atom.to_string(source_table)
+
+    payload = %{
+      log_count: Delimit.number_to_delimited(log_count),
+      source_token: source_table_string
+    }
+
+    LogflareWeb.Endpoint.broadcast(
+      "dashboard:" <> source_table_string,
+      "dashboard:#{source_table_string}:log_count",
+      payload
+    )
+  end
+
+  @spec broadcast_total_log_count() :: :ok | {:error, any()}
+  def broadcast_total_log_count() do
+    {:ok, log_count} = SystemCounter.log_count(@system_counter)
+    payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
+
+    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 end
