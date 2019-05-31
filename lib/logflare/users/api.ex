@@ -20,24 +20,20 @@ defmodule Logflare.Users.API do
 
   @callback verify_api_rates_quotas(map) :: ok_err_tup
 
-  alias Logflare.{Users, Sources}
+  alias Logflare.{Users, Sources, User}
   @api_call_logs {:api_call, :logs_post}
 
   @spec verify_api_rates_quotas(map) :: ok_err_tup
   def verify_api_rates_quotas(%{type: @api_call_logs} = action) do
-    %{source_id: sid, user: user} = action
+    %{source: source, user: user} = action
 
-    source_bucket_metrics = Sources.get_metrics(sid, bucket: :default)
-    user_sum_of_sources = get_total_user_api_rate(user.id)
+    source_bucket_metrics = Sources.get_metrics(source, bucket: :default)
+    user_sum_of_sources = get_total_user_api_rate(user)
 
-    # possible error values are user.id is nil and source_id is nil which
-    # should not ever happen here, raising on pattern match is acceptable
-    {:ok, quotas} = Users.Cache.get_api_quotas(user.id, sid)
-
-    source_limit = source_bucket_metrics.duration * quotas.source
+    source_limit = source_bucket_metrics.duration * source.api_quota
     source_remaining = source_limit - source_bucket_metrics.sum
 
-    user_limit = source_bucket_metrics.duration * quotas.user
+    user_limit = source_bucket_metrics.duration * user.api_quota
     user_remaining = user_limit - user_sum_of_sources
 
     {status, message} =
@@ -69,9 +65,8 @@ defmodule Logflare.Users.API do
     {status, metrics_message}
   end
 
-  def get_total_user_api_rate(user) do
-    user
-    |> Users.Cache.list_source_ids()
+  def get_total_user_api_rate(%User{sources: sources}) when is_list(sources) do
+    sources
     |> Enum.map(&Sources.get_metrics(&1, bucket: :default))
     |> Enum.map(&Map.get(&1, :sum))
     |> Enum.sum()
