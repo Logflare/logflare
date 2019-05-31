@@ -22,6 +22,7 @@ defmodule Logflare.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Logflare.DataCase
+      import Logflare.DummyFactory
     end
   end
 
