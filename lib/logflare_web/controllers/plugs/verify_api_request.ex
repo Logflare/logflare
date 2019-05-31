@@ -1,27 +1,16 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequest do
   use Plug.Builder
   import Phoenix.Controller
-  alias Logflare.{Users, User}
+  alias Logflare.{Users, User, Source}
 
   require Logger
 
   alias Logflare.Sources
 
-  plug :check_user
   plug :check_source_token_and_name
   plug :check_log_entry
 
-  def check_user(%{assigns: %{user: %User{}}} = conn, _opts), do: conn
-
-  def check_user(%{assigns: %{user: nil}} = conn, _opts) do
-    message = "Error: please set API token"
-
-    conn
-    |> put_status(401)
-    |> put_view(LogflareWeb.LogView)
-    |> render("index.json", message: message)
-    |> halt()
-  end
+  def check_log_entry(%{params: params} = conn, _opts \\ []) do
 
   def check_log_entry(%{params: params} = conn, _opts) do
     log_entry = params["log_entry"] || params["batch"]

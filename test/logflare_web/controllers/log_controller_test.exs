@@ -85,8 +85,8 @@ defmodule LogflareWeb.LogControllerTest do
           }
         )
 
-      assert_called_modules_from_logs_context(s.token)
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_called_modules_from_logs_context(s.token)
     end
 
     test "succeeds with source (token)", %{conn: conn, users: [u | _], sources: [s]} do
@@ -102,8 +102,8 @@ defmodule LogflareWeb.LogControllerTest do
           }
         )
 
-      assert_called_modules_from_logs_context(s.token)
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_called_modules_from_logs_context(s.token)
     end
   end
 
@@ -120,6 +120,11 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(log_path(conn, :elixir_logger), %{"batch" => [log_event, log_event, log_event]})
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_called SourceCounter.incriment(s.token), times(3)
+      assert_called SourceCounter.get_total_inserts(s.token), times(3)
+      assert_called SourceBuffer.push("#{s.token}", any()), times(3)
+      assert_called SystemCounter.incriment(any()), times(3)
+      assert_called SystemCounter.log_count(any()), times(3)
     end
   end
 
