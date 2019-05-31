@@ -2,21 +2,7 @@ defmodule Logflare.Validator.BigQuery.TableMetadata do
   @moduledoc false
 
   import Ecto.Changeset
-
-  defguardp is_enum?(v) when is_map(v) or is_list(v)
-
-  # Public
-  @spec valid?(map) :: boolean()
-  def valid?(payload) when is_map(payload) do
-    Enum.reduce(
-      payload,
-      keys_valid?(payload),
-      fn
-        {_k, v}, acc when is_enum?(v) -> acc && valid?(v)
-        _, acc -> acc
-      end
-    )
-  end
+  defguard is_enum?(v) when is_map(v) or is_list(v)
 
   @doc """
   Validates incoming event payload to match the BigQuery schema requirements, which are the following:
@@ -36,8 +22,6 @@ defmodule Logflare.Validator.BigQuery.TableMetadata do
 
   Source: https://cloud.google.com/bigquery/docs/schemas
   """
-  defguard is_enum?(v) when is_map(v) or is_list(v)
-
   @spec valid?(map) :: boolean()
   def valid?(payload) when is_map(payload) do
     Enum.reduce(

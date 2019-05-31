@@ -23,10 +23,7 @@ defmodule LogflareWeb.UserController do
     |> Repo.update()
     |> case do
       {:ok, user} ->
-        Users.Cache.delete_cache_key_by_id(old_user.id)
-
-        Users.Cache.delete_cache_key_by_id(old_user.id)
-        end
+        Users.Cache.delete_cache_key_by_id(user.id)
 
         conn
         |> put_flash(:info, "Account updated!")
