@@ -32,7 +32,7 @@ defmodule Logflare.Google.BigQuery do
             Logger.info("BigQuery table created: #{source}")
 
           {:error, message} ->
-            Logger.error("Init error: #{message.body}")
+            Logger.error("Init error: #{message}")
         end
 
       {:error, %Tesla.Env{status: 409}} ->
@@ -46,11 +46,11 @@ defmodule Logflare.Google.BigQuery do
             Logger.info("BigQuery table existed: #{source}")
 
           {:error, message} ->
-            Logger.error("Init error: #{message.body}")
+            Logger.error("Init error: #{message}")
         end
 
       {:error, message} ->
-        Logger.error("Init error: #{message.body}")
+        Logger.error("Init error: #{message}")
     end
   end
 
@@ -181,14 +181,13 @@ defmodule Logflare.Google.BigQuery do
       rows: [row]
     }
 
-    {:ok, _response} =
-      Api.Tabledata.bigquery_tabledata_insert_all(
-        conn,
-        project_id,
-        dataset_id,
-        table_name,
-        body: body
-      )
+    Api.Tabledata.bigquery_tabledata_insert_all(
+      conn,
+      project_id,
+      dataset_id,
+      table_name,
+      body: body
+    )
   end
 
   @spec stream_batch!(atom, list(map), atom) :: ok_err_tup
@@ -202,18 +201,13 @@ defmodule Logflare.Google.BigQuery do
       rows: batch
     }
 
-    {:ok,
-     %Model.TableDataInsertAllResponse{
-       insertErrors: nil,
-       kind: _kind
-     }} =
-      Api.Tabledata.bigquery_tabledata_insert_all(
-        conn,
-        project_id,
-        dataset_id,
-        table_name,
-        body: body
-      )
+    Api.Tabledata.bigquery_tabledata_insert_all(
+      conn,
+      project_id,
+      dataset_id,
+      table_name,
+      body: body
+    )
   end
 
   @spec create_dataset(binary, binary) ::

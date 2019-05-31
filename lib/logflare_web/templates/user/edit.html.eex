@@ -55,7 +55,7 @@
   <% end %>
   <%= if @user.provider == "google" do %>
     <p>Review apps with access to your Google account</a>.</p>
-    <%= link "Visit Google", to: "https://myaccount.google.com/permissions", class: "btn btn-primary form-button" %>
+    <%= link "Visit Google", to: "https://myaccount.google.com/permissions?authuser=#{@user.email}", class: "btn btn-primary form-button" %>
   <% end %>
   <h5 class="header-margin">Delete Your Account</h5>
   <p>This will immediately delete everything associated with your account. There is no undo.</p>

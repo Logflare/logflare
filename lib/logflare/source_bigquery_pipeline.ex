@@ -62,9 +62,14 @@ defmodule Logflare.SourceBigQueryPipeline do
         }
       end)
 
-    BigQuery.stream_batch!(context[:source_token], rows, context[:bigquery_project_id])
+    case BigQuery.stream_batch!(context[:source_token], rows, context[:bigquery_project_id]) do
+      {:ok, _response} ->
+        messages
 
-    messages
+      {:error, response} ->
+        Logger.error("Error #{__MODULE__}: #{response}")
+        messages
+    end
   end
 
   defp process_data(message) do
