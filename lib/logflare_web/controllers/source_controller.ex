@@ -2,7 +2,7 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
-  plug LogflareWeb.Plugs.VerifySourceOwner
+  plug LogflareWeb.Plugs.SetVerifySource
        when action in [:show, :update, :delete, :clear_logs, :favorite]
 
   alias Logflare.{Source, Sources, Repo, SourceData, SourceManager, Google.BigQuery}
@@ -86,7 +86,9 @@ defmodule LogflareWeb.SourceController do
       bigquery_project_id &&
         generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
-    render(conn, "show.html",
+    render(
+      conn,
+      "show.html",
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
@@ -151,12 +153,13 @@ defmodule LogflareWeb.SourceController do
 
   def delete(conn, %{"id" => id}) do
     source = Sources.get_by(id: id)
+    token = source.token
 
     cond do
-      :ets.info(source.token) == :undefined ->
+      :ets.info(token) == :undefined ->
         del_source_and_redirect_with_info(conn, source)
 
-      :ets.first(source.token) == :"$end_of_table" ->
+      :ets.first(token) == :"$end_of_table" ->
         {:ok, _table} = SourceManager.delete_table(source.token)
         del_source_and_redirect_with_info(conn, source)
 
