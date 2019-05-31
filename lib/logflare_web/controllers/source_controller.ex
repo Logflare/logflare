@@ -20,8 +20,8 @@ defmodule LogflareWeb.SourceController do
     render(conn, "dashboard.html", sources: sources, user_email: conn.assigns.user.email)
   end
 
-  def favorite(conn, %{"id" => source_pk}) do
-    old_source = Sources.get_by(id: source_pk)
+  def favorite(conn, %{"id" => id}) do
+    old_source = Sources.get_by(id: id)
 
     {flash_key, message} =
       old_source
@@ -92,8 +92,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def public(conn, %{"public_token" => public_token}) do
-    public_token
-    |> Sources.Cache.get_by_public_token()
+    Sources.Cache.get_by(public_token: public_token)
     |> case do
       %Source{} = source ->
         render_show_with_assigns(conn, conn.assigns.user, source)
@@ -137,7 +136,8 @@ defmodule LogflareWeb.SourceController do
         conn
         |> put_status(406)
         |> put_flash(:error, "Something went wrong!")
-        |> render("edit.html",
+        |> render(
+          "edit.html",
           changeset: changeset,
           source: old_source,
           sources: sources,
@@ -149,40 +149,37 @@ defmodule LogflareWeb.SourceController do
   def delete(conn, %{"id" => id}) do
     source = Sources.get_by(id: id)
 
-    case :ets.info(source.token) do
-      :undefined ->
+    cond do
+      :ets.info(source.token) == :undefined ->
         del_source_and_redirect_with_info(conn, source)
 
-      _ ->
-        case :ets.first(source.token) do
-          :"$end_of_table" ->
-            {:ok, _table} = SourceManager.delete_table(source.token)
-            del_source_and_redirect_with_info(conn, source)
+      :ets.first(source.token) == :"$end_of_table" ->
+        {:ok, _table} = SourceManager.delete_table(source.token)
+        del_source_and_redirect_with_info(conn, source)
 
-          {timestamp, _unique_int, _monotime} ->
-            now = System.os_time(:microsecond)
+      {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
+        now = System.os_time(:microsecond)
 
-            if now - timestamp > 3_600_000_000 do
-              {:ok, _table} = SourceManager.delete_table(source.token)
-              del_source_and_redirect_with_info(conn, source)
-            else
-              put_flash_and_redirect_to_dashboard(
-                conn,
-                :error,
-                "Failed! Recent events found. Latest event must be greater than 24 hours old."
-              )
-            end
+        if now - timestamp > 3_600_000_000 do
+          {:ok, _table} = SourceManager.delete_table(source.token)
+          del_source_and_redirect_with_info(conn, source)
+        else
+          put_flash_and_redirect_to_dashboard(
+            conn,
+            :error,
+            "Failed! Recent events found. Latest event must be greater than 24 hours old."
+          )
         end
     end
   end
 
-  def clear_logs(conn, %{"id" => pk}) do
-    source = Sources.get_by_pk(pk)
+  def clear_logs(conn, %{"id" => id}) do
+    source = Sources.get_by(id: id)
     {:ok, _table} = SourceManager.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
-    |> redirect(to: Routes.source_path(conn, :show, pk))
+    |> redirect(to: Routes.source_path(conn, :show, id))
   end
 
   defp generate_explore_link(
@@ -211,9 +208,11 @@ defmodule LogflareWeb.SourceController do
   end
 
   def rejected_logs(conn, %{"id" => id}) do
-    source = Sources.Cache.get_by_pk(id)
+    source = Sources.Cache.get_by(id: id)
 
-    render(conn, "show_rejected.html",
+    render(
+      conn,
+      "show_rejected.html",
       logs: RejectedEvents.get_by_source(source),
       source: source
     )
