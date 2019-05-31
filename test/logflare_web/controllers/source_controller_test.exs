@@ -150,7 +150,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert redirected_to(conn, 302) =~ source_path(conn, :edit, s1.id)
     end
 
-    test "returns 401 when user is not an owner of source", %{
+    test "returns 403 when user is not an owner of source", %{
       conn: conn,
       users: [u1, _u2],
       sources: [s1, _s2, u2s1 | _]
@@ -172,7 +172,7 @@ defmodule LogflareWeb.SourceControllerTest do
       refute s1_new.name === "it's mine now!"
       assert conn.halted === true
       assert get_flash(conn, :error) =~ "That's not yours!"
-      assert redirected_to(conn, 401) =~ marketing_path(conn, :index)
+      assert redirected_to(conn, 403) =~ marketing_path(conn, :index)
     end
   end
 
@@ -190,7 +190,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ s1.name
     end
 
-    test "returns 401 for a source for unauthorized user", %{
+    test "returns 403 for a source not owned by the user", %{
       conn: conn,
       users: [u1, u2 | _],
       sources: [s1 | _]
@@ -200,7 +200,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u2)
         |> get(source_path(conn, :show, s1.id))
 
-      assert redirected_to(conn, 401) === "/"
+      assert redirected_to(conn, 403) === "/"
     end
   end
 
