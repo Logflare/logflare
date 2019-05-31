@@ -1,6 +1,8 @@
 defmodule LogflareWeb.CloudflareLogsTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  alias Logflare.{SourceBuffer, SourceCounter, SystemCounter}
+  use Placebo
   @moduletag integration: true
 
   setup do
@@ -63,6 +65,8 @@ defmodule LogflareWeb.CloudflareLogsTest do
   end
 
   describe "/logs/cloudflare POST request succeeds" do
+    setup [:allow_mocks]
+
     test "succeeds with source_name", %{conn: conn, users: [u | _], sources: [s]} do
       conn =
         conn
@@ -76,6 +80,7 @@ defmodule LogflareWeb.CloudflareLogsTest do
              }
            )
 
+      assert_called_modules_from_logs_context(s.token)
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
 
@@ -92,9 +97,28 @@ defmodule LogflareWeb.CloudflareLogsTest do
              }
            )
 
+      assert_called_modules_from_logs_context(s.token)
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
 
+  end
+
+  defp assert_called_modules_from_logs_context(token) do
+    assert_called SourceCounter.incriment(token), once()
+    assert_called SourceCounter.get_total_inserts(token), once()
+    assert_called SourceBuffer.push("#{token}", any()), once()
+    assert_called SystemCounter.incriment(any()), once()
+    assert_called SystemCounter.log_count(any()), once()
+
+  end
+
+  defp allow_mocks(_context) do
+    allow SourceCounter.incriment(any), return: :ok
+    allow SourceBuffer.push(any, any), return: :ok
+    allow SourceCounter.get_total_inserts(any()), return: {:ok, 1}
+    allow SystemCounter.incriment(any()), return: :ok
+    allow SystemCounter.log_count(any()), return: {:ok, 1}
+    :ok
   end
 
   def metadata() do
