@@ -3,14 +3,14 @@ defmodule LogflareWeb.SourceControllerTest do
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
 
-  alias Logflare.{SourceManager, SystemCounter, Sources, Repo, Users}
+  alias Logflare.{SystemCounter, Sources, Repo}
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
 
   setup do
-    s1 = insert(:source, token: Faker.UUID.v4(), public_token: Faker.String.base64(16))
-    s2 = insert(:source, token: Faker.UUID.v4())
-    s3 = insert(:source, token: Faker.UUID.v4())
+    s1 = insert(:source, public_token: Faker.String.base64(16))
+    s2 = insert(:source)
+    s3 = insert(:source)
     u1 = insert(:user, sources: [s1, s2])
     u2 = insert(:user, sources: [s3])
 
@@ -18,12 +18,11 @@ defmodule LogflareWeb.SourceControllerTest do
 
     sources = [s1, s2, s3]
 
-    SystemCounter.start_link()
-    {:ok, users: users, sources: sources, conn: Phoenix.ConnTest.build_conn()}
+    {:ok, users: users, sources: sources}
   end
 
   describe "dashboard" do
-    test "renders dashboard", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
+    test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       conn =
         conn
         |> login_user(u1)
@@ -41,7 +40,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "dashboard"
     end
 
-    test "renders rejected logs page", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
+    test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedEvents.injest(%{
         error: Logflare.Validator.DeepFieldTypes,
         batch: [%{"no_log_entry" => true, "timestamp" => ""}],
@@ -67,7 +66,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "update" do
-    test "update with valid params", %{conn: conn, users: [u1, u2], sources: [s1, s2 | _]} do
+    test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
 
       params = %{
@@ -91,8 +90,11 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.favorite == true
     end
 
-    @tag :skip
-    test "update action with invalid params", %{conn: conn, users: [u1, u2], sources: [s1, s2]} do
+    test "returns 406 with invalid params", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
       new_name = "this should never be inserted"
 
       params = %{
@@ -115,10 +117,10 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 406) =~ "Source Name"
     end
 
-    test "users can't update restricted fields", %{
+    test "", %{
       conn: conn,
-      users: [u1, u2],
-      sources: [s1, s2 | _]
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
     } do
       nope_token = Faker.UUID.v4()
       nope_api_quota = 1337
@@ -148,10 +150,10 @@ defmodule LogflareWeb.SourceControllerTest do
       assert redirected_to(conn, 302) =~ source_path(conn, :edit, s1.id)
     end
 
-    test "users can't update sources of other users", %{
+    test "returns 401 when user is not an owner of source", %{
       conn: conn,
-      users: [u1, u2],
-      sources: [s1, s2, u2s1]
+      users: [u1, _u2],
+      sources: [s1, _s2, u2s1 | _]
     } do
       conn =
         conn
@@ -175,7 +177,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "show" do
-    test "a source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
+    test "renders source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
         |> login_user(u1)
@@ -203,7 +205,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "create" do
-    test "with valid params", %{conn: conn, users: [u1 | _]} do
+    test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
         |> login_user(u1)
@@ -218,7 +220,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert redirected_to(conn, 302) === source_path(conn, :dashboard)
     end
 
-    test "with invalid params", %{conn: conn, users: [u1 | _]} do
+    test "returns 406 with invalid params", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
         |> login_user(u1)
@@ -238,7 +240,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    test "favorite action flips field value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
+    test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
         |> login_user(u1)
