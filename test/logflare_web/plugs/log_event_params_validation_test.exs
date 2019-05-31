@@ -6,12 +6,8 @@ defmodule LogflareWeb.Plugs.LogEventParamsValidationTest do
   alias LogflareWeb.Plugs.LogEventParamsValidation
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
-  end
-
-  setup do
     s1 = insert(:source)
-    u1 = insert(:user, %{api_key: @api_key})
+    u1 = insert(:user)
     {:ok, users: [u1], sources: [s1]}
   end
 
