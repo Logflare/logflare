@@ -15,7 +15,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
       conn =
         build_conn(:post, "/logs")
         |> put_req_header("x-api-key", u1.api_key)
-        |> SetUser.call(%{})
+        |> SetVerifyUser.call(%{})
 
       assert conn.assigns.user.id == u1.id
       assert conn.halted == false
@@ -25,7 +25,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
       conn =
         build_conn(:post, "/logs")
         |> put_req_header("x-api-key", "")
-        |> SetUser.call(%{})
+        |> SetVerifyUser.call(%{})
 
       assert conn.halted == true
       assert conn.assigns.message == "Error: please set API token"

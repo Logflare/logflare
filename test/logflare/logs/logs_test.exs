@@ -10,7 +10,7 @@ defmodule Logflare.LogsTest do
     {:ok, sources: [s]}
   end
 
-  describe "Logs context" do
+  describe "Logs" do
     test "build_time_event/1 for ISO:Extended" do
       now = NaiveDateTime.utc_now()
 
@@ -22,6 +22,8 @@ defmodule Logflare.LogsTest do
       {timestamp, unique_int, monotime} = build_time_event(iso_datetime)
 
       assert is_integer(timestamp)
+      assert is_integer(unique_int)
+      assert is_integer(monotime)
     end
 
     test "build_time_event/1 for integer timestamp" do
@@ -30,6 +32,8 @@ defmodule Logflare.LogsTest do
       {timestamp, unique_int, monotime} = build_time_event(timestamp)
 
       assert is_integer(timestamp)
+      assert is_integer(unique_int)
+      assert is_integer(monotime)
     end
 
     test "validate_params/1 succeeds with empty metadata" do
