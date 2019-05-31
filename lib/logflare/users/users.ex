@@ -4,28 +4,25 @@ defmodule Logflare.Users do
   alias Logflare.Repo
   @moduledoc false
 
-  def get_user_by_id(id) when is_integer(id) do
+  def get_by(keyword) do
     User
-    |> Repo.get(id)
+    |> Repo.get_by(keyword)
     |> Repo.preload(:sources)
   end
 
-  def get_api_quotas(%User{} = user, %Source{} = source) do
-    source = Enum.find(user.sources, &(&1.id === source))
+  def user_owns_token?(token_param) when is_binary(token_param) do
 
-    %{
-      user: user.api_quota,
-      source: source.api_quota
-    }
   end
 
-  @spec find_user_by_api_key(String.t()) :: User.t() | nil
-  def find_user_by_api_key(nil), do: nil
+  def list_source_ids(user) when is_integer(user) do
+    get_by(id: user.id)
+    |> list_source_ids()
+  end
 
-  def find_user_by_api_key(api_key) when is_binary(api_key) do
-    User
-    |> Repo.get_by(api_key: api_key)
-    |> Repo.preload(:sources)
+  def list_source_ids(user) do
+    user
+    |> Map.get(:sources)
+    |> Enum.map(& &1.token)
   end
 
   def get_sources(%User{id: user_id}) do

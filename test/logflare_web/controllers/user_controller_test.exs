@@ -37,7 +37,7 @@ defmodule LogflareWeb.UserControllerTest do
           }
         )
 
-      s1_new = Users.get_by_id(u1.id)
+      s1_new = Users.get_by(id: u1.id)
 
       refute conn.assigns[:changeset]
       refute s1_new.token == nope_token
@@ -67,7 +67,7 @@ defmodule LogflareWeb.UserControllerTest do
         |> put("/account/edit", %{"user" => new})
 
       s1_new =
-        Users.get_by_id(u1.id)
+        Users.get_by(id: u1.id)
         |> Map.from_struct()
         |> Map.take(Map.keys(new))
 
@@ -84,7 +84,7 @@ defmodule LogflareWeb.UserControllerTest do
         |> assign(:user, u1)
         |> delete(user_path(conn, :delete))
 
-      u1_updated = Users.get_by_id(u1.id)
+      u1_updated = Users.get_by(id: u1.id)
       refute u1_updated
       assert get_flash(conn, :info) == "Account deleted!"
       assert redirected_to(conn, 302) == marketing_path(conn, :index)
