@@ -15,7 +15,56 @@ defmodule LogflareWeb.Plugs.VerifyApiRequestTest do
     {:ok, users: [u1, u2], sources: [s1, s2]}
   end
 
-  describe "check log entry" do
+  describe "Plugs.VerifyApiRequest.validate_log_entries" do
+    test "halts conn if invalid", %{users: [u | _], sources: [s | _]} do
+      conn =
+        build_conn(:post, "/logs")
+        |> assign(:user, u)
+        |> assign(:source, %{s | user: u})
+        |> assign(:log_events, [
+          %{
+            "metadata" => %{
+              "users" => [
+                %{
+                  "id" => 1
+                },
+                %{
+                  "id" => "2"
+                }
+              ]
+            },
+            "log_entry" => true
+          }
+        ])
+        |> VerifyApiRequest.validate_log_events()
+
+      assert conn.halted == true
+    end
+
+    test "doesn't halt conn if valid", %{users: [u | _], sources: [s | _]} do
+      conn =
+        build_conn(:post, "/logs")
+        |> assign(:user, u)
+        |> assign(:source, s)
+        |> assign(:log_events, [
+          %{
+            "users" => [
+              %{
+                "id" => 1
+              },
+              %{
+                "id" => 2
+              }
+            ]
+          }
+        ])
+        |> VerifyApiRequest.validate_log_events()
+
+      assert conn.halted == false
+    end
+  end
+
+  describe "Plugs.VerifyApiRequest.check_log_entry" do
     test "halts on nil or empty log_entry or batch", %{conn: conn, users: [u1, u2]} do
       conn1 =
         conn
