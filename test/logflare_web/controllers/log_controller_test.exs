@@ -1,13 +1,16 @@
-defmodule LogflareWeb.CloudflareLogsTest do
+defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.{SourceBuffer, SourceCounter, SystemCounter}
+  alias Logflare.{SourceBuffer, SourceCounter, SystemCounter, Sources}
   use Placebo
-  @moduletag integration: true
 
   setup do
     import Logflare.DummyFactory
-    s = insert(:source)
+
+    s =
+      insert(:source)
+      |> Sources.preload_defaults()
+
     u1 = insert(:user, sources: [s])
     u2 = insert(:user)
 
@@ -15,12 +18,12 @@ defmodule LogflareWeb.CloudflareLogsTest do
   end
 
   describe "/logs/cloudflare POST request fails" do
-    test "without an API token", %{conn: conn, users: [u | _], sources: [s | _]} do
+    test "without an API token", %{conn: conn, users: [u | _]} do
       conn = post(conn, log_path(conn, :create), %{"log_entry" => "valid log entry"})
       assert json_response(conn, 401) == %{"message" => "Error: please set API token"}
     end
 
-    test "without source or source_name", %{conn: conn, users: [u | _], sources: [s | _]} do
+    test "without source or source_name", %{conn: conn, users: [u | _]} do
       conn =
         conn
         |> put_req_header("x-api-key", u.api_key)
@@ -33,16 +36,18 @@ defmodule LogflareWeb.CloudflareLogsTest do
       err_message = %{"message" => "Log entry needed."}
 
       for log_entry <- [%{}, nil, [], ""] do
-        conn = conn
-               |> put_req_header("x-api-key", u.api_key)
-               |> post(
-                    log_path(conn, :create),
-                    %{
-                      "log_entry" => log_entry,
-                      "source" => Atom.to_string(s.token),
-                      "metadata" => metadata()
-                    }
-                  )
+        conn =
+          conn
+          |> put_req_header("x-api-key", u.api_key)
+          |> post(
+            log_path(conn, :create),
+            %{
+              "log_entry" => log_entry,
+              "source" => Atom.to_string(s.token),
+              "metadata" => metadata()
+            }
+          )
+
         assert json_response(conn, 406) == err_message
       end
     end
@@ -52,13 +57,13 @@ defmodule LogflareWeb.CloudflareLogsTest do
         conn
         |> put_req_header("x-api-key", u2.api_key)
         |> post(
-             log_path(conn, :create),
-             %{
-               "log_entry" => "log binary message",
-               "source" => Atom.to_string(s.token),
-               "metadata" => metadata()
-             }
-           )
+          log_path(conn, :create),
+          %{
+            "log_entry" => "log binary message",
+            "source" => Atom.to_string(s.token),
+            "metadata" => metadata()
+          }
+        )
 
       assert json_response(conn, 403) == %{"message" => "Source is not owned by this user."}
     end
@@ -72,13 +77,13 @@ defmodule LogflareWeb.CloudflareLogsTest do
         conn
         |> put_req_header("x-api-key", u.api_key)
         |> post(
-             log_path(conn, :create),
-             %{
-               "log_entry" => "log binary message",
-               "source_name" => s.name,
-               "metadata" => metadata()
-             }
-           )
+          log_path(conn, :create),
+          %{
+            "log_entry" => "log binary message",
+            "source_name" => s.name,
+            "metadata" => metadata()
+          }
+        )
 
       assert_called_modules_from_logs_context(s.token)
       assert json_response(conn, 200) == %{"message" => "Logged!"}
@@ -89,18 +94,33 @@ defmodule LogflareWeb.CloudflareLogsTest do
         conn
         |> put_req_header("x-api-key", u.api_key)
         |> post(
-             log_path(conn, :create),
-             %{
-               "log_entry" => "log binary message",
-               "source" => Atom.to_string(s.token),
-               "metadata" => metadata()
-             }
-           )
+          log_path(conn, :create),
+          %{
+            "log_entry" => "log binary message",
+            "source" => Atom.to_string(s.token),
+            "metadata" => metadata()
+          }
+        )
 
       assert_called_modules_from_logs_context(s.token)
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
+  end
 
+  describe "/logs/elixir/logger POST request succeeds" do
+    setup [:allow_mocks]
+
+    test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
+      log_event = build_log_event()
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> assign(:source, s)
+        |> post(log_path(conn, :elixir_logger), %{"batch" => [log_event, log_event, log_event]})
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
   end
 
   defp assert_called_modules_from_logs_context(token) do
@@ -109,12 +129,11 @@ defmodule LogflareWeb.CloudflareLogsTest do
     assert_called SourceBuffer.push("#{token}", any()), once()
     assert_called SystemCounter.incriment(any()), once()
     assert_called SystemCounter.log_count(any()), once()
-
   end
 
   defp allow_mocks(_context) do
-    allow SourceCounter.incriment(any), return: :ok
-    allow SourceBuffer.push(any, any), return: :ok
+    allow SourceCounter.incriment(any()), return: :ok
+    allow SourceBuffer.push(any(), any()), return: :ok
     allow SourceCounter.get_total_inserts(any()), return: {:ok, 1}
     allow SystemCounter.incriment(any()), return: :ok
     allow SystemCounter.log_count(any()), return: {:ok, 1}
@@ -146,6 +165,15 @@ defmodule LogflareWeb.CloudflareLogsTest do
         "user_agent" => "chrome"
       },
       "request_method" => "POST"
+    }
+  end
+
+  def build_log_event() do
+    %{
+      "message" => "log message",
+      "metadata" => %{},
+      "timestamp" => NaiveDateTime.to_iso8601(NaiveDateTime.utc_now()),
+      "level" => "info"
     }
   end
 end
