@@ -2,7 +2,6 @@ defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
 
-    SetVerifyUser
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
@@ -11,7 +10,7 @@ defmodule LogflareWeb.Router do
     plug :fetch_flash
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-    plug SetVerifyUser
+    plug LogflareWeb.Plugs.SetVerifyUser
   end
 
   pipeline :api do
@@ -23,11 +22,12 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :require_api_auth do
-    plug SetVerifyUser
+    plug LogflareWeb.Plugs.SetVerifyUser
+    plug LogflareWeb.Plugs.SetVerifySource
+    plug LogflareWeb.Plugs.RateLimiter
     plug LogflareWeb.Plugs.VerifyApiRequest
     plug LogflareWeb.Plugs.LogEventParamsValidation
     plug LogflareWeb.Plugs.CheckSourceCountApi
-    plug LogflareWeb.Plugs.RateLimiter
   end
 
   pipeline :require_auth do
