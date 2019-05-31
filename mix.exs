@@ -84,7 +84,8 @@ defmodule Logflare.Mixfile do
       {:ex_machina, "~> 2.3"},
       {:iteraptor, "~> 1.8.0"},
       {:bertex, ">= 0.0.0"},
-      {:excoveralls, "~> 0.11", only: :test}
+      {:excoveralls, "~> 0.11", only: :test},
+      {:placebo, "~> 1.2"}
     ]
   end
 
