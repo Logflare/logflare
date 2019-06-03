@@ -5,7 +5,9 @@ defmodule Logflare.Rule do
 
   schema "rules" do
     field :regex, :string
-    belongs_to :sink, Source
+    field :sink, Ecto.UUID.Atom
+    # TODO update sink field to be an belongs_to association
+    # belongs_to :sink, Source, foreign_key: :sink_id, type: Ecto.UUID.Atom, references: :token
     belongs_to :source, Source
 
     timestamps()
