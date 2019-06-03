@@ -21,8 +21,11 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       |> get_session(:user_id)
       |> maybe_parse_binary_to_int()
       |> case do
-        {int, ""} -> Users.Cache.get_by(id: int)
-        _ -> nil
+        id when is_integer(id) ->
+          Users.Cache.get_by(id: id)
+
+        _ ->
+          nil
       end
 
     assign(conn, :user, user)
@@ -49,9 +52,11 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
     end
   end
 
-  defp maybe_parse_binary_to_int(int) when is_integer(int), do: int
+  defp maybe_parse_binary_to_int(nil), do: nil
+  defp maybe_parse_binary_to_int(x) when is_integer(x), do: x
 
-  defp maybe_parse_binary_to_int(session_user_id) do
-    session_user_id && Integer.parse(session_user_id)
+  defp maybe_parse_binary_to_int(x) do
+    {int, ""} = Integer.parse(x)
+    int
   end
 end
