@@ -1,5 +1,5 @@
 defmodule Logflare.Users do
-  alias Logflare.{Source}
+  alias Logflare.{Source, User}
   import Ecto.Query
   alias Logflare.Repo
   @moduledoc false
@@ -9,6 +9,8 @@ defmodule Logflare.Users do
     |> Repo.get_by(keyword)
     |> default_preloads()
   end
+
+  def get_by_id(id), do: get_by(id: id)
 
   def default_preloads(user) do
     user
