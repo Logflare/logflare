@@ -144,6 +144,7 @@ defmodule Logflare.SourceRecentLogs do
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
     log_count = SourceData.get_log_count(source_id, bigquery_project_id)
+    SourceCounter.delete(source_id)
     SourceCounter.create(source_id)
     SourceCounter.incriment_ets_count(source_id, 0)
     SourceCounter.incriment_total_count(source_id, log_count)
