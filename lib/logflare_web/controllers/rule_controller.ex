@@ -40,57 +40,26 @@ defmodule LogflareWeb.RuleController do
     end
   end
 
-  def index(conn, %{"source_id" => source_id}) do
-    user_id = conn.assigns.user.id
-    source = Repo.get(Source, source_id)
-    disabled_source = source.token
-    source_id_int = String.to_integer(source_id)
+  def index(conn, _) do
+    %{assigns: %{user: user, source: current_source}} = conn
 
-    changeset = Rule.changeset(%Rule{source: source_id})
+    changeset = Rule.changeset(%Rule{source: current_source.id})
 
-    rules_query =
-      from(r in "rules",
-        where: r.source_id == ^source_id_int,
-        select: %{
-          id: r.id,
-          regex: r.regex,
-          sink: r.sink
-        }
-      )
-
-    sources_query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token
-        }
-      )
-
-    rules =
-      for rule <- Repo.all(rules_query) do
-        {:ok, sink} = Ecto.UUID.load(rule.sink)
-        Map.put(rule, :sink, sink)
-      end
+    source =
+      current_source
+      |> Repo.preload([:rules], force: true)
 
     sources =
-      for source <- Repo.all(sources_query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-        s = Map.put(source, :token, token)
-
-        case token do
-          ^disabled_source ->
-            Map.put(s, :disabled, true)
-
-          _source ->
-            Map.put(s, :disabled, false)
+      for s <- user.sources do
+        if s.token == current_source.token do
+          Map.put(s, :disabled, true)
+        else
+          Map.put(s, :disabled, false)
         end
       end
 
     render(conn, "index.html",
-      rules: rules,
+      rules: source.rules,
       source: source,
       changeset: changeset,
       sources: sources
