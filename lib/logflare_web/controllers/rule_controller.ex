@@ -2,71 +2,37 @@ defmodule LogflareWeb.RuleController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  plug LogflareWeb.Plugs.VerifySourceOwner when action in [:index, :delete]
+  plug LogflareWeb.Plugs.SetVerifySource when action in [:index, :delete, :create]
 
-  alias Logflare.Rule
-  alias Logflare.Source
-  alias Logflare.Repo
+  alias Logflare.{Rule, Source}
 
-  def create(conn, %{"rule" => rule, "source_id" => source_id}) do
-    user_id = conn.assigns.user.id
-    source = Repo.get(Source, source_id)
+  def create(conn, %{"rule" => rule}) do
+    %{assigns: %{user: user, source: source}} = conn
     disabled_source = source.token
-    source_id_int = String.to_integer(source_id)
 
     changeset =
-      Repo.get(Source, source_id)
+      source
       |> Ecto.build_assoc(:rules)
       |> Rule.changeset(rule)
 
-    rules_query =
-      from(r in "rules",
-        where: r.source_id == ^source_id_int,
-        select: %{
-          id: r.id,
-          regex: r.regex,
-          sink: r.sink
-        }
-      )
-
-    sources_query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token
-        }
-      )
-
     sources =
-      for source <- Repo.all(sources_query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-        s = Map.put(source, :token, token)
-
-        if disabled_source == token,
+      for s <- user.sources do
+        if disabled_source == source.token,
           do: Map.put(s, :disabled, true),
           else: Map.put(s, :disabled, false)
-      end
-
-    rules =
-      for rule <- Repo.all(rules_query) do
-        {:ok, sink} = Ecto.UUID.load(rule.sink)
-        Map.put(rule, :sink, sink)
       end
 
     case Repo.insert(changeset) do
       {:ok, _rule} ->
         conn
         |> put_flash(:info, "Rule created successfully!")
-        |> redirect(to: Routes.source_rule_path(conn, :index, source_id))
+        |> redirect(to: Routes.source_rule_path(conn, :index, source.id))
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
         |> render("index.html",
-          rules: rules,
+          rules: source.rules,
           source: source,
           changeset: changeset,
           sources: sources
