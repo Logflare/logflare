@@ -1,7 +1,7 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequest do
   use Plug.Builder
   import Phoenix.Controller
-  alias Logflare.{Users, User, Source, Sources, Logs}
+  alias Logflare.{Logs}
 
   require Logger
 

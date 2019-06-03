@@ -1,10 +1,9 @@
 defmodule LogflareWeb.RuleController do
   use LogflareWeb, :controller
-  import Ecto.Query, only: [from: 2]
 
   plug LogflareWeb.Plugs.SetVerifySource when action in [:index, :delete, :create]
 
-  alias Logflare.{Rule, Source, Repo}
+  alias Logflare.{Rule, Repo}
 
   def create(conn, %{"rule" => rule}) do
     %{assigns: %{user: user, source: current_source}} = conn

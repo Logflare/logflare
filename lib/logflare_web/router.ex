@@ -26,8 +26,6 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetVerifySource
     plug LogflareWeb.Plugs.RateLimiter
     plug LogflareWeb.Plugs.VerifyApiRequest
-    # plug LogflareWeb.Plugs.CheckSourceCountApi
-    plug LogflareWeb.Plugs.CheckSourceCountApi
   end
 
   pipeline :require_auth do
