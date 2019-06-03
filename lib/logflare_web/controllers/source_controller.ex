@@ -194,12 +194,12 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def clear_logs(conn, _params) do
-    {:ok, _table} = SourceManager.reset_table(conn.assigns.source.token)
+  def clear_logs(%{assigns: %{source: source}} = conn, _params) do
+    {:ok, _table} = SourceManager.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
-    |> redirect(to: Routes.source_path(conn, :show, id))
+    |> redirect(to: Routes.source_path(conn, :show, source.id))
   end
 
   defp generate_explore_link(

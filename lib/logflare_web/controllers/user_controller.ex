@@ -1,19 +1,15 @@
 defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
 
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.Users
+  alias Logflare.{User, Users, Repo}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
   alias Logflare.SourceManager
 
-  @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
+  @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
-  def edit(conn, _params) do
-    user = conn.assigns.user
+  def edit(%{assigns: %{user: user}} = conn, _params) do
     changeset = User.update_by_user_changeset(user, %{})
-
     render(conn, "edit.html", changeset: changeset, user: user, service_account: @service_account)
   end
 
@@ -40,11 +36,15 @@ defmodule LogflareWeb.UserController do
     end
   end
 
-  def delete(conn, _params) do
-    user_id = conn.assigns.user.id
-    Repo.get!(User, user_id) |> Repo.delete!()
+  def delete(%{assigns: %{user: user}} = conn, _params) do
+    # TODO: soft delete, delayed deleted
+    Repo.delete!(user)
     Users.Cache.delete_cache_key_by_id(user.id)
-    CloudResourceManager.set_iam_policy()
+    BigQuery.delete_dataset(user.id)
+
+    spawn(fn ->
+      CloudResourceManager.set_iam_policy()
+    end)
 
     conn
     |> put_flash(:info, "Account deleted!")

@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Plugs.CheckSourceCount do
+  @moduledoc false
   import Plug.Conn
   import Phoenix.Controller
   alias LogflareWeb.Router.Helpers, as: Routes

@@ -1,6 +1,6 @@
 defmodule Logflare.Sources.Cache do
-  alias Logflare.{Sources}
   import Cachex.Spec
+  alias Logflare.Sources
   @ttl 500
 
   @cache __MODULE__
@@ -12,7 +12,8 @@ defmodule Logflare.Sources.Cache do
         Cachex,
         :start_link,
         [
-          Sources.Cache, [ expiration: expiration(default: @ttl) ]
+          @cache,
+          [expiration: expiration(default: @ttl)]
         ]
       }
     }

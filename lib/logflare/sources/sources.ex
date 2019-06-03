@@ -9,6 +9,7 @@ defmodule Logflare.Sources do
   end
 
   def get_metrics(source, bucket: :default) do
+    # Source bucket metrics
     SRC.get_metrics(source.token, :default)
   end
 
@@ -39,7 +40,6 @@ defmodule Logflare.Sources do
         inserts: get_total_inserts(token),
         rejected: rejected_count
       }
-      |> IO.inspect()
       |> Map.from_struct()
       |> Enum.map(fn
         {k, v} when k in ~w[rate latest avg max buffer inserts]a ->

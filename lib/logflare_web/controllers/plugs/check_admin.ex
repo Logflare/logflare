@@ -1,4 +1,7 @@
 defmodule LogflareWeb.Plugs.CheckAdmin do
+  @moduledoc """
+  Verifies that user is admin
+  """
   use Plug.Builder
 
   import Plug.Conn
