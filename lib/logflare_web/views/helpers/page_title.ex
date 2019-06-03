@@ -1,5 +1,6 @@
 defmodule LogflareWeb.Helpers.PageTitle do
-  alias LogflareWeb.{SourceView, MarketingView}
+  alias LogflareWeb.{SourceView}
+  # alias LogflareWeb.{SourceView, MarketingView}
 
   @suffix "Logflare | tail -f cloudflare"
 

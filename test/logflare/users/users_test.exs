@@ -9,7 +9,6 @@ defmodule Logflare.UsersTest do
     source = insert(:source)
     source = Repo.get(Source, source.id)
     user = insert(:user, sources: [source])
-    # user = Repo.get(User, user.id)
 
     {:ok, user: user, source: source}
   end
@@ -21,11 +20,6 @@ defmodule Logflare.UsersTest do
       assert s1_db = hd(u1.sources)
       assert s1_db.token == s1.token
       assert s1_db.user_id == u1.id
-    end
-
-    test "list_sources/1 returns a list of sources", %{user: user, source: source} do
-      sources_db = list_source_ids(user)
-      assert sources_db == [source.token]
     end
 
     test "get_by api_key", %{user: right_user} do
