@@ -28,7 +28,6 @@ defmodule LogflareWeb.RuleControllerTest do
       conn =
         conn
         |> assign(:user, u1)
-        |> assign(:source, u1s1)
         |> post(
           source_rule_path(conn, :create, u1s1.id),
           %{
@@ -42,9 +41,10 @@ defmodule LogflareWeb.RuleControllerTest do
       rules_db = Sources.get_by(id: u1s1.id).rules
 
       assert length(rules_db) == 1
-      assert hd(rules_db) == %{regex: "\| 4.. \| "}
+      assert hd(rules_db).regex == "\| 4.. \| "
       assert get_flash(conn, :info) === "Rule created successfully!"
-      assert redirected_to(source_rule_path(conn, :index, u1s1.id), 302)
+      assert redirected_to(conn, 302) == source_rule_path(conn, :index, u1s1.id)
+    end
 
     test "fails for unauthorized user", %{
       conn: conn,
