@@ -3,7 +3,7 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
   plug LogflareWeb.Plugs.SetVerifySource
-       when action in [:show, :update, :delete, :clear_logs, :favorite]
+       when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
 
   alias Logflare.{Source, Sources, Repo, Users, SourceData, SourceManager, Google.BigQuery}
   alias Logflare.Logs.RejectedEvents
@@ -16,6 +16,7 @@ defmodule LogflareWeb.SourceController do
     sources =
       conn.assigns.user.sources
       |> Enum.map(&Sources.preload_defaults/1)
+      |> Enum.sort_by(&(if &1.favorite, do: 1, else: 0), &>=/2)
 
     render(conn, "dashboard.html",
       sources: sources,
