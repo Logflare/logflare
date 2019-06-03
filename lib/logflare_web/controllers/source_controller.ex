@@ -3,7 +3,7 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
   plug LogflareWeb.Plugs.SetVerifySource
-       when action in [:show, :update, :delete, :clear_logs, :favorite]
+       when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
 
   alias Logflare.{Source, Sources, Repo, Users, SourceData, SourceManager, Google.BigQuery}
   alias Logflare.Logs.RejectedEvents
