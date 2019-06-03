@@ -23,12 +23,12 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def favorite(conn, %{"id" => id}) do
-    old_source = Sources.get_by(id: id)
+  def favorite(conn, _params) do
+    %{user: user, source: source} = conn.assigns
 
     {flash_key, message} =
-      old_source
-      |> Source.update_by_user_changeset(%{"favorite" => !old_source.favorite})
+      source
+      |> Source.update_by_user_changeset(%{"favorite" => !source.favorite})
       |> Repo.update()
       |> case do
         {:ok, _source} ->
@@ -59,6 +59,7 @@ defmodule LogflareWeb.SourceController do
         end)
 
         Users.Cache.delete_cache_key_by_id(user.id)
+
         if get_session(conn, :oauth_params) do
           conn
           |> put_flash(:info, "Source created!")
@@ -76,8 +77,7 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def show(%{assigns: %{user: user}} = conn, %{"id" => id}) do
-    source = Sources.get_by(id: id)
+  def show(%{assigns: %{user: user, source: source}} = conn, _params) do
     render_show_with_assigns(conn, user, source)
   end
 
@@ -124,17 +124,16 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def update(conn, %{"id" => pk, "source" => source_params}) do
-    old_source = Sources.get_by(id: pk)
+  def update(conn, %{"source" => source_params}) do
+    %{source: old_source, user: user} = conn.assigns
+    # FIXME: Restricted params are filtered without notice
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
-    user = conn.assigns.user
-    disabled_source = old_source.token
     avg_rate = SourceData.get_avg_rate(old_source.token)
 
     sources =
-      conn.assigns.user.sources
-      |> Enum.map(&Map.put(&1, :disabled, disabled_source === &1.token))
+      user.sources
+      |> Enum.map(&Map.put(&1, :disabled, old_source.token === &1.token))
 
     case Repo.update(changeset) do
       {:ok, source} ->
@@ -195,9 +194,8 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def clear_logs(conn, %{"id" => id}) do
-    source = Sources.get_by(id: id)
-    {:ok, _table} = SourceManager.reset_table(source.token)
+  def clear_logs(conn, _params) do
+    {:ok, _table} = SourceManager.reset_table(conn.assigns.source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
@@ -254,6 +252,7 @@ defmodule LogflareWeb.SourceController do
 
   defp del_source_and_redirect_with_info(conn, source) do
     Repo.delete!(source)
+
     Users.Cache.delete_cache_key_by_id(conn.assigns.user.id)
     put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
   end
