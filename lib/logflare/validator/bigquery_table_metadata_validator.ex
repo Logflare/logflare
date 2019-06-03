@@ -39,6 +39,12 @@ defmodule Logflare.Validator.BigQuery.TableMetadata do
     Enum.reduce(payload, true, &(&2 && valid?(&1)))
   end
 
+  def message() do
+    "Log entry metadata contains keys or values that are forbidden for the Google BigQuery table schema. Learn more at https://cloud.google.com/bigquery/docs/schemas"
+  end
+
+  # Private
+
   defp keys_valid?(payload) do
     initial = %{keys: [], params: %{}, types: %{}}
 

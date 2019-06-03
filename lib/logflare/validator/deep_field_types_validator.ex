@@ -2,6 +2,8 @@ defmodule Logflare.Validator.DeepFieldTypes do
   @moduledoc """
   Validates that types of values for the same field path are the same
   """
+
+  # Public
   @spec valid?(map()) :: boolean()
   def valid?(map) when is_map(map) do
     try do
@@ -14,6 +16,12 @@ defmodule Logflare.Validator.DeepFieldTypes do
         false
     end
   end
+
+  def message do
+    "Metadata validation error: values with the same field path must have the same type."
+  end
+
+  # Private
 
   @spec deep_merge_enums(list(map) | map) :: map
   defp deep_merge_enums(map) when is_map(map) do
