@@ -244,7 +244,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> get(source_path(conn, :favorite, Integer.to_string(s1.id)))
+        |> patch(source_path(conn, :favorite, Integer.to_string(s1.id)))
 
       new_s1 = Sources.get_by(id: s1.id)
 
