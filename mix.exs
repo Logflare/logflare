@@ -49,14 +49,14 @@ defmodule Logflare.Mixfile do
       {:phoenix, "~> 1.4.0"},
       {:phoenix_pubsub, "~> 1.0"},
       {:phoenix_ecto, "~> 4.0"},
-      {:ecto_sql, "~> 3.0.5"},
+      {:ecto_sql, "~> 3.1"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:gettext, "~> 0.11"},
       {:plug_cowboy, "~> 2.0"},
       {:ueberauth_github, "~> 0.7"},
-      {:plug, "~> 1.7"},
+      {:plug, "~> 1.8"},
       {:jason, "~> 1.0"},
       {:distillery, "~> 2.0.14"},
       {:edeliver, ">= 1.6.0"},
@@ -68,7 +68,7 @@ defmodule Logflare.Mixfile do
       {:ex_twilio, "~> 0.7.0"},
       {:google_api_big_query, "~> 0.9.0"},
       {:goth, "~> 0.8.0"},
-      {:broadway, "~> 0.1.0"},
+      {:broadway, "~> 0.3.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
@@ -99,6 +99,7 @@ defmodule Logflare.Mixfile do
     [
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"]
+      # compile: ["compile --warnings-as-errors"]
       # test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
   end
