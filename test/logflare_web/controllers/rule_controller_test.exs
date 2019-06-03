@@ -68,4 +68,32 @@ defmodule LogflareWeb.RuleControllerTest do
       assert redirected_to(conn, 403) == "/"
     end
   end
+
+  describe "RuleController index" do
+    test "succeeds for authorized user", %{
+      conn: conn,
+      users: [u1, u2],
+      sources: [u1s1, u1s2, u2s1 | _]
+    } do
+      conn =
+        conn
+        |> assign(:user, u1)
+        |> get(source_rule_path(conn, :index, u1s1.id))
+
+      assert html_response(conn, 200) =~ "Rules"
+    end
+
+    test "fails for unauthorized user", %{
+      conn: conn,
+      users: [u1, u2 | _],
+      sources: [u1s1, u1s2, u2s1 | _]
+    } do
+      conn =
+        conn
+        |> assign(:user, u1)
+        |> get(source_rule_path(conn, :index, u2s1.id))
+
+      assert redirected_to(conn, 403) == "/"
+    end
+  end
 end
