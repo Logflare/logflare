@@ -1,11 +1,12 @@
 defmodule Logflare.Rule do
   use Ecto.Schema
+  alias Logflare.Source
   import Ecto.Changeset
 
   schema "rules" do
-    field(:regex, :string)
-    field(:sink, Ecto.UUID)
-    belongs_to(:source, Logflare.Source)
+    field :regex, :string
+    belongs_to :sink, Source
+    belongs_to :source, Source
 
     timestamps()
   end
