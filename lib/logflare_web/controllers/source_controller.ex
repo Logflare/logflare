@@ -5,7 +5,7 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.SetVerifySource
        when action in [:show, :update, :delete, :clear_logs, :favorite]
 
-  alias Logflare.{Source, Sources, Repo, SourceData, SourceManager, Google.BigQuery}
+  alias Logflare.{Source, Sources, Repo, Users, SourceData, SourceManager, Google.BigQuery}
   alias Logflare.Logs.RejectedEvents
   alias LogflareWeb.AuthController
 
@@ -109,6 +109,19 @@ defmodule LogflareWeb.SourceController do
         |> put_flash(:error, "Public path not found!")
         |> redirect(to: Routes.marketing_path(conn, :index))
     end
+  end
+
+  def edit(conn, _params) do
+    source = conn.assigns.source
+    changeset = Source.update_by_user_changeset(source, %{})
+    avg_rate = SourceData.get_avg_rate(source.token)
+
+    render(conn, "edit.html",
+      changeset: changeset,
+      source: source,
+      sources: conn.assigns.user.sources,
+      avg_rate: avg_rate
+    )
   end
 
   def update(conn, %{"id" => pk, "source" => source_params}) do
