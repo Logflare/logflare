@@ -21,7 +21,7 @@ defmodule Logflare.Users.Cache do
   def get_api_quotas(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
 
   def delete_cache_key_by_id(id) do
-    Cachex.del(@cache, id)
+    {:ok, _} = Cachex.del(@cache, {{:get_by, 1}, [[id: id]]})
   end
 
   defp apply_repo_fun(arg1, arg2) do

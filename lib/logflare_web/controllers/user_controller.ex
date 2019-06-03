@@ -43,7 +43,7 @@ defmodule LogflareWeb.UserController do
   def delete(conn, _params) do
     user_id = conn.assigns.user.id
     Repo.get!(User, user_id) |> Repo.delete!()
-    BigQuery.delete_dataset(user_id)
+    Users.Cache.delete_cache_key_by_id(user.id)
     CloudResourceManager.set_iam_policy()
 
     conn

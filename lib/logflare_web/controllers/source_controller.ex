@@ -32,6 +32,7 @@ defmodule LogflareWeb.SourceController do
       |> Repo.update()
       |> case do
         {:ok, _source} ->
+          Users.Cache.delete_cache_key_by_id(user.id)
           {:info, "Source updated!"}
 
         {:error, _changeset} ->
@@ -57,6 +58,7 @@ defmodule LogflareWeb.SourceController do
           SourceManager.new_table(source.token)
         end)
 
+        Users.Cache.delete_cache_key_by_id(user.id)
         if get_session(conn, :oauth_params) do
           conn
           |> put_flash(:info, "Source created!")
@@ -123,6 +125,7 @@ defmodule LogflareWeb.SourceController do
 
     case Repo.update(changeset) do
       {:ok, source} ->
+        Users.Cache.delete_cache_key_by_id(user.id)
         ttl = source_params["bigquery_table_ttl"]
 
         if ttl do
@@ -238,6 +241,7 @@ defmodule LogflareWeb.SourceController do
 
   defp del_source_and_redirect_with_info(conn, source) do
     Repo.delete!(source)
+    Users.Cache.delete_cache_key_by_id(conn.assigns.user.id)
     put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
   end
 
