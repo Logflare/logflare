@@ -1,4 +1,10 @@
-defmodule Logflare.Google.BigQuery.Validator.NestedValues do
+defmodule Logflare.Validator.DeepFieldTypes do
+  @moduledoc """
+  Validates that types of values for the same field path are the same
+  """
+
+  # Public
+  @spec valid?(map()) :: boolean()
   def valid?(map) when is_map(map) do
     try do
       map
@@ -6,12 +12,19 @@ defmodule Logflare.Google.BigQuery.Validator.NestedValues do
       |> deep_merge_enums()
       |> is_map
     rescue
-      e in RuntimeError ->
+      _e in RuntimeError ->
         false
     end
   end
 
-  def deep_merge_enums(map) when is_map(map) do
+  def message do
+    "Metadata validation error: values with the same field path must have the same type."
+  end
+
+  # Private
+
+  @spec deep_merge_enums(list(map) | map) :: map
+  defp deep_merge_enums(map) when is_map(map) do
     for {k, v} <- map, into: Map.new() do
       v = if is_list(v), do: deep_merge_enums(v), else: v
 
@@ -19,7 +32,7 @@ defmodule Logflare.Google.BigQuery.Validator.NestedValues do
     end
   end
 
-  def deep_merge_enums(maps) do
+  defp deep_merge_enums(maps) do
     resolver = fn
       _, original, override when is_list(original) and is_list(override) ->
         deep_merge_enums(original ++ override)

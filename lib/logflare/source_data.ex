@@ -32,7 +32,6 @@ defmodule Logflare.SourceData do
     end
   end
 
-
   @spec get_ets_count(atom) :: non_neg_integer
   def get_ets_count(token) when is_atom(token) do
     log_table_info = :ets.info(token)
@@ -107,10 +106,8 @@ defmodule Logflare.SourceData do
     end
   end
 
-  @spec get_max_rate(map) :: non_neg_integer
-  def get_max_rate(%{id: _id, name: _name, token: source_token}) do
-    {:ok, source_id} = Ecto.UUID.Atom.load(source_token)
-
+  @spec get_max_rate(atom) :: integer
+  def get_max_rate(source_id) do
     case :ets.info(source_id) do
       :undefined ->
         0
@@ -120,10 +117,8 @@ defmodule Logflare.SourceData do
     end
   end
 
-  @spec get_latest_date(map) :: non_neg_integer
-  def get_latest_date(source, fallback \\ 0) do
-    {:ok, source_id} = Ecto.UUID.Atom.load(source.token)
-
+  @spec get_latest_date(atom) :: any
+  def get_latest_date(source_id, fallback \\ 0) do
     case :ets.info(source_id) do
       :undefined ->
         fallback
@@ -139,6 +134,7 @@ defmodule Logflare.SourceData do
     end
   end
 
+  @spec get_buffer(atom, integer) :: integer
   def get_buffer(token, fallback \\ 0) do
     case Process.whereis(String.to_atom("#{token}-buffer")) do
       nil ->

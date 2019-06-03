@@ -1,4 +1,7 @@
 defmodule LogflareWeb.Plugs.CheckAdmin do
+  @moduledoc """
+  Verifies that user is admin
+  """
   use Plug.Builder
 
   import Plug.Conn
@@ -6,25 +9,13 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  plug :verify_admin
+  def call(%{assigns: %{user: %{admin: true}}} = c, _params), do: c
 
-  def verify_admin(conn, _params) do
-    cond do
-      is_nil(conn.assigns.user) ->
-        conn
-        |> put_flash(:error, "You're not an admin!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
-        |> halt()
-
-      true ->
-        if conn.assigns.user.admin == true do
-          conn
-        else
-          conn
-          |> put_flash(:error, "You're not an admin!")
-          |> redirect(to: Routes.source_path(conn, :dashboard))
-          |> halt()
-        end
-    end
+  def call(conn, _params) do
+    conn
+    |> put_status(403)
+    |> put_flash(:error, "You're not an admin!")
+    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> halt()
   end
 end

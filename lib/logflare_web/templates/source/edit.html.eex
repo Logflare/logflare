@@ -92,17 +92,6 @@
     <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit), class: "btn btn-primary form-button", role: "button" %>
   <% end %>
 
-  <h5 class="header-margin">Abnormal Volume Overflow</h5>
-  <p>If this source gets more than 10x the average requests in a second those events will be copied to your overflow source. Select an overflow source.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn df -> %>
-    <div class="form-group">
-      <%= hidden_input df, :avg_rate, value: @avg_rate, class: "form-control" %>
-      <%= select df, :overflow_source, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a source", class: "form-control" %>
-      <%= error_tag df, :avg_rate %>
-    </div>
-    <%= submit "Update overflow source", class: "btn btn-primary form-button" %>
-  <% end %>
-
 <script>
 var clipboard = new ClipboardJS('#copy-path')
 

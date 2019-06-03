@@ -7,6 +7,7 @@ defmodule Logflare.Application do
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Logs.RejectedEvents,
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, [])
     ]
@@ -15,6 +16,7 @@ defmodule Logflare.Application do
       supervisor(Logflare.Repo, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Logs.RejectedEvents,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       # init SourceCounter before SourceManager as SourceManager calls SourceCounter through table create
       supervisor(Logflare.SourceCounter, []),

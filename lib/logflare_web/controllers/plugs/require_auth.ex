@@ -4,10 +4,9 @@ defmodule LogflareWeb.Plugs.RequireAuth do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  def init(_params) do
-  end
+  def init(_opts), do: nil
 
-  def call(conn, _params) do
+  def call(conn, _opts) do
     cond do
       conn.assigns[:user] ->
         conn

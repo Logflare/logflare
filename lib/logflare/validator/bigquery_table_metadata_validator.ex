@@ -1,5 +1,8 @@
-defmodule Logflare.Google.BigQuery.EventUtils.Validator do
+defmodule Logflare.Validator.BigQuery.TableMetadata do
+  @moduledoc false
+
   import Ecto.Changeset
+  defguard is_enum?(v) when is_map(v) or is_list(v)
 
   @doc """
   Validates incoming event payload to match the BigQuery schema requirements, which are the following:
@@ -13,14 +16,13 @@ defmodule Logflare.Google.BigQuery.EventUtils.Validator do
 
   _TABLE_
   _FILE_
-  _PARTITION
+  _PARTITION_
 
   Duplicate column names are not allowed even if the case differs. For example, a column named Column1 is considered identical to a column named column1.
 
   Source: https://cloud.google.com/bigquery/docs/schemas
   """
-  defguard is_enum?(v) when is_map(v) or is_list(v)
-
+  @spec valid?(map) :: boolean()
   def valid?(payload) when is_map(payload) do
     Enum.reduce(
       payload,
@@ -32,9 +34,16 @@ defmodule Logflare.Google.BigQuery.EventUtils.Validator do
     )
   end
 
+  @spec valid?(list(map)) :: boolean()
   def valid?(payload) when is_list(payload) do
     Enum.reduce(payload, true, &(&2 && valid?(&1)))
   end
+
+  def message() do
+    "Log entry metadata contains keys or values that are forbidden for the Google BigQuery table schema. Learn more at https://cloud.google.com/bigquery/docs/schemas"
+  end
+
+  # Private
 
   defp keys_valid?(payload) do
     initial = %{keys: [], params: %{}, types: %{}}

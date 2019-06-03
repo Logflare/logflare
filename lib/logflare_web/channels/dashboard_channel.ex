@@ -1,4 +1,5 @@
 defmodule LogflareWeb.DashboardChannel do
+  @moduledoc false
   use LogflareWeb, :channel
 
   def join("dashboard:" <> source_token, _payload, socket) do
@@ -15,7 +16,8 @@ defmodule LogflareWeb.DashboardChannel do
   end
 
   defp has_source?(source_token, socket) do
-    Enum.map(socket.assigns[:user].sources, & &1.token) |> Enum.member?(String.to_existing_atom(source_token))
+    Enum.map(socket.assigns[:user].sources, & &1.token)
+    |> Enum.member?(String.to_existing_atom(source_token))
   end
 
   defp is_admin?(socket) do

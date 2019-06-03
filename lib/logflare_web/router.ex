@@ -10,7 +10,7 @@ defmodule LogflareWeb.Router do
     plug :fetch_flash
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-    plug LogflareWeb.Plugs.SetUser
+    plug LogflareWeb.Plugs.SetVerifyUser
   end
 
   pipeline :api do
@@ -19,13 +19,13 @@ defmodule LogflareWeb.Router do
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
-    plug LogflareWeb.Plugs.SetApiUser
   end
 
   pipeline :require_api_auth do
-    plug LogflareWeb.Plugs.VerifyApiRequest
-    plug LogflareWeb.Plugs.CheckSourceCountApi
+    plug LogflareWeb.Plugs.SetVerifyUser
+    plug LogflareWeb.Plugs.SetVerifySource
     plug LogflareWeb.Plugs.RateLimiter
+    plug LogflareWeb.Plugs.VerifyApiRequest
   end
 
   pipeline :require_auth do
@@ -52,13 +52,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/", LogflareWeb do
-    pipe_through(:browser)
+    pipe_through :browser
     get "/", MarketingController, :index
     get "/bigquery-datastudio", MarketingController, :big_query
   end
 
   scope "/guides", LogflareWeb do
-    pipe_through(:browser)
+    pipe_through :browser
     get "/bigquery-setup", MarketingController, :big_query_setup
     get "/data-studio-setup", MarketingController, :data_studio_setup
     get "/event-analytics", MarketingController, :event_analytics_demo
@@ -80,10 +80,12 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
-      post("/rules", RuleController, :create)
+      post "/rules", RuleController, :create
       get "/rules", RuleController, :index
-      delete("/rules/:id", RuleController, :delete)
+      delete "/rules/:id", RuleController, :delete
     end
+
+    get "/:id/rejected", SourceController, :rejected_logs
 
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
@@ -93,8 +95,8 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     get "/edit", UserController, :edit
-    put("/edit", UserController, :update)
-    delete("/", UserController, :delete)
+    put "/edit", UserController, :update
+    delete "/", UserController, :delete
   end
 
   scope "/admin", LogflareWeb do
@@ -139,6 +141,6 @@ defmodule LogflareWeb.Router do
     pipe_through [:api, :require_api_auth]
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
-    post "/elixir/logger", ElixirLoggerController, :create
+    post "/elixir/logger", LogController, :elixir_logger
   end
 end

@@ -20,7 +20,7 @@ defmodule Logflare.Logs.Injest.MetadataCleaner do
     |> Enum.reverse()
   end
 
-  @spec deep_reject_nil_and_empty(map) :: list(map)
+  @spec deep_reject_nil_and_empty(map) :: map
   def deep_reject_nil_and_empty(map) when is_map(map) do
     map
     |> Enum.reduce(%{}, fn

@@ -441,6 +441,12 @@ mark {
     border-radius: 10px;
 }
 
+.dashboard-row-aligned-icon {
+    line-height: 1;
+    display: inline-block;
+    vertical-align: middle;
+}
+
 #console-text {
   font-family: monospace;
   font-size: 1em;

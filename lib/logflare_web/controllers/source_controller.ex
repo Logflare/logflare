@@ -1,81 +1,45 @@
 defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
-  import Ecto.Query, only: [from: 2]
-
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
-  plug LogflareWeb.Plugs.VerifySourceOwner
-       when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
+  plug LogflareWeb.Plugs.SetVerifySource
+       when action in [:show, :update, :delete, :clear_logs, :favorite]
 
-  alias Logflare.Source
-  alias Logflare.Repo
+  alias Logflare.{Source, Sources, Repo, Users, SourceData, SourceManager, Google.BigQuery}
+  alias Logflare.Logs.RejectedEvents
   alias LogflareWeb.AuthController
-  alias Logflare.SourceData
-  alias Logflare.SourceManager
-  alias Number.Delimit
-  alias Logflare.Google.BigQuery
-  alias Logflare.User
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   def dashboard(conn, _params) do
-    user_id = conn.assigns.user.id
-    user_email = conn.assigns.user.email
-
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: [desc: s.favorite],
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-          favorite: s.favorite
-        }
-      )
-
     sources =
-      for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
+      conn.assigns.user.sources
+      |> Enum.map(&Sources.preload_defaults/1)
 
-        rate = Delimit.number_to_delimited(SourceData.get_rate(source))
-        timestamp = SourceData.get_latest_date(source)
-        average_rate = Delimit.number_to_delimited(SourceData.get_avg_rate(source))
-        max_rate = Delimit.number_to_delimited(SourceData.get_max_rate(source))
-        buffer_count = Delimit.number_to_delimited(SourceData.get_buffer(token))
-        event_inserts = Delimit.number_to_delimited(SourceData.get_total_inserts(token))
-
-        source
-        |> Map.put(:rate, rate)
-        |> Map.put(:token, token)
-        |> Map.put(:latest, timestamp)
-        |> Map.put(:avg, average_rate)
-        |> Map.put(:max, max_rate)
-        |> Map.put(:buffer, buffer_count)
-        |> Map.put(:inserts, event_inserts)
-      end
-
-    render(conn, "dashboard.html", sources: sources, user_email: user_email)
+    render(conn, "dashboard.html",
+      sources: sources,
+      user_email: conn.assigns.user.email
+    )
   end
 
-  def favorite(conn, %{"id" => source_id}) do
-    old_source = Repo.get(Source, source_id)
-    source = %{"favorite" => !old_source.favorite}
-    changeset = Source.update_by_user_changeset(old_source, source)
+  def favorite(conn, _params) do
+    %{user: user, source: source} = conn.assigns
 
-    case Repo.update(changeset) do
-      {:ok, _source} ->
-        conn
-        |> put_flash(:info, "Source updated!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+    {flash_key, message} =
+      source
+      |> Source.update_by_user_changeset(%{"favorite" => !source.favorite})
+      |> Repo.update()
+      |> case do
+        {:ok, _source} ->
+          Users.Cache.delete_cache_key_by_id(user.id)
+          {:info, "Source updated!"}
 
-      {:error, _changeset} ->
-        conn
-        |> put_flash(:error, "Something went wrong!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
-    end
+        {:error, _changeset} ->
+          {:error, "Something went wrong!"}
+      end
+
+    put_flash_and_redirect_to_dashboard(conn, flash_key, message)
   end
 
   def new(conn, _params) do
@@ -83,191 +47,117 @@ defmodule LogflareWeb.SourceController do
     render(conn, "new.html", changeset: changeset)
   end
 
-  def create(conn, %{"source" => source}) do
-    user = conn.assigns.user
+  def create(%{assigns: %{user: user}} = conn, %{"source" => source}) do
+    user
+    |> Ecto.build_assoc(:sources)
+    |> Source.update_by_user_changeset(source)
+    |> Repo.insert()
+    |> case do
+      {:ok, source} ->
+        spawn(fn ->
+          SourceManager.new_table(source.token)
+        end)
 
-    changeset =
-      user
-      |> Ecto.build_assoc(:sources)
-      |> Source.update_by_user_changeset(source)
+        Users.Cache.delete_cache_key_by_id(user.id)
 
-    oauth_params = get_session(conn, :oauth_params)
-
-    case Repo.insert(changeset) do
-      {:ok, _source} ->
-        SourceManager.new_table(String.to_atom(source["token"]))
-
-        case is_nil(oauth_params) do
-          true ->
-            conn
-            |> put_flash(:info, "Source created!")
-            |> redirect(to: Routes.source_path(conn, :dashboard))
-
-          false ->
-            conn
-            |> put_flash(:info, "Source created!")
-            |> AuthController.redirect_for_oauth(user)
+        if get_session(conn, :oauth_params) do
+          conn
+          |> put_flash(:info, "Source created!")
+          |> AuthController.redirect_for_oauth(user)
+        else
+          put_flash_and_redirect_to_dashboard(conn, :info, "Source created!")
         end
 
       {:error, changeset} ->
         conn
+        |> put_status(406)
         |> put_flash(:error, "Something went wrong!")
-        |> render("new.html", changeset: changeset)
+        |> assign(:changeset, changeset)
+        |> redirect(to: Routes.source_path(conn, :new))
     end
   end
 
-  def show(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
-    user_id = conn.assigns.user.id
-    user_email = conn.assigns.user.email
+  def show(%{assigns: %{user: user, source: source}} = conn, _params) do
+    render_show_with_assigns(conn, user, source)
+  end
 
-    bigquery_project_id =
-      if conn.assigns.user.bigquery_project_id do
-        conn.assigns.user.bigquery_project_id
-      else
-        @project_id
-      end
+  def render_show_with_assigns(conn, user, source) do
+    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
 
-    explore_link = generate_explore_link(user_id, user_email, source.token, bigquery_project_id)
+    explore_link =
+      bigquery_project_id &&
+        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
-    logs =
-      Enum.map(SourceData.get_logs(source.token), fn log ->
-        if Map.has_key?(log, :metadata) do
-          {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
-          %{log | metadata: encoded}
-        else
-          log
-        end
-      end)
-
-    render(conn, "show.html",
-      logs: logs,
+    render(
+      conn,
+      "show.html",
+      logs: get_and_encode_logs(source),
       source: source,
-      public_token: nil,
-      explore_link: explore_link
+      public_token: source.public_token,
+      explore_link: explore_link || ""
     )
   end
 
   def public(conn, %{"public_token" => public_token}) do
-    source = Repo.get_by(Source, public_token: public_token)
+    Sources.Cache.get_by(public_token: public_token)
+    |> case do
+      %Source{} = source ->
+        render_show_with_assigns(conn, conn.assigns.user, source)
 
-    explore_link = ""
-
-    case source == nil do
-      true ->
+      _ ->
         conn
         |> put_flash(:error, "Public path not found!")
         |> redirect(to: Routes.marketing_path(conn, :index))
-
-      false ->
-        table_id = source.token
-
-        logs =
-          Enum.map(SourceData.get_logs(table_id), fn log ->
-            if Map.has_key?(log, :metadata) do
-              {:ok, encoded} = Jason.encode(log.metadata, pretty: true)
-              %{log | metadata: encoded}
-            else
-              log
-            end
-          end)
-
-        render(conn, "show.html",
-          logs: logs,
-          source: source,
-          public_token: public_token,
-          explore_link: explore_link
-        )
     end
   end
 
-  def edit(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
-    user_id = conn.assigns.user.id
+  def edit(conn, _params) do
+    source = conn.assigns.source
     changeset = Source.update_by_user_changeset(source, %{})
-    disabled_source = source.token
     avg_rate = SourceData.get_avg_rate(source.token)
-
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-          overflow_source: s.overflow_source
-        }
-      )
-
-    sources =
-      for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-        s = Map.put(source, :token, token)
-
-        if disabled_source == token,
-          do: Map.put(s, :disabled, true),
-          else: Map.put(s, :disabled, false)
-      end
 
     render(conn, "edit.html",
       changeset: changeset,
       source: source,
-      sources: sources,
+      sources: conn.assigns.user.sources,
       avg_rate: avg_rate
     )
   end
 
-  def update(conn, %{"id" => source_id, "source" => updated_params}) do
-    old_source = Repo.get(Source, source_id)
-    changeset = Source.update_by_user_changeset(old_source, updated_params)
-    user_id = conn.assigns.user.id
-    disabled_source = old_source.token
+  def update(conn, %{"source" => source_params}) do
+    %{source: old_source, user: user} = conn.assigns
+    # FIXME: Restricted params are filtered without notice
+    changeset = Source.update_by_user_changeset(old_source, source_params)
+
     avg_rate = SourceData.get_avg_rate(old_source.token)
 
-    query =
-      from(s in "sources",
-        where: s.user_id == ^user_id,
-        order_by: s.name,
-        select: %{
-          name: s.name,
-          id: s.id,
-          token: s.token,
-          overflow_source: s.overflow_source
-        }
-      )
-
     sources =
-      for source <- Repo.all(query) do
-        {:ok, token} = Ecto.UUID.Atom.load(source.token)
-        s = Map.put(source, :token, token)
-
-        if disabled_source == token,
-          do: Map.put(s, :disabled, true),
-          else: Map.put(s, :disabled, false)
-      end
+      user.sources
+      |> Enum.map(&Map.put(&1, :disabled, old_source.token === &1.token))
 
     case Repo.update(changeset) do
       {:ok, source} ->
-        case updated_params do
-          %{"bigquery_table_ttl" => ttl} ->
-            %Logflare.User{bigquery_project_id: project_id} = Repo.get(User, user_id)
+        Users.Cache.delete_cache_key_by_id(user.id)
+        ttl = source_params["bigquery_table_ttl"]
 
-            ttl = String.to_integer(ttl) * 86_400_000
-            BigQuery.patch_table_ttl(source.token, ttl, project_id)
-
-          _ ->
-            nil
+        if ttl do
+          BigQuery.patch_table_ttl(
+            source.token,
+            String.to_integer(ttl) * 86_400_000,
+            user.bigquery_project_id
+          )
         end
 
         conn
         |> put_flash(:info, "Source updated!")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
 
       {:error, changeset} ->
         conn
+        |> put_status(406)
         |> put_flash(:error, "Something went wrong!")
-        |> render("edit.html",
+        |> render(
+          "edit.html",
           changeset: changeset,
           source: old_source,
           sources: sources,
@@ -276,56 +166,40 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def delete(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
+  def delete(conn, %{"id" => id}) do
+    source = Sources.get_by(id: id)
+    token = source.token
 
-    case :ets.info(source.token) do
-      :undefined ->
-        source |> Repo.delete!()
+    cond do
+      :ets.info(token) == :undefined ->
+        del_source_and_redirect_with_info(conn, source)
 
-        conn
-        |> put_flash(:info, "Source deleted!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+      :ets.first(token) == :"$end_of_table" ->
+        {:ok, _table} = SourceManager.delete_table(source.token)
+        del_source_and_redirect_with_info(conn, source)
 
-      _ ->
-        case :ets.first(source.token) do
-          :"$end_of_table" ->
-            {:ok, _table} = SourceManager.delete_table(source.token)
-            source |> Repo.delete!()
+      {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
+        now = System.os_time(:microsecond)
 
-            conn
-            |> put_flash(:info, "Source deleted!")
-            |> redirect(to: Routes.source_path(conn, :dashboard))
-
-          {timestamp, _unique_int, _monotime} ->
-            now = System.os_time(:microsecond)
-
-            if now - timestamp > 3_600_000_000 do
-              {:ok, _table} = SourceManager.delete_table(source.token)
-              source |> Repo.delete!()
-
-              conn
-              |> put_flash(:info, "Source deleted!")
-              |> redirect(to: Routes.source_path(conn, :dashboard))
-            else
-              conn
-              |> put_flash(
-                :error,
-                "Failed! Recent events found. Latest event must be greater than 24 hours old."
-              )
-              |> redirect(to: Routes.source_path(conn, :dashboard))
-            end
+        if now - timestamp > 3_600_000_000 do
+          {:ok, _table} = SourceManager.delete_table(source.token)
+          del_source_and_redirect_with_info(conn, source)
+        else
+          put_flash_and_redirect_to_dashboard(
+            conn,
+            :error,
+            "Failed! Recent events found. Latest event must be greater than 24 hours old."
+          )
         end
     end
   end
 
-  def clear_logs(conn, %{"id" => source_id}) do
-    source = Repo.get(Source, source_id)
+  def clear_logs(%{assigns: %{source: source}} = conn, _params) do
     {:ok, _table} = SourceManager.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
-    |> redirect(to: Routes.source_path(conn, :show, source_id))
+    |> redirect(to: Routes.source_path(conn, :show, source.id))
   end
 
   defp generate_explore_link(
@@ -351,5 +225,41 @@ defmodule LogflareWeb.SourceController do
     explore_link_prefix = "https://datastudio.google.com/explorer?authuser=#{user_email}&config="
 
     explore_link_prefix <> URI.encode(explore_link_config)
+  end
+
+  def rejected_logs(conn, %{"id" => id}) do
+    source = Sources.Cache.get_by(id: id)
+
+    render(
+      conn,
+      "show_rejected.html",
+      logs: RejectedEvents.get_by_source(source),
+      source: source
+    )
+  end
+
+  defp maybe_encode_log_metadata(%{metadata: m} = log) do
+    %{log | metadata: Jason.encode!(m, pretty: true)}
+  end
+
+  defp maybe_encode_log_metadata(log), do: log
+
+  defp get_and_encode_logs(%Source{} = source) do
+    source.token
+    |> SourceData.get_logs()
+    |> Enum.map(&maybe_encode_log_metadata/1)
+  end
+
+  defp del_source_and_redirect_with_info(conn, source) do
+    Repo.delete!(source)
+
+    Users.Cache.delete_cache_key_by_id(conn.assigns.user.id)
+    put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
+  end
+
+  defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do
+    conn
+    |> put_flash(flash_level, flash_message)
+    |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 end

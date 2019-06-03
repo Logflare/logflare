@@ -1,4 +1,5 @@
 defmodule Logflare.Google.BigQuery.TestUtils do
+  @moduledoc false
   import ExUnit.Assertions
 
   @doc """

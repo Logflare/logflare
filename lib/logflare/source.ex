@@ -3,11 +3,24 @@ defmodule Logflare.Source do
   import Ecto.Changeset
   @default_source_api_quota 50
 
+  defmodule Metrics do
+    use Ecto.Schema
+
+    embedded_schema do
+      field :rate, :integer
+      field :latest, :integer
+      field :avg, :integer
+      field :max, :integer
+      field :buffer, :integer
+      field :inserts, :integer
+      field :rejected, :integer
+    end
+  end
+
   schema "sources" do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string
-    field :overflow_source, Ecto.UUID
     field :avg_rate, :integer, virtual: true
     field :favorite, :boolean, default: false
     field :user_email_notifications, :boolean, default: false
@@ -18,6 +31,8 @@ defmodule Logflare.Source do
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
+    field :metrics, :map, virtual: true
+    field :has_rejected_events?, :boolean, default: false, virtual: true
 
     timestamps()
   end
@@ -29,7 +44,6 @@ defmodule Logflare.Source do
       :name,
       :token,
       :public_token,
-      :overflow_source,
       :avg_rate,
       :favorite,
       :user_email_notifications,
