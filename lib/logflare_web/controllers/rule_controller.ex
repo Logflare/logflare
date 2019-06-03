@@ -4,36 +4,38 @@ defmodule LogflareWeb.RuleController do
 
   plug LogflareWeb.Plugs.SetVerifySource when action in [:index, :delete, :create]
 
-  alias Logflare.{Rule, Source}
+  alias Logflare.{Rule, Source, Repo}
 
   def create(conn, %{"rule" => rule}) do
-    %{assigns: %{user: user, source: source}} = conn
-    disabled_source = source.token
+    %{assigns: %{user: user, source: current_source}} = conn
 
     changeset =
-      source
+      current_source
+      |> Repo.preload([:rules], force: true)
       |> Ecto.build_assoc(:rules)
       |> Rule.changeset(rule)
 
     sources =
       for s <- user.sources do
-        if disabled_source == source.token,
-          do: Map.put(s, :disabled, true),
-          else: Map.put(s, :disabled, false)
+        if s.token == current_source.token do
+          Map.put(s, :disabled, true)
+        else
+          Map.put(s, :disabled, false)
+        end
       end
 
     case Repo.insert(changeset) do
       {:ok, _rule} ->
         conn
         |> put_flash(:info, "Rule created successfully!")
-        |> redirect(to: Routes.source_rule_path(conn, :index, source.id))
+        |> redirect(to: Routes.source_rule_path(conn, :index, current_source.id))
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
         |> render("index.html",
-          rules: source.rules,
-          source: source,
+          rules: current_source.rules,
+          source: current_source,
           changeset: changeset,
           sources: sources
         )
