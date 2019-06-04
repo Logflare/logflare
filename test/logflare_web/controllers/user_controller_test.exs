@@ -2,11 +2,13 @@ defmodule LogflareWeb.UserControllerTest do
   @moduledoc false
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
+  use Placebo
 
-  alias Logflare.Users
+  alias Logflare.{Users, User}
+  alias Logflare.SourceManager
+  alias Logflare.Google.BigQuery
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
-  use Placebo
 
   setup do
     u1 = insert(:user)
@@ -90,14 +92,12 @@ defmodule LogflareWeb.UserControllerTest do
       refute_called Users.Cache.get_by(any), once()
     end
 
-    @tag :skip
-    # TODO unskip this test, extract changeset validations
-    # for proper testing and mock setup
     test "of bigquery_project_id resets all user tables", %{
       conn: conn,
       users: [u1 | _]
     } do
-      allow SourceManager.reset_all_user_tables(any()), return: :ok
+      allow BigQuery.create_dataset(any, any), return: {:ok, []}
+      allow SourceManager.reset_all_user_tables(any), return: :ok
 
       conn =
         conn
@@ -106,13 +106,14 @@ defmodule LogflareWeb.UserControllerTest do
           "/account/edit",
           %{
             "user" => %{
-              bigquery_project_id: Faker.String.base64()
+              "bigquery_project_id" => "logflare-byob-for-test"
             }
           }
         )
 
-      assert html_response(conn, 200)
-      assert_called SourceManager.reset_all_users_tables(u1), once()
+      refute conn.assigns[:changeset]
+      assert redirected_to(conn, 302) =~ user_path(conn, :edit)
+      assert get_flash(conn, :new_bq_project)
     end
   end
 

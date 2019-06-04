@@ -7,31 +7,46 @@ defmodule LogflareWeb.UserController do
   alias Logflare.SourceManager
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
 
   def edit(%{assigns: %{user: user}} = conn, _params) do
     changeset = User.update_by_user_changeset(user, %{})
-    render(conn, "edit.html", changeset: changeset, user: user, service_account: @service_account)
+
+    render(conn, "edit.html",
+      changeset: changeset,
+      user: user,
+      service_account: @service_account,
+      default_bigquery_project_id: @project_id
+    )
   end
 
   def update(conn, %{"user" => params}) do
-    conn.assigns.user
+    user = conn.assigns.user
+    prev_bigquery_project_id = user.bigquery_project_id
+
+    user
     |> User.update_by_user_changeset(params)
     |> Repo.update()
     |> case do
       {:ok, user} ->
-        if user.bigquery_project_id, do: SourceManager.reset_all_user_tables(user)
+        new_bq_project? = user.bigquery_project_id != prev_bigquery_project_id
+
+        if new_bq_project?, do: SourceManager.reset_all_user_tables(user)
 
         conn
         |> put_flash(:info, "Account updated!")
+        |> put_flash(:new_bq_project, new_bq_project?)
         |> redirect(to: Routes.user_path(conn, :edit))
 
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
+        |> put_status(406)
         |> render("edit.html",
           changeset: changeset,
           user: conn.assigns.user,
-          service_account: @service_account
+          service_account: @service_account,
+          default_bigquery_project_id: @project_id
         )
     end
   end
