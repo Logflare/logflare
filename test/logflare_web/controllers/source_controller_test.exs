@@ -2,6 +2,7 @@ defmodule LogflareWeb.SourceControllerTest do
   @moduledoc false
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
+  use Placebo
 
   alias Logflare.{SystemCounter, Sources, Repo}
   alias Logflare.Logs.RejectedEvents
@@ -22,6 +23,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard" do
+    setup [:assert_caches_not_called]
     test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       conn =
         conn
@@ -38,6 +40,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert hd(conn.assigns.sources).id == s1.id
       assert hd(conn.assigns.sources).token == s1.token
       assert html_response(conn, 200) =~ "dashboard"
+      refute_called Sources.Cache.get_by(any), once()
     end
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
@@ -62,10 +65,12 @@ defmodule LogflareWeb.SourceControllerTest do
                  timestamp: _
                }
              ] = conn.assigns.logs
+      refute_called Sources.Cache.get_by(any), once()
     end
   end
 
   describe "update" do
+    setup [:assert_caches_not_called]
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
 
@@ -95,6 +100,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(source_path(conn, :edit, s1.id))
 
       assert conn.assigns.source.name == new_name
+      refute_called Sources.Cache.get_by(any), once()
     end
 
     test "returns 406 with invalid params", %{
@@ -122,9 +128,10 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.name != new_name
       assert get_flash(conn, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
+      refute_called Sources.Cache.get_by(any), once()
     end
 
-    test "", %{
+    test "returns 200 but doesn't change restricted params", %{
       conn: conn,
       users: [u1, _u2],
       sources: [s1, _s2 | _]
@@ -155,6 +162,7 @@ defmodule LogflareWeb.SourceControllerTest do
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.user_id == nope_user_id
       assert redirected_to(conn, 302) =~ source_path(conn, :edit, s1.id)
+      refute_called Sources.Cache.get_by(any), once()
     end
 
     test "returns 403 when user is not an owner of source", %{
@@ -180,10 +188,12 @@ defmodule LogflareWeb.SourceControllerTest do
       assert conn.halted === true
       assert get_flash(conn, :error) =~ "That's not yours!"
       assert redirected_to(conn, 403) =~ marketing_path(conn, :index)
+      refute_called Sources.Cache.get_by(any), once()
     end
   end
 
   describe "show" do
+    setup [:assert_caches_not_called]
     test "renders source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
@@ -195,6 +205,7 @@ defmodule LogflareWeb.SourceControllerTest do
         })
 
       assert html_response(conn, 200) =~ s1.name
+      refute_called Sources.Cache.get_by(any), once()
     end
 
     test "returns 403 for a source not owned by the user", %{
@@ -208,10 +219,12 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(source_path(conn, :show, s1.id))
 
       assert redirected_to(conn, 403) === "/"
+      refute_called Sources.Cache.get_by(any), once()
     end
   end
 
   describe "create" do
+    setup [:assert_caches_not_called]
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
@@ -225,6 +238,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       refute conn.assigns[:changeset]
       assert redirected_to(conn, 302) === source_path(conn, :dashboard)
+      refute_called Sources.Cache.get_by(any), once()
     end
 
     test "returns 406 with invalid params", %{conn: conn, users: [u1 | _]} do
@@ -247,6 +261,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
+    setup [:assert_caches_not_called]
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
@@ -258,6 +273,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert get_flash(conn, :info) == "Source updated!"
       assert redirected_to(conn, 302) =~ source_path(conn, :dashboard)
       assert new_s1.favorite == not s1.favorite
+      refute_called Sources.Cache.get_by(any), once()
     end
   end
 
@@ -274,5 +290,10 @@ defmodule LogflareWeb.SourceControllerTest do
   def login_user(conn, u) do
     conn
     |> assign(:user, u)
+  end
+
+  def assert_caches_not_called(_) do
+    allow Sources.Cache.get_by(any()), return: :should_not_happen
+    :ok
   end
 end
