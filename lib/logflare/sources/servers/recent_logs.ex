@@ -10,8 +10,8 @@ defmodule Logflare.Sources.Servers.RecentLogs do
   alias Logflare.Logs
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Number.Delimit
-  alias Logflare.Sources.Servers.{Buffer, Texter, Mailer, RateCounter}
-  alias Logflare.Sources.Servers.BigQuery.{Schema, Pipeline}
+  alias Logflare.Sources.Servers.{Texter, Mailer, RateCounter}
+  alias Logflare.Sources.Servers.BigQuery.{Schema, Pipeline, Buffer}
 
   require Logger
 

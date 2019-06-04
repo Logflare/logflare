@@ -6,7 +6,7 @@ defmodule Logflare.Sources.Servers.BigQuery.Pipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.Sources.Servers.BigQuery.{Schema, SchemaBuilder}
+  alias Logflare.Sources.Servers.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.EventUtils
 
   def start_link(state) do
@@ -14,7 +14,7 @@ defmodule Logflare.Sources.Servers.BigQuery.Pipeline do
       name: name(state[:source_token]),
       producers: [
         ets: [
-          module: {BroadwayBuffer.Producer, table_name: state[:source_token], config: []}
+          module: {BufferProducer, table_name: state[:source_token], config: []}
         ]
       ],
       processors: [

@@ -1,5 +1,5 @@
 defmodule Logflare.Sources.Data do
-  alias Logflare.Sources.Servers.{RateCounter, Buffer}
+  alias Logflare.Sources.Servers.{RateCounter, BigQuery.Buffer}
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
 

@@ -8,7 +8,7 @@ defmodule Logflare.Logs do
     Logs
   }
 
-  alias Logflare.Sources.Servers.{RecentLogs, Buffer}
+  alias Logflare.Sources.Servers.{RecentLogs, BigQuery.Buffer}
   alias Logflare.Logs.Injest
   alias Logflare.Sources.Counters
   alias Number.Delimit
