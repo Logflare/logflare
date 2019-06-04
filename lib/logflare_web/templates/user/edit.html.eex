@@ -47,6 +47,11 @@
     <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>
   <% end %>
 
+  <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
+    <%= hidden_input e, :bigquery_project_id, value: @default_bigquery_project_id, class: "form-control" %>
+    <%= submit "Reset BigQuery settings", class: "btn btn-primary form-button" %>
+  <% end %>
+
   <h5 class="header-margin">Signed In with <%= String.capitalize(@user.provider) %></h5>
   <p>You signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
   <%= if @user.provider == "github" do %>
