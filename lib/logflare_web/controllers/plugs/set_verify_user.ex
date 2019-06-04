@@ -22,7 +22,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       |> maybe_parse_binary_to_int()
       |> case do
         id when is_integer(id) ->
-          Users.Cache.get_by(id: id)
+          Users.get_by(id: id)
 
         _ ->
           nil

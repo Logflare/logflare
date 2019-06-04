@@ -19,7 +19,6 @@ defmodule LogflareWeb.UserController do
     |> Repo.update()
     |> case do
       {:ok, user} ->
-        Users.Cache.delete_cache_key_by_id(user.id)
 
         conn
         |> put_flash(:info, "Account updated!")
@@ -39,7 +38,6 @@ defmodule LogflareWeb.UserController do
   def delete(%{assigns: %{user: user}} = conn, _params) do
     # TODO: soft delete, delayed deleted
     Repo.delete!(user)
-    Users.Cache.delete_cache_key_by_id(user.id)
     BigQuery.delete_dataset(user.id)
 
     spawn(fn ->
