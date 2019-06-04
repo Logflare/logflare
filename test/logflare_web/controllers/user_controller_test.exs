@@ -6,10 +6,13 @@ defmodule LogflareWeb.UserControllerTest do
   alias Logflare.Users
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
+  use Placebo
 
   setup do
     u1 = insert(:user)
     u2 = insert(:user)
+    allow Users.Cache.get_by(any()), return: :should_not_happen
+
     {:ok, users: [u1, u2], conn: Phoenix.ConnTest.build_conn()}
   end
 
@@ -44,6 +47,7 @@ defmodule LogflareWeb.UserControllerTest do
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.id == nope_user_id
       assert redirected_to(conn, 302) =~ user_path(conn, :edit)
+      refute_called Users.Cache.get_by(any), once()
     end
 
     test "of allowed fields succeeds", %{
@@ -82,6 +86,8 @@ defmodule LogflareWeb.UserControllerTest do
         |> get(user_path(conn, :edit))
 
       assert conn.assigns.user.email == new_email
+
+      refute_called Users.Cache.get_by(any), once()
     end
   end
 
@@ -96,6 +102,7 @@ defmodule LogflareWeb.UserControllerTest do
       refute u1_updated
       assert get_flash(conn, :info) == "Account deleted!"
       assert redirected_to(conn, 302) == marketing_path(conn, :index)
+      refute_called Users.Cache.get_by(any), once()
     end
   end
 end
