@@ -89,6 +89,31 @@ defmodule LogflareWeb.UserControllerTest do
 
       refute_called Users.Cache.get_by(any), once()
     end
+
+    @tag :skip
+    # TODO unskip this test, extract changeset validations
+    # for proper testing and mock setup
+    test "of bigquery_project_id resets all user tables", %{
+      conn: conn,
+      users: [u1 | _]
+    } do
+      allow SourceManager.reset_all_user_tables(any()), return: :ok
+
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> put(
+          "/account/edit",
+          %{
+            "user" => %{
+              bigquery_project_id: Faker.String.base64()
+            }
+          }
+        )
+
+      assert html_response(conn, 200)
+      assert_called SourceManager.reset_all_users_tables(u1), once()
+    end
   end
 
   describe "UserController delete" do

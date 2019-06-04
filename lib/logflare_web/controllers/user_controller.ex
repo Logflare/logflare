@@ -19,6 +19,7 @@ defmodule LogflareWeb.UserController do
     |> Repo.update()
     |> case do
       {:ok, user} ->
+        if user.bigquery_project_id, do: SourceManager.reset_all_user_tables(user)
 
         conn
         |> put_flash(:info, "Account updated!")
