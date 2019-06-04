@@ -50,8 +50,9 @@ defmodule LogflareWeb.UserControllerTest do
       conn: conn,
       users: [u1 | _]
     } do
+      new_email = Faker.Internet.free_email()
       new = %{
-        email: Faker.Internet.free_email(),
+        email:  new_email,
         provider: Faker.String.base64(),
         email_preferred: Faker.Internet.free_email(),
         name: Faker.String.base64(),
@@ -63,7 +64,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> put("/account/edit", %{"user" => new})
 
       s1_new =
@@ -74,6 +75,13 @@ defmodule LogflareWeb.UserControllerTest do
       refute conn.assigns[:changeset]
       assert s1_new == new
       assert html_response(conn, 302) =~ user_path(conn, :edit)
+
+      conn = conn
+        |> recycle()
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> get(user_path(conn, :edit))
+
+      assert conn.assigns.user.email == new_email
     end
   end
 
