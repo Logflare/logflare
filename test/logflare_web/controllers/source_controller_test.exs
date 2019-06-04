@@ -88,6 +88,13 @@ defmodule LogflareWeb.SourceControllerTest do
       assert get_flash(conn, :info) == "Source updated!"
       assert s1_new.name == new_name
       assert s1_new.favorite == true
+
+      conn = conn
+        |> recycle()
+        |> login_user(u1)
+        |> get(source_path(conn, :edit, s1.id))
+
+      assert conn.assigns.source.name == new_name
     end
 
     test "returns 406 with invalid params", %{
