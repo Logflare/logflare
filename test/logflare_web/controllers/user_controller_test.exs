@@ -24,7 +24,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> put(
           "/account/edit",
           %{
@@ -89,7 +89,7 @@ defmodule LogflareWeb.UserControllerTest do
     test "succeeds", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
-        |> assign(:user, u1)
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> delete(user_path(conn, :delete))
 
       u1_updated = Users.get_by(id: u1.id)
