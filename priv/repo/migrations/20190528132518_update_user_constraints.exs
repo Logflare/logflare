@@ -7,7 +7,6 @@ defmodule Logflare.Repo.Migrations.UpdateUserConstraints do
       modify :email, :string, null: false
       modify :token, :string, null: false
       modify :api_key, :string, null: false
-      modify :name, :string, null: false
     end
   end
 end
