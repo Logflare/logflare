@@ -50,4 +50,10 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     %Logflare.Source{user_id: account_id} = Sources.Cache.get_by_id(source_id)
     "#{account_id}"
   end
+
+  @spec get_tesla_error_message(%Tesla.Env{}) :: String.t()
+  def get_tesla_error_message(message) do
+    {:ok, message_body} = Jason.decode(message.body)
+    message_body["error"]["message"]
+  end
 end
