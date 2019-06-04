@@ -1,4 +1,4 @@
-defmodule Logflare.SourceBigQueryPipeline do
+defmodule Logflare.Sources.Servers.BigQuery.Pipeline do
   use Broadway
 
   require Logger
@@ -6,8 +6,7 @@ defmodule Logflare.SourceBigQueryPipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.SourceBigQuerySchema
-  alias Logflare.BigQuery.SourceSchemaBuilder
+  alias Logflare.Sources.Servers.BigQuery.{Schema, SchemaBuilder}
   alias Logflare.Google.BigQuery.EventUtils
 
   def start_link(state) do
@@ -77,17 +76,17 @@ defmodule Logflare.SourceBigQueryPipeline do
 
     case Map.has_key?(payload, :metadata) do
       true ->
-        schema_state = SourceBigQuerySchema.get_state(table)
+        schema_state = Schema.get_state(table)
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
 
         try do
-          schema = SourceSchemaBuilder.build_table_schema(payload.metadata, old_schema)
+          schema = SchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
           if same_schemas?(old_schema, schema) == false do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
-                SourceBigQuerySchema.update(table, table_info.schema)
+                Schema.update(table, table_info.schema)
                 Logger.info("Table schema updated!")
 
               {:error, message} ->

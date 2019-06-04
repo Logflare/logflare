@@ -1,4 +1,4 @@
-defmodule Logflare.SourceManager do
+defmodule Logflare.Sources.Servers.Manager do
   @moduledoc """
   Boots up a gen server per source table. Keeps a list of active tables in state.
   """
@@ -6,9 +6,9 @@ defmodule Logflare.SourceManager do
   use GenServer
 
   alias Logflare.Repo
-  alias Logflare.SourceCounter
+  alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.SourceRecentLogs
+  alias Logflare.Sources.Servers.RecentLogs
 
   import Ecto.Query, only: [from: 2]
 
@@ -44,7 +44,7 @@ defmodule Logflare.SourceManager do
 
     children =
       Enum.map(source_ids, fn source_id ->
-        Supervisor.child_spec({SourceRecentLogs, source_id}, id: source_id, restart: :transient)
+        Supervisor.child_spec({RecentLogs, source_id}, id: source_id, restart: :transient)
       end)
 
     Supervisor.start_link(children, strategy: :one_for_one)
@@ -54,7 +54,7 @@ defmodule Logflare.SourceManager do
 
   def handle_call({:create, source_id}, _from, state) do
     children = [
-      Supervisor.child_spec({SourceRecentLogs, source_id}, id: source_id, restart: :transient)
+      Supervisor.child_spec({RecentLogs, source_id}, id: source_id, restart: :transient)
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one)
@@ -70,7 +70,7 @@ defmodule Logflare.SourceManager do
 
       _ ->
         GenServer.stop(source_id)
-        SourceCounter.delete(source_id)
+        Counters.delete(source_id)
 
         state = List.delete(state, source_id)
         {:reply, source_id, state}

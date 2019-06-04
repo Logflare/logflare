@@ -1,4 +1,4 @@
-defmodule Logflare.SourceCounter do
+defmodule Logflare.Sources.Counters do
   @callback get_inserts(atom) :: {:ok, integer}
   use GenServer
 

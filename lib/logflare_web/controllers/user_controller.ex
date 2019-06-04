@@ -4,7 +4,7 @@ defmodule LogflareWeb.UserController do
   alias Logflare.{User, Users, Repo}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
-  alias Logflare.SourceManager
+  alias Logflare.Sources.Servers.Manager
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -30,7 +30,7 @@ defmodule LogflareWeb.UserController do
       {:ok, user} ->
         new_bq_project? = user.bigquery_project_id != prev_bigquery_project_id
 
-        if new_bq_project?, do: SourceManager.reset_all_user_tables(user)
+        if new_bq_project?, do: Manager.reset_all_user_tables(user)
 
         conn
         |> put_flash(:info, "Account updated!")

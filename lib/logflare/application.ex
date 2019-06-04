@@ -18,10 +18,10 @@ defmodule Logflare.Application do
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedEvents,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
-      # init SourceCounter before SourceManager as SourceManager calls SourceCounter through table create
-      supervisor(Logflare.SourceCounter, []),
+      # init Counters before Manager as Manager calls Counters through table create
+      supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.SystemCounter, []),
-      supervisor(Logflare.SourceManager, []),
+      supervisor(Logflare.Sources.Servers.Manager, []),
       supervisor(LogflareWeb.Endpoint, [])
     ]
 

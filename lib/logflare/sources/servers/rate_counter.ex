@@ -1,4 +1,4 @@
-defmodule Logflare.SourceRateCounter do
+defmodule Logflare.Sources.Servers.RateCounter do
   @moduledoc """
   Establishes requests per second per source table. Watches the counters for source tables and periodically pulls them to establish
   events per second. Also handles storing those in the database.
@@ -251,7 +251,7 @@ defmodule Logflare.SourceRateCounter do
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
   def get_insert_count(source_id) when is_atom(source_id) do
-    Logflare.SourceCounter.get_inserts(source_id)
+    Logflare.Sources.Counters.get_inserts(source_id)
   end
 
   def average(xs) when is_list(xs) do

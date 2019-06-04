@@ -1,4 +1,4 @@
-defmodule Logflare.BigQuery.SourceSchemaBuilder do
+defmodule Logflare.Sources.Servers.BigQuery.SchemaBuilder do
   use Publicist
   require Logger
   alias GoogleApi.BigQuery.V2.Model
@@ -87,7 +87,7 @@ defmodule Logflare.BigQuery.SourceSchemaBuilder do
             %TFS{
               name: params_key,
               type: "STRING",
-              mode: "NULLABLE",
+              mode: "NULLABLE"
             }
         end
 
