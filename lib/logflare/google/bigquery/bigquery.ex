@@ -215,7 +215,7 @@ defmodule Logflare.Google.BigQuery do
   def create_dataset(dataset_id, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
     user_id = String.to_integer(dataset_id)
-    %Logflare.User{email: email, provider: provider} = Users.Cache.get_by_id(user_id)
+    %Logflare.User{email: email, provider: provider} = Users.get_by(id: user_id)
 
     reference = %Model.DatasetReference{
       datasetId: dataset_id <> @dataset_id_append,
@@ -271,7 +271,7 @@ defmodule Logflare.Google.BigQuery do
     dataset_id = Integer.to_string(user_id) <> @dataset_id_append
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      %Logflare.User{email: email, provider: provider} = Users.Cache.get_by_id(user_id)
+      %Logflare.User{email: email, provider: provider} = Users.get_by(id: user_id)
 
       if provider == "google" do
         access = [

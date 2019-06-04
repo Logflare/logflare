@@ -6,10 +6,13 @@ defmodule LogflareWeb.UserControllerTest do
   alias Logflare.Users
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
+  use Placebo
 
   setup do
     u1 = insert(:user)
     u2 = insert(:user)
+    allow Users.Cache.get_by(any()), return: :should_not_happen
+
     {:ok, users: [u1, u2], conn: Phoenix.ConnTest.build_conn()}
   end
 
@@ -24,7 +27,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> put(
           "/account/edit",
           %{
@@ -44,14 +47,16 @@ defmodule LogflareWeb.UserControllerTest do
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.id == nope_user_id
       assert redirected_to(conn, 302) =~ user_path(conn, :edit)
+      refute_called Users.Cache.get_by(any), once()
     end
 
     test "of allowed fields succeeds", %{
       conn: conn,
       users: [u1 | _]
     } do
+      new_email = Faker.Internet.free_email()
       new = %{
-        email: Faker.Internet.free_email(),
+        email:  new_email,
         provider: Faker.String.base64(),
         email_preferred: Faker.Internet.free_email(),
         name: Faker.String.base64(),
@@ -63,7 +68,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> assign(:user, u1)
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> put("/account/edit", %{"user" => new})
 
       s1_new =
@@ -74,6 +79,40 @@ defmodule LogflareWeb.UserControllerTest do
       refute conn.assigns[:changeset]
       assert s1_new == new
       assert html_response(conn, 302) =~ user_path(conn, :edit)
+
+      conn = conn
+        |> recycle()
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> get(user_path(conn, :edit))
+
+      assert conn.assigns.user.email == new_email
+
+      refute_called Users.Cache.get_by(any), once()
+    end
+
+    @tag :skip
+    # TODO unskip this test, extract changeset validations
+    # for proper testing and mock setup
+    test "of bigquery_project_id resets all user tables", %{
+      conn: conn,
+      users: [u1 | _]
+    } do
+      allow SourceManager.reset_all_user_tables(any()), return: :ok
+
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> put(
+          "/account/edit",
+          %{
+            "user" => %{
+              bigquery_project_id: Faker.String.base64()
+            }
+          }
+        )
+
+      assert html_response(conn, 200)
+      assert_called SourceManager.reset_all_users_tables(u1), once()
     end
   end
 
@@ -81,13 +120,14 @@ defmodule LogflareWeb.UserControllerTest do
     test "succeeds", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
-        |> assign(:user, u1)
+        |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> delete(user_path(conn, :delete))
 
       u1_updated = Users.get_by(id: u1.id)
       refute u1_updated
       assert get_flash(conn, :info) == "Account deleted!"
       assert redirected_to(conn, 302) == marketing_path(conn, :index)
+      refute_called Users.Cache.get_by(any), once()
     end
   end
 end

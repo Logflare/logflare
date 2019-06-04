@@ -5,7 +5,11 @@ defmodule Logflare.Sources do
   def get_by(kw) do
     Source
     |> Repo.get_by(kw)
-    |> preload_defaults()
+    |> case do
+      nil -> nil
+      s ->
+       preload_defaults(s)
+    end
   end
 
   def get_metrics(source, bucket: :default) do
@@ -40,15 +44,10 @@ defmodule Logflare.Sources do
         inserts: get_total_inserts(token),
         rejected: rejected_count
       }
-      |> Map.from_struct()
-      |> Enum.map(fn
-        {k, v} when k in ~w[rate latest avg max buffer inserts]a ->
-          {k, Delimit.number_to_delimited(v)}
 
-        x ->
-          x
-      end)
-      |> Map.new()
+    metrics = Enum.reduce(~w[rate avg max buffer inserts]a, metrics, fn key, ms ->
+      Map.update!(ms, key, &Delimit.number_to_delimited/1)
+    end)
 
     %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
   end

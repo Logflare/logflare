@@ -21,11 +21,14 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         token && is_api_path ->
           Sources.Cache.get_by(token: token)
 
-        id && is_browser_path ->
-          Sources.Cache.get_by(id: id)
-
-        name ->
+        name && is_api_path ->
           Sources.Cache.get_by(name: name)
+
+        id && is_browser_path ->
+          Sources.get_by(id: id)
+
+        name && is_browser_path ->
+          Sources.get_by(name: name)
 
         true ->
           nil
@@ -55,7 +58,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> halt()
 
       {nil, _} ->
-        message = "Source or source_name needed."
+        message = "Source or source_name is nil, empty or not found."
 
         conn
         |> put_status(406)

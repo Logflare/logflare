@@ -3,7 +3,7 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
   plug LogflareWeb.Plugs.SetVerifySource
-       when action in [:show, :edit, :update, :delete, :clear_logs, :favorite]
+       when action in [:show, :edit, :update, :delete, :clear_logs, :rejected_logs, :favorite]
 
   alias Logflare.{Source, Sources, Repo, Users, SourceData, SourceManager, Google.BigQuery}
   alias Logflare.Logs.RejectedEvents
@@ -33,7 +33,6 @@ defmodule LogflareWeb.SourceController do
       |> Repo.update()
       |> case do
         {:ok, _source} ->
-          Users.Cache.delete_cache_key_by_id(user.id)
           {:info, "Source updated!"}
 
         {:error, _changeset} ->
@@ -58,8 +57,6 @@ defmodule LogflareWeb.SourceController do
         spawn(fn ->
           SourceManager.new_table(source.token)
         end)
-
-        Users.Cache.delete_cache_key_by_id(user.id)
 
         if get_session(conn, :oauth_params) do
           conn
@@ -112,8 +109,7 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def edit(conn, _params) do
-    source = conn.assigns.source
+  def edit(%{assigns: %{source: source}} = conn, _params) do
     changeset = Source.update_by_user_changeset(source, %{})
     avg_rate = SourceData.get_avg_rate(source.token)
 
@@ -138,7 +134,6 @@ defmodule LogflareWeb.SourceController do
 
     case Repo.update(changeset) do
       {:ok, source} ->
-        Users.Cache.delete_cache_key_by_id(user.id)
         ttl = source_params["bigquery_table_ttl"]
 
         if ttl do
@@ -167,8 +162,7 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def delete(conn, %{"id" => id}) do
-    source = Sources.get_by(id: id)
+  def delete(%{assigns: %{source: source}} = conn, _conn) do
     token = source.token
 
     cond do
@@ -228,9 +222,7 @@ defmodule LogflareWeb.SourceController do
     explore_link_prefix <> URI.encode(explore_link_config)
   end
 
-  def rejected_logs(conn, %{"id" => id}) do
-    source = Sources.Cache.get_by(id: id)
-
+  def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => id}) do
     render(
       conn,
       "show_rejected.html",
@@ -254,7 +246,6 @@ defmodule LogflareWeb.SourceController do
   defp del_source_and_redirect_with_info(conn, source) do
     Repo.delete!(source)
 
-    Users.Cache.delete_cache_key_by_id(conn.assigns.user.id)
     put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
   end
 
