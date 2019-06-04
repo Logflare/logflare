@@ -29,7 +29,24 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("x-api-key", u.api_key)
         |> post(log_path(conn, :create), %{"log_entry" => "valid log entry"})
 
-      assert json_response(conn, 406) == %{"message" => "Source or source_name needed."}
+      assert json_response(conn, 406) == %{"message" => "Source or source_name is nil, empty or not found."}
+    end
+
+    test "to a unknown source and source_name", %{conn: conn, users: [u | _]} do
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(log_path(conn, :create), %{"log_entry" => "valid log entry", "source_name" => "%%%unknown%%%"})
+
+      assert json_response(conn, 406) == %{"message" => "Source or source_name is nil, empty or not found."}
+
+      conn =
+        conn
+        |> recycle()
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(log_path(conn, :create), %{"log_entry" => "valid log entry", "source" => Faker.UUID.v4()})
+
+      assert json_response(conn, 406) == %{"message" => "Source or source_name is nil, empty or not found."}
     end
 
     test "with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do

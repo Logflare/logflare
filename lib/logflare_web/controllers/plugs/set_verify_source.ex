@@ -58,7 +58,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> halt()
 
       {nil, _} ->
-        message = "Source or source_name needed."
+        message = "Source or source_name is nil, empty or not found."
 
         conn
         |> put_status(406)

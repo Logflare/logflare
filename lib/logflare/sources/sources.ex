@@ -5,7 +5,11 @@ defmodule Logflare.Sources do
   def get_by(kw) do
     Source
     |> Repo.get_by(kw)
-    |> preload_defaults()
+    |> case do
+      nil -> nil
+      s ->
+       preload_defaults(s)
+    end
   end
 
   def get_metrics(source, bucket: :default) do
