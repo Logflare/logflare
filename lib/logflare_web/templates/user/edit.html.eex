@@ -47,9 +47,11 @@
     <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-    <%= hidden_input e, :bigquery_project_id, value: @default_bigquery_project_id, class: "form-control" %>
-    <%= submit "Reset BigQuery settings", class: "btn btn-primary form-button" %>
+  <%= if is_nil(@user.bigquery_project_id) == false do %>
+    <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
+      <%= hidden_input e, :bigquery_project_id, value: nil, class: "form-control" %>
+      <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
+    <% end %>
   <% end %>
 
   <h5 class="header-margin">Signed In with <%= String.capitalize(@user.provider) %></h5>

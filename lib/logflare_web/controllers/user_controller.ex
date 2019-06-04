@@ -15,8 +15,7 @@ defmodule LogflareWeb.UserController do
     render(conn, "edit.html",
       changeset: changeset,
       user: user,
-      service_account: @service_account,
-      default_bigquery_project_id: @project_id
+      service_account: @service_account
     )
   end
 
@@ -45,8 +44,7 @@ defmodule LogflareWeb.UserController do
         |> render("edit.html",
           changeset: changeset,
           user: conn.assigns.user,
-          service_account: @service_account,
-          default_bigquery_project_id: @project_id
+          service_account: @service_account
         )
     end
   end
