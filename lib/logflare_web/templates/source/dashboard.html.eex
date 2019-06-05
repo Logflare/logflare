@@ -111,61 +111,11 @@ var <%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %> = new C
 });
 <% end %>
 
-window.userApiKey = '<%= @user.api_key %>';
-window.showingApiKey = false;
-
-window.localTime = false;
-
-document.addEventListener("DOMContentLoaded", function(){
-  dateAdd();
-  dateSwap();
-});
-
 <%= for source <- @sources do %>
   document.addEventListener('DOMContentLoaded', function(){
     window.createDashboardSocket('<%= source.token %>');
   });
 <% end %>
-
-function dateSwap() {
-  window.localTime = ! window.localTime
-
-  var utcs = document.getElementsByClassName("utc");
-
-  for (var i = 0; i < utcs.length; i++) {
-    utcs[i].classList.toggle("d-none");
-  };
-
-  var local_times = document.getElementsByClassName("local-time");
-
-  for (var i = 0; i < local_times.length; i++) {
-    local_times[i].classList.toggle("d-none");
-  };
-}
-
-function dateAdd() {
-  switch (window.localTime) {
-    case true:
-      var timestamps = document.getElementsByClassName("log-datestamp");
-
-      for (var i = 0; i < timestamps.length; i++) {
-        time = timestamps[i];
-        local_time = formatLocalTime(time.innerHTML / 1000);
-        utc_time = time.innerHTML
-        timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
-        };
-    break;
-    case false:
-      var timestamps = document.getElementsByClassName("log-datestamp");
-
-      for (var i = 0; i < timestamps.length; i++) {
-        time = timestamps[i];
-        local_time = formatLocalTime(time.innerHTML / 1000);
-        utc_time = time.innerHTML
-        timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
-        };
-  };
-}
 
 function formatLocalTime(date) {
   var dateWords = dateFns.distanceInWordsToNow(date)
