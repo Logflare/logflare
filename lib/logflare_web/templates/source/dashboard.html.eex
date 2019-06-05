@@ -2,7 +2,10 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><i class="fa fa-info-circle" aria-hidden="true"></i> <span>Your API key is <code class="pointer-cursor" id="api-key" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
+        <li>
+        <i class="fa fa-info-circle" aria-hidden="true"></i>
+         <span>Your API key is 
+         <code class="pointer-cursor" id="api-key" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
 
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -56,7 +59,7 @@
       </div>
       <div class="source-meta-data">
         <small class="source-details">
-          id: <span class="pointer-cursor" id="<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>" data-clipboard-text="<%= source.token %>"><%= source.token %></span>
+          id: <span class="pointer-cursor copy-token" id="<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>" data-clipboard-text="<%= source.token %>"><%= source.token %></span>
         </small>
         <small class="source-details">
           events/sec: <span id="<%= source.token %>-rate"><%= source.metrics.rate %></span>
@@ -72,7 +75,7 @@
           <%= if source.metrics.latest == 0 do %>
           <span class="">no logs</span>
           <% else %>
-          <span class="log-datestamp"><%= source.metrics.latest %></span>
+          <span class="log-datestamp" id="<%= source.token %>-latest"><%= source.metrics.latest %></span>
           <% end %>
         </small>
         <small class="source-details">
@@ -85,40 +88,22 @@
   <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
 </div>
 
-<script >
-const apiKey = "<%= @user.api_key %>"
-let dashboard;
+<div id="__phx-assigns__"
+data-user-api-key="<%= @user.api_key %>"
+data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.token))) %>">
+</div>
 
-document.addEventListener("DOMContentLoaded", function () {
-    dashboard = new window.Dashboard({apiKey})
-})
-</script>
 
 <script>
-var clipboard = new ClipboardJS('#api-key');
+let dashboard
 
-<%= for source <- @sources do %>
+document.addEventListener("DOMContentLoaded", () => {
+    $ = window.$
+    const assignsDataTag = $("#__phx-assigns__")
+    const sourceTokens = assignsDataTag.data("sourceTokens")
+    const apiKey = assignsDataTag.data("apiKey")
+    dashboard = new window.Dashboard({apiKey, sourceTokens})
+})
 
-var <%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %> = new ClipboardJS('#<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>')
-
-<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>.on('success', function(e) {
-    alert('Copied: ' + '<%= source.token %>');
-    e.clearSelection();
-});
-
-<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>.on('error', function(e) {
-    e.clearSelection();
-});
-<% end %>
-
-<%= for source <- @sources do %>
-  document.addEventListener('DOMContentLoaded', function(){
-    window.createDashboardSocket('<%= source.token %>');
-  });
-<% end %>
-
-function formatLocalTime(date) {
-  var dateWords = dateFns.distanceInWordsToNow(date)
-  return `${dateWords} ago`
-}
 </script>
+
