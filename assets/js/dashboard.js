@@ -1,13 +1,14 @@
+import $ from "jquery"
+import * as userConfig from "./user-config-storage"
+
 class Dashboard {
     showingApiKey = false
-    localTime = false
     apiKey = null
 
     constructor({apiKey}) {
         this.apiKey = apiKey
         this.initApiClipboard()
         this.dateAdd()
-        this.dateSwap()
     }
 
     initApiClipboard = () => {
@@ -26,70 +27,61 @@ class Dashboard {
 
     showApiKey = () => {
         this.showingApiKey = !this.showingApiKey
-        document.getElementById("api-key").innerHTML = this.toggleApiKey(this.showingApiKey)
+        $("#api-key").html(this.showingApiKey ? this.apiKey : `CLICK ME`)
     }
 
-    toggleApiKey = (bool) => {
-        return bool ? `CLICK ME` : this.apiKey
-    }
+    dateSwap = async () => {
+        await userConfig.flipUseLocalTime()
+        const useLocalTime = await userConfig.useLocalTime()
+        this.timeToggle(useLocalTime)
 
-    dateSwap = () => {
-        this.localTime = !this.localTime
-        document.getElementById("swap-date").innerHTML = this.timeToggle(this.localTime)
+        const utcs = $(".utc")
 
-        var utcs = document.getElementsByClassName("utc")
-
-        for (var i = 0; i < utcs.length; i++) {
-            utcs[i].classList.toggle("d-none")
+        for (let utc of utcs) {
+            utc.classList.toggle("d-none")
         }
 
-        var local_times = document.getElementsByClassName("local-time")
+        const local_times = $(".local-time")
 
-        for (var i = 0; i < local_times.length; i++) {
-            local_times[i].classList.toggle("d-none")
+        for (let lt of local_times) {
+            lt.classList.toggle("d-none")
         }
     }
 
     timeToggle = (bool) => {
-        switch (bool) {
-            case true:
-                return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`
-                break
-            case false:
-                return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`
-        }
+        const swapDate = $("#swap-date > svg")
+        return bool ?
+            swapDate.addClass("fa-toggle-off").removeClass("fa-toggle-on")
+            :
+            swapDate.removeClass("fa-toggle-off").addClass("fa-toggle-on")
     }
 
+    dateAdd = async () => {
+        if (await userConfig.useLocalTime()) {
+            const timestamps = $(".log-datestamp")
 
-    dateAdd = () => {
-        switch (this.localTime) {
-            case true:
-                var timestamps = document.getElementsByClassName("log-datestamp")
+            for (let time of timestamps) {
+                const timestamp = $(time).html() / 1000
+                let local_time = formatLocalTime(timestamp)
+                let utc_time = (date = new Date()) => new Date((timestamp) + date.getTimezoneOffset() * 60 * 1000)
+                $(time).html(`<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`)
+            }
+        } else {
+            const timestamps = document.getElementsByClassName("log-datestamp")
 
-                for (var i = 0; i < timestamps.length; i++) {
-                    let time = timestamps[i]
-                    let local_time = formatLocalTime(time.innerHTML / 1000)
-                    let utc_time = (date = new Date()) => {
-                        return new Date((time.innerHTML / 1000) + date.getTimezoneOffset() * 60 * 1000)
-                    }
-                    timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`
-                }
-                break
-            case false:
-                var timestamps = document.getElementsByClassName("log-datestamp")
-
-                for (var i = 0; i < timestamps.length; i++) {
-                    let time = timestamps[i]
-                    let local_time = formatLocalTime(time.innerHTML / 1000)
-                    let utc_time = (date = new Date()) => {
-                        return new Date((time.innerHTML / 1000) + date.getTimezoneOffset() * 60 * 1000)
-                    }
-                    timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`
-                }
+            for (let time of timestamps) {
+                const timestamp = $(time).html() / 1000
+                let local_time = formatLocalTime(timestamp)
+                let utc_time = (date = new Date()) => new Date((timestamp) + date.getTimezoneOffset() * 60 * 1000)
+                $(time).html(`<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`)
+            }
         }
     }
+}
 
 
+function formatLocalTime(date) {
+    return dateFns.format(date, "ddd MMM D YYYY hh:mm:ssa")
 }
 
 export default Dashboard
