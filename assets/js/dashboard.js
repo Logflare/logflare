@@ -1,21 +1,45 @@
 import $ from "jquery"
 import * as userConfig from "./user-config-storage"
+import socket from "./socket"
+
+console.log(window.userSources)
 
 class Dashboard {
     showingApiKey = false
     apiKey = null
+    sourceTokens = []
 
-    constructor({apiKey}) {
+
+    constructor({apiKey, sourceTokens = []}) {
         this.apiKey = apiKey
-        this.initApiClipboard()
+        Dashboard.initSourceTokenClipboards()
+        Dashboard.initApiClipboard()
         this.dateAdd()
+        this.sourceTokens = sourceTokens
+
+        for (let token of sourceTokens) {
+            this.joinSourceChannel(token)
+        }
     }
 
-    initApiClipboard = () => {
+    static initSourceTokenClipboards = () => {
+        const clipboard = new ClipboardJS(".copy-token")
+
+        clipboard.on("success", (e) => {
+            alert("Copied: " + e.text)
+            e.clearSelection()
+        })
+
+        clipboard.on("error", (e) => {
+            e.clearSelection()
+        })
+    }
+
+    static initApiClipboard = () => {
         const clipboard = new ClipboardJS("#api-key")
         clipboard.on("success", (e) => {
             this.showApiKey()
-            alert("Copied: " + apiKey)
+            alert("Copied: " + e.text)
             e.clearSelection()
         })
 
@@ -32,8 +56,7 @@ class Dashboard {
 
     dateSwap = async () => {
         await userConfig.flipUseLocalTime()
-        const useLocalTime = await userConfig.useLocalTime()
-        this.timeToggle(useLocalTime)
+        $("#swap-date > svg").toggleClass("fa-toggle-off").toggleClass("fa-toggle-on")
 
         const utcs = $(".utc")
 
@@ -48,40 +71,55 @@ class Dashboard {
         }
     }
 
-    timeToggle = (bool) => {
-        const swapDate = $("#swap-date > svg")
-        return bool ?
-            swapDate.addClass("fa-toggle-off").removeClass("fa-toggle-on")
-            :
-            swapDate.removeClass("fa-toggle-off").addClass("fa-toggle-on")
-    }
+    formatLocalTime = (date) => `${dateFns.distanceInWordsToNow(date)} ago`
 
     dateAdd = async () => {
-        if (await userConfig.useLocalTime()) {
-            const timestamps = $(".log-datestamp")
+        const timestamps = $(".log-datestamp")
 
-            for (let time of timestamps) {
-                const timestamp = $(time).html() / 1000
-                let local_time = formatLocalTime(timestamp)
-                let utc_time = (date = new Date()) => new Date((timestamp) + date.getTimezoneOffset() * 60 * 1000)
-                $(time).html(`<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`)
-            }
-        } else {
-            const timestamps = document.getElementsByClassName("log-datestamp")
-
-            for (let time of timestamps) {
-                const timestamp = $(time).html() / 1000
-                let local_time = formatLocalTime(timestamp)
-                let utc_time = (date = new Date()) => new Date((timestamp) + date.getTimezoneOffset() * 60 * 1000)
-                $(time).html(`<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`)
+        for (let time of timestamps) {
+            const timestamp = $(time).html() / 1000
+            if (await userConfig.useLocalTime()) {
+                let local_time = this.formatLocalTime(timestamp)
+                $(time).html(`<span class="local-time">${local_time}</span>`)
+            } else {
+                let utc_time = new Date((timestamp) + (new Date).getTimezoneOffset() * 60 * 1000)
+                $(time).html(`<span class="utc d-none">${this.formatLocalTime(utc_time)} UTC</span>`)
             }
         }
     }
-}
+
+    joinSourceChannel = (sourceToken) => {
+        let channel = socket.channel(`dashboard:${sourceToken}`, {})
+
+        channel.join()
+            .receive("ok", resp => {
+                console.log("Dashboard socket joined successfully", resp)
+            })
+            .receive("error", resp => {
+                console.log("Unable to join", resp)
+            })
+
+        const sourceSelector = `#${sourceToken}`
+
+        channel.on(`dashboard:${sourceToken}:log_count`, (event) => {
+            $(`${sourceSelector}-latest`).html(this.formatLocalTime(new Date()))
+            $(sourceSelector).html(`<small class="my-badge fade-in">${event.log_count}</small>`)
+        })
+
+        channel.on(`dashboard:${sourceToken}:rate`, (event) => {
+            $(`${sourceSelector}-rate`).html(`${event.rate}`)
+            $(`${sourceSelector}-avg-rate`).html(`${event.average_rate}`)
+            $(`${sourceSelector}-max-rate`).html(`${event.max_rate}`)
+
+        })
+
+        channel.on(`dashboard:${sourceToken}:buffer`, (event) => {
+            $(`${sourceSelector}-buffer`).html(`${event.buffer}`)
+        })
+    }
 
 
-function formatLocalTime(date) {
-    return dateFns.format(date, "ddd MMM D YYYY hh:mm:ssa")
 }
+
 
 export default Dashboard
