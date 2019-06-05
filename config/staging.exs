@@ -27,4 +27,4 @@ config :logflare, Logflare.Google,
 
 config :logflare, env: :staging
 
-import_config "dev.secret.exs"
+import_config "staging.secret.exs"
