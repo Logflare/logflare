@@ -145,11 +145,11 @@
 
 
 <script>
-  window.localTime = false
   let dashboard
 
   document.addEventListener("DOMContentLoaded", () => {
-    window.createSocket("<%= @source.token %>")
+    const sourceToken = "<%= @source.token %>"
+    window.Source.joinSourceChannel(sourceToken)
     dashboard = new Dashboard({apiKey: ""})
     <%= if @logs != [] do %>scrollBottom()<% end %>
     <%= if @logs == [] do %>$("#sourceHelpModal").modal("show")<% end %>
@@ -197,43 +197,17 @@
     }
   }
 
-  function dateAddNew() {
-    var timestamps = document.getElementsByClassName("new-log");
-    var last = timestamps[timestamps.length - 1];
-    local_time = formatLocalTime(last.innerHTML / 1000);
-    utc_time = (date = new Date()) => {
-      return new Date((last.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
-    }
+function scrollBottom() {
+    const y = document.body.clientHeight
 
-    switch (window.localTime) {
-      case true:
-      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`;
-      break;
-      case false:
-      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`;
-    };
-  }
-
-  function timeToggle(bool) {
-    switch (bool) {
-      case true:
-        return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`;
-      break;
-      case false:
-        return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
-    };
-  }
-
-
-  function formatLocalTime(date) {
-    return dateFns.format(date, 'ddd MMM D YYYY hh:mm:ssa')
-  }
+    window.scrollTo(0, y)
+}
 
   function copyCode(id, alert_message) {
-    var copyText = document.getElementById(id);
-    copyText.select();
-    document.execCommand("copy");
-    alert(alert_message);
+    var copyText = document.getElementById(id)
+    copyText.select()
+    document.execCommand("copy")
+    alert(alert_message)
   }
 
 </script>
