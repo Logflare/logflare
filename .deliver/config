@@ -21,6 +21,13 @@ pre_erlang_get_and_update_deps() {
       ln -sfn '$_prod_secret_path' '$BUILD_AT/config/prod.secret.exs'
     "
   fi
+
+  local _staging_secret_path="/home/logflare/app_config/staging.secret.exs"
+  if [ "$TARGET_MIX_ENV" = "staging" ]; then
+    __sync_remote "
+      ln -sfn '$_staging_secret_path' '$BUILD_AT/config/staging.secret.exs'
+    "
+  fi
 }
 
 pre_erlang_clean_compile() {
