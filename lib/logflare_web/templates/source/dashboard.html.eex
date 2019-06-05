@@ -85,7 +85,14 @@
   <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
 </div>
 
+<script >
+const apiKey = "<%= @user.api_key %>"
+let dashboard;
 
+document.addEventListener("DOMContentLoaded", function () {
+    dashboard = new window.Dashboard({apiKey})
+})
+</script>
 
 <script>
 var clipboard = new ClipboardJS('#api-key');
@@ -119,31 +126,6 @@ document.addEventListener("DOMContentLoaded", function(){
     window.createDashboardSocket('<%= source.token %>');
   });
 <% end %>
-
-clipboard.on('success', function(e) {
-    showApiKey();
-    alert('Copied: ' + window.userApiKey);
-    e.clearSelection();
-});
-
-clipboard.on('error', function(e) {
-    showApiKey();
-    e.clearSelection();
-});
-
-function showApiKey() {
-  window.showingApiKey = ! window.showingApiKey
-  document.getElementById('api-key').innerHTML = toggleApiKey(window.showingApiKey);
-}
-
-function toggleApiKey(bool) {
-  switch (bool) {
-    case true:
-      return `<%= @user.api_key %>`;
-    case false:
-      return `CLICK ME`;
-  };
-}
 
 function dateSwap() {
   window.localTime = ! window.localTime
