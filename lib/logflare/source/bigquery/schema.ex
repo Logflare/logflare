@@ -1,11 +1,11 @@
-defmodule Logflare.SourceBigQuerySchema do
+defmodule Logflare.Source.BigQuery.Schema do
   use GenServer
 
   require Logger
 
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.BigQuery.SourceSchemaBuilder
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
   def start_link(state) do
     GenServer.start_link(
@@ -42,7 +42,7 @@ defmodule Logflare.SourceBigQuerySchema do
 
     case BigQuery.get_table(state.source_token, state.bigquery_project_id) do
       {:ok, table} ->
-        schema = SourceSchemaBuilder.deep_sort_by_fields_name(table.schema)
+        schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
         Logger.info("Table schema manager started: #{state.source_token}")
         {:ok, %{state | schema: schema, schema_not_sorted: table.schema}}
 
@@ -71,7 +71,7 @@ defmodule Logflare.SourceBigQuerySchema do
   end
 
   def handle_cast({:update, schema}, state) do
-    {:noreply, %{state | schema: SourceSchemaBuilder.deep_sort_by_fields_name(schema)}}
+    {:noreply, %{state | schema: SchemaBuilder.deep_sort_by_fields_name(schema)}}
   end
 
   defp name(source_token) do

@@ -8,6 +8,10 @@ PRODUCTION_HOSTS="logflare-production.us-central1-a.logflare-232118"
 PRODUCTION_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 
+STAGING_HOSTS="logflare-staging.us-central1-a.logflare-staging"
+STAGING_USER="logflare"
+DELIVER_TO="/home/logflare/app_release"
+
 ECTO_REPOSITORY="Logflare.Repo"
 
 pre_erlang_get_and_update_deps() {
@@ -15,6 +19,13 @@ pre_erlang_get_and_update_deps() {
   if [ "$TARGET_MIX_ENV" = "prod" ]; then
     __sync_remote "
       ln -sfn '$_prod_secret_path' '$BUILD_AT/config/prod.secret.exs'
+    "
+  fi
+
+  local _staging_secret_path="/home/logflare/app_config/staging.secret.exs"
+  if [ "$TARGET_MIX_ENV" = "staging" ]; then
+    __sync_remote "
+      ln -sfn '$_staging_secret_path' '$BUILD_AT/config/staging.secret.exs'
     "
   fi
 }

@@ -1,9 +1,9 @@
-defmodule BroadwayBuffer.Producer do
+defmodule Logflare.Source.BigQuery.BufferProducer do
   use GenStage
 
   require Logger
 
-  alias Logflare.SourceBuffer
+  alias Logflare.Source.BigQuery.Buffer
 
   @default_receive_interval 1000
 
@@ -54,13 +54,13 @@ defmodule BroadwayBuffer.Producer do
   def ack(table, successful, unsuccessful) do
     Enum.each(successful, fn message ->
       {time_event, _data} = message.data.event
-      SourceBuffer.ack(table, time_event)
+      Buffer.ack(table, time_event)
     end)
 
     Enum.each(unsuccessful, fn message ->
       {time_event, _data} = message.data.event
-      event = SourceBuffer.ack(table, time_event)
-      SourceBuffer.push(table, event)
+      event = Buffer.ack(table, time_event)
+      Buffer.push(table, event)
     end)
   end
 
@@ -68,7 +68,7 @@ defmodule BroadwayBuffer.Producer do
     {opts} = state.table_name
     table = opts[:table_name]
 
-    pop = SourceBuffer.pop(table)
+    pop = Buffer.pop(table)
 
     case pop do
       :empty ->

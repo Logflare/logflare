@@ -77,8 +77,9 @@ defmodule Logflare.User do
         {:error, %Tesla.Env{status: 409}} ->
           []
 
-        {:error, _message} ->
-          [{field, options[:message] || "Check your GCP permissions!"}]
+        {:error, message} ->
+          error_message = BigQuery.GenUtils.get_tesla_error_message(message)
+          [{field, options[:message] || "#{error_message}"}]
       end
     end)
   end

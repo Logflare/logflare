@@ -5,7 +5,6 @@ defmodule Logflare.Repo.Migrations.AlterSourcesModifyConstraints do
     alter table(:sources) do
       modify :token, :uuid, null: false
       modify :user_id, :integer, null: false
-      remove :overflow_source
     end
 
     execute "drop index sources_name_index;"
@@ -19,7 +18,6 @@ defmodule Logflare.Repo.Migrations.AlterSourcesModifyConstraints do
     alter table(:sources) do
       modify :token, :uuid
       modify :user_id, :integer
-      remove :overflow_source
     end
   end
 end

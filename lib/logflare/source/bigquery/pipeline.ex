@@ -1,4 +1,4 @@
-defmodule Logflare.SourceBigQueryPipeline do
+defmodule Logflare.Source.BigQuery.Pipeline do
   use Broadway
 
   require Logger
@@ -6,16 +6,15 @@ defmodule Logflare.SourceBigQueryPipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.SourceBigQuerySchema
-  alias Logflare.BigQuery.SourceSchemaBuilder
-  alias Logflare.Google.BigQuery.EventUtils
+  alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
+  alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
       name: name(state[:source_token]),
       producers: [
         ets: [
-          module: {BroadwayBuffer.Producer, table_name: state[:source_token], config: []}
+          module: {BufferProducer, table_name: state[:source_token], config: []}
         ]
       ],
       processors: [
@@ -67,7 +66,7 @@ defmodule Logflare.SourceBigQueryPipeline do
         messages
 
       {:error, response} ->
-        Logger.error("Error #{__MODULE__}: #{response}")
+        Logger.error("Error #{__MODULE__}: #{GenUtils.get_tesla_error_message(response)}")
         messages
     end
   end
@@ -77,21 +76,23 @@ defmodule Logflare.SourceBigQueryPipeline do
 
     case Map.has_key?(payload, :metadata) do
       true ->
-        schema_state = SourceBigQuerySchema.get_state(table)
+        schema_state = Schema.get_state(table)
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
 
         try do
-          schema = SourceSchemaBuilder.build_table_schema(payload.metadata, old_schema)
+          schema = SchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
           if same_schemas?(old_schema, schema) == false do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
-                SourceBigQuerySchema.update(table, table_info.schema)
+                Schema.update(table, table_info.schema)
                 Logger.info("Table schema updated!")
 
               {:error, message} ->
-                Logger.error("Table schema update error: #{message.body}")
+                Logger.error(
+                  "Table schema update error: #{GenUtils.get_tesla_error_message(message)}"
+                )
             end
           end
 

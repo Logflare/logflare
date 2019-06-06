@@ -5,7 +5,8 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.SetVerifySource
        when action in [:show, :edit, :update, :delete, :clear_logs, :rejected_logs, :favorite]
 
-  alias Logflare.{Source, Sources, Repo, Users, SourceData, SourceManager, Google.BigQuery}
+  alias Logflare.{Source, Sources, Repo, Google.BigQuery}
+  alias Logflare.Source.{Supervisor, Data}
   alias Logflare.Logs.RejectedEvents
   alias LogflareWeb.AuthController
 
@@ -16,7 +17,7 @@ defmodule LogflareWeb.SourceController do
     sources =
       conn.assigns.user.sources
       |> Enum.map(&Sources.preload_defaults/1)
-      |> Enum.sort_by(&(if &1.favorite, do: 1, else: 0), &>=/2)
+      |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
 
     render(conn, "dashboard.html",
       sources: sources,
@@ -25,7 +26,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def favorite(conn, _params) do
-    %{user: user, source: source} = conn.assigns
+    %{user: _user, source: source} = conn.assigns
 
     {flash_key, message} =
       source
@@ -55,7 +56,7 @@ defmodule LogflareWeb.SourceController do
     |> case do
       {:ok, source} ->
         spawn(fn ->
-          SourceManager.new_table(source.token)
+          Supervisor.new_table(source.token)
         end)
 
         if get_session(conn, :oauth_params) do
@@ -111,7 +112,7 @@ defmodule LogflareWeb.SourceController do
 
   def edit(%{assigns: %{source: source}} = conn, _params) do
     changeset = Source.update_by_user_changeset(source, %{})
-    avg_rate = SourceData.get_avg_rate(source.token)
+    avg_rate = Data.get_avg_rate(source.token)
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -126,7 +127,7 @@ defmodule LogflareWeb.SourceController do
     # FIXME: Restricted params are filtered without notice
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
-    avg_rate = SourceData.get_avg_rate(old_source.token)
+    avg_rate = Data.get_avg_rate(old_source.token)
 
     sources =
       user.sources
@@ -170,14 +171,14 @@ defmodule LogflareWeb.SourceController do
         del_source_and_redirect_with_info(conn, source)
 
       :ets.first(token) == :"$end_of_table" ->
-        {:ok, _table} = SourceManager.delete_table(source.token)
+        {:ok, _table} = Supervisor.delete_table(source.token)
         del_source_and_redirect_with_info(conn, source)
 
       {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
         now = System.os_time(:microsecond)
 
         if now - timestamp > 3_600_000_000 do
-          {:ok, _table} = SourceManager.delete_table(source.token)
+          {:ok, _table} = Supervisor.delete_table(source.token)
           del_source_and_redirect_with_info(conn, source)
         else
           put_flash_and_redirect_to_dashboard(
@@ -190,7 +191,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def clear_logs(%{assigns: %{source: source}} = conn, _params) do
-    {:ok, _table} = SourceManager.reset_table(source.token)
+    {:ok, _table} = Supervisor.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")
@@ -222,7 +223,7 @@ defmodule LogflareWeb.SourceController do
     explore_link_prefix <> URI.encode(explore_link_config)
   end
 
-  def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => id}) do
+  def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => _id}) do
     render(
       conn,
       "show_rejected.html",
@@ -239,7 +240,7 @@ defmodule LogflareWeb.SourceController do
 
   defp get_and_encode_logs(%Source{} = source) do
     source.token
-    |> SourceData.get_logs()
+    |> Data.get_logs()
     |> Enum.map(&maybe_encode_log_metadata/1)
   end
 
