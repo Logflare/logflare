@@ -91,7 +91,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
               {:error, message} ->
                 Logger.error(
-                  "Table schema update error: #{GenUtils.get_tesla_error_message(message)}"
+                  "Table schema update error - #{table}: #{
+                    GenUtils.get_tesla_error_message(message)
+                  }"
                 )
             end
           end
@@ -100,7 +102,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         rescue
           _e ->
             err =
-              "Injest error, most probably due to the field schema change. Payload: #{
+              "Injest error for #{table}, most probably due to the field schema change. Payload: #{
                 Jason.encode!(payload)
               }"
 
