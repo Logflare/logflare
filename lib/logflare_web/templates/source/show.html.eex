@@ -1,6 +1,6 @@
 <%= if @public_token do %>
 <script>
-  window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>";
+  window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>"
 </script>
 <% end %>
 
@@ -8,9 +8,10 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><a href="javascript:scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><%= link to: @explore_link, target: "_blank" do %><i class="fas fa-chart-bar"></i><span class="hide-on-mobile"> explore</span><% end %></li>
-        <li><a href="javascript:dateSwap();"><span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
+        <li><a href="javascript:Source.switchDateFormat();"><span id="swap-date">
+        <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
         <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
         <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i><span class="hide-on-mobile"> send more logs</a></span></li>
         <li><%= link to: Routes.source_path(@conn, :clear_logs, @source) do %><i class="fas fa-broom"></i><span class="hide-on-mobile"> clear cache</span><% end %></li>
@@ -22,11 +23,14 @@
 </div>
 
 <div class="container mx-auto" id="console-text">
-<ul id="logs-list" class="list-unstyled console-text-list">
+<ul id="logs-list" class="list-unstyled console-text-list" hidden>
   <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
 
     <li>
-      <mark class="log-datestamp"><%= log.timestamp %></mark> <%= log.log_message %>
+      <mark class="log-datestamp" data-timestamp="<%= log.timestamp %>">
+         <%= log.timestamp %>
+      </mark>
+      <%= log.log_message %>
       <%= if Map.has_key?(log, :metadata) do %>
       <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
         metadata
@@ -36,7 +40,6 @@
       </div>
       <% end %>
     </li>
-
   <% end) %>
 </ul>
 
@@ -48,237 +51,18 @@
 </div>
 
 <!-- Modal -->
-<div class="modal fade bd-example-modal-lg" id="sourceHelpModal" tabindex="-1" role="dialog" aria-labelledby="sourceHelpModal" aria-hidden="true">
-  <div class="modal-dialog modal-lg" role="document">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="sourceHelpModalLabel">Send Logs to this Source</h5>
-        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
-      <div class="modal-body">
-        <h5 class="header-margin">With the Cloudflare App</h5>
-        <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
-        <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no" frameborder="0" style="height: 48px; width: 180px">
-        </iframe>
-        <h5 class="header-margin">With the Agent</h5>
-        <p>Watch log files on a server with our agent.</p>
-        <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button" %>
-        <h5 class="header-margin">With an API Request</h5>
-        <p>Send logs via an HTTP request.</p>
-        <pre class="pre-scrollable">
-          <code>
-    curl -X "POST" "https://api.logflare.app/logs" \
-    -H 'Content-Type: application/json' \
-    -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN IN FIRST" end %>' \
-    -d $'{
-      "source": "<%= @source.token %>",
-      "log_entry": "This is another log message.",
-      "metadata": {
-        "ip_address": "100.100.100.100",
-        "request_method": "POST",
-        "custom_user_data": {
-          "vip": true,
-          "id": 38,
-          "login_count": 154,
-          "company": "Apple",
-          "address": {
-            "zip": "11111",
-            "st": "NY",
-            "street": "123 W Main St",
-            "city": "New York"
-          }
-        },
-        "datacenter": "aws",
-        "request_headers": {
-          "connection": "close",
-          "user_agent": "chrome"
-        }
-      }
-    }'
-          </code>
-        </pre>
-        <h5 class="header-margin">With a Custom Cloudflare Worker</h5>
-        <p>Customize the Cloudflare worker using the template below.</p>
-        <pre class="pre-scrollable">
-          <code>
-    async function handleRequest(event) {
-      const {request} = event;
-      const rMeth = request.method
-      const rUrl = request.url
-      const uAgent = request.headers.get("user-agent")
-      const rHost = request.headers.get("host")
-      const cfRay = request.headers.get("cf-ray")
-      const cIP= request.headers.get("cf-connecting-ip")
+<%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source) %>
 
-      const sourceKey = "<%= @source.token %>"
-      const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
-
-      const response = await fetch(request)
-
-      const statusCode = response.status
-      const contentLength = response.headers.get("content-legth")
-
-      const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
-
-      const init = {
-        method: "POST",
-        headers: { "X-API-KEY": apiKey, "Content-Type": "application/json", "User-Agent": `Cloudflare Worker via ${rHost}` },
-        body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
-      }
-
-      event.waitUntil(fetch("https://api.logflare.app/logs", init))
-
-      return response
-    }
-
-    addEventListener("fetch", event => {
-      event.respondWith(handleRequest(event))
-    })
-          </code>
-        </pre>
-      </div>
-    </div>
-  </div>
+<div
+id="__phx-assigns__"
+data-source-token="<%= @source.token %>"
+data-logs="<%= Poison.encode!(@logs) %>">
 </div>
 
-
 <script>
-  window.localTime = false;
 
-  document.addEventListener("DOMContentLoaded", function(){
-    window.createSocket("<%= @source.token %>");
-    dateAdd();
-    dateSwap();
-    <%= if @logs != [] do %>scrollBottom();<% end %>
-    <%= if @logs == [] do %>$('#sourceHelpModal').modal('show');<% end %>
-  });
-
-   window.addEventListener("scroll", function(){
-     resetScrollTracker();
-     swapDownArrow();
-  });
-
-   function swapDownArrow() {
-     switch (window.scrollTracker) {
-       case true:
-         document.getElementById("scroll-down").innerHTML = `<i class="fas fa-arrow-alt-circle-down"></i>`;
-       break;
-       case false:
-         document.getElementById("scroll-down").innerHTML = `<i class="far fa-arrow-alt-circle-down"></i>`;
-     };
-   }
-
-  function scrollBottom(){
-    y = document.body.clientHeight;
-
-    window.scrollTo(0, y);
-  }
-
-  function resetScrollTracker() {
-    window_inner_height = window.innerHeight;
-    window_offset = window.pageYOffset;
-    client_height = document.body.clientHeight;
-    // should make this dynamic
-    nav_height = 110;
-
-    // console.log(window_inner_height);
-    // console.log(window_offset);
-    // console.log(client_height);
-
-    switch (window_inner_height + window_offset - nav_height == client_height) {
-      case true:
-        window.scrollTracker = true;
-        // console.log("bottom");
-      break;
-      case false:
-        window.scrollTracker = false;
-    };
-  }
-
-  function dateSwap() {
-    window.localTime = ! window.localTime
-    document.getElementById("swap-date").innerHTML = timeToggle(window.localTime);
-
-    var utcs = document.getElementsByClassName("utc");
-
-    for (var i = 0; i < utcs.length; i++) {
-      utcs[i].classList.toggle("d-none");
-    };
-
-    var local_times = document.getElementsByClassName("local-time");
-
-    for (var i = 0; i < local_times.length; i++) {
-      local_times[i].classList.toggle("d-none");
-    };
-  }
-
-  function dateAdd() {
-    switch (window.localTime) {
-      case true:
-        var timestamps = document.getElementsByClassName("log-datestamp");
-
-        for (var i = 0; i < timestamps.length; i++) {
-          time = timestamps[i];
-          local_time = formatLocalTime(time.innerHTML / 1000);
-          utc_time = (date = new Date()) => {
-            return new Date((time.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
-          }
-          timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`;
-          };
-      break;
-      case false:
-        var timestamps = document.getElementsByClassName("log-datestamp");
-
-        for (var i = 0; i < timestamps.length; i++) {
-          time = timestamps[i];
-          local_time = formatLocalTime(time.innerHTML / 1000);
-          utc_time = (date = new Date()) => {
-            return new Date((time.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
-          }
-          timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`;
-          };
-    };
-  }
-
-  function dateAddNew() {
-    var timestamps = document.getElementsByClassName("new-log");
-    var last = timestamps[timestamps.length - 1];
-    local_time = formatLocalTime(last.innerHTML / 1000);
-    utc_time = (date = new Date()) => {
-      return new Date((last.innerHTML / 1000) + date.getTimezoneOffset()*60*1000)
-    }
-
-    switch (window.localTime) {
-      case true:
-      last.innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${formatLocalTime(utc_time())} UTC</span>`;
-      break;
-      case false:
-      last.innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${formatLocalTime(utc_time())} UTC</span>`;
-    };
-  }
-
-  function timeToggle(bool) {
-    switch (bool) {
-      case true:
-        return `<span id="swap-date"><i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span>`;
-      break;
-      case false:
-        return `<span id="swap-date"><i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i></span>`;
-    };
-  }
-
-
-  function formatLocalTime(date) {
-    return dateFns.format(date, 'ddd MMM D YYYY hh:mm:ssa')
-  }
-
-  function copyCode(id, alert_message) {
-    var copyText = document.getElementById(id);
-    copyText.select();
-    document.execCommand("copy");
-    alert(alert_message);
-  }
+document.addEventListener("DOMContentLoaded", async () => {
+    await Source.main({scrollTracker: true})
+  })
 
 </script>

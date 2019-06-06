@@ -42,7 +42,7 @@
           <%= if source.metrics.latest == 0 do %>
           <span class="">no logs</span>
           <% else %>
-          <span class="log-datestamp"><%= source.metrics.latest %></span>
+          <span class="log-datestamp" data-timestamp="<%=source.metrics.latest %>">><%= source.metrics.latest %></span>
           <% end %>
         </small>
         <small class="source-details">
@@ -55,62 +55,12 @@
   <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
 </div>
 
+<div id="__phx-assigns__"
+data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.token))) %>">
+</div>
+
 <script>
-window.localTime = false;
-
-document.addEventListener("DOMContentLoaded", function(){
-  dateAdd();
-  dateSwap();
-});
-
-<%= for source <- @sources do %>
-  document.addEventListener('DOMContentLoaded', function(){
-    window.createDashboardSocket('<%= source.token %>');
-  });
-<% end %>
-
-function dateSwap() {
-  window.localTime = ! window.localTime
-
-  var utcs = document.getElementsByClassName("utc");
-
-  for (var i = 0; i < utcs.length; i++) {
-    utcs[i].classList.toggle("d-none");
-  };
-
-  var local_times = document.getElementsByClassName("local-time");
-
-  for (var i = 0; i < local_times.length; i++) {
-    local_times[i].classList.toggle("d-none");
-  };
-}
-
-function dateAdd() {
-  switch (window.localTime) {
-    case true:
-      var timestamps = document.getElementsByClassName("log-datestamp");
-
-      for (var i = 0; i < timestamps.length; i++) {
-        time = timestamps[i];
-        local_time = formatLocalTime(time.innerHTML / 1000);
-        utc_time = time.innerHTML
-        timestamps[i].innerHTML = `<span class="local-time">${local_time}</span><span class="utc d-none">${utc_time}</span>`;
-        };
-    break;
-    case false:
-      var timestamps = document.getElementsByClassName("log-datestamp");
-
-      for (var i = 0; i < timestamps.length; i++) {
-        time = timestamps[i];
-        local_time = formatLocalTime(time.innerHTML / 1000);
-        utc_time = time.innerHTML
-        timestamps[i].innerHTML = `<span class="local-time d-none">${local_time}</span><span class="utc">${utc_time}</span>`;
-        };
-  };
-}
-
-function formatLocalTime(date) {
-  var dateWords = dateFns.distanceInWordsToNow(date)
-  return `${dateWords} ago`
-}
+document.addEventListener("DOMContentLoaded", async () => {
+  await Dashboard.main()
+})
 </script>
