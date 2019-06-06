@@ -1,0 +1,94 @@
+<div class="modal fade bd-example-modal-lg" id="sourceHelpModal" tabindex="-1" role="dialog" aria-labelledby="sourceHelpModal" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sourceHelpModalLabel">Send Logs to this Source</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <h5 class="header-margin">With the Cloudflare App</h5>
+        <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
+        <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no" frameborder="0" style="height: 48px; width: 180px">
+        </iframe>
+        <h5 class="header-margin">With the Agent</h5>
+        <p>Watch log files on a server with our agent.</p>
+        <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button" %>
+        <h5 class="header-margin">With an API Request</h5>
+        <p>Send logs via an HTTP request.</p>
+        <pre class="pre-scrollable">
+          <code>
+    curl -X "POST" "https://api.logflare.app/logs" \
+    -H 'Content-Type: application/json' \
+    -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN IN FIRST" end %>' \
+    -d $'{
+      "source": "<%= @source.token %>",
+      "log_entry": "This is another log message.",
+      "metadata": {
+        "ip_address": "100.100.100.100",
+        "request_method": "POST",
+        "custom_user_data": {
+          "vip": true,
+          "id": 38,
+          "login_count": 154,
+          "company": "Apple",
+          "address": {
+            "zip": "11111",
+            "st": "NY",
+            "street": "123 W Main St",
+            "city": "New York"
+          }
+        },
+        "datacenter": "aws",
+        "request_headers": {
+          "connection": "close",
+          "user_agent": "chrome"
+        }
+      }
+    }'
+          </code>
+        </pre>
+        <h5 class="header-margin">With a Custom Cloudflare Worker</h5>
+        <p>Customize the Cloudflare worker using the template below.</p>
+        <pre class="pre-scrollable">
+          <code>
+    async function handleRequest(event) {
+      const {request} = event;
+      const rMeth = request.method
+      const rUrl = request.url
+      const uAgent = request.headers.get("user-agent")
+      const rHost = request.headers.get("host")
+      const cfRay = request.headers.get("cf-ray")
+      const cIP= request.headers.get("cf-connecting-ip")
+
+      const sourceKey = "<%= @source.token %>"
+      const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
+
+      const response = await fetch(request)
+
+      const statusCode = response.status
+      const contentLength = response.headers.get("content-legth")
+
+      const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
+
+      const init = {
+        method: "POST",
+        headers: { "X-API-KEY": apiKey, "Content-Type": "application/json", "User-Agent": `Cloudflare Worker via ${rHost}` },
+        body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
+      }
+
+      event.waitUntil(fetch("https://api.logflare.app/logs", init))
+
+      return response
+    }
+
+    addEventListener("fetch", event => {
+      event.respondWith(handleRequest(event))
+    })
+          </code>
+        </pre>
+      </div>
+    </div>
+  </div>
+</div>
