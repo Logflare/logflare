@@ -19,6 +19,15 @@ defmodule Logflare.Logs do
 
   @spec insert_logs(list(map), Source.t()) :: :ok | {:error, term}
   def insert_logs(batch, %Source{} = source) when is_list(batch) do
+    batch =
+      Enum.map(batch, fn log_entry ->
+        if log_entry["metadata"] in [%{}, [], {}, nil] do
+          Map.drop(log_entry, ["metadata"])
+        else
+          log_entry
+        end
+      end)
+
     case validate_batch_params(batch) do
       :ok ->
         Enum.each(batch, &insert_log_to_source(&1, source))
@@ -57,17 +66,21 @@ defmodule Logflare.Logs do
 
   @spec validate_params(map()) :: :ok | {:invalid, atom}
   def validate_params(log_entry) when is_map(log_entry) do
-    metadata = log_entry["metadata"] || %{}
+    metadata = log_entry["metadata"]
 
-    validators = [DeepFieldTypes, BigQuery.TableMetadata]
+    if metadata not in [[], %{}, {}, nil] do
+      validators = [DeepFieldTypes, BigQuery.TableMetadata]
 
-    Enum.reduce_while(validators, true, fn validator, _ ->
-      if validator.valid?(metadata) do
-        {:cont, :ok}
-      else
-        {:halt, {:invalid, validator}}
-      end
-    end)
+      Enum.reduce_while(validators, true, fn validator, _ ->
+        if validator.valid?(metadata) do
+          {:cont, :ok}
+        else
+          {:halt, {:invalid, validator}}
+        end
+      end)
+    else
+      :ok
+    end
   end
 
   @spec build_time_event(String.t() | non_neg_integer) :: {non_neg_integer, integer, integer}
@@ -91,20 +104,28 @@ defmodule Logflare.Logs do
 
   defp insert_log_to_source(log_entry, %Source{} = source) do
     message = log_entry["log_entry"] || log_entry["message"]
-    metadata = log_entry["metadata"] || %{}
+    metadata = log_entry["metadata"]
 
     time_event =
       log_entry
       |> Map.get("timestamp", System.system_time(:microsecond))
       |> build_time_event()
 
+    lv = log_entry["level"]
+
     metadata =
-      if lv = log_entry["level"] do
-        Map.put(metadata, "level", lv)
+      if lv do
+        Map.put(metadata || %{}, "level", lv)
       else
         metadata
       end
-      |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
+
+    metadata =
+      if metadata do
+        Injest.MetadataCleaner.deep_reject_nil_and_empty(metadata)
+      else
+        nil
+      end
 
     send_with_rules(source, time_event, message, metadata)
   end
@@ -131,13 +152,20 @@ defmodule Logflare.Logs do
     source_table_string = Atom.to_string(source.token)
 
     {timestamp, _unique_int, _monotime} = time_event
-    payload = %{timestamp: timestamp, log_message: log_message, metadata: metadata}
+
+    payload =
+      if metadata not in [%{}, [], {}, nil] do
+        %{timestamp: timestamp, log_message: log_message, metadata: metadata}
+      else
+        %{timestamp: timestamp, log_message: log_message}
+      end
+
     log_event = {time_event, payload}
 
     insert_or_push(source.token, log_event)
 
     Buffer.push(source_table_string, log_event)
-    Counters.incriment(source.token)
+    Sources.Counters.incriment(source.token)
     SystemCounter.incriment(@system_counter)
 
     broadcast_log_count(source.token)

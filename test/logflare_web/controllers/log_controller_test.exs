@@ -11,8 +11,10 @@ defmodule LogflareWeb.LogControllerTest do
     u1 = insert(:user)
     u2 = insert(:user)
 
+    s = insert(:source, user_id: u1.id)
+
     s =
-      insert(:source, user_id: u1.id)
+      Sources.get_by(id: s.id)
       |> Sources.preload_defaults()
 
     u1 = Users.default_preloads(u1)
@@ -158,6 +160,26 @@ defmodule LogflareWeb.LogControllerTest do
       assert_called SourceBuffer.push("#{s.token}", any()), times(3)
       assert_called SystemCounter.incriment(any()), times(3)
       assert_called SystemCounter.log_count(any()), times(3)
+    end
+
+    test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
+      err_message = %{"message" => "Log entry needed."}
+
+      for metadata <- [%{}, [], {}, nil] do
+        conn =
+          conn
+          |> assign(:user, u)
+          |> assign(:source, s)
+          |> post(
+            log_path(conn, :create),
+            %{
+              "log_entry" => "valid",
+              "metadata" => metadata
+            }
+          )
+
+        assert json_response(conn, 200) == %{"message" => "Logged!"}
+      end
     end
   end
 
