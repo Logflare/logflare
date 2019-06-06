@@ -4,27 +4,30 @@ import * as userConfig from "./user-config-storage"
 import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
-export async function main() {
-  window.scrollTracker = true
+export async function main({ scrollTracker }) {
+  window.scrollTracker = scrollTracker
+  window.addEventListener("scroll", () => {
+    resetScrollTracker()
+    swapDownArrow()
+  })
 
   const { sourceToken, logs } = $("#__phx-assigns__").data()
 
   joinSourceChannel(sourceToken)
-
   await applyToAllLogTimestamps(await userSelectedFormatter())
+
 
   $("#logs-list").removeAttr("hidden")
 
-  if (logs === []) {
+  if (logs.length === 0) {
     $("#sourceHelpModal").modal()
   }
   else {
     scrollBottom()
   }
-
 }
 
-export const joinSourceChannel = (sourceToken) => {
+const joinSourceChannel = (sourceToken) => {
   let channel = socket.channel(`source:${sourceToken}`, {})
 
   channel.join()
@@ -74,18 +77,13 @@ async function logTemplate(e) {
 </li>`
 }
 
-
-window.addEventListener("scroll", () => {
-  resetScrollTracker()
-  swapDownArrow()
-})
-
 function swapDownArrow() {
+  const scrollDownElem = $("#scroll-down")
   if (window.scrollTracker) {
-    $("#scroll-down").html(`<i class="fas fa-arrow-alt-circle-down"></i>`)
+    scrollDownElem.html(`<i class="fas fa-arrow-alt-circle-down"></i>`)
   }
   else {
-    $("#scroll-down").html(`<i class="far fa-arrow-alt-circle-down"></i>`)
+    scrollDownElem.html(`<i class="far fa-arrow-alt-circle-down"></i>`)
   }
 }
 
@@ -103,24 +101,10 @@ function resetScrollTracker() {
   // should make this dynamic
   let nav_height = 110
 
-  // console.log(window_inner_height);
-  // console.log(window_offset);
-  // console.log(client_height);
-
-  switch (window_inner_height + window_offset - nav_height === client_height) {
-    case true:
-      window.scrollTracker = true
-      // console.log("bottom");
-      break
-    case false:
-      window.scrollTracker = false
+  if (window_inner_height + window_offset - nav_height === client_height) {
+    window.scrollTracker = true
+  }
+  else {
+    window.scrollTracker = false
   }
 }
-
-function copyCode(id, alert_message) {
-  const copyText = document.getElementById(id)
-  copyText.select()
-  document.execCommand("copy")
-  alert(alert_message)
-}
-
