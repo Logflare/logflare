@@ -1,7 +1,7 @@
 defmodule Logflare.SourceRateCounterTest do
-  alias Logflare.SourceRateCounter, as: SRC
-  import SRC
-  alias Logflare.SourceCounter
+  alias Logflare.Source.RateCounterServer, as: RCS
+  import RCS
+  alias Logflare.Sources
   use ExUnit.Case
 
   import Mox
@@ -13,22 +13,22 @@ defmodule Logflare.SourceRateCounterTest do
 
     state = %{}
 
-    SourceCounter.start_link()
-    SRC.setup_ets_table(source_id)
+    Sources.Counters.start_link()
+    RCS.setup_ets_table(source_id)
 
     {:ok, source_id: source_id}
   end
 
   describe "source_id rate counter" do
     test "init and handle_info(:put_rate, state)/2", %{source_id: source_id} do
-      SourceCounter.incriment_ets_count(source_id, 10)
-      {:noreply, sid} = SRC.handle_info(:put_rate, source_id)
+      Sources.Counters.incriment_ets_count(source_id, 10)
+      {:noreply, sid} = RCS.handle_info(:put_rate, source_id)
 
       assert sid == source_id
 
       new_state = get_data_from_ets(source_id)
 
-      assert new_state == %Logflare.SourceRateCounter{
+      assert new_state == %RCS{
                begin_time: new_state.begin_time,
                buckets: %{
                  60 => %{
@@ -46,11 +46,11 @@ defmodule Logflare.SourceRateCounterTest do
     end
 
     test "get_* functions", %{source_id: source_id} do
-      SourceCounter.incriment_ets_count(source_id, 5)
-      _ = SRC.handle_info(:put_rate, source_id)
-      assert SRC.get_rate(source_id) == 5
-      assert SRC.get_avg_rate(source_id) == 5
-      assert SRC.get_max_rate(source_id) == 5
+      Sources.Counters.incriment_ets_count(source_id, 5)
+      _ = RCS.handle_info(:put_rate, source_id)
+      assert RCS.get_rate(source_id) == 5
+      assert RCS.get_avg_rate(source_id) == 5
+      assert RCS.get_max_rate(source_id) == 5
     end
 
     test "bucket data is calculated correctly", %{source_id: source_id} do

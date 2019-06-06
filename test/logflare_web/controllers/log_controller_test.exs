@@ -1,18 +1,24 @@
 defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.{SourceBuffer, SourceCounter, SystemCounter, Sources}
+  alias Logflare.{Sources.Counters, Users, SystemCounter, Sources}
+  alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   use Placebo
 
   setup do
     import Logflare.DummyFactory
 
+    u1 = insert(:user)
+    u2 = insert(:user)
+
+    s = insert(:source, user_id: u1.id)
+
     s =
-      insert(:source)
+      Sources.get_by(id: s.id)
       |> Sources.preload_defaults()
 
-    u1 = insert(:user, sources: [s])
-    u2 = insert(:user)
+    u1 = Users.default_preloads(u1)
+    u2 = Users.default_preloads(u2)
 
     {:ok, users: [u1, u2], sources: [s]}
   end
@@ -29,24 +35,36 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("x-api-key", u.api_key)
         |> post(log_path(conn, :create), %{"log_entry" => "valid log entry"})
 
-      assert json_response(conn, 406) == %{"message" => "Source or source_name is nil, empty or not found."}
+      assert json_response(conn, 406) == %{
+               "message" => "Source or source_name is nil, empty or not found."
+             }
     end
 
     test "to a unknown source and source_name", %{conn: conn, users: [u | _]} do
       conn =
         conn
         |> put_req_header("x-api-key", u.api_key)
-        |> post(log_path(conn, :create), %{"log_entry" => "valid log entry", "source_name" => "%%%unknown%%%"})
+        |> post(log_path(conn, :create), %{
+          "log_entry" => "valid log entry",
+          "source_name" => "%%%unknown%%%"
+        })
 
-      assert json_response(conn, 406) == %{"message" => "Source or source_name is nil, empty or not found."}
+      assert json_response(conn, 406) == %{
+               "message" => "Source or source_name is nil, empty or not found."
+             }
 
       conn =
         conn
         |> recycle()
         |> put_req_header("x-api-key", u.api_key)
-        |> post(log_path(conn, :create), %{"log_entry" => "valid log entry", "source" => Faker.UUID.v4()})
+        |> post(log_path(conn, :create), %{
+          "log_entry" => "valid log entry",
+          "source" => Faker.UUID.v4()
+        })
 
-      assert json_response(conn, 406) == %{"message" => "Source or source_name is nil, empty or not found."}
+      assert json_response(conn, 406) == %{
+               "message" => "Source or source_name is nil, empty or not found."
+             }
     end
 
     test "with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do
@@ -137,26 +155,46 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(log_path(conn, :elixir_logger), %{"batch" => [log_event, log_event, log_event]})
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
-      assert_called SourceCounter.incriment(s.token), times(3)
-      assert_called SourceCounter.get_total_inserts(s.token), times(3)
+      assert_called Sources.Counters.incriment(s.token), times(3)
+      assert_called Sources.Counters.get_total_inserts(s.token), times(3)
       assert_called SourceBuffer.push("#{s.token}", any()), times(3)
       assert_called SystemCounter.incriment(any()), times(3)
       assert_called SystemCounter.log_count(any()), times(3)
     end
+
+    test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
+      err_message = %{"message" => "Log entry needed."}
+
+      for metadata <- [%{}, [], {}, nil] do
+        conn =
+          conn
+          |> assign(:user, u)
+          |> assign(:source, s)
+          |> post(
+            log_path(conn, :create),
+            %{
+              "log_entry" => "valid",
+              "metadata" => metadata
+            }
+          )
+
+        assert json_response(conn, 200) == %{"message" => "Logged!"}
+      end
+    end
   end
 
   defp assert_called_modules_from_logs_context(token) do
-    assert_called SourceCounter.incriment(token), once()
-    assert_called SourceCounter.get_total_inserts(token), once()
+    assert_called Sources.Counters.incriment(token), once()
+    assert_called Sources.Counters.get_total_inserts(token), once()
     assert_called SourceBuffer.push("#{token}", any()), once()
     assert_called SystemCounter.incriment(any()), once()
     assert_called SystemCounter.log_count(any()), once()
   end
 
   defp allow_mocks(_context) do
-    allow SourceCounter.incriment(any()), return: :ok
+    allow Sources.Counters.incriment(any()), return: :ok
     allow SourceBuffer.push(any(), any()), return: :ok
-    allow SourceCounter.get_total_inserts(any()), return: {:ok, 1}
+    allow Sources.Counters.get_total_inserts(any()), return: {:ok, 1}
     allow SystemCounter.incriment(any()), return: :ok
     allow SystemCounter.log_count(any()), return: {:ok, 1}
     :ok

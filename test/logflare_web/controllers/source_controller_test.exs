@@ -9,11 +9,12 @@ defmodule LogflareWeb.SourceControllerTest do
   import Logflare.DummyFactory
 
   setup do
-    s1 = insert(:source, public_token: Faker.String.base64(16))
-    s2 = insert(:source)
-    s3 = insert(:source)
-    u1 = insert(:user, sources: [s1, s2])
-    u2 = insert(:user, sources: [s3])
+    u1 = insert(:user)
+    u2 = insert(:user)
+
+    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
+    s2 = insert(:source, user_id: u1.id)
+    s3 = insert(:source, user_id: u2.id)
 
     users = Repo.preload([u1, u2], :sources)
 
@@ -24,6 +25,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "dashboard" do
     setup [:assert_caches_not_called]
+
     test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       conn =
         conn
@@ -65,12 +67,14 @@ defmodule LogflareWeb.SourceControllerTest do
                  timestamp: _
                }
              ] = conn.assigns.logs
+
       refute_called Sources.Cache.get_by(any), once()
     end
   end
 
   describe "update" do
     setup [:assert_caches_not_called]
+
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
 
@@ -94,7 +98,8 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.name == new_name
       assert s1_new.favorite == true
 
-      conn = conn
+      conn =
+        conn
         |> recycle()
         |> login_user(u1)
         |> get(source_path(conn, :edit, s1.id))
@@ -194,6 +199,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "show" do
     setup [:assert_caches_not_called]
+
     test "renders source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
@@ -225,6 +231,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "create" do
     setup [:assert_caches_not_called]
+
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
@@ -257,11 +264,20 @@ defmodule LogflareWeb.SourceControllerTest do
              ]
 
       assert redirected_to(conn, 406) === source_path(conn, :new)
+      refute_called Sources.Cache.get_by(any), once()
+    end
+  end
+
+  describe "edit" do
+    setup [:assert_caches_not_called]
+
+    test "returns 200 with new user-provided params", %{conn: conn} do
     end
   end
 
   describe "favorite" do
     setup [:assert_caches_not_called]
+
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn

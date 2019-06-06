@@ -1,17 +1,20 @@
 defmodule LogflareWeb.Plugs.VerifyApiRequestTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.User
+  alias Logflare.{User, Sources}
   alias LogflareWeb.Plugs.VerifyApiRequest
   import Logflare.DummyFactory
+  alias Logflare.Source.RateCounterServer
 
   setup do
-    s1 = insert(:source)
-    s2 = insert(:source)
-    u1 = insert(:user, sources: [s1], api_quota: 5)
-    u2 = insert(:user, sources: [s2], api_quota: 0)
-    {:ok, _} = Logflare.SourceRateCounter.start_link(s1.token)
-    {:ok, _} = Logflare.SourceRateCounter.start_link(s2.token)
+    u1 = insert(:user, api_key: "dummy_key", api_quota: 5)
+    u2 = insert(:user, api_key: "other_dummy_key", api_quota: 0)
+    s1 = insert(:source, user_id: u1.id)
+    s2 = insert(:source, user_id: u2.id)
+    s1 = Sources.get_by(id: s1.id)
+    s2 = Sources.get_by(id: s2.id)
+    {:ok, _} = RateCounterServer.start_link(s1.token)
+    {:ok, _} = RateCounterServer.start_link(s2.token)
     {:ok, users: [u1, u2], sources: [s1, s2]}
   end
 

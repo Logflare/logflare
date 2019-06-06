@@ -6,9 +6,10 @@ defmodule Logflare.UsersTest do
   import Users
 
   setup do
-    source = insert(:source)
+    user = insert(:user)
+    source = insert(:source, user_id: user.id)
     source = Repo.get(Source, source.id)
-    user = insert(:user, sources: [source])
+    user = Users.default_preloads(user)
 
     {:ok, user: user, source: source}
   end

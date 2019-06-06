@@ -6,8 +6,8 @@ defmodule Logflare.Logs.RejectedEventsTest do
   use Logflare.DataCase
 
   setup do
-    s1 = insert(:source)
-    s2 = insert(:source)
+    s1 = build(:source)
+    s2 = build(:source)
     sources = [s1, s2]
     u1 = insert(:user, sources: sources)
     {:ok, users: [u1], sources: sources}

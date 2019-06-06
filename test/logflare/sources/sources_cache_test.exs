@@ -5,10 +5,11 @@ defmodule Logflare.SourcesTest do
   import Logflare.DummyFactory
 
   setup do
-    r1 = insert(:rule)
-    r2 = insert(:rule)
-    source = insert(:source, token: Faker.UUID.v4(), rules: [r1, r2])
-    _s2 = insert(:source, token: Faker.UUID.v4())
+    r1 = build(:rule)
+    r2 = build(:rule)
+    u1 = insert(:user)
+    source = insert(:source, token: Faker.UUID.v4(), rules: [r1, r2], user_id: u1.id)
+    _s2 = insert(:source, token: Faker.UUID.v4(), user_id: u1.id)
     {:ok, source: source}
   end
 

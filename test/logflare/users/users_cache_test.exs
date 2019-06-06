@@ -6,7 +6,7 @@ defmodule Logflare.Users.CacheTest do
   alias Logflare.{Repo, User, Source}
 
   setup do
-    source = insert(:source)
+    source = build(:source)
     user = insert(:user, sources: [source])
     {:ok, user: user, source: source}
   end
