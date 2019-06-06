@@ -42,7 +42,7 @@
           <%= if source.metrics.latest == 0 do %>
           <span class="">no logs</span>
           <% else %>
-          <span class="log-datestamp"><%= source.metrics.latest %></span>
+          <span class="log-datestamp" data-timestamp="<%=source.metrics.latest %>">><%= source.metrics.latest %></span>
           <% end %>
         </small>
         <small class="source-details">
@@ -62,5 +62,5 @@ data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.toke
 <script>
 document.addEventListener("DOMContentLoaded", async () => {
   await Dashboard.main()
-}j
+})
 </script>

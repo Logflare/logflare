@@ -5,7 +5,7 @@
         <li>
         <i class="fa fa-info-circle" aria-hidden="true"></i>
          <span>Your API key is 
-         <code class="pointer-cursor" id="api-key" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
+         <code class="pointer-cursor" id="api-key" data-showing-api-key="false" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
 
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -20,7 +20,7 @@
   <% else %>
   <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
   <% end %>
-  <ul class="list-group">
+  <ul class="list-group" hidden>
     <%= for source <- @sources do %>
       <li class="list-group-item">
         <div class="favorite float-left">
@@ -75,7 +75,7 @@
           <%= if source.metrics.latest == 0 do %>
           <span class="">no logs</span>
           <% else %>
-          <span class="log-datestamp" id="<%= source.token %>-latest"><%= source.metrics.latest %></span>
+          <span class="log-datestamp" id="<%= source.token %>-latest" data-timestamp="<%=source.metrics.latest %>"><%= source.metrics.latest %></span>
           <% end %>
         </small>
         <small class="source-details">
@@ -95,14 +95,8 @@ data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.toke
 
 
 <script>
-let dashboard
-
-document.addEventListener("DOMContentLoaded", () => {
-    $ = window.$
-    const assignsDataTag = $("#__phx-assigns__")
-    const sourceTokens = assignsDataTag.data("sourceTokens")
-    const apiKey = assignsDataTag.data("apiKey")
-    dashboard = new window.Dashboard({apiKey, sourceTokens})
+document.addEventListener("DOMContentLoaded", async () => {
+  await Dashboard.main()
 })
 
 </script>

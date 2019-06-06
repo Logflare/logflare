@@ -62,7 +62,7 @@ data-logs="<%= Poison.encode!(@logs) %>">
 <script>
 
 document.addEventListener("DOMContentLoaded", async () => {
-    await Source.main()
+    await Source.main({scrollTracker: true})
   })
 
 </script>
