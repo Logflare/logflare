@@ -32,7 +32,7 @@ defmodule Logflare.Google.BigQuery do
             Logger.info("BigQuery table created: #{source}")
 
           {:error, message} ->
-            Logger.error("Init error: #{message}")
+            Logger.error("Init error: #{GenUtils.get_tesla_error_message(message)}")
         end
 
       {:error, %Tesla.Env{status: 409}} ->
@@ -46,11 +46,11 @@ defmodule Logflare.Google.BigQuery do
             Logger.info("BigQuery table existed: #{source}")
 
           {:error, message} ->
-            Logger.error("Init error: #{message}")
+            Logger.error("Init error: #{GenUtils.get_tesla_error_message(message)}")
         end
 
       {:error, message} ->
-        Logger.error("Init error: #{message}")
+        Logger.error("Init error: #{GenUtils.get_tesla_error_message(message)}")
     end
   end
 

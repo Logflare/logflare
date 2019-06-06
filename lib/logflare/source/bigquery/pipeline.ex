@@ -7,7 +7,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
-  alias Logflare.Google.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
@@ -66,7 +66,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         messages
 
       {:error, response} ->
-        Logger.error("Error #{__MODULE__}: #{response}")
+        Logger.error("Error #{__MODULE__}: #{GenUtils.get_tesla_error_message(response)}")
         messages
     end
   end
@@ -90,7 +90,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                 Logger.info("Table schema updated!")
 
               {:error, message} ->
-                Logger.error("Table schema update error: #{message.body}")
+                Logger.error(
+                  "Table schema update error: #{GenUtils.get_tesla_error_message(message)}"
+                )
             end
           end
 
