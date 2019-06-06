@@ -7,8 +7,11 @@ defmodule Logflare.Logs do
     Source
   }
 
+  require Logger
+
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.Injest
+  alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Number.Delimit
 
@@ -110,8 +113,13 @@ defmodule Logflare.Logs do
        when is_binary(log_message) do
     for rule <- source.rules do
       if Regex.match?(~r{#{rule.regex}}, "#{log_message}") do
-        rule.sink
-        |> insert_and_broadcast(time_event, log_message, metadata)
+        sink_source = Sources.Cache.get_by(token: rule.sink)
+
+        if sink_source do
+          insert_and_broadcast(sink_source, time_event, log_message, metadata)
+        else
+          Logger.error("Sink source for token UUID #{rule.sink} doesn't exist")
+        end
       end
     end
 
