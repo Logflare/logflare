@@ -1,7 +1,7 @@
-import localforage from "localforage"
+import * as localforage from "localforage"
 
 const store = localforage.createInstance({
-    name: "userConfig"
+    name: "userConfig",
 })
 
 const USE_LOCAL_TIME_KEY = "useLocalTime"
@@ -19,5 +19,4 @@ const flipUseLocalTime = async () => {
 
 const useLocalTime = () => store.getItem(USE_LOCAL_TIME_KEY)
 
-
-export {flipUseLocalTime, useLocalTime}
+export { flipUseLocalTime, useLocalTime }
