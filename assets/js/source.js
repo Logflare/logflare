@@ -1,10 +1,26 @@
-import socket from "../socket"
+import socket from "./socket"
 import $ from "jquery"
-import * as userConfig from "../user-config-storage"
-import { userSelectedFormatter } from "../formatters"
-import { applyToAllLogTimestamps } from "../logs"
+import * as userConfig from "./user-config-storage"
+import { userSelectedFormatter } from "./formatters"
+import { applyToAllLogTimestamps } from "./logs"
 
 export async function main() {
+  window.scrollTracker = true
+
+  const { sourceToken, logs } = $("#__phx-assigns__").data()
+
+  joinSourceChannel(sourceToken)
+
+  await applyToAllLogTimestamps(await userSelectedFormatter())
+
+  $("#logs-list").removeAttr("hidden")
+
+  if (logs === []) {
+    $("#sourceHelpModal").modal()
+  }
+  else {
+    scrollBottom()
+  }
 
 }
 
@@ -22,8 +38,8 @@ export const joinSourceChannel = (sourceToken) => {
   channel.on(`source:${sourceToken}:new`, renderLog)
 }
 
-function renderLog(event) {
-  const renderedLog = logTemplate(event)
+async function renderLog(event) {
+  const renderedLog = await logTemplate(event)
 
   $("#no-logs-warning").html("")
   $("#logs-list").append(renderedLog)
@@ -33,8 +49,9 @@ function renderLog(event) {
   }
 }
 
-function scrollBottom() {
+export function scrollBottom() {
   const y = document.body.clientHeight
+
   window.scrollTo(0, y)
 }
 
@@ -42,7 +59,8 @@ async function logTemplate(e) {
   const metadata = JSON.stringify(e.metadata, null, 2)
   const formatter = await userSelectedFormatter()
   const formattedDatetime = formatter(e.timestamp)
-  const metadataEl = e.metadata ? `
+
+  const metadataElement = e.metadata ? `
     <a class="metadata-link" data-toggle="collapse" href="#metadata-${e.timestamp}" aria-expanded="false">
         metadata
     </a>
@@ -52,7 +70,7 @@ async function logTemplate(e) {
 
   return `<li>
     <mark class="log-datestamp" data-timestamp="${e.timestamp}">${formattedDatetime}</mark> ${e.log_message} 
-    ${metadataEl}
+    ${metadataElement}
 </li>`
 }
 
