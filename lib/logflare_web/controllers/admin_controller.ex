@@ -18,7 +18,7 @@ defmodule LogflareWeb.AdminController do
       query
       |> Repo.all()
       |> Enum.map(&Sources.preload_defaults/1)
-      |> Enum.sort_by(&Map.fetch(&1, :latest), &>=/2)
+      |> Enum.sort_by(&Map.fetch(&1.metrics, :latest), &>=/2)
 
     render(conn, "dashboard.html", sources: sorted_sources)
   end
