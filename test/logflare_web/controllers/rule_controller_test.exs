@@ -6,11 +6,12 @@ defmodule LogflareWeb.RuleControllerTest do
   import Logflare.DummyFactory
 
   setup do
-    s1 = insert(:source, public_token: Faker.String.base64(16))
-    s2 = insert(:source)
-    s3 = insert(:source)
-    u1 = insert(:user, sources: [s1, s2])
-    u2 = insert(:user, sources: [s3])
+    u1 = insert(:user)
+    u2 = insert(:user)
+
+    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
+    s2 = insert(:source, user_id: u1.id)
+    s3 = insert(:source, user_id: u2.id)
 
     users = Repo.preload([u1, u2], :sources)
 

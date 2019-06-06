@@ -5,7 +5,8 @@ defmodule Logflare.LogsTest do
   import Logflare.Logs
 
   setup do
-    s = insert(:source, token: Faker.UUID.v4(), rules: [])
+    u = insert(:user)
+    s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
 
     {:ok, sources: [s]}
   end

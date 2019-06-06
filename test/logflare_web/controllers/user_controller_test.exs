@@ -5,7 +5,7 @@ defmodule LogflareWeb.UserControllerTest do
   use Placebo
 
   alias Logflare.{Users, User}
-  alias Logflare.SourceManager
+  alias Logflare.Source
   alias Logflare.Google.BigQuery
   alias Logflare.Logs.RejectedEvents
   import Logflare.DummyFactory
@@ -49,7 +49,7 @@ defmodule LogflareWeb.UserControllerTest do
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.id == nope_user_id
       assert redirected_to(conn, 302) =~ user_path(conn, :edit)
-      refute_called Users.Cache.get_by(any), once()
+      refute_called(Users.Cache.get_by(any), once())
     end
 
     test "of allowed fields succeeds", %{
@@ -57,15 +57,15 @@ defmodule LogflareWeb.UserControllerTest do
       users: [u1 | _]
     } do
       new_email = Faker.Internet.free_email()
+
       new = %{
-        email:  new_email,
+        email: new_email,
         provider: Faker.String.base64(),
         email_preferred: Faker.Internet.free_email(),
         name: Faker.String.base64(),
         image: Faker.Internet.image_url(),
         email_me_product: true,
         phone: Faker.Phone.EnUs.phone()
-        # bigquery_project_id: Faker.String.base64()
       }
 
       conn =
@@ -82,14 +82,15 @@ defmodule LogflareWeb.UserControllerTest do
       assert s1_new == new
       assert html_response(conn, 302) =~ user_path(conn, :edit)
 
-      conn = conn
+      conn =
+        conn
         |> recycle()
         |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> get(user_path(conn, :edit))
 
       assert conn.assigns.user.email == new_email
 
-      refute_called Users.Cache.get_by(any), once()
+      refute_called(Users.Cache.get_by(any), once())
     end
 
     test "of bigquery_project_id resets all user tables", %{
@@ -97,7 +98,7 @@ defmodule LogflareWeb.UserControllerTest do
       users: [u1 | _]
     } do
       allow BigQuery.create_dataset(any, any), return: {:ok, []}
-      allow SourceManager.reset_all_user_tables(any), return: :ok
+      allow Source.Supervisor.reset_all_user_tables(any), return: :ok
 
       conn =
         conn
@@ -128,7 +129,7 @@ defmodule LogflareWeb.UserControllerTest do
       refute u1_updated
       assert get_flash(conn, :info) == "Account deleted!"
       assert redirected_to(conn, 302) == marketing_path(conn, :index)
-      refute_called Users.Cache.get_by(any), once()
+      refute_called(Users.Cache.get_by(any), once())
     end
   end
 end
