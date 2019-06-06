@@ -111,7 +111,6 @@ defmodule Logflare.Logs do
     for rule <- source.rules do
       if Regex.match?(~r{#{rule.regex}}, "#{log_message}") do
         rule.sink
-        |> String.to_atom()
         |> insert_and_broadcast(time_event, log_message, metadata)
       end
     end
