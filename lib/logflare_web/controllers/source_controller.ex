@@ -6,8 +6,7 @@ defmodule LogflareWeb.SourceController do
        when action in [:show, :edit, :update, :delete, :clear_logs, :rejected_logs, :favorite]
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
-  alias Logflare.Sources.Servers.{Manager}
-  alias Logflare.Sources.Data
+  alias Logflare.Source.{Supervisor, Data}
   alias Logflare.Logs.RejectedEvents
   alias LogflareWeb.AuthController
 
@@ -57,7 +56,7 @@ defmodule LogflareWeb.SourceController do
     |> case do
       {:ok, source} ->
         spawn(fn ->
-          Manager.new_table(source.token)
+          Supervisor.new_table(source.token)
         end)
 
         if get_session(conn, :oauth_params) do
@@ -172,14 +171,14 @@ defmodule LogflareWeb.SourceController do
         del_source_and_redirect_with_info(conn, source)
 
       :ets.first(token) == :"$end_of_table" ->
-        {:ok, _table} = Manager.delete_table(source.token)
+        {:ok, _table} = Supervisor.delete_table(source.token)
         del_source_and_redirect_with_info(conn, source)
 
       {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
         now = System.os_time(:microsecond)
 
         if now - timestamp > 3_600_000_000 do
-          {:ok, _table} = Manager.delete_table(source.token)
+          {:ok, _table} = Supervisor.delete_table(source.token)
           del_source_and_redirect_with_info(conn, source)
         else
           put_flash_and_redirect_to_dashboard(
@@ -192,7 +191,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def clear_logs(%{assigns: %{source: source}} = conn, _params) do
-    {:ok, _table} = Manager.reset_table(source.token)
+    {:ok, _table} = Supervisor.reset_table(source.token)
 
     conn
     |> put_flash(:info, "Logs cleared!")

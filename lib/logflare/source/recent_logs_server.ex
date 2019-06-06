@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.Servers.RecentLogs do
+defmodule Logflare.Source.RecentLogsServer do
   @moduledoc """
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
@@ -6,12 +6,12 @@ defmodule Logflare.Sources.Servers.RecentLogs do
 
   use GenServer
 
-  alias Logflare.Sources.{Counters, Data}
+  alias Logflare.Sources.Counters
   alias Logflare.Logs
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Number.Delimit
-  alias Logflare.Sources.Servers.{Texter, Mailer, RateCounter}
-  alias Logflare.Sources.Servers.BigQuery.{Schema, Pipeline, Buffer}
+  alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
+  alias Logflare.Source.{Data, EmailNotificationServer, TextNoticationServer, RateCounterServer}
 
   require Logger
 
@@ -51,9 +51,9 @@ defmodule Logflare.Sources.Servers.RecentLogs do
     state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
     children = [
-      {RateCounter, source_id},
-      {Mailer, source_id},
-      {Texter, source_id},
+      {RateCounterServer, source_id},
+      {EmailNotificationServer, source_id},
+      {TextNoticationServer, source_id},
       {Buffer, source_id},
       {Pipeline, state},
       {Schema, state}

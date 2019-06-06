@@ -1,6 +1,6 @@
 defmodule Logflare.Sources do
   alias Logflare.{Repo, Source}
-  alias Logflare.Sources.Servers.RateCounter, as: SRC
+  alias Logflare.Source.RateCounterServer, as: SRC
 
   def get_by(kw) do
     Source
@@ -31,7 +31,7 @@ defmodule Logflare.Sources do
   end
 
   def refresh_source_metrics(%Source{token: token} = source) do
-    import Logflare.Sources.Data
+    import Logflare.Source.Data
     alias Logflare.Logs.RejectedEvents
     alias Number.Delimit
     rejected_count = RejectedEvents.get_by_source(source)

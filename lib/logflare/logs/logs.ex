@@ -4,11 +4,10 @@ defmodule Logflare.Logs do
 
   alias Logflare.{
     SystemCounter,
-    Source,
-    Logs
+    Source
   }
 
-  alias Logflare.Sources.Servers.{RecentLogs, BigQuery.Buffer}
+  alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.Injest
   alias Logflare.Sources.Counters
   alias Number.Delimit
@@ -30,7 +29,7 @@ defmodule Logflare.Logs do
   @spec insert_or_push(atom(), {tuple(), map()}) :: true
   def insert_or_push(source_token, event) do
     if :ets.info(source_token) == :undefined do
-      RecentLogs.push(source_token, event)
+      RecentLogsServer.push(source_token, event)
       true
     else
       :ets.insert(source_token, event)

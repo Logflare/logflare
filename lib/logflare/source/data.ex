@@ -1,7 +1,7 @@
-defmodule Logflare.Sources.Data do
-  alias Logflare.Sources.Servers.{RateCounter, BigQuery.Buffer}
+defmodule Logflare.Source.Data do
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
+  alias Logflare.Source.{RateCounterServer, BigQuery.Buffer}
 
   @spec get_log_count(atom, String.t()) :: non_neg_integer()
   def get_log_count(token, bigquery_project_id) do
@@ -90,7 +90,7 @@ defmodule Logflare.Sources.Data do
         0
 
       _ ->
-        RateCounter.get_avg_rate(source_id)
+        RateCounterServer.get_avg_rate(source_id)
     end
   end
 
@@ -101,7 +101,7 @@ defmodule Logflare.Sources.Data do
         0
 
       _ ->
-        RateCounter.get_avg_rate(source_id)
+        RateCounterServer.get_avg_rate(source_id)
     end
   end
 
@@ -112,7 +112,7 @@ defmodule Logflare.Sources.Data do
         0
 
       _ ->
-        RateCounter.get_max_rate(source_id)
+        RateCounterServer.get_max_rate(source_id)
     end
   end
 
@@ -151,7 +151,7 @@ defmodule Logflare.Sources.Data do
         0
 
       _ ->
-        RateCounter.get_rate(source_id)
+        RateCounterServer.get_rate(source_id)
     end
   end
 end

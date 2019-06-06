@@ -1,9 +1,9 @@
-defmodule Logflare.Sources.Servers.BigQuery.BufferProducer do
+defmodule Logflare.Source.BigQuery.BufferProducer do
   use GenStage
 
   require Logger
 
-  alias Logflare.Sources.Servers.BigQuery.Buffer
+  alias Logflare.Source.BigQuery.Buffer
 
   @default_receive_interval 1000
 

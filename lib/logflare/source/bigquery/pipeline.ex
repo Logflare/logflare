@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.Servers.BigQuery.Pipeline do
+defmodule Logflare.Source.BigQuery.Pipeline do
   use Broadway
 
   require Logger
@@ -6,7 +6,7 @@ defmodule Logflare.Sources.Servers.BigQuery.Pipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.Sources.Servers.BigQuery.{Schema, SchemaBuilder, BufferProducer}
+  alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.EventUtils
 
   def start_link(state) do

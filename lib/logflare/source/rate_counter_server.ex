@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.Servers.RateCounter do
+defmodule Logflare.Source.RateCounterServer do
   @moduledoc """
   Establishes requests per second per source table. Watches the counters for source tables and periodically pulls them to establish
   events per second. Also handles storing those in the database.

@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.Servers.Mailer do
+defmodule Logflare.Source.EmailNotificationServer do
   use GenServer
 
   require Logger
@@ -6,7 +6,7 @@ defmodule Logflare.Sources.Servers.Mailer do
   alias Logflare.{Sources, Users}
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.Sources.Servers.RateCounter
+  alias Logflare.Source.RateCounterServer
 
   @check_rate_every 1_000
 
@@ -29,7 +29,7 @@ defmodule Logflare.Sources.Servers.Mailer do
   end
 
   def handle_info(:check_rate, state) do
-    rate = RateCounter.get_rate(state.source)
+    rate = RateCounterServer.get_rate(state.source)
 
     case rate > 0 do
       true ->

@@ -1,10 +1,10 @@
-defmodule Logflare.Sources.Servers.Texter do
+defmodule Logflare.Source.TextNoticationServer do
   use GenServer
 
   require Logger
 
   alias Logflare.{Sources, Users}
-  alias Logflare.Sources.Servers.RateCounter
+  alias Logflare.Source.RateCounterServer
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
 
@@ -30,7 +30,7 @@ defmodule Logflare.Sources.Servers.Texter do
   end
 
   def handle_info(:check_rate, state) do
-    rate = RateCounter.get_rate(state.source)
+    rate = RateCounterServer.get_rate(state.source)
 
     case rate > 0 do
       true ->

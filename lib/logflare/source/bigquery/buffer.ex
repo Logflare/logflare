@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.Servers.BigQuery.Buffer do
+defmodule Logflare.Source.BigQuery.Buffer do
   use GenServer
 
   alias Number.Delimit

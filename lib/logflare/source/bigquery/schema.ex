@@ -1,11 +1,11 @@
-defmodule Logflare.Sources.Servers.BigQuery.Schema do
+defmodule Logflare.Source.BigQuery.Schema do
   use GenServer
 
   require Logger
 
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.Sources.Servers.BigQuery.SchemaBuilder
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
   def start_link(state) do
     GenServer.start_link(
