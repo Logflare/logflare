@@ -36,6 +36,15 @@
         </div>
         <div>
           <div class="float-right">
+            <%= if source.metrics.rejected do %>
+            <%= link to: Routes.source_path(@conn, :rejected_logs, source.id), class: "dashboard-links"  do %>
+            <span class="dashboard-row-aligned-icon rejected-events-info"
+            data-toggle="tooltip" data-placement="left" title="This source has rejected logs!"
+             style="color: yellow;">
+              <i class="fa fa-exclamation-circle" style="font-size: 1.3em;"></i>
+            </span>
+            <% end %>
+            <% end %>
             <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
               <i class="fas fa-edit"></i>
             <% end %>

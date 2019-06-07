@@ -1,14 +1,16 @@
 import $ from "jquery"
+import Tooltip from "tooltip.js"
 import socket from "./socket"
 import ClipboardJS from "clipboard"
 import { timestampNsToAgo } from "./formatters"
-import {applyToAllLogTimestamps} from "./logs"
+import { applyToAllLogTimestamps } from "./logs"
 
 export async function main() {
-  const {sourceTokens, apiKey} = $("#__phx-assigns__").data()
+  const { sourceTokens, apiKey } = $("#__phx-assigns__").data()
 
   await initClipboards()
   await initApiClipboard()
+  await initTooltips()
 
   for (let token of sourceTokens) {
     joinSourceChannel(token)
@@ -16,6 +18,10 @@ export async function main() {
   await applyToAllLogTimestamps(timestampNsToAgo)
 
   $(".list-group").removeAttr("hidden")
+}
+
+async function initTooltips() {
+  $('.rejected-events-info').tooltip({delay: {show: 100, hide: 200}})
 }
 
 async function initClipboards() {

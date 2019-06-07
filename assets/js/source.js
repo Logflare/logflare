@@ -5,19 +5,12 @@ import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
 export async function main({ scrollTracker }) {
-  window.scrollTracker = scrollTracker
-  window.addEventListener("scroll", () => {
-    resetScrollTracker()
-    swapDownArrow()
-  })
 
   const { sourceToken, logs } = $("#__phx-assigns__").data()
+  await initLogsUiFunctions({ scrollTracker })
 
   joinSourceChannel(sourceToken)
-  await applyToAllLogTimestamps(await userSelectedFormatter())
 
-
-  $("#logs-list").removeAttr("hidden")
 
   if (logs.length === 0) {
     $("#sourceHelpModal").modal()
@@ -25,6 +18,18 @@ export async function main({ scrollTracker }) {
   else {
     scrollBottom()
   }
+}
+
+export async function initLogsUiFunctions({ scrollTracker }) {
+  window.scrollTracker = scrollTracker
+
+  window.addEventListener("scroll", () => {
+    resetScrollTracker()
+    swapDownArrow()
+  })
+
+  await applyToAllLogTimestamps(await userSelectedFormatter())
+  $("#logs-list").removeAttr("hidden")
 }
 
 const joinSourceChannel = (sourceToken) => {
