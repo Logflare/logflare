@@ -85,7 +85,8 @@ defmodule Logflare.Mixfile do
       {:iteraptor, "~> 1.8.0"},
       {:bertex, ">= 0.0.0"},
       {:excoveralls, "~> 0.11", only: :test},
-      {:placebo, "~> 1.2"}
+      {:placebo, "~> 1.2"},
+      {:logflare_logger_backend, git: "git://github.com/Logflare/logflare_logger_backend.git"}
     ]
   end
 

@@ -20,7 +20,7 @@ defmodule Logflare.Users.API do
 
   @callback verify_api_rates_quotas(map) :: ok_err_tup
 
-  alias Logflare.{Users, Sources, User}
+  alias Logflare.{Sources, User}
   @api_call_logs {:api_call, :logs_post}
 
   @spec verify_api_rates_quotas(map) :: ok_err_tup
