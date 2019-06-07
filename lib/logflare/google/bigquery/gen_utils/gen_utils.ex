@@ -52,8 +52,11 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   @spec get_tesla_error_message(%Tesla.Env{}) :: String.t()
-  def get_tesla_error_message(message) do
+  def get_tesla_error_message(%Tesla.Env{} = message) do
     {:ok, message_body} = Jason.decode(message.body)
     message_body["error"]["message"]
   end
+
+  @spec get_tesla_error_message(atom) :: String.t()
+  def get_tesla_error_message(:emfile), do: "emfile"
 end
