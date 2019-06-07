@@ -7,6 +7,9 @@ defmodule Logflare.Source.RateCounterServer do
 
   require Logger
   alias __MODULE__, as: SRC
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Sources.Counters
+  alias Logflare.Source.Data
 
   alias Number.Delimit
 
@@ -45,11 +48,13 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def init(source_id) when is_atom(source_id) do
-    Logger.info("Rate counter started: #{source_id}")
     Process.flag(:trap_exit, true)
     setup_ets_table(source_id)
     put_current_rate()
+    bigquery_project_id = GenUtils.get_project_id(source_id)
+    init_counters(source_id, bigquery_project_id)
 
+    Logger.info("Rate counter started: #{source_id}")
     {:ok, source_id}
   end
 
@@ -57,6 +62,7 @@ defmodule Logflare.Source.RateCounterServer do
     put_current_rate()
 
     {:ok, new_count} = get_insert_count(source_id)
+
     state = get_data_from_ets(source_id)
 
     %SRC{} = state = update_state(state, new_count)
@@ -256,5 +262,13 @@ defmodule Logflare.Source.RateCounterServer do
 
   def average(xs) when is_list(xs) do
     Enum.sum(xs) / length(xs)
+  end
+
+  defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
+    log_count = Data.get_log_count(source_id, bigquery_project_id)
+    Counters.delete(source_id)
+    Counters.create(source_id)
+    Counters.incriment_ets_count(source_id, 0)
+    Counters.incriment_total_count(source_id, log_count)
   end
 end

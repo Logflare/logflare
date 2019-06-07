@@ -50,6 +50,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
     state = state ++ [{:bigquery_project_id, bigquery_project_id}]
 
+    # TODO: Should really be starting these all up with the same struct because some need the same data
     children = [
       {RateCounterServer, source_id},
       {EmailNotificationServer, source_id},
@@ -60,8 +61,6 @@ defmodule Logflare.Source.RecentLogsServer do
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
-
-    init_counters(source_id, bigquery_project_id)
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
       load_init_log_message(source_id, bigquery_project_id)
@@ -134,14 +133,6 @@ defmodule Logflare.Source.RecentLogsServer do
           )
       end
     end
-  end
-
-  defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
-    log_count = Data.get_log_count(source_id, bigquery_project_id)
-    Counters.delete(source_id)
-    Counters.create(source_id)
-    Counters.incriment_ets_count(source_id, 0)
-    Counters.incriment_total_count(source_id, log_count)
   end
 
   defp prune() do
