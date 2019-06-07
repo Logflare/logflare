@@ -7,7 +7,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
-  alias Logflare.Google.BigQuery.{EventUtils}
+  alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
@@ -67,7 +67,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:error, response} ->
         LogflareLogger.merge_context(source_id: context[:source_token])
-        LogflareLogger.merge_context(tesla_response: response)
+        LogflareLogger.merge_context(tesla_response: GenUtils.get_tesla_error_message(response))
         Logger.error("Stream batch error!")
         messages
     end
@@ -92,7 +92,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                 Logger.info("Source schema updated!")
 
               {:error, response} ->
-                LogflareLogger.merge_context(tesla_response: response)
+                LogflareLogger.merge_context(
+                  tesla_response: GenUtils.get_tesla_error_message(response)
+                )
+
                 Logger.error("Source schema update error!")
             end
           end
