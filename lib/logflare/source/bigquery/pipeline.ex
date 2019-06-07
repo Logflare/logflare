@@ -7,7 +7,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
-  alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
+  alias Logflare.Google.BigQuery.{EventUtils}
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
@@ -66,7 +66,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         messages
 
       {:error, response} ->
-        Logger.error("Error #{__MODULE__}: #{GenUtils.get_tesla_error_message(response)}")
+        LogflareLogger.merge_context(source_id: context[:source_token])
+        LogflareLogger.merge_context(tesla_response: response)
+        Logger.error("Stream batch error!")
         messages
     end
   end
@@ -87,24 +89,18 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
                 Schema.update(table, table_info.schema)
-                Logger.info("Table schema updated!")
+                Logger.info("Source schema updated!")
 
-              {:error, message} ->
-                Logger.error(
-                  "Table schema update error - #{table}: #{
-                    GenUtils.get_tesla_error_message(message)
-                  }"
-                )
+              {:error, response} ->
+                LogflareLogger.merge_context(tesla_response: response)
+                Logger.error("Source schema update error!")
             end
           end
 
           message
         rescue
           _e ->
-            err =
-              "Injest error for #{table}, most probably due to the field schema change. Payload: #{
-                Jason.encode!(payload)
-              }"
+            err = "Field schema type change error!"
 
             Logger.error(err)
 

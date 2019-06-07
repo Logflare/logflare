@@ -9,7 +9,10 @@ config :logflare, LogflareWeb.Endpoint,
   version: Application.spec(:logflare, :vsn)
 
 config :logger, :console, format: "[$level] $message\n"
-config :logger, level: :error
+
+config :logger,
+  level: :error,
+  backends: [LogflareLogger.HttpBackend]
 
 config :phoenix, :serve_endpoints, true
 

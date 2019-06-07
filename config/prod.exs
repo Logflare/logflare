@@ -35,7 +35,9 @@ config :logflare, LogflareWeb.Endpoint,
 #  session_cookie_encryption_salt: System.get_env("SESSION_COOKIE_ENCRYPTION_SALT")
 
 # Do not print debug messages in production
-config :logger, level: :error
+config :logger,
+  level: :error,
+  backends: [LogflareLogger.HttpBackend]
 
 # ## SSL Support
 #
