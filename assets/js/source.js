@@ -62,12 +62,14 @@ async function logTemplate(e) {
   const metadata = JSON.stringify(e.metadata, null, 2)
   const formatter = await userSelectedFormatter()
   const formattedDatetime = formatter(e.timestamp)
+  const randomId = Math.random() * 10e16
+  const metadataId = `metadata-${e.timestamp}-${randomId}`
 
   const metadataElement = e.metadata ? `
-    <a class="metadata-link" data-toggle="collapse" href="#metadata-${e.timestamp}" aria-expanded="false">
+    <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
         metadata
     </a>
-    <div class="collapse metadata" id="metadata-${e.timestamp}">
+    <div class="collapse metadata" id="${metadataId}">
         <pre class="pre-metadata"><code>${metadata}</code></pre>
     </div> ` : ""
 
