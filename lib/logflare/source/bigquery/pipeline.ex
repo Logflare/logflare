@@ -34,6 +34,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   def handle_batch(:bq, messages, _batch_info, context) do
+    LogflareLogger.merge_context(source_id: context[:source_token])
+
     rows =
       Enum.map(messages, fn message ->
         %{event: {_time_event, payload}, table: _table} = message.data
@@ -65,16 +67,27 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       {:ok, _response} ->
         messages
 
-      {:error, response} ->
-        LogflareLogger.merge_context(source_id: context[:source_token])
+      {:error, %Tesla.Env{} = response} ->
         LogflareLogger.merge_context(tesla_response: GenUtils.get_tesla_error_message(response))
-        Logger.error("Stream batch error!")
+        Logger.error("Stream batch response error!")
+        messages
+
+      {:error, :emfile = response} ->
+        LogflareLogger.merge_context(tesla_response: response)
+        Logger.error("Stream batch emfile error!")
+        messages
+
+      {:error, :timeout = response} ->
+        LogflareLogger.merge_context(tesla_response: response)
+        Logger.error("Stream batch timeout error!")
         messages
     end
   end
 
   defp process_data(message) do
     %{event: {time_event, payload}, table: table} = message
+
+    LogflareLogger.merge_context(source_id: table)
 
     case Map.has_key?(payload, :metadata) do
       true ->
@@ -105,10 +118,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           _e ->
             err = "Field schema type change error!"
 
-            Logger.error(err)
-
             new_payload = %{payload | metadata: %{"error" => err}}
 
+            Logger.error(err)
             Map.put(message, :event, {time_event, new_payload})
         end
 
