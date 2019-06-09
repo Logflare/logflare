@@ -1,4 +1,4 @@
-defmodule Logflare.SystemCounter do
+defmodule Logflare.SystemMetrics.AllLogsLogged do
   use GenServer
 
   require Logger
