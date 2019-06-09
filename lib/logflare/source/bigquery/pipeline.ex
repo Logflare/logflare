@@ -63,6 +63,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         }
       end)
 
+    hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
+    LogflareLogger.merge_context(hackney_stats: hackney_stats)
+
     case BigQuery.stream_batch!(context[:source_token], rows, context[:bigquery_project_id]) do
       {:ok, _response} ->
         messages
@@ -99,6 +102,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           schema = SchemaBuilder.build_table_schema(payload.metadata, old_schema)
 
           if same_schemas?(old_schema, schema) == false do
+            hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
+            LogflareLogger.merge_context(hackney_stats: hackney_stats)
+
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
                 Schema.update(table, table_info.schema)
