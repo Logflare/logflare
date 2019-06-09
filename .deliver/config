@@ -8,7 +8,7 @@ PRODUCTION_HOSTS="logflare-production.us-central1-a.logflare-232118"
 PRODUCTION_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 
-STAGING_HOSTS="logflare-staging.us-central1-a.logflare-staging"
+STAGING_HOSTS="logflare-staging-2cpu.us-central1-a.logflare-staging"
 STAGING_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 
