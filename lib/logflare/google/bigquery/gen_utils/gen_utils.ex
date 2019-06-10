@@ -59,4 +59,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_tesla_error_message(atom) :: String.t()
   def get_tesla_error_message(:emfile), do: "emfile"
+
+  @spec get_tesla_error_message(atom) :: String.t()
+  def get_tesla_error_message(:timeout), do: "timeout"
 end
