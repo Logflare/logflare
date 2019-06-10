@@ -1,4 +1,4 @@
-defmodule Logflare.Validator.BigQuery.SchemaChange do
+defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS

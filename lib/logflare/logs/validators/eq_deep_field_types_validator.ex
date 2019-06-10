@@ -1,4 +1,4 @@
-defmodule Logflare.Validator.DeepFieldTypes do
+defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   @moduledoc """
   Validates that types of values for the same field path are the same
   """

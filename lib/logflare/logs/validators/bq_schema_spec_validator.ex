@@ -1,8 +1,16 @@
-defmodule Logflare.Validator.BigQuery.TableMetadata do
+defmodule Logflare.Logs.Validators.BigQuerySchemaSpec do
   @moduledoc false
 
   import Ecto.Changeset
   defguard is_enum?(v) when is_map(v) or is_list(v)
+
+  def validate(map) do
+    if valid?(map) do
+      :ok
+    else
+      message()
+    end
+  end
 
   @doc """
   Validates incoming event payload to match the BigQuery schema requirements, which are the following:
