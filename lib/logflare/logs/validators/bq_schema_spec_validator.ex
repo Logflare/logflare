@@ -4,11 +4,12 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaSpec do
   import Ecto.Changeset
   defguard is_enum?(v) when is_map(v) or is_list(v)
 
+  @spec validate([map] | map) :: :ok | {:error, String.t()}
   def validate(map) do
     if valid?(map) do
       :ok
     else
-      message()
+      {:error, message()}
     end
   end
 

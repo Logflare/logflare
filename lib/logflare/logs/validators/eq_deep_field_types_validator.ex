@@ -4,6 +4,15 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   """
 
   # Public
+  @spec validate(%{metadata: map}) :: :ok | {:error, String.t()}
+  def validate(%{metadata: metadata}) do
+    if valid?(metadata) do
+      :ok
+    else
+      {:error, message()}
+    end
+  end
+
   @spec valid?(map()) :: boolean()
   def valid?(map) when is_map(map) do
     try do

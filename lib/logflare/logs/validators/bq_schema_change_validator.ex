@@ -1,7 +1,20 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
+  alias Logflare.{Source, Sources}
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
+
+  @spec validate(%{log: atom | %{metadata: map}, source: Source.t()}) ::
+          :ok | {:error, String.t()}
+  def validate(%{log: log, source: %Source{} = source}) do
+    schema = Sources.Cache.get_bq_schema(source)
+
+    if valid?(log.metadata, schema) do
+      :ok
+    else
+      {:error, message()}
+    end
+  end
 
   def valid?(metadata, existing_schema) do
     to_typemap(metadata) == to_typemap(existing_schema, from: :bigquery_schema)
@@ -61,6 +74,10 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
       {k, v}
     end
+  end
+
+  def message() do
+    "Incoming metadata is not compatible with existing schema"
   end
 
   def bq_type_to_ex("TIMESTAMP"), do: :datetime
