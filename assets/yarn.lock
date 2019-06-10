@@ -4348,6 +4348,9 @@ performance-now@^2.1.0:
 "phoenix_html@file:../deps/phoenix_html":
   version "2.13.3"
 
+"phoenix_live_view@file:../deps/phoenix_live_view":
+  version "0.1.0-dev"
+
 pify@^2.0.0:
   version "2.3.0"
   resolved "https://registry.yarnpkg.com/pify/-/pify-2.3.0.tgz#ed141a6ac043a849ea588498e7dca8b15330e90c"
