@@ -26,12 +26,14 @@ defmodule Logflare.Logs.RejectedEvents do
   @doc """
   Expected to be called only in a log event params validation plug
   """
-  @spec injest(%{error: atom, batch: list(map), source: Source.t()}) :: term
-  def injest(%{error: error, batch: batch, source: %Source{token: token}}) do
+  @spec injest(%{log: map, source: Source.t()}) :: term
+  def injest(%{log: log, source: %Source{token: token}}) do
+    timestamp = log[:timestamp] || 1_000_000 * (Timex.now() |> Timex.to_unix())
+
     log = %{
-      message: error.message(),
-      payload: batch,
-      timestamp: 1_000_000 * (Timex.now() |> Timex.to_unix())
+      message: log.validation_error,
+      log: log,
+      timestamp: timestamp
     }
 
     insert(token, log)
