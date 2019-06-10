@@ -1,6 +1,6 @@
-defmodule Logflare.Validator.DeepFieldTypesTest do
+defmodule Logflare.Logs.Validators.EqDeepFieldTypesTest do
   use ExUnit.Case
-  import Logflare.Validator.DeepFieldTypes
+  import Logflare.Logs.Validators.EqDeepFieldTypes
 
   describe "nested values validation" do
     test "diverging types in key0.[0,1].key1.key2" do

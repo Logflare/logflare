@@ -1,8 +1,8 @@
-defmodule Logflare.Validator.BigQuery.SchemaChangeTest do
+defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   @moduledoc false
   use ExUnit.Case
   import Logflare.Google.BigQuery.SchemaFactory
-  import Logflare.Validator.BigQuery.SchemaChange
+  import Logflare.Logs.Validators.BigQuerySchemaChange
 
   describe "bigquery bigquery schema change validation" do
     test "valid?/1 returns true for valid params" do

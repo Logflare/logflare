@@ -1,7 +1,7 @@
-defmodule Logflare.Validator.BigQuery.TableMetadataTest do
+defmodule Logflare.Validator.BigQuerySchemaSpecTest do
   @moduledoc false
   use ExUnit.Case
-  import Logflare.Validator.BigQuery.TableMetadata
+  import Logflare.Logs.Validators.BigQuerySchemaSpec
 
   @valid_payload %{
     "datacenter" => "aws",
@@ -42,7 +42,7 @@ defmodule Logflare.Validator.BigQuery.TableMetadataTest do
 
     test "rejects key starting from a special character" do
       refute @valid_payload
-             |> Map.put("nested1", %{"l̈"  => "aws"})
+             |> Map.put("nested1", %{"l̈" => "aws"})
              |> valid?
     end
 
@@ -54,6 +54,7 @@ defmodule Logflare.Validator.BigQuery.TableMetadataTest do
 
     test "rejects nested invalid key in a list" do
       nested = %{"datacenter" => "aws", "valid" => [%{"3field" => "not"}, %{"key" => "valid"}]}
+
       refute @valid_payload
              |> Map.put("nested1", %{"nested2" => nested})
              |> valid?
