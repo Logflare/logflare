@@ -1,86 +1,131 @@
-defmodule Logflare.Logs do
+defmodule Logflare.Logs.Next do
+  require Logger
   use Publicist
-  alias Logflare.Validator.{DeepFieldTypes, BigQuery}
+  alias Logflare.Validators.{DeepFieldTypes, BigQuerySchemaChange, BigQuerySchemaSpec}
 
   alias Logflare.{
     SystemCounter,
-    Source
+    Source,
+    Sources
   }
 
-  require Logger
-
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
-  alias Logflare.Logs.Injest
-  alias Logflare.Sources
+  alias Logflare.Logs.{Injest, RejectedEvents}
   alias Logflare.Sources.Counters
   alias Number.Delimit
 
   @system_counter :total_logs_logged
 
-  @spec insert_logs(list(map), Source.t()) :: :ok | {:error, term}
-  def insert_logs(batch, %Source{} = source) when is_list(batch) do
-    batch =
-      Enum.map(batch, fn log_entry ->
-        if log_entry["metadata"] in [%{}, [], {}, nil] do
-          Map.drop(log_entry, ["metadata"])
-        else
-          log_entry
-        end
-      end)
+  @spec injest_logs(list(map), Source.t()) :: :ok | {:error, term}
+  def injest_logs(batch, %Source{} = source) when is_list(batch) do
+    batch
+    |> Enum.map(&munge/1)
+    |> Enum.map(&validate(&1, source))
+    |> Enum.map(fn %{valid: valid} = log ->
+      if valid, do: injest(log, source), else: RejectedEvents.injest(log)
 
-    case validate_batch_params(batch) do
-      :ok ->
-        Enum.each(batch, &insert_log_to_source(&1, source))
-        :ok
-
-      {:invalid, reason} ->
-        {:error, reason}
+      log
+    end)
+    |> Enum.reduce([], fn log, acc ->
+      if log.valid do
+        acc
+      else
+        [log.validation_error | acc]
+      end
+    end)
+    |> case do
+      [] -> :ok
+      errors when is_list(errors) -> {:error, errors}
     end
   end
 
-  @spec insert_or_push(atom(), {tuple(), map()}) :: true
-  def insert_or_push(source_token, event) do
-    if :ets.info(source_token) == :undefined do
-      RecentLogsServer.push(source_token, event)
-      true
-    else
-      :ets.insert(source_token, event)
-    end
+  defp munge(log_params) do
+    metadata = log_params["metadata"]
+    timestamp = log_params["timestamp"] || System.system_time(:microsecond)
+    message = log_params["log_entry"] || log_params["message"]
+
+    %{
+      message: message,
+      metadata: metadata,
+      timestamp: timestamp
+    }
+    |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
   end
 
-  @spec validate_batch_params(list(map)) :: :ok | {:invalid, term()}
-  def validate_batch_params(batch) when is_list(batch) do
-    reducer = fn log_entry, _ ->
-      case validate_params(log_entry) do
-        :ok -> {:cont, :ok}
-        invalid_tup -> {:halt, invalid_tup}
+  @spec validate(map(), Source.t()) :: map()
+  def validate(log, source) when is_map(log) do
+    [DeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange]
+    |> Enum.reduce_while(true, fn validator, _acc ->
+      case validator.validate(%{log: log, source: source}) do
+        :ok ->
+          {:cont, Map.put(log, :valid, true)}
+
+        {:error, message} ->
+          {:halt,
+           log
+           |> Map.put(:valid, false)
+           |> Map.put(:validation_error, message)}
+      end
+    end)
+  end
+
+  defp injest(log_event, source) do
+    injest_by_source_rules(log_event, source)
+    injest_and_broadcast(log_event, source)
+  end
+
+  defp injest_by_source_rules(log_event, %Source{} = source) do
+    for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, "#{log_event.message}") do
+      sink_source = Sources.Cache.get_by(token: rule.sink)
+
+      if sink_source do
+        injest_and_broadcast(sink_source, log_event)
+      else
+        Logger.error("Sink source for token UUID #{rule.sink} doesn't exist")
       end
     end
-
-    Enum.reduce_while(
-      batch,
-      :ok,
-      reducer
-    )
   end
 
-  @spec validate_params(map()) :: :ok | {:invalid, atom}
-  def validate_params(log_entry) when is_map(log_entry) do
-    metadata = log_entry["metadata"]
+  defp injest_and_broadcast(log_event, %Source{} = source) do
+    %{
+      message: message,
+      metadata: metadata,
+      timestamp: timestamp
+    } = log_event
 
-    if metadata not in [[], %{}, {}, nil] do
-      validators = [DeepFieldTypes, BigQuery.TableMetadata]
+    source_table_string = Atom.to_string(source.token)
 
-      Enum.reduce_while(validators, true, fn validator, _ ->
-        if validator.valid?(metadata) do
-          {:cont, :ok}
-        else
-          {:halt, {:invalid, validator}}
-        end
-      end)
+    payload =
+      if metadata do
+        %{timestamp: timestamp, log_message: message, metadata: metadata}
+      else
+        %{timestamp: timestamp, log_message: message}
+      end
+
+    time_event =
+      timestamp
+      |> build_time_event()
+
+    time_log_event = {time_event, payload}
+
+    if :ets.info(source.token) == :undefined do
+      RecentLogsServer.push(source.token, time_log_event)
     else
-      :ok
+      :ets.insert(source.token, time_log_event)
     end
+
+    Buffer.push(source_table_string, time_log_event)
+    Sources.Counters.incriment(source.token)
+    SystemCounter.incriment(@system_counter)
+
+    broadcast_log_count(source.token)
+    broadcast_total_log_count()
+
+    LogflareWeb.Endpoint.broadcast(
+      "source:#{source.token}",
+      "source:#{source.token}:new",
+      payload
+    )
   end
 
   @spec build_time_event(String.t() | non_neg_integer) :: {non_neg_integer, integer, integer}
@@ -100,82 +145,6 @@ defmodule Logflare.Logs do
     monotime = System.monotonic_time(:nanosecond)
     unique_int = System.unique_integer([:monotonic])
     {timestamp_mcs, unique_int, monotime}
-  end
-
-  defp insert_log_to_source(log_entry, %Source{} = source) do
-    message = log_entry["log_entry"] || log_entry["message"]
-    metadata = log_entry["metadata"]
-
-    time_event =
-      log_entry
-      |> Map.get("timestamp", System.system_time(:microsecond))
-      |> build_time_event()
-
-    lv = log_entry["level"]
-
-    metadata =
-      if lv do
-        Map.put(metadata || %{}, "level", lv)
-      else
-        metadata
-      end
-
-    metadata =
-      if metadata do
-        Injest.MetadataCleaner.deep_reject_nil_and_empty(metadata)
-      else
-        nil
-      end
-
-    send_with_rules(source, time_event, message, metadata)
-  end
-
-  defp send_with_rules(%Source{} = source, time_event, log_message, metadata)
-       when is_binary(log_message) do
-    for rule <- source.rules do
-      if Regex.match?(~r{#{rule.regex}}, "#{log_message}") do
-        sink_source = Sources.Cache.get_by(token: rule.sink)
-
-        if sink_source do
-          insert_and_broadcast(sink_source, time_event, log_message, metadata)
-        else
-          Logger.error("Sink source for token UUID #{rule.sink} doesn't exist")
-        end
-      end
-    end
-
-    insert_and_broadcast(source, time_event, log_message, metadata)
-  end
-
-  defp insert_and_broadcast(%Source{} = source, time_event, log_message, metadata)
-       when is_binary(log_message) do
-    source_table_string = Atom.to_string(source.token)
-
-    {timestamp, _unique_int, _monotime} = time_event
-
-    payload =
-      if metadata not in [%{}, [], {}, nil] do
-        %{timestamp: timestamp, log_message: log_message, metadata: metadata}
-      else
-        %{timestamp: timestamp, log_message: log_message}
-      end
-
-    log_event = {time_event, payload}
-
-    insert_or_push(source.token, log_event)
-
-    Buffer.push(source_table_string, log_event)
-    Sources.Counters.incriment(source.token)
-    SystemCounter.incriment(@system_counter)
-
-    broadcast_log_count(source.token)
-    broadcast_total_log_count()
-
-    LogflareWeb.Endpoint.broadcast(
-      "source:#{source.token}",
-      "source:#{source.token}:new",
-      payload
-    )
   end
 
   def broadcast_log_count(source_table) do
