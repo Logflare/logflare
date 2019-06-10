@@ -19,6 +19,8 @@ defmodule Logflare.Sources.Cache do
     }
   end
 
+  def get_bq_schema(arg), do: apply_repo_fun(__ENV__.function, [arg])
+
   def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)

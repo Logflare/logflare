@@ -1,4 +1,4 @@
-defmodule Logflare.SourcesTest do
+defmodule Logflare.SourcesCacheTest do
   @moduledoc false
   import Logflare.Sources.Cache
   use Logflare.DataCase

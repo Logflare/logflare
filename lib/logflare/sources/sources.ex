@@ -23,6 +23,10 @@ defmodule Logflare.Sources do
     SRC.get_avg_rate(source.token)
   end
 
+  def get_bq_schema(%Source{} = source) do
+    Logflare.Google.BigQuery.get_table(source.token)
+  end
+
   def preload_defaults(source) do
     source
     |> Repo.preload(:user)
