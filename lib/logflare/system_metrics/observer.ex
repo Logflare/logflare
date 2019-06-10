@@ -6,7 +6,7 @@ defmodule Logflare.SystemMetrics.Observer do
   @send_every 1_000
 
   def start_link do
-    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def init(_state) do
@@ -30,8 +30,7 @@ defmodule Logflare.SystemMetrics.Observer do
 
   defp get_observer_metrics() do
     :observer_backend.sys_info()
-    |> Enum.into(%{})
-    |> Map.delete(:alloc_info)
+    |> Keyword.drop([:alloc_info])
     |> Enum.map(fn {x, y} ->
       if is_list(y) do
         {x, to_string(y)}
