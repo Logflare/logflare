@@ -18,8 +18,7 @@ defmodule Logflare.SystemMetrics.Observer do
   def handle_info(:send_it, _state) do
     state = get_observer_metrics()
 
-    LogflareLogger.merge_context(observer_metrics: state)
-    Logger.error("Observer metrics!")
+    LogflareLogger.info("Observer metrics!", observer_metrics: state)
     send_it()
     {:noreply, state}
   end
