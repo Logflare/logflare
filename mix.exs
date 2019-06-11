@@ -72,7 +72,7 @@ defmodule Logflare.Mixfile do
       {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
-      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.1.0", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
       {:mox, "~> 0.5", only: :test},
