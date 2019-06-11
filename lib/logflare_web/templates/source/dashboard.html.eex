@@ -4,7 +4,7 @@
       <ul>
         <li>
         <i class="fa fa-info-circle" aria-hidden="true"></i>
-         <span>Your API key is 
+         <span>Your API key is
          <code class="pointer-cursor" id="api-key" data-showing-api-key="false" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
 
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
@@ -40,7 +40,7 @@
             <%= link to: Routes.source_path(@conn, :rejected_logs, source.id), class: "dashboard-links"  do %>
             <span class="dashboard-row-aligned-icon rejected-events-info"
             data-toggle="tooltip" data-placement="left" title="This source has rejected logs!"
-             style="color: yellow;">
+             style="color: #fff200;">
               <i class="fa fa-exclamation-circle" style="font-size: 1.3em;"></i>
             </span>
             <% end %>
@@ -104,4 +104,3 @@ document.addEventListener("DOMContentLoaded", async () => {
 })
 
 </script>
-
