@@ -43,6 +43,19 @@
     <%= submit "Update email preferences", class: "btn btn-primary form-button" %>
   <% end %>
 
+  <h5 class="header-margin">Rate Limit</h5>
+  <p>Rate limits are based on the number of events per second on average for the last 60 seconds. This means if your rate limit is 10 per second you can burst up to 600 requests in a 60 second window if you have not sent any other events in during that window.  If you've sent in 100 events in that 60 seconds, then you can burst up to 500 at once.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
+    <div class="form-group">
+      <%= text_input f, :api_quota, class: "form-control", readonly: true %>
+      <%= error_tag f, :api_quota %>
+      <small class="form-text text-muted">
+        Currently seeing <%= @avg_rate %> events per second on average. Email <a href="mailto:support@logflare.app?Subject=Rate%20Limits" target="_top">support@logflare.app</a> to increase your rate limit.
+      </small>
+    </div>
+    <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
+  <% end %>
+
   <h5 class="header-margin">SMS Alerts</h5>
   <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one email per second.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>

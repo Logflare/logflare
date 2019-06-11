@@ -310,6 +310,11 @@ h4 {
   border-color: #dd76ff;
 }
 
+.btn-primary.disabled, .btn-primary:disabled {
+    color: #fff;
+    background-color: #bf00ff;
+    border-color: #dd76ff; }
+
 .btn-primary:not(:disabled):not(.disabled).active, .btn-primary:not(:disabled):not(.disabled):active, .show>.btn-primary.dropdown-toggle {
     color: #fff;
     background-color: #bf00ff;
