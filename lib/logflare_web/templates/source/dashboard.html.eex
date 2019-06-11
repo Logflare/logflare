@@ -14,13 +14,13 @@
   </div>
 </div>
 
-<div class="container mx-auto">
+<div class="dashboard container mx-auto" hidden>
   <%= if @user.provider == "google" do %>
   <div id="explore-dashboard"><center><%= link "Explore in Google Data Studio!", to: "https://datastudio.google.com/?authuser=#{@user_email}", target: "_blank" %></center></div>
   <% else %>
   <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
   <% end %>
-  <ul class="list-group" hidden>
+  <ul class="list-group">
     <%= for source <- @sources do %>
       <li class="list-group-item">
         <div class="favorite float-left">
