@@ -80,7 +80,8 @@ config :logflare, Logflare.Repo,
   pool_size: 15,
   ssl: true,
   prepare: :unnamed,
-  timeout: 30_000
+  timeout: 30_000,
+  queue_target: 5000
 
 config :logflare, env: :prod
 

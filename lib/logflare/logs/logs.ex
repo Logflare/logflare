@@ -2,10 +2,8 @@ defmodule Logflare.Logs do
   use Publicist
   alias Logflare.Validator.{DeepFieldTypes, BigQuery}
 
-  alias Logflare.{
-    SystemCounter,
-    Source
-  }
+  alias Logflare.Source
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   require Logger
 
@@ -166,7 +164,7 @@ defmodule Logflare.Logs do
 
     Buffer.push(source_table_string, log_event)
     Sources.Counters.incriment(source.token)
-    SystemCounter.incriment(@system_counter)
+    AllLogsLogged.incriment(@system_counter)
 
     broadcast_log_count(source.token)
     broadcast_total_log_count()
@@ -196,7 +194,7 @@ defmodule Logflare.Logs do
 
   @spec broadcast_total_log_count() :: :ok | {:error, any()}
   def broadcast_total_log_count() do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
+    {:ok, log_count} = AllLogsLogged.log_count(@system_counter)
     payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
 
     LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
