@@ -17,11 +17,11 @@ export async function main() {
   }
   await applyToAllLogTimestamps(timestampNsToAgo)
 
-  $(".list-group").removeAttr("hidden")
+  $(".dashboard.container").removeAttr("hidden")
 }
 
 async function initTooltips() {
-  $('.rejected-events-info').tooltip({delay: {show: 100, hide: 200}})
+  $('.rejected-events-info').tooltip({ delay: { show: 100, hide: 200 } })
 }
 
 async function initClipboards() {
