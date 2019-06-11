@@ -45,8 +45,11 @@ defmodule Logflare.Logs.RejectedEvents do
   @spec insert(atom, map) :: list(map)
   defp insert(token, log) do
     Cachex.get_and_update!(@cache, token, fn
-      xs when is_list(xs) -> Enum.take([log | xs], 500)
-      _ -> [log]
+      xs when is_list(xs) ->
+        Enum.take([log | xs], 100)
+
+      _ ->
+        [log]
     end)
   end
 end

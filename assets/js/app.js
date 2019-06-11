@@ -10,6 +10,12 @@ import * as Source from "./source"
 import * as Logs from "./logs"
 import * as formatters from "./formatters"
 
+import LiveSocket from "phoenix_live_view"
+
+let liveSocket = new LiveSocket("/live")
+liveSocket.connect()
+
+
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
