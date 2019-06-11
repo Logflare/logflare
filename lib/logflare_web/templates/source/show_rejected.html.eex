@@ -1,0 +1,45 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="javascript:Source.switchDateFormat();"><span id="swap-date">
+        <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
+        <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
+      </ul>
+    </div>
+    <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/rejected</h5>
+  </div>
+</div>
+
+<div class="container mx-auto" id="console-text">
+<ul id="logs-list" class="list-unstyled console-text-list" hidden>
+  <%= if @logs do %>
+  <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
+
+    <li>
+      <mark class="log-datestamp" data-timestamp="<%= log.timestamp %>">
+         <%= log.timestamp %>
+      </mark>
+      <%= log.message %>
+      <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
+        payload
+      </a>
+      <div class="collapse metadata" id="metadata-<%= inx %>">
+        <pre class="pre-metadata"><code><%= Jason.encode!(log.payload, pretty: true) %></code></pre>
+      </div>
+    </li>
+  <% end) %>
+  <% end %>
+</ul>
+
+<div
+id="__phx-assigns__"
+data-source-token="<%= @source.token %>"
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+    await Source.initLogsUiFunctions({scrollTracker: true})
+  })
+</script>

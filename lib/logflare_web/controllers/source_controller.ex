@@ -224,12 +224,8 @@ defmodule LogflareWeb.SourceController do
   end
 
   def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => _id}) do
-    render(
-      conn,
-      "show_rejected.html",
-      logs: RejectedEvents.get_by_source(source),
-      source: source
-    )
+    rejected_logs = RejectedEvents.get_by_source(source)
+    render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 
   defp maybe_encode_log_metadata(%{metadata: m} = log) do

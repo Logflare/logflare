@@ -65,4 +65,9 @@ config :number,
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
+config :logflare, LogflareWeb.Endpoint,
+  live_view: [
+    signing_salt: System.get_env("PHOENIX_LIVE_VIEW_SECRET_SALT")
+  ]
+
 import_config "#{Mix.env()}.exs"
