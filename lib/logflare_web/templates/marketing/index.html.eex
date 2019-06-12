@@ -14,7 +14,9 @@
   <%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/0dx0XgzHL91o1WtV", class: "btn btn-secondary", role: "button" %>
 
   <blockquote class="blockquote text-center">
-    <p class="mb-0" id="total-logged"><span><%= @log_count %></span></p>
+    <div class="mb-0" id="total-logged">
+      <%= live_render(@conn, LogflareWeb.GlobalLogMetricsLV) %>
+    </div>
     <footer class="blockquote-footer">logs logged to date</footer>
   </blockquote>
 
@@ -192,9 +194,4 @@
 <%= render LogflareWeb.SharedView, "footer.html", assigns %>
 
 </div>
-<script>
-  document.addEventListener("DOMContentLoaded", function(){
-    window.createEveryoneSocket();
-  });
-</script>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
