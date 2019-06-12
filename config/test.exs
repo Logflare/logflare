@@ -6,13 +6,11 @@ config :logflare, LogflareWeb.Endpoint,
   http: [port: 4001],
   server: false
 
-# Print only warnings and errors during test
 config :logger, level: :warn
 
 config :logflare, env: :test
-# Configure your database
+
 config :logflare, Logflare.Repo,
-  #  adapter: Ecto.Adapters.Postgres,
   username: "chasegranberry",
   password: "",
   database: "logtail_dev",

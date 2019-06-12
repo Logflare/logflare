@@ -1,7 +1,7 @@
 use Mix.Config
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: "infinity", num_acceptors: 100]],
+  http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 100]],
   url: [host: "logflare.app", scheme: "https"],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
