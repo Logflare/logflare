@@ -19,7 +19,7 @@ config :logflare, Logflare.Repo,
   ssl: true,
   prepare: :unnamed,
   timeout: 30_000,
-  queue_target: 5000
+  queue_target: 5_000
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_prod",
