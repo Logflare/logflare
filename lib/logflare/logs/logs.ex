@@ -167,7 +167,6 @@ defmodule Logflare.Logs do
     AllLogsLogged.incriment(@system_counter)
 
     broadcast_log_count(source.token)
-    broadcast_total_log_count()
 
     LogflareWeb.Endpoint.broadcast(
       "source:#{source.token}",
@@ -190,13 +189,5 @@ defmodule Logflare.Logs do
       "dashboard:#{source_table_string}:log_count",
       payload
     )
-  end
-
-  @spec broadcast_total_log_count() :: :ok | {:error, any()}
-  def broadcast_total_log_count() do
-    {:ok, log_count} = AllLogsLogged.log_count(@system_counter)
-    payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
-
-    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
   end
 end
