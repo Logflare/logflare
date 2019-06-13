@@ -62,7 +62,11 @@ defmodule Logflare.Logs do
 
     {message, body} = Map.pop(log_event.body, :message)
 
-    payload = Map.put(body, :log_message, message)
+    payload =
+      body
+      |> Map.put(:log_message, message)
+      |> Map.from_struct()
+
     time_event = build_time_event(body.timestamp)
     time_log_event = {time_event, payload}
 

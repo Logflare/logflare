@@ -3,10 +3,10 @@ defmodule Logflare.LogEvent do
   import Ecto.Changeset
   alias Logflare.Logs.Injest.MetadataCleaner
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.{ EqDeepFieldTypes, BigQuerySchemaChange, BigQuerySchemaSpec
-  }
+  alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaSpec}
 
-   @validators [EqDeepFieldTypes, BigQuerySchemaSpec]
+  @validators [EqDeepFieldTypes, BigQuerySchemaSpec]
+
   defmodule Body do
     @moduledoc false
     use Ecto.Schema
@@ -30,7 +30,23 @@ defmodule Logflare.LogEvent do
   def mapper(params) do
     message = params["log_entry"] || params["message"]
     metadata = params["metadata"]
-    timestamp = params["timestamp"] || System.system_time(:microsecond)
+
+    timestamp =
+      case params["timestamp"] do
+        x when is_binary(x) ->
+          unix =
+            x
+            |> Timex.parse!("{ISO:Extended}")
+            |> Timex.to_unix()
+
+          unix * 1_000_000
+
+        x when is_integer(x) ->
+          x
+
+        nil ->
+          System.system_time(:microsecond)
+      end
 
     %{
       "body" => %{

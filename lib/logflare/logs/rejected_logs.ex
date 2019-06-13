@@ -28,14 +28,14 @@ defmodule Logflare.Logs.RejectedEvents do
   Expected to be called only in a log event params validation plug
   """
   @spec injest(LogEvent.t()) :: term
-  def injest(%LogEvent{body: body, source: %Source{token: token}} = le) do
+  def injest(%LogEvent{body: body, source: %Source{}, valid?: false} = le) do
     log = %{
       message: le.validation_error,
       body: body,
       timestamp: body.timestamp
     }
 
-    insert(token, log)
+    insert(le.source.token, log)
   end
 
   defp get!(key) do
