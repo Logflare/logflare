@@ -1,4 +1,4 @@
-defmodule Logflare.SystemMetrics.AllLogsLogged.PerSecond do
+defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   use GenServer
 
   alias Logflare.SystemMetrics.AllLogsLogged

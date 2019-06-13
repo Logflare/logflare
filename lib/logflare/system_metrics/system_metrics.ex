@@ -10,9 +10,9 @@ defmodule Logflare.SystemMetrics do
   @impl true
   def init(_init_arg) do
     children = [
-      {SystemMetrics.Observer.PerSecond, []},
+      {SystemMetrics.Observer.Poller, []},
       {SystemMetrics.AllLogsLogged, []},
-      {SystemMetrics.AllLogsLogged.PerSecond, []}
+      {SystemMetrics.AllLogsLogged.Poller, []}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

@@ -14,4 +14,14 @@ defmodule Logflare.SystemMetrics.Observer do
   def get_memory() do
     :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end)
   end
+
+  def get_processes() do
+    for {{:registered_name, name}, {:reductions, reds}} <-
+          Stream.map(
+            Process.list(),
+            &{Process.info(&1, :registered_name), Process.info(&1, :reductions)}
+          ),
+        into: %{},
+        do: {name, reds}
+  end
 end
