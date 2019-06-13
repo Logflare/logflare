@@ -1,33 +1,33 @@
-defmodule Logflare.Logs.Next do
+defmodule Logflare.Logs do
   require Logger
   use Publicist
-  alias Logflare.Validators.{DeepFieldTypes, BigQuerySchemaChange, BigQuerySchemaSpec}
 
-  alias Logflare.{
-    SystemCounter,
-    Source,
-    Sources
-  }
+  alias Logflare.LogEvent
+  alias Logflare.LogEvent, as: LE
 
+  alias Logflare.{SystemCounter, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
-  alias Logflare.Logs.{Injest, RejectedEvents}
+  alias Logflare.Logs.{RejectedEvents}
   alias Logflare.Sources.Counters
   alias Number.Delimit
 
   @system_counter :total_logs_logged
 
   @spec injest_logs(list(map), Source.t()) :: :ok | {:error, term}
-  def injest_logs(batch, %Source{} = source) when is_list(batch) do
-    batch
-    |> Enum.map(&munge/1)
-    |> Enum.map(&validate(&1, source))
-    |> Enum.map(fn %{valid: valid} = log ->
-      if valid, do: injest(log, source), else: RejectedEvents.injest(log)
+  def injest_logs(log_params_batch, %Source{} = source) do
+    log_params_batch
+    |> Enum.map(&LogEvent.make(&1, %{source: source}))
+    |> Enum.map(fn log_event ->
+      if log_event.valid? do
+        injest(log_event)
+      else
+        RejectedEvents.injest(log_event)
+      end
 
-      log
+      log_event
     end)
     |> Enum.reduce([], fn log, acc ->
-      if log.valid do
+      if log.valid? do
         acc
       else
         [log.validation_error | acc]
@@ -39,39 +39,9 @@ defmodule Logflare.Logs.Next do
     end
   end
 
-  defp munge(log_params) do
-    metadata = log_params["metadata"]
-    timestamp = log_params["timestamp"] || System.system_time(:microsecond)
-    message = log_params["log_entry"] || log_params["message"]
-
-    %{
-      message: message,
-      metadata: metadata,
-      timestamp: timestamp
-    }
-    |> Injest.MetadataCleaner.deep_reject_nil_and_empty()
-  end
-
-  @spec validate(map(), Source.t()) :: map()
-  def validate(log, source) when is_map(log) do
-    [DeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange]
-    |> Enum.reduce_while(true, fn validator, _acc ->
-      case validator.validate(%{log: log, source: source}) do
-        :ok ->
-          {:cont, Map.put(log, :valid, true)}
-
-        {:error, message} ->
-          {:halt,
-           log
-           |> Map.put(:valid, false)
-           |> Map.put(:validation_error, message)}
-      end
-    end)
-  end
-
-  defp injest(log_event, source) do
-    injest_by_source_rules(log_event, source)
-    injest_and_broadcast(log_event, source)
+  defp injest(%LE{} = log_event) do
+    injest_by_source_rules(log_event, log_event.source)
+    injest_and_broadcast(log_event, log_event.source)
   end
 
   defp injest_by_source_rules(log_event, %Source{} = source) do
@@ -79,6 +49,7 @@ defmodule Logflare.Logs.Next do
       sink_source = Sources.Cache.get_by(token: rule.sink)
 
       if sink_source do
+        # FIXME double counting log event counts here
         injest_and_broadcast(sink_source, log_event)
       else
         Logger.error("Sink source for token UUID #{rule.sink} doesn't exist")
@@ -87,33 +58,15 @@ defmodule Logflare.Logs.Next do
   end
 
   defp injest_and_broadcast(log_event, %Source{} = source) do
-    %{
-      message: message,
-      metadata: metadata,
-      timestamp: timestamp
-    } = log_event
-
     source_table_string = Atom.to_string(source.token)
 
-    payload =
-      if metadata do
-        %{timestamp: timestamp, log_message: message, metadata: metadata}
-      else
-        %{timestamp: timestamp, log_message: message}
-      end
+    {message, body} = Map.pop(log_event.body, :message)
 
-    time_event =
-      timestamp
-      |> build_time_event()
-
+    payload = Map.put(body, :log_message, message)
+    time_event = build_time_event(body.timestamp)
     time_log_event = {time_event, payload}
 
-    if :ets.info(source.token) == :undefined do
-      RecentLogsServer.push(source.token, time_log_event)
-    else
-      :ets.insert(source.token, time_log_event)
-    end
-
+    RecentLogsServer.push(source.token, time_log_event)
     Buffer.push(source_table_string, time_log_event)
     Sources.Counters.incriment(source.token)
     SystemCounter.incriment(@system_counter)
