@@ -44,10 +44,13 @@ defmodule LogflareWeb.LogControllerTest do
       conn =
         conn
         |> put_req_header("x-api-key", u.api_key)
-        |> post(log_path(conn, :create), %{
-          "log_entry" => "valid log entry",
-          "source_name" => "%%%unknown%%%"
-        })
+        |> post(
+          log_path(conn, :create),
+          %{
+            "log_entry" => "valid log entry",
+            "source_name" => "%%%unknown%%%"
+          }
+        )
 
       assert json_response(conn, 406) == %{
                "message" => "Source or source_name is nil, empty or not found."
@@ -57,10 +60,13 @@ defmodule LogflareWeb.LogControllerTest do
         conn
         |> recycle()
         |> put_req_header("x-api-key", u.api_key)
-        |> post(log_path(conn, :create), %{
-          "log_entry" => "valid log entry",
-          "source" => Faker.UUID.v4()
-        })
+        |> post(
+          log_path(conn, :create),
+          %{
+            "log_entry" => "valid log entry",
+            "source" => Faker.UUID.v4()
+          }
+        )
 
       assert json_response(conn, 406) == %{
                "message" => "Source or source_name is nil, empty or not found."
@@ -68,7 +74,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test "with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do
-      err_message = %{"message" => "Log entry needed."}
+      err_message = %{"message" => ["message: can't be blank\n"]}
 
       for log_entry <- [%{}, nil, [], ""] do
         conn =
@@ -83,6 +89,7 @@ defmodule LogflareWeb.LogControllerTest do
             }
           )
 
+        assert conn.halted
         assert json_response(conn, 406) == err_message
       end
     end
@@ -146,13 +153,16 @@ defmodule LogflareWeb.LogControllerTest do
     setup [:allow_mocks]
 
     test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
-      log_event = build_log_event()
+      log_params = build_log_params()
 
       conn =
         conn
         |> assign(:user, u)
         |> assign(:source, s)
-        |> post(log_path(conn, :elixir_logger), %{"batch" => [log_event, log_event, log_event]})
+        |> post(
+          log_path(conn, :elixir_logger),
+          %{"batch" => [log_params, log_params, log_params]}
+        )
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert_called Sources.Counters.incriment(s.token), times(3)
@@ -174,6 +184,7 @@ defmodule LogflareWeb.LogControllerTest do
             log_path(conn, :create),
             %{
               "log_entry" => "valid",
+              "level" => "info",
               "metadata" => metadata
             }
           )
@@ -228,12 +239,11 @@ defmodule LogflareWeb.LogControllerTest do
     }
   end
 
-  def build_log_event() do
+  def build_log_params() do
     %{
       "message" => "log message",
       "metadata" => %{},
-      "timestamp" => NaiveDateTime.to_iso8601(NaiveDateTime.utc_now()),
-      "level" => "info"
+      "timestamp" => System.system_time(:microsecond)
     }
   end
 end
