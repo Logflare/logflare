@@ -2,7 +2,11 @@ defmodule Logflare.LogEvent do
   use Ecto.Schema
   import Ecto.Changeset
   alias Logflare.Logs.Injest.MetadataCleaner
+  alias __MODULE__, as: LE
+  alias Logflare.Logs.Validators.{ EqDeepFieldTypes, BigQuerySchemaChange, BigQuerySchemaSpec
+  }
 
+   @validators [EqDeepFieldTypes, BigQuerySchemaSpec]
   defmodule Body do
     @moduledoc false
     use Ecto.Schema
@@ -63,6 +67,20 @@ defmodule Logflare.LogEvent do
     ])
     |> validate_required([:message, :timestamp])
     |> validate_length(:message, min: 1)
+  end
+
+  @spec validate(LE.t()) :: LE.t()
+  def validate(%LE{} = le) do
+    @validators
+    |> Enum.reduce_while(true, fn validator, _acc ->
+      case validator.validate(le) do
+        :ok ->
+          {:cont, %{le | valid?: true}}
+
+        {:error, message} ->
+          {:halt, %{le | valid?: false, validation_error: message}}
+      end
+    end)
   end
 
   def changeset_error_to_string(changeset) do
