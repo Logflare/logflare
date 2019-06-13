@@ -1,5 +1,6 @@
 defmodule Logflare.Logs.RejectedEvents do
   alias Logflare.{Source, User}
+  alias Logflare.LogEvent
   @cache __MODULE__
 
   @type rejected_log_event :: %{
@@ -26,14 +27,12 @@ defmodule Logflare.Logs.RejectedEvents do
   @doc """
   Expected to be called only in a log event params validation plug
   """
-  @spec injest(%{log: map, source: Source.t()}) :: term
-  def injest(%{log: log, source: %Source{token: token}}) do
-    timestamp = log[:timestamp] || 1_000_000 * (Timex.now() |> Timex.to_unix())
-
+  @spec injest(LogEvent.t()) :: term
+  def injest(%LogEvent{body: body, source: %Source{token: token}} = le) do
     log = %{
-      message: log.validation_error,
-      log: log,
-      timestamp: timestamp
+      message: le.validation_error,
+      body: body,
+      timestamp: body.timestamp
     }
 
     insert(token, log)
