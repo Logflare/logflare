@@ -23,12 +23,12 @@ defmodule Logflare.SystemMetrics.Procs do
     #    schedulers_usage =
     #      LoadControl.SchedulerMonitor.usage(wall_times) / :erlang.system_info(:schedulers_online)
 
-    total_reds_delta = final_processes |> Stream.map(& &1.reds) |> Enum.sum()
+    # total_reds_delta = final_processes |> Stream.map(& &1.reds) |> Enum.sum()
 
     final_processes
     |> Enum.sort_by(& &1.reds, &>=/2)
     |> Stream.take(10)
-    |> Enum.map(&%{name: &1.name, reds: total_reds_delta})
+    |> Enum.map(&%{name: &1.name, reds: &1.reds})
 
     # |> Enum.map(&%{pid: &1.pid, cpu: round(schedulers_usage * 100 * &1.reds / total_reds_delta)})
   end

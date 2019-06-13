@@ -23,7 +23,7 @@ defmodule Logflare.SystemMetrics do
     processes = Procs.top(@collect_procs_for)
     {:ok, all_logs_logged} = AllLogsLogged.log_count(:total_logs_logged)
 
-    for proc <- processes, do: LogflareLogger.info("Process metrics!", processes: proc)
+    LogflareLogger.info("Process metrics!", processes: processes)
     LogflareLogger.info("Observer metrics!", observer_metrics: observer_metrics)
     LogflareLogger.info("All logs logged!", all_logs_logged: all_logs_logged)
 
