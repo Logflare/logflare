@@ -119,7 +119,7 @@ defmodule Logflare.Source.RecentLogsServer do
       payload = %{timestamp: timestamp, log_message: log_message}
       log = {time_event, payload}
 
-      Logs.insert_or_push(source_id, log)
+      push(source_id, log)
 
       case :ets.info(LogflareWeb.Endpoint) do
         :undefined ->
