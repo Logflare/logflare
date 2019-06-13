@@ -10,4 +10,8 @@ defmodule Logflare.SystemMetrics.Observer do
       end
     end)
   end
+
+  def get_memory() do
+    :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end)
+  end
 end

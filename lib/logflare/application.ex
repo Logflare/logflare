@@ -21,7 +21,6 @@ defmodule Logflare.Application do
       # init Counters before Manager as Manager calls Counters through table create
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.SystemMetrics, []),
-      supervisor(Logflare.SystemMetrics.AllLogsLogged, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(LogflareWeb.Endpoint, [])
     ]

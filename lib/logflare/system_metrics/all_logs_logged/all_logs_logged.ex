@@ -9,8 +9,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   @table_path "system-table"
   @persist_every 60_000
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(init_args) do
+    GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
   def init(state) do
