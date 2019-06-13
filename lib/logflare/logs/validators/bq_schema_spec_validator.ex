@@ -1,16 +1,20 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaSpec do
+  alias Logflare.LogEvent, as: LE
   @moduledoc false
 
   import Ecto.Changeset
   defguard is_enum?(v) when is_map(v) or is_list(v)
 
-  @spec validate([map] | map) :: :ok | {:error, String.t()}
-  def validate(map) do
+  def validate(%LE{body: %{metadata: map}}) do
     if valid?(map) do
       :ok
     else
       {:error, message()}
     end
+  end
+
+  def validate(%{log_event: %{body: _}}) do
+    :ok
   end
 
   @doc """

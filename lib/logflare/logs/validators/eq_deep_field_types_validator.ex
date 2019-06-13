@@ -1,16 +1,20 @@
 defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
+  alias Logflare.LogEvent, as: LE
   @moduledoc """
   Validates that types of values for the same field path are the same
   """
 
   # Public
-  @spec validate(%{metadata: map}) :: :ok | {:error, String.t()}
-  def validate(%{metadata: metadata}) do
+  def validate(%LE{body: %{metadata: metadata}}) do
     if valid?(metadata) do
       :ok
     else
       {:error, message()}
     end
+  end
+
+  def validate(%{log_event: %{body: _}}) do
+    :ok
   end
 
   @spec valid?(map()) :: boolean()
