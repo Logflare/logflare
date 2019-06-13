@@ -51,11 +51,16 @@ defmodule Logflare.LogEvent do
 
     body = struct!(Body, changeset.changes.body.changes)
 
-    struct!(__MODULE__, changeset.changes)
+    __MODULE__
+    |> struct!(changeset.changes)
     |> Map.put(:body, body)
-    |> Map.put(:validation_error, changeset_error_to_string(changeset))
+    |> Map.put(
+      :validation_error,
+      changeset_error_to_string(changeset) <> changeset_error_to_string(changeset.changes.body)
+    )
     |> Map.put(:source, source)
     |> Map.put(:valid?, changeset.valid?)
+    |> validate()
   end
 
   def make_body(_struct, params) do
@@ -90,7 +95,7 @@ defmodule Logflare.LogEvent do
       end)
     end)
     |> Enum.reduce("", fn {k, v}, acc ->
-      joined_errors = Enum.join(v, "; ")
+      joined_errors = inspect(v)
       "#{acc}#{k}: #{joined_errors}\n"
     end)
   end
