@@ -1,5 +1,4 @@
 /* This file is for your main application css. */
-
 @import "~bootstrap/scss/bootstrap";
 @import "dashboard";
 @import "header";
@@ -11,44 +10,33 @@ body {
   color: #9a9a9a;
 }
 
-
-
-
-
 .form-text {
   margin-bottom: 1em;
 }
 
-
 .pre-metadata {
   padding: 20px;
-  font-size: .75em;
+  font-size: 0.75em;
   margin-top: 1rem;
 }
 
 .metadata {
-  padding-top: 0px;
+  padding-top: 0;
 }
-
-
-
-
 
 .source-meta-data {
   margin-left: 2em;
 }
 
-
-
 .input_container input.form-control {
- display: inline-block;
- margin: 0 1em 1em 0;
- width: 90%;
+  display: inline-block;
+  margin: 0 1em 1em 0;
+  width: 90%;
 }
 
 .blockquote {
   margin-top: 2em;
-  margin-bottom: .5em;
+  margin-bottom: 0.5em;
   font-size: 1.75em;
 }
 
@@ -63,9 +51,9 @@ body {
 }
 
 .modal-header {
-  border-bottom: 0px;
+  border-bottom: 0;
   border-top-left-radius: 0.1rem;
-  border-top-right-radius: .1rem;
+  border-top-right-radius: 0.1rem;
 }
 
 .modal-content {
@@ -76,38 +64,29 @@ body {
   max-width: 300px;
 }
 
-
 .login-icon {
   padding-right: 10px;
 }
-
-
 
 .source-link {
   margin-left: 2em;
   width: 65%;
 }
 
-
-
-
-
 .form-button {
   margin-bottom: 1em;
 }
 
-.rules-input{
+.rules-input {
   display: block;
 }
 
 .rules {
   display: inline-block;
   width: 35%;
-  margin: 0 1em 0 0 ;
+  margin: 0 1em 0 0;
   vertical-align: top;
 }
-
-
 
 .copyable-code {
   font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
@@ -125,26 +104,16 @@ body {
 
 .textarea-container {
   overflow-y: scroll;
-
 }
-
-
 
 .col-lg-4 {
-  padding-top: 1em;
-  padding-bottom: 1em;
-  padding-right: 1.5em;
-  padding-left: 1.5em;
+  padding: 1em 1.5em;
 }
-
-
 
 #no-logs-warning {
   margin-right: 10%;
   max-width: 800px;
 }
-
-
 
 main {
   margin-top: 110px;
@@ -153,7 +122,7 @@ main {
 
 .alert-info a {
   color: white;
-  text-shadow: 0px;
+  text-shadow: 0;
 }
 
 code {
@@ -166,7 +135,6 @@ code {
 
 h2 {
   color: #fff;
-
 }
 
 h3 {
@@ -178,39 +146,35 @@ h4 {
   margin-top: 1em;
 }
 
-
-
 .footer {
   margin-top: 4em;
 }
 
 .help-block {
-    color: red;
-    text-transform: uppercase;
-    font-size: .75rem;
+  color: red;
+  text-transform: uppercase;
+  font-size: 0.75rem;
 }
 
-.log-settings a, .log-settings a:hover  {
+.log-settings a,
+.log-settings a:hover {
   text-decoration: none;
   color: black;
 }
 
-
-
-
 .alert {
-  border-radius: .25rem;
-  margin-bottom: 0rem;
+  border-radius: 0.25rem;
+  margin-bottom: 0;
 }
 
 .alert-warning {
   background-color: #f8f854;
-  border-width: 0px;
+  border-width: 0;
 }
 
 .alert-info {
   background-color: #00ccff;
-  border-width: 0px;
+  border-width: 0;
 }
 
 pre {
@@ -219,24 +183,21 @@ pre {
 }
 
 .message {
-    position: fixed;
-    top: 25px;
-    left: 25px;
-    width: 250px;
-    z-index: 1050;
+  position: fixed;
+  top: 25px;
+  left: 25px;
+  width: 250px;
+  z-index: 1050;
 }
+
 .inner-message {
-    color: black;
-    margin: 0 auto;
+  color: black;
+  margin: 0 auto;
 }
-
-
 
 .close {
-    text-shadow: 1px 1px 1px #ffffff75;
+  text-shadow: 1px 1px 1px #ffffff75;
 }
-
-
 
 a {
   color: #e35b8d;
@@ -254,22 +215,9 @@ mark {
   background-color: #5eeb8f;
 }
 
-
-
-
-
-
-
-
-
-
 .example-log-code {
   font-size: 10px;
 }
-
-
-
-
 
 #console-text {
   font-family: monospace;
@@ -285,10 +233,8 @@ mark {
 }
 
 .console-text-list {
-  margin: 0px;
+  margin: 0;
 }
-
-
 
 .container {
   max-width: 95%;
@@ -304,8 +250,6 @@ mark {
   max-width: 90%;
 }
 
-
-
 .fade-in {
   animation: fadeIn ease 1s;
   -webkit-animation: fadeIn ease 1s;
@@ -313,48 +257,47 @@ mark {
   -o-animation: fadeIn ease 1s;
   -ms-animation: fadeIn ease 1s;
 }
-
-
-@keyframes fadeIn{
+@keyframes fadeIn {
   0% {
     background-color: #00ccff;
   }
+
   100% {
     background-color: #92DF78;
   }
 }
-
 @-moz-keyframes fadeIn {
   0% {
     background-color: #00ccff;
   }
+
   100% {
     background-color: #92DF78;
   }
 }
-
 @-webkit-keyframes fadeIn {
   0% {
     background-color: #00ccff;
   }
+
   100% {
     background-color: #92DF78;
   }
 }
-
 @-o-keyframes fadeIn {
   0% {
     background-color: #00ccff;
   }
+
   100% {
     background-color: #92DF78;
   }
 }
-
 @-ms-keyframes fadeIn {
   0% {
     background-color: #00ccff;
   }
+
   100% {
     background-color: #92DF78;
   }
@@ -367,60 +310,49 @@ mark {
   -o-animation: flashText ease 1s;
   -ms-animation: flashText ease 1s;
 }
-
-
-@keyframes flashText{
+@keyframes flashText {
   0% {
     color: #00ccff;
   }
-  100% {
-  }
-}
 
+  100% {}
+}
 @-moz-keyframes flashText {
   0% {
     color: #00ccff;
   }
-  100% {
-  }
-}
 
+  100% {}
+}
 @-webkit-keyframes flashText {
   0% {
     color: #00ccff;
   }
-  100% {
-  }
-}
 
+  100% {}
+}
 @-o-keyframes flashText {
   0% {
     color: #00ccff;
   }
-  100% {
-  }
-}
 
+  100% {}
+}
 @-ms-keyframes flashText {
   0% {
     color: #00ccff;
   }
-  100% {
-  }
-}
 
+  100% {}
+}
 @media (min-width: 992px) {
   .value {
     margin-right: 15%;
     margin-left: 15%;
   }
-
 }
-
 @media screen and (max-width: 990px) {
-
-    .hide-on-mobile {
-      display: none!important;
-    }
-
+  .hide-on-mobile {
+    display: none!important;
+  }
 }

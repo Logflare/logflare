@@ -11,7 +11,7 @@
   background-color: #333;
   border-radius: 3px;
   transform: rotate(3deg);
-  box-shadow: 0px 0px 35px rgba(0,0,0,.25);
+  box-shadow: 0 0 35px rgba(0,0,0,.25);
 }
 
 .footer-list {
@@ -27,12 +27,9 @@
   font-size: 2em;
 }
 
-
 #total-logged {
   color: #fff;
 }
-
-
 
 #pwa {
   display: flex;
@@ -40,7 +37,7 @@
 }
 
 #pwa h3 {
-  margin-top: 0px;
+  margin-top: 0;
 }
 
 #pwa img {
@@ -56,11 +53,10 @@
 }
 
 #feature-list li:before {
-  margin-right: .5em;
-  margin-left: .75em;
+  margin-right: 0.5em;
+  margin-left: 0.75em;
   color: #f58220;
 }
-
 @media screen and (max-width: 990px) {
   #pwa {
     flex-direction: column;
