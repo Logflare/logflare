@@ -15,8 +15,21 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     end
   end
 
+  def valid?(nil, _), do: true
+  def valid?(_, nil), do: true
+  def valid?(_, %{}), do: true
+
   def valid?(metadata, existing_schema) do
-    to_typemap(metadata) == to_typemap(existing_schema, from: :bigquery_schema)
+    resolver = fn
+       (_, original, override) when is_atom(original) and is_atom(override) ->
+         if original != override, do: throw(:type_error)
+       (_, _original, _override) ->
+         DeepMerge.continue_deep_merge
+       end
+
+    new_typemap = to_typemap(metadata)
+    existing_typemap = to_typemap(existing_schema, from: :bigquery_schema).metadata.fields
+    DeepMerge.deep_merge(new_typemap, existing_typemap, resolver)
   end
 
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
