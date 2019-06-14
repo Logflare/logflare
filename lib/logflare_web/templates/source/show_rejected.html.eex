@@ -18,15 +18,15 @@
   <%= @logs |> Enum.with_index |> Enum.map(fn {log_event, inx} -> %>
 
     <li>
-      <mark class="log_event-datestamp" data-timestamp="<%= log_event.timestamp %>">
-         <%= log_event.timestamp %>
+      <mark class="log_event-datestamp" data-timestamp="<%= log_event.injested_at %>">
+         <%= log_event.injested_at %>
       </mark>
-      <%= log_event.message %>
+      <%= log_event.validation_error %>
       <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
-        payload
+        log payload
       </a>
       <div class="collapse metadata" id="metadata-<%= inx %>">
-        <pre class="pre-metadata"><code><%= Jason.encode!(log_event.body.metadata, pretty: true) %></code></pre>
+        <pre class="pre-metadata"><code><%= Jason.encode!(log_event.params, pretty: true) %></code></pre>
       </div>
     </li>
   <% end) %>
