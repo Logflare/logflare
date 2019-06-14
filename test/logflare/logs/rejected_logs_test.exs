@@ -1,6 +1,6 @@
-defmodule Logflare.Logs.RejectedEventsTest do
+defmodule Logflare.Logs.RejectedLogEventsTest do
   @moduledoc false
-  alias Logflare.Logs.RejectedEvents
+  alias Logflare.Logs.RejectedLogEvents
   alias Logflare.{Sources, Source, Users, LogEvent}
   import Logflare.DummyFactory
   use Logflare.DataCase
@@ -30,28 +30,30 @@ defmodule Logflare.Logs.RejectedEventsTest do
       timestamp = System.system_time(:microsecond)
 
       log_event = %LogEvent{
-        body: %{
-          message: "test",
-          metadata: %{
+        params: %{
+          "message" => "test",
+          "metadata" => %{
             "ip" => "0.0.0.0"
-          },
-          timestamp: timestamp
+          }
         },
         validation_error: validator.message(),
-        source: source
+        source: source,
+        injested_at: timestamp,
+        valid?: false
       }
 
-      _ = RejectedEvents.injest(log_event)
+      _ = RejectedLogEvents.injest(log_event)
 
-      cached = RejectedEvents.get_by_source(source)
+      [rle] = RejectedLogEvents.get_by_source(source)
 
-      assert [%{message: validator_message, body: log_event, timestamp: _}] = cached
+      assert rle.injested_at == timestamp
+      assert rle.params == log_event.params
     end
 
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
       source1 = Sources.get_by(token: s1.token)
       source2 = Sources.get_by(token: s2.token)
-      _user = Users.get_by(id: u1.id)
+      user = Users.get_by(id: u1.id)
 
       validator = Logflare.Logs.Validators.EqDeepFieldTypes
       timestamp = System.system_time(:microsecond)
@@ -64,7 +66,7 @@ defmodule Logflare.Logs.RejectedEventsTest do
           },
           timestamp: timestamp
         },
-        source: s1,
+        source: source1,
         valid?: false,
         validation_error: validator.message()
       }
@@ -77,7 +79,7 @@ defmodule Logflare.Logs.RejectedEventsTest do
           },
           timestamp: timestamp
         },
-        source: s1,
+        source: source1,
         valid?: false,
         validation_error: validator.message()
       }
@@ -90,27 +92,32 @@ defmodule Logflare.Logs.RejectedEventsTest do
           },
           timestamp: timestamp
         },
-        source: s2,
+        source: source2,
         valid?: false,
         validation_error: validator.message()
       }
 
-      _ = RejectedEvents.injest(log_event_1_source_1)
-      _ = RejectedEvents.injest(log_event_2_source_1)
-      _ = RejectedEvents.injest(log_event_1_source_2)
+      _ = RejectedLogEvents.injest(log_event_1_source_1)
+      _ = RejectedLogEvents.injest(log_event_2_source_1)
+      _ = RejectedLogEvents.injest(log_event_1_source_2)
 
-      result = RejectedEvents.get_by_user(u1)
+      result = RejectedLogEvents.get_by_user(user)
 
       assert map_size(result) == 2
 
       assert [
-               %{message: validator_message, body: raw_logs_source_1, timestamp: _},
-               %{message: validator_message, body: raw_logs_source_1, timestamp: _}
-             ] = result[s1.token]
+               %LogEvent{validation_error: validator_message, body: _, params: _, injested_at: _},
+               %LogEvent{validation_error: validator_message, body: _, params: _, injested_at: _}
+             ] = result[source1.token]
 
       assert [
-               %{message: validator_message, body: raw_logs_source_2, timestamp: _}
-             ] = result[s2.token]
+               %LogEvent{
+                 validation_error: validator_message,
+                 body: _,
+                 params: _,
+                 injested_at: _
+               }
+             ] = result[source2.token]
     end
   end
 end

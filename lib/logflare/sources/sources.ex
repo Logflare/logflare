@@ -36,9 +36,9 @@ defmodule Logflare.Sources do
 
   def refresh_source_metrics(%Source{token: token} = source) do
     import Logflare.Source.Data
-    alias Logflare.Logs.RejectedEvents
+    alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
-    rejected_count = RejectedEvents.get_by_source(source)
+    rejected_count = RejectedLogEvents.get_by_source(source)
 
     metrics = %Source.Metrics{
       rate: get_rate(token),

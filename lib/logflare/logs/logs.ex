@@ -7,7 +7,7 @@ defmodule Logflare.Logs do
 
   alias Logflare.{SystemCounter, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
-  alias Logflare.Logs.{RejectedEvents}
+  alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.Sources.Counters
   alias Number.Delimit
 
@@ -21,7 +21,7 @@ defmodule Logflare.Logs do
       if log_event.valid? do
         injest(log_event)
       else
-        RejectedEvents.injest(log_event)
+        RejectedLogEvents.injest(log_event)
       end
 
       log_event
