@@ -8,6 +8,11 @@ defmodule LogflareWeb.LogControllerTest do
   setup do
     import Logflare.DummyFactory
 
+    allow SystemCounter.log_count(any()), return: {:ok, 0}
+    allow SystemCounter.incriment(any()), return: :ok
+
+    Sources.Counters.start_link()
+
     u1 = insert(:user)
     u2 = insert(:user)
 
@@ -89,9 +94,43 @@ defmodule LogflareWeb.LogControllerTest do
             }
           )
 
-        assert conn.halted
         assert json_response(conn, 406) == err_message
+        assert_called SystemCounter.incriment(any()), once()
+        assert_called SystemCounter.log_count(any()), once()
       end
+    end
+
+    test "with invalid field types", %{conn: conn, users: [u | _], sources: [s | _]} do
+      err_message = %{
+        "message" => [
+          "Metadata validation error: values with the same field path must have the same type."
+        ]
+      }
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(
+          log_path(conn, :create),
+          %{
+            "metadata" => %{
+              "users" => [
+                %{
+                  "id" => 1
+                },
+                %{
+                  "id" => "2"
+                }
+              ]
+            },
+            "source" => Atom.to_string(s.token),
+            "log_entry" => "valid"
+          }
+        )
+
+      assert json_response(conn, 406) == err_message
+      refute_called SystemCounter.incriment(any()), once()
+      refute_called SystemCounter.log_count(any()), once()
     end
 
     test "fails for unauthorized user", %{conn: conn, users: [u1, u2], sources: [s]} do
