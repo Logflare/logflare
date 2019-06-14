@@ -6,7 +6,7 @@
 @import "marketing";
 
 body {
-  background-color: #161616;
+  background-color: #1d1d1d;
   color: #9a9a9a;
 }
 
@@ -222,7 +222,7 @@ mark {
 #console-text {
   font-family: monospace;
   font-size: 1em;
-  color: #e3e3e3;
+  color: #acacac;
   word-break: break-word;
   overflow-wrap: break-word;
   /* overflow-x: scroll;
@@ -259,47 +259,47 @@ mark {
 }
 @keyframes fadeIn {
   0% {
-    background-color: #00ccff;
+    background-color: #2a6cce;
   }
 
   100% {
-    background-color: #92DF78;
+    background-color: #5eeb8f;
   }
 }
 @-moz-keyframes fadeIn {
   0% {
-    background-color: #00ccff;
+    background-color: #2a6cce;
   }
 
   100% {
-    background-color: #92DF78;
+    background-color: #5eeb8f;
   }
 }
 @-webkit-keyframes fadeIn {
   0% {
-    background-color: #00ccff;
+    background-color: #2a6cce;
   }
 
   100% {
-    background-color: #92DF78;
+    background-color: #5eeb8f;
   }
 }
 @-o-keyframes fadeIn {
   0% {
-    background-color: #00ccff;
+    background-color: #2a6cce;
   }
 
   100% {
-    background-color: #92DF78;
+    background-color: #5eeb8f;
   }
 }
 @-ms-keyframes fadeIn {
   0% {
-    background-color: #00ccff;
+    background-color: #2a6cce;
   }
 
   100% {
-    background-color: #92DF78;
+    background-color: #5eeb8f;
   }
 }
 
@@ -312,35 +312,35 @@ mark {
 }
 @keyframes flashText {
   0% {
-    color: #00ccff;
+    color: #2a6cce;
   }
 
   100% {}
 }
 @-moz-keyframes flashText {
   0% {
-    color: #00ccff;
+    color: #2a6cce;
   }
 
   100% {}
 }
 @-webkit-keyframes flashText {
   0% {
-    color: #00ccff;
+    color: #2a6cce;
   }
 
   100% {}
 }
 @-o-keyframes flashText {
   0% {
-    color: #00ccff;
+    color: #2a6cce;
   }
 
   100% {}
 }
 @-ms-keyframes flashText {
   0% {
-    color: #00ccff;
+    color: #2a6cce;
   }
 
   100% {}
