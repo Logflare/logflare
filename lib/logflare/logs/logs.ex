@@ -5,7 +5,8 @@ defmodule Logflare.Logs do
   alias Logflare.LogEvent
   alias Logflare.LogEvent, as: LE
 
-  alias Logflare.{SystemCounter, Source, Sources}
+  alias Logflare.{SystemMetrics, Source, Sources}
+
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.Sources.Counters
@@ -73,10 +74,9 @@ defmodule Logflare.Logs do
     RecentLogsServer.push(source.token, time_log_event)
     Buffer.push(source_table_string, time_log_event)
     Sources.Counters.incriment(source.token)
-    SystemCounter.incriment(@system_counter)
+    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
     broadcast_log_count(source.token)
-    broadcast_total_log_count()
 
     LogflareWeb.Endpoint.broadcast(
       "source:#{source.token}",
