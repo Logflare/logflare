@@ -17,7 +17,7 @@ defmodule Logflare.Logs do
   def injest_logs(log_params_batch, %Source{} = source) do
     log_params_batch
     |> Enum.map(&LogEvent.make(&1, %{source: source}))
-    |> Enum.map(fn log_event ->
+    |> Enum.map(fn %LE{} = log_event ->
       if log_event.valid? do
         injest(log_event)
       else
