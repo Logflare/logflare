@@ -1,12 +1,15 @@
 defmodule LogflareWeb.Plugs.RateLimiterTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.{User, Users, Sources}
+  alias Logflare.{Source, User, Users, Sources}
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
   import Logflare.DummyFactory
+  use Placebo
 
   setup do
+    Sources.Counters.start_link()
+
     u1 = insert(:user, api_key: "dummy_key", api_quota: 5)
     u2 = insert(:user, api_key: "other_dummy_key", api_quota: 0)
     s1 = insert(:source, user_id: u1.id)
@@ -19,6 +22,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
     s2 = Sources.get_by(id: s2.id)
     {:ok, _} = RateCounterServer.start_link(s1.token)
     {:ok, _} = RateCounterServer.start_link(s2.token)
+
     {:ok, users: [u1, u2], sources: [s1, s2]}
   end
 
