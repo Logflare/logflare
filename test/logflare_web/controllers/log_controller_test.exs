@@ -1,15 +1,16 @@
 defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.{Sources.Counters, Users, SystemCounter, Sources}
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.{Sources.Counters, Users, Sources}
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   use Placebo
 
   setup do
     import Logflare.DummyFactory
 
-    allow SystemCounter.log_count(any()), return: {:ok, 0}
-    allow SystemCounter.incriment(any()), return: :ok
+    allow AllLogsLogged.log_count(any()), return: {:ok, 0}
+    allow AllLogsLogged.incriment(any()), return: :ok
 
     Sources.Counters.start_link()
 
@@ -95,8 +96,8 @@ defmodule LogflareWeb.LogControllerTest do
           )
 
         assert json_response(conn, 406) == err_message
-        refute_called SystemCounter.incriment(any()), once()
-        refute_called SystemCounter.log_count(any()), once()
+        refute_called AllLogsLogged.incriment(any()), once()
+        refute_called AllLogsLogged.log_count(any()), once()
       end
     end
 
@@ -129,8 +130,8 @@ defmodule LogflareWeb.LogControllerTest do
         )
 
       assert json_response(conn, 406) == err_message
-      refute_called SystemCounter.incriment(any()), once()
-      refute_called SystemCounter.log_count(any()), once()
+      refute_called AllLogsLogged.incriment(any()), once()
+      refute_called AllLogsLogged.log_count(any()), once()
     end
 
     test "fails for unauthorized user", %{conn: conn, users: [u1, u2], sources: [s]} do
@@ -207,8 +208,7 @@ defmodule LogflareWeb.LogControllerTest do
       assert_called Sources.Counters.incriment(s.token), times(3)
       assert_called Sources.Counters.get_total_inserts(s.token), times(3)
       assert_called SourceBuffer.push("#{s.token}", any()), times(3)
-      assert_called SystemCounter.incriment(any()), times(3)
-      assert_called SystemCounter.log_count(any()), times(3)
+      assert_called AllLogsLogged.incriment(any()), times(3)
     end
 
     test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
@@ -237,16 +237,14 @@ defmodule LogflareWeb.LogControllerTest do
     assert_called Sources.Counters.incriment(token), once()
     assert_called Sources.Counters.get_total_inserts(token), once()
     assert_called SourceBuffer.push("#{token}", any()), once()
-    assert_called SystemCounter.incriment(any()), once()
-    assert_called SystemCounter.log_count(any()), once()
+    assert_called AllLogsLogged.incriment(any()), once()
   end
 
   defp allow_mocks(_context) do
     allow Sources.Counters.incriment(any()), return: :ok
     allow SourceBuffer.push(any(), any()), return: :ok
     allow Sources.Counters.get_total_inserts(any()), return: {:ok, 1}
-    allow SystemCounter.incriment(any()), return: :ok
-    allow SystemCounter.log_count(any()), return: {:ok, 1}
+    allow AllLogsLogged.incriment(any()), return: :ok
     :ok
   end
 
