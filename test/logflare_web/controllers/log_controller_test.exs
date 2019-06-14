@@ -79,7 +79,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test "with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do
-      err_message = %{"message" => ["message: can't be blank\n"]}
+      err_message = %{"message" => ["body: %{message: [\"can't be blank\"]}\n"]}
 
       for log_entry <- [%{}, nil, [], ""] do
         conn =
@@ -95,8 +95,8 @@ defmodule LogflareWeb.LogControllerTest do
           )
 
         assert json_response(conn, 406) == err_message
-        assert_called SystemCounter.incriment(any()), once()
-        assert_called SystemCounter.log_count(any()), once()
+        refute_called SystemCounter.incriment(any()), once()
+        refute_called SystemCounter.log_count(any()), once()
       end
     end
 

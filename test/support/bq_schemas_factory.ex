@@ -126,9 +126,7 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
   end
 
   def metadata_factory(%{variant: :third}) do
-    %{
-      "event_message" => "This is an example.",
-      "metadata" => %{
+     %{
         "ip_address" => "100.100.100.100",
         "datacenter" => "aws",
         "request_method" => "POST",
@@ -144,8 +142,6 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
           "login_count" => 154,
           "vip" => true
         }
-      },
-      "timestamp" => ~N[2019-04-12 16:44:38]
-    }
+      }
   end
 end

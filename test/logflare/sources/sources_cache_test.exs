@@ -5,9 +5,11 @@ defmodule Logflare.SourcesCacheTest do
   import Logflare.DummyFactory
 
   setup do
-    r1 = build(:rule)
-    r2 = build(:rule)
     u1 = insert(:user)
+    s01 = insert(:source, user_id: u1.id)
+    s02 = insert(:source, user_id: u1.id)
+    r1 = build(:rule, sink: s01.token)
+    r2 = build(:rule, sink: s02.token)
     source = insert(:source, token: Faker.UUID.v4(), rules: [r1, r2], user_id: u1.id)
     _s2 = insert(:source, token: Faker.UUID.v4(), user_id: u1.id)
     {:ok, source: source}
