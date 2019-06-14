@@ -3,9 +3,9 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs
   @message "Logged!"
 
-  def create(conn, %{"log_entry" => log_entry} = params) when is_binary(log_entry) do
+  def create(conn, log_params) do
     batch =
-      params
+      log_params
       |> Map.take(~w[log_entry metadata timestamp])
       |> List.wrap()
 

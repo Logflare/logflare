@@ -70,10 +70,7 @@ defmodule Logflare.LogEvent do
     __MODULE__
     |> struct!(changeset.changes)
     |> Map.put(:body, body)
-    |> Map.put(
-      :validation_error,
-      changeset_error_to_string(changeset) <> changeset_error_to_string(changeset.changes.body)
-    )
+    |> Map.put(:validation_error, changeset_error_to_string(changeset))
     |> Map.put(:source, source)
     |> Map.put(:valid?, changeset.valid?)
     |> validate()
@@ -91,7 +88,9 @@ defmodule Logflare.LogEvent do
   end
 
   @spec validate(LE.t()) :: LE.t()
-  def validate(%LE{} = le) do
+  def validate(%LE{valid?: false} = le), do: le
+
+  def validate(%LE{valid?: true} = le) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do

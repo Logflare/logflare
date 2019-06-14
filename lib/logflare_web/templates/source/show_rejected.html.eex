@@ -15,18 +15,18 @@
 <div class="container mx-auto" id="console-text">
 <ul id="logs-list" class="list-unstyled console-text-list" hidden>
   <%= if @logs do %>
-  <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
+  <%= @logs |> Enum.with_index |> Enum.map(fn {log_event, inx} -> %>
 
     <li>
-      <mark class="log-datestamp" data-timestamp="<%= log.timestamp %>">
-         <%= log.timestamp %>
+      <mark class="log_event-datestamp" data-timestamp="<%= log_event.timestamp %>">
+         <%= log_event.timestamp %>
       </mark>
-      <%= log.message %>
+      <%= log_event.message %>
       <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
         payload
       </a>
       <div class="collapse metadata" id="metadata-<%= inx %>">
-        <pre class="pre-metadata"><code><%= Jason.encode!(log.payload, pretty: true) %></code></pre>
+        <pre class="pre-metadata"><code><%= Jason.encode!(log_event.body.metadata, pretty: true) %></code></pre>
       </div>
     </li>
   <% end) %>
