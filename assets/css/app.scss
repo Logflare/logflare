@@ -51,11 +51,6 @@ body {
   margin-bottom: 1em;
 }
 
-.favorite {
-  width: 2em;
-  padding-top: .5em;
-  padding-bottom: 1.5em;
-}
 
 .pre-metadata {
   padding: 20px;
@@ -67,13 +62,9 @@ body {
   padding-top: 0px;
 }
 
-.favorite a {
-  color: #fff200;
-}
 
-.favorite a:hover {
-  color: yellow;
-}
+
+
 
 .source-meta-data {
   margin-left: 2em;
@@ -190,7 +181,7 @@ body {
 }
 
 .feature-icons {
-  color: #ff913d;
+  color: #e35b8d;
   width: 50px!important;
 }
 
@@ -281,11 +272,24 @@ h4 {
 
 .dashboard-links:hover {
   text-decoration: none;
+  color: white;
 }
 
 .dashboard-links {
   margin-left: .5em;
+  color: white;
 }
+
+.dashboard a {
+  color: white; }
+  .dashboard .favorite a {
+    color: #fff86c;
+    width: 2em;
+    padding-top: .5em;
+    padding-bottom: 1.5em; }
+  .dashboard .favorite a:hover {
+    color: yellow;
+    }
 
 .help-block {
     color: red;
@@ -308,13 +312,13 @@ h4 {
 }
 
 .btn-primary {
-  background-color: #E35B8D;
-  border-color: #dd76ff;
+  background-color: #2155a3;
+  border-color: #2a6cce;
 }
 
 .btn-primary:hover {
-  background-color: #bf00ff;
-  border-color: #dd76ff;
+  background-color: #2a6cce;
+  border-color: #2a6cce;
 }
 
 .btn-primary.disabled, .btn-primary:disabled {
