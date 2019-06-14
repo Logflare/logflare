@@ -25,6 +25,8 @@ defmodule Logflare.LogEvent do
     field :source, :map
     field :valid?, :boolean
     field :validation_error, {:array, :string}
+    field :injested_at, :naive_datetime
+    field :params, :map
   end
 
   def mapper(params) do
@@ -73,6 +75,8 @@ defmodule Logflare.LogEvent do
     |> Map.put(:validation_error, changeset_error_to_string(changeset))
     |> Map.put(:source, source)
     |> Map.put(:valid?, changeset.valid?)
+    |> Map.put(:params, params)
+    |> Map.put(:injested_at, NaiveDateTime.utc_now())
     |> validate()
   end
 
