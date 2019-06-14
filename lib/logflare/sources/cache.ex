@@ -19,7 +19,13 @@ defmodule Logflare.Sources.Cache do
     }
   end
 
-  def get_bq_schema(arg), do: apply_repo_fun(__ENV__.function, [arg])
+  def get_bq_schema(source_token) do
+    Cachex.get!(@cache, {{:put_bq_schema, 1}, source_token})
+  end
+
+  def put_bq_schema(source_token, schema) do
+    Cachex.put(@cache, {{:put_bq_schema, 1}, source_token}, schema, ttl: :timer.hours(24 * 365))
+  end
 
   def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)

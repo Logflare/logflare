@@ -8,6 +8,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
+  alias Logflare.Sources
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
@@ -108,6 +109,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             case BigQuery.patch_table(table, schema, bigquery_project_id) do
               {:ok, table_info} ->
                 Schema.update(table, table_info.schema)
+                Sources.Cache.put_bq_schema(table, table_info.schema)
                 Logger.info("Source schema updated!")
 
               {:error, response} ->

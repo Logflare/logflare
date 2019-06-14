@@ -6,6 +6,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources
 
   def start_link(state) do
     GenServer.start_link(
@@ -44,6 +45,7 @@ defmodule Logflare.Source.BigQuery.Schema do
       {:ok, table} ->
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
         Logger.info("Table schema manager started: #{state.source_token}")
+        Sources.Cache.put_bq_schema(source_token, schema)
         {:ok, %{state | schema: schema, schema_not_sorted: table.schema}}
 
       _ ->
