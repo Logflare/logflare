@@ -3,9 +3,9 @@ defmodule Logflare.LogEvent do
   import Ecto.Changeset
   alias Logflare.Logs.Injest.MetadataCleaner
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaSpec}
+  alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange}
 
-  @validators [EqDeepFieldTypes, BigQuerySchemaSpec]
+  @validators [EqDeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange]
 
   defmodule Body do
     @moduledoc false
