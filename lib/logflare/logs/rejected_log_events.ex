@@ -14,9 +14,15 @@ defmodule Logflare.Logs.RejectedLogEvents do
     end
   end
 
-  @spec get_by_source(Logflare.Source.t()) :: list(LogEvent.t())
+  @spec get_by_source(Source.t()) :: list(LogEvent.t())
   def get_by_source(%Source{token: token}) do
-    get!(token)
+    get!(token).log_events
+  end
+
+  def count(%Source{} = s) do
+    s.token
+    |> get!()
+    |> Map.get(:count, 0)
   end
 
   @doc """
@@ -27,19 +33,25 @@ defmodule Logflare.Logs.RejectedLogEvents do
     insert(le.source.token, le)
   end
 
+  @spec get!(atom) :: %{log_events: list(LogEvent.t()), count: non_neg_integer}
   defp get!(key) do
     {:ok, val} = Cachex.get(@cache, key)
-    val
+    val || %{log_events: [], count: 0}
   end
 
   @spec insert(atom, map) :: list(map)
   defp insert(token, log) when is_atom(token) do
     Cachex.get_and_update!(@cache, token, fn
-      xs when is_list(xs) ->
-        Enum.take([log | xs], 100)
+      %{log_events: les, count: c} ->
+        les =
+          [log | les]
+          |> List.flatten()
+          |> Enum.take(100)
+
+        %{log_events: les, count: c + 1}
 
       _ ->
-        [log]
+        %{log_events: [log], count: 1}
     end)
   end
 end
