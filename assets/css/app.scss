@@ -259,46 +259,56 @@ mark {
 }
 @keyframes fadeIn {
   0% {
+    color: white;
     background-color: #2a6cce;
   }
 
   100% {
+    color: black;
     background-color: #5eeb8f;
   }
 }
 @-moz-keyframes fadeIn {
   0% {
+    color: white;
     background-color: #2a6cce;
   }
 
   100% {
+    color: black;
     background-color: #5eeb8f;
   }
 }
 @-webkit-keyframes fadeIn {
   0% {
+    color: white;
     background-color: #2a6cce;
   }
 
   100% {
+    color: black;
     background-color: #5eeb8f;
   }
 }
 @-o-keyframes fadeIn {
   0% {
+    color: white;
     background-color: #2a6cce;
   }
 
   100% {
+    color: black;
     background-color: #5eeb8f;
   }
 }
 @-ms-keyframes fadeIn {
   0% {
+    color: white;
     background-color: #2a6cce;
   }
 
   100% {
+    color: black;
     background-color: #5eeb8f;
   }
 }
