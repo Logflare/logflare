@@ -7,6 +7,10 @@ body {
   color: #7EF854;
 }
 
+#total-logged {
+  color: #0cf;
+}
+
 #explore-dashboard {
   margin-bottom: 1em;
 }
@@ -309,6 +313,11 @@ h4 {
   background-color: #bf00ff;
   border-color: #dd76ff;
 }
+
+.btn-primary.disabled, .btn-primary:disabled {
+    color: #fff;
+    background-color: #bf00ff;
+    border-color: #dd76ff; }
 
 .btn-primary:not(:disabled):not(.disabled).active, .btn-primary:not(:disabled):not(.disabled):active, .show>.btn-primary.dropdown-toggle {
     color: #fff;

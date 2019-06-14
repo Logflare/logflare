@@ -119,12 +119,4 @@ defmodule Logflare.Logs do
       payload
     )
   end
-
-  @spec broadcast_total_log_count() :: :ok | {:error, any()}
-  def broadcast_total_log_count() do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
-    payload = %{total_logs_logged: Delimit.number_to_delimited(log_count)}
-
-    LogflareWeb.Endpoint.broadcast("everyone", "everyone:update", payload)
-  end
 end

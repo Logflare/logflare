@@ -1,13 +1,13 @@
 defmodule LogflareWeb.MarketingController do
   use LogflareWeb, :controller
 
-  alias Logflare.SystemCounter
+  alias Logflare.SystemMetrics.AllLogsLogged
   alias Number.Delimit
 
   @system_counter :total_logs_logged
 
   def index(conn, _params) do
-    {:ok, log_count} = SystemCounter.log_count(@system_counter)
+    {:ok, log_count} = AllLogsLogged.log_count(@system_counter)
     render(conn, "index.html", log_count: Delimit.number_to_delimited(log_count))
   end
 

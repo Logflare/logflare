@@ -1,7 +1,7 @@
 use Mix.Config
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: "infinity", num_acceptors: 10]],
+  http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 10]],
   url: [host: "logflarestaging.com", scheme: "https"],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
@@ -26,6 +26,13 @@ config :logflare, Logflare.Google,
   project_number: "395392434060",
   project_id: "logflare-staging",
   service_account: "logflare-staging@logflare-staging.iam.gserviceaccount.com"
+
+config :logflare_logger_backend,
+  api_key: "xxxxxx",
+  source_id: "aaaaaa",
+  flush_interval: 1_000,
+  max_batch_size: 50,
+  url: "http://example.com"
 
 config :logflare, env: :staging
 

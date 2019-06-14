@@ -4,7 +4,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.12.16",
+      version: "0.12.17",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -86,8 +86,8 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:excoveralls, "~> 0.11", only: :test},
       {:placebo, "~> 1.2"},
-      {:logflare_logger_backend, git: "git://github.com/Logflare/logflare_logger_backend.git"},
-      {:construct, "~> 2.0"}
+      {:logflare_logger_backend, github: "logflare/logflare_logger_backend", branch: "v0.5"},
+      {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"}
     ]
   end
 

@@ -1,4 +1,4 @@
-defmodule Logflare.SystemCounter do
+defmodule Logflare.SystemMetrics.AllLogsLogged do
   use GenServer
 
   require Logger
@@ -9,8 +9,8 @@ defmodule Logflare.SystemCounter do
   @table_path "system-table"
   @persist_every 60_000
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(init_args) do
+    GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
   def init(state) do
@@ -49,22 +49,26 @@ defmodule Logflare.SystemCounter do
 
   ## Public Functions
 
+  @spec create(atom) :: {:ok, atom}
   def create(metric) do
     :ets.update_counter(@table, metric, {2, 0}, {metric, 0, 0})
     :ets.update_counter(@table, metric, {3, 0}, {metric, 0, 0})
     {:ok, metric}
   end
 
+  @spec incriment(atom) :: {:ok, atom}
   def incriment(metric) do
     :ets.update_counter(@table, metric, {2, 1}, {metric, 0, 0})
     {:ok, metric}
   end
 
+  @spec incriment(atom, integer) :: {:ok, atom}
   def incriment(metric, count) do
     :ets.update_counter(@table, metric, {2, count}, {metric, 0, 0})
     {:ok, metric}
   end
 
+  @spec log_count(atom) :: {:ok, non_neg_integer}
   def log_count(metric) do
     [{_metric, inserts, _deletes}] = :ets.lookup(@table, metric)
     count = inserts
