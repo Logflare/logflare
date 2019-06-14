@@ -1,14 +1,16 @@
 /* This file is for your main application css. */
 
 @import "~bootstrap/scss/bootstrap";
+@import url("https://fonts.googleapis.com/css?family=Fira+Sans:100,100i,200,200i,300,300i,400,400i,500,500i,600,600i,700,700i,800,800i,900,900i");
+@import url("https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i&display=swap");
 
 body {
-  background-color: black;
-  color: #7EF854;
+  background-color: #161616;
+  color: #9a9a9a;
 }
 
 #total-logged {
-  color: #0cf;
+  color: #fff;
 }
 
 #explore-dashboard {
@@ -138,6 +140,7 @@ body {
 
 .header-margin {
   padding: 1em 0 .25em 0;
+  color: #fff;
 }
 
 .form-button {
@@ -239,7 +242,7 @@ main {
 }
 
 code {
-  color: #cf54f8;
+  color: #E35B8D;
 }
 
 .pointer-cursor {
@@ -247,12 +250,12 @@ code {
 }
 
 h2 {
-  color: #0cf;
+  color: #fff;
 
 }
 
 h3 {
-  color: #0cf;
+  color: #fff;
   margin-top: 1.5em;
 }
 
@@ -305,7 +308,7 @@ h4 {
 }
 
 .btn-primary {
-  background-color: #cf54f8;
+  background-color: #E35B8D;
   border-color: #dd76ff;
 }
 
@@ -378,7 +381,7 @@ pre {
 }
 
 a {
-  color: #e2e2e2;
+  color: #e35b8d;
 }
 
 a:hover {
@@ -390,11 +393,11 @@ a:hover {
 }
 
 mark {
-  background-color: #92DF78;
+  background-color: #5eeb8f;
 }
 
 .bg-light {
-  background-color: #7EF854!important;
+  background-color: #5eeb8f!important;
 }
 
 .source-header {
@@ -402,7 +405,7 @@ mark {
 }
 
 .subhead {
-  background-color: #92DF78;
+  background-color: #63ff99;
   padding-top: .35em;
   padding-bottom: .35em;
 
@@ -459,7 +462,7 @@ mark {
 #console-text {
   font-family: monospace;
   font-size: 1em;
-  color: #7EF854;
+  color: #e3e3e3;
   word-break: break-word;
   overflow-wrap: break-word;
   /* overflow-x: scroll;
