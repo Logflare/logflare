@@ -1,276 +1,282 @@
 <div class="container-fluid hero no-subhead">
-  <div class="container">
-    <div class="row cta">
-      <div class="col-lg-10 col-lg-push-1">
-        <div class="row">
-          <div class="col-lg-8">
-            <h1>Affordable log management for your app</h1>
-            <h2>Collect for years, query in seconds</h2>
-          </div>
-          <div class="col-lg-4">
-            <p>Install on Cloudflare or sign up & setup manually</p>
-            <div class="btns">
-              <p>
-                <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0" style="">
-                </iframe>
-              </p>
-              <p><a href="" class="signup">SIGN UP</a></p>
-            </div>
-            <p>Free forever, uninstall anytime</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-12">
-        <img src="images/marketing/homepage/heroimg11.png" class=" imghero" alt="">
-        <img src="images/marketing/homepage/iphoneDesktop.png" class="phonimg" alt="">
-        <div class="forifream">
-          <iframe class="ifreamfordiagram" src="https://datastudio.google.com/embed/reporting/1JuRjywr8r-IeNOg30on8t21Lns4hSJnx/page/FLer" frameborder="0" style="border:0" allowfullscreen></iframe>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-lg-10 col-lg-push-1">
-        <div class="row">
-          <div class="col-md-12">
-            <div class="h3div">
-              <h3>We collect logs from <span>23,434</span> active sources. </h3>
-              <h3>That's <span>1,435,546,224</span> records logged to date.</h3>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="row paragraph">
-      <div class="col-lg-10 col-lg-push-1">
-        <div class="row">
-          <div class="col-md-6">
+	<div class="container">
+		<div class="row cta">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-lg-8">
+						<h1>Affordable log management for your app</h1>
+						<h2>Collect for years, query in seconds</h2>
+					</div>
+					<div class="col-lg-4">
+						<p>Install on Cloudflare or sign up & setup manually</p>
+						<div class="btns">
+							<p>
+								<iframe
+								  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+								  allowTransparency="true"
+								  scroll="no"
+								  frameBorder="0"
+								>
+								</iframe>
+							</p>
+							<p><a href="" class="signup">SIGN UP</a></p>
+						</div>
+						<p>Free forever, uninstall anytime</p>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1">
 
-          </div>
-          <div class="col-md-6">
-            <h4>Track everything you want</h4>
-          </div>
-          <div class="col-md-6">
-            <img src="images/marketing/homepage/trackImgDesktop.png" class="img-responsive" alt="">
-          </div>
-          <div class="col-md-6">
+			</div>
+		</div>
 
-            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.
-              Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus. Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi
-              at suscipit. </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+
+
+		<div class="row">
+			<div class="col-md-12">
+				<img src="images/marketing/homepage/heroimg11.png" class=" imghero" alt="">
+				<img src="images/marketing/homepage/iphoneDesktop.png" class="phonimg" alt="">
+				<div class="forifream">
+					<iframe class="ifreamfordiagram" src="https://datastudio.google.com/embed/reporting/1JuRjywr8r-IeNOg30on8t21Lns4hSJnx/page/FLer" frameborder="0" style="border:0" allowfullscreen></iframe>
+				</div>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-12">
+						<div class="h3div">
+							<h3>We collect logs from <span>23,434</span> active sources. </h3>
+							<h3>That's <span>1,435,546,224</span> records logged to date.</h3>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1"></div>
+		</div>
+		<div class="row paragraph">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-6">
+
+					</div>
+					<div class="col-md-6">
+						<h4>Track everything you want</h4>
+					</div>
+					<div class="col-md-6">
+						<img src="images/marketing/homepage/trackImgDesktop.png" class="img-responsive" alt="">
+					</div>
+					<div class="col-md-6">
+
+						<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc. Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus. Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1">
+
+			</div>
+		</div>
+	</div>
 </div>
 
 <div class="catchimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
 <div class="container-fluid catch">
-  <div class="container-fluid">
-    <div class="container">
-      <div class="row">
-        <div class="col-lg-10 col-lg-push-1">
-          <div class="row">
-            <div class="col-md-6">
-              <h4>Catch every request at 0 ms latency cost</h4>
-            </div>
-            <div class="col-md-6">
+	<div class="container-fluid">
+		<div class="container">
+			<div class="row">
+				<div class="col-lg-10 order-lg-1">
+					<div class="row">
+						<div class="col-md-6">
+							<h4>Catch every request at 0 ms latency cost</h4>
+						</div>
+						<div class="col-md-6">
 
-            </div>
-          </div>
-          <div class="row">
-            <div class="col-md-6 col-md-push-6">
-              <img src="images/marketing/homepage/catchImgDesktop.png" class="img-responsive" alt="">
-            </div>
-            <div class="col-md-6 col-md-pull-6">
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-6 order-md-6">
+							<img src="images/marketing/homepage/catchImgDesktop.png" class="img-responsive" alt="">
+						</div>
+						<div class="col-md-6 pull-md-6">
 
-              <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.
-                Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus. Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a
-                mi at suscipit. </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+							<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc. Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus. Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+						</div>
+					</div>
+				</div>
+				<div class="col-lg-1"></div>
+			</div>
+		</div>
+	</div>
 </div>
 <div class="catchimgbtn"><img src="images/marketing/homepage/bgbtn.png" alt=""></div>
 
-
-
-
 <div class="container-fluid scale">
-  <div class="container">
-    <div class="row">
-      <div class="col-lg-10 col-lg-push-1">
-        <div class="row">
-          <div class="col-md-6">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-6">
 
-          </div>
-          <div class="col-md-6">
-            <h4>Scale more, pay less</h4>
-          </div>
-        </div>
-        <div class="row tablescalerow">
-          <div class="col-md-6">
-            <img src="images/marketing/homepage/bgoftable.png" class="bgoftable" alt="">
-            <div class="tablescale">
-              <div class="col1">
-                <h2>Brief comparison</h2>
-                <h3>Storage type</h3>
-                <h3>External storage</h3>
-                <h3 class="lastone">Direct data access</h3>
+					</div>
+					<div class="col-md-6">
+						<h4>Scale more, pay less</h4>
+					</div>
+				</div>
+				<div class="row tablescalerow">
+					<div class="col-md-6">
+						<img src="images/marketing/homepage/bgoftable.png" class="bgoftable" alt="">
+						<div class="tablescale">
+							<div class="col1">
+								<h2>Brief comparison</h2>
+								<h3>Storage type</h3>
+								<h3>External storage</h3>
+								<h3 class="lastone">Direct data access</h3>
 
-                <h3>Price</h3>
-                <h3>1 TB of logs</h3>
-                <h3>100 TB of logs</h3>
-              </div>
-              <a href="">
-                <div class="col2">
-                  <h2>Logflare</h2>
-                  <h3>BigData</h3>
-                  <h3><i class="fa fa-check"></i></h3>
-                  <h3 class="lastone"><i class="fa fa-check"></i></h3>
-                  <h3 class="nothing">.</h3>
-                  <h3 class="money">$50</h3>
-                  <h3 class="money">$500</h3>
+								<h3>Price</h3>
+								<h3>1 TB of logs</h3>
+								<h3>100 TB of logs</h3>
+							</div>
+							<a href="">
+								<div class="col2">
+									<h2>Logflare</h2>
+									<h3>BigData</h3>
+									<h3><i class="fa fa-check"></i></h3>
+									<h3 class="lastone"><i class="fa fa-check"></i></h3>
+									<h3 class="nothing">.</h3>
+									<h3 class="money">$50</h3>
+									<h3 class="money">$500</h3>
 
-                </div>
-              </a>
-              <a href="">
-                <div class="col3">
-                  <h2>Others</h2>
-                  <h3>Elastic</h3>
-                  <h3><i class="fa fa-times"></i></h3>
-                  <h3 class="lastone"><i class="fa fa-times"></i></h3>
-                  <h3 class="nothing">.</h3>
-                  <h3 class="money">$150</h3>
-                  <h3 class="money">$5000</h3>
+								</div>
+							</a>
+							<a href="">
+								<div class="col3">
+									<h2>Others</h2>
+									<h3>Elastic</h3>
+									<h3><i class="fa fa-times"></i></h3>
+									<h3 class="lastone"><i class="fa fa-times"></i></h3>
+									<h3 class="nothing">.</h3>
+									<h3 class="money">$150</h3>
+									<h3 class="money">$5000</h3>
 
-                </div>
-              </a>
-            </div>
-          </div>
-          <div class="col-md-6">
+								</div>
+							</a>
+						</div>
+					</div>
+					<div class="col-md-6">
 
-            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.
-              Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus.</p>
-            <p class="spanp">Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+						<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc. Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus.</p>
+						<p class="spanp">Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1">
+
+			</div>
+		</div>
+	</div>
 </div>
-
-
-
 
 <div class="stepsimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
 <div class="container-fluid steps">
-  <div class="container">
-    <div class="row">
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-history"></i>
-          </div>
-          <h2>Unlimited event history</h2>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fab fa-google"></i>
-          </div>
-          <h2>BigQuery & DataStudio</h2>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-code-branch"></i>
-          </div>
-          <h2>Log routing</h2>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="far fa-bell"></i>
-          </div>
-          <h2>Email & SMS alerts</h2>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-users"></i>
-          </div>
-          <h2>Sharing via public URL</h2>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-code"></i>
-          </div>
-          <h2>Add metadata and query it</h2>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
-        </div>
-      </div>
-    </div>
-  </div>
+	<div class="container">
+		<div class="row">
+			<div class="col-md-4">
+				<div class="stepscont">
+					<div class="circle">
+						<i class="fas fa-history"></i>
+					</div>
+					<h2>Unlimited event history</h2>
+					<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fab fa-google"></i>
+				</div>
+				<h2>BigQuery storage & DataStudio reporting</h2>
+				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fas fa-code-branch"></i>
+				</div>
+				<h2>Log routing</h2>
+				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="far fa-bell"></i>
+				</div>
+				<h2>Email & SMS alerts</h2>
+				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fas fa-users"></i>
+				</div>
+				<h2>Sharing via public URL</h2>
+				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fas fa-code"></i>
+				</div>
+				<h2>Add metadata and query it</h2>
+				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
 
-
-
 <div class="features container-fluid">
-  <div class="container">
-    <div class="row">
-      <div class="col-md-4">
-        <h3>Other features</h3>
-        <ul>
-          <li>Realtime stream of events</li>
-          <li>Up to 100 sources per account</li>
-          <li>Display timestamps in local time & UTC</li>
-        </ul>
-      </div>
-      <div class="col-md-4">
-        <h3>Use web client or PWA</h3>
-        <div class="imgs">
-          <div class="circle">
-            <i class="fab fa-android"></i>
-          </div>
-          <div class="circle">
-            <i class="fab fa-apple"></i>
-          </div>
-          <div class="circle">
-            <i class="fab fa-chrome"></i>
-          </div>
-        </div>
-        <p>
-          Use web client in a browser or install our Progressive Web Application for native-like experience. Check how to add it to your apps on <a href="">Android</a>, <a href="">iOS</a> or <a href="">Chrome</a> desktop with just one click.
-        </p>
-      </div>
-      <div class="col-md-4">
-        <h3>100% open source</h3>
-        <div class="imgs">
-          <img src="images/marketing/homepage/star.png" alt="">
-        </div>
-        <p>
-          Cras quis nulla commodo, aliquam lectus sed, blandit augue. Cras ullamcorper bibendum bibendum. Duis tincidunt urna non pretium porta. Nam condimentum vitae ligula vel ornare. Contribute
-        </p>
-      </div>
-    </div>
-  </div>
+	<div class="container">
+		<div class="row">
+			<div class="col-md-4">
+				<h3>Other features</h3>
+				<ul>
+					<li>Realtime stream of events</li>
+					<li>Up to 100 sources per account</li>
+					<li>Display timestamps in local time & UTC</li>
+				</ul>
+			</div>
+			<div class="col-md-4">
+				<h3>Use web client or PWA</h3>
+				<div class="imgs">
+					<div class="circle">
+						<i class="fab fa-android"></i>
+					</div>
+					<div class="circle">
+						<i class="fab fa-apple"></i>
+					</div>
+					<div class="circle">
+						<i class="fab fa-chrome"></i>
+					</div>
+				</div>
+				<p>
+					Use web client in a browser or install our Progressive Web Application for native-like experience. Check how to add it to your apps on <a href="">Android</a>, <a href="">iOS</a> or <a href="">Chrome</a> desktop with just one click.
+				</p>
+			</div>
+			<div class="col-md-4">
+				<h3>100% open source</h3>
+				<div class="imgs">
+					<a class="github-button" href="https://github.com/Logflare/logflare" data-size="large" data-show-count="true" aria-label="Star Logflare/logflare on GitHub">Star</a>
+				</div>
+				<p>
+					Cras quis nulla commodo, aliquam lectus sed, blandit augue. Cras ullamcorper bibendum bibendum. Duis tincidunt urna non pretium porta. Nam condimentum vitae ligula vel ornare. Contribute
+				</p>
+			</div>
+		</div>
+	</div>
 </div>
 
 <div class="container-fluid ctav2">
@@ -296,71 +302,83 @@
 </div>
 
 <div class="container-fluid ctav2">
-  <div class="container">
-    <div class="row fordesk">
-      <div class="col-lg-10 col-lg-push-1">
-        <div class="row">
-          <div class="col-md-12">
+	<div class="container">
+		<div class="row fordesk">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-12">
 
-            <h1>Install for now and use for free. Forever.</h1>
-            <p>Install on Cloudflare or sign up & setup manually</p>
-            <div class="btns">
-              <p>
-                <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0" style="">
-                </iframe>
-              </p>
-              <p><a href="" class="signup">SIGN UP</a></p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="row forphone3">
-      <div class="col-md-12">
-        <h1>Install for now and use for free. Forever.</h1>
-        <p>Install on Cloudflare or sign up & setup manually</p>
-        <div class="btns">
-          <p>
-            <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0" style="">
-            </iframe>
-          </p>
-          <p><a href="" class="signup">SIGN UP</a></p>
-        </div>
-      </div>
-    </div>
-  </div>
+
+						<h1>Install for now and use for free. Forever.</h1>
+						<p>Install on Cloudflare or sign up & setup manually</p>
+						<div class="btns">
+							<p>
+								<iframe
+								  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+								  allowTransparency="true"
+								  scroll="no"
+								  frameBorder="0"
+								  >
+								</iframe>
+							</p>
+							<p><a href="" class="signup">SIGN UP</a></p>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1"></div>
+		</div>
+		<div class="row forphone3">
+			<div class="col-md-12">
+				<h1>Install for now and use for free. Forever.</h1>
+				<p>Install on Cloudflare or sign up & setup manually</p>
+				<div class="btns">
+					<p>
+					<iframe
+						  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+						  allowTransparency="true"
+						  scroll="no"
+						  frameBorder="0"
+						  >
+						</iframe>
+					</p>
+					<p><a href="" class="signup">SIGN UP</a></p>
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
 
 <div class="container-fluid footer">
-  <img src="images/marketing/homepage/footerbg.png" class="footerbg" alt="">
-  <div class="container">
-    <div class="row">
-      <div class="col-md-6">
-        <ul>
-          <li>
-            <h2>Product</h2>
-          </li>
-          <li><a href="">Home</a></li>
-          <li><a href="">Guides</a></li>
-          <li><a href="">Contribute</a></li>
-        </ul>
-        <ul>
-          <li>
-            <h2>Company</h2>
-          </li>
-          <li><a href="">Terms of service</a></li>
-          <li><a href="">Privacy policy</a></li>
-          <li><a href="">Cookie policy</a></li>
-        </ul>
-      </div>
-      <div class="col-md-6">
-        <div class="rightside">
-          <h2><i class="fas fa-lock"></i>Data secured by Amazon Supersafe</h2>
-          <p>Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
-          <p><span>Copyright 2018 - Logflare LTD</span></p>
-        </div>
-      </div>
-    </div>
-  </div>
+	<img src="images/marketing/homepage/footerbg.png" class="footerbg" alt="">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-6">
+				<ul>
+					<li><h2>Product</h2></li>
+					<li><a href="">Home</a></li>
+					<li><a href="">Pricing</a></li>
+					<li><a href="">Knowledge base</a></li>
+					<li><a href="">Contribute</a></li>
+				</ul>
+				<ul>
+					<li><h2>Company</h2></li>
+					<li><a href="">Terms of service</a></li>
+					<li><a href="">Privacy policy</a></li>
+					<li><a href="">Cookie policy</a></li>
+					<li><a href="">Contact us</a></li>
+				</ul>
+			</div>
+			<div class="col-md-6">
+				<div class="rightside">
+					<h2><i class="fas fa-lock"></i>Data secured by Amazon Supersafe</h2>
+					<p>Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+					<p><span>Copyright 2018 - Logflare LTD</span></p>
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
+
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<script async defer src="https://buttons.github.io/buttons.js"></script>
