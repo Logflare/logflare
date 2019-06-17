@@ -2,6 +2,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   @moduledoc false
   use GenServer
   alias Logflare.LogEvent, as: LE
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
   alias Number.Delimit
 
@@ -9,11 +10,11 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   @broadcast_every 1_000
 
-  def start_link(source_id) do
+  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source: source_id,
+        source_id: source_id,
         buffer: :queue.new(),
         read_receipts: %{}
       },
@@ -22,7 +23,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def init(state) do
-    Logger.info("Table buffer started: #{state.source}")
+    Logger.info("Table buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
 
     check_buffer()
@@ -84,7 +85,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    broadcast_buffer(state.source, :queue.len(state.buffer))
+    broadcast_buffer(state.source_id, :queue.len(state.buffer))
     check_buffer()
     {:noreply, state}
   end

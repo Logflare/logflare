@@ -10,13 +10,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
   alias Logflare.Sources
   alias Logflare.LogEvent, as: LE
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
-  def start_link(state) do
+  def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
     Broadway.start_link(__MODULE__,
-      name: name(state[:source_token]),
+      name: name(source_id),
       producers: [
         ets: [
-          module: {BufferProducer, table_name: state[:source_token], config: []}
+          module: {BufferProducer, rls}
         ]
       ],
       processors: [
@@ -25,7 +26,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       batchers: [
         bq: [stages: 5, batch_size: 100, batch_timeout: 1000]
       ],
-      context: state
+      context: rls
     )
   end
 
@@ -35,8 +36,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
-  def handle_batch(:bq, messages, _batch_info, context) do
-    LogflareLogger.merge_context(source_id: context[:source_token])
+  def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
+    LogflareLogger.merge_context(source_id: context.source_id)
 
     rows =
       Enum.map(messages, fn message ->
@@ -66,7 +67,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
     LogflareLogger.merge_context(hackney_stats: hackney_stats)
 
-    case BigQuery.stream_batch!(context[:source_token], rows, context[:bigquery_project_id]) do
+    case BigQuery.stream_batch!(context.source_id, rows, context.bigquery_project_id) do
       {:ok, _response} ->
         messages
 

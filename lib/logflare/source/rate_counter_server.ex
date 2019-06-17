@@ -7,6 +7,7 @@ defmodule Logflare.Source.RateCounterServer do
 
   require Logger
   alias __MODULE__, as: SRC
+  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Counters
   alias Logflare.Source.Data
@@ -39,7 +40,7 @@ defmodule Logflare.Source.RateCounterServer do
   @rate_period 1_000
   @ets_table_name :source_rate_counters
 
-  def start_link(source_id) when is_atom(source_id) do
+  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       source_id,

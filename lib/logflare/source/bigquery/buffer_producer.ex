@@ -9,13 +9,13 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   @default_receive_interval 1000
 
   @impl true
-  def init(opts) do
+  def init(%{source_id: source_id}) when is_atom(source_id) do
     {:producer,
      %{
        demand: 0,
        receive_timer: nil,
        receive_interval: @default_receive_interval,
-       table_name: {opts}
+       source_id: source_id
      }}
   end
 
@@ -63,23 +63,20 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     end)
   end
 
-  defp receive_messages_from_buffer(state, _total_demand) do
-    {opts} = state.table_name
-    table = opts[:table_name]
-
-    pop = Buffer.pop(table)
-
-    case pop do
+  defp receive_messages_from_buffer(%{source_id: source_id}, _total_demand) do
+    source_id
+    |> Buffer.pop()
+    |> case do
       :empty ->
         []
 
       %LE{} = log_event ->
-        event_message = %{table: table, event: log_event}
+        event_message = %{table: source_id, log_event: log_event}
 
         [
           %Broadway.Message{
             data: event_message,
-            acknowledger: {__MODULE__, table, "no idea what this does"}
+            acknowledger: {__MODULE__, source_id, "no idea what this does"}
           }
         ]
     end

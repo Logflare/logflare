@@ -3,6 +3,12 @@ defmodule Logflare.Source.RecentLogsServer do
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
   """
+  use TypedStruct
+
+  typedstruct do
+    field :source_id, atom(), enforce: true
+    field :bigquery_project_id, atom()
+  end
 
   use GenServer
 
@@ -18,19 +24,18 @@ defmodule Logflare.Source.RecentLogsServer do
 
   # one month
   @prune_timer 1_000
-
   def start_link(source_id) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, source_id, name: source_id)
   end
 
   ## Client
 
-  def init(state) do
+  def init(source_id) do
     Process.flag(:trap_exit, true)
     prune()
 
-    state = [{:source_token, state}]
-    {:ok, state, {:continue, :boot}}
+    rls = %__MODULE__{source_id: source_id}
+    {:ok, rls, {:continue, :boot}}
   end
 
   def push(source_id, %LE{} = log_event) do
@@ -39,8 +44,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  def handle_continue(:boot, state) do
-    source_id = state[:source_token]
+  def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     bigquery_table_ttl = GenUtils.get_table_ttl(source_id)
 
@@ -49,16 +53,15 @@ defmodule Logflare.Source.RecentLogsServer do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
 
-    state = state ++ [{:bigquery_project_id, bigquery_project_id}]
+    rls = %{rls | bigquery_project_id: bigquery_project_id}
 
-    # TODO: Should really be starting these all up with the same struct because some need the same data
     children = [
-      {RateCounterServer, source_id},
-      {EmailNotificationServer, source_id},
-      {TextNoticationServer, source_id},
-      {Buffer, source_id},
-      {Pipeline, state},
-      {Schema, state}
+      {RateCounterServer, rls},
+      {EmailNotificationServer, rls},
+      {TextNoticationServer, rls},
+      {Buffer, rls},
+      {Pipeline, rls},
+      {Schema, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
@@ -68,7 +71,7 @@ defmodule Logflare.Source.RecentLogsServer do
     end)
 
     Logger.info("ETS table started: #{source_id}")
-    {:noreply, state}
+    {:noreply, rls}
   end
 
   def handle_cast(
@@ -80,8 +83,7 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, state}
   end
 
-  def handle_info(:prune, state) do
-    source_id = state[:source_token]
+  def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
     {:ok, count} = Counters.log_count(source_id)
 
     case count > 100 do
@@ -101,9 +103,9 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, %__MODULE__{} = state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{state[:source_token]}")
+    Logger.info("Going Down: #{state.source_id}")
     reason
   end
 

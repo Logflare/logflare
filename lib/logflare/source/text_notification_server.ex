@@ -7,11 +7,12 @@ defmodule Logflare.Source.TextNoticationServer do
   alias Logflare.Source.RateCounterServer
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
   @check_rate_every 1_000
   @twilio_phone "+16026006731"
 
-  def start_link(source_id) do
+  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
