@@ -1,5 +1,7 @@
 defmodule Logflare.Source.BigQuery.Buffer do
+  @moduledoc false
   use GenServer
+  alias Logflare.LogEvent, as: LE
 
   alias Number.Delimit
 
@@ -27,23 +29,23 @@ defmodule Logflare.Source.BigQuery.Buffer do
     {:ok, state}
   end
 
-  def push(source_id, event) do
-    GenServer.cast(name(source_id), {:push, event})
+  def push(source_id, %LE{} = log_event) do
+    GenServer.cast(name(source_id), {:push, log_event})
   end
 
   def pop(source_id) do
     GenServer.call(name(source_id), :pop)
   end
 
-  def ack(source_id, time_event) do
-    GenServer.call(name(source_id), {:ack, time_event})
+  def ack(source_id, log_event_id) do
+    GenServer.call(name(source_id), {:ack, log_event_id})
   end
 
   def get_count(source_id) do
     GenServer.call(name(source_id), :get_count)
   end
 
-  def handle_cast({:push, event}, state) do
+  def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
     new_state = %{state | buffer: new_buffer}
     {:noreply, new_state}
@@ -55,26 +57,24 @@ defmodule Logflare.Source.BigQuery.Buffer do
         {:reply, :empty, state}
 
       false ->
-        {event, new_buffer} = :queue.out(state.buffer)
-        {:value, {time_event, data}} = event
-        new_read_receipts = Map.put(state.read_receipts, time_event, data)
+        {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
+        new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
-        {:reply, event, new_state}
+        {:reply, log_event, new_state}
     end
   end
 
-  def handle_call({:ack, time_event}, _from, state) do
+  def handle_call({:ack, log_event_id}, _from, state) do
     case state.read_receipts == %{} do
       true ->
         {:reply, :empty, state}
 
       false ->
-        {data, new_read_receipts} = Map.pop(state.read_receipts, time_event)
-        event = {time_event, data}
+        {%LE{} = log_event, new_read_receipts} = Map.pop(state.read_receipts, log_event_id)
 
         new_state = %{state | read_receipts: new_read_receipts}
-        {:reply, event, new_state}
+        {:reply, log_event, new_state}
     end
   end
 
