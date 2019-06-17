@@ -40,7 +40,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     rows =
       Enum.map(messages, fn message ->
-        %{event: %LE{body: body}, table: _table} = message.data
+        %{event: %LE{body: body, id: id}, table: _table} = message.data
         {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
 
         row_json =
@@ -58,7 +58,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           end
 
         %Model.TableDataInsertAllRequestRows{
-          insertId: Ecto.UUID.generate(),
+          insertId: id,
           json: row_json
         }
       end)
