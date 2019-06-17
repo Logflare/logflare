@@ -46,8 +46,8 @@
 				<div class="row">
 					<div class="col-md-12">
 						<div class="h3div">
-							<h3>That's <span>1,435,546,224</span> records logged to date.</h3>
-							<h3>And counting...</h3>
+							<%= live_render(@conn, LogflareWeb.GlobalLogMetricsLV) %>
+
 						</div>
 					</div>
 				</div>
