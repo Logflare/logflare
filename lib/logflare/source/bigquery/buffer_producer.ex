@@ -53,12 +53,12 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   end
 
   def ack(table, successful, unsuccessful) do
-    Enum.each(successful, fn message ->
-      Buffer.ack(table, message.data.event.id)
+    Enum.each(successful, fn %{data: %LE{}} = message ->
+      Buffer.ack(table, message.data.id)
     end)
 
-    Enum.each(unsuccessful, fn message ->
-      log_event = Buffer.ack(table, message.data.event.id)
+    Enum.each(unsuccessful, fn %{data: %LE{}} = message ->
+      log_event = Buffer.ack(table, message.data.id)
       Buffer.push(table, log_event)
     end)
   end
@@ -71,11 +71,9 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
         []
 
       %LE{} = log_event ->
-        event_message = %{table: source_id, log_event: log_event}
-
         [
           %Broadway.Message{
-            data: event_message,
+            data: log_event,
             acknowledger: {__MODULE__, source_id, "no idea what this does"}
           }
         ]

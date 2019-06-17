@@ -8,7 +8,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
-  alias Logflare.Sources
+  alias Logflare.{Sources, Source}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
 
@@ -41,7 +41,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     rows =
       Enum.map(messages, fn message ->
-        %{event: %LE{body: body, id: id}, table: _table} = message.data
+        %LE{body: body, id: id} = message.data
         {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
 
         row_json =
@@ -88,13 +88,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
-  defp process_data(message) do
-    %{event: %LE{body: body} = log_event, table: table} = message
-
-    LogflareLogger.merge_context(source_id: table)
+  defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
+    LogflareLogger.merge_context(source_id: source_id)
 
     if map_size(body) > 0 do
-      schema_state = Schema.get_state(table)
+      schema_state = Schema.get_state(source_id)
       old_schema = schema_state.schema
       bigquery_project_id = schema_state.bigquery_project_id
 
@@ -105,10 +103,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
           LogflareLogger.merge_context(hackney_stats: hackney_stats)
 
-          case BigQuery.patch_table(table, schema, bigquery_project_id) do
+          case BigQuery.patch_table(source_id, schema, bigquery_project_id) do
             {:ok, table_info} ->
-              Schema.update(table, table_info.schema)
-              Sources.Cache.put_bq_schema(table, table_info.schema)
+              Schema.update(source_id, table_info.schema)
+              Sources.Cache.put_bq_schema(source_id, table_info.schema)
               Logger.info("Source schema updated!")
 
             {:error, response} ->
@@ -120,7 +118,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           end
         end
 
-        message
+        log_event
       rescue
         _e ->
           err = "Field schema type change error!"
@@ -128,10 +126,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           new_body = %{body | metadata: %{"error" => err}}
 
           Logger.error(err)
-          Map.put(message, :event, %{log_event | body: new_body})
+
+          %{log_event | body: new_body}
       end
     else
-      message
+      log_event
     end
   end
 
