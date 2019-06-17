@@ -9,6 +9,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
   alias Logflare.Sources
+  alias Logflare.LogEvent, as: LE
 
   def start_link(state) do
     Broadway.start_link(__MODULE__,
@@ -39,23 +40,21 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     rows =
       Enum.map(messages, fn message ->
-        %{event: {_time_event, payload}, table: _table} = message.data
-        {:ok, bq_timestamp} = DateTime.from_unix(payload.timestamp, :microsecond)
+        %{event: %LE{body: body}, table: _table} = message.data
+        {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
 
         row_json =
-          case Map.has_key?(payload, :metadata) do
-            false ->
-              %{
-                "timestamp" => bq_timestamp,
-                "event_message" => payload.log_message
-              }
-
-            true ->
-              %{
-                "event_message" => payload.log_message,
-                "metadata" => EventUtils.prepare_for_injest(payload.metadata),
-                "timestamp" => bq_timestamp
-              }
+          if map_size(body.metadata) > 0 do
+            %{
+              "event_message" => body.message,
+              "metadata" => EventUtils.prepare_for_injest(body.metadata),
+              "timestamp" => bq_timestamp
+            }
+          else
+            %{
+              "timestamp" => bq_timestamp,
+              "event_message" => body.message
+            }
           end
 
         %Model.TableDataInsertAllRequestRows{
@@ -89,51 +88,49 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   defp process_data(message) do
-    %{event: {time_event, payload}, table: table} = message
+    %{event: %LE{body: body} = log_event, table: table} = message
 
     LogflareLogger.merge_context(source_id: table)
 
-    case Map.has_key?(payload, :metadata) do
-      true ->
-        schema_state = Schema.get_state(table)
-        old_schema = schema_state.schema
-        bigquery_project_id = schema_state.bigquery_project_id
+    if map_size(body) > 0 do
+      schema_state = Schema.get_state(table)
+      old_schema = schema_state.schema
+      bigquery_project_id = schema_state.bigquery_project_id
 
-        try do
-          schema = SchemaBuilder.build_table_schema(payload.metadata, old_schema)
+      try do
+        schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
-          if same_schemas?(old_schema, schema) == false do
-            hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-            LogflareLogger.merge_context(hackney_stats: hackney_stats)
+        if same_schemas?(old_schema, schema) == false do
+          hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
+          LogflareLogger.merge_context(hackney_stats: hackney_stats)
 
-            case BigQuery.patch_table(table, schema, bigquery_project_id) do
-              {:ok, table_info} ->
-                Schema.update(table, table_info.schema)
-                Sources.Cache.put_bq_schema(table, table_info.schema)
-                Logger.info("Source schema updated!")
+          case BigQuery.patch_table(table, schema, bigquery_project_id) do
+            {:ok, table_info} ->
+              Schema.update(table, table_info.schema)
+              Sources.Cache.put_bq_schema(table, table_info.schema)
+              Logger.info("Source schema updated!")
 
-              {:error, response} ->
-                LogflareLogger.merge_context(
-                  tesla_response: GenUtils.get_tesla_error_message(response)
-                )
+            {:error, response} ->
+              LogflareLogger.merge_context(
+                tesla_response: GenUtils.get_tesla_error_message(response)
+              )
 
-                Logger.error("Source schema update error!")
-            end
+              Logger.error("Source schema update error!")
           end
-
-          message
-        rescue
-          _e ->
-            err = "Field schema type change error!"
-
-            new_payload = %{payload | metadata: %{"error" => err}}
-
-            Logger.error(err)
-            Map.put(message, :event, {time_event, new_payload})
         end
 
-      false ->
         message
+      rescue
+        _e ->
+          err = "Field schema type change error!"
+
+          new_body = %{body | metadata: %{"error" => err}}
+
+          Logger.error(err)
+          Map.put(message, :event, %{log_event | body: new_body})
+      end
+    else
+      message
     end
   end
 
