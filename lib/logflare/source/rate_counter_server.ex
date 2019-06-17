@@ -145,7 +145,7 @@ defmodule Logflare.Source.RateCounterServer do
   @doc """
   Gets last rate
   """
-  def get_rate(source_id) do
+  def get_rate(source_id) when is_atom(source_id) do
     source_id
     |> get_data_from_ets()
     |> Map.get(:last_rate)

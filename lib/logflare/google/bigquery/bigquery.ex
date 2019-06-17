@@ -191,7 +191,7 @@ defmodule Logflare.Google.BigQuery do
   end
 
   @spec stream_batch!(atom, list(map), atom) :: ok_err_tup
-  def stream_batch!(source, batch, project_id \\ @project_id) do
+  def stream_batch!(source, batch, project_id \\ @project_id) when is_atom(source) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
     dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append

@@ -30,12 +30,15 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     )
   end
 
+  @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
   def handle_message(_processor_name, message, _context) do
     message
     |> Message.update_data(&process_data/1)
     |> Message.put_batcher(:bq)
   end
 
+  @spec handle_batch(:bq, list(Broadway.Message.t()), any, Logflare.Source.RecentLogsServer.t()) ::
+          any
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
     LogflareLogger.merge_context(source_id: context.source_id)
 

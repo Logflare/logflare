@@ -46,7 +46,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   @spec get_account_id(atom) :: String.t()
-  def get_account_id(source_id) do
+  def get_account_id(source_id) when is_atom(source_id) do
     %Logflare.Source{user_id: account_id} = Sources.Cache.get_by_id(source_id)
     "#{account_id}"
   end
