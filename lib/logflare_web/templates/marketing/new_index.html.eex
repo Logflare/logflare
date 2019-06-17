@@ -349,34 +349,7 @@
 	</div>
 </div>
 
-<div class="container-fluid footer">
-	<img src="images/marketing/homepage/footerbg.png" class="footerbg" alt="">
-	<div class="container">
-		<div class="row">
-			<div class="col-md-6">
-				<ul>
-					<li><h2>Product</h2></li>
-					<li><a href="">Home</a></li>
-					<li><a href="">Guides</a></li>
-					<li><a href="">Contribute</a></li>
-				</ul>
-				<ul>
-					<li><h2>Company</h2></li>
-					<li><a href="">Terms of service</a></li>
-					<li><a href="">Privacy policy</a></li>
-					<li><a href="">Cookie policy</a></li>
-				</ul>
-			</div>
-			<div class="col-md-6">
-				<div class="rightside">
-					<h2><i class="fas fa-lock"></i>Data encyrpted in transit and at rest</h2>
-					<p>All data sent to Logflare is encrypted in transit. It is also encrypted at rest when using Google BigQuery as your backend.</p>
-					<p><span>Copyright <%= DateTime.utc_now.year %> - Logflare LLC</span></p>
-				</div>
-			</div>
-		</div>
-	</div>
-</div>
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>
 
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 <script async defer src="https://buttons.github.io/buttons.js"></script>
