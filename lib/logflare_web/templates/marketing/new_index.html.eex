@@ -19,7 +19,7 @@
 								>
 								</iframe>
 							</p>
-							<p><a href="" class="signup">SIGN UP</a></p>
+							<p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
 						</div>
 						<p>Install our Cloudflare app or sign up and setup <a href="https://github.com/Logflare/logflare_logger_backend">our Logger backend</a></p>
 					</div>
@@ -47,6 +47,7 @@
 					<div class="col-md-12">
 						<div class="h3div">
 							<h3>That's <span>1,435,546,224</span> records logged to date.</h3>
+							<h3>And counting...</h3>
 						</div>
 					</div>
 				</div>
@@ -108,7 +109,6 @@
 	</div>
 </div>
 <div class="catchimgbtn"><img src="images/marketing/homepage/bgbtn.png" alt=""></div>
-
 <div class="container-fluid scale">
 	<div class="container">
 		<div class="row">
@@ -138,7 +138,7 @@
 							<a href="">
 								<div class="col2">
 									<h2>Logflare</h2>
-									<h3>BigData</h3>
+									<h3>BigQuery</h3>
 									<h3><i class="fa fa-check"></i></h3>
 									<h3 class="lastone"><i class="fa fa-check"></i></h3>
 									<h3 class="nothing">.</h3>
@@ -185,7 +185,7 @@
 						<i class="fas fa-history"></i>
 					</div>
 					<h2>Unlimited event history</h2>
-					<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+					<p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
 				</div>
 			</div>
 			<div class="col-md-4">
@@ -194,7 +194,8 @@
 					<i class="fab fa-google"></i>
 				</div>
 				<h2>BigQuery storage & DataStudio reporting</h2>
-				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				<p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
+				<%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
 				</div>
 			</div>
 			<div class="col-md-4">
@@ -203,7 +204,7 @@
 					<i class="fas fa-code-branch"></i>
 				</div>
 				<h2>Log routing</h2>
-				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				<p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
 				</div>
 			</div>
 			<div class="col-md-4">
@@ -212,7 +213,7 @@
 					<i class="far fa-bell"></i>
 				</div>
 				<h2>Email & SMS alerts</h2>
-				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				<p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
 				</div>
 			</div>
 			<div class="col-md-4">
@@ -221,7 +222,7 @@
 					<i class="fas fa-users"></i>
 				</div>
 				<h2>Sharing via public URL</h2>
-				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				<p>Easily generate a public url for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
 				</div>
 			</div>
 			<div class="col-md-4">
@@ -230,7 +231,7 @@
 					<i class="fas fa-code"></i>
 				</div>
 				<h2>Add metadata and query it</h2>
-				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc.</p>
+				<p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
 				</div>
 			</div>
 		</div>
@@ -262,7 +263,7 @@
 					</div>
 				</div>
 				<p>
-					Use web client in a browser or install our Progressive Web Application for native-like experience. Check how to add it to your apps on <a href="">Android</a>, <a href="">iOS</a> or <a href="">Chrome</a> desktop with just one click.
+					For an app like experience install our Progressive Web App. Add to your homescreen on Android and iOS. Install Logflare on Chrome desktop.
 				</p>
 			</div>
 			<div class="col-md-4">
@@ -271,7 +272,7 @@
 					<a class="github-button" href="https://github.com/Logflare/logflare" data-size="large" data-show-count="true" aria-label="Star Logflare/logflare on GitHub">Star</a>
 				</div>
 				<p>
-					Cras quis nulla commodo, aliquam lectus sed, blandit augue. Cras ullamcorper bibendum bibendum. Duis tincidunt urna non pretium porta. Nam condimentum vitae ligula vel ornare. Contribute
+					Our entire product is open source. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)
 				</p>
 			</div>
 		</div>
@@ -309,7 +310,7 @@
 
 
 						<h1>Install for now and use for free. Forever.</h1>
-						<p>Install on Cloudflare or sign up & setup manually</p>
+						<p>Install our Cloudflare app or sign up and setup <a href="https://github.com/Logflare/logflare_logger_backend">our Logger backend</a></p>
 						<div class="btns">
 							<p>
 								<iframe
@@ -320,7 +321,7 @@
 								  >
 								</iframe>
 							</p>
-							<p><a href="" class="signup">SIGN UP</a></p>
+							<p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
 						</div>
 					</div>
 				</div>
@@ -368,9 +369,9 @@
 			</div>
 			<div class="col-md-6">
 				<div class="rightside">
-					<h2><i class="fas fa-lock"></i>Data secured by Amazon Supersafe</h2>
-					<p>Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
-					<p><span>Copyright 2018 - Logflare LTD</span></p>
+					<h2><i class="fas fa-lock"></i>Data encyrpted in transit and at rest</h2>
+					<p>All data sent to Logflare is encrypted in transit. It is also encrypted at rest when using Google BigQuery as your backend.</p>
+					<p><span>Copyright <%= DateTime.utc_now.year %> - Logflare LLC</span></p>
 				</div>
 			</div>
 		</div>
