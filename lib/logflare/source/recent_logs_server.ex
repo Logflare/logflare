@@ -18,7 +18,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
   alias Logflare.Source.{Data, EmailNotificationServer, TextNoticationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Sources
+  alias Logflare.{Sources, Source}
 
   require Logger
 
@@ -115,18 +115,11 @@ defmodule Logflare.Source.RecentLogsServer do
     log_count = Data.get_log_count(source_id, bigquery_project_id)
 
     if log_count > 0 do
-      unique_integer = System.unique_integer([:monotonic])
-      timestamp = System.system_time(:microsecond)
-      time_event = {timestamp, unique_integer, 0}
-      source_table_string = Atom.to_string(source_id)
-
-      log_message =
+      message =
         "Initialized and waiting for new events. #{Delimit.number_to_delimited(log_count)} archived and available to explore."
 
-      payload = %{timestamp: timestamp, log_message: log_message}
-      log = {time_event, payload}
-
-      push(source_id, log)
+      log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
+      push(source_id, log_event)
 
       case :ets.info(LogflareWeb.Endpoint) do
         :undefined ->
@@ -134,9 +127,9 @@ defmodule Logflare.Source.RecentLogsServer do
 
         _ ->
           LogflareWeb.Endpoint.broadcast(
-            "source:" <> source_table_string,
-            "source:#{source_table_string}:new",
-            payload
+            "source:#{source_id}",
+            "source:#{source_id}:new",
+            %{log_message: message, timestamp: log_event.injested_at}
           )
       end
     end
