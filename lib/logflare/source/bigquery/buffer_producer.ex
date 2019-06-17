@@ -4,6 +4,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   require Logger
 
   alias Logflare.Source.BigQuery.Buffer
+  alias Logflare.LogEvent, as: LE
 
   @default_receive_interval 1000
 
@@ -53,14 +54,12 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   def ack(table, successful, unsuccessful) do
     Enum.each(successful, fn message ->
-      {time_event, _data} = message.data.event
-      Buffer.ack(table, time_event)
+      Buffer.ack(table, message.data.event.id)
     end)
 
     Enum.each(unsuccessful, fn message ->
-      {time_event, _data} = message.data.event
-      event = Buffer.ack(table, time_event)
-      Buffer.push(table, event)
+      log_event = Buffer.ack(table, message.data.event.id)
+      Buffer.push(table, log_event)
     end)
   end
 
@@ -74,9 +73,8 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
       :empty ->
         []
 
-      _ ->
-        {_time_event, event} = pop
-        event_message = %{table: table, event: event}
+      %LE{} = log_event ->
+        event_message = %{table: table, event: log_event}
 
         [
           %Broadway.Message{
