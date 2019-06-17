@@ -19,13 +19,14 @@ defmodule Logflare.LogEvent do
     end
   end
 
-  @primary_key false
+  @primary_key {:id, :binary_id, []}
   embedded_schema do
     embeds_one :body, Body
     field :source, :map
     field :valid?, :boolean
     field :validation_error, {:array, :string}
     field :injested_at, :naive_datetime
+    field :sys_uint, :integer
     field :params, :map
   end
 
@@ -77,6 +78,8 @@ defmodule Logflare.LogEvent do
     |> Map.put(:valid?, changeset.valid?)
     |> Map.put(:params, params)
     |> Map.put(:injested_at, NaiveDateTime.utc_now())
+    |> Map.put(:id, Ecto.UUID.generate())
+    |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
     |> validate()
   end
 

@@ -7,11 +7,12 @@ defmodule Logflare.Source.RecentLogsServer do
   use GenServer
 
   alias Logflare.Sources.Counters
-  alias Logflare.Logs
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Number.Delimit
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
   alias Logflare.Source.{Data, EmailNotificationServer, TextNoticationServer, RateCounterServer}
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.Sources
 
   require Logger
 
@@ -32,8 +33,8 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, state, {:continue, :boot}}
   end
 
-  def push(source_id, event) do
-    GenServer.cast(source_id, {:push, source_id, event})
+  def push(source_id, %LE{} = log_event) do
+    GenServer.cast(source_id, {:push, source_id, log_event})
   end
 
   ## Server
@@ -70,8 +71,12 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, state}
   end
 
-  def handle_cast({:push, source_id, event}, state) do
-    :ets.insert(source_id, event)
+  def handle_cast(
+        {:push, source_id, %LE{injested_at: injested_at, sys_uint: sys_uint} = log_event},
+        state
+      ) do
+    timestamp = injested_at |> Timex.to_datetime() |> DateTime.to_unix(:microsecond)
+    :ets.insert(source_id, {{timestamp, sys_uint, 0}, log_event})
     {:noreply, state}
   end
 
