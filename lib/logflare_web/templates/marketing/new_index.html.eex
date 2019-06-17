@@ -4,11 +4,11 @@
 			<div class="col-lg-10 order-lg-1">
 				<div class="row">
 					<div class="col-lg-8">
-						<h1>Affordable log management for your app</h1>
+						<h1>Affordable log management & event analytics</h1>
 						<h2>Collect for years, query in seconds</h2>
 					</div>
 					<div class="col-lg-4">
-						<p>Install on Cloudflare or sign up & setup manually</p>
+						<p>For Cloudflare and Elixir apps</p>
 						<div class="btns">
 							<p>
 								<iframe
@@ -21,7 +21,7 @@
 							</p>
 							<p><a href="" class="signup">SIGN UP</a></p>
 						</div>
-						<p>Free forever, uninstall anytime</p>
+						<p>Install our Cloudflare app or sign up and setup <a href="https://github.com/Logflare/logflare_logger_backend">our Logger backend</a></p>
 					</div>
 				</div>
 			</div>
@@ -46,7 +46,6 @@
 				<div class="row">
 					<div class="col-md-12">
 						<div class="h3div">
-							<h3>We collect logs from <span>23,434</span> active sources. </h3>
 							<h3>That's <span>1,435,546,224</span> records logged to date.</h3>
 						</div>
 					</div>
@@ -95,7 +94,7 @@
 					</div>
 					<div class="row">
 						<div class="col-md-6 order-md-6">
-							<img src="images/marketing/homepage/catchImgDesktop.png" class="img-responsive" alt="">
+							<img src="images/marketing/homepage/catchImgDesktop-4x.png" class="img-responsive" alt="">
 						</div>
 						<div class="col-md-6 pull-md-6">
 
@@ -357,8 +356,7 @@
 				<ul>
 					<li><h2>Product</h2></li>
 					<li><a href="">Home</a></li>
-					<li><a href="">Pricing</a></li>
-					<li><a href="">Knowledge base</a></li>
+					<li><a href="">Guides</a></li>
 					<li><a href="">Contribute</a></li>
 				</ul>
 				<ul>
@@ -366,7 +364,6 @@
 					<li><a href="">Terms of service</a></li>
 					<li><a href="">Privacy policy</a></li>
 					<li><a href="">Cookie policy</a></li>
-					<li><a href="">Contact us</a></li>
 				</ul>
 			</div>
 			<div class="col-md-6">
