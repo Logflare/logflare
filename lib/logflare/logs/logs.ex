@@ -12,15 +12,14 @@ defmodule Logflare.Logs do
   alias Logflare.Sources.Counters
   alias Number.Delimit
 
-  @system_counter :total_logs_logged
-
   @spec injest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def injest_logs(log_params_batch, %Source{} = source) do
     log_params_batch
     |> Enum.map(&LogEvent.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = log_event ->
       if log_event.valid? do
-        injest(log_event)
+        injest_by_source_rules(log_event)
+        injest_and_broadcast(log_event)
       else
         RejectedLogEvents.injest(log_event)
       end
@@ -40,26 +39,27 @@ defmodule Logflare.Logs do
     end
   end
 
-  defp injest(%LE{} = log_event) do
-    injest_by_source_rules(log_event, log_event.source)
-    injest_and_broadcast(log_event, log_event.source)
-  end
-
-  defp injest_by_source_rules(log_event, %Source{} = source) do
+  defp injest_by_source_rules(%LE{source: %Source{} = source} = log_event) do
     for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, "#{log_event.message}") do
       sink_source = Sources.Cache.get_by(token: rule.sink)
 
       if sink_source do
-        # FIXME double counting log event counts here
-        injest_and_broadcast(sink_source, log_event)
+        injest_and_broadcast(%{log_event | source: sink_source})
       else
         Logger.error("Sink source for token UUID #{rule.sink} doesn't exist")
       end
     end
   end
 
-  defp injest_and_broadcast(log_event, %Source{} = source) do
+  defp injest_and_broadcast(%LE{source: %Source{} = source} = log_event) do
     source_table_string = Atom.to_string(source.token)
+
+    RecentLogsServer.push(source.token, log_event)
+    Buffer.push(source_table_string, log_event)
+    Sources.Counters.incriment(source.token)
+    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+
+    broadcast_log_count(source)
 
     {message, body} = Map.pop(log_event.body, :message)
 
@@ -68,16 +68,6 @@ defmodule Logflare.Logs do
       |> Map.put(:log_message, message)
       |> Map.from_struct()
 
-    time_event = build_time_event(body.timestamp)
-    time_log_event = {time_event, payload}
-
-    RecentLogsServer.push(source.token, time_log_event)
-    Buffer.push(source_table_string, time_log_event)
-    Sources.Counters.incriment(source.token)
-    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
-
-    broadcast_log_count(source.token)
-
     LogflareWeb.Endpoint.broadcast(
       "source:#{source.token}",
       "source:#{source.token}:new",
@@ -85,28 +75,9 @@ defmodule Logflare.Logs do
     )
   end
 
-  @spec build_time_event(String.t() | non_neg_integer) :: {non_neg_integer, integer, integer}
-  defp build_time_event(timestamp) when is_integer(timestamp) do
-    import System
-    {timestamp, unique_integer([:monotonic]), monotonic_time(:nanosecond)}
-  end
-
-  defp build_time_event(iso_datetime) when is_binary(iso_datetime) do
-    unix =
-      iso_datetime
-      |> Timex.parse!("{ISO:Extended}")
-      |> Timex.to_unix()
-
-    timestamp_mcs = unix * 1_000_000
-
-    monotime = System.monotonic_time(:nanosecond)
-    unique_int = System.unique_integer([:monotonic])
-    {timestamp_mcs, unique_int, monotime}
-  end
-
-  def broadcast_log_count(source_table) do
-    {:ok, log_count} = Counters.get_total_inserts(source_table)
-    source_table_string = Atom.to_string(source_table)
+  def broadcast_log_count(%Source{token: source_id} = source) do
+    {:ok, log_count} = Counters.get_total_inserts(source_id)
+    source_table_string = Atom.to_string(source_id)
 
     payload = %{
       log_count: Delimit.number_to_delimited(log_count),
