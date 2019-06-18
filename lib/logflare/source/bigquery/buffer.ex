@@ -3,6 +3,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   use GenServer
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source
 
   alias Number.Delimit
 
@@ -85,7 +86,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    broadcast_buffer(state.source_id, :queue.len(state.buffer))
+    Source.ChannelTopics.broadcast_buffer(state.source_id, :queue.len(state.buffer))
     check_buffer()
     {:noreply, state}
   end
@@ -98,27 +99,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   defp check_buffer() do
     Process.send_after(self(), :check_buffer, @broadcast_every)
-  end
-
-  defp broadcast_buffer(source_id, count) do
-    source_id_string = Atom.to_string(source_id)
-
-    payload = %{
-      source_token: source_id_string,
-      buffer: Delimit.number_to_delimited(count)
-    }
-
-    case :ets.info(LogflareWeb.Endpoint) do
-      :undefined ->
-        Logger.error("Endpoint not up yet!")
-
-      _ ->
-        LogflareWeb.Endpoint.broadcast(
-          "dashboard:" <> source_id_string,
-          "dashboard:#{source_id_string}:buffer",
-          payload
-        )
-    end
   end
 
   defp name(source_id) do

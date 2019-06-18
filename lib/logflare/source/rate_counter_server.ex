@@ -11,6 +11,7 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Counters
   alias Logflare.Source.Data
+  alias Logflare.Source
 
   alias Number.Delimit
 
@@ -236,24 +237,10 @@ defmodule Logflare.Source.RateCounterServer do
     payload = state_to_external(state)
     source_string = Atom.to_string(state.source_id)
 
-    payload = %{
-      source_token: source_string,
-      rate: Delimit.number_to_delimited(payload.last_rate),
-      average_rate: Delimit.number_to_delimited(payload.average_rate),
-      max_rate: Delimit.number_to_delimited(payload.max_rate)
-    }
-
-    case :ets.info(LogflareWeb.Endpoint) do
-      :undefined ->
-        Logger.error("Endpoint not up yet!")
-
-      _ ->
-        LogflareWeb.Endpoint.broadcast(
-          "dashboard:" <> source_string,
-          "dashboard:#{source_string}:rate",
-          payload
-        )
-    end
+    state
+    |> state_to_external()
+    |> Map.put(:source_token, source_string)
+    |> Source.ChannelTopics.broadcast_rates()
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}

@@ -122,17 +122,7 @@ defmodule Logflare.Source.RecentLogsServer do
       log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
       push(source_id, log_event)
 
-      case :ets.info(LogflareWeb.Endpoint) do
-        :undefined ->
-          Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
-
-        _ ->
-          LogflareWeb.Endpoint.broadcast(
-            "source:#{source_id}",
-            "source:#{source_id}:new",
-            %{log_message: message, timestamp: log_event.injested_at}
-          )
-      end
+      Source.ChannelTopics.broadcast_new(log_event)
     end
   end
 
