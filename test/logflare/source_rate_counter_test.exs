@@ -1,10 +1,10 @@
-defmodule Logflare.RateCounterServerTest do
+defmodule Logflare.Source.RateCounterServerTest do
   @moduledoc false
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Source.RecentLogsServer, as: RLS
   import RCS
   alias Logflare.Sources
-  use Logflare.DataCase
+  use LogflareWeb.ChannelCase
   import Logflare.DummyFactory
 
   setup do
@@ -17,7 +17,17 @@ defmodule Logflare.RateCounterServerTest do
   end
 
   describe "RateCounterServer GenServer" do
-    test "init and handle_info(:put_rate, state)/2", %{sources: [s1 | _]} do
+    test "broadcast state", %{sources: [s1 | _]} do
+      @endpoint.subscribe("dashboard:#{s1.token}")
+      event = "dashboard:#{s1.token}:rate"
+      s1_id_string = "#{s1.token}"
+
+      assert_broadcast event,
+                       %{source_token: s1_id_string, rate: "0", average_rate: "0", max_rate: "0"},
+                       1_100
+    end
+
+    test "handle_info(:put_rate, state)/2", %{sources: [s1 | _]} do
       Sources.Counters.incriment_ets_count(s1.token, 10)
       s1_id = s1.token
       assert {:noreply, ^s1_id} = RCS.handle_info(:put_rate, s1.token)
