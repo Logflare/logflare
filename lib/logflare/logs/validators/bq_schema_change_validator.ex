@@ -38,6 +38,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     end
   end
 
+  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
@@ -62,6 +63,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     |> Enum.into(Map.new())
   end
 
+  @spec to_typemap(map) :: %{required(atom) => map | atom}
   def to_typemap(metadata) when is_map(metadata) do
     for {k, v} <- metadata, into: Map.new() do
       v =

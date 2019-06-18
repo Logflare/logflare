@@ -1,22 +1,26 @@
 defmodule Logflare.Logs.RejectedLogEvents do
+  @moduledoc """
+  Handles and caches LogEvents that failed validation
+  """
   alias Logflare.{Source, User}
-  alias Logflare.LogEvent
+  alias Logflare.LogEvent, as: LE
   @cache __MODULE__
 
   def child_spec(_) do
     %{id: @cache, start: {Cachex, :start_link, [@cache, []]}}
   end
 
-  @spec get_by_user(Logflare.User.t()) :: %{atom => list(LogEvent.t())}
+  @spec get_by_user(Logflare.User.t()) :: %{atom => list(LE.t())}
   def get_by_user(%User{sources: sources}) do
     for source <- sources, into: Map.new() do
       {source.token, get_by_source(source)}
     end
   end
 
-  @spec get_by_source(Source.t()) :: list(LogEvent.t())
+  @spec get_by_source(Source.t()) :: list(LE.t())
   def get_by_source(%Source{token: token}) do
     get!(token).log_events
+    |> Enum.reverse()
   end
 
   def count(%Source{} = s) do
@@ -28,12 +32,12 @@ defmodule Logflare.Logs.RejectedLogEvents do
   @doc """
   Expected to be called only in Logs context
   """
-  @spec injest(LogEvent.t()) :: term
-  def injest(%LogEvent{source: %Source{}, valid?: false} = le) do
+  @spec injest(LE.t()) :: term
+  def injest(%LE{source: %Source{}, valid?: false} = le) do
     insert(le.source.token, le)
   end
 
-  @spec get!(atom) :: %{log_events: list(LogEvent.t()), count: non_neg_integer}
+  @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}
   defp get!(key) do
     {:ok, val} = Cachex.get(@cache, key)
     val || %{log_events: [], count: 0}

@@ -20,6 +20,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.{Sources, Source}
+  alias __MODULE__, as: RLS
 
   require Logger
 
@@ -30,7 +31,7 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   ## Client
-
+  @spec init(any) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(source_id) do
     Process.flag(:trap_exit, true)
     prune()
@@ -45,6 +46,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
+  @spec handle_continue(:boot, RLS.t()) :: {:noreply, RLS.t()}
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     bigquery_table_ttl = GenUtils.get_table_ttl(source_id)
