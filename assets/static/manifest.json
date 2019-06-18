@@ -3,8 +3,8 @@
  "start_url": "/dashboard",
  "display": "standalone",
  "short_name": "Logflare",
- "background_color": "#7ef854",
- "theme_color": "#7ef854",
+ "background_color": "#5eeb8f",
+ "theme_color": "#5eeb8f",
  "icons": [
   {
    "src": "\/images\/android-icon-36x36.png",
