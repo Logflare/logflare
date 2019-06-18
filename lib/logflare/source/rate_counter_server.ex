@@ -6,7 +6,7 @@ defmodule Logflare.Source.RateCounterServer do
   use GenServer
 
   require Logger
-  alias __MODULE__, as: SRC
+  alias __MODULE__, as: RCS
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Counters
@@ -66,7 +66,7 @@ defmodule Logflare.Source.RateCounterServer do
 
     state = get_data_from_ets(source_id)
 
-    %SRC{} = state = update_state(state, new_count)
+    %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
     broadcast(state)
@@ -82,22 +82,22 @@ defmodule Logflare.Source.RateCounterServer do
 
   @spec new(atom) :: __MODULE__.t()
   def new(source_id) when is_atom(source_id) do
-    %SRC{begin_time: System.monotonic_time(), source_id: source_id}
+    %RCS{begin_time: System.monotonic_time(), source_id: source_id}
   end
 
-  @spec update_state(SRC.t(), non_neg_integer) :: SRC.t()
-  def update_state(%SRC{} = state, new_count) do
+  @spec update_state(RCS.t(), non_neg_integer) :: RCS.t()
+  def update_state(%RCS{} = state, new_count) do
     state
     |> update_current_rate(new_count)
     |> update_max_rate()
     |> update_buckets()
   end
 
-  def update_ets_table(%SRC{} = state) do
+  def update_ets_table(%RCS{} = state) do
     insert_to_ets_table(state.source_id, state)
   end
 
-  def state_to_external(%SRC{} = state) do
+  def state_to_external(%RCS{} = state) do
     %{
       last_rate: lr,
       max_rate: mr,
@@ -111,15 +111,15 @@ defmodule Logflare.Source.RateCounterServer do
     %{last_rate: lr, average_rate: avg, max_rate: mr}
   end
 
-  def update_max_rate(%SRC{max_rate: mx, last_rate: lr} = s) do
+  def update_max_rate(%RCS{max_rate: mx, last_rate: lr} = s) do
     %{s | max_rate: Enum.max([mx, lr])}
   end
 
-  def update_current_rate(%SRC{} = state, new_count) do
+  def update_current_rate(%RCS{} = state, new_count) do
     %{state | last_rate: new_count - state.count, count: new_count}
   end
 
-  def update_buckets(%SRC{} = state) do
+  def update_buckets(%RCS{} = state) do
     Map.update!(state, :buckets, fn buckets ->
       for {length, bucket} <- buckets, into: Map.new() do
         # TODO: optimize by not recalculating total sum and average
@@ -141,20 +141,20 @@ defmodule Logflare.Source.RateCounterServer do
     end)
   end
 
-  @spec get_rate(atom) :: integer
   @doc """
   Gets last rate
   """
+  @spec get_rate(atom) :: integer
   def get_rate(source_id) when is_atom(source_id) do
     source_id
     |> get_data_from_ets()
     |> Map.get(:last_rate)
   end
 
-  @spec get_avg_rate(atom) :: integer
   @doc """
   Gets average rate for the default bucket
   """
+  @spec get_avg_rate(atom) :: integer
   def get_avg_rate(source_id) when is_atom(source_id) do
     source_id
     |> get_data_from_ets()
@@ -180,7 +180,7 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   defp setup_ets_table(source_id) when is_atom(source_id) do
-    initial = SRC.new(source_id)
+    initial = RCS.new(source_id)
 
     if ets_table_is_undefined?() do
       table_args = [:named_table, :public]
@@ -194,7 +194,7 @@ defmodule Logflare.Source.RateCounterServer do
   def get_data_from_ets(source_id) do
     if ets_table_is_undefined?() do
       Logger.error("ETS table #{@ets_table_name} is undefined")
-      data = [{source_id, SRC.new(source_id)}]
+      data = [{source_id, RCS.new(source_id)}]
       data[source_id]
     else
       data = :ets.lookup(@ets_table_name, source_id)
@@ -202,7 +202,7 @@ defmodule Logflare.Source.RateCounterServer do
       if data[source_id] do
         data[source_id]
       else
-        data = [{source_id, SRC.new(source_id)}]
+        data = [{source_id, RCS.new(source_id)}]
         data[source_id]
       end
     end
@@ -232,7 +232,7 @@ defmodule Logflare.Source.RateCounterServer do
     String.to_atom("#{source_id}" <> "-rate")
   end
 
-  defp broadcast(%SRC{} = state) do
+  defp broadcast(%RCS{} = state) do
     payload = state_to_external(state)
     source_string = Atom.to_string(state.source_id)
 

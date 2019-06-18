@@ -1,32 +1,28 @@
-defmodule Logflare.SourceRateCounterTest do
+defmodule Logflare.RateCounterServerTest do
+  @moduledoc false
   alias Logflare.Source.RateCounterServer, as: RCS
+  alias Logflare.Source.RecentLogsServer, as: RLS
   import RCS
   alias Logflare.Sources
-  use ExUnit.Case
-
-  import Mox
-
-  setup :verify_on_exit!
+  use Logflare.DataCase
+  import Logflare.DummyFactory
 
   setup do
-    source_id = :some_non_existing_table
-
-    state = %{}
-
+    u1 = insert(:user)
+    s1 = insert(:source, user_id: u1.id)
     Sources.Counters.start_link()
-    RCS.setup_ets_table(source_id)
+    {:ok, pid} = RCS.start_link(%RLS{source_id: s1.token})
 
-    {:ok, source_id: source_id}
+    {:ok, sources: [s1]}
   end
 
-  describe "source_id rate counter" do
-    test "init and handle_info(:put_rate, state)/2", %{source_id: source_id} do
-      Sources.Counters.incriment_ets_count(source_id, 10)
-      {:noreply, sid} = RCS.handle_info(:put_rate, source_id)
+  describe "RateCounterServer GenServer" do
+    test "init and handle_info(:put_rate, state)/2", %{sources: [s1 | _]} do
+      Sources.Counters.incriment_ets_count(s1.token, 10)
+      s1_id = s1.token
+      assert {:noreply, ^s1_id} = RCS.handle_info(:put_rate, s1.token)
 
-      assert sid == source_id
-
-      new_state = get_data_from_ets(source_id)
+      new_state = get_data_from_ets(s1.token)
 
       assert new_state == %RCS{
                begin_time: new_state.begin_time,
@@ -41,11 +37,14 @@ defmodule Logflare.SourceRateCounterTest do
                count: 10,
                last_rate: 10,
                max_rate: 10,
-               source_id: :some_non_existing_table
+               source_id: s1.token
              }
     end
+  end
 
-    test "get_* functions", %{source_id: source_id} do
+  describe "RateCounterServer API" do
+    test "get_* functions", %{sources: [s1 | _]} do
+      source_id = s1.token
       Sources.Counters.incriment_ets_count(source_id, 5)
       _ = RCS.handle_info(:put_rate, source_id)
       assert RCS.get_rate(source_id) == 5
@@ -53,7 +52,9 @@ defmodule Logflare.SourceRateCounterTest do
       assert RCS.get_max_rate(source_id) == 5
     end
 
-    test "bucket data is calculated correctly", %{source_id: source_id} do
+    test "bucket data is calculated correctly", %{sources: [s1 | _]} do
+      source_id = s1.token
+
       state = new(source_id)
 
       state =
@@ -68,7 +69,9 @@ defmodule Logflare.SourceRateCounterTest do
       assert state.last_rate == 10
     end
 
-    test "get_metrics and get_x functions", %{source_id: source_id} do
+    test "get_metrics and get_x functions", %{sources: [s1 | _]} do
+      source_id = s1.token
+
       state = new(source_id)
 
       state = update_state(state, 5)
