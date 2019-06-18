@@ -16,7 +16,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Number.Delimit
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
-  alias Logflare.Source.{Data, EmailNotificationServer, TextNoticationServer, RateCounterServer}
+  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.{Sources, Source}
 
@@ -58,7 +58,7 @@ defmodule Logflare.Source.RecentLogsServer do
     children = [
       {RateCounterServer, rls},
       {EmailNotificationServer, rls},
-      {TextNoticationServer, rls},
+      {TextNotificationServer, rls},
       {Buffer, rls},
       {Pipeline, rls},
       {Schema, rls}

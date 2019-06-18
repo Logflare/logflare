@@ -1,4 +1,5 @@
-defmodule Logflare.Source.TextNoticationServer do
+defmodule Logflare.Source.TextNotificationServer do
+  @moduledoc false
   use GenServer
 
   require Logger
