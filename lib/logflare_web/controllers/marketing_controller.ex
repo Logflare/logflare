@@ -11,11 +11,6 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "index.html", log_count: Delimit.number_to_delimited(log_count))
   end
 
-  def new_index(conn, _params) do
-    {:ok, log_count} = AllLogsLogged.log_count(@system_counter)
-    render(conn, "new_index.html", log_count: Delimit.number_to_delimited(log_count))
-  end
-
   def big_query(conn, _params) do
     render(conn, "bigquery_datastudio.html")
   end

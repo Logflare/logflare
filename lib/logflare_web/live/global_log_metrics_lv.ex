@@ -8,7 +8,6 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
     ~L"""
     <h3>That's <span><%= @log_count %></span> records logged to date</h3>
     <h3>Counting <span><%= @per_second %></span> logs per second</h3>
-
     """
   end
 

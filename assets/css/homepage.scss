@@ -542,6 +542,10 @@ body {
   margin-top: 30px;
 }
 
+.tablescalerow .btn {
+  margin-top: 30px;
+}
+
 .hero .imghero {
   margin: auto;
   display: block;
@@ -1353,6 +1357,7 @@ body {
     text-align: left;
     margin-left: 0;
     margin-right: auto;
+    margin-top: 10px;
   }
 
   .hero {
@@ -1420,8 +1425,7 @@ body {
   }
 
   .catch p,
-  .hero .paragraph p,
-  .scale p {
+  .hero .paragraph p .scale p {
     margin-top: 30px;
   }
 
@@ -1688,13 +1692,12 @@ body {
   }
 
   .catch p,
-  .hero .paragraph p,
-  .scale p {
+  .hero .paragraph p {
     padding-bottom: 30px;
   }
 
   .scale .spanp {
-    margin-top: 0;
+    margin-top: 30px;
   }
 
   .steps {
