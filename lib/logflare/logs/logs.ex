@@ -39,8 +39,9 @@ defmodule Logflare.Logs do
     end
   end
 
+  @spec injest_by_source_rules(LE.t()) :: term
   defp injest_by_source_rules(%LE{source: %Source{} = source} = log_event) do
-    for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, "#{log_event.message}") do
+    for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, log_event.body.message) do
       sink_source = Sources.Cache.get_by(token: rule.sink)
 
       if sink_source do

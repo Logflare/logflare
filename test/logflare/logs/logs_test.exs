@@ -13,8 +13,8 @@ defmodule Logflare.LogsTest do
   setup do
     u = insert(:user)
     [sink1, sink2] = insert_list(2, :source, user_id: u.id)
-    rule1 = build(:rule, sink: sink1.token, regex: "\w+1")
-    rule2 = build(:rule, sink: sink2.token, regex: "\w+2")
+    rule1 = build(:rule, sink: sink1.token, regex: "pattern2")
+    rule2 = build(:rule, sink: sink2.token, regex: "pattern3")
     s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
 
     {:ok, sources: [s1], sinks: [sink1, sink2]}
@@ -62,7 +62,7 @@ defmodule Logflare.LogsTest do
 
       assert_called RecentLogsServer.push(
                       sink2.token,
-                      is(fn le -> le.body.message === "pattern2" end)
+                      is(fn le -> le.body.message === "pattern3" end)
                     ),
                     once()
 
@@ -71,7 +71,7 @@ defmodule Logflare.LogsTest do
 
       assert_called Buffer.push(
                       "#{sink2.token}",
-                      is(fn le -> le.body.message === "pattern2" end)
+                      is(fn le -> le.body.message === "pattern3" end)
                     ),
                     once()
 
