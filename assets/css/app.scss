@@ -5,6 +5,19 @@
 @import "buttons";
 @import "marketing";
 @import "new_homepage";
+$whitecolor: #ffffff;
+$silvercolor: #B7B7B7;
+$bluecolor: #ffffff;
+$orangecolor: #f1ba58;
+$brand-green: #5eeb8f;
+$brand-brighter-green: #63ff99;
+$brand-blue: #2155a3;
+$brand-brighter-blue: #2a6cce;
+$brand-fuscia: #E35B8D;
+$brand-gray: #9a9a9a;
+$brand-black: #161616;
+$brand-light-black: #1d1d1d;
+$brand-light-gray: #e5e5e5;
 
 body {
   background-color: #161616;
@@ -42,13 +55,13 @@ body {
 }
 
 .modal-content {
-  color: #7EF854;
-  background-color: black;
+  color: $brand-gray;
+  background-color: $brand-black;
 }
 
 .modal-header {
   color: black;
-  background-color: #7EF854;
+  background-color: $brand-green;
 }
 
 .modal-header {
@@ -91,8 +104,8 @@ body {
 
 .copyable-code {
   font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-  background-color: #1d1d1d;
-  color: #e2e2e2;
+  background-color: $brand-light-black;
+  color: $brand-light-gray;
   display: block;
   font-size: 87.5%;
   width: 1200px;
@@ -135,11 +148,11 @@ code {
 }
 
 h2 {
-  color: #fff;
+  color: $whitecolor;
 }
 
 h3 {
-  color: #fff;
+  color: $whitecolor;
   margin-top: 1.5em;
 }
 
@@ -223,7 +236,7 @@ mark {
 #console-text {
   font-family: monospace;
   font-size: 1em;
-  color: #e5e5e5;
+  color: $brand-light-gray;
   word-break: break-word;
   overflow-wrap: break-word;
   /* overflow-x: scroll;

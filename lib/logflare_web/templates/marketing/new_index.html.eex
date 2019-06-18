@@ -26,11 +26,8 @@
 				</div>
 			</div>
 			<div class="col-lg-1">
-
 			</div>
 		</div>
-
-
 
 		<div class="row">
 			<div class="col-md-12">
@@ -47,7 +44,6 @@
 					<div class="col-md-12">
 						<div class="h3div">
 							<%= live_render(@conn, LogflareWeb.GlobalLogMetricsLV) %>
-
 						</div>
 					</div>
 				</div>
@@ -58,7 +54,6 @@
 			<div class="col-lg-10 order-lg-1">
 				<div class="row">
 					<div class="col-md-6">
-
 					</div>
 					<div class="col-md-6">
 						<h4>Track everything you want</h4>
@@ -67,15 +62,16 @@
 						<img src="images/marketing/homepage/trackImgDesktop.png" class="img-responsive" alt="">
 					</div>
 					<div class="col-md-6">
-
-						<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc. Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus. Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+						<p>Log and application performance management in one solution. Simply send Logflare events. We insert and manage the underlying BigQuery table schema for you. Log any kind of data you want and unlock the power of an easy to use cloud scale data warehouse. </br> </br> We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with the Elixir library.</p>
 					</div>
+
 				</div>
+
 			</div>
 			<div class="col-lg-1">
-
 			</div>
 		</div>
+		<center><%= link "Logflare status dashboard »", to: "https://datastudio.google.com/s/vkfwKfU1-C0", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
 	</div>
 </div>
 
@@ -87,10 +83,9 @@
 				<div class="col-lg-10 order-lg-1">
 					<div class="row">
 						<div class="col-md-6">
-							<h4>Catch every request at 0 ms latency cost</h4>
+							<h4>Edge logs with no added latency</h4>
 						</div>
 						<div class="col-md-6">
-
 						</div>
 					</div>
 					<div class="row">
@@ -98,8 +93,7 @@
 							<img src="images/marketing/homepage/catchImgDesktop-4x.png" class="img-responsive" alt="">
 						</div>
 						<div class="col-md-6 pull-md-6">
-
-							<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc. Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus. Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+							<p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare asynchronously after passing your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead. We batch logs and use <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %> to keep payload size and serialization load low.</p>
 						</div>
 					</div>
 				</div>
@@ -115,10 +109,9 @@
 			<div class="col-lg-10 order-lg-1">
 				<div class="row">
 					<div class="col-md-6">
-
 					</div>
 					<div class="col-md-6">
-						<h4>Scale more, pay less</h4>
+						<h4>Elastic is expensive</h4>
 					</div>
 				</div>
 				<div class="row tablescalerow">
@@ -128,48 +121,46 @@
 							<div class="col1">
 								<h2>Brief comparison</h2>
 								<h3>Storage type</h3>
-								<h3>External storage</h3>
+								<h3>BYO Backend™</h3>
+								<h3>Searchable (hot)</h3>
 								<h3 class="lastone">Direct data access</h3>
-
-								<h3>Price</h3>
-								<h3>1 TB of logs</h3>
-								<h3>100 TB of logs</h3>
+								<h3>Price per month</h3>
+								<h3>16 GB of logs</h3>
+								<h3>1,000 GB of logs</h3>
 							</div>
 							<a href="">
 								<div class="col2">
 									<h2>Logflare</h2>
 									<h3>BigQuery</h3>
 									<h3><i class="fa fa-check"></i></h3>
+									<h3>Unlimited</h3>
 									<h3 class="lastone"><i class="fa fa-check"></i></h3>
 									<h3 class="nothing">.</h3>
-									<h3 class="money">$50</h3>
-									<h3 class="money">$500</h3>
-
+									<h3 class="money">$0.12</h3>
+									<h3 class="money">$27.50</h3>
 								</div>
 							</a>
 							<a href="">
 								<div class="col3">
-									<h2>Others</h2>
+									<h2>Papertrail</h2>
 									<h3>Elastic</h3>
 									<h3><i class="fa fa-times"></i></h3>
+									<h3>7 days</h3>
 									<h3 class="lastone"><i class="fa fa-times"></i></h3>
 									<h3 class="nothing">.</h3>
-									<h3 class="money">$150</h3>
-									<h3 class="money">$5000</h3>
-
+									<h3 class="money">$125</h3>
+									<h3 class="money">$2,450</h3>
 								</div>
 							</a>
 						</div>
 					</div>
 					<div class="col-md-6">
-
-						<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut pretium pretium tempor. Ut eget imperdiet neque. In volutpat ante semper diam molestie, et aliquam erat laoreet. Sed sit amet arcu aliquet, molestie justo at, auctor nunc. Phasellus ligula ipsum, volutpat eget semper id, viverra eget nibh. Suspendisse luctus mattis cursus.</p>
-						<p class="spanp">Nam consectetur ante at nisl hendrerit gravida. Donec vehicula rhoncus mattis. Mauris dignissim semper mattis. Fusce porttitor a mi at suscipit. </p>
+						<p>Costs escalates quicly with typical Elastic based log management solutions. To setup long term analytics on events you  need to archive to a CSV and setup another data pipeline to injest events into a custom tailored data warehouse. </br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can injest immediately, query in seconds and store data for years.</p>
+						<p class="spanp">Event size based on an average of 100kb per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 100kb per event you get 160,000 events for 16 GB of storage.</p>
 					</div>
 				</div>
 			</div>
 			<div class="col-lg-1">
-
 			</div>
 		</div>
 	</div>
@@ -193,7 +184,7 @@
 				<div class="circle">
 					<i class="fab fa-google"></i>
 				</div>
-				<h2>BigQuery storage & DataStudio reporting</h2>
+				<h2>BigQuery & DataStudio</h2>
 				<p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
 				<%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
 				</div>
