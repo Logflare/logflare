@@ -155,7 +155,7 @@
 					</div>
 					<div class="col-md-6">
 						<p>Costs escalates quicly with typical Elastic based log management solutions. To setup long term analytics on events you  need to archive to a CSV and setup another data pipeline to injest events into a custom tailored data warehouse. </br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can injest immediately, query in seconds and store data for years.</p>
-						<center><%= link "More pricing coming soon", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
+						<center><%= link "More pricing coming soon", to: "#", class: "btn btn-secondary", role: "button" %></center>
 						<p class="spanp">Event size based on an average of 100kb per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 100kb per event you get 160,000 events for 16 GB of storage.</p>
 					</div>
 				</div>
