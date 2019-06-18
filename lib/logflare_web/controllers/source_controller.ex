@@ -69,7 +69,6 @@ defmodule LogflareWeb.SourceController do
 
       {:error, changeset} ->
         conn
-        |> put_status(406)
         |> put_flash(:error, "Something went wrong!")
         |> assign(:changeset, changeset)
         |> redirect(to: Routes.source_path(conn, :new))
