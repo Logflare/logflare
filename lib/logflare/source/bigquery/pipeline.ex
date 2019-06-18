@@ -1,4 +1,5 @@
 defmodule Logflare.Source.BigQuery.Pipeline do
+  @moduledoc false
   use Broadway
 
   require Logger

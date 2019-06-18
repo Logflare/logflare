@@ -1,21 +1,18 @@
 defmodule Logflare.Logs do
+  @moduledoc false
   require Logger
   use Publicist
 
-  alias Logflare.LogEvent
   alias Logflare.LogEvent, as: LE
-
-  alias Logflare.{SystemMetrics, Source, Sources}
-
-  alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.{RejectedLogEvents}
-  alias Logflare.Sources.Counters
+  alias Logflare.{SystemMetrics, Source, Sources}
+  alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Number.Delimit
 
   @spec injest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def injest_logs(log_params_batch, %Source{} = source) do
     log_params_batch
-    |> Enum.map(&LogEvent.make(&1, %{source: source}))
+    |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = log_event ->
       if log_event.valid? do
         injest_by_source_rules(log_event)

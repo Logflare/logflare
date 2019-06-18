@@ -21,14 +21,16 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   def valid?(metadata, existing_schema) do
     resolver = fn
-       (_, original, override) when is_atom(original) and is_atom(override) ->
-         if original != override, do: raise(:type_error)
-       (_, _original, _override) ->
-         DeepMerge.continue_deep_merge
-       end
+      _, original, override when is_atom(original) and is_atom(override) ->
+        if original != override, do: raise("type_error")
+
+      _, _original, _override ->
+        DeepMerge.continue_deep_merge()
+    end
 
     new_typemap = to_typemap(metadata)
     existing_typemap = to_typemap(existing_schema, from: :bigquery_schema).metadata.fields
+
     try do
       DeepMerge.deep_merge(new_typemap, existing_typemap, resolver)
     rescue

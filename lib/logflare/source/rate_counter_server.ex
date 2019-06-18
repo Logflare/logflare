@@ -234,7 +234,6 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   defp broadcast(%RCS{} = state) do
-    payload = state_to_external(state)
     source_string = Atom.to_string(state.source_id)
 
     state
