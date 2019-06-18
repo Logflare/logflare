@@ -1,197 +1,348 @@
-<div class="no-subhead">
-<div id="homepage-header">
-  <div id="homepage-header-text">
-    <img class="img-fluid screenshot d-none d-lg-block float-right" src="/images/screenshot.png" alt="Logflare screenshot" height="250">
-    <h2>Cloudflare Log Inspector</h2>
-    <p class="lead"><code>tail -f</code> your Cloudflare logs!</p>
-  </div>
+<div class="container-fluid hero no-subhead">
+	<div class="container">
+		<div class="row cta">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-lg-7">
+						<h1>Affordable log management & event analytics</h1>
+						<h2>Collect for years, query in seconds</h2>
+					</div>
+					<div class="col-lg-5">
+						<p>For Cloudflare and Elixir apps</p>
+						<div class="btns">
+							<p>
+								<iframe
+								  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+								  allowTransparency="true"
+								  scroll="no"
+								  frameBorder="0"
+								>
+								</iframe>
+							</p>
+							<p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
+						</div>
+						<p>Install our Cloudflare app or sign up and setup <%= link "our Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1">
+			</div>
+		</div>
+
+		<div class="row">
+			<div class="col-md-12">
+				<img src="images/marketing/homepage/heroimg11.png" class=" imghero" alt="">
+				<img src="images/marketing/homepage/iphoneDesktop.png" class="phonimg" alt="">
+				<div class="forifream">
+					<iframe class="ifreamfordiagram" src="https://datastudio.google.com/embed/reporting/1JuRjywr8r-IeNOg30on8t21Lns4hSJnx/page/FLer" frameborder="0" style="border:0" allowfullscreen></iframe>
+				</div>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-12">
+						<div class="h3div">
+							<%= live_render(@conn, LogflareWeb.GlobalLogMetricsLV) %>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1"></div>
+		</div>
+		<div class="row paragraph">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-6">
+					</div>
+					<div class="col-md-6">
+						<h4>Track everything you want</h4>
+					</div>
+					<div class="col-md-6">
+						<img src="images/marketing/homepage/trackImgDesktop.png" class="img-responsive" alt="">
+					</div>
+					<div class="col-md-6">
+						<p>Log and application performance management in one solution. We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with the Elixir library.</p>
+						<center><%= link "Logflare status dashboard »", to: "https://datastudio.google.com/s/vkfwKfU1-C0", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
+					</div>
+				</div>
+
+			</div>
+			<div class="col-lg-1">
+			</div>
+		</div>
+	</div>
 </div>
 
-<div class="homepage-container mx-auto">
-<div class="value">
-  <h3>Why?</h3>
-  <p>Because Cloudflare doesn't give you logs unless you're on an Enterprise plan.</p>
-  <%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %> -or- <%= link "Check out the demo", to: "https://logflare.app/sources/public/0dx0XgzHL91o1WtV", class: "btn btn-secondary", role: "button" %>
+<div class="catchimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
+<div class="container-fluid catch">
+	<div class="container-fluid">
+		<div class="container">
+			<div class="row">
+				<div class="col-lg-10 order-lg-1">
+					<div class="row">
+						<div class="col-md-6">
+							<h4>Edge logs with no added latency</h4>
+						</div>
+						<div class="col-md-6">
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-6 order-md-6">
+							<img src="images/marketing/homepage/catchImgDesktop-4x.png" class="img-responsive" alt="">
+						</div>
+						<div class="col-md-6 pull-md-6">
+							<p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare asynchronously after passing your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead. We batch logs and use <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %> to keep payload size and serialization load low.</p>
+						</div>
+					</div>
+				</div>
+				<div class="col-lg-1"></div>
+			</div>
+		</div>
+	</div>
+</div>
+<div class="catchimgbtn"><img src="images/marketing/homepage/bgbtn.png" alt=""></div>
+<div class="container-fluid scale">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-6">
+					</div>
+					<div class="col-md-6">
+						<h4>Elastic is expensive</h4>
+					</div>
+				</div>
+				<div class="row tablescalerow">
+					<div class="col-md-6">
+						<img src="images/marketing/homepage/bgoftable.png" class="bgoftable" alt="">
+						<div class="tablescale">
+							<div class="col1">
+								<h2>Brief comparison</h2>
+								<h3>Storage type</h3>
+								<h3>BYO Backend™</h3>
+								<h3>Searchable (hot)</h3>
+								<h3 class="lastone">Direct data access</h3>
+								<h3>Price per month</h3>
+								<h3>16 GB of logs</h3>
+								<h3>1,000 GB of logs</h3>
+							</div>
+							<a href="">
+								<div class="col2">
+									<h2>Logflare</h2>
+									<h3>BigQuery</h3>
+									<h3><i class="fa fa-check"></i></h3>
+									<h3>Unlimited</h3>
+									<h3 class="lastone"><i class="fa fa-check"></i></h3>
+									<h3 class="nothing">.</h3>
+									<h3 class="money">$0.12</h3>
+									<h3 class="money">$27.50</h3>
+								</div>
+							</a>
+							<a href="">
+								<div class="col3">
+									<h2>Papertrail</h2>
+									<h3>Elastic</h3>
+									<h3><i class="fa fa-times"></i></h3>
+									<h3>7 days</h3>
+									<h3 class="lastone"><i class="fa fa-times"></i></h3>
+									<h3 class="nothing">.</h3>
+									<h3 class="money">$125</h3>
+									<h3 class="money">$2,450</h3>
+								</div>
+							</a>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<p>Costs escalates quicly with typical Elastic based log management solutions. To setup long term analytics on events you  need to archive to a CSV and setup another data pipeline to injest events into a custom tailored data warehouse. </br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can injest immediately, query in seconds and store data for years.</p>
+						<center><%= link "More pricing coming soon", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
+						<p class="spanp">Event size based on an average of 100kb per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 100kb per event you get 160,000 events for 16 GB of storage.</p>
+					</div>
+				</div>
+			</div>
 
-  <blockquote class="blockquote text-center">
-    <div class="mb-0" id="total-logged">
-      <%= live_render(@conn, LogflareWeb.GlobalLogMetricsLV) %>
-    </div>
-    <footer class="blockquote-footer">logs logged to date</footer>
-  </blockquote>
+			<div class="col-lg-1">
+			</div>
+		</div>
 
+	</div>
+</div>
+
+<div class="stepsimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
+<div class="container-fluid steps">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-4">
+				<div class="stepscont">
+					<div class="circle">
+						<i class="fas fa-history"></i>
+					</div>
+					<h2>Unlimited event history</h2>
+					<p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fab fa-google"></i>
+				</div>
+				<h2>BigQuery & DataStudio</h2>
+				<p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
+				<%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fas fa-code-branch"></i>
+				</div>
+				<h2>Log routing</h2>
+				<p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="far fa-bell"></i>
+				</div>
+				<h2>Email & SMS alerts</h2>
+				<p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fas fa-users"></i>
+				</div>
+				<h2>Sharing via public URL</h2>
+				<p>Easily generate a public url for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+				<div class="circle">
+					<i class="fas fa-code"></i>
+				</div>
+				<h2>Add metadata and query it</h2>
+				<p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="features container-fluid">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-4">
+				<h3>Other features</h3>
+				<ul>
+					<li>Realtime stream of events</li>
+					<li>Up to 100 sources per account</li>
+					<li>Display timestamps in local time & UTC</li>
+				</ul>
+			</div>
+			<div class="col-md-4">
+				<h3>Use web client or PWA</h3>
+				<div class="imgs">
+					<div class="circle">
+						<i class="fab fa-android"></i>
+					</div>
+					<div class="circle">
+						<i class="fab fa-apple"></i>
+					</div>
+					<div class="circle">
+						<i class="fab fa-chrome"></i>
+					</div>
+				</div>
+				<p>
+					For an app like experience install our Progressive Web App. Add to your homescreen on Android and iOS. Install Logflare on Chrome desktop.
+				</p>
+			</div>
+			<div class="col-md-4">
+				<h3>100% open source</h3>
+				<div class="imgs">
+					<a class="github-button" href="https://github.com/Logflare/logflare" data-size="large" data-show-count="true" aria-label="Star Logflare/logflare on GitHub">Star</a>
+				</div>
+				<p>
+					Our entire product is open source. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)
+				</p>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="container-fluid ctav2">
+  <div class="container">
   <div class="row">
-    <div class="col-md-6 text-right">
-      <h3>Already on Cloudflare?</h3>
-      <p>Just install our Cloudflare App and you're good to go!</p>
-      <iframe
-        src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
-        allowTransparency="true"
-        scroll="no"
-        frameBorder="0"
-        style="height: 48px; width: 180px">
-      </iframe>
+    <div class="col-md-6">
+      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Big shoutout and 🙏 to <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>  for his super cool <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in our latest app release that my team couldn&#39;t figure out. They introduced a small change that created recursive (infinite) API calls</p>&mdash; Hamlet 🇩🇴 (@hamletbatista) <a href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a></blockquote>
     </div>
     <div class="col-md-6">
-      <h3>Not using Cloudflare?</h3>
-      <p>Logflare is a general log management, ETL and data plaform anyone can use. Use our agent or API to send logs from anywhere. Easily get data into BigQuery and build dashboards from event data with Google Data Studio.</p>
-    </div>
-  </div>
-</div>
-
-<div class="marketing">
-  <div class="row">
-    <div class="col-lg-4">
-      <center><i class="fas fa-money-bill feature-icons feature-icons-large"></i></center>
-      <h3>Free Forever</h3>
-      <p>Using Logflare is free. We believe in providing a useful free product for independent creators and developers. However, if you need enterprise class features or event volume let us manage your logs.</p>
-      <p><a class="btn btn-secondary" href="#" role="button">Paid plans (soon) »</a></p>
-    </div>
-    <div class="col-lg-4">
-      <center><i class="fas fa-list feature-icons feature-icons-large"></i></center>
-      <h3>7 day Event History</h3>
-      <p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
-    </div>
-    <div class="col-lg-4">
-      <center><i class="fas fa-chart-bar feature-icons feature-icons-large"></i></center>
-      <h3>BigQuery + Data Studio</h3>
-      <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
-      <%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
+      <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses CloudFlare to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>&mdash; 🍌 John 🍌 (@JohnMu) <a href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a></blockquote>
     </div>
   </div>
 
   <div class="row">
-    <div class="col-lg-4">
-      <center><i class="fas fa-balance-scale feature-icons feature-icons-large"></i></i></center>
-      <h3>Open Source</h3>
-      <p>Our entire product is open source. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)</p>
-      <p><a class="btn btn-secondary" href="https://github.com/Logflare" role="button">Github profile »</a></p>
+    <div class="col-md-6">
+      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">You&#39;re using CloudFlare, right?  If not, you should!  However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem.  Enter Logflare! <a href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a></blockquote>
     </div>
-    <div class="col-lg-4">
-      <center><i class="fas fa-code-branch feature-icons feature-icons-large"></i></center>
-      <h3>Log Routing</h3>
-      <p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
-    </div>
-    <div class="col-lg-4">
-      <center><i class="fas fa-bell feature-icons feature-icons-large"></i></i></center>
-      <h3>Email & SMS Alerts</h3>
-      <p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
+    <div class="col-md-6">
+      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Been using the great (and free!) <a href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Apps! Great job!</p>&mdash; Matteo Manfredi (@itsmatteomanf) <a href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a></blockquote>
     </div>
   </div>
-
-  <div class="row">
-    <div class="col-lg-4">
-      <center><i class="fas fa-book-open feature-icons feature-icons-large"></i></center>
-      <h3>Public URLs</h3>
-      <p>Easily generate a public url for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
-      <p><a class="btn btn-secondary" href="https://logflare.app/sources/public/0dx0XgzHL91o1WtV" role="button">Public source demo »</a></p>
-    </div>
-    <div class="col-lg-4">
-      <center><i class="fas fa-code feature-icons feature-icons-large"></i></center>
-      <h3>Structured Logging</h3>
-      <p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
-    </div>
-    <div class="col-lg-4">
-      <center><i class="fas fa-binoculars feature-icons feature-icons-large"></i></center>
-      <h3>Events from Anywhere</h3>
-      <p>Send events via our Cloudflare app. Watch log files with our agent, or send in custom logs via our API.</p>
-    </div>
-  </div>
-
-  <!--
-  <hr class="featurette-divider">
-
-  <div class="row featurette">
-    <div class="col-md-9">
-      <h2 class="featurette-heading">First featurette heading. <span class="text-muted">It'll blow your mind.</span></h2>
-      <p class="lead">Donec ullamcorper nulla non metus auctor fringilla. Vestibulum id ligula porta felis euismod semper. Praesent commodo cursus magna, vel scelerisque nisl consectetur. Fusce dapibus, tellus ac cursus commodo.</p>
-    </div>
-    <div class="col-md-3">
-      <img class="featurette-image img-fluid mx-auto" data-src="holder.js/250x250/auto" alt="250x250" style="width: 250px; height: 250px;" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22500%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20500%20500%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3Cstyle%20type%3D%22text%2Fcss%22%3E%23holder_168401f933c%20text%20%7B%20fill%3A%23AAAAAA%3Bfont-weight%3Abold%3Bf  family%3AArial%2C%20Helvetica%2C%20Open%20Sans%2C%20sans-serif%2C%20monospace%3Bfont-size%3A25pt%20%7D%20%3C%2Fstyle%3E%3C%2Fdefs%3E%3Cg%20id%3D%22holder_168401f933c%22%3E%3Crect%20width%3D%22500%22%20height%3D%22500%22%20fill%3D%22%23EEEEEE%22%3E%3C%2Frect%3E%3Cg%3E%3Ctext%20x%3D%22185.125%22%20y%3D%22261.1%22%3E250x250%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E" data-holder-rendered="true">
-    </div>
-  </div>
-
-  <hr class="featurette-divider">
-
-  <div class="row featurette">
-    <div class="col-md-9 order-md-2">
-      <h2 class="featurette-heading">Oh yeah, it's that good. <span class="text-muted">See for yourself.</span></h2>
-      <p class="lead">Donec ullamcorper nulla non metus auctor fringilla. Vestibulum id ligula porta felis euismod semper. Praesent commodo cursus magna, vel scelerisque nisl consectetur. Fusce dapibus, tellus ac cursus commodo.</p>
-    </div>
-    <div class="col-md-3 order-md-1">
-      <img class="featurette-image img-fluid mx-auto" data-src="holder.js/250x250/auto" alt="250x250" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22500%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20500%20500%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3Cstyle%20type%3D%22text%2Fcss%22%3E%23holder_168401f933c%20text%20%7B%20fill%3A%23AAAAAA%3Bfont-weight%3Abold%3Bf family%3AArial%2C%20Helvetica%2C%20Open%20Sans%2C%20sans-serif%2C%20monospace%3Bfont-size%3A25pt%20%7D%20%3C%2Fstyle%3E%3C%2Fdefs%3E%3Cg%20id%3D%22holder_168401f933c%22%3E%3Crect%20width%3D%22500%22%20height%3D%22500%22%20fill%3D%22%23EEEEEE%22%3E%3C%2Frect%3E%3Cg%3E%3Ctext%20x%3D%22185.125%22%20y%3D%22261.1%22%3E250x250%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E" data-holder-rendered="true" style="width: 250px; height: 250px;">
-    </div>
-  </div>
-
-  <hr class="featurette-divider">
-
-  <div class="row featurette">
-    <div class="col-md-9">
-      <h2 class="featurette-heading">And lastly, this one. <span class="text-muted">Checkmate.</span></h2>
-      <p class="lead">Donec ullamcorper nulla non metus auctor fringilla. Vestibulum id ligula porta felis euismod semper. Praesent commodo cursus magna, vel scelerisque nisl consectetur. Fusce dapibus, tellus ac cursus commodo.</p>
-    </div>
-    <div class="col-md-3">
-      <img class="featurette-image img-fluid mx-auto" data-src="holder.js/250x250/auto" alt="250x250" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22500%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20500%20500%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3Cstyle%20type%3D%22text%2Fcss%22%3E%23holder_168401f933e%20text%20%7B%20fill%3A%23AAAAAA%3Bfont-weight%3Abold%3Bf family%3AArial%2C%20Helvetica%2C%20Open%20Sans%2C%20sans-serif%2C%20monospace%3Bfont-size%3A25pt%20%7D%20%3C%2Fstyle%3E%3C%2Fdefs%3E%3Cg%20id%3D%22holder_168401f933e%22%3E%3Crect%20width%3D%22500%22%20height%3D%22500%22%20fill%3D%22%23EEEEEE%22%3E%3C%2Frect%3E%3Cg%3E%3Ctext%20x%3D%22185.125%22%20y%3D%22261.1%22%3E250x250%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E" data-holder-rendered="true" style="width: 250px; height: 250px;">
-    </div>
-  </div>
-
-  <hr class="featurette-divider">
 </div>
--->
-
 </div>
 
-<h3>Also notable</h3>
-  <ul id="feature-list" class="list-unstyled">
-    <li><i class="fas fa-stream feature-icons"></i>Streamed to your browser in realtime</li>
-    <li><i class="fas fa-folder-open feature-icons"></i>Up to 100 sources per account</li>
-    <li><i class="fas fa-clock feature-icons"></i>Display timestamps in local time & UTC</li>
-    <li><i class="fas fa-download feature-icons"></i>App-like experience with our progressive web app</li>
-  </ul>
+<div class="container-fluid ctav2">
+	<div class="container">
+		<div class="row fordesk">
+			<div class="col-lg-10 order-lg-1">
+				<div class="row">
+					<div class="col-md-12">
 
-<h3>Mentions</h3>
 
-  <div id="testimonials">
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Big shoutout and 🙏 to <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>  for his super cool <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in our latest app release that my team couldn&#39;t figure out. They introduced a small change that created recursive (infinite) API calls</p>&mdash; Hamlet 🇩🇴 (@hamletbatista) <a href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a></blockquote>
-      </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses CloudFlare to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>&mdash; 🍌 John 🍌 (@JohnMu) <a href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a></blockquote>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">You&#39;re using CloudFlare, right?  If not, you should!  However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem.  Enter Logflare! <a href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a></blockquote>
-      </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Been using the great (and free!) <a href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Apps! Great job!</p>&mdash; Matteo Manfredi (@itsmatteomanf) <a href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a></blockquote>
-      </div>
-    </div>
-  </div>
-
-<div class="value">
-  <h3>Why Log at the Edge?</h3>
-  <h5>You can send Logflare events from anywhere, but edge logging can provide additional benefits to traditional server side logging.</h5>
-  <ul>
-    <li>Nothing to install on your servers. With Logflare and our Cloudflare app you can start logging everything with a few clicks.</li>
-    <li>Zero risk. You can uninstall our app as quickly as you installed it.</li>
-    <li>All your requests all the time. If you have lots of servers sometimes logging systems have issues on a node or two. When you log at the edge you know you're always seeing all requests.</li>
-    <li>Zero additional load on your system. Logflare's workers run on Cloudflares cloud. Our worker sees the request, passes it through to your system and asynchronously logs the event to Logflare with no additional latency involved and no added load to your servers.</li>
-  </ul>
-  <center><%= link "Sign up now", to: Routes.auth_path(@conn, :login), class: "btn btn-primary", role: "button" %></center>
-
-  <div id="pwa">
-    <img src="/images/install-logflare-pwa.png" alt="Logflare screenshot" height="150" width="364">
-    <div>
-    <h3>Install the Progressive Web App</h3>
-    <h5>For an app like experience install our PWA. Add to your homescreen on Android and iOS. Install Logflare on Chrome desktop.</h5>
-  </div>
-  </div>
+						<h1>Install for now and use for free. Forever.</h1>
+						<p>Install our Cloudflare app or sign up and setup <%= link "our Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
+						<div class="btns">
+							<p>
+								<iframe
+								  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+								  allowTransparency="true"
+								  scroll="no"
+								  frameBorder="0"
+								  >
+								</iframe>
+							</p>
+							<p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-1"></div>
+		</div>
+		<div class="row forphone3">
+			<div class="col-md-12">
+				<h1>Install for now and use for free. Forever.</h1>
+				<p>Install on Cloudflare or sign up & setup manually</p>
+				<div class="btns">
+					<p>
+					<iframe
+						  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
+						  allowTransparency="true"
+						  scroll="no"
+						  frameBorder="0"
+						  >
+						</iframe>
+					</p>
+					<p><a href="" class="signup">SIGN UP</a></p>
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
 
 <%= render LogflareWeb.SharedView, "footer.html", assigns %>
 
-</div>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<script async defer src="https://buttons.github.io/buttons.js"></script>
