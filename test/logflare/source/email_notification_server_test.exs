@@ -15,7 +15,7 @@ defmodule Logflare.Source.EmailNotificationServerTest do
     {:ok, sources: [s1], args: rls}
   end
 
-  describe "EmailNotificationServer" do
+  describe "GenServer" do
     test "start_link/1", %{sources: [s1 | _], args: rls} do
       assert {:ok, _pid} = EmailNotificationServer.start_link(rls)
     end

@@ -21,7 +21,7 @@ defmodule Logflare.LogsTest do
   end
 
   describe "log event injest for source with rules" do
-    test "injest log event", %{sources: [s1 | _], sinks: [sink1, sink2 | _]} do
+    test "sink source routing", %{sources: [s1 | _], sinks: [sink1, sink2 | _]} do
       allow RecentLogsServer.push(any(), any()), return: :ok
       allow Buffer.push(any(), any()), return: :ok
       allow Sources.Counters.incriment(any()), return: {:ok, 1}
