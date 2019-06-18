@@ -17,6 +17,12 @@ defmodule Logflare.LogEvent do
       field :message, :string
       field :timestamp, :integer
     end
+
+    @type t() :: %__MODULE__{
+            metadata: map(),
+            message: String.t(),
+            timestamp: non_neg_integer()
+          }
   end
 
   @primary_key {:id, :binary_id, []}
@@ -29,6 +35,15 @@ defmodule Logflare.LogEvent do
     field :sys_uint, :integer
     field :params, :map
   end
+
+  @type t() :: %__MODULE__{
+          valid?: boolean(),
+          validation_error: [String.t()],
+          injested_at: NaiveDateTime.t(),
+          sys_uint: integer(),
+          params: map(),
+          body: Body.t()
+        }
 
   def mapper(params) do
     message = params["log_entry"] || params["message"]
