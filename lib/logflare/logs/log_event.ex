@@ -31,7 +31,7 @@ defmodule Logflare.LogEvent do
     field :source, :map
     field :valid?, :boolean
     field :validation_error, {:array, :string}
-    field :injested_at, :naive_datetime
+    field :injested_at, :utc_datetime_usec
     field :sys_uint, :integer
     field :params, :map
   end
@@ -39,7 +39,7 @@ defmodule Logflare.LogEvent do
   @type t() :: %__MODULE__{
           valid?: boolean(),
           validation_error: [String.t()],
-          injested_at: NaiveDateTime.t(),
+          injested_at: DateTime.t(),
           sys_uint: integer(),
           params: map(),
           body: Body.t()
