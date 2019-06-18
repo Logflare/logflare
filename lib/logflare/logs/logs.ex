@@ -55,40 +55,16 @@ defmodule Logflare.Logs do
   defp injest_and_broadcast(%LE{source: %Source{} = source} = log_event) do
     source_table_string = Atom.to_string(source.token)
 
+    # indvididual source genservers
     RecentLogsServer.push(source.token, log_event)
     Buffer.push(source_table_string, log_event)
+
+    # all sources genservers
     Sources.Counters.incriment(source.token)
     SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
-    broadcast_log_count(source)
-
-    {message, body} = Map.pop(log_event.body, :message)
-
-    payload =
-      body
-      |> Map.put(:log_message, message)
-      |> Map.from_struct()
-
-    LogflareWeb.Endpoint.broadcast(
-      "source:#{source.token}",
-      "source:#{source.token}:new",
-      payload
-    )
-  end
-
-  def broadcast_log_count(%Source{token: source_id} = source) do
-    {:ok, log_count} = Counters.get_total_inserts(source_id)
-    source_table_string = Atom.to_string(source_id)
-
-    payload = %{
-      log_count: Delimit.number_to_delimited(log_count),
-      source_token: source_table_string
-    }
-
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> source_table_string,
-      "dashboard:#{source_table_string}:log_count",
-      payload
-    )
+    # broadcasters
+    Source.ChannelTopics.broadcast_log_count(source)
+    Source.ChannelTopics.broadcast_new(log_event)
   end
 end

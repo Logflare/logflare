@@ -6,6 +6,23 @@ defmodule Logflare.Source.ChannelTopics do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Number.Delimit
+  alias Logflare.Sources.Counters
+
+  def broadcast_log_count(%Source{token: source_id}) do
+    {:ok, log_count} = Counters.get_total_inserts(source_id)
+    source_table_string = Atom.to_string(source_id)
+
+    payload = %{
+      log_count: Delimit.number_to_delimited(log_count),
+      source_token: source_table_string
+    }
+
+    LogflareWeb.Endpoint.broadcast(
+      "dashboard:" <> source_table_string,
+      "dashboard:#{source_table_string}:log_count",
+      payload
+    )
+  end
 
   def broadcast_buffer(source_id, count) when is_atom(source_id) do
     source_id_string = Atom.to_string(source_id)
