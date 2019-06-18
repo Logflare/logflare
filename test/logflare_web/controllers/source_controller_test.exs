@@ -248,14 +248,13 @@ defmodule LogflareWeb.SourceControllerTest do
       refute_called Sources.Cache.get_by(any), once()
     end
 
-    test "returns 406 with invalid params", %{conn: conn, users: [u1 | _]} do
+    test "renders error flash and redirects for missing token", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
         |> login_user(u1)
         |> post("/sources", %{
           "source" => %{
             "name" => Faker.Name.name()
-            # "token" => Faker.UUID.v4()
           }
         })
 
@@ -263,7 +262,26 @@ defmodule LogflareWeb.SourceControllerTest do
                token: {"can't be blank", [validation: :required]}
              ]
 
-      assert redirected_to(conn, 406) === source_path(conn, :new)
+      assert redirected_to(conn, 302) === source_path(conn, :new)
+      refute_called Sources.Cache.get_by(any), once()
+    end
+
+    test "renders error flash for source with empty name", %{conn: conn, users: [u1 | _]} do
+      conn =
+        conn
+        |> login_user(u1)
+        |> post("/sources", %{
+          "source" => %{
+            "name" => "",
+            "token" => Faker.UUID.v4()
+          }
+        })
+
+      assert conn.assigns[:changeset].errors === [
+               name: {"can't be blank", [validation: :required]}
+             ]
+
+      assert redirected_to(conn, 302) === source_path(conn, :new)
       refute_called Sources.Cache.get_by(any), once()
     end
   end
