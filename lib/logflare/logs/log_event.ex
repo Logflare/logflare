@@ -16,12 +16,14 @@ defmodule Logflare.LogEvent do
       field :metadata, :map, default: %{}
       field :message, :string
       field :timestamp, :integer
+      field :created_at, :utc_datetime_usec
     end
 
     @type t() :: %__MODULE__{
             metadata: map(),
             message: String.t(),
-            timestamp: non_neg_integer()
+            timestamp: non_neg_integer(),
+            created_at: DateTime.t()
           }
   end
 
