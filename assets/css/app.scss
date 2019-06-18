@@ -4,7 +4,7 @@
 @import "header";
 @import "buttons";
 @import "marketing";
-@import "new_homepage";
+@import "homepage";
 $whitecolor: #ffffff;
 $silvercolor: #B7B7B7;
 $bluecolor: #ffffff;
@@ -12,16 +12,21 @@ $orangecolor: #f1ba58;
 $brand-green: #5eeb8f;
 $brand-brighter-green: #63ff99;
 $brand-blue: #2155a3;
-$brand-brighter-blue: #2a6cce;
+$brand-light-blue: #3787ff;
 $brand-fuscia: #E35B8D;
 $brand-gray: #9a9a9a;
 $brand-black: #161616;
 $brand-light-black: #1d1d1d;
 $brand-light-gray: #e5e5e5;
+$brand-yellow: #fff86c;
 
 body {
   background-color: #161616;
   color: #9a9a9a;
+}
+
+#login .list-group a {
+  color: white;
 }
 
 .form-text {
@@ -182,12 +187,12 @@ h4 {
 }
 
 .alert-warning {
-  background-color: #f8f854;
+  background-color: $brand-yellow;
   border-width: 0;
 }
 
 .alert-info {
-  background-color: #00ccff;
+  background-color: $brand-light-blue;
   border-width: 0;
 }
 
@@ -273,58 +278,41 @@ mark {
 }
 @keyframes fadeIn {
   0% {
-    color: white;
-    background-color: #2a6cce;
+    background-color: #3787ff;
   }
 
-  100% {
-    color: black;
-    background-color: #5eeb8f;
-  }
+  100% {}
 }
 @-moz-keyframes fadeIn {
   0% {
     color: white;
-    background-color: #2a6cce;
+    background-color: #3787ff;
   }
 
-  100% {
-    color: black;
-    background-color: #5eeb8f;
-  }
+  100% {}
 }
 @-webkit-keyframes fadeIn {
   0% {
-    color: white;
-    background-color: #2a6cce;
+    background-color: #3787ff;
   }
 
-  100% {
-    color: black;
-    background-color: #5eeb8f;
-  }
+  100% {}
 }
 @-o-keyframes fadeIn {
   0% {
     color: white;
-    background-color: #2a6cce;
+    background-color: #3787ff;
   }
 
-  100% {
-    color: black;
-    background-color: #5eeb8f;
-  }
+  100% {}
 }
 @-ms-keyframes fadeIn {
   0% {
     color: white;
-    background-color: #2a6cce;
+    background-color: #3787ff;
   }
 
-  100% {
-    color: black;
-    background-color: #5eeb8f;
-  }
+  100% {}
 }
 
 .flash-text {
@@ -343,28 +331,28 @@ mark {
 }
 @-moz-keyframes flashText {
   0% {
-    color: #2a6cce;
+    color: #3787ff;
   }
 
   100% {}
 }
 @-webkit-keyframes flashText {
   0% {
-    color: #2a6cce;
+    color: #3787ff;
   }
 
   100% {}
 }
 @-o-keyframes flashText {
   0% {
-    color: #2a6cce;
+    color: #3787ff;
   }
 
   100% {}
 }
 @-ms-keyframes flashText {
   0% {
-    color: #2a6cce;
+    color: #3787ff;
   }
 
   100% {}

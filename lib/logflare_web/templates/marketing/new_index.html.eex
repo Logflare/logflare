@@ -3,11 +3,11 @@
 		<div class="row cta">
 			<div class="col-lg-10 order-lg-1">
 				<div class="row">
-					<div class="col-lg-8">
+					<div class="col-lg-7">
 						<h1>Affordable log management & event analytics</h1>
 						<h2>Collect for years, query in seconds</h2>
 					</div>
-					<div class="col-lg-4">
+					<div class="col-lg-5">
 						<p>For Cloudflare and Elixir apps</p>
 						<div class="btns">
 							<p>
@@ -62,16 +62,15 @@
 						<img src="images/marketing/homepage/trackImgDesktop.png" class="img-responsive" alt="">
 					</div>
 					<div class="col-md-6">
-						<p>Log and application performance management in one solution. Simply send Logflare events. We insert and manage the underlying BigQuery table schema for you. Log any kind of data you want and unlock the power of an easy to use cloud scale data warehouse. </br> </br> We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with the Elixir library.</p>
+						<p>Log and application performance management in one solution. We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with the Elixir library.</p>
+						<center><%= link "Logflare status dashboard »", to: "https://datastudio.google.com/s/vkfwKfU1-C0", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
 					</div>
-
 				</div>
 
 			</div>
 			<div class="col-lg-1">
 			</div>
 		</div>
-		<center><%= link "Logflare status dashboard »", to: "https://datastudio.google.com/s/vkfwKfU1-C0", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
 	</div>
 </div>
 

@@ -1,7 +1,3 @@
-.phx-connected {
-  display: inline;
-}
-
 a:hover {
   text-decoration: none;
 }
@@ -540,6 +536,10 @@ body {
 .hero .btns .install:focus img,
 .hero .btns .install:hover img {
   opacity: 0.9;
+}
+
+.hero .btn {
+  margin-top: 30px;
 }
 
 .hero .imghero {
@@ -1091,7 +1091,6 @@ body {
   padding: 0;
   margin: 0;
   display: inline-block;
-  margin-right: 90px;
 }
 
 .footer ul li {
@@ -1099,13 +1098,13 @@ body {
   margin-top: 10px;
 }
 
-.footer ul li h2 {
+.footer ul li h5 {
   padding: 0;
   margin: 0;
-  color: #969696;
+  color: white;
   font-weight: 600;
   line-height: 26px;
-  font-size: 13px;
+  font-size: 16px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
@@ -1237,12 +1236,7 @@ body {
   }
 
   .hero h1 {
-    text-align: center;
     margin: auto;
-  }
-
-  .btns {
-    text-align: center;
   }
 
   .hero .btns .signup,
@@ -1253,19 +1247,16 @@ body {
 
   .hero h2,
   .hero p {
-    text-align: center;
     margin-left: auto;
     margin-right: auto;
   }
 
   .catchimgtop {
-    margin-top: -580px;
+    margin-top: -480px;
   }
 
   .ctav2 h1,
-  .ctav2 p {
-    text-align: center;
-  }
+  .ctav2 p {}
 }
 @media (max-width: 992px) {
   .scale .tablescale .col1 h2,

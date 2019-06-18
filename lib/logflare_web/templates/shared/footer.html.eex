@@ -2,7 +2,7 @@
 	<img src="images/marketing/homepage/footerbg.png" class="footerbg" alt="">
 	<div class="container">
 		<div class="row">
-  <div class="col-md-8">
+  <div class="col-md-2">
 
     <ul>
       <li><h5>Logflare</h5></li>
@@ -23,7 +23,8 @@
       </li>
     </ul>
 
-
+	</div>
+<div class="col-md-2">
     <ul>
       <li><h5>Open Source</h5></li>
       <li>
@@ -39,8 +40,8 @@
         <a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
       </li>
     </ul>
-
-
+</div>
+<div class="col-md-2">
     <ul>
       <li><h5>Guides</h5></li>
       <li>
@@ -55,10 +56,11 @@
     </ul>
   </div>
 
-  <div class="col-md-4">
+
+  <div class="col-md-6">
     <div class="rightside">
-      <h2><i class="fas fa-lock"></i>Encyrpted in transit and at rest</h2>
-      <p>All data sent to Logflare is encrypted in transit. It is also encrypted at rest when using Google BigQuery as your backend.</p>
+      <h2><i class="fas fa-lock"></i>Encrypted in transit and at rest</h2>
+      <p>All data sent to Logflare is encrypted in transit and at rest when using Google BigQuery as your backend.</p>
       <p><span>Copyright <%= DateTime.utc_now.year %> - Logflare LLC</span></p>
     </div>
   </div>
