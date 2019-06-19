@@ -215,7 +215,7 @@
 					<i class="fas fa-users"></i>
 				</div>
 				<h2>Sharing via public URL</h2>
-				<p>Easily generate a public url for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
+				<p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
 				</div>
 			</div>
 			<div class="col-md-4">
