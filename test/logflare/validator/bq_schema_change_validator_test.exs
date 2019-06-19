@@ -1,37 +1,63 @@
 defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   @moduledoc false
-  use ExUnit.Case
-  @moduletag :skip
-  import Logflare.Google.BigQuery.SchemaFactory
+  use Logflare.DataCase
+  use Placebo
+
   import Logflare.Logs.Validators.BigQuerySchemaChange
 
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaFactory
+  alias Logflare.DummyFactory
+  alias Logflare.Sources
+
   describe "bigquery bigquery schema change validation" do
-    test "valid?/1 returns true for valid params" do
+    test "validate/1 returns :ok with no metadata in BQ schema" do
+      u1 = DummyFactory.insert(:user)
+      s1 = DummyFactory.insert(:source, user_id: u1.id)
+      s1 = Sources.get_by(id: s1.id)
+      schema = SchemaBuilder.initial_table_schema()
+      allow Sources.Cache.get_bq_schema(s1), return: schema
+
+      le =
+        LE.make(
+          %{
+            "message" => "valid_test_message",
+            "metadata" => %{
+              "user" => %{
+                "name" => "name one"
+              }
+            }
+          },
+          %{source: s1}
+        )
+
+      assert validate(le) === :ok
     end
 
     test "correctly creates a typemap from schema" do
       assert :schema
-             |> build(variant: :third)
+             |> SchemaFactory.build(variant: :third)
              |> to_typemap(from: :bigquery_schema) == typemap_for_third()
     end
 
     test "correctly builds a typemap from metadata" do
       assert :metadata
-             |> build(variant: :third)
-             |> to_typemap() == typemap_for_third()
+             |> SchemaFactory.build(variant: :third)
+             |> to_typemap() == typemap_for_third().metadata.fields
     end
 
     test "valid? returns true for correct metadata and schema" do
-      schema = build(:schema, variant: :third)
-      metadata = build(:metadata, variant: :third)
+      schema = SchemaFactory.build(:schema, variant: :third)
+      metadata = SchemaFactory.build(:metadata, variant: :third)
 
       assert valid?(metadata, schema)
     end
 
     test "valid? returns false for various changed nested field types" do
-      schema = build(:schema, variant: :third)
+      schema = SchemaFactory.build(:schema, variant: :third)
 
-      event = build(:metadata, variant: :third)
+      event = SchemaFactory.build(:metadata, variant: :third)
 
       metadata =
         event

@@ -28,11 +28,18 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
         DeepMerge.continue_deep_merge()
     end
 
-    new_typemap = to_typemap(metadata)
-    existing_typemap = to_typemap(existing_schema, from: :bigquery_schema).metadata.fields
+    existing_typemap = to_typemap(existing_schema, from: :bigquery_schema)
+
+    existing_metadata_typemap =
+      case existing_typemap do
+        %{metadata: %{fields: _}} -> existing_typemap.metadata.fields
+        _ -> %{}
+      end
+
+    new_metadata_typemap = to_typemap(metadata)
 
     try do
-      DeepMerge.deep_merge(new_typemap, existing_typemap, resolver)
+      DeepMerge.deep_merge(new_metadata_typemap, existing_metadata_typemap, resolver)
     rescue
       _e -> false
     else

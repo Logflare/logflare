@@ -23,6 +23,14 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   def build_table_schema(metadata, %{fields: old_fields}) do
     old_metadata_schema = Enum.find(old_fields, &(&1.name == "metadata")) || %{}
 
+    metadata_field = build_metadata_fields_schemas(metadata, old_metadata_schema)
+
+    initial_table_schema()
+    |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
+    |> deep_sort_by_fields_name()
+  end
+
+  def initial_table_schema() do
     %Model.TableSchema{
       fields: [
         %TFS{
@@ -38,11 +46,8 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
           mode: "NULLABLE",
           name: "event_message",
           type: "STRING"
-        },
-        build_metadata_fields_schemas(metadata, old_metadata_schema)
-      ]
-    }
-    |> deep_sort_by_fields_name()
+        }
+      ]}
   end
 
   @spec build_metadata_fields_schemas(map, TFS.t()) :: TFS.t()
