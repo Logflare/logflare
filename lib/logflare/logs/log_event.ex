@@ -2,6 +2,7 @@ defmodule Logflare.LogEvent do
   use Ecto.Schema
   import Ecto.Changeset
   alias Logflare.Logs.Injest.MetadataCleaner
+  alias Logflare.Source
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange}
 
@@ -36,6 +37,8 @@ defmodule Logflare.LogEvent do
     field :injested_at, :utc_datetime_usec
     field :sys_uint, :integer
     field :params, :map
+    field :origin_source_id, Ecto.UUID.Atom
+    field :via_rule, :map
   end
 
   @type t() :: %__MODULE__{
