@@ -6,13 +6,15 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
-  def start_link(state) do
+  def start_link(%RLS{} = rls) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source_token: state[:source_token],
-        bigquery_project_id: state[:bigquery_project_id],
+        source_token: rls.source_id,
+        bigquery_project_id: rls.bigquery_project_id,
         schema: %Model.TableSchema{
           fields: [
             %Model.TableFieldSchema{
@@ -32,7 +34,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           ]
         }
       },
-      name: name(state[:source_token])
+      name: name(rls.source_id)
     )
   end
 
@@ -43,6 +45,7 @@ defmodule Logflare.Source.BigQuery.Schema do
       {:ok, table} ->
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
         Logger.info("Table schema manager started: #{state.source_token}")
+        Sources.Cache.put_bq_schema(state.source_token, schema)
         {:ok, %{state | schema: schema}}
 
       _ ->

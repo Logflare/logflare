@@ -1,6 +1,6 @@
 defmodule Logflare.Sources.Cache do
   import Cachex.Spec
-  alias Logflare.Sources
+  alias Logflare.{Sources, Source}
   @ttl 500
 
   @cache __MODULE__
@@ -17,6 +17,14 @@ defmodule Logflare.Sources.Cache do
         ]
       }
     }
+  end
+
+  def get_bq_schema(%Source{token: token}) do
+    Cachex.get!(@cache, {{:put_bq_schema, 1}, token})
+  end
+
+  def put_bq_schema(source_token, schema) do
+    Cachex.put(@cache, {{:put_bq_schema, 1}, source_token}, schema, ttl: :timer.hours(24 * 365))
   end
 
   def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])

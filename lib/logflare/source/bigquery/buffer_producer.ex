@@ -4,17 +4,18 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   require Logger
 
   alias Logflare.Source.BigQuery.Buffer
+  alias Logflare.LogEvent, as: LE
 
   @default_receive_interval 1000
 
   @impl true
-  def init(opts) do
+  def init(%{source_id: source_id}) when is_atom(source_id) do
     {:producer,
      %{
        demand: 0,
        receive_timer: nil,
        receive_interval: @default_receive_interval,
-       table_name: {opts}
+       source_id: source_id
      }}
   end
 
@@ -52,36 +53,28 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   end
 
   def ack(table, successful, unsuccessful) do
-    Enum.each(successful, fn message ->
-      {time_event, _data} = message.data.event
-      Buffer.ack(table, time_event)
+    Enum.each(successful, fn %{data: %LE{}} = message ->
+      Buffer.ack(table, message.data.id)
     end)
 
-    Enum.each(unsuccessful, fn message ->
-      {time_event, _data} = message.data.event
-      event = Buffer.ack(table, time_event)
-      Buffer.push(table, event)
+    Enum.each(unsuccessful, fn %{data: %LE{}} = message ->
+      log_event = Buffer.ack(table, message.data.id)
+      Buffer.push(table, log_event)
     end)
   end
 
-  defp receive_messages_from_buffer(state, _total_demand) do
-    {opts} = state.table_name
-    table = opts[:table_name]
-
-    pop = Buffer.pop(table)
-
-    case pop do
+  defp receive_messages_from_buffer(%{source_id: source_id}, _total_demand) do
+    source_id
+    |> Buffer.pop()
+    |> case do
       :empty ->
         []
 
-      _ ->
-        {_time_event, event} = pop
-        event_message = %{table: table, event: event}
-
+      %LE{} = log_event ->
         [
           %Broadway.Message{
-            data: event_message,
-            acknowledger: {__MODULE__, table, "no idea what this does"}
+            data: log_event,
+            acknowledger: {__MODULE__, source_id, "no idea what this does"}
           }
         ]
     end

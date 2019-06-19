@@ -72,7 +72,7 @@ defmodule Logflare.Mixfile do
       {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
-      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.1.0", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
       {:mox, "~> 0.5", only: :test},
@@ -86,8 +86,9 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:excoveralls, "~> 0.11", only: :test},
       {:placebo, "~> 1.2"},
-      {:logflare_logger_backend, github: "logflare/logflare_logger_backend", branch: "v0.5"},
-      {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"}
+      {:logflare_logger_backend, path: "../logflare_logger_backend"},
+      {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"},
+      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false}
     ]
   end
 

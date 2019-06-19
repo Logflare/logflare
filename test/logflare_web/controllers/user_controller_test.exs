@@ -7,7 +7,7 @@ defmodule LogflareWeb.UserControllerTest do
   alias Logflare.{Users, User}
   alias Logflare.Source
   alias Logflare.Google.BigQuery
-  alias Logflare.Logs.RejectedEvents
+  alias Logflare.Logs.RejectedLogEvents
   import Logflare.DummyFactory
 
   setup do

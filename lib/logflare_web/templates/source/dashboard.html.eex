@@ -36,7 +36,7 @@
         </div>
         <div>
           <div class="float-right">
-            <%= if source.metrics.rejected do %>
+            <%= if source.has_rejected_events? do %>
             <%= link to: Routes.source_path(@conn, :rejected_logs, source.id), class: "dashboard-links"  do %>
             <span class="dashboard-row-aligned-icon rejected-events-info"
             data-toggle="tooltip" data-placement="left" title="This source has rejected logs!"

@@ -1,12 +1,46 @@
-defmodule Logflare.Validator.BigQuery.SchemaChange do
+defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.{Source, Sources}
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
-  def valid?(metadata, existing_schema) do
-    to_typemap(metadata) == to_typemap(existing_schema, from: :bigquery_schema)
+  def validate(%LE{body: body, source: %Source{} = source}) do
+    schema = Sources.Cache.get_bq_schema(source)
+
+    if valid?(body.metadata, schema) do
+      :ok
+    else
+      {:error, message()}
+    end
   end
 
+  def valid?(nil, _), do: true
+  def valid?(_, nil), do: true
+  def valid?(m, _) when m === %{}, do: true
+
+  def valid?(metadata, existing_schema) do
+    resolver = fn
+      _, original, override when is_atom(original) and is_atom(override) ->
+        if original != override, do: raise("type_error")
+
+      _, _original, _override ->
+        DeepMerge.continue_deep_merge()
+    end
+
+    new_typemap = to_typemap(metadata)
+    existing_typemap = to_typemap(existing_schema, from: :bigquery_schema).metadata.fields
+
+    try do
+      DeepMerge.deep_merge(new_typemap, existing_typemap, resolver)
+    rescue
+      _e -> false
+    else
+      _ -> true
+    end
+  end
+
+  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
@@ -31,6 +65,7 @@ defmodule Logflare.Validator.BigQuery.SchemaChange do
     |> Enum.into(Map.new())
   end
 
+  @spec to_typemap(map) :: %{required(atom) => map | atom}
   def to_typemap(metadata) when is_map(metadata) do
     for {k, v} <- metadata, into: Map.new() do
       v =
@@ -61,6 +96,10 @@ defmodule Logflare.Validator.BigQuery.SchemaChange do
 
       {k, v}
     end
+  end
+
+  def message() do
+    "Incoming metadata is not compatible with existing schema"
   end
 
   def bq_type_to_ex("TIMESTAMP"), do: :datetime

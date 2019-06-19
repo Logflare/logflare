@@ -23,6 +23,10 @@ defmodule Logflare.Sources do
     SRC.get_avg_rate(source.token)
   end
 
+  def get_bq_schema(%Source{} = source) do
+    Logflare.Google.BigQuery.get_table(source.token)
+  end
+
   def preload_defaults(source) do
     source
     |> Repo.preload(:user)
@@ -32,9 +36,9 @@ defmodule Logflare.Sources do
 
   def refresh_source_metrics(%Source{token: token} = source) do
     import Logflare.Source.Data
-    alias Logflare.Logs.RejectedEvents
+    alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
-    rejected_count = RejectedEvents.get_by_source(source)
+    rejected_count = RejectedLogEvents.count(source)
 
     metrics = %Source.Metrics{
       rate: get_rate(token),

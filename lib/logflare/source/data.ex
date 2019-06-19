@@ -117,7 +117,7 @@ defmodule Logflare.Source.Data do
   end
 
   @spec get_latest_date(atom) :: any
-  def get_latest_date(source_id, fallback \\ 0) do
+  def get_latest_date(source_id, fallback \\ 0) when is_atom(source_id) do
     case :ets.info(source_id) do
       :undefined ->
         fallback

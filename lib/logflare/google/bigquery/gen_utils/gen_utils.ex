@@ -46,20 +46,18 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   @spec get_account_id(atom) :: String.t()
-  def get_account_id(source_id) do
+  def get_account_id(source_id) when is_atom(source_id) do
     %Logflare.Source{user_id: account_id} = Sources.Cache.get_by_id(source_id)
     "#{account_id}"
   end
 
-  @spec get_tesla_error_message(%Tesla.Env{}) :: String.t()
+  @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: any
   def get_tesla_error_message(%Tesla.Env{} = message) do
     {:ok, message_body} = Jason.decode(message.body)
     message_body["error"]["message"]
   end
 
-  @spec get_tesla_error_message(atom) :: String.t()
   def get_tesla_error_message(:emfile), do: "emfile"
 
-  @spec get_tesla_error_message(atom) :: String.t()
   def get_tesla_error_message(:timeout), do: "timeout"
 end

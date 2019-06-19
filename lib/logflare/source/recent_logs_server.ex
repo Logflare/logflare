@@ -3,43 +3,51 @@ defmodule Logflare.Source.RecentLogsServer do
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
   """
+  use Publicist
+  use TypedStruct
+
+  typedstruct do
+    field :source_id, atom(), enforce: true
+    field :bigquery_project_id, atom()
+  end
 
   use GenServer
 
   alias Logflare.Sources.Counters
-  alias Logflare.Logs
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Number.Delimit
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
-  alias Logflare.Source.{Data, EmailNotificationServer, TextNoticationServer, RateCounterServer}
+  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.{Sources, Source}
+  alias __MODULE__, as: RLS
 
   require Logger
 
   # one month
   @prune_timer 1_000
-
   def start_link(source_id) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, source_id, name: source_id)
   end
 
   ## Client
-
-  def init(state) do
+  @spec init(any) :: {:ok, RLS.t(), {:continue, :boot}}
+  def init(source_id) do
     Process.flag(:trap_exit, true)
     prune()
 
-    state = [{:source_token, state}]
-    {:ok, state, {:continue, :boot}}
+    rls = %__MODULE__{source_id: source_id}
+    {:ok, rls, {:continue, :boot}}
   end
 
-  def push(source_id, event) do
-    GenServer.cast(source_id, {:push, source_id, event})
+  def push(source_id, %LE{} = log_event) do
+    GenServer.cast(source_id, {:push, source_id, log_event})
   end
 
   ## Server
 
-  def handle_continue(:boot, state) do
-    source_id = state[:source_token]
+  @spec handle_continue(:boot, RLS.t()) :: {:noreply, RLS.t()}
+  def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     bigquery_table_ttl = GenUtils.get_table_ttl(source_id)
 
@@ -48,16 +56,15 @@ defmodule Logflare.Source.RecentLogsServer do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
 
-    state = state ++ [{:bigquery_project_id, bigquery_project_id}]
+    rls = %{rls | bigquery_project_id: bigquery_project_id}
 
-    # TODO: Should really be starting these all up with the same struct because some need the same data
     children = [
-      {RateCounterServer, source_id},
-      {EmailNotificationServer, source_id},
-      {TextNoticationServer, source_id},
-      {Buffer, source_id},
-      {Pipeline, state},
-      {Schema, state}
+      {RateCounterServer, rls},
+      {EmailNotificationServer, rls},
+      {TextNotificationServer, rls},
+      {Buffer, rls},
+      {Pipeline, rls},
+      {Schema, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
@@ -67,16 +74,16 @@ defmodule Logflare.Source.RecentLogsServer do
     end)
 
     Logger.info("ETS table started: #{source_id}")
+    {:noreply, rls}
+  end
+
+  def handle_cast({:push, source_id, %LE{injested_at: inj_at, sys_uint: sys_uint} = le}, state) do
+    timestamp = inj_at |> Timex.to_datetime() |> DateTime.to_unix(:microsecond)
+    :ets.insert(source_id, {{timestamp, sys_uint, 0}, le})
     {:noreply, state}
   end
 
-  def handle_cast({:push, source_id, event}, state) do
-    :ets.insert(source_id, event)
-    {:noreply, state}
-  end
-
-  def handle_info(:prune, state) do
-    source_id = state[:source_token]
+  def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
     {:ok, count} = Counters.log_count(source_id)
 
     case count > 100 do
@@ -96,9 +103,9 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, %__MODULE__{} = state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{state[:source_token]}")
+    Logger.info("Going Down: #{state.source_id}")
     reason
   end
 
@@ -108,30 +115,13 @@ defmodule Logflare.Source.RecentLogsServer do
     log_count = Data.get_log_count(source_id, bigquery_project_id)
 
     if log_count > 0 do
-      unique_integer = System.unique_integer([:monotonic])
-      timestamp = System.system_time(:microsecond)
-      time_event = {timestamp, unique_integer, 0}
-      source_table_string = Atom.to_string(source_id)
-
-      log_message =
+      message =
         "Initialized and waiting for new events. #{Delimit.number_to_delimited(log_count)} archived and available to explore."
 
-      payload = %{timestamp: timestamp, log_message: log_message}
-      log = {time_event, payload}
+      log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
+      push(source_id, log_event)
 
-      Logs.insert_or_push(source_id, log)
-
-      case :ets.info(LogflareWeb.Endpoint) do
-        :undefined ->
-          Logger.error("Endpoint not up yet! Module: #{__MODULE__}")
-
-        _ ->
-          LogflareWeb.Endpoint.broadcast(
-            "source:" <> source_table_string,
-            "source:#{source_table_string}:new",
-            payload
-          )
-      end
+      Source.ChannelTopics.broadcast_new(log_event)
     end
   end
 

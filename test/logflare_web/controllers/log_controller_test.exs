@@ -1,12 +1,18 @@
 defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.{Sources.Counters, Users, SystemCounter, Sources}
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.{Sources.Counters, Users, Sources}
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   use Placebo
 
   setup do
     import Logflare.DummyFactory
+
+    allow AllLogsLogged.log_count(any()), return: {:ok, 0}
+    allow AllLogsLogged.incriment(any()), return: :ok
+
+    Sources.Counters.start_link()
 
     u1 = insert(:user)
     u2 = insert(:user)
@@ -44,10 +50,13 @@ defmodule LogflareWeb.LogControllerTest do
       conn =
         conn
         |> put_req_header("x-api-key", u.api_key)
-        |> post(log_path(conn, :create), %{
-          "log_entry" => "valid log entry",
-          "source_name" => "%%%unknown%%%"
-        })
+        |> post(
+          log_path(conn, :create),
+          %{
+            "log_entry" => "valid log entry",
+            "source_name" => "%%%unknown%%%"
+          }
+        )
 
       assert json_response(conn, 406) == %{
                "message" => "Source or source_name is nil, empty or not found."
@@ -57,10 +66,13 @@ defmodule LogflareWeb.LogControllerTest do
         conn
         |> recycle()
         |> put_req_header("x-api-key", u.api_key)
-        |> post(log_path(conn, :create), %{
-          "log_entry" => "valid log entry",
-          "source" => Faker.UUID.v4()
-        })
+        |> post(
+          log_path(conn, :create),
+          %{
+            "log_entry" => "valid log entry",
+            "source" => Faker.UUID.v4()
+          }
+        )
 
       assert json_response(conn, 406) == %{
                "message" => "Source or source_name is nil, empty or not found."
@@ -68,7 +80,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test "with nil or empty log_entry", %{conn: conn, users: [u | _], sources: [s | _]} do
-      err_message = %{"message" => "Log entry needed."}
+      err_message = %{"message" => ["body: %{message: [\"can't be blank\"]}\n"]}
 
       for log_entry <- [%{}, nil, [], ""] do
         conn =
@@ -84,7 +96,42 @@ defmodule LogflareWeb.LogControllerTest do
           )
 
         assert json_response(conn, 406) == err_message
+        refute_called AllLogsLogged.incriment(any()), once()
+        refute_called AllLogsLogged.log_count(any()), once()
       end
+    end
+
+    test "with invalid field types", %{conn: conn, users: [u | _], sources: [s | _]} do
+      err_message = %{
+        "message" => [
+          "Metadata validation error: values with the same field path must have the same type."
+        ]
+      }
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(
+          log_path(conn, :create),
+          %{
+            "metadata" => %{
+              "users" => [
+                %{
+                  "id" => 1
+                },
+                %{
+                  "id" => "2"
+                }
+              ]
+            },
+            "source" => Atom.to_string(s.token),
+            "log_entry" => "valid"
+          }
+        )
+
+      assert json_response(conn, 406) == err_message
+      refute_called AllLogsLogged.incriment(any()), once()
+      refute_called AllLogsLogged.log_count(any()), once()
     end
 
     test "fails for unauthorized user", %{conn: conn, users: [u1, u2], sources: [s]} do
@@ -146,20 +193,22 @@ defmodule LogflareWeb.LogControllerTest do
     setup [:allow_mocks]
 
     test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
-      log_event = build_log_event()
+      log_params = build_log_params()
 
       conn =
         conn
         |> assign(:user, u)
         |> assign(:source, s)
-        |> post(log_path(conn, :elixir_logger), %{"batch" => [log_event, log_event, log_event]})
+        |> post(
+          log_path(conn, :elixir_logger),
+          %{"batch" => [log_params, log_params, log_params]}
+        )
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert_called Sources.Counters.incriment(s.token), times(3)
       assert_called Sources.Counters.get_total_inserts(s.token), times(3)
       assert_called SourceBuffer.push("#{s.token}", any()), times(3)
-      assert_called SystemCounter.incriment(any()), times(3)
-      assert_called SystemCounter.log_count(any()), times(3)
+      assert_called AllLogsLogged.incriment(any()), times(3)
     end
 
     test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
@@ -174,6 +223,7 @@ defmodule LogflareWeb.LogControllerTest do
             log_path(conn, :create),
             %{
               "log_entry" => "valid",
+              "level" => "info",
               "metadata" => metadata
             }
           )
@@ -187,16 +237,14 @@ defmodule LogflareWeb.LogControllerTest do
     assert_called Sources.Counters.incriment(token), once()
     assert_called Sources.Counters.get_total_inserts(token), once()
     assert_called SourceBuffer.push("#{token}", any()), once()
-    assert_called SystemCounter.incriment(any()), once()
-    assert_called SystemCounter.log_count(any()), once()
+    assert_called AllLogsLogged.incriment(any()), once()
   end
 
   defp allow_mocks(_context) do
     allow Sources.Counters.incriment(any()), return: :ok
     allow SourceBuffer.push(any(), any()), return: :ok
     allow Sources.Counters.get_total_inserts(any()), return: {:ok, 1}
-    allow SystemCounter.incriment(any()), return: :ok
-    allow SystemCounter.log_count(any()), return: {:ok, 1}
+    allow AllLogsLogged.incriment(any()), return: :ok
     :ok
   end
 
@@ -228,12 +276,11 @@ defmodule LogflareWeb.LogControllerTest do
     }
   end
 
-  def build_log_event() do
+  def build_log_params() do
     %{
       "message" => "log message",
       "metadata" => %{},
-      "timestamp" => NaiveDateTime.to_iso8601(NaiveDateTime.utc_now()),
-      "level" => "info"
+      "timestamp" => System.system_time(:microsecond)
     }
   end
 end

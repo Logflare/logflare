@@ -1,5 +1,9 @@
 defmodule Logflare.Source.BigQuery.Buffer do
+  @moduledoc false
   use GenServer
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source
 
   alias Number.Delimit
 
@@ -7,11 +11,11 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   @broadcast_every 1_000
 
-  def start_link(source_id) do
+  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source: source_id,
+        source_id: source_id,
         buffer: :queue.new(),
         read_receipts: %{}
       },
@@ -20,30 +24,30 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def init(state) do
-    Logger.info("Table buffer started: #{state.source}")
+    Logger.info("Table buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
 
     check_buffer()
     {:ok, state}
   end
 
-  def push(source_id, event) do
-    GenServer.cast(name(source_id), {:push, event})
+  def push(source_id, %LE{} = log_event) do
+    GenServer.cast(name(source_id), {:push, log_event})
   end
 
   def pop(source_id) do
     GenServer.call(name(source_id), :pop)
   end
 
-  def ack(source_id, time_event) do
-    GenServer.call(name(source_id), {:ack, time_event})
+  def ack(source_id, log_event_id) do
+    GenServer.call(name(source_id), {:ack, log_event_id})
   end
 
   def get_count(source_id) do
     GenServer.call(name(source_id), :get_count)
   end
 
-  def handle_cast({:push, event}, state) do
+  def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
     new_state = %{state | buffer: new_buffer}
     {:noreply, new_state}
@@ -55,26 +59,24 @@ defmodule Logflare.Source.BigQuery.Buffer do
         {:reply, :empty, state}
 
       false ->
-        {event, new_buffer} = :queue.out(state.buffer)
-        {:value, {time_event, data}} = event
-        new_read_receipts = Map.put(state.read_receipts, time_event, data)
+        {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
+        new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
-        {:reply, event, new_state}
+        {:reply, log_event, new_state}
     end
   end
 
-  def handle_call({:ack, time_event}, _from, state) do
+  def handle_call({:ack, log_event_id}, _from, state) do
     case state.read_receipts == %{} do
       true ->
         {:reply, :empty, state}
 
       false ->
-        {data, new_read_receipts} = Map.pop(state.read_receipts, time_event)
-        event = {time_event, data}
+        {%LE{} = log_event, new_read_receipts} = Map.pop(state.read_receipts, log_event_id)
 
         new_state = %{state | read_receipts: new_read_receipts}
-        {:reply, event, new_state}
+        {:reply, log_event, new_state}
     end
   end
 
@@ -84,7 +86,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    broadcast_buffer(state.source, :queue.len(state.buffer))
+    Source.ChannelTopics.broadcast_buffer(state.source_id, :queue.len(state.buffer))
     check_buffer()
     {:noreply, state}
   end
@@ -97,27 +99,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   defp check_buffer() do
     Process.send_after(self(), :check_buffer, @broadcast_every)
-  end
-
-  defp broadcast_buffer(source_id, count) do
-    source_id_string = Atom.to_string(source_id)
-
-    payload = %{
-      source_token: source_id_string,
-      buffer: Delimit.number_to_delimited(count)
-    }
-
-    case :ets.info(LogflareWeb.Endpoint) do
-      :undefined ->
-        Logger.error("Endpoint not up yet!")
-
-      _ ->
-        LogflareWeb.Endpoint.broadcast(
-          "dashboard:" <> source_id_string,
-          "dashboard:#{source_id_string}:buffer",
-          payload
-        )
-    end
   end
 
   defp name(source_id) do

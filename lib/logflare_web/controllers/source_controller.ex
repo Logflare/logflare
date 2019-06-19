@@ -7,7 +7,7 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
   alias Logflare.Source.{Supervisor, Data}
-  alias Logflare.Logs.RejectedEvents
+  alias Logflare.Logs.RejectedLogEvents
   alias LogflareWeb.AuthController
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -223,7 +223,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => _id}) do
-    rejected_logs = RejectedEvents.get_by_source(source)
+    rejected_logs = RejectedLogEvents.get_by_source(source)
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 

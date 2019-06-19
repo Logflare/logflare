@@ -27,16 +27,16 @@
   <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
 
     <li>
-      <mark class="log-datestamp" data-timestamp="<%= log.timestamp %>">
-         <%= log.timestamp %>
+      <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>">
+         <%= log.body.timestamp %>
       </mark>
-      <%= log.log_message %>
-      <%= if Map.has_key?(log, :metadata) do %>
+      <%= log.body.message %>
+      <%= if map_size(log.body.metadata) > 0 do %>
       <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
         metadata
       </a>
       <div class="collapse metadata" id="metadata-<%= inx %>">
-        <pre class="pre-metadata"><code><%= log.metadata %></code></pre>
+        <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
       </div>
       <% end %>
     </li>

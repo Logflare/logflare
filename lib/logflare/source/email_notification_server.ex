@@ -7,10 +7,11 @@ defmodule Logflare.Source.EmailNotificationServer do
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.Source.RateCounterServer
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
   @check_rate_every 1_000
 
-  def start_link(source_id) do
+  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{

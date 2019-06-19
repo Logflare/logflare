@@ -19,12 +19,12 @@ defmodule Logflare.DummyFactory do
     %Source{
       name: Faker.Superhero.name(),
       token: Faker.UUID.v4(),
-      favorite: false,
+      favorite: false
     }
   end
 
   def rule_factory do
-    %Rule{}
+    %Rule{
+    }
   end
-
 end
