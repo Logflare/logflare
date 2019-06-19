@@ -1,0 +1,80 @@
+#explore-dashboard {
+  margin-bottom: 1em;
+}
+
+.dashboard-links:hover {
+  text-decoration: none;
+  color: white;
+}
+
+.dashboard-links {
+  margin-left: 0.5em;
+  color: white;
+}
+
+.dashboard a {
+  color: white;
+}
+
+.dashboard .favorite a {
+  color: #fff86c;
+  width: 2em;
+  padding-top: 0.5em;
+  padding-bottom: 1.5em;
+}
+
+.dashboard .favorite a:hover {
+  color: yellow;
+}
+
+.dashboard-row-aligned-icon {
+  line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.my-badge {
+  display: inline-block;
+  min-width: 10px;
+  padding: 3px 7px;
+  font-size: 0.7em;
+  line-height: 1;
+  color: black;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+  background-color: #5eeb8f;
+  border-radius: 10px;
+}
+
+.list-group {
+  margin-bottom: 0.75rem;
+}
+
+.list-group-item {
+  background-color: #1d1d1d;
+  border: 0;
+  overflow: hidden;
+}
+/* Fixes artifacts in Chrome */
+.list-group-item:focus,
+.list-group-item:hover {
+  z-index: auto;
+}
+
+#api-key-form {
+  width: 102px;
+  border: none;
+  background: #f8547d;
+  height: 1em;
+  color: white;
+}
+
+.word-break-all {
+  word-break: break-all;
+}
+
+.source-details {
+  margin-right: 1em;
+  color: #6c757d;
+}

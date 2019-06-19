@@ -9,6 +9,10 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
+  def get_total_logs_per_second() do
+    GenServer.call(__MODULE__, :logs_last_second)
+  end
+
   def init(_state) do
     poll_metrics()
     {:ok, all_logs_logged} = AllLogsLogged.log_count(:total_logs_logged)
@@ -25,6 +29,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
     {:noreply, %{last_total: all_logs_logged, last_second: logs_last_second}}
   end
+
+  def handle_call(:logs_last_second, _from, state), do: {:reply, state.last_second, state}
 
   defp poll_metrics() do
     Process.send_after(self(), :poll_metrics, @poll_every)

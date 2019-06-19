@@ -40,7 +40,7 @@
             <%= link to: Routes.source_path(@conn, :rejected_logs, source.id), class: "dashboard-links"  do %>
             <span class="dashboard-row-aligned-icon rejected-events-info"
             data-toggle="tooltip" data-placement="left" title="This source has rejected logs!"
-             style="color: #fff200;">
+             style="color: #fff86c;">
               <i class="fa fa-exclamation-circle" style="font-size: 1.3em;"></i>
             </span>
             <% end %>

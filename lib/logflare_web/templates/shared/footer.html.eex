@@ -1,7 +1,11 @@
-<div class="row footer">
-  <div class="col-lg-3">
-    <h5>Logflare</h5>
-    <ul class="list-unstyled">
+<div class="container-fluid footer">
+	<img src="images/marketing/homepage/footerbg.png" class="footerbg" alt="">
+	<div class="container">
+		<div class="row">
+  <div class="col-md-2">
+
+    <ul>
+      <li><h5>Logflare</h5></li>
       <li>
         <a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
       </li>
@@ -18,11 +22,11 @@
         <a href="https://github.com/Logflare/logflare/blob/master/legal/cookies.md">Cookie Policy</a>
       </li>
     </ul>
-  </div>
 
-  <div class="col-lg-3">
-    <h5>Open Source</h5>
-    <ul class="list-unstyled">
+	</div>
+<div class="col-md-2">
+    <ul>
+      <li><h5>Open Source</h5></li>
       <li>
         <a href="https://github.com/Logflare/logflare">Logflare Web</a>
       </li>
@@ -36,11 +40,10 @@
         <a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
       </li>
     </ul>
-  </div>
-
-  <div class="col-lg-3">
-    <h5>Guides</h5>
-    <ul class="list-unstyled">
+</div>
+<div class="col-md-2">
+    <ul>
+      <li><h5>Guides</h5></li>
       <li>
         <%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
       </li>
@@ -52,4 +55,15 @@
       </ul>
     </ul>
   </div>
+
+
+  <div class="col-md-6">
+    <div class="rightside">
+      <h2><i class="fas fa-lock"></i>Encrypted in transit and at rest</h2>
+      <p>All data sent to Logflare is encrypted in transit and at rest when using Google BigQuery as your backend.</p>
+      <p><span>Copyright <%= DateTime.utc_now.year %> - Logflare LLC</span></p>
+    </div>
+  </div>
+</div>
+</div>
 </div>

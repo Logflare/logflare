@@ -27,12 +27,13 @@
     <link rel="manifest" href="<%= Routes.static_path(@conn, "/manifest.json") %>">
     <meta name="msapplication-TileColor" content="#7ef854">
     <meta name="msapplication-TileImage" content="/images/ms-icon-144x144.png">
-    <meta name="theme-color" content="#7ef854">
+    <meta name="theme-color" content="#5eeb8f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
 
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
+
     <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
 
     <script>
