@@ -13,15 +13,15 @@ defmodule Logflare.Logs do
   def injest_logs(log_params_batch, %Source{} = source) do
     log_params_batch
     |> Enum.map(&LE.make(&1, %{source: source}))
-    |> Enum.map(fn %LE{} = log_event ->
-      if log_event.valid? do
-        injest_by_source_rules(log_event)
-        injest_and_broadcast(log_event)
+    |> Enum.map(fn %LE{} = le ->
+      if le.valid? do
+        injest_by_source_rules(le)
+        injest_and_broadcast(le)
       else
-        RejectedLogEvents.injest(log_event)
+        RejectedLogEvents.injest(le)
       end
 
-      log_event
+      le
     end)
     |> Enum.reduce([], fn log, acc ->
       if log.valid? do
@@ -57,12 +57,12 @@ defmodule Logflare.Logs do
     end
   end
 
-  defp injest_and_broadcast(%LE{source: %Source{} = source} = log_event) do
+  defp injest_and_broadcast(%LE{source: %Source{} = source} = le) do
     source_table_string = Atom.to_string(source.token)
 
     # indvididual source genservers
-    RecentLogsServer.push(source.token, log_event)
-    Buffer.push(source_table_string, log_event)
+    RecentLogsServer.push(source.token, le)
+    Buffer.push(source_table_string, le)
 
     # all sources genservers
     Sources.Counters.incriment(source.token)
@@ -70,6 +70,6 @@ defmodule Logflare.Logs do
 
     # broadcasters
     Source.ChannelTopics.broadcast_log_count(source)
-    Source.ChannelTopics.broadcast_new(log_event)
+    Source.ChannelTopics.broadcast_new(le)
   end
 end

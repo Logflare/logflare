@@ -38,7 +38,7 @@ defmodule Logflare.Source.ChannelTopics do
           average_rate: number | Decimal.t(),
           last_rate: number | Decimal.t(),
           max_rate: number | Decimal.t(),
-          source_id: any
+          source_id: atom()
         }) :: :ok | {:error, any}
   def broadcast_rates(%{source_id: source_id} = payload) do
     import Delimit
