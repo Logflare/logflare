@@ -95,6 +95,7 @@ defmodule Logflare.LogEvent do
     |> Map.put(:body, body)
     |> Map.put(:validation_error, changeset_error_to_string(changeset))
     |> Map.put(:source, source)
+    |> Map.put(:origin_source_id, source.token)
     |> Map.put(:valid?, changeset.valid?)
     |> Map.put(:params, params)
     |> Map.put(:injested_at, NaiveDateTime.utc_now())

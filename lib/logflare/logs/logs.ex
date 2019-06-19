@@ -7,7 +7,7 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
-  alias Number.Delimit
+  alias Logflare.Rule
 
   @spec injest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def injest_logs(log_params_batch, %Source{} = source) do
@@ -36,15 +36,23 @@ defmodule Logflare.Logs do
     end
   end
 
-  @spec injest_by_source_rules(LE.t()) :: term
-  defp injest_by_source_rules(%LE{source: %Source{} = source} = log_event) do
-    for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, log_event.body.message) do
+  @spec injest_by_source_rules(LE.t()) :: term | :noop
+  defp injest_by_source_rules(%LE{via_rule: %Rule{} = rule} = le) when not is_nil(rule) do
+    Logger.error(
+      "LogEvent #{le.id} has already been routed using the rule #{rule.id}, can't proceed!"
+    )
+
+    :noop
+  end
+
+  defp injest_by_source_rules(%LE{source: %Source{} = source, via_rule: nil} = le) do
+    for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, le.body.message) do
       sink_source = Sources.Cache.get_by(token: rule.sink)
 
       if sink_source do
-        injest_and_broadcast(%{log_event | source: sink_source})
+        injest_and_broadcast(%{le | source: sink_source, via_rule: rule})
       else
-        Logger.error("Sink source for token UUID #{rule.sink} doesn't exist")
+        Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
       end
     end
   end
