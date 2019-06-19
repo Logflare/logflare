@@ -3,7 +3,7 @@ defmodule Logflare.LogsTest do
   use Logflare.DataCase
   use Placebo
   import Logflare.DummyFactory
-  import Logflare.Logs
+  alias Logflare.Logs
   alias Logflare.Logs.LogEvent, as: LE
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
@@ -34,7 +34,7 @@ defmodule Logflare.LogsTest do
         %{"message" => "pattern3"}
       ]
 
-      assert injest_logs(log_params_batch, s1) == :ok
+      assert Logs.injest_logs(log_params_batch, s1) == :ok
 
       # Original source
       assert_called RecentLogsServer.push(s1.token, any), times(3)
@@ -78,6 +78,51 @@ defmodule Logflare.LogsTest do
       # All sources
 
       assert_called SystemMetrics.AllLogsLogged.incriment(any()), times(5)
+    end
+
+    @tag :run
+    test "sink routing is allowed for one depth level only" do
+      allow RecentLogsServer.push(any(), any()), return: :ok
+      allow Buffer.push(any(), any()), return: :ok
+      allow Sources.Counters.incriment(any()), return: {:ok, 1}
+      allow SystemMetrics.AllLogsLogged.incriment(any()), return: :ok
+      allow Counters.get_total_inserts(any()), return: {:ok, 1}
+
+      u = insert(:user)
+
+      s1 = insert(:source, rules: [], user_id: u.id)
+
+      first_sink = insert(:source, user_id: u.id)
+
+      last_sink = insert(:source, user_id: u.id)
+
+      first_sink_rule =
+        insert(:rule, sink: last_sink.token, regex: "test", source_id: first_sink.id)
+
+      s1rule1 = insert(:rule, sink: first_sink.token, regex: "test", source_id: s1.id)
+
+      log_params_batch = [
+        %{"message" => "test"}
+      ]
+
+      s1 = Sources.get_by(id: s1.id)
+
+      Logs.injest_logs(log_params_batch, s1) === :ok
+
+      assert_called RecentLogsServer.push(s1.token, any), once()
+      assert_called Sources.Counters.incriment(s1.token), once()
+      assert_called Sources.Counters.get_total_inserts(s1.token), once()
+      assert_called Buffer.push("#{s1.token}", any()), once()
+
+      assert_called RecentLogsServer.push(first_sink.token, any), once()
+      assert_called Sources.Counters.incriment(first_sink.token), once()
+      assert_called Sources.Counters.get_total_inserts(first_sink.token), once()
+      assert_called Buffer.push("#{first_sink.token}", any()), once()
+
+      refute_called RecentLogsServer.push(last_sink.token, any), once()
+      refute_called Sources.Counters.incriment(last_sink.token), once()
+      refute_called Sources.Counters.get_total_inserts(last_sink.token), once()
+      refute_called Buffer.push("#{last_sink.token}", any()), once()
     end
   end
 end
