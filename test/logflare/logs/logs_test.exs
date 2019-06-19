@@ -80,7 +80,6 @@ defmodule Logflare.LogsTest do
       assert_called SystemMetrics.AllLogsLogged.incriment(any()), times(5)
     end
 
-    @tag :run
     test "sink routing is allowed for one depth level only" do
       allow RecentLogsServer.push(any(), any()), return: :ok
       allow Buffer.push(any(), any()), return: :ok

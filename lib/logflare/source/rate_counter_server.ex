@@ -234,11 +234,9 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   defp broadcast(%RCS{} = state) do
-    source_string = Atom.to_string(state.source_id)
-
     state
     |> state_to_external()
-    |> Map.put(:source_token, source_string)
+    |> Map.put(:source_id, state.source_id)
     |> Source.ChannelTopics.broadcast_rates()
   end
 

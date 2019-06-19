@@ -8,50 +8,54 @@ defmodule Logflare.Source.ChannelTopics do
   alias Number.Delimit
   alias Logflare.Sources.Counters
 
+  @spec broadcast_log_count(Logflare.Source.t()) :: :ok | {:error, any}
   def broadcast_log_count(%Source{token: source_id}) do
     {:ok, log_count} = Counters.get_total_inserts(source_id)
-    source_table_string = Atom.to_string(source_id)
-
-    payload = %{
-      log_count: Delimit.number_to_delimited(log_count),
-      source_token: source_table_string
-    }
 
     LogflareWeb.Endpoint.broadcast(
-      "dashboard:" <> source_table_string,
-      "dashboard:#{source_table_string}:log_count",
-      payload
+      "dashboard:#{source_id}",
+      "dashboard:#{source_id}:log_count",
+      %{
+        log_count: Delimit.number_to_delimited(log_count),
+        source_token: "#{source_id}"
+      }
     )
   end
 
+  @spec broadcast_buffer(atom, number | Decimal.t()) :: :ok | {:error, any}
   def broadcast_buffer(source_id, count) when is_atom(source_id) do
-    source_id_string = Atom.to_string(source_id)
-
     maybe_broadcast(
-      "dashboard:#{source_id_string}",
-      "dashboard:#{source_id_string}:buffer",
+      "dashboard:#{source_id}",
+      "dashboard:#{source_id}:buffer",
       %{
-        source_token: source_id_string,
+        source_token: "#{source_id}",
         buffer: Delimit.number_to_delimited(count)
       }
     )
   end
 
-  def broadcast_rates(payload) do
-    payload = %{
-      source_token: payload.source_token,
-      rate: Delimit.number_to_delimited(payload.last_rate),
-      average_rate: Delimit.number_to_delimited(payload.average_rate),
-      max_rate: Delimit.number_to_delimited(payload.max_rate)
-    }
+  @spec broadcast_rates(%{
+          average_rate: number | Decimal.t(),
+          last_rate: number | Decimal.t(),
+          max_rate: number | Decimal.t(),
+          source_id: any
+        }) :: :ok | {:error, any}
+  def broadcast_rates(%{source_id: source_id} = payload) do
+    import Delimit
 
     maybe_broadcast(
-      "dashboard:#{payload.source_token}",
-      "dashboard:#{payload.source_token}:rate",
-      payload
+      "dashboard:#{source_id}",
+      "dashboard:#{source_id}:rate",
+      %{
+        source_token: source_id,
+        rate: number_to_delimited(payload.last_rate),
+        average_rate: number_to_delimited(payload.average_rate),
+        max_rate: number_to_delimited(payload.max_rate)
+      }
     )
   end
 
+  @spec broadcast_new(Logflare.LogEvent.t()) :: :ok | {:error, any}
   def broadcast_new(%LE{source: %Source{token: token}, body: body}) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
       log_message: body.message,
