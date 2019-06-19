@@ -1,6 +1,7 @@
 import socket from "./socket"
 import $ from "jquery"
 import * as userConfig from "./user-config-storage"
+import _ from "lodash"
 import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
@@ -47,7 +48,7 @@ const joinSourceChannel = (sourceToken) => {
 }
 
 async function renderLog(event) {
-  const renderedLog = await logTemplate(event)
+  const renderedLog = await logTemplate(event.body)
 
   $("#no-logs-warning").html("")
   $("#logs-list").append(renderedLog)
@@ -70,7 +71,7 @@ async function logTemplate(e) {
   const randomId = Math.random() * 10e16
   const metadataId = `metadata-${e.timestamp}-${randomId}`
 
-  const metadataElement = e.metadata ? `
+  const metadataElement = !_.isEmpty(e.metadata) ? `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
         metadata
     </a>
@@ -79,7 +80,7 @@ async function logTemplate(e) {
     </div> ` : ""
 
   return `<li>
-    <mark class="log-datestamp" data-timestamp="${e.timestamp}">${formattedDatetime}</mark> ${e.log_message} 
+    <mark class="log-datestamp" data-timestamp="${e.timestamp}">${formattedDatetime}</mark> ${e.message} 
     ${metadataElement}
 </li>`
 }
