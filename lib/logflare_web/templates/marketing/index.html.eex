@@ -302,7 +302,7 @@
 					<div class="col-md-12">
 
 
-						<h1>Install for now and use for free. Forever.</h1>
+						<h1>Install now and use for free. Forever.</h1>
 						<p>Install our Cloudflare app or sign up and setup <%= link "our Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
 						<div class="btns">
 							<p>
