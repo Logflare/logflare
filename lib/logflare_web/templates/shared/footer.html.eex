@@ -2,70 +2,73 @@
 	<img src="images/marketing/homepage/footerbg.png" class="footerbg" alt="">
 	<div class="container">
 		<div class="row">
-  <div class="col-md-2">
-
-    <ul>
-      <li><h5>Logflare</h5></li>
-			<li><%= link "System Status", to: "https://datastudio.google.com/s/vkfwKfU1-C0" %>
-			</li>
-      <li>
-        <a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
-      </li>
-      <li>
-        <a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">Help</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare/blob/master/legal/terms.md">Terms of Service</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare/blob/master/legal/privacy.md">Privacy Policy</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare/blob/master/legal/cookies.md">Cookie Policy</a>
-      </li>
-    </ul>
-
+			<div class="col-md-2">
+				<ul>
+					<li>
+						<h5>Logflare</h5>
+					</li>
+					<li>
+						<%= link "System Status", to: "https://datastudio.google.com/s/vkfwKfU1-C0" %>
+					</li>
+					<li>
+						<a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
+					</li>
+					<li>
+						<a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">Help</a>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/logflare/blob/master/legal/terms.md">Terms of Service</a>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/logflare/blob/master/legal/privacy.md">Privacy Policy</a>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/logflare/blob/master/legal/cookies.md">Cookie Policy</a>
+					</li>
+				</ul>
+			</div>
+			<div class="col-md-2">
+				<ul>
+					<li>
+						<h5>Open Source</h5>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/logflare">Logflare Web</a>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/logflare-agent">Logflare Agent</a>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/cloudflare-app">Cloudflare App</a>
+					</li>
+					<li>
+						<a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
+					</li>
+				</ul>
+			</div>
+			<div class="col-md-2">
+				<ul>
+					<li>
+						<h5>Guides</h5>
+					</li>
+					<li>
+						<%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
+					</li>
+					<li>
+						<%= link "Data Studio Setup", to: Routes.marketing_path(@conn, :data_studio_setup)%>
+					</li>
+					<li>
+						<%= link "Event Analytics Demo", to: Routes.marketing_path(@conn, :event_analytics_demo)%>
+				</ul>
+				</ul>
+			</div>
+			<div class="col-md-6">
+				<div class="rightside">
+					<h2><i class="fas fa-lock"></i>Encrypted in transit and at rest</h2>
+					<p>All data sent to Logflare is encrypted in transit and at rest when using Google BigQuery as your backend.</p>
+					<p><span>Copyright <%= DateTime.utc_now.year %> - Logflare LLC</span></p>
+				</div>
+			</div>
+		</div>
 	</div>
-<div class="col-md-2">
-    <ul>
-      <li><h5>Open Source</h5></li>
-      <li>
-        <a href="https://github.com/Logflare/logflare">Logflare Web</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/logflare-agent">Logflare Agent</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/cloudflare-app">Cloudflare App</a>
-      </li>
-      <li>
-        <a href="https://github.com/Logflare/cloudflare-app/blob/master/workers/worker.js">Cloudflare Worker</a>
-      </li>
-    </ul>
-</div>
-<div class="col-md-2">
-    <ul>
-      <li><h5>Guides</h5></li>
-      <li>
-        <%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
-      </li>
-      <li>
-        <%= link "Data Studio Setup", to: Routes.marketing_path(@conn, :data_studio_setup)%>
-      </li>
-      <li>
-        <%= link "Event Analytics Demo", to: Routes.marketing_path(@conn, :event_analytics_demo)%>
-      </ul>
-    </ul>
-  </div>
-
-
-  <div class="col-md-6">
-    <div class="rightside">
-      <h2><i class="fas fa-lock"></i>Encrypted in transit and at rest</h2>
-      <p>All data sent to Logflare is encrypted in transit and at rest when using Google BigQuery as your backend.</p>
-      <p><span>Copyright <%= DateTime.utc_now.year %> - Logflare LLC</span></p>
-    </div>
-  </div>
-</div>
-</div>
 </div>
