@@ -58,8 +58,7 @@ defmodule Logflare.Source.ChannelTopics do
   @spec broadcast_new(Logflare.LogEvent.t()) :: :ok | {:error, any}
   def broadcast_new(%LE{source: %Source{token: token}, body: body}) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
-      log_message: body.message,
-      timestamp: body.timestamp
+      body: body |> Map.from_struct
     })
   end
 
