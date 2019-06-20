@@ -11,12 +11,7 @@
 						<p>For Cloudflare and Elixir apps</p>
 						<div class="btns">
 							<p>
-								<iframe
-								  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
-								  allowTransparency="true"
-								  scroll="no"
-								  frameBorder="0"
-								>
+								<iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0">
 								</iframe>
 							</p>
 							<p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
@@ -62,7 +57,8 @@
 						<img src="images/marketing/homepage/trackImgDesktop.png" class="img-responsive" alt="">
 					</div>
 					<div class="col-md-6">
-						<p>Log and application performance management in one solution. We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with the Elixir library.</p>
+						<p>Log and application performance management in one solution. We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with
+							the Elixir library.</p>
 						<center><%= link "Logflare status dashboard »", to: "https://datastudio.google.com/s/vkfwKfU1-C0", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
 					</div>
 				</div>
@@ -92,7 +88,9 @@
 							<img src="images/marketing/homepage/catchImgDesktop-4x.png" class="img-responsive" alt="">
 						</div>
 						<div class="col-md-6 pull-md-6">
-							<p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare asynchronously after passing your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead. We batch logs and use <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %> to keep payload size and serialization load low.</p>
+							<p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare asynchronously after passing
+								your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead. We batch logs and use <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %> to keep payload size and
+								serialization load low.</p>
 						</div>
 					</div>
 				</div>
@@ -124,7 +122,7 @@
 								<h3>Searchable (hot)</h3>
 								<h3 class="lastone">Direct data access</h3>
 								<h3>Price per month</h3>
-								<h3>16 GB of logs</h3>
+								<h3>50 GB of logs</h3>
 								<h3>1,000 GB of logs</h3>
 							</div>
 							<a href="">
@@ -135,8 +133,8 @@
 									<h3>Unlimited</h3>
 									<h3 class="lastone"><i class="fa fa-check"></i></h3>
 									<h3 class="nothing">.</h3>
-									<h3 class="money">$90.12</h3>
-									<h3 class="money">$157.50</h3>
+									<h3 class="money">$90</h3>
+									<h3 class="money">$1,160</h3>
 								</div>
 							</a>
 							<a href="">
@@ -147,16 +145,18 @@
 									<h3>7 days</h3>
 									<h3 class="lastone"><i class="fa fa-times"></i></h3>
 									<h3 class="nothing">.</h3>
-									<h3 class="money">$1,160</h3>
+									<h3 class="money">$350</h3>
 									<h3 class="money">$2,450</h3>
 								</div>
 							</a>
 						</div>
 					</div>
 					<div class="col-md-6">
-						<p>Costs escalates quickly with typical Elastic based log management solutions. To setup long term analytics on events you  need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored data warehouse. </br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can ingest immediately, query in seconds and store data for years.</p>
+						<p>Costs escalates quickly with typical Elastic based log management solutions. To setup long term analytics on events you need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored data warehouse.
+							</br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can ingest immediately, query in seconds and store data for years.</p>
 						<center><%= link "More pricing coming soon", to: "#", class: "btn btn-secondary", role: "button" %></center>
-						<p class="spanp">Event size based on an average of 1 kilobyte per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 1 kilobyte per event you get 16,000,000 events for 16 GB of storage.</p>
+						<p class="spanp">Event size based on an average of 1 kilobyte per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 1 kilobyte per event you
+							get 50,000,000 events for 50 GB of storage.</p>
 					</div>
 				</div>
 			</div>
@@ -183,48 +183,48 @@
 			</div>
 			<div class="col-md-4">
 				<div class="stepscont">
-				<div class="circle">
-					<i class="fab fa-google"></i>
-				</div>
-				<h2>BigQuery & DataStudio</h2>
-				<p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
-				<%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
-				</div>
-			</div>
-			<div class="col-md-4">
-				<div class="stepscont">
-				<div class="circle">
-					<i class="fas fa-code-branch"></i>
-				</div>
-				<h2>Log routing</h2>
-				<p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
+					<div class="circle">
+						<i class="fab fa-google"></i>
+					</div>
+					<h2>BigQuery & DataStudio</h2>
+					<p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
+					<%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
 				</div>
 			</div>
 			<div class="col-md-4">
 				<div class="stepscont">
-				<div class="circle">
-					<i class="far fa-bell"></i>
-				</div>
-				<h2>Email & SMS alerts</h2>
-				<p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
-				</div>
-			</div>
-			<div class="col-md-4">
-				<div class="stepscont">
-				<div class="circle">
-					<i class="fas fa-users"></i>
-				</div>
-				<h2>Sharing via public URL</h2>
-				<p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
+					<div class="circle">
+						<i class="fas fa-code-branch"></i>
+					</div>
+					<h2>Log routing</h2>
+					<p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
 				</div>
 			</div>
 			<div class="col-md-4">
 				<div class="stepscont">
-				<div class="circle">
-					<i class="fas fa-code"></i>
+					<div class="circle">
+						<i class="far fa-bell"></i>
+					</div>
+					<h2>Email & SMS alerts</h2>
+					<p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses to alert everyone.</p>
 				</div>
-				<h2>Add metadata and query it</h2>
-				<p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+					<div class="circle">
+						<i class="fas fa-users"></i>
+					</div>
+					<h2>Sharing via public URL</h2>
+					<p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a login. Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
+				</div>
+			</div>
+			<div class="col-md-4">
+				<div class="stepscont">
+					<div class="circle">
+						<i class="fas fa-code"></i>
+					</div>
+					<h2>Add metadata and query it</h2>
+					<p>Include metadata with your event for logging structured data. Query this structured data with standard SQL in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
 				</div>
 			</div>
 		</div>
@@ -273,25 +273,39 @@
 </div>
 
 <div class="container-fluid ctav2">
-  <div class="container">
-  <div class="row">
-    <div class="col-md-6">
-      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Big shoutout and 🙏 to <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>  for his super cool <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in our latest app release that my team couldn&#39;t figure out. They introduced a small change that created recursive (infinite) API calls</p>&mdash; Hamlet 🇩🇴 (@hamletbatista) <a href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a></blockquote>
-    </div>
-    <div class="col-md-6">
-      <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses CloudFlare to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>&mdash; 🍌 John 🍌 (@JohnMu) <a href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a></blockquote>
-    </div>
-  </div>
+	<div class="container">
+		<div class="row">
+			<div class="col-md-6">
+				<blockquote class="twitter-tweet" data-lang="en">
+					<p lang="en" dir="ltr">Big shoutout and 🙏 to <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> for his super cool <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a
+							href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in our latest app release that my team couldn&#39;t figure out. They introduced a small change that created recursive (infinite) API
+						calls</p>&mdash; Hamlet 🇩🇴 (@hamletbatista) <a href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a>
+				</blockquote>
+			</div>
+			<div class="col-md-6">
+				<blockquote class="twitter-tweet" data-cards="hidden" data-lang="en">
+					<p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses CloudFlare to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a
+							href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>&mdash; 🍌 John 🍌 (@JohnMu) <a href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a>
+				</blockquote>
+			</div>
+		</div>
 
-  <div class="row">
-    <div class="col-md-6">
-      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">You&#39;re using CloudFlare, right?  If not, you should!  However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem.  Enter Logflare! <a href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a></blockquote>
-    </div>
-    <div class="col-md-6">
-      <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Been using the great (and free!) <a href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Apps! Great job!</p>&mdash; Matteo Manfredi (@itsmatteomanf) <a href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a></blockquote>
-    </div>
-  </div>
-</div>
+		<div class="row">
+			<div class="col-md-6">
+				<blockquote class="twitter-tweet" data-lang="en">
+					<p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem. Enter Logflare! <a
+							href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a>
+				</blockquote>
+			</div>
+			<div class="col-md-6">
+				<blockquote class="twitter-tweet" data-lang="en">
+					<p lang="en" dir="ltr">Been using the great (and free!) <a href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests
+						and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Apps! Great job!</p>&mdash; Matteo Manfredi (@itsmatteomanf) <a
+						href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a>
+				</blockquote>
+			</div>
+		</div>
+	</div>
 </div>
 
 <div class="container-fluid ctav2">
@@ -306,12 +320,7 @@
 						<p>Install our Cloudflare app or sign up and setup <%= link "our Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
 						<div class="btns">
 							<p>
-								<iframe
-								  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
-								  allowTransparency="true"
-								  scroll="no"
-								  frameBorder="0"
-								  >
+								<iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0">
 								</iframe>
 							</p>
 							<p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
@@ -327,12 +336,7 @@
 				<p>Install on Cloudflare or sign up & setup manually</p>
 				<div class="btns">
 					<p>
-					<iframe
-						  src="https://install.cloudflareapps.com?appId=K4MXdgCp7956"
-						  allowTransparency="true"
-						  scroll="no"
-						  frameBorder="0"
-						  >
+						<iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0">
 						</iframe>
 					</p>
 					<p><a href="" class="signup">SIGN UP</a></p>
