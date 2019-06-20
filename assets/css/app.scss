@@ -207,8 +207,9 @@ pre {
   position: fixed;
   top: 25px;
   left: 25px;
-  width: 250px;
+  width: 40%;
   z-index: 1050;
+  min-width: 250px;
 }
 
 .inner-message {

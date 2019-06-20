@@ -76,10 +76,11 @@ defmodule LogflareWeb.SourceController do
   end
 
   def show(%{assigns: %{user: user, source: source}} = conn, _params) do
-    render_show_with_assigns(conn, user, source)
+    avg_rate = Data.get_avg_rate(source.token)
+    render_show_with_assigns(conn, user, source, avg_rate)
   end
 
-  def render_show_with_assigns(conn, user, source) do
+  def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate <= 25 do
     bigquery_project_id = user && (user.bigquery_project_id || @project_id)
 
     explore_link =
@@ -92,7 +93,30 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || ""
+      explore_link: explore_link || "",
+      avg_rate: avg_rate
+    )
+  end
+
+  def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate > 25 do
+    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
+
+    explore_link =
+      bigquery_project_id &&
+        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
+
+    conn
+    |> put_flash(
+      :info,
+      "This source is seeing more than 25 events per second. Refresh to see the latest events. Use the explore link to view in Google Data Studio."
+    )
+    |> render(
+      "show.html",
+      logs: get_and_encode_logs(source),
+      source: source,
+      public_token: source.public_token,
+      explore_link: explore_link || "",
+      avg_rate: avg_rate
     )
   end
 
@@ -100,7 +124,8 @@ defmodule LogflareWeb.SourceController do
     Sources.Cache.get_by(public_token: public_token)
     |> case do
       %Source{} = source ->
-        render_show_with_assigns(conn, conn.assigns.user, source)
+        avg_rate = Data.get_avg_rate(source.token)
+        render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
 
       _ ->
         conn

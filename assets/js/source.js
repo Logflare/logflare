@@ -5,13 +5,15 @@ import _ from "lodash"
 import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
-export async function main({ scrollTracker }) {
+export async function main({ scrollTracker }, { avgEventsPerSecond }) {
 
   const { sourceToken, logs } = $("#__phx-assigns__").data()
   await initLogsUiFunctions({ scrollTracker })
 
-  joinSourceChannel(sourceToken)
 
+  if (avgEventsPerSecond < 25) {
+    joinSourceChannel(sourceToken)
+}
 
   if (logs.length === 0) {
     $("#sourceHelpModal").modal()
@@ -82,7 +84,7 @@ async function logTemplate(e) {
     </div> ` : ""
 
   return `<li>
-    <mark class="log-datestamp" data-timestamp="${body.timestamp}">${formattedDatetime}</mark> ${body.message} 
+    <mark class="log-datestamp" data-timestamp="${body.timestamp}">${formattedDatetime}</mark> ${body.message}
     ${metadataElement}
     ${via_rule ? `<span
     data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
