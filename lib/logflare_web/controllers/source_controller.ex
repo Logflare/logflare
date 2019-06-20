@@ -76,7 +76,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def show(%{assigns: %{user: user, source: source}} = conn, _params) do
-    avg_rate = Data.get_avg_rate(source.token)
+    avg_rate = String.to_integer(source.metrics.avg)
     render_show_with_assigns(conn, user, source, avg_rate)
   end
 
@@ -93,8 +93,7 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || "",
-      avg_rate: avg_rate
+      explore_link: explore_link || ""
     )
   end
 
@@ -115,8 +114,7 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || "",
-      avg_rate: avg_rate
+      explore_link: explore_link || ""
     )
   end
 
@@ -124,7 +122,7 @@ defmodule LogflareWeb.SourceController do
     Sources.Cache.get_by(public_token: public_token)
     |> case do
       %Source{} = source ->
-        avg_rate = Data.get_avg_rate(source.token)
+        avg_rate = source.metrics.avg
         render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
 
       _ ->
@@ -136,13 +134,11 @@ defmodule LogflareWeb.SourceController do
 
   def edit(%{assigns: %{source: source}} = conn, _params) do
     changeset = Source.update_by_user_changeset(source, %{})
-    avg_rate = Data.get_avg_rate(source.token)
 
     render(conn, "edit.html",
       changeset: changeset,
       source: source,
-      sources: conn.assigns.user.sources,
-      avg_rate: avg_rate
+      sources: conn.assigns.user.sources
     )
   end
 
@@ -150,8 +146,6 @@ defmodule LogflareWeb.SourceController do
     %{source: old_source, user: user} = conn.assigns
     # FIXME: Restricted params are filtered without notice
     changeset = Source.update_by_user_changeset(old_source, source_params)
-
-    avg_rate = Data.get_avg_rate(old_source.token)
 
     sources =
       user.sources
@@ -181,8 +175,7 @@ defmodule LogflareWeb.SourceController do
           "edit.html",
           changeset: changeset,
           source: old_source,
-          sources: sources,
-          avg_rate: avg_rate
+          sources: sources
         )
     end
   end

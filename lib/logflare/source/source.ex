@@ -21,7 +21,6 @@ defmodule Logflare.Source do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string
-    field :avg_rate, :integer, virtual: true
     field :favorite, :boolean, default: false
     field :user_email_notifications, :boolean, default: false
     field :other_email_notifications, :string
@@ -44,7 +43,6 @@ defmodule Logflare.Source do
       :name,
       :token,
       :public_token,
-      :avg_rate,
       :favorite,
       :user_email_notifications,
       :other_email_notifications,
@@ -75,18 +73,5 @@ defmodule Logflare.Source do
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)
-    |> validate_min_avg_source_rate(:avg_rate)
-  end
-
-  def validate_min_avg_source_rate(changeset, field, options \\ []) do
-    validate_change(changeset, field, fn _, avg_rate ->
-      case avg_rate >= 1 do
-        true ->
-          []
-
-        false ->
-          [{field, options[:message] || "Average events per second must be at least 1"}]
-      end
-    end)
   end
 end

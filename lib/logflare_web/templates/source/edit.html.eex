@@ -50,7 +50,7 @@
       <%= text_input f, :api_quota, class: "form-control", readonly: true %>
       <%= error_tag f, :api_quota %>
       <small class="form-text text-muted">
-        Currently seeing <%= @avg_rate %> events per second on average. Email <a href="mailto:support@logflare.app?Subject=Rate%20Limits" target="_top">support@logflare.app</a> to increase your rate limit.
+        Currently seeing <%= @source.metrics.avg %> events per second on average. Email <a href="mailto:support@logflare.app?Subject=Rate%20Limits" target="_top">support@logflare.app</a> to increase your rate limit.
       </small>
     </div>
     <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
