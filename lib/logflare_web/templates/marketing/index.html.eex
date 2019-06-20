@@ -135,8 +135,8 @@
 									<h3>Unlimited</h3>
 									<h3 class="lastone"><i class="fa fa-check"></i></h3>
 									<h3 class="nothing">.</h3>
-									<h3 class="money">$0.12</h3>
-									<h3 class="money">$27.50</h3>
+									<h3 class="money">$90.12</h3>
+									<h3 class="money">$157.50</h3>
 								</div>
 							</a>
 							<a href="">
@@ -147,7 +147,7 @@
 									<h3>7 days</h3>
 									<h3 class="lastone"><i class="fa fa-times"></i></h3>
 									<h3 class="nothing">.</h3>
-									<h3 class="money">$125</h3>
+									<h3 class="money">$1,160</h3>
 									<h3 class="money">$2,450</h3>
 								</div>
 							</a>
@@ -156,7 +156,7 @@
 					<div class="col-md-6">
 						<p>Costs escalates quickly with typical Elastic based log management solutions. To setup long term analytics on events you  need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored data warehouse. </br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can ingest immediately, query in seconds and store data for years.</p>
 						<center><%= link "More pricing coming soon", to: "#", class: "btn btn-secondary", role: "button" %></center>
-						<p class="spanp">Event size based on an average of 100kb per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 100kb per event you get 160,000 events for 16 GB of storage.</p>
+						<p class="spanp">Event size based on an average of 1 kilobyte per event. Pricing based on Papertrail's <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>. At 1 kilobyte per event you get 16,000,000 events for 16 GB of storage.</p>
 					</div>
 				</div>
 			</div>
