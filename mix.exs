@@ -66,7 +66,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
-      {:google_api_big_query, "~> 0.9.0"},
+      {:google_api_big_query, "~> 0.12.0"},
       {:goth, "~> 0.8.0"},
       {:broadway, "~> 0.3.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
