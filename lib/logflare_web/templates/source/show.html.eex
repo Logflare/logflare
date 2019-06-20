@@ -39,7 +39,7 @@
       </div>
       <% end %>
       <%= if log.via_rule do %>
-            <span 
+            <span
             data-toggle="tooltip" data-placement="top" title="Matching <%= log.via_rule.regex %> routing from <%= log.origin_source_id %>" style="color: ##5eeb8f;">
               <i class="fa fa-code-branch" style="font-size: 1em;"></i>
             </span>
@@ -67,7 +67,7 @@ data-logs="<%= Poison.encode!(@logs) %>">
 <script>
 
 document.addEventListener("DOMContentLoaded", async () => {
-    await Source.main({scrollTracker: true})
+    await Source.main({scrollTracker: true}, {avgEventsPerSecond: 50})
   })
 
 </script>

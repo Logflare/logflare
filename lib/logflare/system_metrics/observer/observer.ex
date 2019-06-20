@@ -9,10 +9,11 @@ defmodule Logflare.SystemMetrics.Observer do
         {x, y}
       end
     end)
+    |> Enum.into(%{})
   end
 
   def get_memory() do
-    :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end)
+    :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end) |> Enum.into(%{})
   end
 
   def get_processes() do
