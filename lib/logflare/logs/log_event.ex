@@ -81,6 +81,7 @@ defmodule Logflare.LogEvent do
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
+  @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}

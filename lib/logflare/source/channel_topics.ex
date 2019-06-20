@@ -38,7 +38,7 @@ defmodule Logflare.Source.ChannelTopics do
           average_rate: number | Decimal.t(),
           last_rate: number | Decimal.t(),
           max_rate: number | Decimal.t(),
-          source_id: any
+          source_id: atom()
         }) :: :ok | {:error, any}
   def broadcast_rates(%{source_id: source_id} = payload) do
     import Delimit
@@ -56,10 +56,11 @@ defmodule Logflare.Source.ChannelTopics do
   end
 
   @spec broadcast_new(Logflare.LogEvent.t()) :: :ok | {:error, any}
-  def broadcast_new(%LE{source: %Source{token: token}, body: body}) do
+  def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
-      log_message: body.message,
-      timestamp: body.timestamp
+      body: body |> Map.from_struct(),
+      via_rule: le.via_rule && Map.take(le.via_rule, [:regex]),
+      origin_source_id: le.origin_source_id
     })
   end
 

@@ -1,6 +1,7 @@
 import socket from "./socket"
 import $ from "jquery"
 import * as userConfig from "./user-config-storage"
+import _ from "lodash"
 import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
@@ -64,13 +65,15 @@ export function scrollBottom() {
 }
 
 async function logTemplate(e) {
-  const metadata = JSON.stringify(e.metadata, null, 2)
+  console.log(e)
+  const { via_rule, origin_source_id, body } = e
+  const metadata = JSON.stringify(body.metadata, null, 2)
   const formatter = await userSelectedFormatter()
-  const formattedDatetime = formatter(e.timestamp)
+  const formattedDatetime = formatter(body.timestamp)
   const randomId = Math.random() * 10e16
-  const metadataId = `metadata-${e.timestamp}-${randomId}`
+  const metadataId = `metadata-${body.timestamp}-${randomId}`
 
-  const metadataElement = e.metadata ? `
+  const metadataElement = !_.isEmpty(body.metadata) ? `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
         metadata
     </a>
@@ -79,8 +82,12 @@ async function logTemplate(e) {
     </div> ` : ""
 
   return `<li>
-    <mark class="log-datestamp" data-timestamp="${e.timestamp}">${formattedDatetime}</mark> ${e.log_message} 
+    <mark class="log-datestamp" data-timestamp="${body.timestamp}">${formattedDatetime}</mark> ${body.message} 
     ${metadataElement}
+    ${via_rule ? `<span
+    data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
+    <i class="fa fa-code-branch" style="font-size: 1em;"></i>
+    </span>` : `<span></span>`}
 </li>`
 }
 

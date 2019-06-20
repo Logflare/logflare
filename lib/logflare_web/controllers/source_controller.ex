@@ -227,16 +227,22 @@ defmodule LogflareWeb.SourceController do
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 
-  defp maybe_encode_log_metadata(%{metadata: m} = log) do
-    %{log | metadata: Jason.encode!(m, pretty: true)}
-  end
-
-  defp maybe_encode_log_metadata(log), do: log
-
   defp get_and_encode_logs(%Source{} = source) do
-    source.token
-    |> Data.get_logs()
-    |> Enum.map(&maybe_encode_log_metadata/1)
+    log_events = Data.get_logs(source.token)
+
+    for le <- log_events, le do
+      le =
+        le
+        |> Map.from_struct()
+        |> Map.take([:body, :via_rule, :origin_source_id])
+        |> Map.update!(:body, &Map.from_struct/1)
+
+      if le.via_rule do
+        %{le | via_rule: %{regex: le.via_rule.regex}}
+      else
+        le
+      end
+    end
   end
 
   defp del_source_and_redirect_with_info(conn, source) do

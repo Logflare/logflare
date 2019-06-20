@@ -25,7 +25,6 @@
 <div class="container mx-auto" id="console-text">
 <ul id="logs-list" class="list-unstyled console-text-list" hidden>
   <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
-
     <li>
       <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>">
          <%= log.body.timestamp %>
@@ -38,6 +37,12 @@
       <div class="collapse metadata" id="metadata-<%= inx %>">
         <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
       </div>
+      <% end %>
+      <%= if log.via_rule do %>
+            <span 
+            data-toggle="tooltip" data-placement="top" title="Matching <%= log.via_rule.regex %> routing from <%= log.origin_source_id %>" style="color: ##5eeb8f;">
+              <i class="fa fa-code-branch" style="font-size: 1em;"></i>
+            </span>
       <% end %>
     </li>
   <% end) %>
