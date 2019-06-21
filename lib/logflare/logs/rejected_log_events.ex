@@ -1,6 +1,25 @@
 defmodule Logflare.Logs.RejectedLogEvents do
   @moduledoc """
-  Handles and caches LogEvents that failed validation
+  Handles and caches LogEvents that failed validation. To genereate a rejected log:
+  `Logger.info("should be rejected", users_1: [%{id: "1"}, %{id: 1}] )`
+
+  or
+
+  ```
+  curl -X "POST" "http://localhost:4000/logs/cloudflare" \
+    -H 'Content-Type: application/json' \
+    -H 'X-API-KEY: EdR8jNi258ji' \
+    -d $'{
+      "metadata": {
+        "users": [
+          {"id": "1"},
+          {"id": 1}
+        ]
+      },
+      "log_entry": "should be rejected",
+      "source": "09f5db03-ac00-44fa-80b5-26a531e09524"
+    }'
+  ```
   """
   alias Logflare.{Source, User}
   alias Logflare.LogEvent, as: LE
@@ -27,6 +46,10 @@ defmodule Logflare.Logs.RejectedLogEvents do
     s.token
     |> get!()
     |> Map.get(:count, 0)
+  end
+
+  def delete_by_source(%Source{token: token}) do
+    {:ok, true} = Cachex.del(@cache, token)
   end
 
   @doc """

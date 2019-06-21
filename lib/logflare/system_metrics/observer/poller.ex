@@ -1,4 +1,10 @@
 defmodule Logflare.SystemMetrics.Observer.Poller do
+  @moduledoc """
+  Polls various Observer inspired BEAM metrics and logs them to LogflareLogger.
+
+  Process calculations inspired by: https://github.com/sasa1977/demo_system/blob/master/example_system/lib/runtime.ex
+  """
+
   use GenServer
 
   alias Logflare.SystemMetrics.Observer
@@ -33,19 +39,28 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
     Process.send_after(self(), :poll_metrics, @poll_every)
   end
 
-  defp final_processes(last_processes) do
+  defp final_processes(%{
+         process_list: last_processes_list,
+         total_reductions: _last_total_reductions
+       }) do
+    current_processes = Observer.get_processes()
+    current_processes_list = current_processes.process_list
+    current_total_reductions = current_processes.total_reductions
+
     processes =
       Enum.map(
-        Observer.get_processes(),
+        current_processes_list,
         fn {name, reds} ->
-          prev_reds = Map.get(last_processes, name, 0)
-          %{name: name, reds: reds - prev_reds}
+          prev_reds = Map.get(last_processes_list, name, 0)
+          reds_diff = reds - prev_reds
+          reds_percentage = reds_diff / current_total_reductions
+          %{name: name, reds: reds_diff, reds_percentage: reds_percentage}
         end
       )
 
     processes
     |> Enum.sort_by(& &1.reds, &>=/2)
     |> Stream.take(10)
-    |> Enum.map(&%{name: &1.name, reds: &1.reds})
+    |> Enum.map(&%{name: &1.name, reds: &1.reds, reds_percentage: &1.reds_percentage})
   end
 end

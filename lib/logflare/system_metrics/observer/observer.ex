@@ -17,12 +17,17 @@ defmodule Logflare.SystemMetrics.Observer do
   end
 
   def get_processes() do
-    for {{:registered_name, name}, {:reductions, reds}} <-
-          Stream.map(
-            Process.list(),
-            &{Process.info(&1, :registered_name), Process.info(&1, :reductions)}
-          ),
-        into: %{},
-        do: {name, reds}
+    process_list =
+      for {{:registered_name, name}, {:reductions, reds}} <-
+            Stream.map(
+              Process.list(),
+              &{Process.info(&1, :registered_name), Process.info(&1, :reductions)}
+            ),
+          into: %{},
+          do: {name, reds}
+
+    total_reds = process_list |> Stream.map(fn {k, v} -> v end) |> Enum.sum()
+
+    %{process_list: process_list, total_reductions: total_reds}
   end
 end

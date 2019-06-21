@@ -209,6 +209,7 @@ defmodule LogflareWeb.SourceController do
 
   def clear_logs(%{assigns: %{source: source}} = conn, _params) do
     {:ok, _table} = Supervisor.reset_table(source.token)
+    {:ok, true} = RejectedLogEvents.delete_by_source(source)
 
     conn
     |> put_flash(:info, "Logs cleared!")
