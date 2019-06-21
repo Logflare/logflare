@@ -19,7 +19,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
-  alias Logflare.{Sources, Source}
+  alias Logflare.Source
   alias __MODULE__, as: RLS
 
   require Logger

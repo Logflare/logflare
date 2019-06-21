@@ -5,8 +5,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
 
-  alias Number.Delimit
-
   require Logger
 
   @broadcast_every 1_000

@@ -13,8 +13,6 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Source.Data
   alias Logflare.Source
 
-  alias Number.Delimit
-
   @default_bucket_width 60
 
   use TypedStruct

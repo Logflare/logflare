@@ -26,7 +26,7 @@ defmodule Logflare.SystemMetrics.Observer do
           into: %{},
           do: {name, reds}
 
-    total_reds = process_list |> Stream.map(fn {k, v} -> v end) |> Enum.sum()
+    total_reds = process_list |> Stream.map(fn {_k, v} -> v end) |> Enum.sum()
 
     %{process_list: process_list, total_reductions: total_reds}
   end
