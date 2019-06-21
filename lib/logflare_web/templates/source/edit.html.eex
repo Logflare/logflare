@@ -76,7 +76,8 @@
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
   <%= if @source.public_token != nil do %>
     <div>
-      <code>https://logflare.app/sources/public/<%= @source.public_token %></code> <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="https://logflare.app/sources/public/<%= @source.public_token %>">Copy path</button>
+      <code>https://logflare.app/sources/public/<%= @source.public_token %></code> 
+      <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="https://logflare.app/sources/public/<%= @source.public_token %>">Copy path</button>
     </div>
   <% end %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn d -> %>
@@ -106,16 +107,19 @@
   <% end %>
 
 <script>
-var clipboard = new ClipboardJS('#copy-path')
+document.addEventListener("DOMContentLoaded", async () => {
+  const clipboard = new ClipboardJS('#copy-path')
+  clipboard.on('success', (e)  => {
+      alert("Copied!");
+      e.clearSelection();
+  });
 
-clipboard.on('success', function(e) {
-    alert("Copied!");
-    e.clearSelection();
-});
+  clipboard.on('error', (e) => {
+      alert("Something went wrong!");
+      e.clearSelection();
+  })
+})
 
-clipboard.on('error', function(e) {
-    alert("Something went wrong!");
-    e.clearSelection();
-});
+
 
 </script>
