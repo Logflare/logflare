@@ -5,6 +5,7 @@ import socket from "./socket"
 import "bootstrap"
 import "@babel/polyfill"
 import $ from "jquery"
+import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
@@ -20,3 +21,4 @@ window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
 window.$ = $
+window.ClipboardJS = ClipboardJS
