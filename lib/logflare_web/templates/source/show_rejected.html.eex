@@ -19,9 +19,7 @@
   <%= @logs |> Enum.with_index |> Enum.map(fn {log_event, inx} -> %>
 
     <li>
-      <mark class="log_event-datestamp" data-timestamp="<%= log_event.injested_at %>">
-         <%= log_event.injested_at %>
-      </mark>
+      <mark class="log-datestamp" data-timestamp="<%= 1_000_000 * (DateTime.from_naive!(log_event.injested_at, "Etc/UTC") |> DateTime.to_unix()) %>"><%= log_event.injested_at %></mark>
       <%= log_event.validation_error %>
       <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
         log payload
