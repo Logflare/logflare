@@ -28,9 +28,9 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
     observer_memory = Observer.get_memory()
     processes = final_processes(state.last_processes)
 
-    LogflareLogger.info("Memory metrics!", observer_memory: observer_memory)
-    LogflareLogger.info("Process metrics!", processes: processes)
-    LogflareLogger.info("Observer metrics!", observer_metrics: observer_metrics)
+    Logger.info("Memory metrics!", observer_memory: observer_memory)
+    Logger.info("Process metrics!", processes: processes)
+    Logger.info("Observer metrics!", observer_metrics: observer_metrics)
 
     {:noreply, %{last_processes: Observer.get_processes()}}
   end
