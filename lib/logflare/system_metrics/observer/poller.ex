@@ -41,7 +41,7 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
 
   defp final_processes(%{
          process_list: last_processes_list,
-         total_reductions: _last_total_reductions
+         total_reductions: last_total_reductions
        }) do
     current_processes = Observer.get_processes()
     current_processes_list = current_processes.process_list
@@ -53,14 +53,28 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
         fn {name, reds} ->
           prev_reds = Map.get(last_processes_list, name, 0)
           reds_diff = reds - prev_reds
-          reds_percentage = reds_diff / current_total_reductions
-          %{name: name, reds: reds_diff, reds_percentage: reds_percentage}
+          total_reds_diff = current_total_reductions - last_total_reductions
+          reds_percentage_int = Kernel.floor(reds_diff / total_reds_diff * 100)
+
+          %{
+            name: name,
+            reds: reds_diff,
+            total_reds: total_reds_diff,
+            reds_percentage_int: reds_percentage_int
+          }
         end
       )
 
     processes
     |> Enum.sort_by(& &1.reds, &>=/2)
     |> Stream.take(10)
-    |> Enum.map(&%{name: &1.name, reds: &1.reds, reds_percentage: &1.reds_percentage})
+    |> Enum.map(
+      &%{
+        name: &1.name,
+        reds: &1.reds,
+        total_reds: &1.total_reds,
+        reds_percentage_int: &1.reds_percentage_int
+      }
+    )
   end
 end
