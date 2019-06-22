@@ -9,7 +9,7 @@ config :logflare, LogflareWeb.Endpoint,
   version: Application.spec(:logflare, :vsn)
 
 config :logger,
-  level: :error,
+  level: :info,
   backends: [LogflareLogger.HttpBackend]
 
 config :phoenix, :serve_endpoints, true

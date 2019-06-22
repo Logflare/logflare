@@ -11,7 +11,7 @@ config :logflare, LogflareWeb.Endpoint,
 config :logger, :console, format: "[$level] $message\n"
 
 config :logger,
-  level: :error
+  level: :info
 
 config :phoenix, :serve_endpoints, true
 
