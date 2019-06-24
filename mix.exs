@@ -86,7 +86,8 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:excoveralls, "~> 0.11", only: :test},
       {:placebo, "~> 1.2"},
-      {:logflare_logger_backend, github: "logflare/logflare_logger_backend", branch: "v0.5"},
+      {:logflare_logger_backend, github: "logflare/logflare_logger_backend", only: [:prod, :dev]},
+      {:logflare_agent, github: "logflare/logflare_agent"},
       {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"},
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false}
     ]

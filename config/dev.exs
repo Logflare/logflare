@@ -1,5 +1,7 @@
 use Mix.Config
 
+config :logflare, env: :dev
+
 config :logflare, LogflareWeb.Endpoint,
   http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 10]],
   url: [host: "dev.chasegranberry.net", scheme: "http"],
@@ -49,5 +51,4 @@ config :logflare, Logflare.Google,
   project_id: "logflare-dev-238720",
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
 
-config :logflare, env: :dev
 import_config "dev.secret.exs"
