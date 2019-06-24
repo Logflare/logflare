@@ -95,7 +95,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
     LogflareLogger.merge_context(source_id: source_id)
 
-    if map_size(body) > 0 do
+    if map_size(body.metadata) > 0 do
       schema_state = Schema.get_state(source_id)
       old_schema = schema_state.schema
       bigquery_project_id = schema_state.bigquery_project_id
