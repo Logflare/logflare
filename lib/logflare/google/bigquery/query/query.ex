@@ -1,13 +1,14 @@
 defmodule Logflare.Google.BigQuery.Query do
+  @moduledoc false
   require Logger
 
-  #  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id] || ""
-  #  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] || ""
-  #
-  #  alias GoogleApi.BigQuery.V2.{Api}
-  #  alias Logflare.Google.BigQuery.{GenUtils}
-  #  alias Logflare.SourceBigQuerySchema
-  #  alias Logflare.Google.BigQuery
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+
+  alias GoogleApi.BigQuery.V2.{Api, Model}
+  alias Logflare.Google.BigQuery.{GenUtils}
+  alias Logflare.SourceBigQuerySchema
+  alias Logflare.Google.BigQuery
   #
   #  @spec get_events_for_ets(atom, atom) :: []
   #  def get_events_for_ets(
@@ -55,18 +56,18 @@ defmodule Logflare.Google.BigQuery.Query do
   #      selectedFields: "event_message, metadata, timestamp"
   #    )
   #  end
-  #
-  #  defp query(conn, project_id, sql) do
-  #    Api.Jobs.bigquery_jobs_query(
-  #      conn,
-  #      project_id,
-  #      body: %Model.QueryRequest{
-  #        query: sql,
-  #        useLegacySql: false,
-  #        useQueryCache: true
-  #      }
-  #    )
-  #  end
+
+  def query(conn, project_id, sql) do
+    Api.Jobs.bigquery_jobs_query(
+      conn,
+      project_id,
+      body: %Model.QueryRequest{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: true
+      }
+    )
+  end
   #
   #  defp gen_sql_for_ets(source, project_id, datetime, streaming_buffer) do
   #    table_name = GenUtils.format_table_name(source)
