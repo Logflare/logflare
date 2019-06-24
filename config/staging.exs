@@ -29,6 +29,13 @@ config :logflare, Logflare.Google,
   project_id: "logflare-staging",
   service_account: "logflare-staging@logflare-staging.iam.gserviceaccount.com"
 
+config :logflare_logger_backend,
+  api_key: "aaaaa",
+  source_id: "bbbbbb",
+  flush_interval: 1_000,
+  max_batch_size: 50,
+  url: "http://example.com"
+
 config :logflare_agent,
   sources: [
     %{
