@@ -8,6 +8,8 @@ defmodule Logflare.LogsTest do
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
+  alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.{Query, GenUtils}
   alias Logflare.Sources.Counters
 
   setup do
@@ -18,6 +20,28 @@ defmodule Logflare.LogsTest do
     s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
 
     {:ok, sources: [s1], sinks: [sink1, sink2]}
+  end
+
+  describe "log event injest" do
+    setup :with_iam_create_auth
+
+    test "succeeds for floats", %{sources: [s]} do
+      conn = GenUtils.get_conn()
+      project_id = GenUtils.get_project_id(s.token)
+
+      assert {:ok, _} = BigQuery.create_dataset("#{s.user_id}", project_id)
+      assert {:ok, _} = BigQuery.create_table(s.token, project_id)
+
+      Logs.injest_logs([%{"message" => "test", "metadata" => %{float: 0.001}}], s)
+      {:ok, response} = Query.query()
+      assert response.rows == [%{"log_message" => "test", "metadata" => %{"float" => 0.001}}]
+    end
+  end
+
+  def with_iam_create_auth(_) do
+    u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+    s1 = insert(:source, user_id: u.id)
+    {:ok, sources: [s1], users: [u]}
   end
 
   describe "log event injest for source with rules" do
