@@ -9,7 +9,7 @@ defmodule Logflare.SystemMetrics.Schedulers do
         {type, scheduler_name, utilization, utilization_percentage} ->
           %{
             name: Integer.to_string(scheduler_name),
-            type: Atom.to_string(rename_cpu(type)),
+            type: rename_type(type),
             utilization: Kernel.floor(utilization * 100),
             utilization_percentage: utilization_percentage
           }
@@ -25,6 +25,6 @@ defmodule Logflare.SystemMetrics.Schedulers do
     end)
   end
 
-  defp rename_cpu(:cpu), do: :dirty
-  defp rename_cpu(:normal), do: :normal
+  defp rename_type(:cpu), do: "dirty"
+  defp rename_type(:normal), do: "normal"
 end
