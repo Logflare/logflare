@@ -27,9 +27,15 @@ defmodule Logflare.Source.RecentLogsServerTest do
 
       event = "source:#{s1.token}:new"
 
-      assert_broadcast event, %{
-        timestamp: _,
-        log_message: "Initialized and waiting for new events. 1 archived and available to explore."}, 1_000
+      assert_broadcast event,
+                       %{
+                         body: %{
+                           timestamp: _,
+                           message:
+                             "Initialized and waiting for new events. 1 archived and available to explore."
+                         }
+                       },
+                       1_000
     end
   end
 end

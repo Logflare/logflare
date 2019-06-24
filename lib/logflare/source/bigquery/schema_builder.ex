@@ -122,6 +122,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   defp to_schema_type(literal_value) when is_binary(literal_value), do: "STRING"
   defp to_schema_type(literal_value) when is_boolean(literal_value), do: "BOOLEAN"
   defp to_schema_type(literal_value) when is_list(literal_value), do: "ARRAY"
+  defp to_schema_type(literal_value) when is_float(literal_value), do: "FLOAT"
 
   defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do
     @doc """
