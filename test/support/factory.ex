@@ -3,7 +3,7 @@ defmodule Logflare.DummyFactory do
   Generates fixtures for schemas
   """
   use ExMachina.Ecto, repo: Logflare.Repo
-  alias Logflare.{User, Source, Rule}
+  alias Logflare.{User, Source, Rule, LogEvent}
 
   def user_factory do
     %User{
@@ -24,7 +24,17 @@ defmodule Logflare.DummyFactory do
   end
 
   def rule_factory do
-    %Rule{
+    %Rule{}
+  end
+
+  def log_event_factory(attrs) do
+    {source, params} = Map.pop(attrs, :source)
+
+    params = %{
+      "message" => params["message"] || "test-msg",
+      "timestamp" => params["timestamp"] || DateTime.utc_now() |> to_string
     }
+
+    LogEvent.make(params, %{source: source})
   end
 end
