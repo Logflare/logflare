@@ -43,12 +43,19 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
     LogflareLogger.merge_context(source_id: context.source_id)
 
-    rows =
-      Enum.map(messages, fn message ->
-        %LE{body: body, id: id} = message.data
-        {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
+    hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
+    LogflareLogger.merge_context(hackney_stats: hackney_stats)
+    stream_batch(context.source_id, messages, context.bigquery_project_id)
+  end
 
-        row_json =
+  def le_messages_to_bq_rows(messages) do
+    Enum.map(messages, fn message ->
+      %LE{body: body, id: id} = message.data
+      {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
+
+      %Model.TableDataInsertAllRequestRows{
+        insertId: id,
+        json:
           if map_size(body.metadata) > 0 do
             %{
               "event_message" => body.message,
@@ -61,20 +68,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
               "event_message" => body.message
             }
           end
-
-        %Model.TableDataInsertAllRequestRows{
-          insertId: id,
-          json: row_json
-        }
-      end)
-
-    hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-    LogflareLogger.merge_context(hackney_stats: hackney_stats)
-    stream_batch(context.source_id, rows, bq_project_id)
+      }
+    end)
   end
 
-  def stream_batch(source_id, rows, context) do
-    case BigQuery.stream_batch!(source_id, rows, bigquery_project_id) do
+  def stream_batch(source_id, messages, bq_project_id) do
+    rows = le_messages_to_bq_rows(messages)
+
+    case BigQuery.stream_batch!(source_id, rows, bq_project_id) do
       {:ok, _response} ->
         messages
 
@@ -121,6 +122,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                 tesla_response: GenUtils.get_tesla_error_message(response)
               )
 
+              IO.inspect(GenUtils.get_tesla_error_message(response))
               Logger.error("Source schema update error!")
           end
         end
