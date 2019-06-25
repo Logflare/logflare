@@ -60,7 +60,7 @@ defmodule Logflare.Sources.Counters do
   @spec get_inserts(atom) :: {:ok, non_neg_integer}
   def get_inserts(table) do
     case :ets.lookup(@ets_table_name, table) do
-      [{_table, inserts, _deletes, _total_inserts}] ->
+      [{_table, inserts, _deletes, _total_inserts_in_bq}] ->
         {:ok, inserts}
 
       _ ->
@@ -71,8 +71,8 @@ defmodule Logflare.Sources.Counters do
   @spec get_total_inserts(atom) :: {:ok, non_neg_integer}
   def get_total_inserts(table) do
     case :ets.lookup(@ets_table_name, table) do
-      [{_table, _inserts, _deletes, total_inserts}] ->
-        {:ok, total_inserts}
+      [{_table, _inserts, _deletes, total_inserts_in_bq}] ->
+        {:ok, total_inserts_in_bq}
 
       _ ->
         {:ok, 0}
@@ -82,7 +82,7 @@ defmodule Logflare.Sources.Counters do
   @spec log_count(atom) :: {:ok, non_neg_integer}
   def log_count(table) do
     case :ets.lookup(@ets_table_name, table) do
-      [{_table, inserts, deletes, _total_inserts}] ->
+      [{_table, inserts, deletes, _total_inserts_in_bq}] ->
         count = inserts - deletes
         {:ok, count}
 
