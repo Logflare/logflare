@@ -8,7 +8,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Repo
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
   import Ecto.Query, only: [from: 2]
 
@@ -44,7 +44,8 @@ defmodule Logflare.Source.Supervisor do
 
     children =
       Enum.map(source_ids, fn source_id ->
-        Supervisor.child_spec({RecentLogsServer, source_id}, id: source_id, restart: :transient)
+        rls = %RLS{source_id: source_id}
+        Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
       end)
 
     Supervisor.start_link(children, strategy: :one_for_one)
@@ -53,8 +54,10 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_call({:create, source_id}, _from, state) do
+    rls = %RLS{source_id: source_id}
+
     children = [
-      Supervisor.child_spec({RecentLogsServer, source_id}, id: source_id, restart: :transient)
+      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one)
