@@ -57,7 +57,7 @@
   <% end %>
 
   <h5 class="header-margin">SMS Alerts</h5>
-  <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one email per minute.</p>
+  <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one text message per minute.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
     <div class="form-group">
       <%= label c, :user_text_notifications, "Send SMS alerts to my phone number ", class: "label-padding" %>
