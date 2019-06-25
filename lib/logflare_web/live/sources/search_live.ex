@@ -24,7 +24,7 @@ defmodule LogflareWeb.Source.SearchLV do
     <ul id="logs-list" class="list-unstyled console-text-list">
       <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
         <li>
-          <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>"><%= Timex.from_unix(log.body.timestamp, :microsecond) |> Timex.to_naive_datetime() %></mark>
+          <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>"><%= (Timex.from_unix(log.body.timestamp, :microsecond) |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)) <> " UTC" %></mark>
           <%= log.body.message %>
           <%= if map_size(log.body.metadata) > 0 do %>
           <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
