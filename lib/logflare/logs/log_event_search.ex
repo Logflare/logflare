@@ -2,6 +2,7 @@ defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
   alias Logflare.{Source, Sources}
+  alias GoogleApi.BigQuery.V2.Model.{QueryParameter, QueryParameterType, QueryParameterValue}
 
   @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
           {:ok, %{result: nil | [any]}}
@@ -15,14 +16,14 @@ defmodule Logflare.Logs.Search do
       FROM #{bq_table_id}
     WHERE true
       AND _PARTITIONTIME >= "#{Date.utc_today()}"
-      AND REGEXP_CONTAINS(event_message, r"#{regex}")
+      AND REGEXP_CONTAINS(event_message, @regex)
     UNION ALL
     SELECT
       timestamp, event_message
-      FROM  #{bq_table_id}
+      FROM #{bq_table_id}
     WHERE true
       AND _PARTITIONTIME IS NULL
-      AND REGEXP_CONTAINS(event_message, r"#{regex}")
+      AND REGEXP_CONTAINS(event_message, @regex)
     ORDER BY timestamp DESC
     LIMIT 100
     |
@@ -31,8 +32,12 @@ defmodule Logflare.Logs.Search do
       Query.query(
         conn,
         project_id,
-        sql
-        )
+        sql,
+        [%QueryParameter{
+          name: "regex",
+          parameterType: %QueryParameterType{type: "STRING"},
+          parameterValue: %QueryParameterValue{value: regex}
+        }])
 
     {:ok,
      %{
