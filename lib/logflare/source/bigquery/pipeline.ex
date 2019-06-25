@@ -70,8 +70,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
     LogflareLogger.merge_context(hackney_stats: hackney_stats)
+    stream_batch(context.source_id, rows, bq_project_id)
+  end
 
-    case BigQuery.stream_batch!(context.source_id, rows, context.bigquery_project_id) do
+  def stream_batch(source_id, rows, context) do
+    case BigQuery.stream_batch!(source_id, rows, bigquery_project_id) do
       {:ok, _response} ->
         messages
 
