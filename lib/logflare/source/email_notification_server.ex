@@ -4,37 +4,35 @@ defmodule Logflare.Source.EmailNotificationServer do
   require Logger
 
   alias Logflare.{Sources, Users}
+  alias Logflare.Sources.Counters
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.Source.RateCounterServer
   alias Logflare.Source.RecentLogsServer, as: RLS
 
-  @check_rate_every 1_000
-
-  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
-    GenServer.start_link(
-      __MODULE__,
-      %{
-        source: source_id,
-        events: []
-      },
-      name: name(source_id)
-    )
+  def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
+    GenServer.start_link(__MODULE__, rls, name: name(source_id))
   end
 
-  def init(state) do
-    Logger.info("Table mailer started: #{state.source}")
+  def init(rls) do
+    check_rate(rls.notifications_every)
     Process.flag(:trap_exit, true)
-    check_rate()
-    {:ok, state}
+
+    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
+
+    Logger.info("Table mailer started: #{rls.source_id}")
+
+    {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 
-  def handle_info(:check_rate, state) do
-    rate = RateCounterServer.get_rate(state.source)
+  def handle_info(:check_rate, rls) do
+    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
+    rate = current_inserts - rls.inserts_since_boot
 
     case rate > 0 do
       true ->
-        source = Sources.Cache.get_by_id(state.source)
+        check_rate(rls.notifications_every)
+
+        source = Sources.Cache.get_by_id(rls.source_id)
         user = Users.Cache.get_by_id(source.user_id)
 
         if source.user_email_notifications == true do
@@ -56,12 +54,11 @@ defmodule Logflare.Source.EmailNotificationServer do
           end
         end
 
-        check_rate()
-        {:noreply, state}
+        {:noreply, %{rls | inserts_since_boot: current_inserts}}
 
       false ->
-        check_rate()
-        {:noreply, state}
+        check_rate(rls.notifications_every)
+        {:noreply, rls}
     end
   end
 
@@ -71,8 +68,8 @@ defmodule Logflare.Source.EmailNotificationServer do
     reason
   end
 
-  defp check_rate() do
-    Process.send_after(self(), :check_rate, @check_rate_every)
+  defp check_rate(notifications_every) do
+    Process.send_after(self(), :check_rate, notifications_every)
   end
 
   defp name(source_id) do
