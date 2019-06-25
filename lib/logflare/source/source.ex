@@ -1,5 +1,6 @@
 defmodule Logflare.Source do
   use Ecto.Schema
+  alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
 
@@ -30,8 +31,10 @@ defmodule Logflare.Source do
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
+
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
+    field :bq_table_id, :string, virtual: true
 
     timestamps()
   end
@@ -73,5 +76,20 @@ defmodule Logflare.Source do
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)
+  end
+
+  def put_bq_table_id(%__MODULE__{} = source) do
+    %{source | bq_table_id: to_bq_table_id(source)}
+  end
+
+  def to_bq_table_id(%__MODULE__{} = source) do
+    bq_project_id =
+      source.user.bigquery_project_id ||
+        Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+    env = Application.get_env(:logflare, :env)
+    table = GenUtils.format_table_name(source.token)
+    dataset = "#{source.user.id}_#{env}"
+    "`#{bq_project_id}`.#{dataset}.#{table}"
   end
 end
