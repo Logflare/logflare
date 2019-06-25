@@ -5,7 +5,7 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
 
   alias Logflare.SystemMetrics.Schedulers
 
-  @poll_every 1_000
+  @poll_every 15_000
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)

@@ -11,7 +11,7 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
 
   require Logger
 
-  @poll_every 1_000
+  @poll_every 15_000
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
