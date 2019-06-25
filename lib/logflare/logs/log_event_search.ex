@@ -25,7 +25,7 @@ defmodule Logflare.Logs.Search do
     WHERE true
       AND _PARTITIONTIME IS NULL
       AND REGEXP_CONTAINS(event_message, @regex)
-    ORDER BY timestamp ASC
+    ORDER BY timestamp DESC
     LIMIT 100
     |
 

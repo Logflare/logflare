@@ -54,7 +54,9 @@ defmodule LogflareWeb.Source.SearchLV do
     %Source{} = source = socket.assigns.source
     {:ok, %{result: log_events}} = Logs.Search.utc_today(%{regex: query, source: source})
     log_events = if log_events do
-      Enum.map(log_events, &LogEvent.make(&1, %{source: source}))
+      log_events
+      |> Enum.map(&LogEvent.make(&1, %{source: source}))
+      |> Enum.sort_by(& &1.body.timestamp, &<=/2)
     end
 
     {:noreply, assign(socket, loading: false, log_events: log_events)}
