@@ -31,8 +31,8 @@ defmodule Logflare.DummyFactory do
     {source, params} = Map.pop(attrs, :source)
 
     params = %{
-      "message" => params["message"] || "test-msg",
-      "timestamp" => params["timestamp"] || DateTime.utc_now() |> to_string
+      "message" => params["message"] || params[:message] || "test-msg",
+      "timestamp" => params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string
     }
 
     LogEvent.make(params, %{source: source})

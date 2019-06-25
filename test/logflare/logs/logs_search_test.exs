@@ -29,7 +29,7 @@ defmodule Logflare.Logs.SearchTest do
       assert {:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
 
       {:ok, %{result: search_results}} =
-        Logflare.Logs.Search.utc_today(%{source: source, regex: "\\d\\d1"})
+        Logflare.Logs.Search.utc_today(%{source: source, regex: ~S|\d\d1|})
 
       assert length(search_results) == 5
     end
