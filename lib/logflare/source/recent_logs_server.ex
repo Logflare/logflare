@@ -9,6 +9,7 @@ defmodule Logflare.Source.RecentLogsServer do
   typedstruct do
     field :source_id, atom(), enforce: true
     field :notifications_every, integer(), default: 60_000
+    field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
   end
 
@@ -27,12 +28,12 @@ defmodule Logflare.Source.RecentLogsServer do
 
   # one month
   @prune_timer 1_000
-  def start_link(%__MODULE__{source_id: source_id}) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, source_id, name: source_id)
+  def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
+    GenServer.start_link(__MODULE__, rls, name: source_id)
   end
 
   ## Client
-  @spec init(any) :: {:ok, RLS.t(), {:continue, :boot}}
+  @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(rls) do
     Process.flag(:trap_exit, true)
     prune()

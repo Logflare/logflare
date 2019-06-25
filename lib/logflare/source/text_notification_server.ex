@@ -5,7 +5,7 @@ defmodule Logflare.Source.TextNotificationServer do
   require Logger
 
   alias Logflare.{Sources, Users}
-  alias Logflare.Source.RateCounterServer
+  alias Logflare.Sources.Counters
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
   alias Logflare.Source.RecentLogsServer, as: RLS
@@ -13,25 +13,28 @@ defmodule Logflare.Source.TextNotificationServer do
   @twilio_phone "+16026006731"
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(
-      __MODULE__,
-      rls,
-      name: name(source_id)
-    )
+    GenServer.start_link(__MODULE__, rls, name: name(source_id))
   end
 
   def init(rls) do
-    Logger.info("Table texter started: #{rls.source_id}")
-    Process.flag(:trap_exit, true)
     check_rate(rls.notifications_every)
-    {:ok, rls}
+    Process.flag(:trap_exit, true)
+
+    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
+
+    Logger.info("Table texter started: #{rls.source_id}")
+
+    {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 
   def handle_info(:check_rate, rls) do
-    rate = RateCounterServer.get_rate(rls.source_id)
+    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
+    rate = current_inserts - rls.inserts_since_boot
 
     case rate > 0 do
       true ->
+        check_rate(rls.notifications_every)
+
         source = Sources.Cache.get_by_id(rls.source_id)
         user = Users.Cache.get_by_id(source.user_id)
         source_link = build_host() <> Routes.source_path(Endpoint, :show, rls.source_id)
@@ -45,8 +48,7 @@ defmodule Logflare.Source.TextNotificationServer do
           end)
         end
 
-        check_rate(rls.notifications_every)
-        {:noreply, rls}
+        {:noreply, %{rls | inserts_since_boot: current_inserts}}
 
       false ->
         check_rate(rls.notifications_every)
