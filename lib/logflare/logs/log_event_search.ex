@@ -3,8 +3,9 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
   alias Logflare.{Source, Sources}
 
-  @spec utc_today(%{source: Logflare.Source.t()}) :: {:ok, %{result: nil | [any]}}
-  def utc_today(%{source: %Source{bq_table_id: bq_table_id} = source}) do
+  @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
+          {:ok, %{result: nil | [any]}}
+  def utc_today(%{regex: regex, source: %Source{bq_table_id: bq_table_id} = source}) do
     source_id = source.token
     conn = GenUtils.get_conn()
     project_id = GenUtils.get_project_id(source_id)
@@ -14,12 +15,14 @@ defmodule Logflare.Logs.Search do
       FROM #{bq_table_id}
     WHERE true
       AND _PARTITIONTIME >= "#{Date.utc_today()}"
+      AND REGEXP_CONTAINS(event_message, r"#{regex}")
     UNION ALL
     SELECT
       timestamp, event_message
       FROM  #{bq_table_id}
     WHERE true
       AND _PARTITIONTIME IS NULL
+      AND REGEXP_CONTAINS(event_message, r"#{regex}")
     ORDER BY timestamp DESC
     LIMIT 100
     |
@@ -29,7 +32,7 @@ defmodule Logflare.Logs.Search do
         conn,
         project_id,
         sql
-      )
+        )
 
     {:ok,
      %{

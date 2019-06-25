@@ -15,16 +15,23 @@ defmodule Logflare.Logs.SearchTest do
   end
 
   describe "Search" do
-    test "utc_today", %{sources: [source | _], users: [user | _]} do
-      les = build_list(3, :log_event, source: source)
+    test "utc_today for source and regex", %{sources: [source | _], users: [user | _]} do
+      les =
+        for x <- 1..5, y <- 100..101 do
+          build(:log_event, message: "x#{x} y#{y}", source: source)
+        end
+
       bq_rows = Enum.map(les, &Pipeline.le_to_bq_row/1)
       project_id = GenUtils.get_project_id(source.token)
 
       assert {:ok, _} = BigQuery.create_dataset("#{user.id}", project_id)
       assert {:ok, _} = BigQuery.create_table(source.token)
       assert {:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
-      {:ok, %{result: search_results}} = Logflare.Logs.Search.utc_today(%{source: source})
-      assert length(search_results) == 3
+
+      {:ok, %{result: search_results}} =
+        Logflare.Logs.Search.utc_today(%{source: source, regex: "\\d\\d1"})
+
+      assert length(search_results) == 5
     end
   end
 end
