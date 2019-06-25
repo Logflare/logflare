@@ -6,11 +6,20 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def render(assigns) do
     ~L"""
-    <form class="form-group" phx-submit="search">
-      <input class="form-control" type="text" name="q" value="<%= @query %>" placeholder="Enter regex to search for matching log messages..."
-             <%= if @loading, do: "readonly" %>/>
+    <form phx-submit="search">
+      <div class="form-group">
+        <input class="form-control" type="text" name="q" value="<%= @query %>" placeholder="Enter regex to search for matching log messages..."
+               <%= if @loading, do: "readonly" %>/>
+      </div>
+        <div>
+        <button class="btn btn-primary form-button" type="submit"> Search </button>
+        <%= if @loading do %>
+         <div class="spinner-border text-info" role="status">
+          <span class="sr-only">Loading...</span>
+        </div>
+      <% end %>
+      </div>
     </form>
-    <button class="btn btn-primary form-button" type="submit"> Search </button>
     <%= if @log_events do %>
     <ul id="logs-list" class="list-unstyled console-text-list">
       <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
@@ -45,7 +54,7 @@ defmodule LogflareWeb.Source.SearchLV do
     %Source{} = source = socket.assigns.source
     {:ok, %{result: log_events}} = Logs.Search.utc_today(%{regex: query, source: source})
     log_events = if log_events do
-     Enum.map(log_events, &LogEvent.make(&1, %{source: source}))
+      Enum.map(log_events, &LogEvent.make(&1, %{source: source}))
     end
 
     {:noreply, assign(socket, loading: false, log_events: log_events)}
