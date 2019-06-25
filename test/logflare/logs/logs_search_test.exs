@@ -23,7 +23,7 @@ defmodule Logflare.Logs.SearchTest do
       assert {:ok, _} = BigQuery.create_dataset("#{user.id}", project_id)
       assert {:ok, _} = BigQuery.create_table(source.token)
       assert {:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
-      search_results = Logflare.Logs.Search.utc_today(%{source: source})
+      {:ok, %{result: search_results}} = Logflare.Logs.Search.utc_today(%{source: source})
       assert length(search_results) == 3
     end
   end
