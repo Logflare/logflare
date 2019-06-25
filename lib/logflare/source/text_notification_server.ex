@@ -10,35 +10,31 @@ defmodule Logflare.Source.TextNotificationServer do
   alias LogflareWeb.Endpoint
   alias Logflare.Source.RecentLogsServer, as: RLS
 
-  @check_rate_every 1_000
   @twilio_phone "+16026006731"
 
-  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
+  def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
-      %{
-        source: source_id,
-        events: []
-      },
+      rls,
       name: name(source_id)
     )
   end
 
-  def init(state) do
-    Logger.info("Table texter started: #{state.source}")
+  def init(rls) do
+    Logger.info("Table texter started: #{rls.source_id}")
     Process.flag(:trap_exit, true)
-    check_rate()
-    {:ok, state}
+    check_rate(rls.notifications_every)
+    {:ok, rls}
   end
 
-  def handle_info(:check_rate, state) do
-    rate = RateCounterServer.get_rate(state.source)
+  def handle_info(:check_rate, rls) do
+    rate = RateCounterServer.get_rate(rls.source_id)
 
     case rate > 0 do
       true ->
-        source = Sources.Cache.get_by_id(state.source)
+        source = Sources.Cache.get_by_id(rls.source_id)
         user = Users.Cache.get_by_id(source.user_id)
-        source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
+        source_link = build_host() <> Routes.source_path(Endpoint, :show, rls.source_id)
 
         {target_number, body} =
           {user.phone, "#{source.name} has #{rate} new event(s). See: #{source_link} "}
@@ -49,12 +45,12 @@ defmodule Logflare.Source.TextNotificationServer do
           end)
         end
 
-        check_rate()
-        {:noreply, state}
+        check_rate(rls.notifications_every)
+        {:noreply, rls}
 
       false ->
-        check_rate()
-        {:noreply, state}
+        check_rate(rls.notifications_every)
+        {:noreply, rls}
     end
   end
 
@@ -64,8 +60,8 @@ defmodule Logflare.Source.TextNotificationServer do
     reason
   end
 
-  defp check_rate() do
-    Process.send_after(self(), :check_rate, @check_rate_every)
+  defp check_rate(notifications_every) do
+    Process.send_after(self(), :check_rate, notifications_every)
   end
 
   defp name(source_id) do
