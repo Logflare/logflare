@@ -7,6 +7,7 @@ defmodule Logflare.Logs.Search do
   @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
           {:ok, %{result: nil | [any]}}
   def utc_today(%{regex: regex, source: %Source{bq_table_id: bq_table_id} = source}) do
+
     source_id = source.token
     conn = GenUtils.get_conn()
     project_id = GenUtils.get_project_id(source_id)
@@ -24,7 +25,7 @@ defmodule Logflare.Logs.Search do
     WHERE true
       AND _PARTITIONTIME IS NULL
       AND REGEXP_CONTAINS(event_message, @regex)
-    ORDER BY timestamp DESC
+    ORDER BY timestamp ASC
     LIMIT 100
     |
 

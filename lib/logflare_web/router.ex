@@ -85,6 +85,7 @@ defmodule LogflareWeb.Router do
     end
 
     get "/:id/rejected", SourceController, :rejected_logs
+    get "/:id/search", SourceController, :search
 
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
