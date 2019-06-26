@@ -2,10 +2,17 @@ defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
   alias Logflare.{Source, Sources}
-  alias GoogleApi.BigQuery.V2.Model.{QueryParameter, QueryParameterType, QueryParameterValue}
 
+  alias GoogleApi.BigQuery.V2.Api
 
-  defmodule Opts do
+  alias GoogleApi.BigQuery.V2.Model.{
+    QueryRequest,
+    QueryParameter,
+    QueryParameterType,
+    QueryParameterValue
+  }
+
+  defmodule SearchOpts do
     @moduledoc """
     Options for Logs search
     """
@@ -17,7 +24,7 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  defmodule Result do
+  defmodule SearchResult do
     @moduledoc """
     Logs search result
     """
@@ -28,12 +35,10 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
-          {:ok, %{result: nil | [any]}}
-  def utc_today(%{regex: regex, source: %Source{bq_table_id: bq_table_id} = source}) do
-
+  @spec search(SearchOpts.t()) :: {:ok, SearchResult.t()} | {:error, term}
+  def search(%SearchOpts{} = opts) do
+    %SearchOpts{regex: regex, source: %Source{bq_table_id: bq_table_id} = source} = opts
     source_id = source.token
-    conn = GenUtils.get_conn()
     project_id = GenUtils.get_project_id(source_id)
 
     sql = ~s|
@@ -54,19 +59,39 @@ defmodule Logflare.Logs.Search do
     |
 
     {:ok, result} =
-      Query.query(
-        conn,
+      query(
         project_id,
         sql,
-        [%QueryParameter{
-          name: "regex",
-          parameterType: %QueryParameterType{type: "STRING"},
-          parameterValue: %QueryParameterValue{value: regex}
-        }])
+        [
+          %QueryParameter{
+            name: "regex",
+            parameterType: %QueryParameterType{type: "STRING"},
+            parameterValue: %QueryParameterValue{value: regex}
+          }
+        ]
+      )
+
+    rows = SchemaUtils.merge_rows_with_schema(result.schema, result.rows)
 
     {:ok,
-     %{
-       result: SchemaUtils.merge_rows_with_schema(result.schema, result.rows)
+     %SearchResult{
+       rows: rows
      }}
+  end
+
+  def query(project_id, sql, params) do
+    conn = GenUtils.get_conn()
+
+    Api.Jobs.bigquery_jobs_query(
+      conn,
+      project_id,
+      body: %QueryRequest{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: true,
+        parameterMode: "NAMED",
+        queryParameters: params
+      }
+    )
   end
 end
