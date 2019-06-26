@@ -4,6 +4,19 @@ defmodule Logflare.Logs.Search do
   alias Logflare.{Source, Sources}
   alias GoogleApi.BigQuery.V2.Model.{QueryParameter, QueryParameterType, QueryParameterValue}
 
+
+  defmodule Opts do
+    @moduledoc """
+    Options for Logs search
+    """
+    use TypedStruct
+
+    typedstruct do
+      field :source, Source.t()
+      field :regex, String.t()
+    end
+  end
+
   @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
           {:ok, %{result: nil | [any]}}
   def utc_today(%{regex: regex, source: %Source{bq_table_id: bq_table_id} = source}) do
