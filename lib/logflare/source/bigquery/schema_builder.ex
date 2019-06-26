@@ -77,7 +77,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   end
 
   defp build_fields_schemas({params_key, params_value}) do
-    case to_schema_type(params_value) do
+    case Logflare.BigQuery.SchemaTypes.to_schema_type(params_value) do
       "ARRAY" ->
         case hd(params_value) do
           x when is_map(x) ->
@@ -116,13 +116,6 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
 
     %{schema | fields: sorted_fields}
   end
-
-  defp to_schema_type(literal_value) when is_map(literal_value), do: "RECORD"
-  defp to_schema_type(literal_value) when is_integer(literal_value), do: "INTEGER"
-  defp to_schema_type(literal_value) when is_binary(literal_value), do: "STRING"
-  defp to_schema_type(literal_value) when is_boolean(literal_value), do: "BOOLEAN"
-  defp to_schema_type(literal_value) when is_list(literal_value), do: "ARRAY"
-  defp to_schema_type(literal_value) when is_float(literal_value), do: "FLOAT"
 
   defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do
     @doc """
