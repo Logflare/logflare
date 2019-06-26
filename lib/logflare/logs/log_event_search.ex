@@ -17,6 +17,17 @@ defmodule Logflare.Logs.Search do
     end
   end
 
+  defmodule Result do
+    @moduledoc """
+    Logs search result
+    """
+    use TypedStruct
+
+    typedstruct do
+      field :rows, [map()]
+    end
+  end
+
   @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
           {:ok, %{result: nil | [any]}}
   def utc_today(%{regex: regex, source: %Source{bq_table_id: bq_table_id} = source}) do
