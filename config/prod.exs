@@ -1,5 +1,7 @@
 use Mix.Config
 
+config :logflare, env: :prod
+
 config :logflare, LogflareWeb.Endpoint,
   http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 100]],
   url: [host: "logflare.app", scheme: "https"],
@@ -27,6 +29,29 @@ config :logflare, Logflare.Google,
   project_id: "logflare-232118",
   service_account: "logflare@logflare-232118.iam.gserviceaccount.com"
 
-config :logflare, env: :prod
+config :logflare_agent,
+  sources: [
+    %{
+      path: "/home/logflare/app_release/logflare/var/log/erlang.log.1",
+      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+    },
+    %{
+      path: "/home/logflare/app_release/logflare/var/log/erlang.log.2",
+      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+    },
+    %{
+      path: "/home/logflare/app_release/logflare/var/log/erlang.log.3",
+      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+    },
+    %{
+      path: "/home/logflare/app_release/logflare/var/log/erlang.log.4",
+      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+    },
+    %{
+      path: "/home/logflare/app_release/logflare/var/log/erlang.log.5",
+      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+    }
+  ],
+  url: "https://api.logflarestaging.com"
 
 import_config "prod.secret.exs"

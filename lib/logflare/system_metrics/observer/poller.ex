@@ -11,7 +11,7 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
 
   require Logger
 
-  @poll_every 1_000
+  @poll_every 15_000
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -26,24 +26,27 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
     poll_metrics()
     observer_metrics = Observer.get_metrics()
     observer_memory = Observer.get_memory()
-    processes = final_processes(state.last_processes)
+    current_processes = Observer.get_processes()
+    processes = final_processes(state.last_processes, current_processes)
 
     Logger.info("Memory metrics!", observer_memory: observer_memory)
     Logger.info("Process metrics!", processes: processes)
     Logger.info("Observer metrics!", observer_metrics: observer_metrics)
 
-    {:noreply, %{last_processes: Observer.get_processes()}}
+    {:noreply, %{last_processes: current_processes}}
   end
 
   defp poll_metrics() do
     Process.send_after(self(), :poll_metrics, @poll_every)
   end
 
-  defp final_processes(%{
-         process_list: last_processes_list,
-         total_reductions: last_total_reductions
-       }) do
-    current_processes = Observer.get_processes()
+  defp final_processes(
+         %{
+           process_list: last_processes_list,
+           total_reductions: last_total_reductions
+         },
+         current_processes
+       ) do
     current_processes_list = current_processes.process_list
     current_total_reductions = current_processes.total_reductions
 

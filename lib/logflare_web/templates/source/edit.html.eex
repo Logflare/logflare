@@ -23,7 +23,7 @@
   <% end %>
 
   <h5 class="header-margin">Email Alerts</h5>
-  <p>Send emails when this source gets new events. Add email addresses below. Sometimes sources can get a lot of events quickly. At most you will get one email per second.</p>
+  <p>Send emails when this source gets new events. Add email addresses below. Sometimes sources can get a lot of events quickly. At most you will get one email per minute.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn b -> %>
     <div class="form-group">
       <%= text_input b, :other_email_notifications, placeholder: "her@friend.com, him@company.com", class: "form-control" %>
@@ -57,7 +57,7 @@
   <% end %>
 
   <h5 class="header-margin">SMS Alerts</h5>
-  <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one email per second.</p>
+  <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one text message per minute.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
     <div class="form-group">
       <%= label c, :user_text_notifications, "Send SMS alerts to my phone number ", class: "label-padding" %>
@@ -76,7 +76,7 @@
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
   <%= if @source.public_token != nil do %>
     <div>
-      <code>https://logflare.app/sources/public/<%= @source.public_token %></code> 
+      <code>https://logflare.app/sources/public/<%= @source.public_token %></code>
       <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="https://logflare.app/sources/public/<%= @source.public_token %>">Copy path</button>
     </div>
   <% end %>
