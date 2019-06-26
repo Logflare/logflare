@@ -2,6 +2,7 @@ defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
   alias Logflare.{Source, Sources}
+  alias Logflare.Repo
 
   alias GoogleApi.BigQuery.V2.Api
 
@@ -93,5 +94,16 @@ defmodule Logflare.Logs.Search do
         queryParameters: params
       }
     )
+  end
+
+  def to_sql(%SearchOpts{} = opts) do
+    import Ecto.Query
+    import  Ecto.Adapters.SQL, only: [to_sql: 3]
+
+    q =
+      from opts.source.bq_table_id,
+        select: [:timestamp, :event_message]
+
+    {sql, params} = to_sql(:all, Repo, q)
   end
 end

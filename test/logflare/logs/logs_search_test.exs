@@ -1,6 +1,8 @@
 defmodule Logflare.Logs.SearchTest do
   @moduledoc false
   alias Logflare.Sources
+  alias Logflare.Logs.Search
+  alias Logflare.Logs.Search.{SearchOpts, SearchResult}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Pipeline
@@ -28,10 +30,15 @@ defmodule Logflare.Logs.SearchTest do
       assert {:ok, _} = BigQuery.create_table(source.token)
       assert {:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
 
-      {:ok, %{result: search_results}} =
-        Logflare.Logs.Search.utc_today(%{source: source, regex: ~S|\d\d1|})
+      {:ok, %{rows: rows}} = Search.search(%SearchOpts{source: source, regex: ~S|\d\d1|})
 
-      assert length(search_results) == 5
+      assert length(rows) == 5
+    end
+  end
+
+  describe "Query builder" do
+    test "succeeds for basic query", %{sources: [source | _]} do
+      assert Search.to_sql(%SearchOpts{source: source}) == {~s|SELECT t0."timestamp", t0."event_message" FROM "#{source.bq_table_id}" AS t0|, []}
     end
   end
 end
