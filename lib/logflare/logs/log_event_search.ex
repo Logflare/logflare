@@ -106,6 +106,25 @@ defmodule Logflare.Logs.Search do
 
     {sql, params} = to_sql(:all, Repo, q)
 
+
+  def build_bq_pos_params(params) when is_list(params) do
+    alias GoogleApi.BigQuery.V2.Model
+    alias Model.QueryParameter, as: Param
+    alias Model.QueryParameterType, as: Type
+    alias Model.QueryParameterValue, as: Value
+
+    for param <- params do
+      %Param{
+        parameterType: %Type{
+          type: SchemaTypes.to_schema_type(param)
+        },
+        parameterValue: %Value{
+          value: param
+        }
+      }
+    end
+  end
+
   def ecto_pg_sql_to_bq_sql(sql) do
     sql
     # replaces PG-style to BQ-style positional parameters
