@@ -44,3 +44,6 @@ gcloud.json
 /.idea/
 
 
+
+# Project exclude paths
+/cover/

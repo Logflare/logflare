@@ -16,7 +16,6 @@ defmodule Logflare.SourcesTest do
   end
 
   describe "Sources" do
-    @tag :skip
     test "get_bq_schema/1", %{sources: [s | _]} do
       source_id = s.token
       bigquery_project_id = GenUtils.get_project_id(source_id)

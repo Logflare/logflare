@@ -41,37 +41,43 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   @spec handle_batch(:bq, list(Broadway.Message.t()), any, Logflare.Source.RecentLogsServer.t()) ::
           any
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
-    LogflareLogger.merge_context(source_id: context.source_id)
-
-    rows =
-      Enum.map(messages, fn message ->
-        %LE{body: body, id: id} = message.data
-        {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
-
-        row_json =
-          if map_size(body.metadata) > 0 do
-            %{
-              "event_message" => body.message,
-              "metadata" => EventUtils.prepare_for_injest(body.metadata),
-              "timestamp" => bq_timestamp
-            }
-          else
-            %{
-              "timestamp" => bq_timestamp,
-              "event_message" => body.message
-            }
-          end
-
-        %Model.TableDataInsertAllRequestRows{
-          insertId: id,
-          json: row_json
-        }
-      end)
-
     hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-    LogflareLogger.merge_context(hackney_stats: hackney_stats)
+    LogflareLogger.merge_context(hackney_stats: hackney_stats, source_id: context.source_id)
+    stream_batch(context.source_id, messages, context.bigquery_project_id)
+  end
 
-    case BigQuery.stream_batch!(context.source_id, rows, context.bigquery_project_id) do
+  def le_messages_to_bq_rows(messages) do
+    Enum.map(messages, fn message ->
+      le_to_bq_row(message.data)
+    end)
+  end
+
+  def le_to_bq_row(%LE{body: body, id: id}) do
+    {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
+
+    json = %{
+      "timestamp" => bq_timestamp,
+      "event_message" => body.message
+    }
+
+    json =
+      if map_size(body.metadata) > 0 do
+        metadata = EventUtils.prepare_for_injest(body.metadata)
+        Map.put(json, "metadata", metadata)
+      else
+        json
+      end
+
+    %Model.TableDataInsertAllRequestRows{
+      insertId: id,
+      json: json
+    }
+  end
+
+  def stream_batch(source_id, messages, bq_project_id) do
+    rows = le_messages_to_bq_rows(messages)
+
+    case BigQuery.stream_batch!(source_id, rows, bq_project_id) do
       {:ok, _response} ->
         messages
 

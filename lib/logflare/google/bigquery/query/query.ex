@@ -57,17 +57,20 @@ defmodule Logflare.Google.BigQuery.Query do
   #    )
   #  end
 
-  def query(conn, project_id, sql) do
+  def query(conn, project_id, sql, params) do
     Api.Jobs.bigquery_jobs_query(
       conn,
       project_id,
       body: %Model.QueryRequest{
         query: sql,
         useLegacySql: false,
-        useQueryCache: true
+        useQueryCache: true,
+        parameterMode: "NAMED",
+        queryParameters: params
       }
     )
   end
+
   #
   #  defp gen_sql_for_ets(source, project_id, datetime, streaming_buffer) do
   #    table_name = GenUtils.format_table_name(source)

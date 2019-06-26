@@ -51,7 +51,7 @@ defmodule Logflare.LogEvent do
         }
 
   def mapper(params) do
-    message = params["log_entry"] || params["message"]
+    message = params["log_entry"] || params["message"] || params["event_message"]
     metadata = params["metadata"]
 
     timestamp =

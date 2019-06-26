@@ -32,6 +32,7 @@ defmodule Logflare.Sources do
     |> Repo.preload(:user)
     |> Repo.preload(:rules)
     |> refresh_source_metrics()
+    |> Source.put_bq_table_id()
   end
 
   def refresh_source_metrics(%Source{token: token} = source) do

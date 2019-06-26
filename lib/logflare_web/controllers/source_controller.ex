@@ -3,7 +3,16 @@ defmodule LogflareWeb.SourceController do
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
 
   plug LogflareWeb.Plugs.SetVerifySource
-       when action in [:show, :edit, :update, :delete, :clear_logs, :rejected_logs, :favorite]
+       when action in [
+              :show,
+              :edit,
+              :update,
+              :delete,
+              :clear_logs,
+              :rejected_logs,
+              :favorite,
+              :search
+            ]
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
   alias Logflare.Source.{Supervisor, Data}
@@ -115,6 +124,14 @@ defmodule LogflareWeb.SourceController do
       source: source,
       public_token: source.public_token,
       explore_link: explore_link || ""
+    )
+  end
+
+  def search(%{assigns: %{user: user, source: source}} = conn, _params) do
+    render(
+      conn,
+      "search.html",
+      source: source
     )
   end
 
