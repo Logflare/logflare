@@ -38,13 +38,15 @@ defmodule Logflare.Logs.SearchTest do
 
   describe "Query builder" do
     test "succeeds for basic query", %{sources: [source | _]} do
-      assert Search.to_sql(%SearchOpts{source: source}) == {~s|SELECT t0."timestamp", t0."event_message" FROM "#{source.bq_table_id}" AS t0|, []}
+      assert Search.to_sql(%SearchOpts{source: source, regex: ~S|\d\d|}) ==
+               {~s|SELECT t0.timestamp, t0.event_message FROM #{source.bq_table_id} AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))|,
+                ["\\d\\d"]}
     end
 
     test "converts Ecto PG sql to BQ sql" do
       ecto_pg_sql = "SELECT t0.\"timestamp\", t0.\"event_message\" FROM \"`logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c\" AS t0 WHERE (REGEXP_CONTAINS(t0.\"event_message\", $1))"
-      assert Search.ecto_pg_sql_to_bq_sql(ecto_pg_sql) == "SELECT t0.timestamp, t0.event_message FROM `logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))"
-
+      bq_sql = "SELECT t0.timestamp, t0.event_message FROM `logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))"
+      assert Search.ecto_pg_sql_to_bq_sql(ecto_pg_sql) == bq_sql
     end
   end
 end
