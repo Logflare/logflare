@@ -4,6 +4,8 @@ defmodule Logflare.Logs.Search do
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.{Source, Sources}
   alias Logflare.Repo
+  import Ecto.Query
+  import Ecto.Adapters.SQL, only: [to_sql: 3]
 
   alias GoogleApi.BigQuery.V2.Api
 
@@ -40,7 +42,7 @@ defmodule Logflare.Logs.Search do
 
   @spec search(SearchOpts.t()) :: {:ok, SearchResult.t()} | {:error, term}
   def search(%SearchOpts{} = opts) do
-    %SearchOpts{source: %Source{token: source_id}} = opts
+    %SearchOpts{ source: %Source{ token: source_id } } = opts
     project_id = GenUtils.get_project_id(source_id)
 
     {sql, params} = to_sql(opts)
@@ -85,11 +87,24 @@ defmodule Logflare.Logs.Search do
     )
   end
 
+  def filter_by_injest_partitions(q, %SearchOpts{partitions: {start_date, end_date}} = opts) do
+    if Timex.equal?(end_date, Date.utc_today()) do
+      q
+      |> where([log], fragment("_PARTITIONDATE BETWEEN ? and ?", ^start_date, ^from_date))
+      |> or_where([log], fragment("_PARTITIONDATE IS NULL"))
+    else
+      prune_partitions(q, opts)
+    end
+  end
+
   def filter_by_regex_message(q, %SearchOpts{regex: regex}) do
     where(q, [log], fragment("REGEXP_CONTAINS(?, ?)", log.event_message, ^regex))
   end
 
   def filter_by_regex_message(q, _), do: q
+
+  def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONDATE IS NULL", l.timestamp))
+  def filter_by_streaming_filter(q, _), do: q
 
   def prune_partitions(_q, %SearchOpts{partitions: {start_date, from_date}}) do
     where(q, [log], fragment("_PARTITIONDATE BETWEEN ? and ?", log.timestamp, ^start_date, ^from_date))
@@ -101,11 +116,11 @@ defmodule Logflare.Logs.Search do
     import Ecto.Query
     import Ecto.Adapters.SQL, only: [to_sql: 3]
 
-    q =
-     opts.source.bq_table_id
+    query =
+      opts.source.bq_table_id
       |> from(select: [:timestamp, :event_message])
       |> filter_message_by_regex(opts)
-      |> prune_partitions(opts)
+
 
     {sql, params} = to_sql(:all, Repo, q)
 
@@ -116,14 +131,13 @@ defmodule Logflare.Logs.Search do
   end
 
   def ecto_pg_sql_to_bq_sql({sql, params}) when is_list(params) do
-
-    sql = sql
-    # replaces PG-style to BQ-style positional parameters
-    |> String.replace(~r/\$\d/, "?")
-      # removes double quotes around the names after the dot
-    |> String.replace(~r/\."(\w+)"/, ".\\1")
-      # removes double quotes around the qualified BQ table id
-    |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
+    sql
+     # replaces PG-style to BQ-style positional parameters
+     |> String.replace(~r/\$\d/, "?")
+     # removes double quotes around the names after the dot
+     |> String.replace(~r/\."(\w+)"/, ".\\1")
+     # removes double quotes around the qualified BQ table id
+     |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
   end
 
   def ecto_pg_params_to_bq_params() do
