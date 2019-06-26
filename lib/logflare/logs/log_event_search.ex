@@ -105,5 +105,14 @@ defmodule Logflare.Logs.Search do
         select: [:timestamp, :event_message]
 
     {sql, params} = to_sql(:all, Repo, q)
+
+  def ecto_pg_sql_to_bq_sql(sql) do
+    sql
+    # replaces PG-style to BQ-style positional parameters
+    |> String.replace(~r/\$\d/, "?")
+    # removes double quotes around the names after the dot
+    |> String.replace(~r/\."(\w+)"/, ".\\1")
+    # removes double quotes around the qualified BQ table id
+    |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
   end
 end
