@@ -37,7 +37,7 @@ defmodule Logflare.Source.TextNotificationServer do
 
         source = Sources.Cache.get_by_id(rls.source_id)
         user = Users.Cache.get_by_id(source.user_id)
-        source_link = build_host() <> Routes.source_path(Endpoint, :show, rls.source_id)
+        source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
         {target_number, body} =
           {user.phone, "#{source.name} has #{rate} new event(s). See: #{source_link} "}
