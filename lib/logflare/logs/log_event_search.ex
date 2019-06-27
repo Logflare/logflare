@@ -98,9 +98,9 @@ defmodule Logflare.Logs.Search do
     where(q, [log], fragment("REGEXP_CONTAINS(?, ?)", log.event_message, ^regex))
   end
 
-
   def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
 
+  def prune_partitions(q, %SearchOpts{partitions: nil}), do: q
   def prune_partitions(q, %SearchOpts{partitions: {start_date, from_date}}) do
     where(
       q,
@@ -109,7 +109,6 @@ defmodule Logflare.Logs.Search do
     )
   end
 
-  def prune_partitions(q, _), do: q
 
   def to_sql(%SearchOpts{} = opts) do
     import Ecto.Query

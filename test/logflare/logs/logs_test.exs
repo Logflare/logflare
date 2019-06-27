@@ -32,15 +32,21 @@ defmodule Logflare.LogsTest do
       assert {:ok, _} = BigQuery.create_dataset("#{s.user_id}", project_id)
       assert {:ok, _} = BigQuery.create_table(s.token, project_id)
 
-      Logs.injest_logs([%{"message" => "test", "metadata" => %{float: 0.001}}], s)
-      {:ok, response} = Query.query()
+      table = s.token |> Atom.to_string() |> String.replace("-", "_")
+      sql = "SELECT timestamp FROM `#{project_id}`.#{s.user_id}_test.`#{table}`"
+
+      Logs.injest_logs([%{"message" => "test", "metadata" => %{"float" => 0.001}}], s)
+      Process.sleep(5_000)
+      {:ok, response} = Query.query(conn, project_id, sql)
       assert response.rows == [%{"log_message" => "test", "metadata" => %{"float" => 0.001}}]
     end
+
   end
 
   def with_iam_create_auth(_) do
     u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s1 = insert(:source, user_id: u.id)
+    s1 = Sources.get_by(id: s1.id)
     {:ok, sources: [s1], users: [u]}
   end
 
@@ -130,7 +136,7 @@ defmodule Logflare.LogsTest do
 
       s1 = Sources.get_by(id: s1.id)
 
-      Logs.injest_logs(log_params_batch, s1) === :ok
+      Logs.injest_logs(log_params_batch, s1) == :ok
 
       assert_called RecentLogsServer.push(s1.token, any), once()
       assert_called Sources.Counters.incriment(s1.token), once()

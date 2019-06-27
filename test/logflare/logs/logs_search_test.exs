@@ -17,7 +17,7 @@ defmodule Logflare.Logs.SearchTest do
   end
 
   describe "Search" do
-    test "utc_today for source and regex", %{sources: [source | _], users: [user | _]} do
+    test "search for source and regex", %{sources: [source | _], users: [user | _]} do
       les =
         for x <- 1..5, y <- 100..101 do
           build(:log_event, message: "x#{x} y#{y}", source: source)
@@ -34,6 +34,7 @@ defmodule Logflare.Logs.SearchTest do
 
       assert length(rows) == 5
     end
+
     test "search for source and datetime", %{sources: [source | _], users: [user | _]} do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
       source = %{source | bq_table_id:  bq_table_id}
@@ -80,8 +81,12 @@ defmodule Logflare.Logs.SearchTest do
     end
 
     test "converts Ecto PG sql to BQ sql" do
-      ecto_pg_sql = "SELECT t0.\"timestamp\", t0.\"event_message\" FROM \"`logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c\" AS t0 WHERE (REGEXP_CONTAINS(t0.\"event_message\", $1))"
-      bq_sql = "SELECT t0.timestamp, t0.event_message FROM `logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))"
+      ecto_pg_sql =
+        "SELECT t0.\"timestamp\", t0.\"event_message\" FROM \"`logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c\" AS t0 WHERE (REGEXP_CONTAINS(t0.\"event_message\", $1))"
+
+      bq_sql =
+        "SELECT t0.timestamp, t0.event_message FROM `logflare-dev-238720`.96465_test.4114dde8_1fa0_4efa_93b1_0fe6e4021f3c AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))"
+
       assert Search.ecto_pg_sql_to_bq_sql(ecto_pg_sql) == bq_sql
     end
   end
