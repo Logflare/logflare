@@ -2,62 +2,67 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query}
   alias Logflare.{Source, Logs, LogEvent}
+  alias Logflare.Logs.Search
+  alias Logflare.Logs.Search.SearchOpts
+  alias LogflareWeb.SourceView
   use Phoenix.LiveView
 
   def render(assigns) do
-    ~L"""
-    <form phx-submit="search">
-      <div class="form-group">
-        <input class="form-control" type="text" name="q" value="<%= @query %>" placeholder="Enter regex to search for matching log messages..."
-               <%= if @loading, do: "readonly" %>/>
-      </div>
-        <div>
-        <button class="btn btn-primary form-button" type="submit"> Search </button>
-        <%= if @loading do %>
-         <div class="spinner-border text-info" role="status">
-          <span class="sr-only">Loading...</span>
-        </div>
-      <% end %>
-      </div>
-    </form>
-    <%= if @log_events do %>
-    <ul id="logs-list" class="list-unstyled console-text-list">
-      <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
-        <li>
-          <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>"><%= (Timex.from_unix(log.body.timestamp, :microsecond) |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)) <> " UTC" %></mark>
-          <%= log.body.message %>
-          <%= if map_size(log.body.metadata) > 0 do %>
-          <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
-            metadata
-          </a>
-          <div class="collapse metadata" id="metadata-<%= inx %>">
-            <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
-          </div>
-          <% end %>
-        </li>
-      <% end) %>
-    </ul>
-    <% end %>
-    """
+    Phoenix.View.render(SourceView, "search_frame.html", assigns)
   end
 
   def mount(%{source: source} = session, socket) do
-    {:ok, assign(socket, query: nil, loading: false, log_events: [], source: source)}
+    starts_at = Date.utc_today() |> Timex.to_datetime("Etc/UTC")
+    ends_at = Timex.shift(Date.utc_today(), days: 1) |> Timex.to_datetime("Etc/UTC")
+
+    {:ok,
+     assign(socket,
+       query: nil,
+       loading: false,
+       log_events: [],
+       source: source,
+       starts_at: starts_at,
+       ends_at: ends_at
+     )}
   end
 
-  def handle_event("search", %{"q" => query}, socket) when byte_size(query) <= 100 do
-    send(self(), {:search, query})
-    {:noreply, assign(socket, query: query, result: "Searching...", loading: true)}
+  def handle_event("search", %{"q" => query, "partitions" => partitions} = params, socket)
+      when byte_size(query) <= 100 do
+    starts_at = parse_form_partition_value(partitions["starts_at"])
+    ends_at = parse_form_partition_value(partitions["ends_at"])
+
+    send(self(), :search)
+
+    {:noreply,
+     assign(socket,
+       query: query,
+       result: "Searching...",
+       loading: true,
+       partitions: {starts_at, ends_at}
+     )}
   end
 
-  def handle_info({:search, query}, socket) do
-    %Source{} = source = socket.assigns.source
-    {:ok, %{result: log_events}} = Logs.Search.utc_today(%{regex: query, source: source})
-    log_events = if log_events do
-      log_events
-      |> Enum.map(&LogEvent.make(&1, %{source: source}))
-      |> Enum.sort_by(& &1.body.timestamp, &<=/2)
-    end
+  def parse_form_partition_value(form_datetime) do
+    fdt =
+      form_datetime
+      |> Enum.map(fn {k, v} -> {String.to_existing_atom(k), v} end)
+      |> Enum.into(Map.new())
+
+    NaiveDateTime.new(fdt.year, fdt.month, fdt.day, fdt.hour, fdt.minute, fdt[:second] || 0)
+  end
+
+  def handle_info(:search, socket) do
+    %{source: source, partitions: partitions, query: query} = socket.assigns
+
+    {:ok, %{rows: log_events}} =
+      Search.search(%SearchOpts{regex: query, source: source, partitions: partitions})
+
+    log_events =
+      if log_events do
+        log_events
+        |> Enum.map(&LogEvent.make(&1, %{source: source}))
+        |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+      end
 
     {:noreply, assign(socket, loading: false, log_events: log_events)}
   end
