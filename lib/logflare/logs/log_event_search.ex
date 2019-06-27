@@ -31,7 +31,7 @@ defmodule Logflare.Logs.Search do
     use TypedStruct
 
     typedstruct do
-      field(:rows, [map()])
+      field :rows, [map()]
     end
   end
 
@@ -86,26 +86,26 @@ defmodule Logflare.Logs.Search do
   def filter_by_injest_partitions(q, %SearchOpts{partitions: {start_date, end_date}} = opts) do
     if Timex.equal?(end_date, Date.utc_today()) do
       q
-      |> where([log], fragment("_PARTITIONDATE BETWEEN ? and ?", ^start_date, ^end_date))
-      |> or_where([log], fragment("_PARTITIONDATE IS NULL"))
+      |> where([log], fragment("_PARTITIONTIME BETWEEN ? and ?", ^start_date, ^end_date))
+      |> or_where([log], fragment("_PARTITIONTIME IS NULL"))
     else
       prune_partitions(q, opts)
     end
   end
 
+  def filter_by_regex_message(q, %SearchOpts{regex: nil}), do: q
   def filter_by_regex_message(q, %SearchOpts{regex: regex}) do
     where(q, [log], fragment("REGEXP_CONTAINS(?, ?)", log.event_message, ^regex))
   end
 
-  def filter_by_regex_message(q, _), do: q
 
-  def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONDATE IS NULL"))
+  def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
 
   def prune_partitions(q, %SearchOpts{partitions: {start_date, from_date}}) do
     where(
       q,
       [log],
-      fragment("_PARTITIONDATE BETWEEN ? and ?", ^start_date, ^from_date)
+      fragment("_PARTITIONTIME BETWEEN ? and ?", ^start_date, ^from_date)
     )
   end
 
@@ -119,6 +119,7 @@ defmodule Logflare.Logs.Search do
       opts.source.bq_table_id
       |> from(select: [:timestamp, :event_message])
       |> filter_by_regex_message(opts)
+      |> filter_by_injest_partitions(opts)
 
     {sql, params} = to_sql(:all, Repo, query)
 
@@ -139,12 +140,20 @@ defmodule Logflare.Logs.Search do
   end
 
   def ecto_pg_params_to_bq_params(params) do
+    for param <- params, do: to_bq_param(param)
+  end
+
+  def to_bq_param(param) do
     alias GoogleApi.BigQuery.V2.Model
     alias Model.QueryParameter, as: Param
     alias Model.QueryParameterType, as: Type
     alias Model.QueryParameterValue, as: Value
+    param = case param do
+      %NaiveDateTime{} -> to_string(param)
+      %DateTime{} -> to_string(param)
+      param -> param
+    end
 
-    for param <- params do
       %Param{
         parameterType: %Type{
           type: SchemaTypes.to_schema_type(param)
@@ -153,6 +162,5 @@ defmodule Logflare.Logs.Search do
           value: param
         }
       }
-    end
   end
 end

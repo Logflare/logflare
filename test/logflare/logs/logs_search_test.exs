@@ -34,6 +34,42 @@ defmodule Logflare.Logs.SearchTest do
 
       assert length(rows) == 5
     end
+    test "search for source and datetime", %{sources: [source | _], users: [user | _]} do
+      bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
+      source = %{source | bq_table_id:  bq_table_id}
+
+      partitions = {~N[2019-06-24T00:00:00], ~N[2019-06-24T00:00:00] }
+      opts = %SearchOpts{
+        source: source,
+        partitions: partitions
+      }
+      {:ok, %{rows: rows}} = Search.search(opts)
+      assert length(rows) == 5
+
+      partitions = {~N[2019-06-25T00:00:00], ~N[2019-06-25T00:00:00] }
+      opts = %SearchOpts{opts | partitions: partitions }
+      {:ok, %{rows: rows}} = Search.search(opts)
+
+      assert length(rows) == 2557
+
+      partitions = {~N[2019-06-26T00:00:00], ~N[2019-06-26T00:00:00] }
+      opts = %{opts| partitions: partitions}
+      {:ok, %{rows: rows}} = Search.search(opts)
+
+      assert length(rows) == 1899
+
+      partitions = {~N[2019-06-27T00:00:00] , ~N[2019-06-27T00:00:00]}
+      opts = %{opts| partitions: partitions}
+      {:ok, %{rows: rows}} = Search.search(opts)
+
+      assert is_nil(rows)
+
+      partitions = {~N[2019-06-24T00:00:00] , ~N[2019-06-27T00:00:00]}
+      opts = %{opts| partitions: partitions}
+      {:ok, %{rows: rows}} = Search.search(opts)
+
+      assert length(rows) === 4461
+    end
   end
 
   describe "Query builder" do
