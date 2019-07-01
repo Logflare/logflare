@@ -26,4 +26,19 @@ defmodule LogflareWeb.MarketingController do
   def event_analytics_demo(conn, _params) do
     render(conn, "event_analytics_demo.html")
   end
+
+  def terms(conn, _params) do
+    conn
+    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/terms.md")
+  end
+
+  def privacy(conn, _params) do
+    conn
+    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/privacy.md")
+  end
+
+  def cookies(conn, _params) do
+    conn
+    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/cookies.md")
+  end
 end

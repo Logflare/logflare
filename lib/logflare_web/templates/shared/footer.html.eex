@@ -17,13 +17,13 @@
 						<a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">Help</a>
 					</li>
 					<li>
-						<a href="https://github.com/Logflare/logflare/blob/master/legal/terms.md">Terms of Service</a>
+						<%= link "Terms of Service", to: Routes.marketing_path(@conn, :terms)%>
 					</li>
 					<li>
-						<a href="https://github.com/Logflare/logflare/blob/master/legal/privacy.md">Privacy Policy</a>
+						<%= link "Privacy Policy", to: Routes.marketing_path(@conn, :privacy)%>
 					</li>
 					<li>
-						<a href="https://github.com/Logflare/logflare/blob/master/legal/cookies.md">Cookie Policy</a>
+						<%= link "Cookie Policy", to: Routes.marketing_path(@conn, :cookies)%>
 					</li>
 				</ul>
 			</div>

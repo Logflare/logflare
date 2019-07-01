@@ -54,6 +54,9 @@ defmodule LogflareWeb.Router do
     pipe_through :browser
     get "/", MarketingController, :index
     get "/bigquery-datastudio", MarketingController, :big_query
+    get "/terms", MarketingController, :terms
+    get "/privacy", MarketingController, :privacy
+    get "/cookies", MarketingController, :cookies
   end
 
   scope "/guides", LogflareWeb do
