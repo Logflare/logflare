@@ -58,7 +58,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_github, "~> 0.7"},
       {:plug, "~> 1.8"},
       {:jason, "~> 1.0"},
-      {:distillery, "~> 2.0.14"},
+      {:distillery, "~> 2.1.1"},
       {:edeliver, ">= 1.6.0"},
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider, "~> 0.5.1"},
