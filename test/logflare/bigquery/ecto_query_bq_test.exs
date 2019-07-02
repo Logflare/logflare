@@ -27,10 +27,12 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
 
       {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, q)
 
+      sql = EctoQueryBQ.ecto_pg_sql_to_bq_sql(sql)
+
       assert sql ==
                ~s|SELECT t0.timestamp, t0.metadata FROM #{bq_table_id} AS t0 INNER JOIN UNNEST(t0.metadata) AS f1 ON TRUE WHERE (f1.datacenter = ?)|
 
-      assert params == []
+      assert params == ["ne-1"]
     end
   end
 end
