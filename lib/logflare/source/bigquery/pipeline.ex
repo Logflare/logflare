@@ -42,7 +42,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           any
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
     hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-    LogflareLogger.merge_context(hackney_stats: hackney_stats, source_id: context.source_id)
+    LogflareLogger.context(hackney_stats: hackney_stats, source_id: context.source_id)
     stream_batch(context.source_id, messages, context.bigquery_project_id)
   end
 
@@ -82,24 +82,24 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         messages
 
       {:error, %Tesla.Env{} = response} ->
-        LogflareLogger.merge_context(tesla_response: GenUtils.get_tesla_error_message(response))
+        LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
         Logger.error("Stream batch response error!")
         messages
 
       {:error, :emfile = response} ->
-        LogflareLogger.merge_context(tesla_response: response)
+        LogflareLogger.context(tesla_response: response)
         Logger.error("Stream batch emfile error!")
         messages
 
       {:error, :timeout = response} ->
-        LogflareLogger.merge_context(tesla_response: response)
+        LogflareLogger.context(tesla_response: response)
         Logger.error("Stream batch timeout error!")
         messages
     end
   end
 
   defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
-    LogflareLogger.merge_context(source_id: source_id)
+    LogflareLogger.context(source_id: source_id)
 
     if map_size(body.metadata) > 0 do
       schema_state = Schema.get_state(source_id)
@@ -111,7 +111,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
         if same_schemas?(old_schema, schema) == false do
           hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-          LogflareLogger.merge_context(hackney_stats: hackney_stats)
+          LogflareLogger.context(hackney_stats: hackney_stats)
 
           case BigQuery.patch_table(source_id, schema, bigquery_project_id) do
             {:ok, table_info} ->
@@ -120,7 +120,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
               Logger.info("Source schema updated!")
 
             {:error, response} ->
-              LogflareLogger.merge_context(
+              LogflareLogger.context(
                 tesla_response: GenUtils.get_tesla_error_message(response)
               )
 

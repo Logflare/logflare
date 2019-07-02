@@ -8,11 +8,7 @@ defmodule LogflareWeb.AdminController do
     query =
       from s in Source,
         order_by: s.name,
-        select: %Source{
-          name: s.name,
-          id: s.id,
-          token: s.token
-        }
+        select: s
 
     sorted_sources =
       query
