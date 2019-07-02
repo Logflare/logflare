@@ -4,13 +4,24 @@ defmodule Logflare.EctoQueryBQ do
   import Ecto.Adapters.SQL, only: [to_sql: 3]
 
   def where_nested_eq(q, path, value) do
-    [top_level_join, column] = split_by_dots(path)
-    top_level_join = top_level_join |> String.to_atom()
+    paths = split_by_dots(path)
+    apply_nested_operator(q, paths, value, &==/2)
+  end
+
+  def apply_nested_eq_operator(q, [join, column], value) do
     column = column |> String.to_atom()
+    join = join |> String.to_atom()
 
     q
-    |> join(:inner, [log], n in fragment("UNNEST(?)", field(log, ^top_level_join)))
-    |> where([log, n], field(n, ^column) == ^value)
+    |> join(:inner, [log], n in fragment("UNNEST(?)", field(log, ^join)))
+    |> where([log, ..., n1], field(n1, ^column) == ^value)
+  end
+
+  def apply_nested_operator(q, path, value, operator) when is_list(path) do
+    [join | rest] = path
+    join = join |> String.to_atom()
+    q = join(q, :inner, [log], n in fragment("UNNEST(?)", field(log, ^join)))
+    apply_nested_operator(q, rest, value, operator)
   end
 
   def split_by_dots(str) do
