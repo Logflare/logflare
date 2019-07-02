@@ -72,5 +72,39 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
 
       assert params == ["AQ"]
     end
+
+  describe "NestedPath" do
+    test "to_map" do
+      pathvalues = [
+        %{
+          path: "metadata.user.address.country",
+          value: "AQ"
+        },
+        %{
+          path: "metadata.user.address.city",
+          value: "Aboa"
+        },
+        %{
+          path: "metadata.datacenter",
+          value: "AWS"
+        },
+        %{
+          path: "metadata.context.pid",
+          value: "<0.255.0>"
+        },
+        %{
+          path: "metadata.context.file",
+          value: "lib/bigquery.ex"
+        }
+      ]
+
+      assert EctoQueryBQ.NestedPath.to_map(pathvalues) == %{
+               metadata: %{
+                 context: %{file: "lib/bigquery.ex", pid: "<0.255.0>"},
+                 datacenter: "AWS",
+                 user: %{address: %{city: "Aboa", country: "AQ"}}
+               }
+             }
+    end
   end
 end
