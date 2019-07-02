@@ -2,26 +2,30 @@ defmodule Logflare.EctoQueryBQ do
   @moduledoc false
   import Ecto.Query
   import Ecto.Adapters.SQL, only: [to_sql: 3]
+  alias Logflare.EctoQueryBQ.NestedPath
+
+  def where_nested_eqs(q, pathmap) when is_list(pathmap) do
+    pathmap = NestedPath.to_map(pathmap)
+    where_nested_eqs(q, pathmap)
+  end
+
+  def where_nested_eqs(q, pathmap) do
+    {maps, literals} = Enum.split_with(pathmap, fn {_, v} -> is_map(v) end)
+
+    q =
+      Enum.reduce(literals, q, fn {column, value}, q ->
+        where(q, [..., n1], field(n1, ^column) == ^value)
+      end)
+
+    Enum.reduce(maps, q, fn {column, v}, q ->
+      q
+      |> join(:inner, [log, ..., n1], n in fragment("UNNEST(?)", field(n1, ^column)))
+      |> where_nested_eqs(v)
+    end)
+  end
 
   def where_nested_eq(q, path, value) do
-    paths = split_by_dots(path)
-    apply_nested_operator(q, paths, value, &==/2)
-  end
-
-  def apply_nested_eq_operator(q, [join, column], value) do
-    column = column |> String.to_atom()
-    join = join |> String.to_atom()
-
-    q
-    |> join(:inner, [log], n in fragment("UNNEST(?)", field(log, ^join)))
-    |> where([log, ..., n1], field(n1, ^column) == ^value)
-  end
-
-  def apply_nested_operator(q, path, value, operator) when is_list(path) do
-    [join | rest] = path
-    join = join |> String.to_atom()
-    q = join(q, :inner, [log], n in fragment("UNNEST(?)", field(log, ^join)))
-    apply_nested_operator(q, rest, value, operator)
+    where_nested_eqs(q, [%{path: path, value: value}])
   end
 
   def split_by_dots(str) do
