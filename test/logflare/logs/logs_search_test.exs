@@ -8,6 +8,7 @@ defmodule Logflare.Logs.SearchTest do
   alias Logflare.Source.BigQuery.Pipeline
   use Logflare.DataCase
   import Logflare.DummyFactory
+  alias GoogleApi.BigQuery.V2.Api
 
   setup do
     u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
@@ -37,36 +38,38 @@ defmodule Logflare.Logs.SearchTest do
 
     test "search for source and datetime", %{sources: [source | _], users: [user | _]} do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
-      source = %{source | bq_table_id:  bq_table_id}
+      source = %{source | bq_table_id: bq_table_id}
 
-      partitions = {~N[2019-06-24T00:00:00], ~N[2019-06-24T00:00:00] }
+      partitions = {~N[2019-06-24T00:00:00], ~N[2019-06-24T00:00:00]}
+
       opts = %SearchOpts{
         source: source,
         partitions: partitions
       }
+
       {:ok, %{rows: rows}} = Search.search(opts)
       assert length(rows) == 5
 
-      partitions = {~N[2019-06-25T00:00:00], ~N[2019-06-25T00:00:00] }
-      opts = %SearchOpts{opts | partitions: partitions }
+      partitions = {~N[2019-06-25T00:00:00], ~N[2019-06-25T00:00:00]}
+      opts = %SearchOpts{opts | partitions: partitions}
       {:ok, %{rows: rows}} = Search.search(opts)
 
       assert length(rows) == 2557
 
-      partitions = {~N[2019-06-26T00:00:00], ~N[2019-06-26T00:00:00] }
-      opts = %{opts| partitions: partitions}
+      partitions = {~N[2019-06-26T00:00:00], ~N[2019-06-26T00:00:00]}
+      opts = %{opts | partitions: partitions}
       {:ok, %{rows: rows}} = Search.search(opts)
 
       assert length(rows) == 1899
 
-      partitions = {~N[2019-06-27T00:00:00] , ~N[2019-06-27T00:00:00]}
-      opts = %{opts| partitions: partitions}
+      partitions = {~N[2019-06-27T00:00:00], ~N[2019-06-27T00:00:00]}
+      opts = %{opts | partitions: partitions}
       {:ok, %{rows: rows}} = Search.search(opts)
 
       assert is_nil(rows)
 
-      partitions = {~N[2019-06-24T00:00:00] , ~N[2019-06-27T00:00:00]}
-      opts = %{opts| partitions: partitions}
+      partitions = {~N[2019-06-24T00:00:00], ~N[2019-06-27T00:00:00]}
+      opts = %{opts | partitions: partitions}
       {:ok, %{rows: rows}} = Search.search(opts)
 
       assert length(rows) === 4461
@@ -76,8 +79,10 @@ defmodule Logflare.Logs.SearchTest do
   describe "Query builder" do
     test "succeeds for basic query", %{sources: [source | _]} do
       assert Search.to_sql(%SearchOpts{source: source, regex: ~S|\d\d|}) ==
-               {~s|SELECT t0.timestamp, t0.event_message FROM #{source.bq_table_id} AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))|,
-                ["\\d\\d"]}
+               {
+                 ~s|SELECT t0.timestamp, t0.event_message FROM #{source.bq_table_id} AS t0 WHERE (REGEXP_CONTAINS(t0.event_message, ?))|,
+                 ["\\d\\d"]
+               }
     end
 
     test "converts Ecto PG sql to BQ sql" do

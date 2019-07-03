@@ -131,7 +131,14 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
 
       sql =
         Enum.reduce(params, sql, fn param, sql ->
-          String.replace(sql, ~S"?", ~s|"#{param}"|, global: false)
+          replacement =
+            if is_binary(param) and param not in ~w(>= <= > <) do
+              ~s|"#{param}"|
+            else
+              ~s|#{param}|
+            end
+
+          String.replace(sql, ~r/\?\d?/, replacement, global: false)
         end)
 
       path = Application.app_dir(:logflare) <> "/generated.sql"
@@ -139,8 +146,11 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
 
       assert sql ==
                ~s|
-               SELECT t0.timestamp, t0.metadata
-               FROM #{bq_table_id} AS t0
+               SELECT
+               t0.timestamp,
+               t0.metadata
+           FROM
+               `logflare-dev-238720`.1_dev.6efefdc5_e6fa_4193_864a_9e9daa6924d7 AS t0
                INNER JOIN UNNEST(t0.metadata) AS f1 ON TRUE
                INNER JOIN UNNEST(f1.context) AS f2 ON TRUE
                INNER JOIN UNNEST(f2.user) AS f3 ON TRUE
@@ -148,13 +158,18 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
            WHERE (f1.datacenter = "AWS")
            AND (f2.file = "lib/bigquery.ex")
            AND (f2.pid = "<0.255.0>")
+           AND (f3.exceptions >= 0)
+           AND (REGEXP_CONTAINS(f3.name, "Neo"))
+           AND (f3.rating > 100)
+           AND (f3.source_count < 10)
+           AND (f3.variables <= 2)
            AND (f4.city = "Aboa")
            AND (f4.country = "AQ")
                |
                |> String.replace(~r/\s+/, " ")
                |> String.trim()
 
-      assert params == ["AWS", "lib/bigquery.ex", "<0.255.0>", "Aboa", "AQ"]
+      assert params == ["AWS", "lib/bigquery.ex", "<0.255.0>", 0, "Neo", 100, 10, 2, "Aboa", "AQ"]
     end
   end
 
