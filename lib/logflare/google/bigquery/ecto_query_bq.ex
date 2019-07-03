@@ -14,7 +14,28 @@ defmodule Logflare.EctoQueryBQ do
 
     q =
       Enum.reduce(literals, q, fn {column, value}, q ->
-        where(q, [..., n1], field(n1, ^column) == ^value)
+        if is_tuple(value) do
+          {operator, value} = value
+
+          clause =
+            case operator do
+              ">" ->
+                dynamic([..., n1], field(n1, ^column) > ^value)
+
+              ">=" ->
+                dynamic([..., n1], field(n1, ^column) >= ^value)
+
+              "<" ->
+                dynamic([..., n1], field(n1, ^column) < ^value)
+
+              "<=" ->
+                dynamic([..., n1], field(n1, ^column) <= ^value)
+            end
+
+          where(q, ^clause)
+        else
+          where(q, [..., n1], field(n1, ^column) == ^value)
+        end
       end)
 
     Enum.reduce(maps, q, fn {column, v}, q ->
