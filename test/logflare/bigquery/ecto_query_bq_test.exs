@@ -103,6 +103,10 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
           value: {"<=", 2}
         },
         %{
+          path: "metadata.user.name",
+          value: {"~", "Neo"}
+        },
+        %{
           path: "metadata.datacenter",
           value: "AWS"
         },
