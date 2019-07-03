@@ -12,55 +12,22 @@ defmodule Logflare.Logs.Search.Parser do
   end
 
   def extract_fields_filter(parsemap) do
-    regex = ~r/(metadata\.[\w\.]+:[\d\w\.><=~]+)/
+    regex = ~r/(metadata\.[\w\.]+:[\d\w\.~=><]+)/
     fields_strings = Regex.scan(regex, parsemap.searchq, capture: :all_but_first)
     searchq = Regex.replace(regex, parsemap.searchq, "")
 
     clauses =
       for [fs] <- fields_strings do
-        case String.split(fs, ":") do
-          [column, ">=" <> val] ->
-            %{
-              path: column,
-              value: val,
-              operator: ">="
-            }
+        [column, operatorvalue] = String.split(fs, ":")
+        op_regex = ~r/<=|>=|<|>|~/
+        maybe_op = Regex.run(op_regex, operatorvalue)
+        [op_val] = maybe_op || ["="]
 
-          [column, ">" <> val] ->
-            %{
-              path: column,
-              value: val,
-              operator: ">"
-            }
-
-          [column, "<=" <> val] ->
-            %{
-              path: column,
-              value: val,
-              operator: "<="
-            }
-
-          [column, "<" <> val] ->
-            %{
-              path: column,
-              value: val,
-              operator: "<"
-            }
-
-          [column, "~" <> val] ->
-            %{
-              path: column,
-              value: val,
-              operator: "~"
-            }
-
-          [column, val] ->
-            %{
-              path: column,
-              value: val,
-              operator: "="
-            }
-        end
+        %{
+          path: column,
+          value: String.replace(operatorvalue, op_regex, ""),
+          operator: op_val
+        }
       end
 
     %{
