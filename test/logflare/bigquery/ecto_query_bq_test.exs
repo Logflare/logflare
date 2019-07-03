@@ -87,6 +87,22 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
           value: "Aboa"
         },
         %{
+          path: "metadata.user.rating",
+          value: {">", 100}
+        },
+        %{
+          path: "metadata.user.source_count",
+          value: {"<", 10}
+        },
+        %{
+          path: "metadata.user.exceptions",
+          value: {">=", 0}
+        },
+        %{
+          path: "metadata.user.variables",
+          value: {"<=", 2}
+        },
+        %{
           path: "metadata.datacenter",
           value: "AWS"
         },
