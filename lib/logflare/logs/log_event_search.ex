@@ -2,8 +2,11 @@ defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
   alias Logflare.BigQuery.SchemaTypes
+  alias Logflare.Google.BigQuery
   alias Logflare.{Source, Sources}
   alias Logflare.Repo
+  alias __MODULE__.Parser
+  alias Logflare.EctoQueryBQ
   import Ecto.Query
   import Ecto.Adapters.SQL, only: [to_sql: 3]
 
@@ -19,7 +22,7 @@ defmodule Logflare.Logs.Search do
 
     typedstruct do
       field :source, Source.t()
-      field :regex, String.t()
+      field :searchq, String.t()
       field :partitions, {String.t(), String.t()}
     end
   end
@@ -35,9 +38,8 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search(SearchOpts.t()) :: {:ok, SearchResult.t()} | {:error, term}
   def search(%SearchOpts{} = opts) do
-    %SearchOpts{source: %Source{token: source_id}} = opts
+    %SearchOpts{source: %Source{token: source_id} = source} = opts
 
     project_id = GenUtils.get_project_id(source_id)
 
@@ -47,24 +49,12 @@ defmodule Logflare.Logs.Search do
       rows = SchemaUtils.merge_rows_with_schema(result.schema, result.rows)
       {:ok, %SearchResult{rows: rows}}
     else
-      err -> err
+      err ->
+        {:error, %{body: body}} = err
+        body = Jason.decode!(body)
+        IO.warn(hd(body["error"]["errors"])["message"])
+        err
     end
-  end
-
-  def query_named_params(project_id, sql, params) do
-    conn = GenUtils.get_conn()
-
-    Api.Jobs.bigquery_jobs_query(
-      conn,
-      project_id,
-      body: %QueryRequest{
-        query: sql,
-        useLegacySql: false,
-        useQueryCache: true,
-        parameterMode: "NAMED",
-        queryParameters: params
-      }
-    )
   end
 
   def query_pos_params(project_id, sql, params) do
@@ -93,14 +83,10 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  def filter_by_regex_message(q, %SearchOpts{regex: nil}), do: q
-  def filter_by_regex_message(q, %SearchOpts{regex: regex}) do
-    where(q, [log], fragment("REGEXP_CONTAINS(?, ?)", log.event_message, ^regex))
-  end
-
   def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
 
   def prune_partitions(q, %SearchOpts{partitions: nil}), do: q
+
   def prune_partitions(q, %SearchOpts{partitions: {start_date, from_date}}) do
     where(
       q,
@@ -109,33 +95,25 @@ defmodule Logflare.Logs.Search do
     )
   end
 
-
   def to_sql(%SearchOpts{} = opts) do
     import Ecto.Query
     import Ecto.Adapters.SQL, only: [to_sql: 3]
 
+    {:ok, pathopvals} = Parser.parse(opts.searchq)
+    pathopvals = EctoQueryBQ.NestedPath.to_map(pathopvals)
+
     query =
       opts.source.bq_table_id
       |> from(select: [:timestamp, :event_message])
-      |> filter_by_regex_message(opts)
-      |> filter_by_injest_partitions(opts)
+      |> EctoQueryBQ.where_nesteds(pathopvals)
+      # |> filter_by_injest_partitions(opts)
 
     {sql, params} = to_sql(:all, Repo, query)
 
-    sql = ecto_pg_sql_to_bq_sql(sql)
+    sql = EctoQueryBQ.ecto_pg_sql_to_bq_sql(sql)
     params = ecto_pg_params_to_bq_params(params)
 
     {sql, params}
-  end
-
-  def ecto_pg_sql_to_bq_sql(sql) do
-    sql
-    # replaces PG-style to BQ-style positional parameters
-    |> String.replace(~r/\$\d/, "?")
-    # removes double quotes around the names after the dot
-    |> String.replace(~r/\."(\w+)"/, ".\\1")
-    # removes double quotes around the qualified BQ table id
-    |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
   end
 
   def ecto_pg_params_to_bq_params(params) do
@@ -147,19 +125,21 @@ defmodule Logflare.Logs.Search do
     alias Model.QueryParameter, as: Param
     alias Model.QueryParameterType, as: Type
     alias Model.QueryParameterValue, as: Value
-    param = case param do
-      %NaiveDateTime{} -> to_string(param)
-      %DateTime{} -> to_string(param)
-      param -> param
-    end
 
-      %Param{
-        parameterType: %Type{
-          type: SchemaTypes.to_schema_type(param)
-        },
-        parameterValue: %Value{
-          value: param
-        }
+    param =
+      case param do
+        %NaiveDateTime{} -> to_string(param)
+        %DateTime{} -> to_string(param)
+        param -> param
+      end
+
+    %Param{
+      parameterType: %Type{
+        type: SchemaTypes.to_schema_type(param)
+      },
+      parameterValue: %Value{
+        value: param
       }
+    }
   end
 end

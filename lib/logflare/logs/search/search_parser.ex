@@ -43,7 +43,7 @@ defmodule Logflare.Logs.Search.Parser do
 
   def build_message_clause(word) do
     %{
-      path: "message",
+      path: "event_message",
       value: word,
       operator: "~"
     }
