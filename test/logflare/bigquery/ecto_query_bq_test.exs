@@ -14,17 +14,24 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
     {:ok, sources: [s], users: [u]}
   end
 
-  describe "where_nested_eq" do
+  describe "where_nesteds" do
     test "1 level deep", %{sources: [source | _], users: [user | _]} do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
 
-      path = "metadata.datacenter"
-      value = "ne-1"
+      pathvalops = [
+        %{
+          path: "metadata.datacenter",
+          value: "ne-1",
+          operator: "="
+        }
+      ]
+
+      pathvalops = NestedPath.to_map(pathvalops)
 
       q =
         from(bq_table_id)
         |> select([:timestamp, :metadata])
-        |> EctoQueryBQ.where_nested_eq(path, value)
+        |> EctoQueryBQ.where_nesteds(pathvalops)
 
       {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, q)
 
@@ -39,13 +46,20 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
     test "2 and 3 level deep", %{sources: [source | _], users: [user | _]} do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
 
-      path = "metadata.user.id"
-      value = 5
+      pathvalops = [
+        %{
+          path: "metadata.user.id",
+          operator: "=",
+          value: 5
+        }
+      ]
+
+      pathvalops = NestedPath.to_map(pathvalops)
 
       q =
         from(bq_table_id)
         |> select([:timestamp, :metadata])
-        |> EctoQueryBQ.where_nested_eq(path, value)
+        |> EctoQueryBQ.where_nesteds(pathvalops)
 
       {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, q)
 
@@ -56,13 +70,20 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
 
       assert params == [5]
 
-      path = "metadata.user.address.country"
-      value = "AQ"
+      pathvalops = [
+        %{
+          path: "metadata.user.address.country",
+          operator: "=",
+          value: "AQ"
+        }
+      ]
+
+      pathvalops = NestedPath.to_map(pathvalops)
 
       q =
         from(bq_table_id)
         |> select([:timestamp, :metadata])
-        |> EctoQueryBQ.where_nested_eq(path, value)
+        |> EctoQueryBQ.where_nesteds(pathvalops)
 
       {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, q)
 
@@ -77,53 +98,65 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
     test "multiple paths with various depth levels", %{sources: [source | _], users: [user | _]} do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
 
-      pathvalues = [
+      pathvalops = [
         %{
           path: "metadata.user.address.country",
+          operator: "=",
           value: "AQ"
         },
         %{
           path: "metadata.user.address.city",
+          operator: "=",
           value: "Aboa"
         },
         %{
           path: "metadata.user.rating",
-          value: {">", 100}
+          operator: ">",
+          value: 100
         },
         %{
           path: "metadata.user.source_count",
-          value: {"<", 10}
+          operator: "<",
+          value: 10
         },
         %{
           path: "metadata.user.exceptions",
-          value: {">=", 0}
+          operator: ">=",
+          value: 0
         },
         %{
           path: "metadata.user.variables",
-          value: {"<=", 2}
+          operator: "<=",
+          value: 2
         },
         %{
           path: "metadata.user.name",
-          value: {"~", "Neo"}
+          operator: "~",
+          value: "Neo"
         },
         %{
           path: "metadata.datacenter",
+          operator: "=",
           value: "AWS"
         },
         %{
           path: "metadata.context.pid",
+          operator: "=",
           value: "<0.255.0>"
         },
         %{
           path: "metadata.context.file",
+          operator: "=",
           value: "lib/bigquery.ex"
         }
       ]
 
+      pathvalops = NestedPath.to_map(pathvalops)
+
       q =
         from(bq_table_id)
         |> select([:timestamp, :metadata])
-        |> EctoQueryBQ.where_nested_eqs(pathvalues)
+        |> EctoQueryBQ.where_nesteds(pathvalops)
 
       {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, q)
 
@@ -178,31 +211,36 @@ defmodule Logflare.BigQuery.EctoQueryBQ do
       pathvalues = [
         %{
           path: "metadata.user.address.country",
+          operator: "=",
           value: "AQ"
         },
         %{
           path: "metadata.user.address.city",
+          operator: "=",
           value: "Aboa"
         },
         %{
           path: "metadata.datacenter",
+          operator: "=",
           value: "AWS"
         },
         %{
           path: "metadata.context.pid",
+          operator: "=",
           value: "<0.255.0>"
         },
         %{
           path: "metadata.context.file",
+          operator: "=",
           value: "lib/bigquery.ex"
         }
       ]
 
       assert EctoQueryBQ.NestedPath.to_map(pathvalues) == %{
                metadata: %{
-                 context: %{file: "lib/bigquery.ex", pid: "<0.255.0>"},
-                 datacenter: "AWS",
-                 user: %{address: %{city: "Aboa", country: "AQ"}}
+                 context: %{file: {"=", "lib/bigquery.ex"}, pid: {"=", "<0.255.0>"}},
+                 datacenter: {"=", "AWS"},
+                 user: %{address: %{city: {"=", "Aboa"}, country: {"=", "AQ"}}}
                }
              }
     end
