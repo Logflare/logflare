@@ -85,9 +85,18 @@ defmodule Logflare.Logs.SearchTest do
          "this is another" log message
          metadata.request_method:POST
          metadata.custom_user_data.address.st:NY
+         metadata.custom_user_data.id:38
+         metadata.custom_user_data.login_count:>150
        |
-       {:ok, result} = Search.search(%SearchOpts{searchq: searchq, source: source, partitions: {Date.utc_today(), Date.utc_today()}})
-       assert length(result.rows) == 1089
+
+      {:ok, result} =
+        Search.search(%SearchOpts{
+          searchq: searchq,
+          source: source,
+          partitions: {Date.utc_today(), Date.utc_today()}
+        })
+
+      assert length(result.rows) == 1089
     end
   end
 

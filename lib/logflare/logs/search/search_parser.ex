@@ -1,4 +1,5 @@
 defmodule Logflare.Logs.Search.Parser do
+  @arithmetic_operators ~w[> >= < <= =]
   @moduledoc false
   def parse(searchq) do
     result =
@@ -7,6 +8,7 @@ defmodule Logflare.Logs.Search.Parser do
       |> extract_fields_filter()
       |> build_message_clauses()
       |> Map.get(:clauses)
+      |> Enum.map(&maybe_cast_value/1)
 
     {:ok, result}
   end
@@ -48,6 +50,20 @@ defmodule Logflare.Logs.Search.Parser do
       operator: "~"
     }
   end
+
+  def maybe_cast_value(%{operator: op} = c) when op in @arithmetic_operators do
+    value =
+      with :error <- Integer.parse(c.value),
+           :error <- Float.parse(c.value) do
+        c.value
+      else
+        {value, ""} -> value
+      end
+
+    %{c | value: value}
+  end
+
+  def maybe_cast_value(c), do: c
 
   def extract_quoted_strings(searchq) do
     regex = ~r/"(.+)"/
