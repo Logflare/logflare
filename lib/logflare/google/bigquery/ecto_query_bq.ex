@@ -99,7 +99,7 @@ defmodule Logflare.EctoQueryBQ do
   def ecto_pg_sql_to_bq_sql(sql) do
     sql
     # replaces PG-style to BQ-style positional parameters
-    |> String.replace(~r/\$\d/, "?")
+    |> String.replace(~r/\$\d+/, "?")
     # removes double quotes around the names after the dot
     |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
     # removes double quotes around the qualified BQ table id
