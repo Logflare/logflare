@@ -130,6 +130,7 @@ defmodule Logflare.Logs.Search do
       case param do
         %NaiveDateTime{} -> to_string(param)
         %DateTime{} -> to_string(param)
+        %Date{} -> to_string(param)
         param -> param
       end
 
