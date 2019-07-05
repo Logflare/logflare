@@ -8,21 +8,21 @@ defmodule Logflare.EctoQueryBQ do
     |> apply_grouped_nested_wheres(q)
   end
 
-  def apply_grouped_nested_wheres(grouped_pathval_opts, q) do
-    Enum.reduce(grouped_pathval_opts, q, fn {path, colvalops}, q ->
-      where_nested(q, path, colvalops)
-    end)
-  end
-
   def where_nested(q, path, colvalops) when is_list(colvalops) do
     if top_level_field?(path) do
-      apply_flat_wheres(q, colvalops)
+      apply_where_conditions(q, colvalops)
     else
       path
       |> split_by_dots()
       |> apply_nested_joins(q)
-      |> apply_flat_wheres(colvalops)
+      |> apply_where_conditions(colvalops)
     end
+  end
+
+  def apply_grouped_nested_wheres(grouped_pathval_opts, q) do
+    Enum.reduce(grouped_pathval_opts, q, fn {path, colvalops}, q ->
+      where_nested(q, path, colvalops)
+    end)
   end
 
   def top_level_field?(path) do
@@ -49,9 +49,8 @@ defmodule Logflare.EctoQueryBQ do
     |> Map.get(:q)
   end
 
-  def apply_flat_wheres(q, colvalops) do
-    Enum.reduce(colvalops, q, fn colvalop, q ->
-      %{column: column, operator: operator, value: value} = colvalop
+  def apply_where_conditions(q, colvalops) do
+    Enum.reduce(colvalops, q, fn %{column: column, operator: operator, value: value}, q ->
       column = String.to_atom(column)
       condition = build_where_condition(column, operator, value)
 
@@ -101,15 +100,5 @@ defmodule Logflare.EctoQueryBQ do
       "~" ->
         dynamic([..., n1], fragment("REGEXP_CONTAINS(?, ?)", field(n1, ^c), ^v))
     end
-  end
-
-  def ecto_pg_sql_to_bq_sql(sql) do
-    sql
-    # replaces PG-style to BQ-style positional parameters
-    |> String.replace(~r/\$\d+/, "?")
-    # removes double quotes around the names after the dot
-    |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
-    # removes double quotes around the qualified BQ table id
-    |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
   end
 end
