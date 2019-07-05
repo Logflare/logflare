@@ -1,41 +1,52 @@
 defmodule Logflare.EctoQueryBQ do
   @moduledoc false
   import Ecto.Query
-  import Ecto.Adapters.SQL, only: [to_sql: 3]
 
   def where_nesteds(q, pathvalops) do
     pathvalops
     |> group_by_nested_column_path()
-    |> Enum.reduce(q, fn {path, colvalops}, q ->
+    |> apply_grouped_nested_wheres(q)
+  end
+
+  def apply_grouped_nested_wheres(grouped_pathval_opts, q) do
+    Enum.reduce(grouped_pathval_opts, q, fn {path, colvalops}, q ->
       where_nested(q, path, colvalops)
     end)
   end
 
   def where_nested(q, path, colvalops) when is_list(colvalops) do
-    if path in ~w(timestamp event_message) do
+    if top_level_field?(path) do
       apply_flat_wheres(q, colvalops)
     else
       path
       |> split_by_dots()
-      |> List.wrap()
-      |> Enum.reduce(%{q: q, level: 0}, fn column, acc ->
-        column = String.to_atom(column)
-        level = acc.level + 1
-
-        q =
-          case level do
-            1 ->
-              join(acc.q, :inner, [log], n in fragment("UNNEST(?)", field(log, ^column)))
-
-            _ ->
-              join(acc.q, :inner, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)))
-          end
-
-        %{q: q, level: level}
-      end)
-      |> Map.get(:q)
+      |> apply_nested_joins(q)
       |> apply_flat_wheres(colvalops)
     end
+  end
+
+  def top_level_field?(path) do
+    path in ~w(timestamp event_message)
+  end
+
+  def apply_nested_joins(nested_columns, q) do
+    nested_columns
+    |> Enum.reduce(%{q: q, level: 0}, fn column, acc ->
+      column = String.to_atom(column)
+      level = acc.level + 1
+
+      q =
+        case level do
+          1 ->
+            join(acc.q, :inner, [log], n in fragment("UNNEST(?)", field(log, ^column)))
+
+          _ ->
+            join(acc.q, :inner, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)))
+        end
+
+      %{q: q, level: level}
+    end)
+    |> Map.get(:q)
   end
 
   def apply_flat_wheres(q, colvalops) do
@@ -52,10 +63,12 @@ defmodule Logflare.EctoQueryBQ do
     Enum.group_by(
       pathvalops,
       fn %{path: path} ->
+        # trim last column
         String.replace(path, ~r/\.\w+$/, "")
       end,
       fn pathvalop ->
         pathvalop
+        # delete all but last column
         |> Map.put(:column, String.replace(pathvalop.path, ~r/^[\w\.]+\./, ""))
         |> Map.drop([:path])
       end
@@ -63,7 +76,9 @@ defmodule Logflare.EctoQueryBQ do
   end
 
   def split_by_dots(str) do
-    String.split(str, ".")
+    str
+    |> String.split(".")
+    |> List.wrap()
   end
 
   def build_where_condition(_column = c, _operator = op, _value = v) do
