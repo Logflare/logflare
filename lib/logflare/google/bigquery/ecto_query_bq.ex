@@ -24,11 +24,7 @@ defmodule Logflare.EctoQueryBQ do
     String.split(str, ".")
   end
 
-  def build_where_condition(c, op, v) do
-    _column = c
-    _value = v
-    _operator = op
-
+  def build_where_condition(_column = c, _operator = op, _value = v) do
     case op do
       ">" ->
         dynamic([..., n1], field(n1, ^c) > ^v)

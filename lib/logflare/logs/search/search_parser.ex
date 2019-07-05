@@ -3,7 +3,7 @@ defmodule Logflare.Logs.Search.Parser do
   @moduledoc false
   def parse(searchq) do
     result =
-      searchq
+      %{clauses: [], searchq: searchq}
       |> extract_quoted_strings()
       |> extract_fields_filter()
       |> build_message_clauses()
@@ -14,12 +14,18 @@ defmodule Logflare.Logs.Search.Parser do
   end
 
   def extract_fields_filter(parsemap) do
-    regex = ~r/(metadata\.[\w\.]+:[\d\w\.~=><]+)/
-    fields_strings = Regex.scan(regex, parsemap.searchq, capture: :all_but_first)
+    # uses non-capturing groups to match
+    # either double-quoted values with default equality operator
+    # or values following the specified operator
+    regex = ~r/(metadata\.[\w\.]+:(?:(?:[\d\w\.~=><]+)|(?:".+")))/
+
+    fields_strings =
+      Regex.scan(regex, parsemap.searchq, capture: :all_but_first) |> List.flatten()
+
     searchq = Regex.replace(regex, parsemap.searchq, "")
 
     clauses =
-      for [fs] <- fields_strings do
+      for fs <- fields_strings do
         [column, operatorvalue] = String.split(fs, ":")
         op_regex = ~r/<=|>=|<|>|~/
         maybe_op = Regex.run(op_regex, operatorvalue)
@@ -27,7 +33,7 @@ defmodule Logflare.Logs.Search.Parser do
 
         %{
           path: column,
-          value: String.replace(operatorvalue, op_regex, ""),
+          value: String.replace(operatorvalue, op_regex, "") |> String.replace(~S|"|, ""),
           operator: op_val
         }
       end
@@ -65,21 +71,21 @@ defmodule Logflare.Logs.Search.Parser do
 
   def maybe_cast_value(c), do: c
 
-  def extract_quoted_strings(searchq) do
-    regex = ~r/"(.+)"/
-    quoted_strings = Regex.run(regex, searchq, capture: :all_but_first)
+  def extract_quoted_strings(parsemap) do
+    searchq = parsemap.searchq
+
+    # uses negative lookbehind to find double quoted strings that are not preceded with :
+    regex = ~r/(?<!:)"(.*?)"/
+
+    quoted_strings = Regex.scan(regex, searchq, capture: :all_but_first) |> List.flatten()
+
     searchq = Regex.replace(regex, searchq, "")
 
-    clauses =
-      if quoted_strings do
-        for(qs <- quoted_strings, do: build_message_clause(qs))
-      else
-        []
-      end
+    clauses = for(qs <- quoted_strings, do: build_message_clause(qs))
 
     %{
       searchq: searchq,
-      clauses: clauses
+      clauses: clauses ++ parsemap.clauses
     }
   end
 end
