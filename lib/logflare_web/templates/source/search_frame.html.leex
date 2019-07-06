@@ -8,7 +8,7 @@
       <div class="col-auto">
           <button class="btn btn-primary" type="submit"> 
           Search
-          <%= if @loading && not @tailing? do %>
+          <%= if @loading && !@tailing? do %>
           <div class="spinner-border spinner-border-sm text-info" role="status">
             <span class="sr-only">Loading...</span>
           </div>

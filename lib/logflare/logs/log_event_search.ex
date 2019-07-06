@@ -77,20 +77,18 @@ defmodule Logflare.Logs.Search do
       }
     )
 
-  def default_partition_filter(q, %SearchOpts{tailing?: true}) do
+  def default_partition_filter(q, %SearchOpts{tailing?: :initial}) do
     where(q, [log], fragment("_PARTITIONDATE = CURRENT_DATE() OR _PARTITIONTIME IS NULL"))
+  end
+
+  def default_partition_filter(q, %SearchOpts{tailing?: true} = sopts) do
+    filter_by_streaming_filter(q, sopts)
   end
 
   def default_partition_filter(q, %SearchOpts{partitions: nil}), do: q
 
-  def default_partition_filter(q, %SearchOpts{partitions: {start_date, end_date}} = opts) do
-    if Timex.equal?(end_date, Date.utc_today()) do
-      q
-      |> where([log], fragment("_PARTITIONTIME BETWEEN ? and ?", ^start_date, ^end_date))
-      |> or_where([log], fragment("_PARTITIONTIME IS NULL"))
-    else
-      filter_partitions(q, opts)
-    end
+  def default_partition_filter(q, %SearchOpts{partitions: {_, _}} = opts) do
+    filter_partitions(q, opts)
   end
 
   def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))

@@ -18,7 +18,7 @@ defmodule LogflareWeb.Source.SearchLV do
        query: nil,
        loading: false,
        log_events: [],
-       tailing?: true,
+       tailing?: :initial,
        source: source,
        partitions: nil
      )}
@@ -38,7 +38,9 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("toggle_tailing", _, socket) do
-    socket = assign(socket, tailing?: not socket.assigns.tailing?)
+    tailing? = if socket.assigns.tailing?, do: false, else: :initial
+
+    socket = assign(socket, tailing?: tailing?)
 
     if socket.assigns.tailing? do
       send(self(), :search)
@@ -52,22 +54,25 @@ defmodule LogflareWeb.Source.SearchLV do
     {today, today}
   end
 
-  def handle_info(:search, socket) do
+  def handle_info(:search, socket = %{assigns: %{tailing?: tailing?}}) do
+    # TODO: use Task module to offload actual searches
+    # to prevent user interactions responses being blocked by long-running search
     {:ok, %{rows: log_events}} =
       SearchOpts
       |> struct(socket.assigns)
       |> Search.search()
 
-    log_events =
+    new_log_events =
       log_events
       |> Enum.map(&LogEvent.make_from_db(&1, %{source: socket.assigns.source}))
+      |> Enum.concat(socket.assigns.log_events)
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(10)
 
-    if socket.assigns.tailing? do
-      Process.send_after(self(), :search, 5000)
-    end
+    if tailing?, do: Process.send_after(self(), :search, 5000)
 
-    {:noreply, assign(socket, loading: false, log_events: log_events)}
+    tailing? = if tailing? == :initial, do: true, else: tailing?
+
+    {:noreply, assign(socket, loading: false, log_events: new_log_events, tailing?: tailing?)}
   end
 end
