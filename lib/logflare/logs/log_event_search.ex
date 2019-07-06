@@ -47,8 +47,10 @@ defmodule Logflare.Logs.Search do
       |> default_partition_filter(opts)
       |> EctoQueryBQ.SQL.to_sql()
 
-    with {:ok, %{schema: schema, rows: rows}} <- do_query(project_id, sql, params) do
+    with {:ok, queryresult} <- do_query(project_id, sql, params) do
+      %{schema: schema, rows: rows} = queryresult
       rows = SchemaUtils.merge_rows_with_schema(schema, rows)
+      rows = rows || []
       {:ok, %SearchResult{rows: rows}}
     else
       err ->

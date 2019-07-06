@@ -81,6 +81,25 @@ defmodule Logflare.LogEvent do
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
+  def make_from_db(params, %{source: source}) do
+    params =
+      params
+      |> Map.update!("metadata", &hd/1)
+      |> mapper()
+
+    changes =
+      %__MODULE__{}
+      |> cast(params, [:source, :valid?, :validation_error])
+      |> cast_embed(:body, with: &make_body/2)
+      |> Map.get(:changes)
+
+    body = struct!(Body, changes.body.changes)
+
+    __MODULE__
+    |> struct!(changes)
+    |> Map.put(:body, body)
+  end
+
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}) do
     changeset =

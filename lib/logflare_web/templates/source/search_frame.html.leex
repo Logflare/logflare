@@ -1,3 +1,4 @@
+<div>
   <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
    <div class="form-group">
       <%= text_input f, :q, value: @query , class: "form-control" %>
@@ -12,6 +13,7 @@
     <% end %>
   </div>
 </form>
+</div>
   <%= if @log_events do %>
   <ul id="logs-list" class="list-unstyled console-text-list">
     <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
