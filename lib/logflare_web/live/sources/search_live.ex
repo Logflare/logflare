@@ -18,6 +18,7 @@ defmodule LogflareWeb.Source.SearchLV do
        query: nil,
        loading: false,
        log_events: [],
+       tailing?: true,
        source: source,
        partitions: nil
      )}
@@ -36,6 +37,16 @@ defmodule LogflareWeb.Source.SearchLV do
      )}
   end
 
+  def handle_event("toggle_tailing", _, socket) do
+    socket = assign(socket, tailing?: not socket.assigns.tailing?)
+
+    if socket.assigns.tailing? do
+      send(self(), :search)
+    end
+
+    {:noreply, socket}
+  end
+
   def default_partitions() do
     today = Date.utc_today() |> Timex.to_datetime("Etc/UTC")
     {today, today}
@@ -50,7 +61,12 @@ defmodule LogflareWeb.Source.SearchLV do
     log_events =
       log_events
       |> Enum.map(&LogEvent.make_from_db(&1, %{source: socket.assigns.source}))
-      |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+      |> Enum.sort_by(& &1.body.timestamp, &>=/2)
+      |> Enum.take(10)
+
+    if socket.assigns.tailing? do
+      Process.send_after(self(), :search, 5000)
+    end
 
     {:noreply, assign(socket, loading: false, log_events: log_events)}
   end

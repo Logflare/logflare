@@ -84,7 +84,7 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: source}) do
     params =
       params
-      |> Map.update!("metadata", &hd/1)
+      |> Map.update("metadata", %{}, &hd/1)
       |> mapper()
 
     changes =

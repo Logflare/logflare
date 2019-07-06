@@ -21,6 +21,7 @@ defmodule Logflare.Logs.Search do
       field :source, Source.t()
       field :query, String.t()
       field :partitions, {String.t(), String.t()}
+      field :tailing?, boolean
     end
   end
 
@@ -75,6 +76,9 @@ defmodule Logflare.Logs.Search do
         queryParameters: params
       }
     )
+
+  def default_partition_filter(q, %SearchOpts{tailing?: true}) do
+    where(q, [log], fragment("_PARTITIONDATE = CURRENT_DATE() OR _PARTITIONTIME IS NULL"))
   end
 
   def default_partition_filter(q, %SearchOpts{partitions: nil}), do: q
