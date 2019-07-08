@@ -4,6 +4,7 @@ defmodule Logflare.Logs.Search.Parser do
   def parse(searchq) do
     result =
       %{clauses: [], searchq: searchq}
+      |> extract_timestamp_filter()
       |> extract_quoted_strings()
       |> extract_fields_filter()
       |> build_message_clauses()
@@ -44,6 +45,39 @@ defmodule Logflare.Logs.Search.Parser do
     }
   end
 
+  def extract_timestamp_filter(parsemap) do
+    rdate = ~S|\d\d\d\d\-\d\d\-\d\d|
+    rdatetime = ~S|[\d\-TZ\:\+]+|
+
+    roperator = ~S/>=|<=|<|>/
+    regex = ~r/timestamp:(#{roperator})(#{rdate}|#{rdatetime})/
+
+    matches = Regex.scan(regex, parsemap.searchq, capture: :all_but_first)
+
+    clauses =
+      for [operator, datetime] <- matches do
+        datetime =
+          if String.length(datetime) === 10 do
+            {:ok, date} = Date.from_iso8601(datetime)
+            date
+          else
+            {:ok, datetime, _} = DateTime.from_iso8601(datetime)
+            datetime
+          end
+
+        %{
+          path: "timestamp",
+          value: datetime,
+          operator: operator
+        }
+      end
+
+    %{
+      searchq: String.replace(parsemap.searchq, regex, ""),
+      clauses: parsemap.clauses ++ clauses
+    }
+  end
+
   def build_message_clauses(parsemap) do
     clauses = for word <- String.split(parsemap.searchq), do: build_message_clause(word)
     %{parsemap | clauses: parsemap.clauses ++ clauses}
@@ -57,13 +91,15 @@ defmodule Logflare.Logs.Search.Parser do
     }
   end
 
-  def maybe_cast_value(%{operator: op} = c) when op in @arithmetic_operators do
+  def maybe_cast_value(%{operator: op, value: sourcevalue} = c)
+      when op in @arithmetic_operators and is_binary(sourcevalue) do
     value =
       with :error <- Integer.parse(c.value),
            :error <- Float.parse(c.value) do
         c.value
       else
         {value, ""} -> value
+        {_, _} -> c.value
       end
 
     %{c | value: value}
