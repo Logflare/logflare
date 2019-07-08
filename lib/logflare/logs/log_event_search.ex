@@ -76,6 +76,7 @@ defmodule Logflare.Logs.Search do
         queryParameters: params
       }
     )
+  end
 
   def default_partition_filter(q, %SearchOpts{tailing?: :initial}) do
     where(q, [log], fragment("_PARTITIONDATE = CURRENT_DATE() OR _PARTITIONTIME IS NULL"))

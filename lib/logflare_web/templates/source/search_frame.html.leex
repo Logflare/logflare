@@ -1,12 +1,12 @@
 <div>
   <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
    <div class="form-group">
-      <%= text_input f, :q, value: @query , class: "form-control" %>
+      <%= text_input f, :q, value: @query , class: if @loading, do: "form-control readonly", else: "form-control" %>
       <%= label f, :q, "Search for a log message by using matching words (error) and phrases (\"staging error\"). Use dot notation (e.g. metadata.response.status:500) to matche for values of nested fields..." %>
    </div> 
     <div class="form-row align-items-center">
       <div class="col-auto">
-          <button class="btn btn-primary" type="submit"> 
+          <button class="btn btn-primary" type="submit" <%= if @loading, do: "disabled" %>> 
           Search
           <%= if @loading && !@tailing? do %>
           <div class="spinner-border spinner-border-sm text-info" role="status">
