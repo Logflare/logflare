@@ -28,7 +28,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_event("search", params, socket) do
     %{"search" => %{"q" => query}} = params
 
-    %{query: prev_query, task: task, tailing?: tailing?} = socket.assigns
+    %{query: prev_query, task: task, tailing?: tailing?, log_events: log_events} = socket.assigns
     new_query? = query != prev_query || not tailing?
 
     task =
@@ -38,6 +38,7 @@ defmodule LogflareWeb.Source.SearchLV do
       else
         task
       end
+    log_events = if new_query?, do: [], else: log_events
 
     send(self(), :search)
 
@@ -46,6 +47,7 @@ defmodule LogflareWeb.Source.SearchLV do
        query: query,
        result: "Searching...",
        loading: new_query?,
+       log_events: log_events,
        task: task
      )}
   end
