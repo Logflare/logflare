@@ -1,64 +1,106 @@
 defmodule LogflareWeb.Source.SearchLV do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query}
-  alias Logflare.{Source, Logs, LogEvent}
+  alias Logflare.{Sources, Source, Logs, LogEvent}
+  alias Logflare.Logs.Search
+  alias Logflare.Logs.Search.SearchOpts
+  alias LogflareWeb.SourceView
   use Phoenix.LiveView
+  use TypedStruct
 
   def render(assigns) do
-    ~L"""
-    <form phx-submit="search">
-      <div class="form-group">
-        <input class="form-control" type="text" name="q" value="<%= @query %>" placeholder="Enter regex to search for matching log messages..."
-               <%= if @loading, do: "readonly" %>/>
-      </div>
-        <div>
-        <button class="btn btn-primary form-button" type="submit"> Search </button>
-        <%= if @loading do %>
-         <div class="spinner-border text-info" role="status">
-          <span class="sr-only">Loading...</span>
-        </div>
-      <% end %>
-      </div>
-    </form>
-    <%= if @log_events do %>
-    <ul id="logs-list" class="list-unstyled console-text-list">
-      <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
-        <li>
-          <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>"><%= (Timex.from_unix(log.body.timestamp, :microsecond) |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)) <> " UTC" %></mark>
-          <%= log.body.message %>
-          <%= if map_size(log.body.metadata) > 0 do %>
-          <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
-            metadata
-          </a>
-          <div class="collapse metadata" id="metadata-<%= inx %>">
-            <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
-          </div>
-          <% end %>
-        </li>
-      <% end) %>
-    </ul>
-    <% end %>
-    """
+    Phoenix.View.render(SourceView, "search_frame.html", assigns)
   end
 
-  def mount(%{source: source} = session, socket) do
-    {:ok, assign(socket, query: nil, loading: false, log_events: [], source: source)}
+  def mount(%{source: source}, socket) do
+    {:ok,
+     assign(socket,
+       query: nil,
+       loading: false,
+       log_events: [],
+       tailing?: :initial,
+       source: source,
+       task: nil,
+       partitions: nil
+     )}
   end
 
-  def handle_event("search", %{"q" => query}, socket) when byte_size(query) <= 100 do
-    send(self(), {:search, query})
-    {:noreply, assign(socket, query: query, result: "Searching...", loading: true)}
+  def handle_event("search", params, socket) do
+    %{"search" => %{"q" => query}} = params
+
+    %{query: prev_query, task: task, tailing?: tailing?} = socket.assigns
+    new_query? = query != prev_query || not tailing?
+
+    task =
+      if new_query? && task do
+        Task.shutdown(task, 100)
+        nil
+      else
+        task
+      end
+
+    send(self(), :search)
+
+    {:noreply,
+     assign(socket,
+       query: query,
+       result: "Searching...",
+       loading: new_query?,
+       task: task
+     )}
   end
 
-  def handle_info({:search, query}, socket) do
-    %Source{} = source = socket.assigns.source
-    {:ok, %{result: log_events}} = Logs.Search.utc_today(%{regex: query, source: source})
-    log_events = if log_events do
+  def handle_event("toggle_tailing", _, socket) do
+    tailing? = if socket.assigns.tailing?, do: false, else: :initial
+    if tailing?, do: send(self(), :search)
+
+    socket = assign(socket, tailing?: tailing?)
+
+    {:noreply, socket}
+  end
+
+  def default_partitions() do
+    today = Date.utc_today() |> Timex.to_datetime("Etc/UTC")
+    {today, today}
+  end
+
+  def handle_info(:search, socket = %{assigns: assigns}) do
+    %{task: task, tailing?: tailing?} = assigns
+
+    task =
+      if task do
+        task
+      else
+        SearchOpts
+        |> struct(socket.assigns)
+        |> run_search_task()
+      end
+
+    tailing? = if tailing? == :initial, do: true, else: tailing?
+
+    {:noreply, assign(socket, tailing?: tailing?, task: task)}
+  end
+
+  def handle_info({_ref, {:search_results, log_events}}, socket) do
+    log_events =
       log_events
-      |> Enum.map(&LogEvent.make(&1, %{source: source}))
-      |> Enum.sort_by(& &1.body.timestamp, &<=/2)
-    end
+      |> Enum.map(&LogEvent.make_from_db(&1, %{source: socket.assigns.source}))
+      |> Enum.concat(socket.assigns.log_events)
+      |> Enum.sort_by(& &1.body.timestamp, &>=/2)
+      |> Enum.take(10)
 
-    {:noreply, assign(socket, loading: false, log_events: log_events)}
+    if socket.assigns.tailing?, do: Process.send_after(self(), :search, 1_000)
+
+    {:noreply, assign(socket, log_events: log_events, task: nil, loading: false)}
+  end
+
+  # handles {:DOWN, ... } msgs from task
+  def handle_info(_, state), do: {:noreply, state}
+
+  def run_search_task(search_opts) do
+    Task.async(fn ->
+      {:ok, %{rows: log_events}} = Search.search(search_opts)
+      {:search_results, log_events}
+    end)
   end
 end

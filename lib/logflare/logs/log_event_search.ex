@@ -1,48 +1,106 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
+  alias Logflare.Google.BigQuery
   alias Logflare.{Source, Sources}
-  alias GoogleApi.BigQuery.V2.Model.{QueryParameter, QueryParameterType, QueryParameterValue}
+  alias Logflare.Logs.Search.Parser
+  alias Logflare.EctoQueryBQ
+  alias Logflare.Repo
+  import Ecto.Query
 
-  @spec utc_today(%{regex: String.t(), source: Logflare.Source.t()}) ::
-          {:ok, %{result: nil | [any]}}
-  def utc_today(%{regex: regex, source: %Source{bq_table_id: bq_table_id} = source}) do
+  alias GoogleApi.BigQuery.V2.Api
+  alias GoogleApi.BigQuery.V2.Model.QueryRequest
 
-    source_id = source.token
-    conn = GenUtils.get_conn()
+  defmodule SearchOpts do
+    @moduledoc """
+    Options for Logs search
+    """
+    use TypedStruct
+
+    typedstruct do
+      field :source, Source.t()
+      field :query, String.t()
+      field :partitions, {String.t(), String.t()}
+      field :tailing?, boolean
+    end
+  end
+
+  defmodule SearchResult do
+    @moduledoc """
+    Logs search result
+    """
+    use TypedStruct
+
+    typedstruct do
+      field :rows, [map()]
+    end
+  end
+
+  def search(%SearchOpts{source: %Source{token: source_id}} = opts) do
     project_id = GenUtils.get_project_id(source_id)
 
-    sql = ~s|
-    SELECT timestamp, event_message
-      FROM #{bq_table_id}
-    WHERE true
-      AND _PARTITIONTIME >= "#{Date.utc_today()}"
-      AND REGEXP_CONTAINS(event_message, @regex)
-    UNION ALL
-    SELECT
-      timestamp, event_message
-      FROM #{bq_table_id}
-    WHERE true
-      AND _PARTITIONTIME IS NULL
-      AND REGEXP_CONTAINS(event_message, @regex)
-    ORDER BY timestamp DESC
-    LIMIT 100
-    |
+    {:ok, pathopvals} = Parser.parse(opts.query)
 
-    {:ok, result} =
-      Query.query(
-        conn,
-        project_id,
-        sql,
-        [%QueryParameter{
-          name: "regex",
-          parameterType: %QueryParameterType{type: "STRING"},
-          parameterValue: %QueryParameterValue{value: regex}
-        }])
+    {sql, params} =
+      opts.source.bq_table_id
+      |> from(select: [:timestamp, :event_message, :metadata])
+      |> EctoQueryBQ.where_nesteds(pathopvals)
+      |> default_partition_filter(opts)
+      |> EctoQueryBQ.SQL.to_sql()
 
-    {:ok,
-     %{
-       result: SchemaUtils.merge_rows_with_schema(result.schema, result.rows)
-     }}
+    with {:ok, queryresult} <- do_query(project_id, sql, params) do
+      %{schema: schema, rows: rows} = queryresult
+      rows = SchemaUtils.merge_rows_with_schema(schema, rows)
+      rows = rows || []
+      {:ok, %SearchResult{rows: rows}}
+    else
+      err ->
+        {:error, %{body: body}} = err
+        body = Jason.decode!(body)
+        IO.warn(hd(body["error"]["errors"])["message"])
+        err
+    end
+  end
+
+  def do_query(project_id, sql, params) do
+    conn = GenUtils.get_conn()
+
+    Api.Jobs.bigquery_jobs_query(
+      conn,
+      project_id,
+      body: %QueryRequest{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: true,
+        parameterMode: "POSITIONAL",
+        queryParameters: params
+      }
+    )
+  end
+
+  def default_partition_filter(q, %SearchOpts{tailing?: :initial}) do
+    where(q, [log], fragment("_PARTITIONDATE = CURRENT_DATE() OR _PARTITIONTIME IS NULL"))
+  end
+
+  def default_partition_filter(q, %SearchOpts{tailing?: true} = sopts) do
+    filter_by_streaming_filter(q, sopts)
+  end
+
+  def default_partition_filter(q, %SearchOpts{partitions: nil}), do: q
+
+  def default_partition_filter(q, %SearchOpts{partitions: {_, _}} = opts) do
+    filter_partitions(q, opts)
+  end
+
+  def filter_by_streaming_filter(q, _), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
+
+  def filter_partitions(q, %SearchOpts{partitions: nil}), do: q
+
+  def filter_partitions(q, %SearchOpts{partitions: {start_date, from_date}}) do
+    where(
+      q,
+      [log],
+      fragment("_PARTITIONTIME BETWEEN ? and ?", ^start_date, ^from_date)
+    )
   end
 end
