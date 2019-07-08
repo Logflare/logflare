@@ -50,7 +50,7 @@ defmodule Logflare.Logs.Search.Parser do
     rdatetime = ~S|[\d\-TZ\:\+]+|
 
     roperator = ~S/>=|<=|<|>/
-    regex = ~r/timestamp:(#{roperator})(#{rdate}|#{rdatetime})/
+    regex = ~r/timestamp:(#{roperator})(#{rdatetime}|#{rdate})/
 
     matches = Regex.scan(regex, parsemap.searchq, capture: :all_but_first)
 
