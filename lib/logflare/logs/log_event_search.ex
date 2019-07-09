@@ -78,8 +78,14 @@ defmodule Logflare.Logs.Search do
     )
   end
 
-  def default_partition_filter(q, %SearchOpts{tailing?: :initial}) do
-    where(q, [log], fragment("_PARTITIONDATE = CURRENT_DATE() OR _PARTITIONTIME IS NULL"))
+  def default_partitions_filter(q, %SearchOpts{tailing?: :initial}) do
+    where(
+      q,
+      [log],
+      fragment(
+        "DATETIME_ADD(_PARTITIONTIME, INTERVAL 24 HOUR) > CURRENT_TIME() OR _PARTITIONTIME IS NULL"
+      )
+    )
   end
 
   def default_partition_filter(q, %SearchOpts{tailing?: true} = sopts) do
