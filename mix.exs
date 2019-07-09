@@ -89,7 +89,8 @@ defmodule Logflare.Mixfile do
       {:logflare_logger_backend, github: "logflare/logflare_logger_backend"},
       {:logflare_agent, github: "logflare/logflare_agent"},
       {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"},
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
+      {:decorator, "~> 1.3"
     ]
   end
 
