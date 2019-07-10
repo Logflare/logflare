@@ -1,5 +1,4 @@
 defmodule LogflareWeb.Source.SearchLV do
-  @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query}
   alias Logflare.{Sources, Source, Logs, LogEvent}
   alias Logflare.Logs.Search
@@ -7,6 +6,25 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.SourceView
   use Phoenix.LiveView
   use TypedStruct
+
+  @moduledoc """
+  Search liveview is responsible for handling individual search connection.
+
+  Live view query state transitions:
+
+  {new_query?, tailing?, loading?}
+
+  {true, true, true} -> cancel task, start new query
+  {true, false, true} -> cancel task, start new query
+  {false, false, true} -> cancel task, start new query
+
+  {false, true, true} -> no operation
+  {true, true, false} -> start new query
+
+  {true, false, false} -> start new query
+  {false, true, false} -> start new query
+  {false, true, false} -> start new query
+  """
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "search_frame.html", assigns)
@@ -38,6 +56,7 @@ defmodule LogflareWeb.Source.SearchLV do
       else
         task
       end
+
     log_events = if new_query?, do: [], else: log_events
 
     send(self(), :search)
