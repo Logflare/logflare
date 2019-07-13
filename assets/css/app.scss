@@ -5,6 +5,7 @@
 @import "buttons";
 @import "marketing";
 @import "homepage";
+@import "source_log_search";
 $whitecolor: #ffffff;
 $silvercolor: #B7B7B7;
 $bluecolor: #ffffff;
@@ -25,6 +26,14 @@ $brand-light-purple: #C7A1FF;
 body {
   background-color: #161616;
   color: #9a9a9a;
+}
+
+nav {
+  max-height: 10vh;
+}
+
+main {
+  max-height: 90vh;
 }
 
 #login .list-group a {

@@ -1,14 +1,15 @@
+<div class="source-search-container">
 <div>
   <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
    <div class="form-group">
-      <%= text_input f, :q, value: @query , class: if @loading, do: "form-control readonly", else: "form-control" %>
+      <%= text_input f, :q, value: @query , class: if @task, do: "form-control readonly", else: "form-control" %>
       <%= label f, :q, "Search for a log message by using matching words (error) and phrases (\"staging error\"). Use dot notation (e.g. metadata.response.status:500) to matche for values of nested fields..." %>
-   </div> 
+   </div>
     <div class="form-row align-items-center">
       <div class="col-auto">
-          <button class="btn btn-primary" type="submit" <%= if @loading, do: "disabled" %>> 
+          <button class="btn btn-primary" type="submit" <%= if @task, do: "disabled" %>>
           Search
-          <%= if @loading && !@tailing? do %>
+          <%= if @task && !@tailing? do %>
           <div class="spinner-border spinner-border-sm text-info" role="status">
             <span class="sr-only">Loading...</span>
           </div>
@@ -23,14 +24,13 @@
         <% else %>
         <a href="#" class="btn btn-secondary" phx-click="toggle_tailing" role="button" aria-pressed="true">
           Live tailing</a>
-          
         <% end %>
       </div>
-  </div>
 </form>
 </div>
+</div>
   <%= if @log_events do %>
-  <ul id="logs-list" class="list-unstyled console-text-list">
+  <ul id="logs-list" class="overflow-auto list-unstyled console-text-list">
     <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>
       <mark class="log-datestamp"
@@ -48,3 +48,4 @@
     <% end) %>
   </ul>
  <% end %>
+ </div>
