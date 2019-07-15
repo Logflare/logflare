@@ -24,6 +24,7 @@ defmodule Logflare.Logs.Search do
       field :query_result, term()
       field :sql_params, {term(), term()}
       field :tailing?, boolean
+      field :tailing_initial?, boolean
       field :rows, [map()]
       field :pathvalops, [map()]
       field :error, term()
@@ -101,13 +102,13 @@ defmodule Logflare.Logs.Search do
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
 
-  def partition_or_streaming(%SO{tailing?: :initial} = so) do
+  def partition_or_streaming(%SO{tailing?: :true, tailing_initial?: true} = so) do
     query =
       where(
         so.query,
         [log],
         fragment(
-          "DATETIME_ADD(_PARTITIONTIME, INTERVAL 24 HOUR) > CURRENT_TIME() OR _PARTITIONTIME IS NULL"
+          "TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 24 HOUR) > CURRENT_TIMESTAMP() OR _PARTITIONTIME IS NULL"
         )
       )
 
@@ -125,23 +126,7 @@ defmodule Logflare.Logs.Search do
   def partition_or_streaming(so), do: so
 
   def drop_timestamp_pathvalops(so) do
-    %{so | pathvalopts: Enum.reject(so.pathvalops, &(&1.path === "timestamp"))}
-  end
-
-  def execute_query(project_id, sql, params) do
-    conn = GenUtils.get_conn()
-
-    Api.Jobs.bigquery_jobs_query(
-      conn,
-      project_id,
-      body: %QueryRequest{
-        query: sql,
-        useLegacySql: false,
-        useQueryCache: true,
-        parameterMode: "POSITIONAL",
-        queryParameters: params
-      }
-    )
+    %{so | pathvalops: Enum.reject(so.pathvalops, &(&1.path === "timestamp"))}
   end
 
   def query_only_streaming_buffer(q), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
