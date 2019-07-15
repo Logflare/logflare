@@ -1,3 +1,5 @@
+@import "named_variables";
+
 .source-search-container {
     display: grid;
     grid-template-rows: 20% 80%;
@@ -8,4 +10,26 @@
     display: flex;
     flex-direction: column-reverse;
 }
+
+.source-search-container #logs-list::-webkit-scrollbar-track {
+	-webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.1);
+	background-color: #F5F5F5;
+}
+
+.source-search-container #logs-list::-webkit-scrollbar {
+	width: 15px;
+	background-color: #F5F5F5;
+
+}
+
+.source-search-container #logs-list::-webkit-scrollbar-thumb {
+	background-color: #FFF;
+	background-image: -webkit-gradient(linear,
+									   50% 0%,
+									   75% 100%,
+									   from($brand-green),
+									   to($brand-brighter-green))
+
+}
+
 
