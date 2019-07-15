@@ -1,15 +1,16 @@
 <div class="source-search-container">
 <div>
   <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
+    <% loading_state = (@task && @tailing? && @tailing_initial?) || (@task && not @tailing?) %>
    <div class="form-group">
-      <%= text_input f, :q, value: @query , class: if @task, do: "form-control readonly", else: "form-control" %>
-      <%= label f, :q, "Search for a log message by using matching words (error) and phrases (\"staging error\"). Use dot notation (e.g. metadata.response.status:500) to matche for values of nested fields..." %>
+      <%= text_input f, :querystring, value: @querystring, class: if loading_state, do: "form-control readonly", else: "form-control" %>
+      <%= label f, :querystring, "Search for a log message by using matching words (error) and phrases (\"staging error\"). Use dot notation (e.g. metadata.response.status:500) to matche for values of nested fields..." %>
    </div>
     <div class="form-row align-items-center">
       <div class="col-auto">
-          <button class="btn btn-primary" type="submit" <%= if @task, do: "disabled" %>>
+          <button class="btn btn-primary btn-sm" type="submit" <%= if loading_state, do: "disabled" %>>
           Search
-          <%= if @task && !@tailing? do %>
+          <%= if @task && not @tailing? do %>
           <div class="spinner-border spinner-border-sm text-info" role="status">
             <span class="sr-only">Loading...</span>
           </div>
@@ -18,18 +19,18 @@
       </div>
       <div class="col-auto">
         <%= if @tailing? do %>
-        <a href="#" class="btn btn-primary" phx-click="toggle_tailing" role="button" aria-pressed="true">
+        <a href="#" class="btn btn-primary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
           <div class="spinner-border spinner-border-sm text-info" role="status"> </div>
           Live tailing</a>
         <% else %>
-        <a href="#" class="btn btn-secondary" phx-click="toggle_tailing" role="button" aria-pressed="true">
+        <a href="#" class="btn btn-secondary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
           Live tailing</a>
         <% end %>
       </div>
 </form>
 </div>
 </div>
-  <%= if @log_events do %>
+  <%= if length(@log_events) > 0 do %>
   <ul id="logs-list" class="overflow-auto list-unstyled console-text-list">
     <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>
