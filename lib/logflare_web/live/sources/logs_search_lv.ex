@@ -84,6 +84,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_info(:search, socket) do
+    start_search_task(socket)
     {:noreply, socket}
   end
 
@@ -99,12 +100,13 @@ defmodule LogflareWeb.Source.TailSearchLV do
     socket = assign(socket, tailing_initial?: false)
     if socket.assigns.tailing?, do: Process.send_after(self(), :search, @tailing_search_interval)
 
-    log_events = if length(log_events) > 0, do: log_events, else: []
     {:noreply, assign(socket, log_events: log_events, task: nil, search_op: search_opn)}
   end
 
   # handles {:DOWN, ... } msgs from task
   def handle_info(_, state), do: {:noreply, state}
+
+  def start_search_task(%{assigns: %{querystring: nil}}), do: :noop
 
   def start_search_task(socket) do
     task =

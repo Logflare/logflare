@@ -6,14 +6,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   @empty [nil, %{}, []]
 
-  def merge_rows_with_schema(nil, nil), do: nil
-  def merge_rows_with_schema(%GoogleApi.BigQuery.V2.Model.TableSchema{} = _schema, nil), do: nil
+  def merge_rows_with_schema(nil, nil), do: []
+  def merge_rows_with_schema(%GoogleApi.BigQuery.V2.Model.TableSchema{} = _schema, nil), do: []
 
   def merge_rows_with_schema(%GoogleApi.BigQuery.V2.Model.TableSchema{} = schema, rows) do
     rows |> struct_to_map |> Enum.map(&merge_rows_with_schema_(schema.fields, &1["f"]))
   end
 
-  defp merge_rows_with_schema_(_schema, fields) when fields in @empty, do: nil
+  defp merge_rows_with_schema_(_schema, fields) when fields in @empty, do: []
 
   defp merge_rows_with_schema_(schema, fields) do
     fields
