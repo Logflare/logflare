@@ -1,0 +1,76 @@
+<div class="source-logs-search-container">
+    <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
+    <% loading_state = (@task && @tailing? && @tailing_initial?) || (@task && not @tailing?) %>
+    <div class="form-group">
+        <%= text_input f, :querystring, value: @querystring, class: if loading_state, do: "form-control readonly", else: "form-control" %>
+        <%= label f, :querystring, "Search for a log message by using matching words (error) and phrases (\"staging error\"). Use dot notation (e.g. metadata.response.status:500) to matche for values of nested fields..." %>
+    </div>
+    <div class="form-row align-items-center">
+        <div class="col-auto">
+            <button class="btn btn-primary btn-sm" type="submit"
+            <%= if loading_state, do: "disabled" %>>
+            Search
+            <%= if @task && not @tailing? do %>
+            <div class="spinner-border spinner-border-sm text-info" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            <% end %>
+            </button>
+        </div>
+        <div class="col-auto">
+            <%= if @tailing? do %>
+            <a href="#" class="btn btn-primary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
+                <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                Live tailing</a>
+            <% else %>
+            <a href="#" class="btn btn-secondary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
+                Live tailing</a>
+            <% end %>
+        </div>
+    </div>
+    </form>
+
+    <div class="admin">
+        <%= if @user.admin && @search_op do %>
+        <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
+        <div>
+            <h6>Query debugging</h6>
+            <code>
+                <%= sql %>
+            </code>
+            <div>
+                Total rows: <%= @search_op.stats.total_rows %>
+            </div>
+            <div>
+            Total bytes processed: <%= @search_op.stats.total_bytes_processed %>
+            </div>
+            <div>
+            Total duration: <%= @search_op.stats.total_duration %>ms
+            </div>
+        </div>
+        <% end %>
+    </div>
+
+    <%= if length(@log_events) > 0 do %>
+    <ul id="logs-list" class="overflow-auto list-unstyled console-text-list">
+        <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
+        <li>
+            <mark class="log-datestamp"
+                  data-timestamp="<%= log.body.timestamp %>"><%= (Timex.from_unix(log.body.timestamp, :microsecond)
+                |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)) <> " UTC" %>
+            </mark>
+            <%= log.body.message %>
+            <%= if map_size(log.body.metadata) > 0 do %>
+            <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
+                metadata
+            </a>
+            <div class="collapse metadata" id="metadata-<%= inx %>">
+                <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
+            </div>
+            <% end %>
+        </li>
+        <% end) %>
+    </ul>
+    <% end %>
+</div>
+</div>

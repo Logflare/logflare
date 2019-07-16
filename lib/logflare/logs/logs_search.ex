@@ -28,6 +28,7 @@ defmodule Logflare.Logs.Search do
       field :rows, [map()]
       field :pathvalops, [map()]
       field :error, term()
+      field :stats, :map
     end
   end
 
@@ -35,6 +36,7 @@ defmodule Logflare.Logs.Search do
 
   def search(so) do
     so
+    |> Map.put(:stats, %{total_duration: System.monotonic_time(:millisecond)})
     |> default_from
     |> parse_querystring()
     |> partition_or_streaming()
@@ -42,6 +44,7 @@ defmodule Logflare.Logs.Search do
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
+    |> put_stats()
     |> case do
       %{error: nil} = so ->
         {:ok, so}
@@ -73,7 +76,26 @@ defmodule Logflare.Logs.Search do
       }
     )
     |> put_result_in(so, :query_result)
+    |> prepare_query_result()
   end
+
+  def prepare_query_result(so) do
+    %{so | query_result:  so.query_result
+    |> Map.update!(:totalBytesProcessed, &String.to_integer/1)
+    |> Map.update!(:totalRows, &String.to_integer/1)
+    |> AtomicMap.convert(%{safe: false})}
+  end
+
+  def put_stats(so) do
+    stats = so.stats
+    |> Map.merge(%{
+      total_rows: so.query_result.total_rows,
+      total_bytes_processed: so.query_result.total_bytes_processed
+    })
+    |> Map.update!(:total_duration, & System.monotonic_time(:millisecond) - &1)
+
+    %{so | stats: stats}
+   end
 
   def process_query_result(so) do
     %{schema: schema, rows: rows} = so.query_result

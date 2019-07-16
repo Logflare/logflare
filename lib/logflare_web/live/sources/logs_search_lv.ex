@@ -13,7 +13,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   @decorate_all print()
 
   def render(assigns) do
-    Phoenix.View.render(SourceView, "search_frame.html", assigns)
+    Phoenix.View.render(SourceView, "logs_search.html", assigns)
   end
 
   def mount(%{source: source, user: user}, socket) do
