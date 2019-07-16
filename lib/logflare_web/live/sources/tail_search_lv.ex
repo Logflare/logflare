@@ -76,6 +76,8 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def reset_and_start_search_task(socket, kw) do
+    kw = Keyword.merge(kw, log_events: [])
+
     socket
     |> assign(kw)
     |> start_search_task()

@@ -61,8 +61,8 @@ defmodule Logflare.Logs.Search do
 
     {sql, params} = so.sql_params
 
-    Api.Jobs.bigquery_jobs_query(
-      conn,
+    conn
+    |> Api.Jobs.bigquery_jobs_query(
       project_id,
       body: %QueryRequest{
         query: sql,
@@ -102,7 +102,7 @@ defmodule Logflare.Logs.Search do
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
 
-  def partition_or_streaming(%SO{tailing?: :true, tailing_initial?: true} = so) do
+  def partition_or_streaming(%SO{tailing?: true, tailing_initial?: true} = so) do
     query =
       where(
         so.query,
