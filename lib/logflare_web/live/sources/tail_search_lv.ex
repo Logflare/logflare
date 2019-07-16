@@ -16,7 +16,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
     Phoenix.View.render(SourceView, "search_frame.html", assigns)
   end
 
-  def mount(%{source: source}, socket) do
+  def mount(%{source: source, user: user}, socket) do
     send(self(), :search)
 
     {:ok,
@@ -24,9 +24,11 @@ defmodule LogflareWeb.Source.TailSearchLV do
        querystring: nil,
        task: nil,
        log_events: [],
+       search_op: nil,
        tailing?: true,
        tailing_initial?: true,
-       source: source
+       source: source,
+       user: user
      )}
   end
 
@@ -36,30 +38,27 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
     new_query? = assigns.querystring != maybe_new_querystring
 
-    socket = case {new_query?, assigns.tailing?, assigns.task} do
-      {false, true, %Task{}} ->
-        socket
+    socket =
+      case {new_query?, assigns.tailing?, assigns.task} do
+        {false, true, %Task{}} ->
+          socket
 
+        {true, true, %Task{}} ->
+          Task.shutdown(assigns.task, :brutal_kill)
 
-      {true, true, %Task{}} ->
-        Task.shutdown(assigns.task, :brutal_kill)
+          reset_and_start_search_task(socket,
+            querystring: maybe_new_querystring,
+            tailing_initial?: true
+          )
 
-        socket
-        |> assign(log_events: [], querystring: maybe_new_querystring, tailing_initial?: true)
-        |> start_search_task()
+        {true, false, %Task{}} ->
+          Task.shutdown(assigns.task, :brutal_kill)
 
-      {true, false, %Task{}} ->
-        Task.shutdown(assigns.task, :brutal_kill)
+          reset_and_start_search_task(socket, querystring: maybe_new_querystring)
 
-        socket
-        |> assign(log_events: [], querystring: maybe_new_querystring)
-        |> start_search_task()
-
-      {_, _, nil} ->
-        socket
-        |> assign(log_events: [], querystring: maybe_new_querystring)
-        |> start_search_task()
-    end
+        {_, _, nil} ->
+          reset_and_start_search_task(socket, querystring: maybe_new_querystring)
+      end
 
     {:noreply, socket}
   end
@@ -72,14 +71,21 @@ defmodule LogflareWeb.Source.TailSearchLV do
     if now_tailing?, do: send(self(), :search)
     if not now_tailing? && task, do: Task.shutdown(task, :brutal_kill)
 
-    {:noreply, assign(socket, tailing?: now_tailing?, tailing_initial?: now_tailing_initial?, task: nil)}
+    {:noreply,
+     assign(socket, tailing?: now_tailing?, tailing_initial?: now_tailing_initial?, task: nil)}
+  end
+
+  def reset_and_start_search_task(socket, kw) do
+    socket
+    |> assign(kw)
+    |> start_search_task()
   end
 
   def handle_info(:search, socket) do
     {:noreply, socket}
   end
 
-  def handle_info({_ref, {:search_results, search_opn}}, socket) do
+  def handle_info({_ref, {:search_results, %SO{} = search_opn}}, socket) do
     log_events =
       search_opn
       |> Map.get(:rows)
@@ -91,23 +97,24 @@ defmodule LogflareWeb.Source.TailSearchLV do
     socket = assign(socket, tailing_initial?: false)
     if socket.assigns.tailing?, do: Process.send_after(self(), :search, @tailing_search_interval)
 
-
     log_events = if length(log_events) > 0, do: log_events, else: []
-    {:noreply, assign(socket, log_events: log_events, task: nil)}
+    {:noreply, assign(socket, log_events: log_events, task: nil, search_op: search_opn)}
   end
 
   # handles {:DOWN, ... } msgs from task
   def handle_info(_, state), do: {:noreply, state}
 
   def start_search_task(socket) do
-    task = Task.async(fn ->
-      {:ok, search_opn} =
-        SO
-        |> struct(socket.assigns)
-        |> Search.search()
+    task =
+      Task.async(fn ->
+        {:ok, search_opn} =
+          SO
+          |> struct(socket.assigns)
+          |> Search.search()
 
-      {:search_results, search_opn}
-    end)
+        {:search_results, search_opn}
+      end)
+
     assign(socket, task: task)
   end
 end

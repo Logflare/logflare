@@ -29,6 +29,18 @@
       </div>
 </form>
 </div>
+<div>
+
+<%= if @user.admin && @search_op do %>
+<% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
+<div>
+ <h6>Admin debugging</h6>
+ <code>
+  <%= sql %>
+ </code>  
+</div>
+<% end %>
+
 </div>
   <%= if length(@log_events) > 0 do %>
   <ul id="logs-list" class="overflow-auto list-unstyled console-text-list">
@@ -50,3 +62,5 @@
   </ul>
  <% end %>
  </div>
+
+</div>

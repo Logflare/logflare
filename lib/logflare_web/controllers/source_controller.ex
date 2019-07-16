@@ -131,7 +131,8 @@ defmodule LogflareWeb.SourceController do
     render(
       conn,
       "search.html",
-      source: source
+      source: source,
+      user: user
     )
   end
 
