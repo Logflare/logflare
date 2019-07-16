@@ -41,6 +41,7 @@ defmodule Logflare.Logs.Search do
     |> parse_querystring()
     |> partition_or_streaming()
     |> apply_wheres()
+    |> order_by_default()
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
@@ -84,6 +85,8 @@ defmodule Logflare.Logs.Search do
     |> Map.update!(:totalBytesProcessed, &String.to_integer/1)
     |> Map.update!(:totalRows, &String.to_integer/1)
     |> AtomicMap.convert(%{safe: false})}
+  def order_by_default(so) do
+    %{so | query: order_by(so.query, asc: :timestamp)}
   end
 
   def put_stats(so) do
