@@ -2,16 +2,21 @@ defmodule Logflare.Logs.Search.Parser do
   @arithmetic_operators ~w[> >= < <= =]
   @moduledoc false
   def parse(searchq) do
-    result =
-      %{clauses: [], searchq: searchq}
-      |> extract_timestamp_filter()
-      |> extract_quoted_strings()
-      |> extract_fields_filter()
-      |> build_message_clauses()
-      |> Map.get(:clauses)
-      |> Enum.map(&maybe_cast_value/1)
+    try do
+      result =
+        %{clauses: [], searchq: searchq}
+        |> extract_timestamp_filter()
+        |> extract_quoted_strings()
+        |> extract_fields_filter()
+        |> build_message_clauses()
+        |> Map.get(:clauses)
+        |> Enum.map(&maybe_cast_value/1)
 
-    {:ok, result}
+      {:ok, result}
+    rescue
+      e ->
+        {:error, inspect(e)}
+    end
   end
 
   def extract_fields_filter(parsemap) do
@@ -21,7 +26,7 @@ defmodule Logflare.Logs.Search.Parser do
     regex = ~r/(metadata\.[\w\.]+:(?:(?:[\d\w\.~=><]+)|(?:".+")))/
 
     fields_strings =
-      Regex.scan(regex, parsemap.searchq, capture: :all_but_first) |> List.flatten()
+      regex |> Regex.scan(parsemap.searchq, capture: :all_but_first) |> List.flatten()
 
     searchq = Regex.replace(regex, parsemap.searchq, "")
 
@@ -32,9 +37,11 @@ defmodule Logflare.Logs.Search.Parser do
         maybe_op = Regex.run(op_regex, operatorvalue)
         [op_val] = maybe_op || ["="]
 
+        value = operatorvalue |> String.replace(op_regex, "") |> String.replace(~S|"|, "")
+
         %{
           path: column,
-          value: String.replace(operatorvalue, op_regex, "") |> String.replace(~S|"|, ""),
+          value: value,
           operator: op_val
         }
       end
@@ -79,7 +86,11 @@ defmodule Logflare.Logs.Search.Parser do
   end
 
   def build_message_clauses(parsemap) do
-    clauses = for word <- String.split(parsemap.searchq), do: build_message_clause(word)
+    clauses =
+      parsemap.searchq
+      |> String.split()
+      |> Enum.map(&build_message_clause/1)
+
     %{parsemap | clauses: parsemap.clauses ++ clauses}
   end
 
@@ -113,11 +124,13 @@ defmodule Logflare.Logs.Search.Parser do
     # uses negative lookbehind to find double quoted strings that are not preceded with :
     regex = ~r/(?<!:)"(.*?)"/
 
-    quoted_strings = Regex.scan(regex, searchq, capture: :all_but_first) |> List.flatten()
+    clauses =
+      regex
+      |> Regex.scan(searchq, capture: :all_but_first)
+      |> List.flatten()
+      |> Enum.map(&build_message_clause/1)
 
     searchq = Regex.replace(regex, searchq, "")
-
-    clauses = for(qs <- quoted_strings, do: build_message_clause(qs))
 
     %{
       searchq: searchq,
