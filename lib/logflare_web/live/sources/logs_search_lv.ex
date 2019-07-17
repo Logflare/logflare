@@ -93,14 +93,18 @@ defmodule LogflareWeb.Source.TailSearchLV do
       search_opn
       |> Map.get(:rows)
       |> Enum.map(&LogEvent.make_from_db(&1, %{source: socket.assigns.source}))
-      |> Enum.concat(socket.assigns.log_events)
-      |> Enum.sort_by(& &1.body.timestamp, &>=/2)
-      |> Enum.take(100)
 
-    socket = assign(socket, tailing_initial?: false)
-    if socket.assigns.tailing?, do: Process.send_after(self(), :search, @tailing_search_interval)
+    if socket.assigns.tailing? do
+      Process.send_after(self(), :search, @tailing_search_interval)
+    end
 
-    {:noreply, assign(socket, log_events: log_events, task: nil, search_op: search_opn)}
+    {:noreply,
+     assign(socket,
+       log_events: log_events,
+       task: nil,
+       search_op: search_opn,
+       tailing_initial?: false
+     )}
   end
 
   # handles {:DOWN, ... } msgs from task

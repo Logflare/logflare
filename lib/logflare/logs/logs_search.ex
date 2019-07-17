@@ -10,6 +10,7 @@ defmodule Logflare.Logs.Search do
 
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
+  @default_limit 100
 
   defmodule SearchOperation do
     @moduledoc """
@@ -42,6 +43,7 @@ defmodule Logflare.Logs.Search do
     |> partition_or_streaming()
     |> apply_wheres()
     |> order_by_default()
+    |> apply_limit_to_query()
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
@@ -81,24 +83,35 @@ defmodule Logflare.Logs.Search do
   end
 
   def prepare_query_result(so) do
-    %{so | query_result:  so.query_result
-    |> Map.update!(:totalBytesProcessed, &String.to_integer/1)
-    |> Map.update!(:totalRows, &String.to_integer/1)
-    |> AtomicMap.convert(%{safe: false})}
+    %{
+      so
+      | query_result:
+          so.query_result
+          |> Map.update!(:totalBytesProcessed, &String.to_integer/1)
+          |> Map.update!(:totalRows, &String.to_integer/1)
+          |> AtomicMap.convert(%{safe: false})
+    }
+  end
+
   def order_by_default(so) do
-    %{so | query: order_by(so.query, asc: :timestamp)}
+    %{so | query: order_by(so.query, desc: :timestamp)}
+  end
+
+  def apply_limit_to_query(so) do
+    %{so | query: limit(so.query, @default_limit)}
   end
 
   def put_stats(so) do
-    stats = so.stats
-    |> Map.merge(%{
-      total_rows: so.query_result.total_rows,
-      total_bytes_processed: so.query_result.total_bytes_processed
-    })
-    |> Map.update!(:total_duration, & System.monotonic_time(:millisecond) - &1)
+    stats =
+      so.stats
+      |> Map.merge(%{
+        total_rows: so.query_result.total_rows,
+        total_bytes_processed: so.query_result.total_bytes_processed
+      })
+      |> Map.update!(:total_duration, &(System.monotonic_time(:millisecond) - &1))
 
     %{so | stats: stats}
-   end
+  end
 
   def process_query_result(so) do
     %{schema: schema, rows: rows} = so.query_result
