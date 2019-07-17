@@ -1,15 +1,15 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
-  alias Logflare.Google.BigQuery
-  alias Logflare.{Source, Sources}
+  alias Logflare.{Source, Sources, EctoQueryBQ}
   alias Logflare.Logs.Search.Parser
-  alias Logflare.EctoQueryBQ
-  alias Logflare.Repo
   import Ecto.Query
 
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
+
+  use Logflare.GenDecorators
+
   @default_limit 100
 
   defmodule SearchOperation do
@@ -35,7 +35,7 @@ defmodule Logflare.Logs.Search do
 
   alias SearchOperation, as: SO
 
-  def search(so) do
+  def search(%SO{} = so) do
     so
     |> Map.put(:stats, %{total_duration: System.monotonic_time(:millisecond)})
     |> default_from
@@ -60,7 +60,8 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  def do_query(so) do
+  @decorate pass_through_on_error_field()
+  def do_query(%SO{} = so) do
     %SO{source: %Source{token: source_id}} = so
     project_id = GenUtils.get_project_id(source_id)
     conn = GenUtils.get_conn()
@@ -82,7 +83,8 @@ defmodule Logflare.Logs.Search do
     |> prepare_query_result()
   end
 
-  def prepare_query_result(so) do
+  @decorate pass_through_on_error_field()
+  def prepare_query_result(%SO{} = so) do
     %{
       so
       | query_result:
@@ -93,15 +95,18 @@ defmodule Logflare.Logs.Search do
     }
   end
 
-  def order_by_default(so) do
+  @decorate pass_through_on_error_field()
+  def order_by_default(%SO{} = so) do
     %{so | query: order_by(so.query, desc: :timestamp)}
   end
 
-  def apply_limit_to_query(so) do
+  @decorate pass_through_on_error_field()
+  def apply_limit_to_query(%SO{} = so) do
     %{so | query: limit(so.query, @default_limit)}
   end
 
-  def put_stats(so) do
+  @decorate pass_through_on_error_field()
+  def put_stats(%SO{} = so) do
     stats =
       so.stats
       |> Map.merge(%{
@@ -113,25 +118,30 @@ defmodule Logflare.Logs.Search do
     %{so | stats: stats}
   end
 
-  def process_query_result(so) do
+  @decorate pass_through_on_error_field()
+  def process_query_result(%SO{} = so) do
     %{schema: schema, rows: rows} = so.query_result
     rows = SchemaUtils.merge_rows_with_schema(schema, rows)
     %{so | rows: rows}
   end
 
-  def default_from(so) do
+  @decorate pass_through_on_error_field()
+  def default_from(%SO{} = so) do
     %{so | query: from(so.source.bq_table_id, select: [:timestamp, :event_message, :metadata])}
   end
 
-  def apply_to_sql(so) do
+  @decorate pass_through_on_error_field()
+  def apply_to_sql(%SO{} = so) do
     %{so | sql_params: EctoQueryBQ.SQL.to_sql(so.query)}
   end
 
-  def apply_wheres(so) do
+  @decorate pass_through_on_error_field()
+  def apply_wheres(%SO{} = so) do
     %{so | query: EctoQueryBQ.where_nesteds(so.query, so.pathvalops)}
   end
 
-  def parse_querystring(so) do
+  @decorate pass_through_on_error_field()
+  def parse_querystring(%SO{} = so) do
     so.querystring
     |> Parser.parse()
     |> put_result_in(so, :pathvalops)
@@ -140,6 +150,7 @@ defmodule Logflare.Logs.Search do
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
 
+  @decorate pass_through_on_error_field()
   def partition_or_streaming(%SO{tailing?: true, tailing_initial?: true} = so) do
     query =
       where(
@@ -155,15 +166,17 @@ defmodule Logflare.Logs.Search do
     |> drop_timestamp_pathvalops
   end
 
+  @decorate pass_through_on_error_field()
   def partition_or_streaming(%SO{tailing?: true} = so) do
     so
     |> Map.update!(:query, &query_only_streaming_buffer/1)
     |> drop_timestamp_pathvalops
   end
 
-  def partition_or_streaming(so), do: so
+  def partition_or_streaming(%SO{} = so), do: so
 
-  def drop_timestamp_pathvalops(so) do
+  @decorate pass_through_on_error_field()
+  def drop_timestamp_pathvalops(%SO{} = so) do
     %{so | pathvalops: Enum.reject(so.pathvalops, &(&1.path === "timestamp"))}
   end
 

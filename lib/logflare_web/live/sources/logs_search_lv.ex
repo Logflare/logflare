@@ -115,12 +115,14 @@ defmodule LogflareWeb.Source.TailSearchLV do
   def start_search_task(socket) do
     task =
       Task.async(fn ->
-        {:ok, search_opn} =
-          SO
-          |> struct(socket.assigns)
-          |> Search.search()
-
-        {:search_results, search_opn}
+        with {:ok, search_opn} <-
+               SO
+               |> struct(socket.assigns)
+               |> Search.search() do
+          {:search_results, search_opn}
+        else
+          {:error, err} -> {:search_error, err}
+        end
       end)
 
     assign(socket, task: task)
