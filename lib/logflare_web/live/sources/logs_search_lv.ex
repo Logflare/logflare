@@ -16,12 +16,12 @@ defmodule LogflareWeb.Source.TailSearchLV do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
   end
 
-  def mount(%{source: source, user: user}, socket) do
+  def mount(%{source: source, user: user, querystring: qs}, socket) do
     send(self(), :search)
 
     {:ok,
      assign(socket,
-       querystring: nil,
+       querystring: qs,
        task: nil,
        log_events: [],
        search_op: nil,

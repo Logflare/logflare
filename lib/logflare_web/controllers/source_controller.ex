@@ -127,12 +127,13 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def search(%{assigns: %{user: user, source: source}} = conn, _params) do
+  def search(%{assigns: %{user: user, source: source}} = conn, params) do
     render(
       conn,
       "search.html",
       source: source,
-      user: user
+      user: user,
+      querystring: params["q"]
     )
   end
 
