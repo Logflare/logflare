@@ -14,6 +14,10 @@ defmodule Logflare.Logs.Search.Parser do
 
       {:ok, result}
     rescue
+      e in MatchError ->
+        %MatchError{term: {filter, {:error, errstring}}} = e
+        {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
+
       e ->
         {:error, inspect(e)}
     end
@@ -61,20 +65,19 @@ defmodule Logflare.Logs.Search.Parser do
 
     roperator = ~S/>=|<=|<|>/
 
-    regex = ~r/timestamp:(#{roperator})(#{r_iso8601_datetime}|#{r_iso8601_date})/
+    regex = ~r/timestamp:(#{roperator})(#{r_iso8601_datetime}|#{r_iso8601_date}|.+)/
 
     matches = Regex.scan(regex, parsemap.searchq, capture: :all_but_first)
 
     clauses =
       for [operator, datetime] <- matches do
-        datetime =
-          if String.length(datetime) === 10 do
-            {:ok, date} = Date.from_iso8601(datetime)
-            date
-          else
-            {:ok, datetime, _} = DateTime.from_iso8601(datetime)
-            datetime
-          end
+        datetime = if String.length(datetime) === 10 do
+          {:timestamp, {:ok, date}} = {:timestamp, Date.from_iso8601(datetime)}
+          date
+        else
+          {:timestamp, {:ok, datetime, _}} = {:timestamp, DateTime.from_iso8601(datetime)}
+          datetime
+        end
 
         %{
           path: "timestamp",

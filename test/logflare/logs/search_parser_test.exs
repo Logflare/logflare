@@ -111,5 +111,14 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "~", path: "event_message", value: "was generated"}
                ])
     end
+
+    test "returns error on malformed timestamp filter" do
+      str = ~S|
+         log "was generated" "by logflare pinger"
+         timestamp:>20
+       |
+
+      assert {:error, "Timestamp parse error: invalid_format"} = Parser.parse(str)
+    end
   end
 end
