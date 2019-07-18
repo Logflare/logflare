@@ -37,7 +37,10 @@ defmodule Logflare.Logs.Search do
 
   def search(%SO{} = so) do
     so
-    |> Map.put(:stats, %{total_duration: System.monotonic_time(:millisecond)})
+    |> Map.put(:stats, %{
+      start_monotonic_time: System.monotonic_time(:millisecond),
+      total_duration: nil
+    })
     |> default_from
     |> parse_querystring()
     |> partition_or_streaming()
@@ -113,7 +116,10 @@ defmodule Logflare.Logs.Search do
         total_rows: so.query_result.total_rows,
         total_bytes_processed: so.query_result.total_bytes_processed
       })
-      |> Map.update!(:total_duration, &(System.monotonic_time(:millisecond) - &1))
+      |> Map.put(
+        :total_duration,
+        System.monotonic_time(:millisecond) - so.stats.start_monotonic_time
+      )
 
     %{so | stats: stats}
   end

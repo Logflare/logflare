@@ -136,15 +136,26 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_info({_ref, {:search_error, %SO{} = search_opn}}, socket) do
+    flash = put_in(socket.assigns.flash, [:error], format_error(search_opn.error))
+
     {:noreply,
      assign(socket,
        log_events: [],
-       flash: Map.put(socket.assigns, :error, search_opn.error),
+       flash: flash,
        task: nil,
+       tailing?: false,
        search_op: search_opn
      )}
   end
 
+  def format_error(%Tesla.Env{body: body} = search_op_error) do
+    body
+    |> Poison.decode!()
+    |> Map.get("error")
+    |> Map.get("message")
+  end
+
+  def format_error(e), do: e
   # handles {:DOWN, ... } msgs from task
   def handle_info(task, state) do
     {:noreply, state}
