@@ -23,7 +23,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
      assign(socket,
        querystring: qs,
        task: nil,
-       message: nil,
+       flash: %{},
        log_events: [],
        search_op: nil,
        tailing?: true,
@@ -61,6 +61,11 @@ defmodule LogflareWeb.Source.TailSearchLV do
           reset_and_start_search_task(socket, querystring: maybe_new_querystring)
       end
 
+    socket =
+      socket
+      |> assign(:flash, %{})
+      |> maybe_put_flash()
+
     {:noreply, socket}
   end
 
@@ -83,6 +88,17 @@ defmodule LogflareWeb.Source.TailSearchLV do
     {:noreply, socket}
   end
 
+  def maybe_put_flash(%{assigns: as} = socket) do
+    if String.contains?(as.querystring, "timestamp") and as.tailing? do
+      assign(
+        socket,
+        flash: Map.put(as.flash, :info, "Timestamp filter is ignored when live tailing is active")
+      )
+    else
+      socket
+    end
+  end
+
   def reset_and_start_search_task(socket, kw) do
     kw = Keyword.merge(kw, log_events: [])
 
@@ -92,8 +108,11 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_info(:search, socket) do
-    start_search_task(socket)
-    {:noreply, assign(socket, message: nil)}
+    socket =
+      socket
+      |> start_search_task()
+
+    {:noreply, socket}
   end
 
   def handle_info({_ref, {:search_results, %SO{} = search_opn}}, socket) do
@@ -110,7 +129,6 @@ defmodule LogflareWeb.Source.TailSearchLV do
      assign(socket,
        log_events: log_events,
        task: nil,
-       message: nil,
        search_op: search_opn,
        tailing_initial?: false
      )}
@@ -120,7 +138,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
     {:noreply,
      assign(socket,
        log_events: [],
-       message: search_opn.error,
+       flash: Map.put(socket.assigns, :error, search_opn.error),
        task: nil,
        search_op: search_opn
      )}

@@ -27,13 +27,14 @@
             <% end %>
         </div>
     </div>
+        <%= if map_size(@flash) > 0 do %>
+            <%= for {k,v} <- @flash do %> 
+                <div class="alert <%= if k == :error, do: "alert-danger", else: "alert-warning" %>" role="alert">
+                    <%= v %>
+                </div>
+            <% end %>
+        <% end %>
     </form>
-     <%= if @message do %>
-            <div class="alert alert-danger" role="alert">
-                <%= @message %>
-            </div>
-    <% end %>
-
    <%= if length(@log_events) > 0 && @user.admin && @search_op && @search_op.sql_params  do %>
     <div class="admin">
         <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
