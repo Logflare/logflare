@@ -53,11 +53,18 @@ defmodule Logflare.Logs.Search.Parser do
   end
 
   def extract_timestamp_filter(parsemap) do
-    rdate = ~S|\d\d\d\d\-\d\d\-\d\d|
-    rdatetime = ~S|[\d\-TZ\:\+]+|
+    r_iso8601_date = ~S/(?:[0-9]{4})(?:-?)(?:1[0-2]|0[1-9])(?:-?)(?:3[01]|0[1-9]|[12][0-9])/
+
+    r_iso8601_datetime =
+      ~S/(?:-?(?:[1-9][0-9]*)?[0-9]{4})-(?:1[0-2]|0[1-9])-(?:3[01]|0[1-9]|[12][0-9])T(?:2[0-3]|[01][0-9]):(?:[0-5][0-9]):(?:[0-5][0-9])(?:\.[0-9]+)?(?:Z|[+-](?:2[0-3]|[01][0-9]):[0-5][0-9])?/
+
+    # rdate = ~S|\d\d\d\d\-\d\d\-\d\d|
+
+    # rdatetime =
+    #   ~S/(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(.[0-9]+)?(Z)?/
 
     roperator = ~S/>=|<=|<|>/
-    regex = ~r/timestamp:(#{roperator})(#{rdatetime}|#{rdate})/
+    regex = ~r/timestamp:(#{roperator})(#{r_iso8601_datetime}|#{r_iso8601_date})/
 
     matches = Regex.scan(regex, parsemap.searchq, capture: :all_but_first)
 
