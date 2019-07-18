@@ -109,6 +109,9 @@ defmodule Logflare.Logs.Search.Parser do
     }
   end
 
+  defp maybe_cast_value(%{value: "true"} = c), do: %{c | value: true}
+  defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
+
   defp maybe_cast_value(%{operator: op, value: sourcevalue} = c)
        when op in @arithmetic_operators and is_binary(sourcevalue) do
     value =
