@@ -28,9 +28,14 @@
         </div>
     </div>
     </form>
+     <%= if @message do %>
+            <div class="alert alert-danger" role="alert">
+                <%= @message %>
+            </div>
+    <% end %>
 
+   <%= if length(@log_events) > 0 && @user.admin && @search_op && @search_op.sql_params  do %>
     <div class="admin">
-        <%= if @user.admin && @search_op do %>
         <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
         <div>
             <h6>Query debugging</h6>
@@ -38,7 +43,7 @@
                 <%= sql %>
             </code>
             <div>
-                Total rows: <%= @search_op.stats.total_rows %>
+            Total rows: <%= @search_op.stats.total_rows %>
             </div>
             <div>
             Total bytes processed: <%= @search_op.stats.total_bytes_processed %>
@@ -47,8 +52,8 @@
             Total duration: <%= @search_op.stats.total_duration %>ms
             </div>
         </div>
-        <% end %>
     </div>
+   <% end %>
 
     <%= if length(@log_events) > 0 do %>
     <ul id="logs-list" class="overflow-auto list-unstyled console-text-list">

@@ -23,6 +23,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
      assign(socket,
        querystring: qs,
        task: nil,
+       message: nil,
        log_events: [],
        search_op: nil,
        tailing?: true,
@@ -71,8 +72,15 @@ defmodule LogflareWeb.Source.TailSearchLV do
     if now_tailing?, do: send(self(), :search)
     if not now_tailing? && task, do: Task.shutdown(task, :brutal_kill)
 
-    {:noreply,
-     assign(socket, tailing?: now_tailing?, tailing_initial?: now_tailing_initial?, task: nil)}
+    socket =
+      socket
+      |> assign(
+        tailing?: now_tailing?,
+        tailing_initial?: now_tailing_initial?,
+        task: nil
+      )
+
+    {:noreply, socket}
   end
 
   def reset_and_start_search_task(socket, kw) do
@@ -85,7 +93,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
   def handle_info(:search, socket) do
     start_search_task(socket)
-    {:noreply, socket}
+    {:noreply, assign(socket, message: nil)}
   end
 
   def handle_info({_ref, {:search_results, %SO{} = search_opn}}, socket) do
@@ -102,15 +110,26 @@ defmodule LogflareWeb.Source.TailSearchLV do
      assign(socket,
        log_events: log_events,
        task: nil,
+       message: nil,
        search_op: search_opn,
        tailing_initial?: false
+     )}
+  end
+
+  def handle_info({_ref, {:search_error, %SO{} = search_opn}}, socket) do
+    {:noreply,
+     assign(socket,
+       log_events: [],
+       message: search_opn.error,
+       task: nil,
+       search_op: search_opn
      )}
   end
 
   # handles {:DOWN, ... } msgs from task
   def handle_info(_, state), do: {:noreply, state}
 
-  def start_search_task(%{assigns: %{querystring: nil}}), do: :noop
+  def start_search_task(%{assigns: %{querystring: nil}} = socket), do: socket
 
   def start_search_task(socket) do
     task =
