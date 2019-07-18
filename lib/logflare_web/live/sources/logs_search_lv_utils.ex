@@ -12,10 +12,10 @@ defmodule LogflareWeb.Source.TailSearchLV.Utils do
           String.replace(sql, "?", "'#{value}'", global: false)
 
         num when num in ~w(INTEGER FLOAT) ->
-          String.replace(sql, "?", value, global: false)
+          String.replace(sql, "?", inspect(value), global: false)
 
         _ ->
-          String.replace(sql, "?", value, global: false)
+          String.replace(sql, "?", inspect(value), global: false)
       end
     end)
   end

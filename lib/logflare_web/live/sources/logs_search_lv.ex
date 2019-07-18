@@ -92,7 +92,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
     if String.contains?(as.querystring, "timestamp") and as.tailing? do
       assign(
         socket,
-        flash: Map.put(as.flash, :info, "Timestamp filter is ignored when live tailing is active")
+        flash: put_in(socket.assigns.flash, [:info], "Timestamp filter is ignored when live tailing is active")
       )
     else
       socket
@@ -115,9 +115,10 @@ defmodule LogflareWeb.Source.TailSearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({_ref, {:search_results, %SO{} = search_opn}}, socket) do
+  def handle_info({_ref, {:search_result, %SO{} = search_op}}, socket) do
+
     log_events =
-      search_opn
+      search_op
       |> Map.get(:rows)
       |> Enum.map(&LogEvent.make_from_db(&1, %{source: socket.assigns.source}))
 
@@ -129,7 +130,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
      assign(socket,
        log_events: log_events,
        task: nil,
-       search_op: search_opn,
+       search_op: search_op,
        tailing_initial?: false
      )}
   end
@@ -145,20 +146,24 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   # handles {:DOWN, ... } msgs from task
-  def handle_info(_, state), do: {:noreply, state}
+  def handle_info(task, state) do
+    {:noreply, state}
+  end
 
   def start_search_task(%{assigns: %{querystring: nil}} = socket), do: socket
 
   def start_search_task(socket) do
     task =
       Task.async(fn ->
-        with {:ok, search_opn} <-
+        with {:ok, search_op} <-
                SO
                |> struct(socket.assigns)
-               |> Search.search() do
-          {:search_results, search_opn}
+               |> Search.search()
+                do
+          {:search_result, search_op}
         else
-          {:error, err} -> {:search_error, err}
+          {:error, err} ->
+            {:search_error, err}
         end
       end)
 
