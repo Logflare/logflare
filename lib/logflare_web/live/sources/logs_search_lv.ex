@@ -6,11 +6,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   alias Logflare.Logs.Search.SearchOperation, as: SO
   alias Logflare.LogEvent
 
-  @tailing_search_interval 30_000
-
-  use PrintDecorator
-
-  @decorate_all print()
+  @tailing_search_interval 10_000
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
@@ -42,6 +38,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
     socket =
       case {new_query?, assigns.tailing?, assigns.task} do
         {false, true, %Task{}} ->
+          # doesn't start a new tailing task if previous hasn't completed yet
           socket
 
         {true, true, %Task{}} ->
@@ -92,7 +89,12 @@ defmodule LogflareWeb.Source.TailSearchLV do
     if String.contains?(as.querystring, "timestamp") and as.tailing? do
       assign(
         socket,
-        flash: put_in(socket.assigns.flash, [:info], "Timestamp filter is ignored when live tailing is active")
+        flash:
+          put_in(
+            socket.assigns.flash,
+            [:info],
+            "Timestamp filter is ignored when live tailing is active"
+          )
       )
     else
       socket
@@ -116,7 +118,6 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_info({_ref, {:search_result, %SO{} = search_op}}, socket) do
-
     log_events =
       search_op
       |> Map.get(:rows)
@@ -135,8 +136,8 @@ defmodule LogflareWeb.Source.TailSearchLV do
      )}
   end
 
-  def handle_info({_ref, {:search_error, %SO{} = search_opn}}, socket) do
-    flash = put_in(socket.assigns.flash, [:error], format_error(search_opn.error))
+  def handle_info({_ref, {:search_error, %SO{} = search_op}}, socket) do
+    flash = put_in(socket.assigns.flash, [:error], format_error(search_op.error))
 
     {:noreply,
      assign(socket,
@@ -144,11 +145,11 @@ defmodule LogflareWeb.Source.TailSearchLV do
        flash: flash,
        task: nil,
        tailing?: false,
-       search_op: search_opn
+       search_op: search_op
      )}
   end
 
-  def format_error(%Tesla.Env{body: body} = search_op_error) do
+  def format_error(%Tesla.Env{body: body}) do
     body
     |> Poison.decode!()
     |> Map.get("error")
@@ -156,6 +157,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def format_error(e), do: e
+
   # handles {:DOWN, ... } msgs from task
   def handle_info(task, state) do
     {:noreply, state}
@@ -169,8 +171,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
         with {:ok, search_op} <-
                SO
                |> struct(socket.assigns)
-               |> Search.search()
-                do
+               |> Search.search() do
           {:search_result, search_op}
         else
           {:error, err} ->

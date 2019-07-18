@@ -56,9 +56,6 @@ defmodule Logflare.Logs.Search do
         {:ok, so}
 
       so ->
-        # body = Jason.decode!(body)
-        # IO.warn(hd(body["error"]["errors"])["message"])
-        # err
         {:error, so}
     end
   end

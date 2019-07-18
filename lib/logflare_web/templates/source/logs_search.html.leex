@@ -27,15 +27,15 @@
             <% end %>
         </div>
     </div>
-        <%= if map_size(@flash) > 0 do %>
-            <%= for {k,v} <- @flash do %> 
-                <div class="alert <%= if k == :error, do: "alert-danger", else: "alert-warning" %>" role="alert">
-                    <%= v %>
-                </div>
-            <% end %>
+    <%= if map_size(@flash) > 0 do %>
+        <%= for {k,v} <- @flash do %> 
+            <div class="alert <%= if k == :error, do: "alert-danger", else: "alert-warning" %>" role="alert">
+                <%= v %>
+            </div>
         <% end %>
+    <% end %>
     </form>
-   <%= if length(@log_events) > 0 && @user.admin && @search_op && @search_op.sql_params  do %>
+   <%= if @user.admin && @search_op && @search_op.sql_params  do %>
     <div class="admin">
         <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
         <div>
@@ -44,10 +44,10 @@
                 <%= sql %>
             </code>
             <div>
-            Total rows: <%= @search_op.stats.total_rows %>
+            Total rows: <%= @search_op.stats[:total_rows] %>
             </div>
             <div>
-            Total bytes processed: <%= @search_op.stats.total_bytes_processed %>
+            Total bytes processed: <%= @search_op.stats[:total_bytes_processed] %>
             </div>
             <div>
             Total duration: <%= @search_op.stats.total_duration %>ms

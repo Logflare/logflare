@@ -71,13 +71,14 @@ defmodule Logflare.Logs.Search.Parser do
 
     clauses =
       for [operator, datetime] <- matches do
-        datetime = if String.length(datetime) === 10 do
-          {:timestamp, {:ok, date}} = {:timestamp, Date.from_iso8601(datetime)}
-          date
-        else
-          {:timestamp, {:ok, datetime, _}} = {:timestamp, DateTime.from_iso8601(datetime)}
-          datetime
-        end
+        datetime =
+          if String.length(datetime) === 10 do
+            {:timestamp, {:ok, date}} = {:timestamp, Date.from_iso8601(datetime)}
+            date
+          else
+            {:timestamp, {:ok, datetime, _}} = {:timestamp, DateTime.from_iso8601(datetime)}
+            datetime
+          end
 
         %{
           path: "timestamp",
