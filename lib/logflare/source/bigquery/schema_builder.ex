@@ -47,7 +47,8 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
           name: "event_message",
           type: "STRING"
         }
-      ]}
+      ]
+    }
   end
 
   @spec build_metadata_fields_schemas(map, TFS.t()) :: TFS.t()

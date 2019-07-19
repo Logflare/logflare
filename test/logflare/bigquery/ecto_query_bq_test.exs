@@ -40,8 +40,21 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
                |> String.replace(~r/[\s]+/, " ")
                |> String.trim()
 
-      assert params == [%GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "ne-1"}}]
-
+      assert params == [
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "ne-1"
+                 }
+               }
+             ]
     end
 
     test "2 and 3 level deep" do
@@ -239,8 +252,138 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
                |> String.replace(~r/[\s]+/, " ")
                |> String.trim()
 
-      assert params == [%GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "AWS"}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "<0.255.0>"}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "lib/bigquery.ex"}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "INTEGER"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: 100}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "INTEGER"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: 0}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "INTEGER"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: 2}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "Neo"}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "INTEGER"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: 10}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "AQ"}}, %GoogleApi.BigQuery.V2.Model.QueryParameter{name: nil, parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{arrayType: nil, structTypes: nil, type: "STRING"}, parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{arrayValues: nil, structValues: nil, value: "Aboa"}}]
-
+      assert params == [
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "AWS"
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "<0.255.0>"
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "lib/bigquery.ex"
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "INTEGER"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: 100
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "INTEGER"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: 0
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "INTEGER"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: 2
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "Neo"
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "INTEGER"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: 10
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "AQ"
+                 }
+               },
+               %GoogleApi.BigQuery.V2.Model.QueryParameter{
+                 name: nil,
+                 parameterType: %GoogleApi.BigQuery.V2.Model.QueryParameterType{
+                   arrayType: nil,
+                   structTypes: nil,
+                   type: "STRING"
+                 },
+                 parameterValue: %GoogleApi.BigQuery.V2.Model.QueryParameterValue{
+                   arrayValues: nil,
+                   structValues: nil,
+                   value: "Aboa"
+                 }
+               }
+             ]
     end
   end
 end

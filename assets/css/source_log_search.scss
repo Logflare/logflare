@@ -26,8 +26,9 @@
 }
 
 .source-logs-search-container .admin {
+	padding-left: 10px;
 	grid-row: 2/2;
-	grid-column: 2/2
+	grid-column: 2/2;
 }
 
 .source-logs-search-container #logs-list::-webkit-scrollbar-track {
