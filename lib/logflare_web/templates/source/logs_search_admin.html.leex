@@ -1,0 +1,23 @@
+<%= if @user.admin && @search_op && @search_op.sql_params  do %>
+<div class="admin">
+    <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
+    <div>
+        <h6>Query debugging</h6>
+        <code>
+            <%= sql %>
+        </code>
+        <div>
+        Total rows: <%= @search_op.stats[:total_rows] %>
+        </div>
+        <div>
+        Total bytes processed: <%= @search_op.stats[:total_bytes_processed] %>
+        </div>
+        <div>
+        Total duration: <%= @search_op.stats[:total_duration] %>ms
+        </div>
+    </div>
+</div>
+<% end %>
+<%= if length(@log_events) > 0 do %>
+    <%= render "logs_search_list.html", log_events: @log_events %> 
+<% end %>
