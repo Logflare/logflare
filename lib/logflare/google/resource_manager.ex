@@ -35,10 +35,6 @@ defmodule Logflare.Google.CloudResourceManager do
           role: "roles/bigquery.jobUser"
         },
         %Model.Binding{
-          members: ["user:chase@logflare.app"],
-          role: "roles/owner"
-        },
-        %Model.Binding{
           members: ["serviceAccount:#{@service_account}"],
           role: "roles/resourcemanager.projectIamAdmin"
         }
