@@ -146,7 +146,23 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
+  defp same_schemas?(nil, nil), do: true
+  defp same_schemas?(nil, _), do: false
+  defp same_schemas?(_, nil), do: false
+
   defp same_schemas?(old_schema, new_schema) do
+    old_schema =
+      Iteraptor.map(old_schema, fn
+        {_path, "BOOLEAN"} -> "BOOL"
+        {_path, value} -> value
+      end)
+
+    new_schema =
+      Iteraptor.map(new_schema, fn
+        {_path, "BOOLEAN"} -> "BOOL"
+        {_path, value} -> value
+      end)
+
     old_schema == new_schema
   end
 end

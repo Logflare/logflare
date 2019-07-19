@@ -118,6 +118,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def bq_type_to_ex("INTEGER"), do: :integer
   def bq_type_to_ex("STRING"), do: :string
   def bq_type_to_ex("BOOLEAN"), do: :boolean
+  def bq_type_to_ex("BOOL"), do: :boolean
   def bq_type_to_ex("ARRAY"), do: :list
   def bq_type_to_ex("FLOAT"), do: :float
 

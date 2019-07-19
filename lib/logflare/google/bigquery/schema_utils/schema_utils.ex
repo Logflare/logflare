@@ -40,6 +40,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def convert_primtive(_type, value) when value in @empty, do: nil
   def convert_primtive("STRING", value), do: value
   def convert_primtive("BOOLEAN", value), do: value == "true"
+  def convert_primtive("BOOL", value), do: value == "true"
   def convert_primtive("FLOAT", value), do: String.to_float(value)
   def convert_primtive("INTEGER", value), do: String.to_integer(value)
 
