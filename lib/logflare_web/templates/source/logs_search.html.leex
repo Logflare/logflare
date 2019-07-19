@@ -55,7 +55,7 @@
 <%= render "logs_search_modal.html",
     id: "searchHelpModal",
     title: "Search syntax",
-    body: ~S|Search for a log message by using matching words (error) and phrases ("staging error"). Use dot notation (e.g. metadata.response.status:500) to match for values of nested fields.| %>
+    body: render("logs_search_help.html") %>
 
 <%= render "logs_search_modal.html",
     id: "sourceSchemaModal",

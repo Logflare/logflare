@@ -1,0 +1,13 @@
+<h2> Search syntax</h2> 
+<ul class="list-group">
+<li class="list-group-item">
+Search for a log message by using words: e.g. error phrases: e.g. "staging error" or regexes: \d\d
+</li>
+<li class="list-group-item">
+ Use dot notation for metadata fields (e.g. metadata.response.status:500) to match values of nested schema fields. 
+ You can use >, >=, <=, < operators for floats, integers and datetime field types.
+</li>
+<li class="list-group-item">
+ Use timestamp to match log event timestamp values using >, >=, <=, < operators.
+</li>
+</ul>
