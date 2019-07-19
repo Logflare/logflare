@@ -194,6 +194,7 @@ defmodule Logflare.Logs.Search do
       |> Sources.Cache.get_bq_schema()
       |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
       |> Iteraptor.to_flatmap()
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
       |> Enum.map(fn {k, _} -> String.trim_trailing(k, ".t") end)
 
     result =
