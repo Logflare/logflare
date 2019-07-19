@@ -2,19 +2,23 @@
 <div class="admin">
     <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
     <div>
-        <h6>Query debugging</h6>
+        <h5>Query debugging</h6>
+        <ul class="list-group">
+        <li class="list-group-item">
         <code>
-            <%= sql %>
+            <%= sql %> 
         </code>
-        <div>
+        </li>
+        <li class="list-group-item">
         Total rows: <%= @search_op.stats[:total_rows] %>
-        </div>
-        <div>
+        </li>
+        <li class="list-group-item">
         Total bytes processed: <%= @search_op.stats[:total_bytes_processed] %>
-        </div>
-        <div>
+        </li>
+        <li class="list-group-item">
         Total duration: <%= @search_op.stats[:total_duration] %>ms
-        </div>
+        </li>
+        </ul>
     </div>
 </div>
 <% end %>
