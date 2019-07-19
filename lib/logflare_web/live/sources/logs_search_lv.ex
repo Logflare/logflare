@@ -159,7 +159,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   def format_error(e), do: e
 
   # handles {:DOWN, ... } msgs from task
-  def handle_info(task, state) do
+  def handle_info(_task, state) do
     {:noreply, state}
   end
 

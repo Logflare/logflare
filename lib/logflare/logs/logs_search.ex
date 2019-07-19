@@ -188,6 +188,7 @@ defmodule Logflare.Logs.Search do
 
   def query_only_streaming_buffer(q), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
 
+  @decorate pass_through_on_error_field()
   def verify_path_in_schema(%SO{} = so) do
     flatmap =
       so.source
