@@ -1,6 +1,6 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
-  alias Logflare.Google.BigQuery.{GenUtils, Query, SchemaUtils}
+  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.{Source, Sources, EctoQueryBQ}
   alias Logflare.Logs.Search.Parser
   import Ecto.Query
@@ -43,6 +43,7 @@ defmodule Logflare.Logs.Search do
     })
     |> default_from
     |> parse_querystring()
+    |> verify_path_in_schema()
     |> partition_or_streaming()
     |> apply_wheres()
     |> order_by_default()
@@ -150,6 +151,8 @@ defmodule Logflare.Logs.Search do
     |> put_result_in(so, :pathvalops)
   end
 
+  def put_result_in(_, so, path \\ nil)
+  def put_result_in(:ok, so, _), do: so
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
 
@@ -184,4 +187,24 @@ defmodule Logflare.Logs.Search do
   end
 
   def query_only_streaming_buffer(q), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
+
+  def verify_path_in_schema(%SO{} = so) do
+    flatmap =
+      so.source
+      |> Sources.Cache.get_bq_schema()
+      |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
+      |> Iteraptor.to_flatmap()
+      |> Enum.map(fn {k, _} -> String.trim_trailing(k, ".t") end)
+
+    result =
+      Enum.reduce_while(so.pathvalops, :ok, fn %{path: path}, _ ->
+        if path in flatmap do
+          {:cont, :ok}
+        else
+          {:halt, {:error, "#{path} not present in source schema"}}
+        end
+      end)
+
+    put_result_in(result, so)
+  end
 end
