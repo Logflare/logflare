@@ -1,0 +1,69 @@
+<div class="source-logs-search-container">
+    <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
+    <% loading_state = (@task && @tailing? && @tailing_initial?) || (@task && not @tailing?) %>
+    <div class="form-group">
+        <%= text_input f, :querystring, value: @querystring, class: if loading_state, do: "form-control readonly", else: "form-control" %>
+    </div>
+    <div class="form-row align-items-center">
+        <div class="col-auto">
+            <button class="btn btn-primary btn-sm" type="submit" <%= if loading_state, do: "disabled" %>>
+            Search
+            <%= if @task && not @tailing? do %>
+            <div class="spinner-border spinner-border-sm text-info" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            <% end %>
+            </button>
+        </div>
+        <div class="col-auto">
+            <%= if @tailing? do %>
+            <a href="#" class="btn btn-primary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
+                <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                Live tailing</a>
+            <% else %>
+            <a href="#" class="btn btn-secondary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
+                Live tailing</a>
+            <% end %>
+        </div>
+        <div class="col-auto">
+        <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#searchHelpModal">
+            How to search
+        </button>
+        </div>
+        <div class="col-auto">
+        <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#sourceSchemaModal">
+            Show source schema
+        </button>
+        </div>
+    </div>
+    <%= if map_size(@flash) > 0 do %>
+        <%= for {k,v} <- @flash do %> 
+            <div class="alert <%= if k == :error, do: "alert-danger", else: "alert-warning" %>" role="alert">
+                <%= v %>
+            </div>
+        <% end %>
+    <% end %>
+    </form>
+   <%= if @user.admin  do %>
+    <%= render "logs_search_admin.html", user: @user, search_op: @search_op, log_events: @log_events %>
+   <% else %>
+    <%= render "logs_search_user.html", user: @user, search_op: @search_op, log_events: @log_events %>
+   <% end %>
+</div>
+</div>
+
+<%= render "logs_search_modal.html",
+    id: "searchHelpModal",
+    title: "Search syntax",
+    body: render("logs_search_help.html") %>
+
+<%= render "logs_search_modal.html",
+    id: "sourceSchemaModal",
+    title: "Source schema",
+    body: LogflareWeb.Source.TailSearchLV.Utils.format_bq_schema(@source) %>
+
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+    await Source.search()
+})
+</script>

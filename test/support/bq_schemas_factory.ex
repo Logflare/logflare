@@ -126,22 +126,22 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
   end
 
   def metadata_factory(%{variant: :third}) do
-     %{
-        "ip_address" => "100.100.100.100",
-        "datacenter" => "aws",
-        "request_method" => "POST",
-        "user" => %{
-          "address" => %{
-            "city" => "New York",
-            "st" => "NY",
-            "street" => "123 W Main St"
-          },
-          "browser" => "Firefox",
-          "company" => "Apple",
-          "id" => 38,
-          "login_count" => 154,
-          "vip" => true
-        }
+    %{
+      "ip_address" => "100.100.100.100",
+      "datacenter" => "aws",
+      "request_method" => "POST",
+      "user" => %{
+        "address" => %{
+          "city" => "New York",
+          "st" => "NY",
+          "street" => "123 W Main St"
+        },
+        "browser" => "Firefox",
+        "company" => "Apple",
+        "id" => 38,
+        "login_count" => 154,
+        "vip" => true
       }
+    }
   end
 end

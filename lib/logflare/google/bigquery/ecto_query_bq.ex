@@ -31,30 +31,23 @@ defmodule Logflare.EctoQueryBQ do
 
   def apply_nested_joins(nested_columns, q) do
     nested_columns
-    |> Enum.reduce(%{q: q, level: 0}, fn column, acc ->
+    |> Enum.with_index(1)
+    |> Enum.reduce(q, fn {column, level}, q ->
       column = String.to_atom(column)
-      level = acc.level + 1
 
-      q =
-        case level do
-          1 ->
-            join(acc.q, :inner, [log], n in fragment("UNNEST(?)", field(log, ^column)))
-
-          _ ->
-            join(acc.q, :inner, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)))
-        end
-
-      %{q: q, level: level}
+      if level === 1 do
+        join(q, :inner, [log], n in fragment("UNNEST(?)", field(log, ^column)))
+      else
+        join(q, :inner, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)))
+      end
     end)
-    |> Map.get(:q)
   end
 
   def apply_where_conditions(q, colvalops) do
     Enum.reduce(colvalops, q, fn %{column: column, operator: operator, value: value}, q ->
       column = String.to_atom(column)
-      condition = build_where_condition(column, operator, value)
 
-      where(q, ^condition)
+      where(q, ^build_where_condition(column, operator, value))
     end)
   end
 
@@ -62,12 +55,12 @@ defmodule Logflare.EctoQueryBQ do
     Enum.group_by(
       pathvalops,
       fn %{path: path} ->
-        # trim last column
+        # delete last column including the dot
         String.replace(path, ~r/\.\w+$/, "")
       end,
       fn pathvalop ->
         pathvalop
-        # delete all but last column
+        # delete all columns except the last one
         |> Map.put(:column, String.replace(pathvalop.path, ~r/^[\w\.]+\./, ""))
         |> Map.drop([:path])
       end

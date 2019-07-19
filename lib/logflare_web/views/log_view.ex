@@ -4,5 +4,4 @@ defmodule LogflareWeb.LogView do
   def render("index.json", %{message: message}) do
     %{message: message}
   end
-
 end

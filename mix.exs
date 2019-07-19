@@ -66,7 +66,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
-      {:google_api_big_query, "~> 0.16.0"},
+      {:google_api_big_query, "~> 0.17.0"},
       {:goth, "~> 0.8.0"},
       {:broadway, "~> 0.3.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
@@ -89,7 +89,9 @@ defmodule Logflare.Mixfile do
       {:logflare_logger_backend, github: "logflare/logflare_logger_backend"},
       {:logflare_agent, github: "logflare/logflare_agent"},
       {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"},
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
+      {:decorator, "~> 1.3"},
+      {:atomic_map, "~> 0.9.3"}
     ]
   end
 

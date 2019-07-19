@@ -1,5 +1,6 @@
 defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   alias Logflare.LogEvent, as: LE
+
   @moduledoc """
   Validates that types of values for the same field path are the same
   """

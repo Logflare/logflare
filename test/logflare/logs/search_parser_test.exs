@@ -80,5 +80,45 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "~", path: "metadata.log.label1", value: "origin"}
                ])
     end
+
+    test "nested fields filter with timestamp 3" do
+      str = ~S|
+         log "was generated" "by logflare pinger"
+         timestamp:>2019-01-01
+         timestamp:<=2019-04-20
+         timestamp:<2020-01-01T03:14:15Z
+         timestamp:>=2019-01-01T03:14:15Z
+         metadata.context.file:"some module.ex"
+         metadata.context.line_number:100
+         metadata.user.group_id:5
+         metadata.log.metric1:<10
+       |
+
+      {:ok, result} = Parser.parse(str)
+
+      assert Enum.sort(result) ==
+               Enum.sort([
+                 %{operator: "<", path: "metadata.log.metric1", value: 10},
+                 %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
+                 %{operator: "=", path: "metadata.context.line_number", value: 100},
+                 %{operator: "=", path: "metadata.user.group_id", value: 5},
+                 %{operator: ">=", path: "timestamp", value: ~U[2019-01-01 03:14:15Z]},
+                 %{operator: "<=", path: "timestamp", value: ~D[2019-04-20]},
+                 %{operator: ">", path: "timestamp", value: ~D[2019-01-01]},
+                 %{operator: "<", path: "timestamp", value: ~U[2020-01-01 03:14:15Z]},
+                 %{operator: "~", path: "event_message", value: "by logflare pinger"},
+                 %{operator: "~", path: "event_message", value: "log"},
+                 %{operator: "~", path: "event_message", value: "was generated"}
+               ])
+    end
+
+    test "returns error on malformed timestamp filter" do
+      str = ~S|
+         log "was generated" "by logflare pinger"
+         timestamp:>20
+       |
+
+      assert {:error, "Timestamp parse error: invalid_format"} = Parser.parse(str)
+    end
   end
 end

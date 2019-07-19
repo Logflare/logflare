@@ -120,9 +120,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
               Logger.info("Source schema updated!")
 
             {:error, response} ->
-              LogflareLogger.context(
-                tesla_response: GenUtils.get_tesla_error_message(response)
-              )
+              LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
 
               Logger.error("Source schema update error!")
           end

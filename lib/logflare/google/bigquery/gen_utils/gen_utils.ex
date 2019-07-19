@@ -13,11 +13,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     %Logflare.Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
     %Logflare.User{bigquery_project_id: project_id} = Users.Cache.get_by_id(user_id)
 
-    if is_nil(project_id) do
-      @project_id
-    else
-      project_id
-    end
+    project_id || @project_id
   end
 
   @spec get_table_ttl(atom()) :: non_neg_integer()

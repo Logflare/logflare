@@ -1,0 +1,3 @@
+ <%= if length(@log_events) > 0 do %>
+    <%= render "logs_search_list.html", log_events: @log_events %>
+ <% end %>
