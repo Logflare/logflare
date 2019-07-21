@@ -128,12 +128,25 @@ defmodule LogflareWeb.SourceController do
   end
 
   def search(%{assigns: %{user: user, source: source}} = conn, params) do
-    render(
-      conn,
-      "search.html",
+    tailing? =
+      case params["tailing"] do
+        "true" -> true
+        "false" -> false
+        _ -> nil
+      end
+
+    session = %{
       source: source,
       user: user,
       querystring: params["q"]
+    }
+
+    session = if not is_nil(tailing?), do: Map.put(session, :tailing?, tailing?), else: session
+
+    render(
+      conn,
+      "search.html",
+      session: session
     )
   end
 

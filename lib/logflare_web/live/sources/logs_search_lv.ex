@@ -12,8 +12,15 @@ defmodule LogflareWeb.Source.TailSearchLV do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
   end
 
-  def mount(%{source: source, user: user, querystring: qs}, socket) do
+  def mount(%{source: source, user: user, querystring: qs} = session, socket) do
     send(self(), :search)
+
+    tailing =
+      if is_nil(session[:tailing?]) do
+        true
+      else
+        session[:tailing?]
+      end
 
     {:ok,
      assign(socket,
@@ -22,8 +29,8 @@ defmodule LogflareWeb.Source.TailSearchLV do
        flash: %{},
        log_events: [],
        search_op: nil,
-       tailing?: true,
-       tailing_initial?: true,
+       tailing?: tailing,
+       tailing_initial?: tailing,
        source: source,
        user: user
      )}
