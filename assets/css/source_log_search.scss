@@ -2,54 +2,52 @@
 
 .source-logs-search-container {
     display: grid;
-	grid-template-rows: 20% 80%;
-	grid-template-columns: 70% 30%;
-	grid-column-gap: 0vw;
-	height: 85vh;
-	width: 95vw;
+    grid-template-rows: 20% 80%;
+    grid-template-columns: 70% 30%;
+    grid-column-gap: 0vw;
+    height: 85vh;
+    width: 95vw;
+
+    & form {
+        grid-row: 1;
+        grid-column: span 2;
+    }
+
+    & .alert {
+        margin: 10px 10px 0px 0px;
+    }
+
+    & #logs-list {
+        grid-column: 1/2;
+        grid-row: 2/2;
+        display: flex;
+        flex-direction: column-reverse;
+
+        &::-webkit-scrollbar-track {
+            -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.1);
+            background-color: #f5f5f5;
+        }
+
+        &::-webkit-scrollbar {
+            width: 15px;
+            background-color: #f5f5f5;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: #fff;
+            background-image: -webkit-gradient(
+                linear,
+                50% 0%,
+                75% 100%,
+                from($brand-green),
+                to($brand-brighter-green)
+            );
+        }
+    }
+
+    & .admin {
+        padding-left: 10px;
+        grid-row: 2/2;
+        grid-column: 2/2;
+    }
 }
-
-.source-logs-search-container form {
-	grid-row: 1;
-	grid-column: span 2;
-}
-
-.source-logs-search-container .alert {
-	margin: 10px 10px 0px 0px;
-}
-
-.source-logs-search-container #logs-list {
-	grid-column: 1/2;
-	grid-row: 2/2;
-    display: flex;
-	flex-direction: column-reverse;
-}
-
-.source-logs-search-container .admin {
-	padding-left: 10px;
-	grid-row: 2/2;
-	grid-column: 2/2;
-}
-
-.source-logs-search-container #logs-list::-webkit-scrollbar-track {
-	-webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.1);
-	background-color: #F5F5F5;
-}
-
-.source-logs-search-container #logs-list::-webkit-scrollbar {
-	width: 15px;
-	background-color: #F5F5F5;
-
-}
-
-.source-logs-search-container #logs-list::-webkit-scrollbar-thumb {
-	background-color: #FFF;
-	background-image: -webkit-gradient(linear,
-									   50% 0%,
-									   75% 100%,
-									   from($brand-green),
-									   to($brand-brighter-green))
-
-}
-
-
