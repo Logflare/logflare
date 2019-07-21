@@ -127,6 +127,15 @@ defmodule LogflareWeb.Source.TailSearchLV do
       Process.send_after(self(), :search, @tailing_search_interval)
     end
 
+    # prevents removal of log events loaded
+    # during initial tailing query
+    log_events =
+      socket.assigns.log_events
+      |> Enum.concat(log_events)
+      |> Enum.reverse()
+      |> Enum.take(100)
+      |> Enum.reverse()
+
     {:noreply,
      assign(socket,
        log_events: log_events,
