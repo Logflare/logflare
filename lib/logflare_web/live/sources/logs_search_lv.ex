@@ -32,7 +32,8 @@ defmodule LogflareWeb.Source.TailSearchLV do
        tailing?: tailing,
        tailing_initial?: tailing,
        source: source,
-       user: user
+       user: user,
+       search_uri_query: ""
      )}
   end
 
@@ -67,6 +68,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
     socket =
       socket
+      |> assign_search_uri_query()
       |> assign(:flash, %{})
       |> maybe_put_flash()
 
@@ -196,5 +198,15 @@ defmodule LogflareWeb.Source.TailSearchLV do
       end)
 
     assign(socket, task: task)
+  end
+
+  def assign_search_uri_query(%{assigns: as} = socket) do
+    str =
+      URI.encode_query(%{
+        q: as.querystring,
+        tailing: as.tailing?
+      })
+
+    assign(socket, :search_uri_query, str)
   end
 end

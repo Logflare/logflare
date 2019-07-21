@@ -35,6 +35,11 @@
             Show source schema
         </button>
         </div>
+        <div class="col-auto">
+        <button type="button" class="btn btn-info btn-sm" id="search-uri-query" data-clipboard-text="<%= @search_uri_query %>">
+            Copy search URL 
+        </button>
+        </div>
     </div>
     <%= if map_size(@flash) > 0 do %>
         <%= for {k,v} <- @flash do %> 
