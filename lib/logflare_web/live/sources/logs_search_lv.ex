@@ -97,8 +97,6 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_event("user_idle", _, socket) do
-    IO.inspect("Got user_idle event")
-
     socket =
       if socket.assigns.tailing? do
         flash = Map.put(%{}, :info, "Live search paused due to user inactivity")
@@ -113,7 +111,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
         socket
       end
 
-    {:noreply, IO.inspect(socket)}
+    {:noreply, socket}
   end
 
   def maybe_put_flash(%{assigns: as} = socket) do
@@ -185,6 +183,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
        flash: flash,
        task: nil,
        tailing?: false,
+       tailing_initial?: false,
        search_op: search_op
      )}
   end
@@ -228,6 +227,13 @@ defmodule LogflareWeb.Source.TailSearchLV do
         q: as.querystring,
         tailing: as.tailing?
       })
+
+    str =
+      if str == "" do
+        ""
+      else
+        "?" <> str
+      end
 
     assign(socket, :search_uri_query, str)
   end
