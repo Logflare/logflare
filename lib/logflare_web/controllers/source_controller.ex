@@ -146,7 +146,8 @@ defmodule LogflareWeb.SourceController do
     render(
       conn,
       "search.html",
-      session: session
+      session: session,
+      layout: {LogflareWeb.LayoutView, "ui.html"}
     )
   end
 

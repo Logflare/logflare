@@ -7,18 +7,21 @@
 @import "marketing";
 @import "homepage";
 @import "source_log_search";
+@import "ui";
 
 body {
     background-color: #161616;
     color: #9a9a9a;
 }
 
-nav {
+nav.app {
     max-height: 10vh;
 }
 
-main {
+main.app {
     max-height: 90vh;
+    margin-top: 110px;
+    padding-bottom: 10px;
 }
 
 #login .list-group a {
@@ -129,11 +132,6 @@ main {
 #no-logs-warning {
     margin-right: 10%;
     max-width: 800px;
-}
-
-main {
-    margin-top: 110px;
-    padding-bottom: 10px;
 }
 
 .alert-info a {

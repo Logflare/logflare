@@ -1,0 +1,11 @@
+body.experimental-ui {
+    & nav.navbar {
+        height: 5vh;
+    }
+
+    & main {
+        padding-top: 2vh;
+        margin-top: 5vh;
+        height: 95vh;
+    }
+}
