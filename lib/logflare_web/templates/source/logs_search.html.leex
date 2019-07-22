@@ -40,6 +40,16 @@
             Copy search URL 
         </button>
         </div>
+        <div class="col-auto invisible">
+        <button type="button" 
+            class="btn btn-info btn-sm"
+            phx-click="user_idle"
+            id="user_idle"
+            data-user-idle-interval="<%= @user_idle_interval %>"
+            >
+            This button shouldn't be visible!
+        </button>
+        </div>
     </div>
     <%= if map_size(@flash) > 0 do %>
         <%= for {k,v} <- @flash do %> 

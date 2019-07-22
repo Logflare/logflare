@@ -7,6 +7,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   alias Logflare.LogEvent
 
   @tailing_search_interval 10_000
+  @user_idle_interval 60_000
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
@@ -33,7 +34,8 @@ defmodule LogflareWeb.Source.TailSearchLV do
        tailing_initial?: tailing,
        source: source,
        user: user,
-       search_uri_query: ""
+       search_uri_query: "",
+       user_idle_interval: @user_idle_interval
      )}
   end
 
@@ -92,6 +94,26 @@ defmodule LogflareWeb.Source.TailSearchLV do
       )
 
     {:noreply, socket}
+  end
+
+  def handle_event("user_idle", _, socket) do
+    IO.inspect("Got user_idle event")
+
+    socket =
+      if socket.assigns.tailing? do
+        flash = Map.put(%{}, :info, "Live search paused due to user inactivity")
+
+        assign(
+          socket,
+          tailing?: false,
+          tailing_initial?: false,
+          flash: flash
+        )
+      else
+        socket
+      end
+
+    {:noreply, IO.inspect(socket)}
   end
 
   def maybe_put_flash(%{assigns: as} = socket) do

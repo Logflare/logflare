@@ -5,6 +5,7 @@ import _ from "lodash"
 import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 import ClipboardJS from "clipboard"
+import idle from "./vendor/idle"
 
 export async function main({ scrollTracker }, { avgEventsPerSecond }) {
     const { sourceToken, logs } = $("#__phx-assigns__").data()
@@ -95,9 +96,7 @@ async function logTemplate(e) {
     ${
         via_rule
             ? `<span
-    data-toggle="tooltip" data-placement="top" title="Matching ${
-        via_rule.regex
-    } routing from ${origin_source_id}" style="color: ##5eeb8f;">
+    data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
     <i class="fa fa-code-branch" style="font-size: 1em;"></i>
     </span>`
             : `<span></span>`
@@ -140,7 +139,7 @@ function resetScrollTracker() {
 export async function search() {
     const clipboard = new ClipboardJS("#search-uri-query", {
         text: trigger =>
-            location.href + "?" + trigger.getAttribute("data-clipboard-text"),
+            location.href + trigger.getAttribute("data-clipboard-text"),
     })
 
     clipboard.on("success", e => {
@@ -151,4 +150,15 @@ export async function search() {
     clipboard.on("error", e => {
         e.clearSelection()
     })
+
+    const idleInterval = $("#user_idle").data("user-idle-interval")
+
+    idle({
+        onIdle: () => {
+            console.log(`User idle after ${idleInterval}, tail search paused`)
+            $("#user_idle").click()
+        },
+        keepTracking: true,
+        idle: idleInterval,
+    }).start()
 }
