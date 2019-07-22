@@ -7,13 +7,21 @@ defmodule LogflareWeb.Source.TailSearchLV do
   alias Logflare.LogEvent
 
   @tailing_search_interval 10_000
+  @user_idle_interval 60_000
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
   end
 
-  def mount(%{source: source, user: user, querystring: qs}, socket) do
+  def mount(%{source: source, user: user, querystring: qs} = session, socket) do
     send(self(), :search)
+
+    tailing =
+      if is_nil(session[:tailing?]) do
+        true
+      else
+        session[:tailing?]
+      end
 
     {:ok,
      assign(socket,
@@ -22,10 +30,12 @@ defmodule LogflareWeb.Source.TailSearchLV do
        flash: %{},
        log_events: [],
        search_op: nil,
-       tailing?: true,
-       tailing_initial?: true,
+       tailing?: tailing,
+       tailing_initial?: tailing,
        source: source,
-       user: user
+       user: user,
+       search_uri_query: "",
+       user_idle_interval: @user_idle_interval
      )}
   end
 
@@ -60,6 +70,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
     socket =
       socket
+      |> assign_search_uri_query()
       |> assign(:flash, %{})
       |> maybe_put_flash()
 
@@ -81,6 +92,24 @@ defmodule LogflareWeb.Source.TailSearchLV do
         tailing_initial?: now_tailing_initial?,
         task: nil
       )
+
+    {:noreply, socket}
+  end
+
+  def handle_event("user_idle", _, socket) do
+    socket =
+      if socket.assigns.tailing? do
+        flash = Map.put(%{}, :info, "Live search paused due to user inactivity")
+
+        assign(
+          socket,
+          tailing?: false,
+          tailing_initial?: false,
+          flash: flash
+        )
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
@@ -127,6 +156,15 @@ defmodule LogflareWeb.Source.TailSearchLV do
       Process.send_after(self(), :search, @tailing_search_interval)
     end
 
+    # prevents removal of log events loaded
+    # during initial tailing query
+    log_events =
+      socket.assigns.log_events
+      |> Enum.concat(log_events)
+      |> Enum.reverse()
+      |> Enum.take(100)
+      |> Enum.reverse()
+
     {:noreply,
      assign(socket,
        log_events: log_events,
@@ -145,6 +183,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
        flash: flash,
        task: nil,
        tailing?: false,
+       tailing_initial?: false,
        search_op: search_op
      )}
   end
@@ -180,5 +219,22 @@ defmodule LogflareWeb.Source.TailSearchLV do
       end)
 
     assign(socket, task: task)
+  end
+
+  def assign_search_uri_query(%{assigns: as} = socket) do
+    str =
+      URI.encode_query(%{
+        q: as.querystring,
+        tailing: as.tailing?
+      })
+
+    str =
+      if str == "" do
+        ""
+      else
+        "?" <> str
+      end
+
+    assign(socket, :search_uri_query, str)
   end
 end
