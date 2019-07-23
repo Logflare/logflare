@@ -40,13 +40,17 @@
             Copy search URL 
         </button>
         </div>
+        <div class="col-auto">
+        <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#queryDebugModal">
+            Query debug
+        </button>
+        </div>
         <div class="col-auto invisible">
         <button type="button" 
             class="btn btn-info btn-sm"
             phx-click="user_idle"
             id="user_idle"
-            data-user-idle-interval="<%= @user_idle_interval %>"
-            >
+            data-user-idle-interval="<%= @user_idle_interval %>">
             This button shouldn't be visible!
         </button>
         </div>
@@ -59,13 +63,38 @@
         <% end %>
     <% end %>
     </form>
-   <%= if @user.admin do %>
-    <%= render "logs_search_admin.html", user: @user, search_op: @search_op, log_events: @log_events %>
-   <% else %>
-    <%= render "logs_search_user.html", user: @user, search_op: @search_op, log_events: @log_events %>
-   <% end %>
+    <%= if length(@log_events) > 0 do %>
+        <%= render "logs_search_list.html", log_events: @log_events %>
+    <% end %>
 </div>
+
+<%= if @search_op && @search_op.sql_params do %>
+    <div class="invisible" id="search-query-debug">
+        <% stats = @search_op.stats %>
+        <div>
+            <h5>Query debugging</h6>
+            <ul class="list-group">
+                <li class="list-group-item">
+                    <code>
+                        <%= format_sql(@search_op.sql_params) %> 
+                    </code>
+                </li>
+                <li class="list-group-item">
+                    Total rows: <%= stats[:total_rows] %>
+                </li>
+                <li class="list-group-item">
+                    Total bytes processed: <%= stats[:total_bytes_processed] %>
+                </li>
+                <li class="list-group-item">
+                    Total duration: <%= stats[:total_duration] %>ms
+                </li>
+            </ul>
+        </div>
+    </div>
+<% end %>
+
 </div>
+
 
 <%= render "logs_search_modal.html",
     id: "searchHelpModal",
@@ -77,6 +106,10 @@
     title: "Source schema",
     body: format_bq_schema(@source) %>
 
+<%= render "logs_search_modal.html",
+    id: "queryDebugModal",
+    title: "Query Debugging",
+    body: "" %>
 
 <%= render "logs_search_modal.html",
     id: "metadataModal",

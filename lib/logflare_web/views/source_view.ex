@@ -2,6 +2,7 @@ defmodule LogflareWeb.SourceView do
   use LogflareWeb, :view
 
   defdelegate format_bq_schema(source), to: LogflareWeb.Source.TailSearchLV.Utils
+  defdelegate format_sql(query_params), to: LogflareWeb.Source.TailSearchLV.Utils
 
   def format_timestamp(timestamp) do
     timestamp
