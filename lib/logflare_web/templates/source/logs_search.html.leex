@@ -1,4 +1,4 @@
-<div class="container source-logs-search-container">
+<div class="container source-logs-search-container" id="console-text">
     <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
     <% loading_state = (@task && @tailing? && @tailing_initial?) || (@task && not @tailing?) %>
     <div class="form-group">
@@ -36,7 +36,7 @@
         </button>
         </div>
         <div class="col-auto">
-        <button type="button" class="btn btn-info btn-sm" id="search-uri-query" data-clipboard-text="<%= @search_uri_query %>">
+        <button type="button" class="btn btn-info btn-sm" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>">
             Copy search URL 
         </button>
         </div>
@@ -75,7 +75,7 @@
 <%= render "logs_search_modal.html",
     id: "sourceSchemaModal",
     title: "Source schema",
-    body: LogflareWeb.Source.TailSearchLV.Utils.format_bq_schema(@source) %>
+    body: format_bq_schema(@source) %>
 
 <script>
 document.addEventListener("DOMContentLoaded", async () => {

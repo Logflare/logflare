@@ -1,6 +1,7 @@
 <%= if @user.admin && @search_op && @search_op.sql_params  do %>
 <div class="admin">
     <% sql = LogflareWeb.Source.TailSearchLV.Utils.format_sql(@search_op.sql_params) %>
+    <% stats = @search_op.stats %>
     <div>
         <h5>Query debugging</h6>
         <ul class="list-group">
@@ -10,13 +11,13 @@
         </code>
         </li>
         <li class="list-group-item">
-        Total rows: <%= @search_op.stats[:total_rows] %>
+        Total rows: <%= stats[:total_rows] %>
         </li>
         <li class="list-group-item">
-        Total bytes processed: <%= @search_op.stats[:total_bytes_processed] %>
+        Total bytes processed: <%= stats[:total_bytes_processed] %>
         </li>
         <li class="list-group-item">
-        Total duration: <%= @search_op.stats[:total_duration] %>ms
+        Total duration: <%= stats[:total_duration] %>ms
         </li>
         </ul>
     </div>
