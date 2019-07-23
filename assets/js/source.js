@@ -161,4 +161,13 @@ export async function search() {
         keepTracking: true,
         idle: idleInterval,
     }).start()
+
+    $("#metadataModal").on("show.bs.modal", event => {
+        const metadataHtml = $(event.relatedTarget)
+            .find("~ .metadata")
+            .html()
+        const modal = $("#metadataModal")
+            .find(".modal-body")
+            .html(metadataHtml)
+    })
 }

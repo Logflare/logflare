@@ -6,7 +6,9 @@
                 data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp) <> " UTC" %></mark>
         <%= message %>
         <%= if map_size(metadata) > 0 do %>
-        <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
+        <a class="metadata-link" 
+        data-toggle="modal" data-target="#metadataModal"
+        href="#" aria-expanded="false">
             metadata
         </a>
         <div class="collapse metadata" id="metadata-<%= inx %>">

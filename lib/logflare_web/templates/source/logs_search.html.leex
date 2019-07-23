@@ -77,6 +77,12 @@
     title: "Source schema",
     body: format_bq_schema(@source) %>
 
+
+<%= render "logs_search_modal.html",
+    id: "metadataModal",
+    title: "Metadata",
+    body: "" %>
+
 <script>
 document.addEventListener("DOMContentLoaded", async () => {
     await Source.search()
