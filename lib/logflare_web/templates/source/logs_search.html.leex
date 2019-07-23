@@ -67,17 +67,13 @@
         <%= render "logs_search_list.html", log_events: @log_events %>
     <% end %>
 </div>
-
 <%= if @search_op && @search_op.sql_params do %>
-    <div class="invisible" id="search-query-debug">
+    <div class="d-none" id="search-query-debug">
         <% stats = @search_op.stats %>
         <div>
-            <h5>Query debugging</h6>
             <ul class="list-group">
                 <li class="list-group-item">
-                    <code>
-                        <%= format_sql(@search_op.sql_params) %> 
-                    </code>
+                <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
                 </li>
                 <li class="list-group-item">
                     Total rows: <%= stats[:total_rows] %>
@@ -92,7 +88,6 @@
         </div>
     </div>
 <% end %>
-
 </div>
 
 

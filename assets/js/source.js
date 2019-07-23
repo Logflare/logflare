@@ -6,6 +6,7 @@ import { userSelectedFormatter } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 import ClipboardJS from "clipboard"
 import idle from "./vendor/idle"
+import sqlFormatter from "sql-formatter"
 
 export async function main({ scrollTracker }, { avgEventsPerSecond }) {
     const { sourceToken, logs } = $("#__phx-assigns__").data()
@@ -169,5 +170,15 @@ export async function search() {
         const modal = $("#metadataModal")
             .find(".modal-body")
             .html(metadataHtml)
+    })
+
+    const queryDebugModal = $("#queryDebugModal")
+    queryDebugModal.on("show.bs.modal", event => {
+        const fmtSql = sqlFormatter.format($("#search-query-debug code").text())
+        console.log(fmtSql)
+        $("#search-query-debug code").text(fmtSql)
+        queryDebugModal
+            .find(".modal-body")
+            .html($("#search-query-debug").html())
     })
 }
