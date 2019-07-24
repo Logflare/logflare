@@ -34,6 +34,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
        tailing_initial?: tailing,
        source: source,
        user: user,
+       temp_querystring: nil,
        user_idle_interval: @user_idle_interval
      )}
   end
@@ -71,6 +72,17 @@ defmodule LogflareWeb.Source.TailSearchLV do
       socket
       |> assign(:flash, %{})
       |> maybe_put_flash()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("save_querystring", temp_qs, socket) do
+    socket =
+      if temp_qs != socket.assigns.querystring do
+        assign(socket, :temp_querystring, temp_qs)
+      else
+        assign(socket, :temp_querystring, nil)
+      end
 
     {:noreply, socket}
   end
