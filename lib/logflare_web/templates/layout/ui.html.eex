@@ -32,7 +32,7 @@
       <% else %>
         <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
       <% end %>
-      <span class="source-name"> <%= @source.name %> </span>
+      <span class="live-tail-search"> Live Tail Search (BETA) </span>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>

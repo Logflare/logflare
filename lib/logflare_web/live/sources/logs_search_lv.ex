@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
   @tailing_search_interval 10_000
   @user_idle_interval 60_000
+  @max_user_logs 100
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
@@ -131,7 +132,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
         flash:
           put_in(
             socket.assigns.flash,
-            [:info],
+            [:warning],
             "Timestamp filter is ignored when live tailing is active"
           )
       )
@@ -149,9 +150,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_info(:search, socket) do
-    socket =
-      socket
-      |> start_search_task()
+    socket = start_search_task(socket)
 
     {:noreply, socket}
   end
@@ -171,8 +170,9 @@ defmodule LogflareWeb.Source.TailSearchLV do
     log_events =
       socket.assigns.log_events
       |> Enum.concat(log_events)
+      |> Enum.uniq_by(& &1.body.timestamp)
       |> Enum.reverse()
-      |> Enum.take(100)
+      |> Enum.take(@max_user_logs)
       |> Enum.reverse()
 
     tailing? = socket.assigns.tailing?
@@ -218,6 +218,10 @@ defmodule LogflareWeb.Source.TailSearchLV do
      )}
   end
 
+  def handle_info(_task, state) do
+    {:noreply, state}
+  end
+
   def format_error(%Tesla.Env{body: body}) do
     body
     |> Poison.decode!()
@@ -228,9 +232,6 @@ defmodule LogflareWeb.Source.TailSearchLV do
   def format_error(e), do: e
 
   # handles {:DOWN, ... } msgs from task
-  def handle_info(_task, state) do
-    {:noreply, state}
-  end
 
   def start_search_task(%{assigns: %{querystring: nil}} = socket), do: socket
 

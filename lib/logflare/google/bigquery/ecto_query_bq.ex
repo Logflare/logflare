@@ -91,7 +91,7 @@ defmodule Logflare.EctoQueryBQ do
         dynamic([..., n1], field(n1, ^c) == ^v)
 
       "~" ->
-        dynamic([..., n1], fragment("REGEXP_CONTAINS(?, ?)", field(n1, ^c), ^v))
+        dynamic([..., n1], fragment(~s|REGEXP_CONTAINS(?, ?)|, field(n1, ^c), ^v))
     end
   end
 end

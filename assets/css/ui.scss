@@ -1,11 +1,14 @@
 body.experimental-ui {
-    color: white;
-
     & nav.navbar {
         max-height: 7vh;
 
         & .source-name {
-            color: black;
+            color: $brand-black;
+        }
+
+        & .live-tail-search {
+            font-weight: 400;
+            color: $brand-black;
         }
     }
 
