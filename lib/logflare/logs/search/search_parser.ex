@@ -27,7 +27,7 @@ defmodule Logflare.Logs.Search.Parser do
     # uses non-capturing groups to match
     # either double-quoted values with default equality operator
     # or values following the specified operator
-    regex = ~r/(metadata\.[\w\.]+:(?:(?:[\d\w\.~=><]+)|(?:".+")))/
+    regex = ~r/(metadata\.[\w\.]+(?:[:~]{1,2})(?:(?:[\d\w\.~=><]+)|(?:".+")))/
 
     clauses =
       regex
@@ -133,7 +133,7 @@ defmodule Logflare.Logs.Search.Parser do
     searchq = parsemap.searchq
 
     # uses negative lookbehind to find double quoted strings that are not preceded with :
-    regex = ~r/(?<!:)"(.*?)"/
+    regex = ~r/(?<!#{op_regex()})"(.*?)"/
 
     clauses =
       regex
@@ -145,5 +145,11 @@ defmodule Logflare.Logs.Search.Parser do
       searchq: Regex.replace(regex, searchq, ""),
       clauses: clauses ++ parsemap.clauses
     }
+  end
+
+  def op_regex() do
+    (~w(~ > >= < <=) ++ [""])
+    |> Enum.map(&":#{&1}")
+    |> Enum.join("|")
   end
 end

@@ -89,6 +89,7 @@ defmodule Logflare.Logs.Search.ParserTest do
          timestamp:<2020-01-01T03:14:15Z
          timestamp:>=2019-01-01T03:14:15Z
          metadata.context.file:"some module.ex"
+         metadata.context.address:~"\d\d\d ST"
          metadata.context.line_number:100
          metadata.user.group_id:5
          metadata.log.metric1:<10
@@ -100,6 +101,7 @@ defmodule Logflare.Logs.Search.ParserTest do
                Enum.sort([
                  %{operator: "<", path: "metadata.log.metric1", value: 10},
                  %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
+                 %{operator: "~", path: "metadata.context.address", value: ~S"\d\d\d ST"},
                  %{operator: "=", path: "metadata.context.line_number", value: 100},
                  %{operator: "=", path: "metadata.user.group_id", value: 5},
                  %{operator: ">=", path: "timestamp", value: ~U[2019-01-01 03:14:15Z]},
