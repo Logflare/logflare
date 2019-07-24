@@ -140,7 +140,8 @@ function resetScrollTracker() {
 export async function search() {
     const clipboard = new ClipboardJS("#search-uri-query", {
         text: trigger =>
-            location.href + trigger.getAttribute("data-clipboard-text"),
+            location.href.replace(/\?.+$/, "") +
+            trigger.getAttribute("data-clipboard-text"),
     })
 
     clipboard.on("success", e => {
