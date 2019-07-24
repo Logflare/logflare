@@ -1,11 +1,17 @@
 body.experimental-ui {
+    color: white;
+
     & nav.navbar {
-        height: 5vh;
+        max-height: 7vh;
+
+        & .source-name {
+            color: black;
+        }
     }
 
     & main {
         padding-top: 2vh;
-        margin-top: 5vh;
-        height: 95vh;
+        margin-top: 7vh;
+        height: 93vh;
     }
 }

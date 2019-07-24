@@ -2,10 +2,10 @@
 
 .source-logs-search-container {
     display: grid;
-    grid-template-rows: 20% 80%;
-    grid-template-columns: 70% 30%;
+    grid-template-rows: 24% 76%;
+    grid-template-columns: 50% 50%;
     grid-column-gap: 0vw;
-    height: 85vh;
+    height: 90vh;
     width: 95vw;
 
     & form {
@@ -18,13 +18,13 @@
     }
 
     & #logs-list {
-        grid-column: 1/2;
+        grid-column: span 2;
         grid-row: 2/2;
         display: flex;
         flex-direction: column-reverse;
 
         &::-webkit-scrollbar-track {
-            -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.1);
+            box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.1);
             background-color: #f5f5f5;
         }
 
@@ -44,10 +44,14 @@
             );
         }
     }
+}
 
-    & .admin {
-        padding-left: 10px;
-        grid-row: 2/2;
-        grid-column: 2/2;
+.source-logs-search-modals {
+    & kbd {
+        white-space: nowrap;
+    }
+
+    & .modal-content {
+        color: white;
     }
 }

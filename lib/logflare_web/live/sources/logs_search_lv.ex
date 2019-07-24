@@ -163,12 +163,32 @@ defmodule LogflareWeb.Source.TailSearchLV do
       |> Enum.take(100)
       |> Enum.reverse()
 
+    tailing? = socket.assigns.tailing?
+    querystring = socket.assigns.querystring
+    log_events_empty? = log_events == []
+
+    warning =
+      cond do
+        log_events_empty? and not tailing? ->
+          "No logs matching your search query"
+
+        log_events_empty? and tailing? ->
+          "No logs matching your search query have been injested during last 24 hours..."
+
+        querystring == "" and log_events_empty? and tailing? ->
+          "No logs have been injested during last 24 hours..."
+
+        true ->
+          nil
+      end
+
     {:noreply,
      assign(socket,
        log_events: log_events,
        task: nil,
        search_op: search_op,
-       tailing_initial?: false
+       tailing_initial?: false,
+       flash: Map.put(socket.assigns.flash, :warning, warning)
      )}
   end
 
