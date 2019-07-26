@@ -19,11 +19,12 @@ defmodule Logflare.Logs.Search.ParserTest do
       str = ~S|new "user sign up" server|
       {:ok, result} = Parser.parse(str)
 
-      assert result == [
-               %{operator: "~", path: "event_message", value: "user sign up"},
-               %{operator: "~", path: "event_message", value: "new"},
-               %{operator: "~", path: "event_message", value: "server"}
-             ]
+      assert Enum.sort(result) ==
+               Enum.sort([
+                 %{operator: "~", path: "event_message", value: "user sign up"},
+                 %{operator: "~", path: "event_message", value: "new"},
+                 %{operator: "~", path: "event_message", value: "server"}
+               ])
     end
 
     test "nested fields filter" do
@@ -70,7 +71,7 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "<=", path: "metadata.log.metric2", value: 10},
                  %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
                  %{operator: "=", path: "metadata.context.line_number", value: 100},
-                 %{operator: "=", path: "metadata.user.admin", value: "false"},
+                 %{operator: "=", path: "metadata.user.admin", value: false},
                  %{operator: "=", path: "metadata.user.group_id", value: 5},
                  %{value: 10, operator: ">", path: "metadata.log.metric3"},
                  %{operator: ">=", path: "metadata.log.metric4", value: 10},
