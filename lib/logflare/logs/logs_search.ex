@@ -11,7 +11,7 @@ defmodule Logflare.Logs.Search do
   use Logflare.GenDecorators
 
   @default_limit 100
-  @default_processed_bytes_limit 500_000
+  @default_processed_bytes_limit 5_000_000
 
   defmodule SearchOperation do
     @moduledoc """
