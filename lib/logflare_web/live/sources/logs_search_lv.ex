@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
   @tailing_search_interval 10_000
   @user_idle_interval 60_000
+  @max_user_logs 100
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
@@ -34,7 +35,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
        tailing_initial?: tailing,
        source: source,
        user: user,
-       search_uri_query: "",
+       temp_querystring: nil,
        user_idle_interval: @user_idle_interval
      )}
   end
@@ -70,9 +71,19 @@ defmodule LogflareWeb.Source.TailSearchLV do
 
     socket =
       socket
-      |> assign_search_uri_query()
       |> assign(:flash, %{})
       |> maybe_put_flash()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("save_querystring", temp_qs, socket) do
+    socket =
+      if temp_qs != socket.assigns.querystring do
+        assign(socket, :temp_querystring, temp_qs)
+      else
+        assign(socket, :temp_querystring, nil)
+      end
 
     {:noreply, socket}
   end
@@ -121,7 +132,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
         flash:
           put_in(
             socket.assigns.flash,
-            [:info],
+            [:warning],
             "Timestamp filter is ignored when live tailing is active"
           )
       )
@@ -139,9 +150,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   end
 
   def handle_info(:search, socket) do
-    socket =
-      socket
-      |> start_search_task()
+    socket = start_search_task(socket)
 
     {:noreply, socket}
   end
@@ -161,16 +170,37 @@ defmodule LogflareWeb.Source.TailSearchLV do
     log_events =
       socket.assigns.log_events
       |> Enum.concat(log_events)
+      |> Enum.uniq_by(& &1.body.timestamp)
       |> Enum.reverse()
-      |> Enum.take(100)
+      |> Enum.take(@max_user_logs)
       |> Enum.reverse()
+
+    tailing? = socket.assigns.tailing?
+    querystring = socket.assigns.querystring
+    log_events_empty? = log_events == []
+
+    warning =
+      cond do
+        log_events_empty? and not tailing? ->
+          "No logs matching your search query"
+
+        log_events_empty? and tailing? ->
+          "No logs matching your search query have been injested during last 24 hours..."
+
+        querystring == "" and log_events_empty? and tailing? ->
+          "No logs have been injested during last 24 hours..."
+
+        true ->
+          nil
+      end
 
     {:noreply,
      assign(socket,
        log_events: log_events,
        task: nil,
        search_op: search_op,
-       tailing_initial?: false
+       tailing_initial?: false,
+       flash: Map.put(socket.assigns.flash, :warning, warning)
      )}
   end
 
@@ -188,6 +218,10 @@ defmodule LogflareWeb.Source.TailSearchLV do
      )}
   end
 
+  def handle_info(_task, state) do
+    {:noreply, state}
+  end
+
   def format_error(%Tesla.Env{body: body}) do
     body
     |> Poison.decode!()
@@ -198,9 +232,6 @@ defmodule LogflareWeb.Source.TailSearchLV do
   def format_error(e), do: e
 
   # handles {:DOWN, ... } msgs from task
-  def handle_info(_task, state) do
-    {:noreply, state}
-  end
 
   def start_search_task(%{assigns: %{querystring: nil}} = socket), do: socket
 
@@ -219,22 +250,5 @@ defmodule LogflareWeb.Source.TailSearchLV do
       end)
 
     assign(socket, task: task)
-  end
-
-  def assign_search_uri_query(%{assigns: as} = socket) do
-    str =
-      URI.encode_query(%{
-        q: as.querystring,
-        tailing: as.tailing?
-      })
-
-    str =
-      if str == "" do
-        ""
-      else
-        "?" <> str
-      end
-
-    assign(socket, :search_uri_query, str)
   end
 end

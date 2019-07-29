@@ -1,11 +1,13 @@
-<div class="source-logs-search-container">
+<div class="container source-logs-search-container" id="console-text">
+    <div class="search-control">
+    <h5 class="source-name"> <%= @source.name %> </h5>
     <%= f = form_for :search, "#", phx_submit: :search, class: "form-group" %>
     <% loading_state = (@task && @tailing? && @tailing_initial?) || (@task && not @tailing?) %>
     <div class="form-group">
-        <%= text_input f, :querystring, value: @querystring, class: if loading_state, do: "form-control readonly", else: "form-control" %>
+        <%= text_input f, :querystring, value: @temp_querystring || @querystring, class: (if loading_state, do: "form-control readonly", else: "form-control"), "phx-keyup": "save_querystring" %>
     </div>
     <div class="form-row align-items-center">
-        <div class="col-auto">
+        <div class="col-auto mt-2">
             <button class="btn btn-primary btn-sm" type="submit" <%= if loading_state, do: "disabled" %>>
             Search
             <%= if @task && not @tailing? do %>
@@ -15,7 +17,7 @@
             <% end %>
             </button>
         </div>
-        <div class="col-auto">
+        <div class="col-auto mt-2">
             <%= if @tailing? do %>
             <a href="#" class="btn btn-primary btn-sm" phx-click="toggle_tailing" role="button" aria-pressed="true">
                 <div class="spinner-border spinner-border-sm text-info" role="status"></div>
@@ -25,19 +27,24 @@
                 Live tailing</a>
             <% end %>
         </div>
-        <div class="col-auto">
+        <div class="col-auto mt-2">
         <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#searchHelpModal">
-            How to search
+            Search syntax
         </button>
         </div>
-        <div class="col-auto">
+        <div class="col-auto mt-2">
         <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#sourceSchemaModal">
-            Show source schema
+            Source schema
         </button>
         </div>
-        <div class="col-auto">
-        <button type="button" class="btn btn-info btn-sm" id="search-uri-query" data-clipboard-text="<%= @search_uri_query %>">
+        <div class="col-auto mt-2">
+        <button type="button" class="btn btn-info btn-sm" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>">
             Copy search URL 
+        </button>
+        </div>
+        <div class="col-auto mt-2">
+        <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#queryDebugModal">
+            Debug query
         </button>
         </div>
         <div class="col-auto invisible">
@@ -45,28 +52,52 @@
             class="btn btn-info btn-sm"
             phx-click="user_idle"
             id="user_idle"
-            data-user-idle-interval="<%= @user_idle_interval %>"
-            >
+            data-user-idle-interval="<%= @user_idle_interval %>">
             This button shouldn't be visible!
         </button>
         </div>
     </div>
     <%= if map_size(@flash) > 0 do %>
-        <%= for {k,v} <- @flash do %> 
+        <%= for {k,v} <- @flash, v do %> 
             <div class="alert <%= if k == :error, do: "alert-danger", else: "alert-warning" %>" role="alert">
                 <%= v %>
             </div>
         <% end %>
     <% end %>
     </form>
-   <%= if @user.admin do %>
-    <%= render "logs_search_admin.html", user: @user, search_op: @search_op, log_events: @log_events %>
-   <% else %>
-    <%= render "logs_search_user.html", user: @user, search_op: @search_op, log_events: @log_events %>
-   <% end %>
+    </div>
+    <%= if length(@log_events) > 0 do %>
+        <%= render "logs_search_list.html", log_events: @log_events %>
+    <% else %>
+    <div></div>
+    <% end %>
 </div>
+<%= if @search_op && @search_op.sql_params do %>
+    <div class="d-none" id="search-query-debug">
+        <% stats = @search_op.stats %>
+        <div>
+            <ul class="list-group">
+                <li class="list-group-item">
+                 <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
+                </li>
+            </ul>
+            <ul class="list-group list-group-horizontal">
+                <li class="list-group-item flex-fill">
+                    Total rows: <span class="my-badge"><%= stats[:total_rows] %></span>
+                </li>
+                <li class="list-group-item flex-fill">
+                    Total bytes processed: <span class="my-badge"><%= stats[:total_bytes_processed] %></span>
+                </li>
+                <li class="list-group-item flex-fill">
+                    Total duration: <span class="my-badge"><%= stats[:total_duration] %>ms</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+<% end %>
 </div>
 
+<div class="source-logs-search-modals">
 <%= render "logs_search_modal.html",
     id: "searchHelpModal",
     title: "Search syntax",
@@ -75,7 +106,19 @@
 <%= render "logs_search_modal.html",
     id: "sourceSchemaModal",
     title: "Source schema",
-    body: LogflareWeb.Source.TailSearchLV.Utils.format_bq_schema(@source) %>
+    body: format_bq_schema(@source) %>
+
+<%= render "logs_search_modal.html",
+    id: "queryDebugModal",
+    title: "Query Debugging",
+    body: "No query or query is still in progress..." %>
+
+<%= render "logs_search_modal.html",
+    id: "metadataModal",
+    title: "Metadata",
+    body: "" %>
+</div>
+
 
 <script>
 document.addEventListener("DOMContentLoaded", async () => {

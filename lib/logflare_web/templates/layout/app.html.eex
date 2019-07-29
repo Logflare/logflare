@@ -60,7 +60,7 @@
 
     <% end %>
 
-    <nav class="navbar fixed-top navbar-expand-lg navbar-light bg-light">
+    <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @conn.request_path != "/" do %>
         <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
           <i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small>
@@ -99,11 +99,11 @@
             <%= link "Sign in with Google", to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" %>
           </li>
           <% end %>
-        </ul>
+       </ul>
       </div>
     </nav>
 
-    <main role="main">
+    <main role="main" class="app">
       <%= render @view_module, @view_template, assigns %>
     </main>
 

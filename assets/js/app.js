@@ -9,13 +9,11 @@ import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
-import * as formatters from "./formatters"
 
 import LiveSocket from "phoenix_live_view"
 
 let liveSocket = new LiveSocket("/live")
 liveSocket.connect()
-
 
 window.Dashboard = Dashboard
 window.Logs = Logs

@@ -19,35 +19,35 @@
     background-color: #1d1d1d;
 }
 
-.subhead code {
-    color: white;
-    background-color: #e35b8d;
-    padding: 0.2em;
-}
-
 .subhead {
     background-color: #63ff99;
     padding-top: 0.35em;
     padding-bottom: 0.35em;
     color: black;
     box-shadow: 0 0 35px #000000;
-}
 
-.subhead h5 {
-    margin: 0;
-    display: flex;
-    max-width: 70%;
-    overflow: hidden;
-}
+    & code {
+        color: white;
+        background-color: #e35b8d;
+        padding: 0.2em;
+    }
 
-.subhead li {
-    display: inline-block;
-    margin-left: 0.5em;
-}
+    & h5 {
+        margin: 0;
+        display: flex;
+        max-width: 70%;
+        overflow: hidden;
+    }
 
-.subhead ul {
-    margin: 0;
-    padding: 0;
+    & li {
+        display: inline-block;
+        margin-left: 0.5em;
+    }
+
+    & ul {
+        margin: 0;
+        padding: 0;
+    }
 }
 
 .subhead-fixed {
