@@ -22,6 +22,19 @@ main.app {
     max-height: 90vh;
     margin-top: 110px;
     padding-bottom: 10px;
+
+    & h2 {
+        color: $whitecolor;
+    }
+
+    & h3 {
+        color: $whitecolor;
+        margin-top: 1.5em;
+    }
+
+    & h4 {
+        margin-top: 1em;
+    }
 }
 
 #login .list-group a {
@@ -145,19 +158,6 @@ code {
 
 .pointer-cursor {
     cursor: pointer;
-}
-
-h2 {
-    color: $whitecolor;
-}
-
-h3 {
-    color: $whitecolor;
-    margin-top: 1.5em;
-}
-
-h4 {
-    margin-top: 1em;
 }
 
 .footer {

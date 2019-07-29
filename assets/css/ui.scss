@@ -1,12 +1,15 @@
 body.experimental-ui {
     & nav.navbar {
         max-height: 7vh;
+        align-items: baseline;
 
         & .source-name {
+            margin-top: 0;
             color: $brand-black;
         }
 
         & .live-tail-search {
+            padding-left: 1vw;
             font-weight: 400;
             color: $brand-black;
         }
@@ -14,7 +17,7 @@ body.experimental-ui {
 
     & main {
         padding-top: 2vh;
-        margin-top: 7vh;
+        margin-top: 5vh;
         height: 93vh;
     }
 }

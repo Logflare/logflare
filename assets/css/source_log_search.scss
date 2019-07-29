@@ -8,7 +8,11 @@
     height: 90vh;
     width: 95vw;
 
-    & form {
+    & .search-control {
+        & .source-name {
+            text-align: left;
+        }
+
         grid-row: 1;
         grid-column: span 2;
     }
@@ -18,6 +22,7 @@
     }
 
     & #logs-list {
+        background-color: #1d1d1d;
         grid-column: span 2;
         grid-row: 2/2;
         display: flex;
