@@ -27,10 +27,17 @@ defmodule Logflare.Logs.Search.Parser do
       string(">"),
       string("<="),
       string("<"),
-      string("~")
+      string("~"),
+      string("..")
     ])
 
-  field_value = ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 1)
+  field_value =
+    choice([
+      ascii_string([?0..?9], min: 1)
+      |> concat(string(".."))
+      |> ascii_string([?0..?9], min: 1),
+      ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 1)
+    ])
 
   timestamp_field =
     string("timestamp")
@@ -56,11 +63,13 @@ defmodule Logflare.Logs.Search.Parser do
     |> concat(choice([field_value, quoted_string]))
     |> tag(:metadata_field)
 
-  defparsec :parse_query,
-            choice([timestamp_field, metadata_field_op_val, quoted_string, word])
-            |> ignore(optional(ascii_string([?\s, ?\n], min: 1)))
-            |> wrap()
-            |> repeat()
+  defparsec(
+    :parse_query,
+    choice([timestamp_field, metadata_field_op_val, quoted_string, word])
+    |> ignore(optional(ascii_string([?\s, ?\n], min: 1)))
+    |> wrap()
+    |> repeat()
+  )
 
   def parse(querystring) do
     try do
@@ -69,6 +78,7 @@ defmodule Logflare.Logs.Search.Parser do
         |> String.trim()
         |> parse_query()
         |> convert_to_pathvalops()
+        |> List.flatten()
         |> Enum.map(&maybe_cast_value/1)
 
       {:ok, result}
@@ -114,20 +124,39 @@ defmodule Logflare.Logs.Search.Parser do
           }
 
         :metadata_field ->
-          [path, operator, value] =
-            case tokens do
-              [path, operator, {:quoted_string, [value]}] -> [path, operator, value]
-              ts -> ts
-            end
-
-          %{
-            path: path,
-            value: value,
-            operator: operator
-          }
+          to_path_val_op(:metadata_field, tokens)
       end
     end
   end
+
+  defp to_path_val_op(:metadata_field, [path, operator, value]) do
+    %{
+      path: path,
+      value: maybe_tagged_to_literal(value),
+      operator: operator
+    }
+  end
+
+  defp to_path_val_op(:metadata_field, [path, "=", lvalue, "..", rvalue]) do
+    [
+      %{
+        path: path,
+        value: lvalue,
+        operator: ">="
+      },
+      %{
+        path: path,
+        value: rvalue,
+        operator: "<="
+      }
+    ]
+  end
+
+  def maybe_tagged_to_literal({:quoted_string, [literal]}) do
+    literal
+  end
+
+  def maybe_tagged_to_literal(v), do: v
 
   defp not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
   defp not_quote(_, context, _, _), do: {:cont, context}
