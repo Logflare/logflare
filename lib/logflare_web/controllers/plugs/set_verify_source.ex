@@ -9,7 +9,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
   def call(%{assigns: %{source: %Source{}}} = conn, _opts), do: conn
 
   def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
-    id = params["id"] || params["source_id"]
+    id = params["source_id"] || params["id"]
     token = params["source"] || params["source_id"]
     name = params["source_name"]
 
