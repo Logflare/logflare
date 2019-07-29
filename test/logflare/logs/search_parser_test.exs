@@ -19,11 +19,12 @@ defmodule Logflare.Logs.Search.ParserTest do
       str = ~S|new "user sign up" server|
       {:ok, result} = Parser.parse(str)
 
-      assert result == [
-               %{operator: "~", path: "event_message", value: "user sign up"},
-               %{operator: "~", path: "event_message", value: "new"},
-               %{operator: "~", path: "event_message", value: "server"}
-             ]
+      assert Enum.sort(result) ==
+               Enum.sort([
+                 %{operator: "~", path: "event_message", value: "user sign up"},
+                 %{operator: "~", path: "event_message", value: "new"},
+                 %{operator: "~", path: "event_message", value: "server"}
+               ])
     end
 
     test "nested fields filter" do
@@ -70,7 +71,7 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "<=", path: "metadata.log.metric2", value: 10},
                  %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
                  %{operator: "=", path: "metadata.context.line_number", value: 100},
-                 %{operator: "=", path: "metadata.user.admin", value: "false"},
+                 %{operator: "=", path: "metadata.user.admin", value: false},
                  %{operator: "=", path: "metadata.user.group_id", value: 5},
                  %{value: 10, operator: ">", path: "metadata.log.metric3"},
                  %{operator: ">=", path: "metadata.log.metric4", value: 10},
@@ -92,6 +93,7 @@ defmodule Logflare.Logs.Search.ParserTest do
          metadata.context.address:~"\d\d\d ST"
          metadata.context.line_number:100
          metadata.user.group_id:5
+         metadata.user.cluster_id:200..300
          metadata.log.metric1:<10
        |
 
@@ -103,6 +105,8 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
                  %{operator: "~", path: "metadata.context.address", value: ~S"\d\d\d ST"},
                  %{operator: "=", path: "metadata.context.line_number", value: 100},
+                 %{operator: ">=", path: "metadata.user.cluster_id", value: 200},
+                 %{operator: "<=", path: "metadata.user.cluster_id", value: 300},
                  %{operator: "=", path: "metadata.user.group_id", value: 5},
                  %{operator: ">=", path: "timestamp", value: ~U[2019-01-01 03:14:15Z]},
                  %{operator: "<=", path: "timestamp", value: ~D[2019-04-20]},
