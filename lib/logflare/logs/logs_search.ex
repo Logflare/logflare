@@ -11,6 +11,7 @@ defmodule Logflare.Logs.Search do
   use Logflare.GenDecorators
 
   @default_limit 100
+  @default_processed_bytes_limit 500_000
 
   defmodule SearchOperation do
     @moduledoc """
@@ -69,17 +70,41 @@ defmodule Logflare.Logs.Search do
 
     {sql, params} = so.sql_params
 
-    conn
-    |> Api.Jobs.bigquery_jobs_query(
-      project_id,
-      body: %QueryRequest{
-        query: sql,
-        useLegacySql: false,
-        useQueryCache: true,
-        parameterMode: "POSITIONAL",
-        queryParameters: params
-      }
-    )
+    query_request = %QueryRequest{
+      query: sql,
+      useLegacySql: false,
+      useQueryCache: true,
+      parameterMode: "POSITIONAL",
+      queryParameters: params,
+      dryRun: false
+    }
+
+    dry_run = %{query_request | dryRun: false}
+
+    result =
+      Api.Jobs.bigquery_jobs_query(
+        conn,
+        project_id,
+        body: dry_run
+      )
+
+    with {:ok, response} <- result,
+         is_within_limit? =
+           String.to_integer(response.totalBytesProcessed) <= @default_processed_bytes_limit,
+         {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?} do
+      Api.Jobs.bigquery_jobs_query(
+        conn,
+        project_id,
+        body: query_request
+      )
+    else
+      {:total_bytes_processed, false} ->
+        {:error,
+         "Query response size is larger than #{div(@default_processed_bytes_limit, 1000)} KB"}
+
+      errtup ->
+        errtup
+    end
     |> put_result_in(so, :query_result)
     |> prepare_query_result()
   end
