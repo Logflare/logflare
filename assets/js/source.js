@@ -3,8 +3,8 @@ import $ from "jquery"
 import * as userConfig from "./user-config-storage"
 import _ from "lodash"
 import { userSelectedFormatter } from "./formatters"
+import { activateClipboardForSelector } from "./utils"
 import { applyToAllLogTimestamps } from "./logs"
-import ClipboardJS from "clipboard"
 import idle from "./vendor/idle"
 import sqlFormatter from "sql-formatter"
 
@@ -138,23 +138,18 @@ function resetScrollTracker() {
 }
 
 export async function search() {
-    const clipboard = new ClipboardJS("#search-uri-query", {
+    // Clipboards
+    activateClipboardForSelector("#search-uri-query", {
         text: trigger =>
             location.href.replace(/\?.+$/, "") +
             trigger.getAttribute("data-clipboard-text"),
     })
 
-    clipboard.on("success", e => {
-        alert("Copied: " + e.text)
-        e.clearSelection()
-    })
-
-    clipboard.on("error", e => {
-        e.clearSelection()
-    })
+    activateClipboardForSelector(".show-source-schema td.metadata-field")
 
     const idleInterval = $("#user_idle").data("user-idle-interval")
 
+    // Activate user idle tracking
     idle({
         onIdle: () => {
             console.log(`User idle after ${idleInterval}, tail search paused`)
@@ -164,20 +159,21 @@ export async function search() {
         idle: idleInterval,
     }).start()
 
-    $("#metadataModal").on("show.bs.modal", event => {
+    // Configure modals interactions
+    const metadataModal = $("#metadataModal")
+    metadataModal.on("show.bs.modal", event => {
         const metadataHtml = $(event.relatedTarget)
             .find("~ .metadata")
             .html()
-        const modal = $("#metadataModal")
-            .find(".modal-body")
-            .html(metadataHtml)
+        metadataModal.find(".modal-body").html(metadataHtml)
     })
 
     const queryDebugModal = $("#queryDebugModal")
     queryDebugModal.on("show.bs.modal", event => {
-        const fmtSql = sqlFormatter.format($("#search-query-debug code").text())
-        console.log(fmtSql)
-        $("#search-query-debug code").text(fmtSql)
+        const code = $("#search-query-debug code")
+        const fmtSql = sqlFormatter.format(code.text())
+        code.text(fmtSql)
+
         queryDebugModal
             .find(".modal-body")
             .html($("#search-query-debug").html())
