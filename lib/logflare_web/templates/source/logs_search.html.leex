@@ -57,13 +57,10 @@
         </button>
         </div>
     </div>
-    <%= if map_size(@flash) > 0 do %>
-        <%= for {k,v} <- @flash, v do %> 
-            <div class="alert <%= if k == :error, do: "alert-danger", else: "alert-warning" %>" role="alert">
-                <%= v %>
-            </div>
-        <% end %>
-    <% end %>
+    <%= Phoenix.View.render(LogflareWeb.LayoutView, "notifications.html", flash: %{
+      error: @flash[:error],
+      info: @flash[:warning]
+    }) %>
     </form>
     </div>
     <%= if length(@log_events) > 0 do %>

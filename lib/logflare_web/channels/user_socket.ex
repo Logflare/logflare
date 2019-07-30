@@ -1,5 +1,5 @@
 defmodule LogflareWeb.UserSocket do
-  use Phoenix.Socket
+  use Phoenix.Socket, log: false
 
   alias Logflare.User
   alias Logflare.Repo

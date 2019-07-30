@@ -14,12 +14,7 @@ body {
     color: #9a9a9a;
 }
 
-nav.app {
-    max-height: 10vh;
-}
-
 main.app {
-    max-height: 90vh;
     margin-top: 110px;
     padding-bottom: 10px;
 
@@ -206,8 +201,15 @@ pre {
 }
 
 .inner-message {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     color: black;
     margin: 0 auto;
+
+    & button {
+        padding-left: 5px;
+    }
 }
 
 .close {
