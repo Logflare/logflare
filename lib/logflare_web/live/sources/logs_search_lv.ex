@@ -184,10 +184,10 @@ defmodule LogflareWeb.Source.TailSearchLV do
           "No logs matching your search query"
 
         log_events_empty? and tailing? ->
-          "No logs matching your search query have been injested during last 24 hours..."
+          "No logs matching your search query ingested during last 24 hours..."
 
         querystring == "" and log_events_empty? and tailing? ->
-          "No logs have been injested during last 24 hours..."
+          "No logs ingested during last 24 hours..."
 
         true ->
           nil
