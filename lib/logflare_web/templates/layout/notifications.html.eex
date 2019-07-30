@@ -1,0 +1,16 @@
+<%= if @flash.info do %>
+    <div class="message">
+        <div class="inner-message alert alert-info" role="alert">
+            <span><%= @flash.info %></span>
+            <button type="button" class="close" data-dismiss="alert">&times;</button>
+        </div>
+</div>
+<% end %>
+<%= if @flash.error do %>
+    <div class="message">
+        <div class="inner-message alert alert-warning" role="alert">
+            <span><%= @flash.error %></span>
+            <button type="button" class="close" data-dismiss="alert">&times;</button>
+        </div>
+    </div>
+<% end %>

@@ -206,8 +206,15 @@ pre {
 }
 
 .inner-message {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     color: black;
     margin: 0 auto;
+
+    & button {
+        padding-left: 5px;
+    }
 }
 
 .close {

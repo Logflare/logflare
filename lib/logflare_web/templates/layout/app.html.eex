@@ -44,22 +44,10 @@
   </head>
 
   <body>
-    <%= unless is_nil(get_flash(@conn, :info)) do %>
-      <div class="message">
-        <div class="inner-message alert alert-info" role="alert"><%= get_flash(@conn, :info) %>
-          <button type="button" class="close" data-dismiss="alert">&times;</button>
-        </div>
-      </div>
-    <% end %>
-    <%= unless is_nil(get_flash(@conn, :error)) do %>
-      <div class="message">
-        <div class="inner-message alert alert-warning" role="alert"><%= get_flash(@conn, :error) %>
-          <button type="button" class="close" data-dismiss="alert">&times;</button>
-        </div>
-      </div>
-
-    <% end %>
-
+    <%= Phoenix.View.render(LogflareWeb.LayoutView, "notifications.html", flash: %{
+      error: get_flash(@conn, :error),
+      info: get_flash(@conn, :info),
+    }) %>
     <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @conn.request_path != "/" do %>
         <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
