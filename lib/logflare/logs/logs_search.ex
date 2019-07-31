@@ -11,7 +11,7 @@ defmodule Logflare.Logs.Search do
   use Logflare.GenDecorators
 
   @default_limit 100
-  @default_processed_bytes_limit 5_000_000
+  @default_processed_bytes_limit 250_000_000
 
   defmodule SearchOperation do
     @moduledoc """
@@ -101,7 +101,9 @@ defmodule Logflare.Logs.Search do
     else
       {:total_bytes_processed, false} ->
         {:error,
-         "Query response size is larger than #{div(@default_processed_bytes_limit, 1000)} KB"}
+         "Total bytes processed for this query is expected to be larger than #{
+           div(@default_processed_bytes_limit, 1000)
+         } KB"}
 
       errtup ->
         errtup
