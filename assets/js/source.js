@@ -24,15 +24,19 @@ export async function main({ scrollTracker }, { avgEventsPerSecond }) {
 }
 
 export async function initLogsUiFunctions({ scrollTracker }) {
-    window.scrollTracker = scrollTracker
-
-    window.addEventListener("scroll", () => {
-        resetScrollTracker()
-        swapDownArrow()
-    })
+    await trackScroll({ scrollTracker })
 
     await applyToAllLogTimestamps(await userSelectedFormatter())
     $("#logs-list").removeAttr("hidden")
+}
+
+export async function trackScroll({ scrollTracker }) {
+  window.scrollTracker = scrollTracker
+
+  window.addEventListener("scroll", () => {
+      resetScrollTracker()
+      swapDownArrow()
+  })
 }
 
 const joinSourceChannel = sourceToken => {
