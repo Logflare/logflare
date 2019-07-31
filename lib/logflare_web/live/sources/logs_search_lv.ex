@@ -173,6 +173,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
       |> Enum.uniq_by(& &1.body.timestamp)
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(@max_user_logs)
+      |> Enum.reverse()
 
     tailing? = socket.assigns.tailing?
     querystring = socket.assigns.querystring
