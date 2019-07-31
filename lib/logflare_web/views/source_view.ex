@@ -11,7 +11,18 @@ defmodule LogflareWeb.SourceView do
   end
 
   def encode_metadata(metadata) do
-    Jason.encode!(metadata, pretty: true)
+    metadata
+    |> Iteraptor.map(
+      fn
+        {_, [val]} ->
+          val
+
+        {_, val} ->
+          val
+      end,
+      yield: :all
+    )
+    |> Jason.encode!(pretty: true)
   end
 
   def generate_search_link(querystring, tailing?) do

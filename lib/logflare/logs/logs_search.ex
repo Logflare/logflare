@@ -11,7 +11,7 @@ defmodule Logflare.Logs.Search do
   use Logflare.GenDecorators
 
   @default_limit 100
-  @default_processed_bytes_limit 5_000_000
+  @default_processed_bytes_limit 250_000_000
 
   defmodule SearchOperation do
     @moduledoc """
@@ -47,6 +47,7 @@ defmodule Logflare.Logs.Search do
     |> verify_path_in_schema()
     |> partition_or_streaming()
     |> apply_wheres()
+    |> apply_selects()
     |> order_by_default()
     |> apply_limit_to_query()
     |> apply_to_sql()
@@ -100,7 +101,9 @@ defmodule Logflare.Logs.Search do
     else
       {:total_bytes_processed, false} ->
         {:error,
-         "Query response size is larger than #{div(@default_processed_bytes_limit, 1000)} KB"}
+         "Total bytes processed for this query is expected to be larger than #{
+           div(@default_processed_bytes_limit, 1000)
+         } KB"}
 
       errtup ->
         errtup
@@ -156,7 +159,7 @@ defmodule Logflare.Logs.Search do
 
   @decorate pass_through_on_error_field()
   def default_from(%SO{} = so) do
-    %{so | query: from(so.source.bq_table_id, select: [:timestamp, :event_message, :metadata])}
+    %{so | query: from(so.source.bq_table_id)}
   end
 
   @decorate pass_through_on_error_field()
@@ -233,5 +236,15 @@ defmodule Logflare.Logs.Search do
       end)
 
     put_result_in(result, so)
+  end
+
+  def apply_selects(%SO{} = so) do
+    top_level_fields =
+      so.source
+      |> Sources.Cache.get_bq_schema()
+      |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
+      |> Map.keys()
+
+    %{so | query: select(so.query, ^top_level_fields)}
   end
 end
