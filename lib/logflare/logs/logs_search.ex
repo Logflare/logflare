@@ -80,7 +80,7 @@ defmodule Logflare.Logs.Search do
       dryRun: false
     }
 
-    dry_run = %{query_request | dryRun: false}
+    dry_run = %{query_request | dryRun: true}
 
     result =
       Api.Jobs.bigquery_jobs_query(
@@ -101,7 +101,7 @@ defmodule Logflare.Logs.Search do
     else
       {:total_bytes_processed, false} ->
         {:error,
-         "Total bytes processed for this query is expected to be larger than #{
+         "Query halted: total bytes processed for this query is expected to be larger than #{
            div(@default_processed_bytes_limit, 1000)
          } KB"}
 
