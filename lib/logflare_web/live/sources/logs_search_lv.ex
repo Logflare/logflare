@@ -110,7 +110,7 @@ defmodule LogflareWeb.Source.TailSearchLV do
   def handle_event("user_idle", _, socket) do
     socket =
       if socket.assigns.tailing? do
-        flash = Map.put(%{}, :info, "Live search paused due to user inactivity")
+        flash = Map.put(%{}, :warning, "Live search paused due to user inactivity")
 
         assign(
           socket,
