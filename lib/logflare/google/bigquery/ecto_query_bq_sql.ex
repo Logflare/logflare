@@ -1,6 +1,7 @@
 defmodule Logflare.EctoQueryBQ.SQL do
+  @moduledoc false
   alias Logflare.Repo
-  alias Logflare.BigQuery.SchemaTypes
+  alias Logflare.Logs.BigQuery.SearchParamTypes
 
   def to_sql(query) do
     {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, query)
@@ -36,7 +37,7 @@ defmodule Logflare.EctoQueryBQ.SQL do
       end
 
     %Param{
-      parameterType: %Type{type: SchemaTypes.to_schema_type(param)},
+      parameterType: %Type{type: SearchParamTypes.to_schema_type(param)},
       parameterValue: %Value{value: param}
     }
   end
