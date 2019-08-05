@@ -53,6 +53,9 @@
       </li>
     <% end %>
   </ul>
+  <%= if @sources.total_pages > 1 do %>
+    <%= pagination_links @sources %>
+  <% end %>
 </div>
 
 <div id="__phx-assigns__"

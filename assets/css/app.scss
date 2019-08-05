@@ -36,6 +36,24 @@ main.app {
   color: white;
 }
 
+.pagination .page-item.active .page-link {
+  z-index: 1;
+  color: black;
+  background-color: $brand-green;
+  border-color: $brand-light-black;
+}
+
+.pagination .page-link {
+  position: relative;
+  display: block;
+  padding: 0.5rem 0.75rem;
+  margin-left: -1px;
+  line-height: 1.25;
+  color: $brand-gray;
+  background-color: $brand-light-black;
+  border: 1px solid $brand-black;
+}
+
 .form-text {
   margin-bottom: 1em;
 }

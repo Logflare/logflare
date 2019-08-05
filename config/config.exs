@@ -70,4 +70,9 @@ config :logflare, LogflareWeb.Endpoint,
     signing_salt: System.get_env("PHOENIX_LIVE_VIEW_SECRET_SALT")
   ]
 
+config :scrivener_html,
+  routes_helper: LogflareWeb.Router.Helpers,
+  # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
+  view_style: :bootstrap_v4
+
 import_config "#{Mix.env()}.exs"
