@@ -1,5 +1,7 @@
 defmodule Logflare.Source.Data do
   alias Logflare.Sources.Counters
+  alias Logflare.Sources
+  alias Logflare.Logs
   alias Logflare.Google.BigQuery
   alias Logflare.Source.{RateCounterServer, BigQuery.Buffer}
 
@@ -141,6 +143,19 @@ defmodule Logflare.Source.Data do
 
       _ ->
         Buffer.get_count(token)
+    end
+  end
+
+  @spec get_schema_field_count(%Source{}) :: non_neg_integer
+  def get_schema_field_count(source) do
+    bq_schema = Sources.Cache.get_bq_schema(source)
+
+    if bq_schema do
+      Logs.Validators.BigQuerySchemaChange.to_typemap(bq_schema)
+      |> Iteraptor.to_flatmap()
+      |> Enum.count()
+    else
+      0
     end
   end
 

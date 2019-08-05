@@ -15,6 +15,7 @@ defmodule Logflare.Source do
       field :buffer, :integer
       field :inserts, :integer
       field :rejected, :integer
+      field :schema_fields, :integer
     end
   end
 

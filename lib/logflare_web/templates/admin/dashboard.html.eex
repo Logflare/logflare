@@ -49,6 +49,9 @@
         <small class="source-details">
           buffer: <span id="<%= source.token %>-buffer"><%= source.metrics.buffer %></span>
         </small>
+        <small class="source-details">
+          schema fields: <%= source.metrics.schema_fields %></span>
+        </small>
       </div>
       </li>
     <% end %>
