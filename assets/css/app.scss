@@ -44,14 +44,26 @@ main.app {
 }
 
 .pagination .page-link {
-  position: relative;
-  display: block;
-  padding: 0.5rem 0.75rem;
-  margin-left: -1px;
-  line-height: 1.25;
   color: $brand-gray;
   background-color: $brand-light-black;
   border: 1px solid $brand-black;
+}
+
+.dropdown-menu {
+  background-color: $brand-green !important;
+}
+
+.dropdown {
+  margin-bottom: 20px;
+}
+
+.dropdown-item {
+  color: $brand-black !important;
+  background-color: $brand-green !important;
+}
+
+.dropdown-item:hover {
+  background-color: $brand-brighter-green !important;
 }
 
 .form-text {

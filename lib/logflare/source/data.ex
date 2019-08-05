@@ -146,7 +146,7 @@ defmodule Logflare.Source.Data do
     end
   end
 
-  @spec get_schema_field_count(%Source{}) :: non_neg_integer
+  @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
     bq_schema = Sources.Cache.get_bq_schema(source)
 
