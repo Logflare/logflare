@@ -12,7 +12,7 @@
 <div class="dashboard container mx-auto">
     <div class="dropdown">
       <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-        Sort by:
+        Sort by: <%= @conn.params["sort_by"] %>
       </button>
       <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
         <%= for option <- @sort_options do %>
@@ -62,6 +62,9 @@
         </small>
         <small class="source-details">
           schema fields: <%= source.metrics.schema_fields %></span>
+        </small>
+        <small class="source-details">
+          rejected: <%= source.metrics.rejected %></span>
         </small>
       </div>
       </li>
