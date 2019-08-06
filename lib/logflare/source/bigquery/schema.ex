@@ -35,7 +35,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           ]
         },
         type_map: %{},
-        field_count: nil
+        field_count: 2
       },
       name: name(rls.source_id)
     )
@@ -49,10 +49,12 @@ defmodule Logflare.Source.BigQuery.Schema do
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
         type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
         field_count = count_fields(type_map)
+        updated_state = %{state | schema: schema, type_map: type_map, field_count: field_count}
 
         Logger.info("Table schema manager started: #{state.source_token}")
-        Sources.Cache.put_bq_schema(state.source_token, schema)
-        {:ok, %{state | schema: schema, type_map: type_map, field_count: field_count}}
+        Sources.Cache.put_bq_schema(state.source_token, updated_state)
+
+        {:ok, updated_state}
 
       _ ->
         Logger.info("Table schema manager started: #{state.source_token}")
@@ -82,9 +84,10 @@ defmodule Logflare.Source.BigQuery.Schema do
     sorted = SchemaBuilder.deep_sort_by_fields_name(schema)
     type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(sorted)
     field_count = count_fields(type_map)
+    updated_state = %{state | schema: sorted, type_map: type_map, field_count: field_count}
 
-    Sources.Cache.put_bq_schema(state.source_token, sorted)
-    {:noreply, %{state | schema: sorted, type_map: type_map, field_count: field_count}}
+    Sources.Cache.put_bq_schema(state.source_token, updated_state)
+    {:noreply, updated_state}
   end
 
   defp count_fields(type_map) do
