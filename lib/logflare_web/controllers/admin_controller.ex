@@ -48,9 +48,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp put_schema_field_count(source) do
-    new_metrics =
-      source.metrics
-      |> Map.put(:schema_fields, Source.Data.get_schema_field_count(source))
+    new_metrics = %{source.metrics | schema_fields: Source.Data.get_schema_field_count(source)}
 
     %{source | metrics: new_metrics}
   end
