@@ -48,7 +48,8 @@ defmodule Logflare.Sources do
       max: get_max_rate(token),
       buffer: get_buffer(token),
       inserts: get_total_inserts(token),
-      rejected: rejected_count
+      rejected: rejected_count,
+      schema_fields: get_schema_field_count(source)
     }
 
     metrics =

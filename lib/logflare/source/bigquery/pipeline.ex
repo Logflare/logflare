@@ -9,7 +9,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
-  alias Logflare.{Sources, Source}
+  alias Logflare.{Source}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
 
@@ -116,12 +116,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           case BigQuery.patch_table(source_id, schema, bigquery_project_id) do
             {:ok, table_info} ->
               Schema.update(source_id, table_info.schema)
-              Sources.Cache.put_bq_schema(source_id, table_info.schema)
               Logger.info("Source schema updated!")
 
             {:error, response} ->
               LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-
               Logger.error("Source schema update error!")
           end
         end

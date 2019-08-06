@@ -92,7 +92,10 @@ defmodule Logflare.Mixfile do
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
-      {:nimble_parsec, "~> 0.5.0"}
+      {:nimble_parsec, "~> 0.5.0"},
+      {:scrivener_ecto, "~> 2.2.0"},
+      {:scrivener_list, "~> 2.0.1"},
+      {:scrivener_html, "~> 1.8.1"}
     ]
   end
 

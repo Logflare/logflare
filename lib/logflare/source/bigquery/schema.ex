@@ -8,6 +8,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Logs
 
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
@@ -32,7 +33,9 @@ defmodule Logflare.Source.BigQuery.Schema do
               type: "STRING"
             }
           ]
-        }
+        },
+        type_map: %{},
+        field_count: 2
       },
       name: name(rls.source_id)
     )
@@ -44,9 +47,14 @@ defmodule Logflare.Source.BigQuery.Schema do
     case BigQuery.get_table(state.source_token, state.bigquery_project_id) do
       {:ok, table} ->
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
+        type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
+        field_count = count_fields(type_map)
+        updated_state = %{state | schema: schema, type_map: type_map, field_count: field_count}
+
         Logger.info("Table schema manager started: #{state.source_token}")
-        Sources.Cache.put_bq_schema(state.source_token, schema)
-        {:ok, %{state | schema: schema}}
+        Sources.Cache.put_bq_schema(state.source_token, updated_state)
+
+        {:ok, updated_state}
 
       _ ->
         Logger.info("Table schema manager started: #{state.source_token}")
@@ -73,7 +81,18 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_cast({:update, schema}, state) do
-    {:noreply, %{state | schema: SchemaBuilder.deep_sort_by_fields_name(schema)}}
+    sorted = SchemaBuilder.deep_sort_by_fields_name(schema)
+    type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(sorted)
+    field_count = count_fields(type_map)
+    updated_state = %{state | schema: sorted, type_map: type_map, field_count: field_count}
+
+    Sources.Cache.put_bq_schema(state.source_token, updated_state)
+    {:noreply, updated_state}
+  end
+
+  defp count_fields(type_map) do
+    Iteraptor.to_flatmap(type_map)
+    |> Enum.count()
   end
 
   defp name(source_token) do
