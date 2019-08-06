@@ -66,6 +66,9 @@
         <small class="source-details">
           rejected: <%= source.metrics.rejected %></span>
         </small>
+        <small class="source-details">
+          recent: <%= source.metrics.recent %></span>
+        </small>
       </div>
       </li>
     <% end %>

@@ -8,7 +8,18 @@ defmodule LogflareWeb.AdminController do
   @default_sort_by :latest
 
   def dashboard(conn, params) do
-    sort_options = [:schema_fields, :latest, :rejected]
+    sort_options = [
+      :schema_fields,
+      :latest,
+      :rejected_int,
+      :rate_int,
+      :avg_int,
+      :max_int,
+      :buffer_int,
+      :inserts_int,
+      :recent_int
+    ]
+
     sorted_sources = sorted_sources(params)
 
     render(conn, "dashboard.html", sources: sorted_sources, sort_options: sort_options)

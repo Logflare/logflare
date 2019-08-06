@@ -39,20 +39,36 @@ defmodule Logflare.Sources do
     import Logflare.Source.Data
     alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
+
     rejected_count = RejectedLogEvents.count(source)
+    inserts = get_total_inserts(token)
+    buffer = get_buffer(token)
+    max = get_max_rate(token)
+    avg = get_avg_rate(token)
+    latest = get_latest_date(token)
+    rate = get_rate(token)
+    recent = get_ets_count(token)
 
     metrics = %Source.Metrics{
-      rate: get_rate(token),
-      latest: get_latest_date(token),
-      avg: get_avg_rate(token),
-      max: get_max_rate(token),
-      buffer: get_buffer(token),
-      inserts: get_total_inserts(token),
-      rejected: rejected_count
+      rate: rate,
+      rate_int: rate,
+      latest: latest,
+      avg: avg,
+      avg_int: avg,
+      max: max,
+      max_int: max,
+      buffer: buffer,
+      buffer_int: buffer,
+      inserts: inserts,
+      inserts_int: inserts,
+      recent: recent,
+      recent_int: recent,
+      rejected: rejected_count,
+      rejected_int: rejected_count
     }
 
     metrics =
-      Enum.reduce(~w[rate avg max buffer inserts]a, metrics, fn key, ms ->
+      Enum.reduce(~w[rate avg max buffer inserts rejected recent]a, metrics, fn key, ms ->
         Map.update!(ms, key, &Delimit.number_to_delimited/1)
       end)
 
