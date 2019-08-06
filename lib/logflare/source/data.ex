@@ -1,9 +1,7 @@
 defmodule Logflare.Source.Data do
   alias Logflare.Sources.Counters
-  alias Logflare.Sources
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.{RateCounterServer, BigQuery.Buffer}
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}
 
   @spec get_log_count(atom, String.t()) :: non_neg_integer()
   def get_log_count(token, bigquery_project_id) do
@@ -148,13 +146,12 @@ defmodule Logflare.Source.Data do
 
   @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
-    bq_schema = Sources.Cache.get_bq_schema(source)
+    case Process.whereis(String.to_atom("#{source.token}-schema")) do
+      nil ->
+        0
 
-    if bq_schema do
-      schema_state = Schema.get_state(source.token)
-      schema_state.field_count
-    else
-      0
+      _ ->
+        Schema.get_state(source.token).field_count
     end
   end
 
