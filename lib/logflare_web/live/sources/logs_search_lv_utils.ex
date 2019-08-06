@@ -29,7 +29,7 @@ defmodule LogflareWeb.Source.TailSearchLV.Utils do
 
     if bq_schema do
       fields_and_types =
-        bq_schema.schema
+        bq_schema
         |> Logs.Validators.BigQuerySchemaChange.to_typemap()
         |> Iteraptor.to_flatmap()
         |> Enum.reject(fn {_, v} -> v == :map end)

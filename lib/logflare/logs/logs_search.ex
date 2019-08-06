@@ -218,10 +218,9 @@ defmodule Logflare.Logs.Search do
 
   @decorate pass_through_on_error_field()
   def verify_path_in_schema(%SO{} = so) do
-    bq_schema = Sources.Cache.get_bq_schema(so.source).schema
-
     flatmap =
-      bq_schema
+      so.source
+      |> Sources.Cache.get_bq_schema()
       |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
       |> Iteraptor.to_flatmap()
       |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
@@ -240,10 +239,9 @@ defmodule Logflare.Logs.Search do
   end
 
   def apply_selects(%SO{} = so) do
-    bq_schema = Sources.Cache.get_bq_schema(so.source).schema
-
     top_level_fields =
-      bq_schema
+      so.source
+      |> Sources.Cache.get_bq_schema()
       |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
       |> Map.keys()
 
