@@ -41,7 +41,8 @@ defmodule Logflare.Sources do
     alias Number.Delimit
 
     rejected_count = RejectedLogEvents.count(source)
-    inserts = Delimit.number_to_delimited(get_total_inserts(token))
+    inserts_string = Delimit.number_to_delimited(get_total_inserts(token))
+    inserts = get_total_inserts(token)
     buffer = get_buffer(token)
     max = get_max_rate(token)
     avg = get_avg_rate(token)
@@ -56,6 +57,7 @@ defmodule Logflare.Sources do
       avg: avg,
       max: max,
       buffer: buffer,
+      inserts_string: inserts_string,
       inserts: inserts,
       recent: recent,
       rejected: rejected_count,

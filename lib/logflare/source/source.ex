@@ -14,6 +14,7 @@ defmodule Logflare.Source do
       field :max, :integer
       field :buffer, :integer
       field :inserts, :integer
+      field :inserts_string, :string
       field :recent, :integer
       field :rejected, :integer
       field :fields, :integer
