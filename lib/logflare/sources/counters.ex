@@ -79,6 +79,7 @@ defmodule Logflare.Sources.Counters do
     end
   end
 
+  # Deprecated: should be the count of things in the RecentLogsServer ets table but never could get things incrimenting / decrimenting correctly.
   @spec log_count(atom) :: {:ok, non_neg_integer}
   def log_count(table) do
     case :ets.lookup(@ets_table_name, table) do
