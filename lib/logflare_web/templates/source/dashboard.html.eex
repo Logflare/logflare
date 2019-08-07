@@ -71,7 +71,7 @@
           events/sec: <span id="<%= source.token %>-rate"><%= source.metrics.rate %></span>
         </small>
         <small class="source-details">
-          <%= if source.metrics.avg > source.api_quota * 0.9 do %>
+          <%= if source.metrics.avg > source.api_quota do %>
           avg: <span id="<%= source.token %>-avg-rate" class="my-badge my-badge-warning source-info" data-toggle="tooltip" data-placement="left" title="Source rate limit is avg <%= source.api_quota %> events/sec!"><%= source.metrics.avg %></span>
           <% else %>
           avg: <span id="<%= source.token %>-avg-rate"><%= source.metrics.avg %></span>
