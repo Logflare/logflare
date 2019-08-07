@@ -100,40 +100,43 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
     LogflareLogger.context(source_id: source_id)
+    schema_state = Schema.get_state(source_id)
+    field_count = schema_state.field_count
 
     if map_size(body.metadata) > 0 do
-      schema_state = Schema.get_state(source_id)
-      old_schema = schema_state.schema
-      bigquery_project_id = schema_state.bigquery_project_id
+      if field_count > 1_000 do
+        old_schema = schema_state.schema
+        bigquery_project_id = schema_state.bigquery_project_id
 
-      try do
-        schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
+        try do
+          schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
-        if same_schemas?(old_schema, schema) == false do
-          hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-          LogflareLogger.context(hackney_stats: hackney_stats)
+          if same_schemas?(old_schema, schema) == false do
+            hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
+            LogflareLogger.context(hackney_stats: hackney_stats)
 
-          case BigQuery.patch_table(source_id, schema, bigquery_project_id) do
-            {:ok, table_info} ->
-              Schema.update(source_id, table_info.schema)
-              Logger.info("Source schema updated!")
+            case BigQuery.patch_table(source_id, schema, bigquery_project_id) do
+              {:ok, table_info} ->
+                Schema.update(source_id, table_info.schema)
+                Logger.info("Source schema updated!")
 
-            {:error, response} ->
-              LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-              Logger.error("Source schema update error!")
+              {:error, response} ->
+                LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
+                Logger.error("Source schema update error!")
+            end
           end
+
+          log_event
+        rescue
+          _e ->
+            err = "Field schema type change error!"
+
+            new_body = %{body | metadata: %{"error" => err}}
+
+            Logger.error(err)
+
+            %{log_event | body: new_body}
         end
-
-        log_event
-      rescue
-        _e ->
-          err = "Field schema type change error!"
-
-          new_body = %{body | metadata: %{"error" => err}}
-
-          Logger.error(err)
-
-          %{log_event | body: new_body}
       end
     else
       log_event
