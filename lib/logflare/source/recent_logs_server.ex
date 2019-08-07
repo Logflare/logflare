@@ -90,8 +90,6 @@ defmodule Logflare.Source.RecentLogsServer do
     case count > 100 do
       true ->
         for _log <- 101..count do
-          prune()
-
           log = :ets.first(source_id)
 
           if :ets.delete(source_id, log) == true do
@@ -99,6 +97,7 @@ defmodule Logflare.Source.RecentLogsServer do
           end
         end
 
+        prune()
         {:noreply, state}
 
       false ->
