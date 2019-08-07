@@ -30,7 +30,7 @@
         <div class="source-link word-break-all">
           <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
           <span id="<%= source.token %>">
-            <small class="my-badge">
+            <small class="my-badge my-badge-info">
               <%= source.metrics.inserts %>
             </small>
           </span>
@@ -38,38 +38,50 @@
       </div>
       <div class="source-meta-data">
         <small class="source-details">
-          id: <%= source.token %>
+          id: <span class="pointer-cursor copy-token" id="<%= String.replace(Atom.to_string(source.token), ~r/[0-9]|-/, "") %>" data-clipboard-text="<%= source.token %>"><%= source.token %></span>
         </small>
       </div>
       <div class="source-meta-data">
         <small class="source-details">
+          latest:
+          <%= if source.metrics.latest == 0 do %>
+          <span>no logs</span>
+          <% else %>
+          <span class="log-datestamp" id="<%= source.token %>-latest" data-timestamp="<%=source.metrics.latest %>"><%= source.metrics.latest %></span>
+          <% end %>
+        </small>
+        <small class="source-details">
           events/sec: <span id="<%= source.token %>-rate"><%= source.metrics.rate %></span>
         </small>
         <small class="source-details">
+          <%= if source.metrics.avg > source.api_quota * 0.9 do %>
+          avg: <span id="<%= source.token %>-avg-rate" class="my-badge my-badge-warning source-info" data-toggle="tooltip" data-placement="left" title="Source rate limit is avg <%= source.api_quota %> events/sec!"><%= source.metrics.avg %></span>
+          <% else %>
           avg: <span id="<%= source.token %>-avg-rate"><%= source.metrics.avg %></span>
+          <% end %>
         </small>
         <small class="source-details">
           max: <span id="<%= source.token %>-max-rate"><%= source.metrics.max %></span>
         </small>
         <small class="source-details">
-          latest:
-          <%= if source.metrics.latest == 0 do %>
-          <span class="">no logs</span>
-          <% else %>
-          <span class="log-datestamp" data-timestamp="<%=source.metrics.latest %>">><%= source.metrics.latest %></span>
-          <% end %>
-        </small>
-        <small class="source-details">
           buffer: <span id="<%= source.token %>-buffer"><%= source.metrics.buffer %></span>
         </small>
         <small class="source-details">
-          schema fields: <%= source.metrics.schema_fields %></span>
+          <%= if source.metrics.fields > 1_000 do %>
+          fields: <span class="my-badge my-badge-warning source-info" data-toggle="tooltip" data-placement="left" title="Max 1,000 fields per source!"><%= source.metrics.fields %></span>
+          <% else %>
+          fields: <span><%= source.metrics.fields %></span>
+          <% end %>
         </small>
         <small class="source-details">
-          rejected: <%= source.metrics.rejected %></span>
+          <%= if source.metrics.rejected > 0 do %>
+          rejected: <%= link to: Routes.source_path(@conn, :rejected_logs, source.id) do %><span class="my-badge my-badge-warning source-info" data-toggle="tooltip" data-placement="left" title="Some events didn't validate!"><%= source.metrics.rejected %></span><% end %>
+          <% else %>
+          rejected: <span id="<%= source.token %>-buffer"><%= source.metrics.rejected %></span>
+          <% end %>
         </small>
         <small class="source-details">
-          recent: <%= source.metrics.recent %></span>
+          cached: <%= source.metrics.recent %></span>
         </small>
       </div>
       </li>

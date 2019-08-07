@@ -9,21 +9,14 @@ defmodule Logflare.Source do
 
     embedded_schema do
       field :rate, :integer
-      field :rate_int, :integer
       field :latest, :integer
       field :avg, :integer
-      field :avg_int, :integer
       field :max, :integer
-      field :max_int, :integer
       field :buffer, :integer
-      field :buffer_int, :integer
       field :inserts, :integer
-      field :inserts_int, :integer
       field :recent, :integer
-      field :recent_int, :integer
       field :rejected, :integer
-      field :rejected_int, :integer
-      field :schema_fields, :integer
+      field :fields, :integer
     end
   end
 

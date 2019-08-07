@@ -26,6 +26,7 @@ defmodule LogflareWeb.SourceController do
     sources =
       conn.assigns.user.sources
       |> Enum.map(&Sources.preload_defaults/1)
+      |> Enum.map(&Sources.put_schema_field_count/1)
       |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
 
     render(conn, "dashboard.html",
@@ -85,8 +86,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def show(%{assigns: %{user: user, source: source}} = conn, _params) do
-    avg_rate = String.to_integer(source.metrics.avg)
-    render_show_with_assigns(conn, user, source, avg_rate)
+    render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
   def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate <= 25 do
