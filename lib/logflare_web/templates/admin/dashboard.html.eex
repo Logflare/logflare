@@ -40,6 +40,8 @@
         <small class="source-details">
           id: <%= source.token %>
         </small>
+      </div>
+      <div class="source-meta-data">
         <small class="source-details">
           events/sec: <span id="<%= source.token %>-rate"><%= source.metrics.rate %></span>
         </small>
@@ -65,6 +67,9 @@
         </small>
         <small class="source-details">
           rejected: <%= source.metrics.rejected %></span>
+        </small>
+        <small class="source-details">
+          recent: <%= source.metrics.recent %></span>
         </small>
       </div>
       </li>
