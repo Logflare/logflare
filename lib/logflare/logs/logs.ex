@@ -9,16 +9,16 @@ defmodule Logflare.Logs do
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Rule
 
-  @spec injest_logs(list(map), Source.t()) :: :ok | {:error, term}
-  def injest_logs(log_params_batch, %Source{} = source) do
+  @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
+  def ingest_logs(log_params_batch, %Source{} = source) do
     log_params_batch
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
       if le.valid? do
-        injest_by_source_rules(le)
-        injest_and_broadcast(le)
+        ingest_by_source_rules(le)
+        ingest_and_broadcast(le)
       else
-        RejectedLogEvents.injest(le)
+        RejectedLogEvents.ingest(le)
       end
 
       le
@@ -36,8 +36,8 @@ defmodule Logflare.Logs do
     end
   end
 
-  @spec injest_by_source_rules(LE.t()) :: term | :noop
-  defp injest_by_source_rules(%LE{via_rule: %Rule{} = rule} = le) when not is_nil(rule) do
+  @spec ingest_by_source_rules(LE.t()) :: term | :noop
+  defp ingest_by_source_rules(%LE{via_rule: %Rule{} = rule} = le) when not is_nil(rule) do
     Logger.error(
       "LogEvent #{le.id} has already been routed using the rule #{rule.id}, can't proceed!"
     )
@@ -45,19 +45,19 @@ defmodule Logflare.Logs do
     :noop
   end
 
-  defp injest_by_source_rules(%LE{source: %Source{} = source, via_rule: nil} = le) do
+  defp ingest_by_source_rules(%LE{source: %Source{} = source, via_rule: nil} = le) do
     for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, le.body.message) do
       sink_source = Sources.Cache.get_by(token: rule.sink)
 
       if sink_source do
-        injest_and_broadcast(%{le | source: sink_source, via_rule: rule})
+        ingest_and_broadcast(%{le | source: sink_source, via_rule: rule})
       else
         Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
       end
     end
   end
 
-  defp injest_and_broadcast(%LE{source: %Source{} = source} = le) do
+  defp ingest_and_broadcast(%LE{source: %Source{} = source} = le) do
     source_table_string = Atom.to_string(source.token)
 
     # indvididual source genservers

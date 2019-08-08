@@ -1,19 +1,21 @@
-<ul id="logs-list" class="list-unstyled console-text-list">
+<div id="logs-list-container">
+  <div id="logs-list" class="list-unstyled console-text-list">
     <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
-        <li>
-            <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
-            <mark class="log-datestamp" data-timestamp="<%= timestamp %>"><%= format_timestamp(timestamp) <> " UTC"%></mark>
-            <%= message %>
-            <%= if map_size(metadata) > 0 do %>
-                <a class="metadata-link"
+    <li>
+      <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
+      <mark class="log-datestamp" data-timestamp="<%= timestamp %>"><%= format_timestamp(timestamp) <> " UTC"%></mark>
+      <%= message %>
+      <%= if map_size(metadata) > 0 do %>
+        <a class="metadata-link"
                 data-toggle="modal" data-target="#metadataModal"
                 href="#" aria-expanded="false">
-                    metadata
-                </a>
-                <div class="collapse metadata" id="metadata-<%= inx %>">
-                    <pre class="pre-metadata"><code><%= encode_metadata(metadata) %></code></pre>
-                </div>
-            <% end %>
-        </li>
-    <% end) %>
-</ul>
+          metadata
+        </a>
+        <div class="collapse metadata" id="metadata-<%= inx %>">
+          <pre class="pre-metadata"><code class="json"><%= encode_metadata(metadata) %></code></pre>
+        </div>
+      <% end %>
+    </li>
+  <% end) %>
+</div>
+</div>

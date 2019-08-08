@@ -9,15 +9,15 @@ defmodule LogflareWeb.LogController do
       |> Map.take(~w[log_entry metadata timestamp])
       |> List.wrap()
 
-    injest_and_render(conn, batch, conn.assigns.source)
+    ingest_and_render(conn, batch, conn.assigns.source)
   end
 
   def elixir_logger(conn, %{"batch" => batch}) when is_list(batch) do
-    injest_and_render(conn, batch, conn.assigns.source)
+    ingest_and_render(conn, batch, conn.assigns.source)
   end
 
-  def injest_and_render(conn, log_params_batch, source) do
-    case Logs.injest_logs(log_params_batch, source) do
+  def ingest_and_render(conn, log_params_batch, source) do
+    case Logs.ingest_logs(log_params_batch, source) do
       :ok ->
         render(conn, "index.json", message: @message)
 

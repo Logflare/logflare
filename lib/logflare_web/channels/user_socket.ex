@@ -7,9 +7,9 @@ defmodule LogflareWeb.UserSocket do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
 
-  channel("source:*", LogflareWeb.SourceChannel)
-  channel("dashboard:*", LogflareWeb.DashboardChannel)
-  channel("everyone", LogflareWeb.EveryoneChannel)
+  channel "source:*", LogflareWeb.SourceChannel
+  channel "dashboard:*", LogflareWeb.DashboardChannel
+  channel "everyone", LogflareWeb.EveryoneChannel
 
   def connect(%{"token" => "undefined", "public_token" => "undefined"}, socket) do
     {:ok, socket}

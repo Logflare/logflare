@@ -143,12 +143,7 @@ defmodule LogflareWeb.SourceController do
 
     session = if not is_nil(tailing?), do: Map.put(session, :tailing?, tailing?), else: session
 
-    render(
-      conn,
-      "search.html",
-      session: session,
-      layout: {LogflareWeb.LayoutView, "ui.html"}
-    )
+    live_render(conn, LogflareWeb.Source.SearchLV, session: session)
   end
 
   def public(conn, %{"public_token" => public_token}) do

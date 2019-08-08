@@ -31,12 +31,12 @@ export async function initLogsUiFunctions({ scrollTracker }) {
 }
 
 export async function trackScroll({ scrollTracker }) {
-  window.scrollTracker = scrollTracker
+    window.scrollTracker = scrollTracker
 
-  window.addEventListener("scroll", () => {
-      resetScrollTracker()
-      swapDownArrow()
-  })
+    window.addEventListener("scroll", () => {
+        resetScrollTracker()
+        swapDownArrow()
+    })
 }
 
 const joinSourceChannel = sourceToken => {
@@ -140,7 +140,7 @@ function resetScrollTracker() {
     }
 }
 
-export async function search() {
+export async function initSearch() {
     // Clipboards
     activateClipboardForSelector("#search-uri-query", {
         text: trigger =>
@@ -150,7 +150,7 @@ export async function search() {
 
     activateClipboardForSelector(".show-source-schema td.metadata-field")
 
-    const idleInterval = $("#user_idle").data("user-idle-interval")
+    const idleInterval = $("#user-idle").data("user-idle-interval")
 
     // Activate user idle tracking
     idle({
@@ -161,20 +161,26 @@ export async function search() {
         keepTracking: true,
         idle: idleInterval,
     }).start()
+    document.addEventListener("phx:update", search)
+}
 
+export async function search() {
     // Configure modals interactions
     const metadataModal = $("#metadataModal")
     metadataModal.on("show.bs.modal", event => {
         const metadataHtml = $(event.relatedTarget)
             .find("~ .metadata")
             .html()
-        metadataModal.find(".modal-body").html(metadataHtml)
+        const modalBody = metadataModal.find(".modal-body")
+
+        modalBody.html(metadataHtml)
     })
 
     const queryDebugModal = $("#queryDebugModal")
     queryDebugModal.on("show.bs.modal", event => {
         const code = $("#search-query-debug code")
         const fmtSql = sqlFormatter.format(code.text())
+        // replace with formatted sql
         code.text(fmtSql)
 
         queryDebugModal

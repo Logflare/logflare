@@ -1,5 +1,7 @@
 defmodule LogflareWeb.SourceView do
   use LogflareWeb, :view
+  import LogflareWeb.Helpers.Flash
+  import Phoenix.LiveView
 
   defdelegate format_bq_schema(source), to: LogflareWeb.Source.TailSearchLV.Utils
   defdelegate format_sql(query_params), to: LogflareWeb.Source.TailSearchLV.Utils

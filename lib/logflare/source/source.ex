@@ -1,10 +1,12 @@
 defmodule Logflare.Source do
+  @moduledoc false
   use Ecto.Schema
   alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
 
   defmodule Metrics do
+    @moduledoc false
     use Ecto.Schema
 
     embedded_schema do

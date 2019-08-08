@@ -55,8 +55,8 @@ defmodule Logflare.Logs.RejectedLogEvents do
   @doc """
   Expected to be called only in Logs context
   """
-  @spec injest(LE.t()) :: term
-  def injest(%LE{source: %Source{}, valid?: false} = le) do
+  @spec ingest(LE.t()) :: term
+  def ingest(%LE{source: %Source{}, valid?: false} = le) do
     insert(le.source.token, le)
   end
 
