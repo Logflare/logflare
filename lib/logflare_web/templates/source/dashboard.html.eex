@@ -85,7 +85,7 @@
         </small>
         <small class="source-details">
           <%= if source.metrics.fields > 1_000 do %>
-          fields: <span class="my-badge my-badge-warning source-info" data-toggle="tooltip" data-placement="left" title="Max 1,000 fields per source!"><%= source.metrics.fields %></span>
+          fields: <span class="my-badge my-badge-warning source-info" data-toggle="tooltip" data-placement="left" title="Max 500 fields per source! Data in new fields are ignored."><%= source.metrics.fields %></span>
           <% else %>
           fields: <span><%= source.metrics.fields %></span>
           <% end %>

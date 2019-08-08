@@ -104,7 +104,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     field_count = schema_state.field_count
 
     if map_size(body.metadata) > 0 do
-      if field_count < 1_000 do
+      if field_count < 500 do
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
 
