@@ -81,7 +81,7 @@ defmodule Logflare.LogEvent do
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
-  def make_from_db(params, %{source: source}) do
+  def make_from_db(params, %{source: _source}) do
     params =
       params
       |> Map.update("metadata", %{}, fn metadata ->

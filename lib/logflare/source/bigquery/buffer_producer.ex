@@ -63,6 +63,11 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     end)
   end
 
+  def terminate(reason, _state) do
+    Logger.info("Going Down: #{__MODULE__}")
+    reason
+  end
+
   defp receive_messages_from_buffer(%{source_id: source_id}, _total_demand) do
     source_id
     |> Buffer.pop()

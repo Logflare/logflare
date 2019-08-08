@@ -29,7 +29,7 @@ defmodule Logflare.Source.ChannelTopics do
       "dashboard:#{source_id}:buffer",
       %{
         source_token: "#{source_id}",
-        buffer: Delimit.number_to_delimited(count)
+        buffer: count
       }
     )
   end
@@ -41,16 +41,14 @@ defmodule Logflare.Source.ChannelTopics do
           source_id: atom()
         }) :: :ok | {:error, any}
   def broadcast_rates(%{source_id: source_id} = payload) do
-    import Delimit
-
     maybe_broadcast(
       "dashboard:#{source_id}",
       "dashboard:#{source_id}:rate",
       %{
         source_token: source_id,
-        rate: number_to_delimited(payload.last_rate),
-        average_rate: number_to_delimited(payload.average_rate),
-        max_rate: number_to_delimited(payload.max_rate)
+        rate: payload.last_rate,
+        average_rate: payload.average_rate,
+        max_rate: payload.max_rate
       }
     )
   end

@@ -21,7 +21,7 @@ export async function main() {
 }
 
 async function initTooltips() {
-    $(".rejected-events-info").tooltip({ delay: { show: 100, hide: 200 } })
+    $(".source-info").tooltip({ delay: { show: 100, hide: 200 } })
 }
 
 async function initClipboards() {
@@ -54,7 +54,7 @@ function joinSourceChannel(sourceToken) {
             timestampNsToAgo(new Date().getTime() * 1000)
         )
         $(sourceSelector).html(
-            `<small class="my-badge fade-in">${event.log_count}</small>`
+            `<small class="my-badge my-badge-info fade-in">${event.log_count}</small>`
         )
     })
 

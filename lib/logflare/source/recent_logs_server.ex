@@ -85,14 +85,16 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
-    {:ok, count} = Counters.log_count(source_id)
+    count = Data.get_ets_count(source_id)
 
     case count > 100 do
       true ->
         for _log <- 101..count do
           log = :ets.first(source_id)
-          :ets.delete(source_id, log)
-          Counters.decriment(source_id)
+
+          if :ets.delete(source_id, log) == true do
+            Counters.decriment(source_id)
+          end
         end
 
         prune()

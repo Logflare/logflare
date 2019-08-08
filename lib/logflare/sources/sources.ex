@@ -41,6 +41,7 @@ defmodule Logflare.Sources do
     alias Number.Delimit
 
     rejected_count = RejectedLogEvents.count(source)
+    inserts_string = Delimit.number_to_delimited(get_total_inserts(token))
     inserts = get_total_inserts(token)
     buffer = get_buffer(token)
     max = get_max_rate(token)
@@ -48,30 +49,27 @@ defmodule Logflare.Sources do
     latest = get_latest_date(token)
     rate = get_rate(token)
     recent = get_ets_count(token)
+    fields = 0
 
     metrics = %Source.Metrics{
       rate: rate,
-      rate_int: rate,
       latest: latest,
       avg: avg,
-      avg_int: avg,
       max: max,
-      max_int: max,
       buffer: buffer,
-      buffer_int: buffer,
+      inserts_string: inserts_string,
       inserts: inserts,
-      inserts_int: inserts,
       recent: recent,
-      recent_int: recent,
       rejected: rejected_count,
-      rejected_int: rejected_count
+      fields: fields
     }
 
-    metrics =
-      Enum.reduce(~w[rate avg max buffer inserts rejected recent]a, metrics, fn key, ms ->
-        Map.update!(ms, key, &Delimit.number_to_delimited/1)
-      end)
-
     %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
+  end
+
+  def put_schema_field_count(source) do
+    new_metrics = %{source.metrics | fields: Source.Data.get_schema_field_count(source)}
+
+    %{source | metrics: new_metrics}
   end
 end
