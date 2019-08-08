@@ -155,7 +155,7 @@ defmodule LogflareWeb.SourceController do
     Sources.Cache.get_by(public_token: public_token)
     |> case do
       %Source{} = source ->
-        avg_rate = String.to_integer(source.metrics.avg)
+        avg_rate = source.metrics.avg
         render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
 
       _ ->
