@@ -172,17 +172,6 @@ export async function initSearch() {
 }
 
 export async function search() {
-    // Configure modals interactions
-    const metadataModal = $("#metadataModal")
-    metadataModal.on("show.bs.modal", event => {
-        const metadataHtml = $(event.relatedTarget)
-            .find("~ .metadata")
-            .html()
-        const modalBody = metadataModal.find(".modal-body")
-
-        modalBody.html(metadataHtml)
-    })
-
     const queryDebugModal = $("#queryDebugModal")
     queryDebugModal.on("show.bs.modal", event => {
         const code = $("#search-query-debug code")
