@@ -77,6 +77,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def stream_batch(source_id, messages, bq_project_id) do
     rows = le_messages_to_bq_rows(messages)
 
+    # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
+    # All others send to the rejected list with the message from BigQuery.
+    # See todo in `process_data` also.
+
     case BigQuery.stream_batch!(source_id, rows, bq_project_id) do
       {:ok, _response} ->
         messages
@@ -102,6 +106,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     LogflareLogger.context(source_id: source_id)
     schema_state = Schema.get_state(source_id)
     field_count = schema_state.field_count
+
+    # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
+    # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
+    # Send those events through the pipeline again, but run them through our schema process this time. Do all
+    # these things a max of like 5 times and after that send them to the rejected pile.
 
     if map_size(body.metadata) > 0 do
       if field_count < 500 do
