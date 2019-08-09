@@ -7,13 +7,10 @@
       <%= message %>
       <%= if map_size(metadata) > 0 do %>
         <a class="metadata-link"
-                phx-click="activate_modal" phx-value="metadataModal"
+                phx-click="activate_modal" phx-value="metadataModal:<%= timestamp %>"
                 href="#" aria-expanded="false">
           metadata
         </a>
-        <div class="collapse metadata" id="metadata-<%= inx %>">
-          <pre class="pre-metadata"><code class="json"><%= encode_metadata(metadata) %></code></pre>
-        </div>
       <% end %>
     </li>
   <% end) %>

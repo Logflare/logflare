@@ -5,7 +5,7 @@ defmodule LogflareWeb.SourceView do
   alias Logflare.BigQuery.SchemaTypes
   import Phoenix.LiveView
 
-  def render_modal("searchHelpModal", source) do
+  def render_modal("searchHelpModal", source, _log_events) do
     ~E"""
     <div class="source-logs-search-modals">
       <%= render "logs_search_modal.html",
@@ -16,7 +16,7 @@ defmodule LogflareWeb.SourceView do
     """
   end
 
-  def render_modal("sourceSchemaModal", source) do
+  def render_modal("sourceSchemaModal", source, _log_events) do
     ~E"""
     <div class="source-logs-search-modals">
       <%= render "logs_search_modal.html",
@@ -27,18 +27,29 @@ defmodule LogflareWeb.SourceView do
     """
   end
 
-  def render_modal("metadataModal", source) do
+  def render_modal("metadataModal:" <> timestamp, _source, log_events) do
+    fmt_metadata =
+      log_events
+      |> Enum.find(&(&1.body.timestamp === String.to_integer(timestamp)))
+      |> Map.get(:body)
+      |> Map.get(:metadata)
+      |> encode_metadata
+
+    body = ~E"""
+      <pre> <code> <%= fmt_metadata %> </code> </pre>
+    """
+
     ~E"""
     <div class="source-logs-search-modals">
       <%= render "logs_search_modal.html",
         id: "metadataModal",
         title: "Metadata",
-        body: "" %>
+        body: body %>
     </div>
     """
   end
 
-  def render_modal("queryDebugModal", source) do
+  def render_modal("queryDebugModal", source, _log_events) do
     ~E"""
     <div class="source-logs-search-modals">
       <%= render "logs_search_modal.html",
