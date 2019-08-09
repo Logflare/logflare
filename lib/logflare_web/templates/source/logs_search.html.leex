@@ -31,7 +31,7 @@
       </div>
       <div class="col-auto mt-2">
         <div class="btn-group-toggle">
-          <%= label f, :tailing?, class: "btn btn-primary btn-sm" do %>
+          <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
             <%= if @tailing? do %>
               <div class="spinner-border spinner-border-sm text-info" role="status"></div>
             <% end %>
@@ -65,25 +65,25 @@
       </div>
     </div>
   <% end %>
-  <div class="source-logs-search-modals">
-    <%= render "logs_search_modal.html",
+  <div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
+</div>
+<div class="source-logs-search-modals">
+  <%= render "logs_search_modal.html",
     id: "searchHelpModal",
     title: "Search Syntax",
     body: render("logs_search_help.html") %>
-    <%= render "logs_search_modal.html",
+  <%= render "logs_search_modal.html",
     id: "sourceSchemaModal",
     title: "Source Schema",
     body: format_bq_schema(@source) %>
-    <%= render "logs_search_modal.html",
+  <%= render "logs_search_modal.html",
     id: "queryDebugModal",
     title: "Query Debugging",
     body: "No query or query is still in progress..." %>
-    <%= render "logs_search_modal.html",
+  <%= render "logs_search_modal.html",
     id: "metadataModal",
     title: "Metadata",
     body: "" %>
-  </div>
-  <div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 </div>
 <script>
   document.addEventListener("DOMContentLoaded", async () => {

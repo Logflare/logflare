@@ -155,12 +155,19 @@ export async function initSearch() {
     // Activate user idle tracking
     idle({
         onIdle: () => {
-            console.log(`User idle after ${idleInterval}, tail search paused`)
-            $("#user_idle").click()
+            console.log(`User idle for ${idleInterval}, tail search paused`)
+            const $search_tailing = $(
+                "#search-tailing-button #" + $.escapeSelector("search_tailing?")
+            )
+
+            if ($search_tailing.prop("value") === "true") {
+                $search_tailing.click()
+            }
         },
         keepTracking: true,
         idle: idleInterval,
     }).start()
+
     document.addEventListener("phx:update", search)
 }
 
