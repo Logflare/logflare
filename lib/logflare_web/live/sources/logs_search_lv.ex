@@ -34,7 +34,8 @@ defmodule LogflareWeb.Source.SearchLV do
         flash: %{},
         search_op: nil,
         tailing_timer: nil,
-        user_idle_interval: @user_idle_interval
+        user_idle_interval: @user_idle_interval,
+        active_modal: nil
       )
 
     {:ok, socket}
@@ -49,7 +50,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       # FIXME
       |> assign(:tailing?, params[:tailing?] || false)
-      |> assign(:querystring, params.querystring)
+      |> assign(:querystring, params[:querystring] || "")
 
     {:noreply, socket}
   end
@@ -69,6 +70,16 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_execute_query(socket.assigns)
 
     {:noreply, socket}
+  end
+
+  def handle_event("activate_modal" = ev, modal_id, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+    {:noreply, assign(socket, :active_modal, modal_id)}
+  end
+
+  def handle_event("deactivate_modal" = ev, _, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+    {:noreply, assign(socket, :active_modal, nil)}
   end
 
   def handle_info({:search_result, search_op}, socket) do

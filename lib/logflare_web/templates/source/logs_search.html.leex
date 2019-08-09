@@ -1,89 +1,76 @@
-<div>
-  <div class="subhead subhead-fixed">
-    <div class="container mx-auto">
-      <div class="log-settings float-right">
-        <ul>
-          <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
-          <li><a href="#" data-toggle="modal" data-target="#searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
-          <li><a href="#" data-toggle="modal" data-target="#sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
-          <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">copy search</span></a></li>
-          <li><a href="#" data-toggle="modal" data-target="#queryDebugModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug query</span></a></li>
-        </ul>
-      </div>
-      <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/search</h5>
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
+        <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">copy search</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value="queryDebugModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug query</span></a></li>
+      </ul>
     </div>
+    <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/search</h5>
   </div>
-  <div class="container source-logs-search-container" id="console-text">
-    <%= if length(@log_events) > 0 do %>
-      <%= render "logs_search_list.html", log_events: @log_events %>
-    <% else %>
-      <div id="logs-list-container-empty"></div>
-    <% end %>
-    <div class="search-control">
-      <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
-      <div class="form-group">
-        <%= text_input f, :querystring, value: @querystring, class: "form-control", readonly: if @loading, do: "true" %>
-      </div>
-      <div class="form-row align-items-center">
-        <div class="col-auto mt-2">
-          <%= submit "Search", class: "btn btn-primary btn-sm", disabled: if @loading, do: true %>
-        </button>
-      </div>
-      <div class="col-auto mt-2">
-        <div class="btn-group-toggle">
-          <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
-            <%= if @tailing? do %>
-              <div class="spinner-border spinner-border-sm text-info" role="status"></div>
-            <% end %>
-            Searching</a>
-          <%= checkbox f, :tailing?, value: @tailing? %> Live Search
-        <% end %>
-      </div>
-    </form>
-  </div>
-  <%= render_flash(@flash) %>
-  <%= if @search_op && @search_op.sql_params do %>
-    <div class="d-none" id="search-query-debug">
-      <div>
-        <% stats = @search_op.stats %>
-        <ul class="list-group">
-          <li class="list-group-item">
-            <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
-          </li>
-        </ul>
-        <ul class="list-group list-group-horizontal">
-          <li class="list-group-item flex-fill">
-            Total rows: <span class="my-badge"><%= stats[:total_rows] %></span>
-          </li>
-          <li class="list-group-item flex-fill">
-            Total bytes processed: <span class="my-badge"><%= stats[:total_bytes_processed] %></span>
-          </li>
-          <li class="list-group-item flex-fill">
-            Total duration: <span class="my-badge"><%= stats[:total_duration] %>ms</span>
-          </li>
-        </ul>
-      </div>
-    </div>
-  <% end %>
-  <div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 </div>
-<div class="source-logs-search-modals">
-  <%= render "logs_search_modal.html",
-    id: "searchHelpModal",
-    title: "Search Syntax",
-    body: render("logs_search_help.html") %>
-  <%= render "logs_search_modal.html",
-    id: "sourceSchemaModal",
-    title: "Source Schema",
-    body: format_bq_schema(@source) %>
-  <%= render "logs_search_modal.html",
-    id: "queryDebugModal",
-    title: "Query Debugging",
-    body: "No query or query is still in progress..." %>
-  <%= render "logs_search_modal.html",
-    id: "metadataModal",
-    title: "Metadata",
-    body: "" %>
+<div class="container source-logs-search-container" id="console-text">
+  <%= if length(@log_events) > 0 do %>
+    <%= render "logs_search_list.html", log_events: @log_events %>
+  <% else %>
+    <div id="logs-list-container-empty"></div>
+  <% end %>
+  <div class="search-control">
+    <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
+    <div class="form-group">
+      <%= text_input f, :querystring, value: @querystring, class: "form-control", readonly: if @loading, do: "true" %>
+    </div>
+    <div class="form-row align-items-center">
+      <div class="col-auto mt-2">
+        <%= submit "Search", class: "btn btn-primary btn-sm", disabled: if @loading, do: true %>
+      </button>
+    </div>
+    <div class="col-auto mt-2">
+      <div class="btn-group-toggle">
+        <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
+          <%= if @tailing? do %>
+            <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+          <% end %>
+        </a>
+        <%= checkbox f, :tailing?, value: @tailing? %> Live Search
+      <% end %>
+    </div>
+  </form>
+</div>
+</div>
+<%= render_flash(@flash) %>
+<%= if @search_op && @search_op.sql_params do %>
+  <div class="d-none" id="search-query-debug">
+    <div>
+      <% stats = @search_op.stats %>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
+        </li>
+      </ul>
+      <ul class="list-group list-group-horizontal">
+        <li class="list-group-item flex-fill">
+          Total rows: <span class="my-badge"><%= stats[:total_rows] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total bytes processed: <span class="my-badge"><%= stats[:total_bytes_processed] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total duration: <span class="my-badge"><%= stats[:total_duration] %>ms</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+<% end %>
+<div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
+</div>
+<div>
+  <%= if @active_modal do %>
+    <%= render_modal(@active_modal, @source) %>
+  <% end %>
 </div>
 <script>
   document.addEventListener("DOMContentLoaded", async () => {

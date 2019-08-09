@@ -7,7 +7,7 @@
       <%= message %>
       <%= if map_size(metadata) > 0 do %>
         <a class="metadata-link"
-                data-toggle="modal" data-target="#metadataModal"
+                phx-click="activate_modal" phx-value="metadataModal"
                 href="#" aria-expanded="false">
           metadata
         </a>
