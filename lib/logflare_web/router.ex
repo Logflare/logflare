@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
+  import Phoenix.LiveView.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -8,6 +9,7 @@ defmodule LogflareWeb.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_flash
+    plug Phoenix.LiveView.Flash
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser
@@ -89,6 +91,7 @@ defmodule LogflareWeb.Router do
 
     get "/:id/rejected", SourceController, :rejected_logs
     get "/:id/search", SourceController, :search
+    # live "/:id/search", Source.SearchLV, session: [:user, :source]
 
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs

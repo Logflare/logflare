@@ -37,7 +37,8 @@ defmodule LogflareWeb do
       # Import convenience functions from controllers
       import Phoenix.Controller, only: [get_flash: 2, view_module: 1]
 
-      import Phoenix.LiveView, only: [live_render: 2, live_render: 3]
+      import Phoenix.LiveView,
+        only: [live_render: 2, live_render: 3, live_link: 2, live_redirect: 2]
 
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
@@ -60,7 +61,7 @@ defmodule LogflareWeb do
 
   def channel do
     quote do
-      use Phoenix.Channel, log_join: :false, log_handle_in: false
+      use Phoenix.Channel, log_join: false, log_handle_in: false
       import LogflareWeb.Gettext
     end
   end

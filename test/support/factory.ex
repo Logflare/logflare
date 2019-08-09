@@ -19,6 +19,7 @@ defmodule Logflare.DummyFactory do
     %Source{
       name: Faker.Superhero.name(),
       token: Faker.UUID.v4(),
+      rules: [],
       favorite: false
     }
   end

@@ -207,6 +207,7 @@ defmodule Logflare.Logs.Search do
     |> drop_timestamp_pathvalops
   end
 
+  @decorate pass_through_on_error_field()
   def partition_or_streaming(%SO{} = so), do: so
 
   @decorate pass_through_on_error_field()
@@ -238,6 +239,7 @@ defmodule Logflare.Logs.Search do
     put_result_in(result, so)
   end
 
+  @decorate pass_through_on_error_field()
   def apply_selects(%SO{} = so) do
     top_level_fields =
       so.source

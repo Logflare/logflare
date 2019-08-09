@@ -36,7 +36,8 @@ defmodule Logflare.Source.Supervisor do
       )
 
     source_ids =
-      Repo.all(query)
+     query
+      |> Repo.all()
       |> Enum.map(fn s ->
         {:ok, source} = Ecto.UUID.Atom.load(s.token)
         source
@@ -47,6 +48,10 @@ defmodule Logflare.Source.Supervisor do
         rls = %RLS{source_id: source_id}
         Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
       end)
+
+    search_query_servers = Enum.map(source_ids, &Logflare.Logs.SearchQueryExecutor.child_spec/1)
+
+    children = [children | search_query_servers] |> List.flatten()
 
     Supervisor.start_link(children, strategy: :one_for_one)
 

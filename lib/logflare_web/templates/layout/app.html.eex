@@ -64,30 +64,30 @@
         <ul class="navbar-nav mr-auto">
           <%= if @user do %>
             <%= if @conn.request_path == "/" do %>
-            <li class="nav-item">
-              <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
-            </li>
+              <li class="nav-item">
+                <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
+              </li>
             <% end %>
-          <%= if @user.admin do %>
-          <li class="nav-item">
-            <%= link "Admin", to: Routes.admin_path(@conn, :dashboard), class: "nav-link" %>
-          </li>
-          <% end %>
-          <li class="nav-item">
-            <%= link "Preferences", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
-          </li>
-          <li class="nav-item">
-            <%= link "Logout", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>
-          </li>
+            <%= if @user.admin do %>
+              <li class="nav-item">
+                <%= link "Admin", to: Routes.admin_path(@conn, :dashboard), class: "nav-link" %>
+              </li>
+            <% end %>
+            <li class="nav-item">
+              <%= link "Preferences", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
+            </li>
+            <li class="nav-item">
+              <%= link "Logout", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>
+            </li>
           <% else %>
-          <li class="nav-item">
-            <%= link "Sign in with Github", to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" %>
-          </li>
-          <li class="nav-item">
-            <%= link "Sign in with Google", to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" %>
-          </li>
+            <li class="nav-item">
+              <%= link "Sign in with Github", to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" %>
+            </li>
+            <li class="nav-item">
+              <%= link "Sign in with Google", to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" %>
+            </li>
           <% end %>
-       </ul>
+        </ul>
       </div>
     </nav>
 
