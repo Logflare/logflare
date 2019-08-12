@@ -21,7 +21,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount(session, socket) do
     %{source: source, user: user, querystring: qs} = session
-    Logger.info("#{pid_source_to_string(self(), source)} is being mounted...")
+
+    Logger.info(
+      "#{pid_source_to_string(self(), source)} is being mounted... Connected: #{
+        connected?(socket)
+      }"
+    )
 
     socket =
       assign(socket,
@@ -35,7 +40,8 @@ defmodule LogflareWeb.Source.SearchLV do
         search_op: nil,
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
-        active_modal: nil
+        active_modal: nil,
+        first_search?: false
       )
 
     {:ok, socket}
@@ -93,6 +99,25 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
+    tailing? = socket.assigns.tailing?
+    querystring = socket.assigns.querystring
+    log_events_empty? = search_op.rows == []
+
+    warning =
+      cond do
+        log_events_empty? and not tailing? ->
+          "No logs matching your search query"
+
+        log_events_empty? and tailing? ->
+          "No logs matching your search query ingested during last 24 hours..."
+
+        querystring == "" and log_events_empty? and tailing? ->
+          "No logs ingested during last 24 hours..."
+
+        true ->
+          nil
+      end
+
     socket =
       socket
       |> assign(:log_events, search_op.rows)
@@ -100,6 +125,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
+      |> assign(:first_search?, socket.assigns.tailing_initial?)
+      |> assign_flash(:warning, warning)
 
     {:noreply, socket}
   end
@@ -124,6 +151,8 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:noreply, socket}
   end
+
+  def assign_flash(socket, _, nil), do: socket
 
   def assign_flash(socket, key, message) do
     flash = socket.assigns.flash

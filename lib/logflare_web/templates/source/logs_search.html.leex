@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="javascript:Source.scrollOverflowBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
         <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">copy search</span></a></li>
@@ -38,7 +38,8 @@
         <%= checkbox f, :tailing?, value: @tailing? %> Live Search
       <% end %>
     </div>
-  </form>
+  </div>
+</form>
 </div>
 </div>
 <%= render_flash(@flash) %>
@@ -65,8 +66,9 @@
     </div>
   </div>
 <% end %>
-<div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 </div>
+<div id="first-search" class="d-none" data-value="<%= @first_search? %>"> <%= @first_search? %></div>
+<div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <div>
   <%= if @active_modal do %>
     <%= render_modal(@active_modal, @source, @log_events) %>

@@ -49,7 +49,7 @@ defmodule LogflareWeb.SourceView do
     """
   end
 
-  def render_modal("queryDebugModal", source, _log_events) do
+  def render_modal("queryDebugModal", _source, _log_events) do
     ~E"""
     <div class="source-logs-search-modals">
       <%= render "logs_search_modal.html",

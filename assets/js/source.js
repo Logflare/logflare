@@ -168,19 +168,32 @@ export async function initSearch() {
         idle: idleInterval,
     }).start()
 
-    document.addEventListener("phx:update", search)
+    $(document).on("phx:update", search)
 }
 
 export async function search() {
-    const queryDebugModal = $("#queryDebugModal")
-    queryDebugModal.on("show.bs.modal", event => {
+    let $firstSearch = $("#first-search")
+    let firstSearch = JSON.parse($firstSearch.text())
+    if (firstSearch && $("#logs-list li:nth(1)")[0]) {
+        $("#logs-list li:nth(1)")[0].scrollIntoView()
+    }
+
+    const $queryDebugModal = $("#queryDebugModal")
+    if ($queryDebugModal) {
         const code = $("#search-query-debug code")
         const fmtSql = sqlFormatter.format(code.text())
         // replace with formatted sql
         code.text(fmtSql)
 
-        queryDebugModal
+        $queryDebugModal
             .find(".modal-body")
             .html($("#search-query-debug").html())
-    })
+    }
+}
+
+export function scrollOverflowBottom() {
+    const $lastLog = $("#logs-list li:nth(1)")[0]
+    if ($lastLog) {
+        $lastLog.scrollIntoView()
+    }
 }

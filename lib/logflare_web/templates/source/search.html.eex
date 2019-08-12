@@ -1,1 +1,1 @@
-<%= live_render(@conn, LogflareWeb.Source.TailSearchLV, session: @session) %>
+<%= live_render(@conn, LogflareWeb.Source.SearchLV, session: @session) %>
