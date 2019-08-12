@@ -1,17 +1,10 @@
 @import "named_variables";
 
 .source-logs-search-container {
-  /* display: grid;
-  grid-template-rows: auto 100px;
-  grid-template-columns: 50% 50%;
-  grid-column-gap: 0;
-  grid-row-gap: 20px; */
   & .search-control {
     & .source-name {
       text-align: left;
     }
-    /* grid-row: 2/2;
-    grid-column: span 2; */
     margin-top: 20px;
   }
 
@@ -20,42 +13,36 @@
   }
 
   #logs-list-container {
-    height: calc(100vh - 250px);
-    overflow-y: scroll;
+    /* height: calc(100vh - 250px); */
+    /* overflow-y: scroll; */
   }
 
   #logs-list-container-empty {
-    height: calc(100vh - 250px);
+    /* height: calc(100vh - 250px); */
   }
 
   & #logs-list {
     display: flex;
     flex-direction: column-reverse;
     flex-grow: 1;
-    /* grid-column: span 2;
-    grid-row: 1/2;
-    display: flex;
-    flex-direction: column-reverse; */
-    min-height: 100vh;
-    /* &::-webkit-scrollbar-track {
-      box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.1);
-      background-color: #f5f5f5;
-    }
-
-    &::-webkit-scrollbar {
-      width: 15px;
-      background-color: #f5f5f5;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background-color: #fff;
-      background-image: -webkit-gradient(linear, 50% 0%, 75% 100%, from($brand-green), to($brand-brighter-green));
-    } */
+    /* min-height: 100vh; */
   }
 }
 
 .source-logs-search-modals {
+  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
+  word-break: normal;
+  overflow-wrap: normal;
+
   & kbd {
     white-space: nowrap;
   }
+}
+
+.message {
+  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
+}
+
+.source-logs-search-modals .modal {
+  overflow-y: scroll;
 }
