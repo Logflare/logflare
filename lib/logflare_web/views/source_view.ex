@@ -98,20 +98,22 @@ defmodule LogflareWeb.SourceView do
         |> Enum.map(fn {k, v} -> {k, SchemaTypes.to_schema_type(v)} end)
 
       ~E"""
-      <table class="table table-dark show-source-schema">
-        <thead>
-          <td>Field path</td>
-          <td>BigQuery SQL type</td>
-        </thead>
-        <tbody>
-        <%= for {field, type} <- fields_and_types do %>
-        <tr>
-          <td class="metadata-field"><%= field %></td>
-          <td><%= type %></td>
-          </tr>
-        <% end %>
-      </tbody>
-      </table>
+      <div class="table-responsive">
+        <table class="table table-dark show-source-schema">
+          <thead>
+            <td>Field path</td>
+            <td>BigQuery SQL type</td>
+          </thead>
+          <tbody>
+            <%= for {field, type} <- fields_and_types do %>
+            <tr>
+              <td class="metadata-field"><%= field %></td>
+              <td><%= type %></td>
+            </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
       """
     else
       ""
