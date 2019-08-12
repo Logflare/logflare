@@ -88,6 +88,13 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, assign(socket, :active_modal, nil)}
   end
 
+  def handle_event("remove_flash" = ev, key, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+    key = String.to_existing_atom(key)
+    socket = assign_flash(socket, key, nil)
+    {:noreply, socket}
+  end
+
   def handle_info({:search_result, search_op}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
 
@@ -151,8 +158,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:noreply, socket}
   end
-
-  def assign_flash(socket, _, nil), do: socket
 
   def assign_flash(socket, key, message) do
     flash = socket.assigns.flash
