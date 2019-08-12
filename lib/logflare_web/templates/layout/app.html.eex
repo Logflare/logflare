@@ -6,11 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Easily access your Cloudflare logs in a centralized web-based log management solution.">
     <meta name="author" content="">
-
     <title><%= page_title(assigns) %></title>
-
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
-
     <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png">
     <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png">
     <link rel="apple-touch-icon" sizes="72x72" href="/images/apple-icon-72x72.png">
@@ -31,22 +28,18 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
-
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
-
     <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
-
     <script>
       <%= if @user do %>
         window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
       <% end %>
     </script>
   </head>
-
   <body>
-    <%= Phoenix.View.render(LogflareWeb.LayoutView, "notifications.html", flash: %{
+    <%= render_flash(%{
       error: get_flash(@conn, :error),
-      info: get_flash(@conn, :info),
+      warning: get_flash(@conn, :info),
     }) %>
     <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @conn.request_path != "/" do %>
@@ -59,7 +52,6 @@
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
-
       <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
           <%= if @user do %>
@@ -90,13 +82,11 @@
         </ul>
       </div>
     </nav>
-
     <main role="main" class="app">
       <%= render @view_module, @view_template, assigns %>
     </main>
-
     <script src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
-    <script>
+    <%# <script>
     window.addEventListener('load', () => {
       if (!('serviceWorker' in navigator)) {
         // service workers not supported 😣
@@ -112,6 +102,6 @@
         }
       )
     })
-  </script>
+  </script> %>
   </body>
 </html>
