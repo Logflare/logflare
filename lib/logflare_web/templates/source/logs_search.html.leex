@@ -34,12 +34,12 @@
           <%= if @tailing? do %>
             <div class="spinner-border spinner-border-sm text-info" role="status"></div>
           <% end %>
-        </a>
-        <%= checkbox f, :tailing?, value: @tailing? %> Live Search
-      <% end %>
+          Live Search
+        <% end %>
+        <%= checkbox f, :tailing?, value: @tailing?, class: "d-none" %>
+      </div>
     </div>
-  </div>
-</form>
+  </form>
 </div>
 </div>
 <%= render_flash(@flash, in_live_view: true) %>
