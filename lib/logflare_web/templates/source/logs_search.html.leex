@@ -38,7 +38,8 @@
         <%= checkbox f, :tailing?, value: @tailing? %> Live Search
       <% end %>
     </div>
-  </form>
+  </div>
+</form>
 </div>
 </div>
 <%= render_flash(@flash) %>
@@ -65,8 +66,9 @@
     </div>
   </div>
 <% end %>
-<div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 </div>
+<div id="first-search" class="d-none" data-value="<%= @first_search? %>"> <%= @first_search? %></div>
+<div id="user-idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <div>
   <%= if @active_modal do %>
     <%= render_modal(@active_modal, @source, @log_events) %>

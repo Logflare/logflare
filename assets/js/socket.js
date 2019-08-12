@@ -1,3 +1,5 @@
+import "phoenix"
+import "phoenix_html"
 import { Socket } from "phoenix"
 
 let socket = new Socket("/socket", {

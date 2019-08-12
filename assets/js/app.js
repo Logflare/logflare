@@ -1,6 +1,4 @@
 import css from "../css/app.scss"
-import "phoenix"
-import "phoenix_html"
 import socket from "./socket"
 import "bootstrap"
 import "@babel/polyfill"
