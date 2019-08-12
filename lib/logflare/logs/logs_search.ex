@@ -114,15 +114,17 @@ defmodule Logflare.Logs.Search do
 
   @decorate pass_through_on_error_field()
   def prepare_query_result(%SO{} = so) do
-    %{
-      so
-      | query_result:
-          so.query_result
-          |> Map.update(:totalBytesProcessed, 0, &String.to_integer/1)
-          |> Map.update(:totalRows, 0, &String.to_integer/1)
-          |> AtomicMap.convert(%{safe: false})
-    }
+    query_result =
+      so.query_result
+      |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer/1)
+      |> Map.update(:totalRows, 0, &maybe_string_to_integer/1)
+      |> AtomicMap.convert(%{safe: false})
+
+    %{so | query_result: query_result}
   end
+
+  def maybe_string_to_integer(nil), do: 0
+  def maybe_string_to_integer(s) when is_binary(s), do: String.to_integer(s)
 
   @decorate pass_through_on_error_field()
   def order_by_default(%SO{} = so) do
