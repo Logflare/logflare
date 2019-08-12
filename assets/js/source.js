@@ -190,3 +190,10 @@ export async function search() {
             .html($("#search-query-debug").html())
     }
 }
+
+export function scrollOverflowBottom() {
+    const $lastLog = $("#logs-list li:nth(1)")[0]
+    if ($lastLog) {
+        $lastLog.scrollIntoView()
+    }
+}
