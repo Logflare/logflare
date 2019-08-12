@@ -77,7 +77,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     log_events =
       params.log_events
       |> Enum.concat(rows)
-      |> Enum.uniq_by(& &1.body.timestamp)
+      |> Enum.uniq_by(& &1.body)
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(100)
 
