@@ -6,8 +6,8 @@
         <button 
       type="button" 
       class="close" 
-      <%= if not @in_live_view, do: ~S|data-dismiss="alert"| %>
-       >
+      <%= if not @in_live_view, do: "data-dismiss=alert" %>
+      >
           &times;
         </button>
       </a>
@@ -22,9 +22,9 @@
       phx-value="error">
         <button 
       type="button" 
-      class="close" 
-      <%= if not @in_live_view, do: ~S|data-dismiss="alert"| %>
-       >
+      class="close"
+      <%= if not @in_live_view, do: "data-dismiss=alert" %>
+      >
           &times;</button>
       </a>
     </div>
