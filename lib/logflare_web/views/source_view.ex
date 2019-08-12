@@ -36,7 +36,7 @@ defmodule LogflareWeb.SourceView do
       |> encode_metadata
 
     body = ~E"""
-      <pre> <code> <%= fmt_metadata %> </code> </pre>
+      <pre class="pre-metadata"><code><%= fmt_metadata %></code></pre>
     """
 
     ~E"""
