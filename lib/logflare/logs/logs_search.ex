@@ -118,8 +118,8 @@ defmodule Logflare.Logs.Search do
       so
       | query_result:
           so.query_result
-          |> Map.update!(:totalBytesProcessed, &String.to_integer/1)
-          |> Map.update!(:totalRows, &String.to_integer/1)
+          |> Map.update(:totalBytesProcessed, 0, &String.to_integer/1)
+          |> Map.update(:totalRows, 0, &String.to_integer/1)
           |> AtomicMap.convert(%{safe: false})
     }
   end
