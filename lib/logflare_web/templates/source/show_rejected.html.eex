@@ -9,7 +9,7 @@
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
     </div>
-    <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/rejected</h5>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/rejected</h5>
   </div>
 </div>
 

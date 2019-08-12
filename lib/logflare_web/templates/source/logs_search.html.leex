@@ -9,7 +9,7 @@
         <li><a href="#" phx-click="activate_modal" phx-value="queryDebugModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug query</span></a></li>
       </ul>
     </div>
-    <h5>~/logs/<span class="text-primary"><%= @source.name %></span>/search</h5>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
   </div>
 </div>
 <div class="container source-logs-search-container" id="console-text">

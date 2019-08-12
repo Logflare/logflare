@@ -119,7 +119,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
     if log_count > 0 do
       message =
-        "Initialized and waiting for new events. #{Delimit.number_to_delimited(log_count)} archived and available to explore."
+        "Initialized. Waiting for new events. #{Delimit.number_to_delimited(log_count)} available to explore & search."
 
       log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
       push(source_id, log_event)
