@@ -68,6 +68,7 @@ main.app {
 
 .form-text {
   margin-bottom: 1em;
+  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
 }
 
 .pre-metadata {
@@ -283,9 +284,7 @@ mark {
   flex-direction: column-reverse; */
 }
 
-.console-text-list {
-  margin: 0;
-}
+.console-text-list {}
 
 .container {
   max-width: 95%;
