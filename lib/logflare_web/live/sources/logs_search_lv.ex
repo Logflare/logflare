@@ -95,6 +95,13 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_event("user_idle" = ev, _, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+    socket = assign_flash(socket, :warning, "Live search paused due to user inactivity")
+
+    {:noreply, socket}
+  end
+
   def handle_info({:search_result, search_op}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
 
@@ -158,14 +165,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:noreply, socket}
   end
-
-  def handle_event("user_idle" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-    socket = assign_flash(socket, :warning, "Live search paused due to user inactivity")
-
-    {:noreply, socket}
-  end
-
 
   def assign_flash(socket, key, message) do
     flash = socket.assigns.flash

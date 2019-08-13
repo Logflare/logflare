@@ -141,6 +141,7 @@ function resetScrollTracker() {
 }
 
 export async function initSearch() {
+    window.searchStarted = false
     // Clipboards
     activateClipboardForSelector("#search-uri-query", {
         text: trigger =>
@@ -173,6 +174,11 @@ export async function initSearch() {
 }
 
 export async function search() {
+    if (!searchStarted) {
+        $("button#search").click()
+        window.searchStarted = true
+    }
+
     let $firstSearch = $("#first-search")
     let firstSearch = JSON.parse($firstSearch.text())
     if (firstSearch && $("#logs-list li:nth(1)")[0]) {
