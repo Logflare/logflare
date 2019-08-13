@@ -1,4 +1,4 @@
-defmodule Logflare.Logs.Injest.MetadataCleaner do
+defmodule Logflare.Logs.Ingest.MetadataCleaner do
   @moduledoc """
   Deeply rejects nils and empty containers in nested enumerables
   """

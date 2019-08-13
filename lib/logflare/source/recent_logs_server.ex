@@ -78,7 +78,7 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, rls}
   end
 
-  def handle_cast({:push, source_id, %LE{injested_at: inj_at, sys_uint: sys_uint} = le}, state) do
+  def handle_cast({:push, source_id, %LE{ingested_at: inj_at, sys_uint: sys_uint} = le}, state) do
     timestamp = inj_at |> Timex.to_datetime() |> DateTime.to_unix(:microsecond)
     :ets.insert(source_id, {{timestamp, sys_uint, 0}, le})
     {:noreply, state}

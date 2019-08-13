@@ -1,7 +1,7 @@
 defmodule Logflare.LogEvent do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Logflare.Logs.Injest.MetadataCleaner
+  alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Source
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange}
@@ -34,7 +34,7 @@ defmodule Logflare.LogEvent do
     field :source, :map
     field :valid?, :boolean
     field :validation_error, {:array, :string}
-    field :injested_at, :utc_datetime_usec
+    field :ingested_at, :utc_datetime_usec
     field :sys_uint, :integer
     field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
@@ -44,7 +44,7 @@ defmodule Logflare.LogEvent do
   @type t() :: %__MODULE__{
           valid?: boolean(),
           validation_error: [String.t()],
-          injested_at: DateTime.t(),
+          ingested_at: DateTime.t(),
           sys_uint: integer(),
           params: map(),
           body: Body.t()
@@ -120,7 +120,7 @@ defmodule Logflare.LogEvent do
     |> Map.put(:origin_source_id, source.token)
     |> Map.put(:valid?, changeset.valid?)
     |> Map.put(:params, params)
-    |> Map.put(:injested_at, NaiveDateTime.utc_now())
+    |> Map.put(:ingested_at, NaiveDateTime.utc_now())
     |> Map.put(:id, Ecto.UUID.generate())
     |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
     |> validate()
