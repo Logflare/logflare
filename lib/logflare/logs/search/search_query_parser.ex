@@ -18,8 +18,9 @@ defmodule Logflare.Logs.Search.Parser do
 
   metadata_field =
     string("metadata")
-    |> ascii_string([?a..?z, ?., ?_, ?0..?9], min: 2)
+    |> ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
     |> reduce({List, :to_string, []})
+    |> label("metadata field")
 
   operator =
     choice([
@@ -86,6 +87,9 @@ defmodule Logflare.Logs.Search.Parser do
       e in MatchError ->
         %MatchError{term: {filter, {:error, errstring}}} = e
         {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
+
+      _e in FunctionClauseError ->
+        {:error, "Invalid query! Please consult search syntax guide."}
 
       e ->
         {:error, inspect(e)}

@@ -126,5 +126,14 @@ defmodule Logflare.Logs.Search.ParserTest do
 
       assert {:error, "Timestamp parse error: invalid_format"} = Parser.parse(str)
     end
+
+    test "returns humand error for invalid query" do
+      str = ~S|
+         metadata.user.emailAddress:
+         metadata.user.clusterId:200..300
+       |
+
+      assert {:error, "Invalid query! Please consult search syntax guide."} = Parser.parse(str)
+    end
   end
 end
