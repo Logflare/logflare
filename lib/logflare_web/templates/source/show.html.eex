@@ -48,6 +48,11 @@
   <% end) %>
 </ul>
 
+<%= if @logs == [] do %>
+<div id="no-logs-warning">
+  <h4>No logs ... add some logs!</h4>
+</div>
+<% else %>
 <div>
 <%= form_for @conn, Routes.source_path(LogflareWeb.Endpoint, :search, @source), [method: :get], fn f -> %>
   <div class="form-group">
@@ -59,14 +64,9 @@
   <%= submit "Search", class: "btn btn-primary form-button" %>
 <% end %>
 </div>
+<% end %>
 
-<div id="no-logs-warning">
-  <%= if @logs == [] do %>
-  <h4>No logs ... add some logs!</h4>
-  <% end %>
-  </div>
 </div>
-
 <!-- Modal -->
 <%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source) %>
 
