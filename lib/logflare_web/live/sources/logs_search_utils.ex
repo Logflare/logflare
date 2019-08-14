@@ -39,6 +39,21 @@ defmodule Logflare.Logs.Search.Utils do
     Logger.info("#{pid_sid(source)} received #{event_name} event")
   end
 
+  def gen_search_tip() do
+    tips = [
+      "Search is case sensitive.",
+      "Exact match an integer (e.g. `metadata.response.status:500`).",
+      "Integers support greater and less than symobols (e.g. `metadata.response.origin_time:<1000`).",
+      ~s|Exact match a string in a field (e.g. `metadata.response.cf-ray:"505c16f9a752cec8-IAD"`).|,
+      "Timestamps support greater and less than symbols (e.g. `timestamp:>=2019-07-01`).",
+      ~s|Match a field with regex (e.g. `metadata.browser:~"Firefox 5\\d"`).|,
+      "Search between times with multiple fields (e.g. `timestamp:>=2019-07-01 timestamp:<=2019-07-02`).",
+      "Default behavoir is to search the log message field (e.g. `error`)."
+    ]
+
+    Enum.random(tips)
+  end
+
   defp pid_sid(source) do
     pid_source_to_string(self(), source)
   end

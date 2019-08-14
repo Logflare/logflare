@@ -16,7 +16,7 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
   alias Logflare.Source.{Supervisor, Data}
-  alias Logflare.Logs.RejectedLogEvents
+  alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -96,7 +96,7 @@ defmodule LogflareWeb.SourceController do
       bigquery_project_id &&
         generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
-    {search_tip, tip_number} = gen_search_tip()
+    search_tip = Search.Utils.gen_search_tip()
 
     render(
       conn,
@@ -105,8 +105,7 @@ defmodule LogflareWeb.SourceController do
       source: source,
       public_token: source.public_token,
       explore_link: explore_link || "",
-      search_tip: search_tip,
-      tip_number: tip_number
+      search_tip: search_tip
     )
   end
 
@@ -117,7 +116,7 @@ defmodule LogflareWeb.SourceController do
       bigquery_project_id &&
         generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
-    {search_tip, tip_number} = gen_search_tip()
+    search_tip = Search.Utils.gen_search_tip()
 
     conn
     |> put_flash(
@@ -130,8 +129,7 @@ defmodule LogflareWeb.SourceController do
       source: source,
       public_token: source.public_token,
       explore_link: explore_link || "",
-      search_tip: search_tip,
-      tip_number: tip_number
+      search_tip: search_tip
     )
   end
 
@@ -310,21 +308,5 @@ defmodule LogflareWeb.SourceController do
     conn
     |> put_flash(flash_level, flash_message)
     |> redirect(to: Routes.source_path(conn, :dashboard))
-  end
-
-  defp gen_search_tip() do
-    tips = [
-      "Search is case sensitive.",
-      "Exact match an integer (e.g. `metadata.response.status:500`).",
-      "Integers support greater and less than symobols (e.g. `metadata.response.origin_time:<1000`).",
-      ~s|Exact match a string in a field (e.g. `metadata.response.cf-ray:"505c16f9a752cec8-IAD"`).|,
-      "Timestamps support greater and less than symbols (e.g. `timestamp:>=2019-07-01`).",
-      ~s|Match a field with regex (e.g. `metadata.browser:~"Firefox 5\\d"`).|,
-      "Search between times with multiple fields (e.g. `timestamp:>=2019-07-01 timestamp:<=2019-07-02`).",
-      "Default behavoir is to search the log message field (e.g. `error`)."
-    ]
-
-    Enum.with_index(tips)
-    |> Enum.random()
   end
 end

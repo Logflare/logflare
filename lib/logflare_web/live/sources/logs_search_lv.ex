@@ -41,7 +41,8 @@ defmodule LogflareWeb.Source.SearchLV do
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
         active_modal: nil,
-        first_search?: false
+        first_search?: false,
+        search_tip: gen_search_tip()
       )
 
     {:ok, socket}
