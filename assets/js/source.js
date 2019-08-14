@@ -156,13 +156,14 @@ export async function initSearch() {
     // Activate user idle tracking
     idle({
         onIdle: () => {
-            const $search_tailing = $(
-                "#search-tailing-button #" + $.escapeSelector("search_tailing?")
+            const $searchTailingButton = $("#search-tailing-button")
+            const $searchTailingCheckbox = $(
+                "input#" + $.escapeSelector("search_tailing?")
             )
 
-            if ($search_tailing.prop("value") === "true") {
+            if ($searchTailingCheckbox.prop("value") === "true") {
                 console.log(`User idle for ${idleInterval}, tail search paused`)
-                $search_tailing.click()
+                $searchTailingButton.click()
                 $("#user-idle").click()
             }
         },
