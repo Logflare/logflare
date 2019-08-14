@@ -46,7 +46,7 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      RejectedLogEvents.injest(%LogEvent{
+      RejectedLogEvents.ingest(%LogEvent{
         validation_error: Logflare.Logs.Validators.EqDeepFieldTypes.message(),
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
@@ -65,7 +65,7 @@ defmodule LogflareWeb.SourceControllerTest do
                  validation_error:
                    "Metadata validation error: values with the same field path must have the same type.",
                  params: %{"no_log_entry" => true, "timestamp" => ""},
-                 injested_at: _
+                 ingested_at: _
                }
              ] = conn.assigns.logs
 

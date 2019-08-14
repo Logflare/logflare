@@ -1,8 +1,8 @@
-defmodule Logflare.Logs.Injest.MetadataCleanerTest do
+defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
   @moduledoc false
   use ExUnit.Case
   alias LogflareWeb.Logs.PayloadTestUtils
-  alias Logflare.Logs.Injest.MetadataCleaner, as: Cleaner
+  alias Logflare.Logs.Ingest.MetadataCleaner, as: Cleaner
 
   describe "metadata payload cleaner" do
     test "removes nils from standard cloudlare metadata" do

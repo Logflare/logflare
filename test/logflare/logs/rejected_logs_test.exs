@@ -38,15 +38,15 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
         },
         validation_error: validator.message(),
         source: source,
-        injested_at: timestamp,
+        ingested_at: timestamp,
         valid?: false
       }
 
-      _ = RejectedLogEvents.injest(log_event)
+      _ = RejectedLogEvents.ingest(log_event)
 
       [rle] = RejectedLogEvents.get_by_source(source)
 
-      assert rle.injested_at == timestamp
+      assert rle.ingested_at == timestamp
       assert rle.params == log_event.params
     end
 
@@ -97,17 +97,17 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
         validation_error: validator.message()
       }
 
-      _ = RejectedLogEvents.injest(log_event_1_source_1)
-      _ = RejectedLogEvents.injest(log_event_2_source_1)
-      _ = RejectedLogEvents.injest(log_event_1_source_2)
+      _ = RejectedLogEvents.ingest(log_event_1_source_1)
+      _ = RejectedLogEvents.ingest(log_event_2_source_1)
+      _ = RejectedLogEvents.ingest(log_event_1_source_2)
 
       result = RejectedLogEvents.get_by_user(user)
 
       assert map_size(result) == 2
 
       assert [
-               %LogEvent{validation_error: validator_message, body: _, params: _, injested_at: _},
-               %LogEvent{validation_error: validator_message, body: _, params: _, injested_at: _}
+               %LogEvent{validation_error: validator_message, body: _, params: _, ingested_at: _},
+               %LogEvent{validation_error: validator_message, body: _, params: _, ingested_at: _}
              ] = result[source1.token]
 
       assert [
@@ -115,7 +115,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
                  validation_error: validator_message,
                  body: _,
                  params: _,
-                 injested_at: _
+                 ingested_at: _
                }
              ] = result[source2.token]
     end

@@ -22,7 +22,7 @@ defmodule Logflare.LogsTest do
     {:ok, sources: [s1], sinks: [sink1, sink2]}
   end
 
-  describe "log event injest" do
+  describe "log event ingest" do
     setup :with_iam_create_auth
 
     test "succeeds for floats", %{sources: [s]} do
@@ -35,7 +35,7 @@ defmodule Logflare.LogsTest do
       table = s.token |> Atom.to_string() |> String.replace("-", "_")
       sql = "SELECT timestamp FROM `#{project_id}`.#{s.user_id}_test.`#{table}`"
 
-      Logs.injest_logs([%{"message" => "test", "metadata" => %{"float" => 0.001}}], s)
+      Logs.ingest_logs([%{"message" => "test", "metadata" => %{"float" => 0.001}}], s)
       Process.sleep(5_000)
       {:ok, response} = Query.query(conn, project_id, sql)
       assert response.rows == [%{"log_message" => "test", "metadata" => %{"float" => 0.001}}]
@@ -50,7 +50,7 @@ defmodule Logflare.LogsTest do
     {:ok, sources: [s1], users: [u]}
   end
 
-  describe "log event injest for source with rules" do
+  describe "log event ingest for source with rules" do
     test "sink source routing", %{sources: [s1 | _], sinks: [sink1, sink2 | _]} do
       allow RecentLogsServer.push(any(), any()), return: :ok
       allow Buffer.push(any(), any()), return: :ok
@@ -64,7 +64,7 @@ defmodule Logflare.LogsTest do
         %{"message" => "pattern3"}
       ]
 
-      assert Logs.injest_logs(log_params_batch, s1) == :ok
+      assert Logs.ingest_logs(log_params_batch, s1) == :ok
 
       # Original source
       assert_called RecentLogsServer.push(s1.token, any), times(3)
@@ -136,7 +136,7 @@ defmodule Logflare.LogsTest do
 
       s1 = Sources.get_by(id: s1.id)
 
-      Logs.injest_logs(log_params_batch, s1) == :ok
+      Logs.ingest_logs(log_params_batch, s1) == :ok
 
       assert_called RecentLogsServer.push(s1.token, any), once()
       assert_called Sources.Counters.incriment(s1.token), once()

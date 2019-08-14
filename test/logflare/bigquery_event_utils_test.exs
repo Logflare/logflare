@@ -3,8 +3,8 @@ defmodule Logflare.BigQuery.EventUtilsTest do
   use ExUnit.Case
 
   describe "event utils" do
-    test "wraps maps with lists to be injested by BigQuery" do
-      assert EventUtils.prepare_for_injest(raw()) === [wrapped()]
+    test "wraps maps with lists to be ingested by BigQuery" do
+      assert EventUtils.prepare_for_ingest(raw()) === [wrapped()]
     end
   end
 
