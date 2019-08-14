@@ -53,11 +53,21 @@ defmodule LogflareWeb.Source.SearchLV do
 
     params = SearchParams.new(search)
 
+    querystring = params[:querystring] || ""
+    tailing? = params[:tailing?] || false
+
+    warning =
+      if tailing? && String.contains?(querystring, "timestamp") do
+        "Timestamp field is ignored if live tail search is active"
+      else
+        nil
+      end
+
     socket =
       socket
-      # FIXME
-      |> assign(:tailing?, params[:tailing?] || false)
-      |> assign(:querystring, params[:querystring] || "")
+      |> assign(:tailing?, tailing?)
+      |> assign(:querystring, querystring)
+      |> assign_flash(:warning, warning)
 
     {:noreply, socket}
   end
