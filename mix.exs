@@ -68,7 +68,7 @@ defmodule Logflare.Mixfile do
       {:ex_twilio, "~> 0.7.0"},
       {:google_api_big_query, "~> 0.20.0"},
       {:goth, "~> 0.8.0"},
-      {:broadway, "~> 0.3.0"},
+      {:broadway, "~> 0.4.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
