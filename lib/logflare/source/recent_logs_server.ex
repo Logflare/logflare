@@ -84,6 +84,10 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, state}
   end
 
+  def handle_info({:stop_please, reason}, state) do
+    {:stop, reason, state}
+  end
+
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
     count = Data.get_ets_count(source_id)
 
