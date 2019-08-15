@@ -44,19 +44,24 @@ defmodule Logflare.Source.BigQuery.Schema do
   def init(state) do
     Process.flag(:trap_exit, true)
 
+    {:ok, state, {:continue, :boot}}
+  end
+
+  def handle_continue(:boot, state) do
     case BigQuery.get_table(state.source_token, state.bigquery_project_id) do
       {:ok, table} ->
+        IO.puts("BLUE")
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
         type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
         field_count = count_fields(type_map)
 
         Logger.info("Table schema manager started: #{state.source_token}")
         Sources.Cache.put_bq_schema(state.source_token, schema)
-        {:ok, %{state | schema: schema, type_map: type_map, field_count: field_count}}
+        {:noreply, %{state | schema: schema, type_map: type_map, field_count: field_count}}
 
-      _ ->
-        Logger.info("Table schema manager started: #{state.source_token}")
-        {:ok, state}
+      {:error, _response} ->
+        Logger.info("Table schema manager init error: #{state.source_token}")
+        {:noreply, state}
     end
   end
 
