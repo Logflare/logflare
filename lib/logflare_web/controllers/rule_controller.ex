@@ -30,8 +30,10 @@ defmodule LogflareWeb.RuleController do
         |> redirect(to: Routes.source_rule_path(conn, :index, current_source.id))
 
       {:error, %Ecto.Changeset{} = changeset} ->
+        error_message = Rule.changeset_error_to_string(changeset)
+
         conn
-        |> put_flash(:error, "Something went wrong!")
+        |> put_flash(:error, error_message)
         |> render("index.html",
           rules: current_source.rules,
           source: current_source,

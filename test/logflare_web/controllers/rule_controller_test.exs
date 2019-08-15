@@ -47,6 +47,47 @@ defmodule LogflareWeb.RuleControllerTest do
       assert redirected_to(conn, 302) == source_rule_path(conn, :index, u1s1.id)
     end
 
+    test "fails for invalid regex", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [u1s1, u1s2 | _]
+    } do
+      conn =
+        conn
+        |> assign(:user, u1)
+        |> post(
+          source_rule_path(conn, :create, u1s1.id),
+          %{
+            "rule" => %{
+              regex: "*Googlebot",
+              sink: u1s2.token
+            }
+          }
+        )
+
+      rules_db = Sources.get_by(id: u1s1.id).rules
+
+      assert get_flash(conn, :error) === "regex: nothing to repeat at position 0\n"
+
+      conn =
+        conn
+        |> recycle()
+        |> assign(:user, u1)
+        |> post(
+          source_rule_path(conn, :create, u1s1.id),
+          %{
+            "rule" => %{
+              regex: "",
+              sink: u1s2.token
+            }
+          }
+        )
+
+      rules_db = Sources.get_by(id: u1s1.id).rules
+
+      assert get_flash(conn, :error) === "regex: can't be blank\n"
+    end
+
     test "fails for unauthorized user", %{
       conn: conn,
       users: [u1, u2 | _],

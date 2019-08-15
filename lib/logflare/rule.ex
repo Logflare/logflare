@@ -1,4 +1,5 @@
 defmodule Logflare.Rule do
+  @moduledoc false
   use Ecto.Schema
   alias Logflare.Source
   import Ecto.Changeset
@@ -18,5 +19,26 @@ defmodule Logflare.Rule do
     rule
     |> cast(attrs, [:regex, :sink])
     |> validate_required([:regex, :sink])
+    |> validate_regex()
+  end
+
+  def validate_regex(changeset) do
+    validate_change(changeset, :regex, fn field, regex ->
+      case Regex.compile(regex) do
+        {:ok, _} -> []
+        {:error, {msg, position}} -> [{field, "#{msg} at position #{position}"}]
+      end
+    end)
+  end
+
+  def changeset_error_to_string(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.reduce("", fn {k, v}, acc ->
+      "#{acc}#{k}: #{v}\n"
+    end)
   end
 end
