@@ -11,6 +11,7 @@ defmodule Logflare.Source.RecentLogsServer do
     field :notifications_every, integer(), default: 60_000
     field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
+    field :bigquery_dataset_id, binary()
   end
 
   use GenServer
@@ -49,15 +50,36 @@ defmodule Logflare.Source.RecentLogsServer do
 
   @spec handle_continue(:boot, RLS.t()) :: {:noreply, RLS.t()}
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
-    bigquery_project_id = GenUtils.get_project_id(source_id)
-    bigquery_table_ttl = GenUtils.get_table_ttl(source_id)
+    %{
+      user_id: user_id,
+      bigquery_table_ttl: bigquery_table_ttl,
+      bigquery_project_id: bigquery_project_id,
+      bigquery_dataset_location: bigquery_dataset_location,
+      bigquery_dataset_id: bigquery_dataset_id
+    } = GenUtils.get_bq_user_info(source_id)
 
-    BigQuery.init_table!(source_id, bigquery_project_id, bigquery_table_ttl)
+    # Logger.info("bigquery_table_ttl: #{bigquery_table_ttl},
+    # bigquery_project_id: #{bigquery_project_id},
+    # bigquery_dataset_location: #{bigquery_dataset_location},
+    # bigquery_dataset_id: #{bigquery_dataset_id}")
+
+    BigQuery.init_table!(
+      user_id,
+      source_id,
+      bigquery_project_id,
+      bigquery_table_ttl,
+      bigquery_dataset_location,
+      bigquery_dataset_id
+    )
 
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
 
-    rls = %{rls | bigquery_project_id: bigquery_project_id}
+    rls = %{
+      rls
+      | bigquery_project_id: bigquery_project_id,
+        bigquery_dataset_id: bigquery_dataset_id
+    }
 
     children = [
       {RateCounterServer, rls},

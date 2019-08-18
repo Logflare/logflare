@@ -16,6 +16,7 @@ defmodule Logflare.Source.BigQuery.Schema do
       %{
         source_token: rls.source_id,
         bigquery_project_id: rls.bigquery_project_id,
+        bigquery_dataset_id: rls.bigquery_dataset_id,
         schema: %Model.TableSchema{
           fields: [
             %Model.TableFieldSchema{
@@ -48,9 +49,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_continue(:boot, state) do
-    case BigQuery.get_table(state.source_token, state.bigquery_project_id) do
+    case BigQuery.get_table(state.source_token) do
       {:ok, table} ->
-        IO.puts("BLUE")
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
         type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
         field_count = count_fields(type_map)

@@ -193,6 +193,7 @@ defmodule LogflareWeb.SourceController do
           BigQuery.patch_table_ttl(
             source.token,
             String.to_integer(ttl) * 86_400_000,
+            user.bigquery_dataset_id,
             user.bigquery_project_id
           )
         end

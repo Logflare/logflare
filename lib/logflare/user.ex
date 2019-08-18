@@ -20,6 +20,8 @@ defmodule Logflare.User do
     has_many :sources, Source
     field :phone, :string
     field :bigquery_project_id, :string
+    field :bigquery_dataset_location, :string
+    field :bigquery_dataset_id, :string
     field :api_quota, :integer, default: @default_user_api_quota
 
     timestamps()
@@ -41,7 +43,9 @@ defmodule Logflare.User do
       :admin,
       :phone,
       :bigquery_project_id,
-      :api_quota
+      :api_quota,
+      :bigquery_dataset_location,
+      :bigquery_dataset_id
     ])
     |> validate_required([:email, :provider, :token])
     |> default_validations(user)
@@ -57,7 +61,9 @@ defmodule Logflare.User do
       :image,
       :email_me_product,
       :phone,
-      :bigquery_project_id
+      :bigquery_project_id,
+      :bigquery_dataset_id,
+      :bigquery_dataset_location
     ])
     |> default_validations(user)
   end
@@ -65,12 +71,22 @@ defmodule Logflare.User do
   def default_validations(changeset, user) do
     changeset
     |> validate_required([:email, :provider, :token])
-    |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
+
+    # |> validate_gcp_project(:bigquery_project_id,
+    #   user_id: user.id,
+    #   bigquery_dataset_location: user.bigquery_dataset_location,
+    #   bigquery_dataset_id: user.bigquery_dataset_id
+    # )
   end
 
   def validate_gcp_project(changeset, field, options \\ []) do
     validate_change(changeset, field, fn _, bigquery_project_id ->
-      case BigQuery.create_dataset(Integer.to_string(options[:user_id]), bigquery_project_id) do
+      case BigQuery.create_dataset(
+             Integer.to_string(options[:user_id]),
+             options[:bigquery_dataset_location],
+             # options[:bigquery_dataset_id],
+             bigquery_project_id
+           ) do
         {:ok, _} ->
           []
 
