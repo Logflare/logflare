@@ -2,7 +2,7 @@ defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.{Sources.Counters, Users, Sources}
+  alias Logflare.{Users, Sources}
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   use Placebo
 
@@ -30,7 +30,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "/logs/cloudflare POST request fails" do
-    test "without an API token", %{conn: conn, users: [u | _]} do
+    test "without an API token", %{conn: conn, users: _} do
       conn = post(conn, log_path(conn, :create), %{"log_entry" => "valid log entry"})
       assert json_response(conn, 401) == %{"message" => "Error: please set API token"}
     end
@@ -101,6 +101,37 @@ defmodule LogflareWeb.LogControllerTest do
       end
     end
 
+    test "with invalid source token", %{conn: conn, users: [u | _], sources: _} do
+      err_message = %{
+        "message" => "Source or source_name is nil, empty or not found."
+      }
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(
+          log_path(conn, :create),
+          %{
+            "metadata" => %{
+              "users" => [
+                %{
+                  "id" => 1
+                },
+                %{
+                  "id" => "2"
+                }
+              ]
+            },
+            "source" => "signin",
+            "log_entry" => "valid"
+          }
+        )
+
+      assert json_response(conn, 406) == err_message
+      refute_called AllLogsLogged.incriment(any()), once()
+      refute_called AllLogsLogged.log_count(any()), once()
+    end
+
     test "with invalid field types", %{conn: conn, users: [u | _], sources: [s | _]} do
       err_message = %{
         "message" => [
@@ -134,7 +165,7 @@ defmodule LogflareWeb.LogControllerTest do
       refute_called AllLogsLogged.log_count(any()), once()
     end
 
-    test "fails for unauthorized user", %{conn: conn, users: [u1, u2], sources: [s]} do
+    test "fails for unauthorized user", %{conn: conn, users: [_u1, u2], sources: [s]} do
       conn =
         conn
         |> put_req_header("x-api-key", u2.api_key)
@@ -212,10 +243,6 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
-      err_message = %{"message" => "Log entry needed."}
-
-      for metadata <- [%{}, [], {}, nil] do
-        conn =
           conn
           |> assign(:user, u)
           |> assign(:source, s)
