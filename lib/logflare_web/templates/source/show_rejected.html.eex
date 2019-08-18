@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="far fa-arrow-alt-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="javascript:Source.switchDateFormat();"><span id="swap-date">
         <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
         <li><%= link to: Routes.source_path(@conn, :clear_logs, @source) do %><i class="fas fa-broom"></i><span class="hide-on-mobile"> clear cache</span><% end %></li>
