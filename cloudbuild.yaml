@@ -34,12 +34,11 @@ steps:
   - name: "gcr.io/cloud-builders/gcloud"
     args:
       [
-        "gcloud",
         "compute",
         "instances",
         "update-container",
         "logflare-staging-docker",
-        "--zone us-central1-a",
+        "--zone=us-central1-a",
         "--container-image=gcr.io/logflare-staging/github_logflare_logflare-private:latest",
       ]
 
