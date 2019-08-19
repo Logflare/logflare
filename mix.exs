@@ -17,6 +17,13 @@ defmodule Logflare.Mixfile do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test
+      ],
+      releases: [
+        logflare: [
+          version: "0.14.0",
+          include_executables_for: [:unix],
+          applications: []
+        ]
       ]
     ]
   end

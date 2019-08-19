@@ -37,13 +37,12 @@ npm-debug.log
 # Local secrets
 
 gcloud.json
+gcloud_staging.json
 
 # IDEs
 
 /.elixir_ls/
 /.idea/
-
-
 
 # Project exclude paths
 /cover/
