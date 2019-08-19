@@ -16,15 +16,6 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     is_api_path = conn.request_path =~ "/logs" or conn.request_path =~ "/api"
     is_browser_path = not is_api_path
 
-    token =
-      case Ecto.UUID.cast(token) do
-        {:ok, _} ->
-          token
-
-        :error ->
-          nil
-      end
-
     source =
       cond do
         token && is_api_path ->
