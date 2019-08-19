@@ -131,13 +131,13 @@ defmodule LogflareWeb.Source.SearchLV do
     warning =
       cond do
         log_events_empty? and not tailing? ->
-          "No logs matching your search query"
+          "No log events matching your search query."
 
         log_events_empty? and tailing? ->
-          "No logs matching your search query ingested during last 24 hours..."
+          "No log events matching your search query ingested during last 24 hours..."
 
         querystring == "" and log_events_empty? and tailing? ->
-          "No logs ingested during last 24 hours..."
+          "No log events ingested during last 24 hours..."
 
         true ->
           nil
