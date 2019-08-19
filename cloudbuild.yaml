@@ -43,5 +43,7 @@ steps:
       ]
     timeout: 600s
 
+timeout: 1800s
+
 images:
   - gcr.io/logflare-staging/github_logflare_logflare-private:latest
