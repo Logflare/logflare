@@ -4,8 +4,8 @@ defmodule Logflare.Source.Data do
   alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}
 
   @spec get_log_count(atom, String.t()) :: non_neg_integer()
-  def get_log_count(token, bigquery_project_id) do
-    case BigQuery.get_table(token, bigquery_project_id) do
+  def get_log_count(token, _bigquery_project_id) do
+    case BigQuery.get_table(token) do
       {:ok, table_info} ->
         table_rows = String.to_integer(table_info.numRows)
 

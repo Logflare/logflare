@@ -181,9 +181,9 @@ defmodule Logflare.Source.RateCounterServer do
   defp setup_ets_table(source_id) when is_atom(source_id) do
     initial = RCS.new(source_id)
 
-    if ets_table_is_undefined?() do
+    if ets_table_is_undefined?(source_id) do
       table_args = [:named_table, :public]
-      :ets.new(@ets_table_name, table_args)
+      :ets.new(name(source_id), table_args)
     end
 
     insert_to_ets_table(source_id, initial)
@@ -191,12 +191,12 @@ defmodule Logflare.Source.RateCounterServer do
 
   @spec get_data_from_ets(atom) :: map
   def get_data_from_ets(source_id) do
-    if ets_table_is_undefined?() do
-      Logger.error("ETS table #{@ets_table_name} is undefined")
+    if ets_table_is_undefined?(source_id) do
+      Logger.error("ETS table #{name(source_id)} is undefined")
       data = [{source_id, RCS.new(source_id)}]
       data[source_id]
     else
-      data = :ets.lookup(@ets_table_name, source_id)
+      data = :ets.lookup(name(source_id), source_id)
 
       if data[source_id] do
         data[source_id]
@@ -207,19 +207,19 @@ defmodule Logflare.Source.RateCounterServer do
     end
   end
 
-  def ets_table_is_undefined?() do
-    :ets.info(@ets_table_name) == :undefined
+  def ets_table_is_undefined?(source_id) do
+    :ets.info(name(source_id)) == :undefined
   end
 
   def lookup_ets(source_id) do
-    :ets.lookup(@ets_table_name, source_id)
+    :ets.lookup(name(source_id), source_id)
   end
 
   def insert_to_ets_table(source_id, payload) when is_atom(source_id) do
-    if ets_table_is_undefined?() do
-      Logger.debug("#{@ets_table_name} should be defined but it isn't")
+    if ets_table_is_undefined?(source_id) do
+      Logger.debug("#{name(source_id)} should be defined but it isn't")
     else
-      :ets.insert(@ets_table_name, {source_id, payload})
+      :ets.insert(name(source_id), {source_id, payload})
     end
   end
 

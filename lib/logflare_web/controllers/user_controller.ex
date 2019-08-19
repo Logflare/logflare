@@ -21,6 +21,7 @@ defmodule LogflareWeb.UserController do
   def update(conn, %{"user" => params}) do
     user = conn.assigns.user
     prev_bigquery_project_id = user.bigquery_project_id
+    prev_bigquery_dataset_location = user.bigquery_dataset_location
 
     user
     |> User.update_by_user_changeset(params)
@@ -28,6 +29,7 @@ defmodule LogflareWeb.UserController do
     |> case do
       {:ok, user} ->
         new_bq_project? = user.bigquery_project_id != prev_bigquery_project_id
+        new_bq_location? = user.bigquery_dataset_location != prev_bigquery_dataset_location
 
         if new_bq_project?, do: Supervisor.reset_all_user_tables(user)
 

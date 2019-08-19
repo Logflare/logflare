@@ -36,7 +36,7 @@ defmodule Logflare.Source.Supervisor do
       )
 
     source_ids =
-     query
+      query
       |> Repo.all()
       |> Enum.map(fn s ->
         {:ok, source} = Ecto.UUID.Atom.load(s.token)
@@ -77,10 +77,23 @@ defmodule Logflare.Source.Supervisor do
         {:reply, source_id, state}
 
       _ ->
-        GenServer.stop(source_id)
+        send(source_id, {:stop_please, :shutdown})
         Counters.delete(source_id)
 
         state = List.delete(state, source_id)
+        {:reply, source_id, state}
+    end
+  end
+
+  def handle_call({:restart, source_id}, _from, state) do
+    case Process.whereis(source_id) do
+      nil ->
+        {:reply, source_id, state}
+
+      _ ->
+        send(source_id, {:stop_please, :reseting})
+        Counters.delete(source_id)
+
         {:reply, source_id, state}
     end
   end
@@ -105,8 +118,8 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def reset_table(source_id) do
-    GenServer.call(__MODULE__, {:delete, source_id})
-    GenServer.call(__MODULE__, {:create, source_id})
+    GenServer.call(__MODULE__, {:restart, source_id})
+    # supervisor is automatically restarting for us here
 
     {:ok, source_id}
   end

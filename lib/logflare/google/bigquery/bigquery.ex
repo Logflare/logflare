@@ -19,15 +19,13 @@ defmodule Logflare.Google.BigQuery do
   # seven days
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
-  @spec init_table!(atom, String.t(), integer()) :: ok_err_tup
-  def init_table!(source, project_id, ttl) do
-    dataset_id = GenUtils.get_account_id(source)
-
-    case create_dataset(dataset_id, project_id) do
+  @spec init_table!(integer(), atom, String.t(), integer(), String.t(), String.t()) :: ok_err_tup
+  def init_table!(user_id, source, project_id, ttl, dataset_location, dataset_id) do
+    case create_dataset(user_id, dataset_id, dataset_location, project_id) do
       {:ok, _} ->
         Logger.info("BigQuery dataset created: #{dataset_id}")
 
-        case create_table(source, project_id, ttl) do
+        case create_table(source, dataset_id, project_id, ttl) do
           {:ok, _} ->
             Logger.info("BigQuery table created: #{source}")
 
@@ -38,7 +36,7 @@ defmodule Logflare.Google.BigQuery do
       {:error, %Tesla.Env{status: 409}} ->
         Logger.info("BigQuery dataset found: #{dataset_id}")
 
-        case create_table(source, project_id, ttl) do
+        case create_table(source, dataset_id, project_id, ttl) do
           {:ok, _} ->
             Logger.info("BigQuery table created: #{source}")
 
@@ -50,31 +48,36 @@ defmodule Logflare.Google.BigQuery do
         end
 
       {:error, message} ->
-        Logger.error("Init error: #{GenUtils.get_tesla_error_message(message)}")
+        Logger.error(
+          "BigQuery dataset create error: #{dataset_id}: #{
+            GenUtils.get_tesla_error_message(message)
+          }"
+        )
     end
   end
 
-  @spec delete_table(atom, binary) ::
+  @spec delete_table(atom) ::
           {:error, Tesla.Env.t()} | {:ok, term}
-  def delete_table(source, project_id \\ @project_id) do
+  def delete_table(source_id) do
     conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source)
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+    table_name = GenUtils.format_table_name(source_id)
+
+    %{user_id: user_id, bigquery_project_id: project_id, bigquery_dataset_id: dataset_id} =
+      GenUtils.get_bq_user_info(source_id)
 
     Api.Tables.bigquery_tables_delete(
       conn,
       project_id,
-      dataset_id,
+      dataset_id || Integer.to_string(user_id) <> @dataset_id_append,
       table_name
     )
   end
 
-  @spec create_table(atom, binary, any) ::
+  @spec create_table(atom, binary, binary, any) ::
           {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
-  def create_table(source, project_id \\ @project_id, table_ttl \\ @table_ttl) do
+  def create_table(source, dataset_id, project_id, table_ttl) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
 
     schema = %Model.TableSchema{
       fields: [
@@ -120,11 +123,11 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec patch_table_ttl(atom, integer()) :: ok_err_tup
-  def patch_table_ttl(source, table_ttl, project_id \\ @project_id) do
+  @spec patch_table_ttl(atom, integer(), binary, binary) :: ok_err_tup
+  def patch_table_ttl(source_id, table_ttl, dataset_id, project_id) do
     conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source)
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+    table_name = GenUtils.format_table_name(source_id)
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
     partitioning = %Model.TimePartitioning{
       type: "DAY",
@@ -136,24 +139,30 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec patch_table(atom, any, binary) ::
+  @spec patch_table(atom, any, binary, binary) ::
           {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
-  def patch_table(source, schema, project_id \\ @project_id) do
+  def patch_table(source_id, schema, dataset_id, project_id) do
     conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source)
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+    table_name = GenUtils.format_table_name(source_id)
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_patch(conn, project_id, dataset_id, table_name,
       body: %Model.Table{schema: schema}
     )
   end
 
-  @spec get_table(atom, binary) ::
+  @spec get_table(atom) ::
           {:error, Tesla.Env.t()} | {:ok, term}
-  def get_table(source, project_id \\ @project_id) do
+  def get_table(source_id) do
     conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source)
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+    table_name = GenUtils.format_table_name(source_id)
+
+    %{
+      bigquery_project_id: project_id,
+      bigquery_dataset_id: dataset_id
+    } = GenUtils.get_bq_user_info(source_id)
+
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
     Api.Tables.bigquery_tables_get(
       conn,
@@ -163,38 +172,17 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec stream_event(atom, integer, any, binary) ::
-          {:ok, GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse.t()}
-  def stream_event(source, unix_timestamp, message, project_id \\ @project_id) do
+  @spec stream_batch!(atom, list(map)) :: ok_err_tup
+  def stream_batch!(source_id, batch) when is_atom(source_id) do
     conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source)
-    {:ok, timestamp} = DateTime.from_unix(unix_timestamp, :microsecond)
-    row_json = %{"timestamp" => timestamp, "event_message" => message}
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+    table_name = GenUtils.format_table_name(source_id)
 
-    row = %Model.TableDataInsertAllRequestRows{
-      insertId: Ecto.UUID.generate(),
-      json: row_json
-    }
+    %{
+      bigquery_project_id: project_id,
+      bigquery_dataset_id: dataset_id
+    } = GenUtils.get_bq_user_info(source_id)
 
-    body = %Model.TableDataInsertAllRequest{
-      rows: [row]
-    }
-
-    Api.Tabledata.bigquery_tabledata_insert_all(
-      conn,
-      project_id,
-      dataset_id,
-      table_name,
-      body: body
-    )
-  end
-
-  @spec stream_batch!(atom, list(map), atom) :: ok_err_tup
-  def stream_batch!(source, batch, project_id \\ @project_id) when is_atom(source) do
-    conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source)
-    dataset_id = GenUtils.get_account_id(source) <> @dataset_id_append
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
     body = %Model.TableDataInsertAllRequest{
       ignoreUnknownValues: true,
@@ -210,21 +198,21 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
-  @spec create_dataset(binary, binary) ::
+  @spec create_dataset(integer, binary, binary, binary) ::
           {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Dataset.t()}
-  def create_dataset(dataset_id, project_id \\ @project_id) do
+  def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
-    user_id = String.to_integer(dataset_id)
+
     %Logflare.User{email: email, provider: provider} = Users.get_by(id: user_id)
 
     reference = %Model.DatasetReference{
-      datasetId: dataset_id <> @dataset_id_append,
+      datasetId: dataset_id,
       projectId: project_id
     }
 
-    case provider do
-      "google" ->
-        access = [
+    access =
+      if provider == "google" do
+        [
           %GoogleApi.BigQuery.V2.Model.DatasetAccess{
             role: "READER",
             userByEmail: email
@@ -246,33 +234,35 @@ defmodule Logflare.Google.BigQuery do
             specialGroup: "projectReaders"
           }
         ]
+      else
+        []
+      end
 
-        body = %Model.Dataset{
-          datasetReference: reference,
-          access: access,
-          description: "Managed by Logflare",
-          labels: %{"managed_by" => "logflare"}
-        }
+    body = %Model.Dataset{
+      datasetReference: reference,
+      access: access,
+      description: "Managed by Logflare",
+      labels: %{"managed_by" => "logflare"},
+      location: dataset_location
+    }
 
-        Api.Datasets.bigquery_datasets_insert(conn, project_id, body: body)
-
-      _ ->
-        body = %Model.Dataset{
-          datasetReference: reference
-        }
-
-        Api.Datasets.bigquery_datasets_insert(conn, project_id, body: body)
-    end
+    Api.Datasets.bigquery_datasets_insert(conn, project_id, body: body)
   end
 
-  @spec patch_dataset_access!(Integer, atom) :: ok_err_tup
-  def patch_dataset_access!(user_id, project_id \\ @project_id) do
+  @spec patch_dataset_access!(Integer) :: ok_err_tup
+  def patch_dataset_access!(user_id) do
     conn = GenUtils.get_conn()
-    dataset_id = Integer.to_string(user_id) <> @dataset_id_append
+
+    %Logflare.User{
+      email: email,
+      provider: provider,
+      bigquery_dataset_id: dataset_id,
+      bigquery_project_id: project_id
+    } = Users.get_by(id: user_id)
+
+    dataset_id = dataset_id || Integer.to_string(user_id) <> @dataset_id_append
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      %Logflare.User{email: email, provider: provider} = Users.get_by(id: user_id)
-
       if provider == "google" do
         access = [
           %GoogleApi.BigQuery.V2.Model.DatasetAccess{
@@ -309,26 +299,13 @@ defmodule Logflare.Google.BigQuery do
     end)
   end
 
-  @spec delete_dataset(integer, atom) :: ok_err_tup
-  def delete_dataset(account_id, project_id \\ @project_id) do
+  @spec delete_dataset(integer) :: ok_err_tup
+  def delete_dataset(user_id) do
     conn = GenUtils.get_conn()
-    dataset_id = Integer.to_string(account_id) <> @dataset_id_append
+    user = Users.get_by(id: user_id)
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user_id) <> @dataset_id_append
+    project_id = user.bigquery_project_id
 
     Api.Datasets.bigquery_datasets_delete(conn, project_id, dataset_id, deleteContents: true)
-  end
-
-  @spec list_datasets(binary) ::
-          {:error, Tesla.Env.t()} | {:ok, %{:__struct__ => atom, optional(atom) => any}}
-  def list_datasets(project_id \\ @project_id) do
-    conn = GenUtils.get_conn()
-    Api.Datasets.bigquery_datasets_list(conn, project_id)
-  end
-
-  @spec get_dataset(any, binary) ::
-          {:error, Tesla.Env.t()} | {:ok, %{:__struct__ => atom, optional(atom) => any}}
-  def get_dataset(account_id, project_id \\ @project_id) do
-    dataset_id = "#{account_id}" <> @dataset_id_append
-    conn = GenUtils.get_conn()
-    Api.Datasets.bigquery_datasets_get(conn, project_id, dataset_id)
   end
 end

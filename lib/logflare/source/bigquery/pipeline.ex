@@ -43,7 +43,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
     hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
     LogflareLogger.context(hackney_stats: hackney_stats, source_id: context.source_id)
-    stream_batch(context.source_id, messages, context.bigquery_project_id)
+    stream_batch(context.source_id, messages)
   end
 
   def le_messages_to_bq_rows(messages) do
@@ -74,14 +74,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     }
   end
 
-  def stream_batch(source_id, messages, bq_project_id) do
+  def stream_batch(source_id, messages) do
     rows = le_messages_to_bq_rows(messages)
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
 
-    case BigQuery.stream_batch!(source_id, rows, bq_project_id) do
+    case BigQuery.stream_batch!(source_id, rows) do
       {:ok, _response} ->
         messages
 
@@ -116,6 +116,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       if field_count < 500 do
         old_schema = schema_state.schema
         bigquery_project_id = schema_state.bigquery_project_id
+        bigquery_dataset_id = schema_state.bigquery_dataset_id
 
         try do
           schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
@@ -124,7 +125,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
             LogflareLogger.context(hackney_stats: hackney_stats)
 
-            case BigQuery.patch_table(source_id, schema, bigquery_project_id) do
+            case BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id) do
               {:ok, table_info} ->
                 Schema.update(source_id, table_info.schema)
                 Logger.info("Source schema updated!")
