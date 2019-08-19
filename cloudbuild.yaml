@@ -1,22 +1,22 @@
 steps:
   - name: gcr.io/cloud-builders/gcloud
     args:
-    - kms
-    - decrypt
-    - --ciphertext-file=gcloud.json.enc
-    - --plaintext-file=gcloud.json
-    - --location=us-central1
-    - --keyring=logflare-keyring-us-central1
-    - --key=logflare-secrets-key
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
   - name: gcr.io/cloud-builders/gcloud
     args:
-    - kms
-    - decrypt
-    - --ciphertext-file=./config/staging.secret.exs.enc
-    - --plaintext-file=./config/staging.secret.exs
-    - --location=us-central1
-    - --keyring=logflare-keyring-us-central1
-    - --key=logflare-secrets-key
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/staging.secret.exs.enc
+      - --plaintext-file=./config/staging.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
@@ -26,23 +26,22 @@ steps:
         ".",
       ]
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/logflare-staging/github_logflare_logflare-private:latest"]
-  - name: 'gcr.io/cloud-builders/kubectl'
-    args: ['apply', '-f', 'k8s/']
-    env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1'
-    - 'CLOUDSDK_CONTAINER_CLUSTER=logflare-staging-cluster'
-  - name: 'gcr.io/cloud-builders/kubectl'
-    args: [
-      'set', 
-      'image', 
-      'deployment', 
-      'logflare-kube-app', 
-      'gcr.io/logflare-staging/github_logflare_logflare-private:latest'
-    ]
-    env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1'
-    - 'CLOUDSDK_CONTAINER_CLUSTER=logflare-stating-cluster'
+    args:
+      [
+        "push",
+        "gcr.io/logflare-staging/github_logflare_logflare-private:latest",
+      ]
+  - name: "gcr.io/cloud-builders/gcloud"
+    args:
+      [
+        "gcloud",
+        "compute",
+        "instances",
+        "update-container",
+        "logflare-staging-docker",
+        "--zone us-central1-a",
+        "--container-image=gcr.io/logflare-staging/github_logflare_logflare-private:latest",
+      ]
 
 images:
   - gcr.io/logflare-staging/github_logflare_logflare-private:latest
