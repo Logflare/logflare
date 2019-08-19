@@ -41,6 +41,7 @@ steps:
         "--zone=us-central1-a",
         "--container-image=gcr.io/logflare-staging/github_logflare_logflare-private:latest",
       ]
+    timeout: 900s
 
 images:
   - gcr.io/logflare-staging/github_logflare_logflare-private:latest
