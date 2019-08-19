@@ -3,6 +3,7 @@ defmodule Logflare.Source.RateCounterServer do
   Establishes requests per second per source table. Watches the counters for source tables and periodically pulls them to establish
   events per second. Also handles storing those in the database.
   """
+
   use GenServer
 
   require Logger
@@ -14,6 +15,7 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Source
 
   @default_bucket_width 60
+  @ets_table_name :rate_counters
 
   use TypedStruct
   use Publicist
@@ -37,7 +39,6 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   @rate_period 1_000
-  @ets_table_name :source_rate_counters
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
@@ -181,11 +182,6 @@ defmodule Logflare.Source.RateCounterServer do
   defp setup_ets_table(source_id) when is_atom(source_id) do
     initial = RCS.new(source_id)
 
-    if ets_table_is_undefined?(source_id) do
-      table_args = [:named_table, :public]
-      :ets.new(name(source_id), table_args)
-    end
-
     insert_to_ets_table(source_id, initial)
   end
 
@@ -196,7 +192,7 @@ defmodule Logflare.Source.RateCounterServer do
       data = [{source_id, RCS.new(source_id)}]
       data[source_id]
     else
-      data = :ets.lookup(name(source_id), source_id)
+      data = :ets.lookup(@ets_table_name, source_id)
 
       if data[source_id] do
         data[source_id]
@@ -208,18 +204,18 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def ets_table_is_undefined?(source_id) do
-    :ets.info(name(source_id)) == :undefined
+    :ets.info(@ets_table_name) == :undefined
   end
 
   def lookup_ets(source_id) do
-    :ets.lookup(name(source_id), source_id)
+    :ets.lookup(@ets_table_name, source_id)
   end
 
   def insert_to_ets_table(source_id, payload) when is_atom(source_id) do
     if ets_table_is_undefined?(source_id) do
-      Logger.debug("#{name(source_id)} should be defined but it isn't")
+      Logger.debug("#{@ets_table_name} should be defined but it isn't")
     else
-      :ets.insert(name(source_id), {source_id, payload})
+      :ets.insert(@ets_table_name, {source_id, payload})
     end
   end
 
