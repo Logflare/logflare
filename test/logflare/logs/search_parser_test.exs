@@ -35,6 +35,8 @@ defmodule Logflare.Logs.Search.ParserTest do
         metadata.users.source_count:>100
         metadata.context.error_count:>=100
         metadata.user.about:~referrall
+        timestamp:2019-01-01..2019-02-01
+        timestamp:2019-01-01T00:13:37..2019-02-01T00:23:34
       |
 
       {:ok, result} = Parser.parse(str)
@@ -45,7 +47,11 @@ defmodule Logflare.Logs.Search.ParserTest do
                %{operator: "<=", path: "metadata.user.views", value: 1},
                %{operator: ">", path: "metadata.users.source_count", value: 100},
                %{operator: ">=", path: "metadata.context.error_count", value: 100},
-               %{operator: "~", path: "metadata.user.about", value: "referrall"}
+               %{operator: "~", path: "metadata.user.about", value: "referrall"},
+               %{operator: ">=", path: "timestamp", value: "2019-01-01"},
+               %{operator: "<=", path: "timestamp", value: "2019-02-01"},
+               %{operator: ">=", path: "timestamp", value: "2019-01-01T00:13:37"},
+               %{operator: "<=", path: "timestamp", value: "2019-02-01T00:23:34"}
              ]
     end
 
