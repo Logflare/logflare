@@ -1,0 +1,34 @@
+# App artifacts
+/_build
+/db
+/deps
+/*.ez
+.DS_Store
+
+# Generated on crash by the VM
+erl_crash.dump
+
+# Generated on crash by NPM
+npm-debug.log
+
+# Static artifacts
+/assets/node_modules
+
+.deliver/releases
+
+/tables
+/system-table
+
+/config/secrets
+
+# Local secrets
+
+gcloud.json
+gcloud_staging.json
+
+# IDEs
+
+/.elixir_ls/
+/.idea/
+
+Dockerfile

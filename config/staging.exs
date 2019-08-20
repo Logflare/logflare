@@ -17,11 +17,15 @@ config :logger,
 
 config :phoenix, :serve_endpoints, true
 
-config :logflare, Logflare.Repo,
-  pool_size: 15,
-  ssl: true,
-  prepare: :unnamed,
-  timeout: 30_000
+# config :logflare, Logflare.Repo,
+#   username: "logflare",
+#   password: "",
+#   database: "logflare",
+#   hostname: "35.232.225.193",
+#   pool_size: 25,
+#   ssl: true,
+#   prepare: :unnamed,
+#   timeout: 30_000
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_staging",
@@ -60,5 +64,9 @@ config :logflare_agent,
     }
   ],
   url: "https://api.logflare.app"
+
+live_view_signing_salt = System.get_env("LOGFLARE_STAGING_LIVE_VIEW_SIGNING_SALT")
+
+config :logflare, LogflareWeb.Endpoint, live_view: [signing_salt: live_view_signing_salt]
 
 import_config "staging.secret.exs"

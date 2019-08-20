@@ -1,0 +1,49 @@
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/staging.secret.exs.enc
+      - --plaintext-file=./config/staging.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-t",
+        "gcr.io/logflare-staging/github_logflare_logflare-private:latest",
+        ".",
+      ]
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "push",
+        "gcr.io/logflare-staging/github_logflare_logflare-private:latest",
+      ]
+  - name: "gcr.io/cloud-builders/gcloud"
+    args:
+      [
+        "compute",
+        "instances",
+        "update-container",
+        "logflare-staging-docker",
+        "--zone=us-central1-a",
+        "--container-image=gcr.io/logflare-staging/github_logflare_logflare-private:latest",
+      ]
+    timeout: 600s
+
+timeout: 1800s
+
+images:
+  - gcr.io/logflare-staging/github_logflare_logflare-private:latest
