@@ -1,6 +1,7 @@
 defmodule Logflare.Sources do
   alias Logflare.{Repo, Source}
   alias Logflare.Source.RateCounterServer, as: SRC
+  require Logger
 
   def get_by(kw) do
     Source
@@ -32,7 +33,38 @@ defmodule Logflare.Sources do
     |> Repo.preload(:user)
     |> Repo.preload(:rules)
     |> refresh_source_metrics()
+    |> maybe_compile_rule_regexes()
     |> Source.put_bq_table_id()
+  end
+
+  @doc """
+  Compiles regex_struct if it's not present in the source rules.
+  By setting regex_struct to nil if invalid, prevents malformed regex matching during log ingest.
+  """
+  defp maybe_compile_rule_regexes(%{rules: rules} = source) do
+    rules =
+      for rule <- rules do
+        if rule.regex_struct do
+          rule
+        else
+          regex_struct =
+            case Regex.compile(rule.regex) do
+              {:ok, regex} ->
+                regex
+
+              {:error, msg} ->
+                Logger.error(
+                  "Rule #{rule.id} for #{source.token} is invalid. Regex string:#{rule.regex}"
+                )
+
+                nil
+            end
+
+          %{rule | regex_struct: regex_struct}
+        end
+      end
+
+    %{source | rules: rules}
   end
 
   def refresh_source_metrics(%Source{token: token} = source) do
