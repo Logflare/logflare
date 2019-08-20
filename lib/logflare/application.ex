@@ -9,7 +9,8 @@ defmodule Logflare.Application do
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
       supervisor(Logflare.Repo, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(LogflareWeb.Endpoint, []),
+      {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
     dev_prod_children = [
@@ -17,7 +18,6 @@ defmodule Logflare.Application do
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
       # init Counters before Manager as Manager calls Counters through table create
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),

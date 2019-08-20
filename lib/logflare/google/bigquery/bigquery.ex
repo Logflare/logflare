@@ -198,6 +198,9 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
+  @doc """
+  Creates dataset, accepts user_id, dataset_id, dataset_location, project_id
+  """
   @spec create_dataset(integer, binary, binary, binary) ::
           {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Dataset.t()}
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do

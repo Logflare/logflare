@@ -97,7 +97,7 @@ defmodule LogflareWeb.UserControllerTest do
       conn: conn,
       users: [u1 | _]
     } do
-      allow BigQuery.create_dataset(any, any), return: {:ok, []}
+      allow BigQuery.create_dataset(any, any, any, any), return: {:ok, []}
       allow Source.Supervisor.reset_all_user_tables(any), return: :ok
 
       conn =

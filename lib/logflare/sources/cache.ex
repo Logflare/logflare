@@ -1,4 +1,5 @@
 defmodule Logflare.Sources.Cache do
+  @moduledoc false
   import Cachex.Spec
   alias Logflare.{Sources, Source}
   @ttl 2_000

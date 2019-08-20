@@ -11,6 +11,7 @@ defmodule Logflare.LogsTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.{Query, GenUtils}
   alias Logflare.Sources.Counters
+  @test_dataset_location "us-east4"
 
   setup do
     u = insert(:user)
@@ -29,7 +30,14 @@ defmodule Logflare.LogsTest do
       conn = GenUtils.get_conn()
       project_id = GenUtils.get_project_id(s.token)
 
-      assert {:ok, _} = BigQuery.create_dataset("#{s.user_id}", project_id)
+      assert {:ok, _} =
+               BigQuery.create_dataset(
+                 "#{s.user_id}",
+                 "test_dataset_#{s.user.id}",
+                 @test_dataset_location,
+                 project_id
+               )
+
       assert {:ok, _} = BigQuery.create_table(s.token, project_id)
 
       table = s.token |> Atom.to_string() |> String.replace("-", "_")
@@ -40,7 +48,6 @@ defmodule Logflare.LogsTest do
       {:ok, response} = Query.query(conn, project_id, sql)
       assert response.rows == [%{"log_message" => "test", "metadata" => %{"float" => 0.001}}]
     end
-
   end
 
   def with_iam_create_auth(_) do
