@@ -1,0 +1,72 @@
+<div class="container-fluid heroguides no-subhead">
+	<div class="container">
+		<div class="gidepr">
+			<div class="row">
+				<div class="col-md-12">
+					<h1>Guides</h1>
+					<p class="paragraph">Nam dapibus nisl vitae elit fringilla rutrum. Aenean sollicitudin, erat a elementum rutrum, neque sem pretium metus,</p>
+				</div>
+			</div>
+		</div>
+
+	</div>
+</div>
+
+<div class="container-fluid getstartguide">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-12">
+				<div class="bigbox">
+					<h1>Getting started</h1>
+					<p>Cras quis nulla commodo, aliquam lectus sed, blandit augue. Cras ullamcorper bibendum bibendum. Duis tincidunt urna non pretium porta. Nam condimentum vitae ligula vel ornare.</p>
+					<p class="btnopen"><%= link "Open", to: Routes.marketing_path(@conn, :getting_started) %></p>
+				</div>
+			</div>
+			<div class="col-lg-4">
+        <%= link to: Routes.marketing_path(@conn, :big_query_setup), class: "miniboxguid fr1" do %>
+					<img class="leftbg" src="/images/marketing/guides/fr1bgimg.png" alt="">
+					<h2>Setup a BigQuery Backend</h2>
+					<p>The easiest ETL pipeline ever.</p>
+					<div class="miniimgbox">
+						<img src="/images/marketing/guides/minilogo.png" alt="">
+					</div>
+        <% end %>
+			</div>
+			<div class="col-lg-4">
+				<%= link to: Routes.marketing_path(@conn, :data_studio_setup), class: "miniboxguid fr2" do %>
+					<img class="leftbg" src="/images/marketing/guides/fr4bgimg.png" alt="">
+					<h2>Using Logflare with Google Data Studio</h2>
+					<p>Make dashboards and get insights out of your event data.</p>
+					<div class="miniimgbox">
+						<img src="/images/marketing/guides/dataStudioLogo2.png" alt="">
+					</div>
+				<% end %>
+			</div>
+			<div class="col-lg-4">
+				<%= link to: Routes.marketing_path(@conn, :event_analytics_demo), class: "miniboxguid fr3" do %>
+					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
+					<h2>Using Logflare in your Event Analytics Pipeline</h2>
+					<p>Make dashboards and get insights out of your event data.</p>
+					<div class="miniimgbox">
+						<img src="/images/marketing/guides/dataStudioLogo.png" alt="">
+					</div>
+				<% end %>
+			</div>
+		</div>
+    <div class="row">
+			<div class="col-lg-4">
+				<%= link to: Routes.marketing_path(@conn, :log_search), class: "miniboxguid fr1" do %>
+					<img class="leftbg" src="/images/marketing/guides/fr1bgimg.png" alt="">
+					<h2>Structured Log Search</h2>
+					<p>Search your structured logs with Logflare.</p>
+					<div class="miniimgbox">
+						<img src="/images/marketing/guides/minilogo.png" alt="">
+					</div>
+				<% end %>
+			</div>
+
+		</div>
+	</div>
+</div>
+
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>

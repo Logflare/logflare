@@ -41,4 +41,20 @@ defmodule LogflareWeb.MarketingController do
     conn
     |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/cookies.md")
   end
+
+  def contact(conn, _params) do
+    render(conn, "contact.html")
+  end
+
+  def guides(conn, _params) do
+    render(conn, "guides.html")
+  end
+
+  def log_search(conn, _params) do
+    render(conn, "log_search.html")
+  end
+
+  def getting_started(conn, _params) do
+    render(conn, "getting_started.html")
+  end
 end

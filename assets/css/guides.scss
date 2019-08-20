@@ -1,0 +1,197 @@
+.heroguides {
+  background: url("/images/marketing/guides/guidesBackground.png") no-repeat top center;
+  -webkit-background-size: cover;
+  -moz-background-size: cover;
+  -o-background-size: cover;
+  background-size: cover;
+  padding-bottom: 20px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  .gidepr {
+    h1 {
+      min-height: 80px;
+      margin-top: 206px;
+      color: #FFFFFF;
+      // font-family: 'Rubik', sans-serif;
+      font-size: 44px;
+      font-weight: bold;
+      line-height: 52px;
+      text-align: center;
+    }
+
+    .paragraph {
+      min-height: 72px;
+      max-width: 600px;
+      color: #969696;
+      // font-family: 'Rubik', sans-serif;
+      font-size: 18px;
+      line-height: 26px;
+      text-align: center;
+      margin: auto auto 13px;
+    }
+  }
+}
+
+.getstartguide {
+  background: rgba(24,24,24,1);
+  background: -moz-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
+  background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(24,24,24,1)), color-stop(100%, rgba(15,15,15,1)));
+  background: -webkit-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
+  background: -o-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
+  background: -ms-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
+  background: linear-gradient(to bottom, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
+  /* filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#181818', endColorstr='#0f0f0f', GradientType=0 ); */
+  padding-top: 25px;
+
+  .bigbox {
+    background: url("/images/marketing/guides/gettingStartedBg.png") no-repeat center center;
+    -webkit-background-size: cover;
+    -moz-background-size: cover;
+    -o-background-size: cover;
+    background-size: cover;
+    padding: 40px 40px 50px;
+    border-radius: 15px;
+    margin-bottom: 70px;
+
+    h1 {
+      color: #FFFFFF;
+      // font-family: 'Rubik', sans-serif;
+      font-size: 32px;
+      font-weight: bold;
+      line-height: 39px;
+      margin: 0;
+    }
+
+    p {
+      color: #FFFFFF;
+      // font-family: 'Rubik', sans-serif;
+      font-size: 18px;
+      line-height: 26px;
+      max-width: 870px;
+      padding-right: 70px;
+      z-index: 0;
+      position: relative;
+      margin: 25px 0 0;
+    }
+    position: relative;
+
+    .btnopen {
+      z-index: 1;
+      position: absolute;
+      right: 40px;
+      bottom: 50px;
+      padding: 0;
+      max-width: 164px;
+      width: 100%;
+
+      a {
+        color: #FFFFFF;
+        // font-family: 'Rubik', sans-serif;
+        font-size: 16px;
+        font-weight: bold;
+        letter-spacing: 1.5px;
+        line-height: 26px;
+        text-align: center;
+        background: #9667E6;
+        border-radius: 10px;
+        padding: 15px 18px;
+        max-width: 164px;
+        width: 100%;
+        display: block;
+        -webkit-transition: all 0.15s ease;
+        -moz-transition: all 0.15s ease;
+        -ms-transition: all 0.15s ease;
+        -o-transition: all 0.15s ease;
+        transition: all 0.15s ease;
+      }
+
+      a:hover {
+        opacity: 0.7;
+      }
+    }
+  }
+
+  .miniboxguid {
+    background: #34008C;
+    width: 100%;
+    min-height: 235px;
+    display: block;
+    border-radius: 15px;
+    margin-bottom: 50px;
+    box-shadow: 0 0 39px 0 rgba(0,0,0,0.2);
+    position: relative;
+    -webkit-transition: all 0.15s ease;
+    -moz-transition: all 0.15s ease;
+    -ms-transition: all 0.15s ease;
+    -o-transition: all 0.15s ease;
+    transition: all 0.15s ease;
+
+    .leftbg {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 1;
+    }
+
+    h2 {
+      color: #FFFFFF;
+      // font-family: 'Rubik', sans-serif;
+      font-size: 21px;
+      font-weight: bold;
+      line-height: 26px;
+      padding-left: 140px;
+      padding-right: 15px;
+      padding-top: 40px;
+      margin: 0;
+    }
+
+    p {
+      color: #FFFFFF;
+      // font-family: Rubik;
+      font-size: 16px;
+      line-height: 26px;
+      padding-left: 140px;
+      padding-right: 15px;
+      padding-top: 30px;
+      margin: 0;
+    }
+
+    .miniimgbox {
+      z-index: 1;
+      position: absolute;
+      top: 86.5px;
+      left: 26px;
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: #fff;
+
+      img {
+        display: block;
+        position: relative;
+        margin: 15px auto auto;
+      }
+    }
+  }
+
+  .miniboxguid:hover {
+    opacity: 0.8;
+  }
+
+  .fr1 {
+    background: #311a53;
+  }
+
+  .fr2 {
+    background: #6a0e3d;
+  }
+
+  .fr3 {
+    background: #0c2e5d;
+  }
+
+  .fr4 {
+    background: #6B063D;
+  }
+}

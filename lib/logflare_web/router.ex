@@ -59,6 +59,8 @@ defmodule LogflareWeb.Router do
     get "/terms", MarketingController, :terms
     get "/privacy", MarketingController, :privacy
     get "/cookies", MarketingController, :cookies
+    get "/contact", MarketingController, :contact
+    get "/guides", MarketingController, :guides
   end
 
   scope "/guides", LogflareWeb do
@@ -66,6 +68,8 @@ defmodule LogflareWeb.Router do
     get "/bigquery-setup", MarketingController, :big_query_setup
     get "/data-studio-setup", MarketingController, :data_studio_setup
     get "/event-analytics", MarketingController, :event_analytics_demo
+    get "/log-search", MarketingController, :log_search
+    get "/getting-started", MarketingController, :getting_started
   end
 
   scope "/", LogflareWeb do
