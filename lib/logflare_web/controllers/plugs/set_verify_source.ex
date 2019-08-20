@@ -16,6 +16,13 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     is_api_path = conn.request_path =~ "/logs" or conn.request_path =~ "/api"
     is_browser_path = not is_api_path
 
+    token =
+      if Sources.Cache.valid_source_token_param?(token) do
+        token
+      else
+        nil
+      end
+
     source =
       cond do
         token && is_api_path ->

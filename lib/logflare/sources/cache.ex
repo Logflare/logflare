@@ -34,6 +34,8 @@ defmodule Logflare.Sources.Cache do
   def get_by_pk(arg), do: get_by(id: arg)
   def get_by_public_token(arg), do: get_by(public_token: arg)
 
+  def valid_source_token_param?(arg), do: apply_repo_fun(__ENV__.function, [arg])
+
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_repo_fun(Sources, arg1, arg2)
   end

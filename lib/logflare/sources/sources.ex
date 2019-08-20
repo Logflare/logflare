@@ -72,4 +72,14 @@ defmodule Logflare.Sources do
 
     %{source | metrics: new_metrics}
   end
+
+  def valid_source_token_param?(string) when is_binary(string) do
+    case String.length(string) === 36 && Ecto.UUID.cast(string) do
+      {:ok, _} -> true
+      false -> false
+      :error -> false
+    end
+  end
+
+  def valid_source_token_param?(_), do: false
 end
