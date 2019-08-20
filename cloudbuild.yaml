@@ -18,32 +18,26 @@ steps:
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "build",
-        "-t",
-        "gcr.io/logflare-staging/github_logflare_logflare-private:latest",
-        ".",
-      ]
+    args: ["build", "-t", "gcr.io/logflare-staging/logflare-origin:latest", "."]
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "push",
-        "gcr.io/logflare-staging/github_logflare_logflare-private:latest",
-      ]
+    args: ["push", "gcr.io/logflare-staging/logflare-origin:latest"]
   - name: "gcr.io/cloud-builders/gcloud"
     args:
       [
         "compute",
-        "instances",
-        "update-container",
-        "logflare-staging-docker",
-        "--zone=us-central1-a",
-        "--container-image=gcr.io/logflare-staging/github_logflare_logflare-private:latest",
+        "instance-groups",
+        "managed",
+        "rolling-action",
+        "replace",
+        "logflare-docker-managed-group",
+        "--version",
+        "template=logflare-app-instance-template-1",
+        "--zone",
+        "us-central1-a",
       ]
     timeout: 600s
 
 timeout: 1800s
 
 images:
-  - gcr.io/logflare-staging/github_logflare_logflare-private:latest
+  - gcr.io/logflare-staging/logflare-origin:latest
