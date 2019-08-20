@@ -134,7 +134,8 @@ defmodule Logflare.Logs.Search.Parser do
     }
   end
 
-  defp to_path_val_op(field, [path, "=", lvalue, "..", rvalue]) when field in ~w(metadata_field timestamp_field)a do
+  defp to_path_val_op(field, [path, "=", lvalue, "..", rvalue])
+       when field in ~w(metadata_field timestamp_field)a do
     to_range_path_val_op([path, "=", lvalue, "..", rvalue])
   end
 
