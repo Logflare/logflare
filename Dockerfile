@@ -21,7 +21,7 @@ RUN cd /logflare/assets \
 WORKDIR /logflare
 
 RUN mix phx.digest
-# RUN mix ecto.migrate
+RUN mix ecto.migrate
 RUN mix release --force --overwrite
 
 ENTRYPOINT ["/logflare/_build/staging/rel/logflare/bin/logflare", "start"]
