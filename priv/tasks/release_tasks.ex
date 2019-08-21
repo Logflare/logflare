@@ -1,7 +1,8 @@
 defmodule Logflare.Tasks.ReleaseTasks do
   @start_apps [
     :postgrex,
-    :ecto
+    :ecto,
+    :ssl
   ]
 
   @repo Logflare.Repo
@@ -16,7 +17,7 @@ defmodule Logflare.Tasks.ReleaseTasks do
   end
 
   defp boot() do
-    IO.puts("Booting pre hook...")
+    IO.puts("Starting pre-boot release task...")
     # Load app without starting it
     :ok = Application.load(@otp_app)
     # Ensure postgrex and ecto applications started
