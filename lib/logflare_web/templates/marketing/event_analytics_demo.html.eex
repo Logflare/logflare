@@ -1,23 +1,46 @@
-<div class="no-subhead">
-  <div class="secondary-header">
-    <center>
-      <h2>Using Logflare in your Event Analytics Pipeline</h2>
-      <p class="lead">Send Logflare arbitrary events and event metadata.</p>
-    </center>
-  </div>
+<div class="container-fluid heroguidepage no-subhead">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-12">
+				<h1>Using Logflare in your Event Analytics Pipeline</h1>
+				<p>Send Logflare arbitrary events and event metadata.</p>
+			</div>
+		</div>
+	</div>
+	<div class="miniimgbox">
+		<img src="/images/marketing/guides/bigquerylogo.png" alt="">
+	</div>
 </div>
 
-<div class="homepage-container mx-auto">
-  <div class="value">
-    <p>
-      <%= link "Event Analytics", to: "#event-analytics" %> >
-      <%= link "Demo Video", to: "#demo-video" %> >
-    </p>
-    <h3 id="event-analytics">Event Analytics</h3>
-    <p>Use Logflare as the hub of your event analytics pipeline. Send Logflare arbitrary events with arbitrary dynamic metadata. Logflare handles inserting into BigQuery and updating the underlying schema. It's the easiest way on the market to stream data into a BigQuery data warehouse.</p>
-    <h3 id="demo-video">Demo Video</h3>
-    <p>Here we send Logflare arbitrary events via a POST request, and query them immediately in realtime.</p>
-    <iframe width="100%" height="300px" class="guide-img" src="https://www.youtube.com/embed/WQc5pRRzmhs" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
+<div class="container-fluid contentguidepage">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-3 hide-on-mobile">
+				<div class="forfixed">
+					<div class="contentmenu">
+            <h2>Content</h2>
+            <%= link "Event Analytics", to: "#event-analytics", class: "scrollmenu menu1 activecon" %>
+            <%= link "Demo Video", to: "#demo-video", class: "scrollmenu menu2" %>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-9">
+        <div class="cont">
+          <h1 class="menu1cont" id="event-analytics">Event Analytics</h1>
+          <p>Use Logflare as the hub of your event analytics pipeline. Send Logflare arbitrary events with arbitrary dynamic metadata. Logflare handles inserting into BigQuery and updating the underlying schema. It's the easiest way on the market to stream data into a BigQuery data warehouse.</p>
+
+          <h2 id="demo-video">Demo Video</h2>
+          <p>Here we send Logflare arbitrary events via a POST request, and query them immediately in realtime.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <iframe width="100%" height="350px" class="imgf guide-img" src="https://www.youtube.com/embed/WQc5pRRzmhs" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  <%= render LogflareWeb.SharedView, "footer.html", assigns %>
 </div>
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>

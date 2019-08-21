@@ -11,8 +11,8 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "index.html", log_count: Delimit.number_to_delimited(log_count))
   end
 
-  def big_query(conn, _params) do
-    render(conn, "bigquery_datastudio.html")
+  def overview(conn, _params) do
+    render(conn, "overview.html")
   end
 
   def big_query_setup(conn, _params) do
@@ -40,5 +40,21 @@ defmodule LogflareWeb.MarketingController do
   def cookies(conn, _params) do
     conn
     |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/cookies.md")
+  end
+
+  def contact(conn, _params) do
+    render(conn, "contact.html")
+  end
+
+  def guides(conn, _params) do
+    render(conn, "guides.html")
+  end
+
+  def log_search(conn, _params) do
+    render(conn, "log_search.html")
+  end
+
+  def getting_started(conn, _params) do
+    render(conn, "getting_started.html")
   end
 end

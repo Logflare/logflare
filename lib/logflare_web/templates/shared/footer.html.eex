@@ -52,6 +52,12 @@
 						<h5>Guides</h5>
 					</li>
 					<li>
+						<%= link "All Guides", to: Routes.marketing_path(@conn, :guides)%>
+					</li>
+					<li>
+						<%= link "Overview", to: Routes.marketing_path(@conn, :overview)%>
+					</li>
+					<li>
 						<%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
 					</li>
 					<li>
