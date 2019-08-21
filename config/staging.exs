@@ -17,15 +17,11 @@ config :logger,
 
 config :phoenix, :serve_endpoints, true
 
-# config :logflare, Logflare.Repo,
-#   username: "logflare",
-#   password: "",
-#   database: "logflare",
-#   hostname: "35.232.225.193",
-#   pool_size: 25,
-#   ssl: true,
-#   prepare: :unnamed,
-#   timeout: 30_000
+config :logflare, Logflare.Repo,
+  pool_size: 25,
+  ssl: true,
+  prepare: :unnamed,
+  timeout: 30_000
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_staging",
