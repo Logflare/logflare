@@ -65,4 +65,6 @@ live_view_signing_salt = System.get_env("LOGFLARE_STAGING_LIVE_VIEW_SIGNING_SALT
 
 config :logflare, LogflareWeb.Endpoint, live_view: [signing_salt: live_view_signing_salt]
 
-import_config "staging.secret.exs"
+if File.exists?("config/staging.secret.exs") do
+  import_config "staging.secret.exs"
+end
