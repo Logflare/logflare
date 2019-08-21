@@ -18,7 +18,7 @@ config :logger,
 config :phoenix, :serve_endpoints, true
 
 config :logflare, Logflare.Repo,
-  pool_size: 25,
+  pool_size: 10,
   ssl: true,
   prepare: :unnamed,
   timeout: 30_000
