@@ -15,14 +15,13 @@ RUN mix deps.get
 RUN mix compile
 
 RUN cd /logflare/assets \
-    && npm install \
-    && ./node_modules/webpack/bin/webpack.js --mode production 
+    && yarn \
+    && ./node_modules/webpack/bin/webpack.js --mode production --silent
 
 WORKDIR /logflare
 
 RUN mix phx.digest
-RUN mix ecto.migrate
 RUN mix release --force --overwrite
 
-ENTRYPOINT ["/logflare/_build/staging/rel/logflare/bin/logflare", "start"]
-CMD ["/logflare/_build/staging/rel/logflare/bin/logflare", "start"]
+ENTRYPOINT ["/logflare/run.bash"]
+CMD ["/logflare/run.bash"]
