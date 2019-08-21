@@ -50,7 +50,8 @@ defmodule LogflareWeb.SourceControllerTest do
         validation_error: Logflare.Logs.Validators.EqDeepFieldTypes.message(),
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
-        valid?: false
+        valid?: false,
+        ingested_at: NaiveDateTime.utc_now()
       })
 
       conn =

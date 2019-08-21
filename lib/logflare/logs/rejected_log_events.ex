@@ -55,30 +55,25 @@ defmodule Logflare.Logs.RejectedLogEvents do
   @doc """
   Expected to be called only in Logs context
   """
-  @spec ingest(LE.t()) :: term
-  def ingest(%LE{source: %Source{}, valid?: false} = le) do
-    insert(le.source.token, le)
-  end
-
-  @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}
-  defp get!(key) do
-    {:ok, val} = Cachex.get(@cache, key)
-    val || %{log_events: [], count: 0}
-  end
-
-  @spec insert(atom, map) :: list(map)
-  defp insert(token, log) when is_atom(token) do
+  @spec ingest(LE.t()) :: %{log_events: [LE.t()], count: integer}
+  def ingest(%LE{source: %Source{token: token}, valid?: false} = le) do
     Cachex.get_and_update!(@cache, token, fn
       %{log_events: les, count: c} ->
         les =
-          [log | les]
+          [le | les]
           |> List.flatten()
           |> Enum.take(100)
 
         %{log_events: les, count: c + 1}
 
       _ ->
-        %{log_events: [log], count: 1}
+        %{log_events: [le], count: 1}
     end)
+  end
+
+  @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}
+  defp get!(key) do
+    {:ok, val} = Cachex.get(@cache, key)
+    val || %{log_events: [], count: 0}
   end
 end
