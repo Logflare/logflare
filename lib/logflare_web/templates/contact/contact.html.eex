@@ -1,0 +1,43 @@
+<div class="container-fluid contactcon no-subhead">
+	<div class="container">
+		<div class="gidepr">
+			<div class="row">
+				<div class="col-md-12">
+					<h1>Contact</h1>
+					<h2>About us</h2>
+					<p class="paragraph">Logflare was built to provide customers with affordable log management and analytics. Developers can get the data they need in real-time and analysts can store data to build insights over the long term.</p>
+					<div class="boxforcontact">
+						<h3>Send message</h3>
+						 <%= form_for @changeset, Routes.contact_path(@conn, :new), fn f -> %>
+						 <div class="form-group">
+
+				       <%= text_input f, :name, placeholder: "Your name", class: "form-control" %>
+							 <%= error_tag f, :name %>
+							 <%= text_input f, :email, placeholder: "you@company.com", class: "form-control" %>
+							 <%= error_tag f, :email %>
+							 <%= text_input f, :subject, placeholder: "Subject", class: "form-control" %>
+							 <%= error_tag f, :subject %>
+							 <%= textarea f, :body, class: "form-control" %>
+							 <%= error_tag f, :body %>
+							 <div class="leftside">
+ 								<h4>Support</h4>
+ 								<p>Contact us at: </p>
+ 								<p><span>support@logflare.app</span></p>
+ 								<p class="lastone">Generally you can expect responses from 8:00 am to 5:00 pm Mountain Standard Time.</p>
+               </br>
+                 <h4>Office</h4>
+ 								<p>Logflare is based in Phoenix, AZ and built worldwide.</p>
+               </div>
+						 </div>
+							 <%= submit "Submit", class: "btn btn-primary form-button" %>
+						 <% end %>
+							</div>
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>
