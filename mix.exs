@@ -22,7 +22,7 @@ defmodule Logflare.Mixfile do
         logflare: [
           version: "0.14.0",
           include_executables_for: [:unix],
-          applications: []
+          applications: [runtime_tools: :permanent, ssl: :permanent]
         ]
       ]
     ]
@@ -95,7 +95,7 @@ defmodule Logflare.Mixfile do
       {:excoveralls, "~> 0.11", only: :test},
       {:placebo, "~> 1.2"},
       {:logflare_logger_backend, github: "logflare/logflare_logger_backend"},
-      {:logflare_agent, "~> 0.6.1"},
+      # {:logflare_agent, "~> 0.6.1"},
       {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"},
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
       {:decorator, "~> 1.3"},
