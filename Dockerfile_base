@@ -1,5 +1,7 @@
 FROM elixir:latest
 
+ENV MIX_ENV staging
+
 COPY ./ /logflare
 WORKDIR /logflare
 
