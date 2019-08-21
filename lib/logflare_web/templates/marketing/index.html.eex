@@ -188,7 +188,7 @@
 					</div>
 					<h2>BigQuery & DataStudio</h2>
 					<p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make dashboards with Google Data Studio using your new BigQuery table.</p>
-					<%= link "Show me more »", to: Routes.marketing_path(@conn, :big_query), class: "btn btn-secondary", role: "button" %>
+					<%= link "Show me more »", to: Routes.marketing_path(@conn, :overview), class: "btn btn-secondary", role: "button" %>
 				</div>
 			</div>
 			<div class="col-md-4">

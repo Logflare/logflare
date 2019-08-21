@@ -8,7 +8,7 @@
 		</div>
 	</div>
 	<div class="miniimgbox">
-		<img src="/images/marketing/guides/dataStudioLogo.png" alt="">
+		<img src="/images/marketing/guides/bigquerylogo.png" alt="">
 	</div>
 </div>
 
@@ -37,7 +37,6 @@
         <h2 class="menu2cont" id="nav-to-iam">Navigate to IAM</h2>
         <div class="minimg">
           <div class="purplebox">
-
           </div>
           <img class="imgf img-fluid guide-img" src="/images/marketing/navigate-to-iam.png">
         </div>
@@ -50,8 +49,8 @@
         </div>
 
         <h2 id="add-service-account">Add Our Service Account with Permissions</h2>
-        <p>Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.<br><br>
-        Assign <code>BigQuery Data Owner</code> and <code>BigQuery Job User</code> permissions to the Logflare service account.</p>
+        <p>Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
+        <p>Assign <code>BigQuery Data Owner</code> and <code>BigQuery Job User</code> permissions to the Logflare service account.</p>
         <div class="minimg">
           <div class="purplebox">
           </div>
@@ -87,9 +86,8 @@
         </div>
 
         <h2 id="query">Query BigQuery</h2>
-        <p>You can query any Logflare managed BigQuery table directly if you need to.
-        <br><br>
-        BigQuery has great support for nested records and Standard SQL both of wich we take advantage of. To query inside a nested record you must <code>UNNEST</code> it like so:</p>
+        <p>You can query any Logflare managed BigQuery table directly if you need to.</p>
+        <p>BigQuery has great support for nested records and Standard SQL both of wich we take advantage of. To query inside a nested record you must <code>UNNEST</code> it like so:</p>
         <pre>
         <code>
     SELECT timestamp, req.url, h.cf_cache_status

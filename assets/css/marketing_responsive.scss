@@ -135,6 +135,7 @@
     padding: 0;
     margin-left: auto;
     margin-right: auto;
+    margin-bottom: 43px;
   }
 
   .contentguidepage .cont .ifreamvideo iframe {
@@ -166,6 +167,22 @@
     font-size: 21px;
     font-weight: bold;
     line-height: 26px;
+  }
+
+  .contentguidepage .cont h4 {
+    padding: 0;
+  }
+
+  .contentguidepage .cont pre {
+    margin: 0 0 30px;
+  }
+
+  .contentguidepage .cont .btn {
+    margin: 0 0 30px;
+  }
+
+  .contentguidepage .cont ul {
+    padding: 0 0 30px 30px;
   }
 
   .heroguidepage h1 {
@@ -457,7 +474,7 @@
       display: inline;
       padding: 0;
       margin: 0;
-      font-family: 'Rubik', sans-serif;
+      // font-family: 'Rubik', sans-serif;
       color: #969696;
       font-weight: 600;
       line-height: 26px;
@@ -491,7 +508,7 @@
     text-align: center;
     padding: 0;
     margin: 0;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     color: #969696;
     font-weight: 600;
     line-height: 26px;
@@ -503,7 +520,7 @@
     text-align: center;
     padding: 0;
     margin: 0;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     color: #969696;
     font-weight: 600;
     line-height: 26px;
@@ -581,7 +598,7 @@
 @media(max-width: 772px) {
   .heropricing .heropr h1 {
     color: #FFFFFF;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 32px;
     font-weight: bold;
     line-height: 39px;
@@ -592,7 +609,7 @@
   .heropricing .heropr .paragraph {
     max-width: 342px;
     color: #969696;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 18px;
     line-height: 26px;
     text-align: center;
@@ -613,7 +630,7 @@
 
   .heropricing .tablescalerowpricing h1 {
     color: #FFFFFF;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 26px;
     font-weight: bold;
     line-height: 39px;
@@ -633,7 +650,7 @@
   .heropricing .tablescalerowpricing h2 {
     height: 26px;
     color: #969696;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 18px;
     font-weight: bold;
     line-height: 26px;
@@ -642,7 +659,7 @@
 
   .heropricing .trialwork h1 {
     color: #FFFFFF;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 26px;
     font-weight: bold;
     line-height: 39px;
@@ -654,7 +671,7 @@
   .heropricing .trialwork p {
     margin-top: 0;
     color: #969696;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 18px;
     line-height: 26px;
     text-align: center;
@@ -1021,7 +1038,7 @@
   }
 
   .forphone2 .btns .signup {
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-weight: 700;
     letter-spacing: 1.5px;
     font-size: 13px;

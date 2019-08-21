@@ -4,7 +4,7 @@
 			<div class="row">
 				<div class="col-md-12">
 					<h1>Guides</h1>
-					<p class="paragraph">Nam dapibus nisl vitae elit fringilla rutrum. Aenean sollicitudin, erat a elementum rutrum, neque sem pretium metus,</p>
+					<p class="paragraph">Browse our selection of guides. Learn how to use Logflare with BigQuery and Data Studio. Creating dashbaords from structured event data can be a powerful tool for dynamic insights.</p>
 				</div>
 			</div>
 		</div>
@@ -17,9 +17,9 @@
 		<div class="row">
 			<div class="col-md-12">
 				<div class="bigbox">
-					<h1>Getting started</h1>
-					<p>Cras quis nulla commodo, aliquam lectus sed, blandit augue. Cras ullamcorper bibendum bibendum. Duis tincidunt urna non pretium porta. Nam condimentum vitae ligula vel ornare.</p>
-					<p class="btnopen"><%= link "Open", to: Routes.marketing_path(@conn, :getting_started) %></p>
+					<h1>Overview</h1>
+					<p>We built Logflare to give developers real-time tools to debug live infrastructure with event driven data and to give product owners the ability to store and analyze that data over the long term.</p>
+					<p class="btnopen"><%= link "Read more", to: Routes.marketing_path(@conn, :overview) %></p>
 				</div>
 			</div>
 			<div class="col-lg-4">
@@ -28,7 +28,7 @@
 					<h2>Setup a BigQuery Backend</h2>
 					<p>The easiest ETL pipeline ever.</p>
 					<div class="miniimgbox">
-						<img src="/images/marketing/guides/minilogo.png" alt="">
+						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
 					</div>
         <% end %>
 			</div>
@@ -48,24 +48,23 @@
 					<h2>Using Logflare in your Event Analytics Pipeline</h2>
 					<p>Make dashboards and get insights out of your event data.</p>
 					<div class="miniimgbox">
-						<img src="/images/marketing/guides/dataStudioLogo.png" alt="">
+						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
 					</div>
 				<% end %>
 			</div>
 		</div>
-    <div class="row">
+    <!-- <div class="row">
 			<div class="col-lg-4">
 				<%= link to: Routes.marketing_path(@conn, :log_search), class: "miniboxguid fr1" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr1bgimg.png" alt="">
 					<h2>Structured Log Search</h2>
 					<p>Search your structured logs with Logflare.</p>
 					<div class="miniimgbox">
-						<img src="/images/marketing/guides/minilogo.png" alt="">
+						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
 					</div>
 				<% end %>
 			</div>
-
-		</div>
+		</div> -->
 	</div>
 </div>
 

@@ -8,7 +8,7 @@
 
   h1 {
     color: #FFFFFF;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 44px;
     font-weight: bold;
     line-height: 52px;
@@ -18,7 +18,7 @@
 
   p {
     color: #FFFFFF;
-    font-family: 'Rubik', sans-serif;
+    // font-family: 'Rubik', sans-serif;
     font-size: 18px;
     line-height: 26px;
     text-align: center;
@@ -40,7 +40,9 @@
     img {
       display: block;
       position: relative;
-      margin: 15px auto auto;
+      margin: 12px auto auto;
+      height: 40px;
+      width: 40px;
     }
   }
 }
@@ -63,8 +65,14 @@
 
     h2 {
       color: #969696;
-      font-family: 'Rubik', sans-serif;
+      // font-family: 'Rubik', sans-serif;
       font-size: 21px;
+      font-weight: bold;
+      line-height: 26px;
+      margin: 0 0 29px;
+    }
+
+    h4 {
       font-weight: bold;
       line-height: 26px;
       margin: 0 0 29px;
@@ -74,7 +82,7 @@
       width: 100%;
       display: block;
       color: #B7B7B7;
-      font-family: 'Rubik', sans-serif;
+      // font-family: 'Rubik', sans-serif;
       font-size: 13px;
       font-weight: bold;
       letter-spacing: 1.5px;
@@ -105,7 +113,7 @@
     h1 {
       margin: 0;
       color: #FFFFFF;
-      font-family: 'Rubik', sans-serif;
+      // font-family: 'Rubik', sans-serif;
       font-size: 32px;
       font-weight: bold;
       line-height: 39px;
@@ -116,7 +124,7 @@
     h2 {
       margin: 0;
       color: #FFFFFF;
-      font-family: 'Rubik', sans-serif;
+      // font-family: 'Rubik', sans-serif;
       font-size: 26px;
       font-weight: bold;
       line-height: 39px;
@@ -124,19 +132,38 @@
       margin-bottom: 25px;
     }
 
+    h4 {
+      margin: 0;
+      padding-left: 105px;
+      margin-bottom: 25px;
+    }
+
     p {
       margin: 0;
       color: #969696;
-      font-family: 'Rubik', sans-serif;
+      // font-family: 'Rubik', sans-serif;
       font-size: 16px;
       line-height: 26px;
       padding-left: 105px;
-      margin-bottom: 40px;
+      margin-bottom: 30px;
       max-width: 730px;
 
       span {
         color: #E35B8D;
       }
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 105px;
+    }
+
+    .btn {
+      margin: 0 0 40px 105px;
+    }
+
+    pre {
+      margin: 0 0 30px 105px;
     }
 
     .minimg {
@@ -159,7 +186,6 @@
 
     .the-collapse-of-the {
       color: #969696;
-      font-family: 'Rubik', sans-serif;
       font-weight: 500;
       font-size: 14px;
       line-height: 26px;
