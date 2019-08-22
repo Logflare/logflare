@@ -10,7 +10,7 @@ defmodule LogflareWeb.ContactController do
     render(conn, "contact.html", changeset: changeset)
   end
 
-  def new(conn, %{"contact" => contact} = params) do
+  def new(conn, %{"contact" => contact} = _params) do
     changeset = Contact.changeset(%Contact{}, contact)
 
     case Changeset.apply_action(changeset, :insert) do

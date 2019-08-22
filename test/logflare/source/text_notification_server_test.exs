@@ -2,6 +2,7 @@ defmodule Logflare.Source.TextNotificationServerTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.Source.TextNotificationServer
+  alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
   import Logflare.DummyFactory
 
@@ -9,7 +10,8 @@ defmodule Logflare.Source.TextNotificationServerTest do
     u1 = insert(:user)
     s1 = insert(:source, user_id: u1.id)
     sid = s1.token
-    rls = %RLS{source_id: sid}
+    rls = %RLS{source_id: sid, notifications_every: 1_000}
+    Sources.Counters.start_link()
 
     {:ok, sources: [s1], args: rls}
   end
