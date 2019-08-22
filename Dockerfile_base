@@ -13,7 +13,6 @@ RUN apt-get update
 
 RUN apt-get install -y nodejs yarn
 
-RUN cd /logflare/assets && yarn 
 
 WORKDIR /logflare
 
@@ -21,3 +20,5 @@ RUN mix local.rebar --force
 RUN mix local.hex --force
 RUN mix deps.get
 RUN mix compile
+
+RUN cd /logflare/assets && yarn 
