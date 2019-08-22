@@ -58,7 +58,8 @@ defmodule LogflareWeb.Router do
     get "/terms", MarketingController, :terms
     get "/privacy", MarketingController, :privacy
     get "/cookies", MarketingController, :cookies
-    get "/contact", MarketingController, :contact
+    get "/contact", ContactController, :contact
+    post "/contact", ContactController, :new
     get "/guides", MarketingController, :guides
   end
 

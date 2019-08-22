@@ -79,7 +79,7 @@
               <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
             </li>
             <li class="nav-item" >
-              <%= link "Contact us", to: Routes.marketing_path(@conn, :contact), class: "nav-link" %>
+              <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "nav-link" %>
             </li>
             <li class="nav-item">
               <%= link "Sign in with Github", to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" %>
