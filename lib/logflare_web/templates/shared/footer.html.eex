@@ -8,7 +8,7 @@
 						<h5>Logflare</h5>
 					</li>
 					<li>
-						<%= link "System Status", to: "https://datastudio.google.com/s/vkfwKfU1-C0" %>
+						<%= link "System Status", to: "https://datastudio.google.com/s/o3GvxZNpNr0" %>
 					</li>
 					<li>
 						<a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
