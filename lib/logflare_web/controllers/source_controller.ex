@@ -121,14 +121,20 @@ defmodule LogflareWeb.SourceController do
   end
 
   def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
-    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
+    if user.provider == "google" do
+      bigquery_project_id = user && (user.bigquery_project_id || @project_id)
 
-    explore_link =
-      bigquery_project_id &&
-        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
+      explore_link =
+        bigquery_project_id &&
+          generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
 
-    conn
-    |> redirect(external: explore_link)
+      conn
+      |> redirect(external: explore_link)
+    else
+      conn
+      |> put_flash(:error, "Sign in with Google to explore in Data Studio.")
+      |> redirect(to: Routes.source_path(conn, :show, source.id))
+    end
   end
 
   def search(%{assigns: %{user: user, source: source}} = conn, params) do
