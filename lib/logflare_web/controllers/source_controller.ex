@@ -122,11 +122,11 @@ defmodule LogflareWeb.SourceController do
 
   def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
     if user.provider == "google" do
-      bigquery_project_id = user && (user.bigquery_project_id || @project_id)
+      bigquery_project_id = user.bigquery_project_id || @project_id
+      dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
 
       explore_link =
-        bigquery_project_id &&
-          generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
+        generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)
 
       conn
       |> redirect(external: explore_link)
@@ -256,15 +256,13 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp generate_explore_link(
-         user_id,
          user_email,
          source_id,
-         project_id
+         project_id,
+         dataset_id
          # billing_project_id
        )
        when is_atom(source_id) do
-    dataset_id = Integer.to_string(user_id) <> @dataset_id_append
-
     {:ok, explore_link_config} =
       Jason.encode(%{
         "projectId" => project_id,
