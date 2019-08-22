@@ -53,7 +53,7 @@ defmodule LogflareWeb.UserController do
   def delete(%{assigns: %{user: user}} = conn, _params) do
     # TODO: soft delete, delayed deleted
     Repo.delete!(user)
-    BigQuery.delete_dataset(user.id)
+    BigQuery.delete_dataset(user)
 
     spawn(fn ->
       CloudResourceManager.set_iam_policy()
