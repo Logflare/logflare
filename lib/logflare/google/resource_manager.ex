@@ -7,6 +7,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias GoogleApi.CloudResourceManager.V1.Model
   alias GoogleApi.CloudResourceManager.V1.Connection
   alias Logflare.Repo
+  alias Logflare.Google.BigQuery.GenUtils
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
@@ -48,9 +49,38 @@ defmodule Logflare.Google.CloudResourceManager do
         policy: policy
       }
 
-      Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, @project_number, body: body)
+      {f, a} = __ENV__.function
+      fun = "#{f}" <> "_" <> "#{a}"
 
-      Logger.info("IAM policy set: #{Enum.count(members)} accounts")
+      case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, @project_number,
+             body: body
+           ) do
+        {:ok, _response} ->
+          Logger.info("Set IAM policy: #{Enum.count(members)} accounts",
+            logflare: %{
+              google: %{
+                cloudresourcemanager: %{
+                  "#{fun}": %{accounts: Enum.count(members), response: :ok}
+                }
+              }
+            }
+          )
+
+        {:error, response} ->
+          Logger.info("Set IAM policy: #{Enum.count(members)} accounts",
+            logflare: %{
+              google: %{
+                cloudresourcemanager: %{
+                  "#{fun}": %{
+                    accounts: Enum.count(members),
+                    response: :error,
+                    response_message: "#{GenUtils.get_tesla_error_message(response)}"
+                  }
+                }
+              }
+            }
+          )
+      end
     end)
   end
 
