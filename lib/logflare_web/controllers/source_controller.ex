@@ -11,7 +11,8 @@ defmodule LogflareWeb.SourceController do
               :clear_logs,
               :rejected_logs,
               :favorite,
-              :search
+              :search,
+              :explore
             ]
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
@@ -90,12 +91,6 @@ defmodule LogflareWeb.SourceController do
   end
 
   def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate <= 25 do
-    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
-
-    explore_link =
-      bigquery_project_id &&
-        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
-
     search_tip = Search.Utils.gen_search_tip()
 
     render(
@@ -104,18 +99,11 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || "",
       search_tip: search_tip
     )
   end
 
   def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate > 25 do
-    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
-
-    explore_link =
-      bigquery_project_id &&
-        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
-
     search_tip = Search.Utils.gen_search_tip()
 
     conn
@@ -128,9 +116,25 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || "",
       search_tip: search_tip
     )
+  end
+
+  def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
+    if user.provider == "google" do
+      bigquery_project_id = user && (user.bigquery_project_id || @project_id)
+
+      explore_link =
+        bigquery_project_id &&
+          generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
+
+      conn
+      |> redirect(external: explore_link)
+    else
+      conn
+      |> put_flash(:error, "Sign in with Google to explore in Data Studio.")
+      |> redirect(to: Routes.source_path(conn, :show, source.id))
+    end
   end
 
   def search(%{assigns: %{user: user, source: source}} = conn, params) do

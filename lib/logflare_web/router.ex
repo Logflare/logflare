@@ -99,6 +99,7 @@ defmodule LogflareWeb.Router do
 
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
+    get "/:id/explore", SourceController, :explore
   end
 
   scope "/account", LogflareWeb do
