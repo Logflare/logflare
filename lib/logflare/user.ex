@@ -1,4 +1,7 @@
 defmodule Logflare.User do
+  @moduledoc """
+  User schema and changeset
+  """
   use Ecto.Schema
   import Ecto.Changeset
   @default_user_api_quota 150
@@ -65,12 +68,16 @@ defmodule Logflare.User do
       :bigquery_dataset_id,
       :bigquery_dataset_location
     ])
+    |> update_change(:bigquery_dataset_location, &String.trim/1)
+    |> update_change(:bigquery_dataset_id, &String.trim/1)
+    |> update_change(:bigquery_project_id, &String.trim/1)
     |> default_validations(user)
   end
 
   def default_validations(changeset, user) do
     changeset
     |> validate_required([:email, :provider, :token])
+    |> validate_bq_dataset_location()
 
     # |> validate_gcp_project(:bigquery_project_id,
     #   user_id: user.id,
@@ -98,5 +105,21 @@ defmodule Logflare.User do
           [{field, options[:message] || "#{error_message}"}]
       end
     end)
+  end
+
+  def validate_bq_dataset_location(changeset) do
+    field = :bigquery_dataset_location
+
+    validate_change(changeset, field, fn _, bq_dataset_loc ->
+      if bq_dataset_loc in valid_bq_dataset_locations() do
+        []
+      else
+        [{field, "Invalid BigQuery dataset location."}]
+      end
+    end)
+  end
+
+  def valid_bq_dataset_locations do
+    ~w(US EU us-west2 northamerica-northeast1 us-east4 southamerica-east1 europe-north1 europe-west2 europe-west6 asia-east2 asia-south1 asia-northeast2 asia-east1 asia-northeast1 asia-southeast1 australia-southeast1)
   end
 end
