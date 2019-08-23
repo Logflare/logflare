@@ -38,7 +38,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(rls) do
     Process.flag(:trap_exit, true)
-    # prune()
+    prune()
 
     {:ok, rls, {:continue, :boot}}
   end
