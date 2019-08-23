@@ -3,9 +3,10 @@ use Mix.Config
 config :logflare, env: :staging
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 10]],
+  http: [port: 4_000, transport_options: [max_connections: 16_384, num_acceptors: 10]],
   url: [host: "logflarestaging.com", scheme: "https"],
   cache_static_manifest: "priv/static/cache_manifest.json",
+  check_origin: false,
   server: true,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)
@@ -60,10 +61,6 @@ config :logflare_agent,
     }
   ],
   url: "https://api.logflare.app"
-
-live_view_signing_salt = System.get_env("LOGFLARE_STAGING_LIVE_VIEW_SIGNING_SALT")
-
-config :logflare, LogflareWeb.Endpoint, live_view: [signing_salt: live_view_signing_salt]
 
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"
