@@ -13,6 +13,10 @@ defmodule Logflare.Logs.Search do
   @default_limit 100
   @default_processed_bytes_limit 10_000_000_000
 
+  # Note that this is only a timeout for the request, not the query.
+  # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
+  @query_request_timeout 60_000
+
   defmodule SearchOperation do
     @moduledoc """
     Logs search options and result
@@ -77,7 +81,8 @@ defmodule Logflare.Logs.Search do
       useQueryCache: true,
       parameterMode: "POSITIONAL",
       queryParameters: params,
-      dryRun: false
+      dryRun: false,
+      timeoutMs: @query_request_timeout
     }
 
     dry_run = %{query_request | dryRun: true}
