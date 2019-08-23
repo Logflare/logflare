@@ -29,9 +29,11 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
     current_processes = Observer.get_processes()
     processes = final_processes(state.last_processes, current_processes)
 
-    Logger.info("Memory metrics!", observer_memory: observer_memory)
-    Logger.info("Process metrics!", processes: processes)
-    Logger.info("Observer metrics!", observer_metrics: observer_metrics)
+    if Application.get_env(:logflare, :env) == :prod do
+      Logger.info("Memory metrics!", observer_memory: observer_memory)
+      Logger.info("Process metrics!", processes: processes)
+      Logger.info("Observer metrics!", observer_metrics: observer_metrics)
+    end
 
     {:noreply, %{last_processes: current_processes}}
   end
