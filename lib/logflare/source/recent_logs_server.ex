@@ -38,7 +38,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(rls) do
     Process.flag(:trap_exit, true)
-    prune()
+    # prune()
 
     {:ok, rls, {:continue, :boot}}
   end
@@ -86,8 +86,8 @@ defmodule Logflare.Source.RecentLogsServer do
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {Buffer, rls},
-      {Pipeline, rls},
       {Schema, rls},
+      {Pipeline, rls},
       {SearchQueryExecutor, rls}
     ]
 
@@ -97,7 +97,7 @@ defmodule Logflare.Source.RecentLogsServer do
       load_init_log_message(source_id, bigquery_project_id)
     end)
 
-    Logger.info("ETS table started: #{source_id}")
+    Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
   end
 

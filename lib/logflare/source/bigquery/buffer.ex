@@ -22,7 +22,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def init(state) do
-    Logger.info("Table buffer started: #{state.source_id}")
+    Logger.info("BigQuery.Buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
 
     check_buffer()

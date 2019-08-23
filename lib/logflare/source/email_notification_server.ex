@@ -19,7 +19,7 @@ defmodule Logflare.Source.EmailNotificationServer do
 
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
 
-    Logger.info("Table mailer started: #{rls.source_id}")
+    Logger.info("EmailNotificationServer started: #{rls.source_id}")
 
     {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
