@@ -1,12 +1,14 @@
 defmodule Logflare.Tasks.ReleaseTasks do
+  @moduledoc false
   @start_apps [
     :postgrex,
-    :ecto
+    :ecto,
+    :ssl
   ]
 
   @repo Logflare.Repo
 
-  @otp_app :subs
+  @otp_app :logflare
 
   def setup do
     boot()
@@ -16,7 +18,7 @@ defmodule Logflare.Tasks.ReleaseTasks do
   end
 
   defp boot() do
-    IO.puts "Booting pre hook..."
+    IO.puts("Starting pre-boot release task...")
     # Load app without starting it
     :ok = Application.load(@otp_app)
     # Ensure postgrex and ecto applications started
@@ -24,16 +26,16 @@ defmodule Logflare.Tasks.ReleaseTasks do
   end
 
   defp create_database() do
-    IO.puts "Creating the database if needed..."
+    IO.puts("Creating the database if needed...")
     @repo.__adapter__.storage_up(@repo.config)
   end
 
   defp start_connection() do
-    {:ok, _ } = @repo.start_link(pool_size: 1)
+    {:ok, _} = @repo.start_link(pool_size: 1)
   end
 
   defp run_migrations() do
-    IO.puts "Running migrations..."
+    IO.puts("Running migrations...")
     Ecto.Migrator.run(@repo, migrations_path(), :up, all: true)
   end
 

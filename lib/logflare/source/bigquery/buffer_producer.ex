@@ -10,6 +10,8 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   @impl true
   def init(%{source_id: source_id}) when is_atom(source_id) do
+    Logger.info("BigQuery.BufferProducer started: #{source_id}")
+
     {:producer,
      %{
        demand: 0,
@@ -63,6 +65,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     end)
   end
 
+  @impl true
   def terminate(reason, _state) do
     Logger.info("Going Down: #{__MODULE__}")
     reason

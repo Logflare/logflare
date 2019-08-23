@@ -1,4 +1,5 @@
 defmodule Logflare.Source.BigQuery.SchemaBuilder do
+  @moduledoc false
   use Publicist
   require Logger
   alias GoogleApi.BigQuery.V2.Model
@@ -60,7 +61,6 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> DeepMerge.deep_merge(new_metadata_schema)
   end
 
-  @spec build_fields_schemas({String.t(), map}) :: TFS.t()
   defp build_fields_schemas({params_key, params_val}) when is_map(params_val) do
     %TFS{
       description: nil,

@@ -243,20 +243,20 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
-          conn
-          |> assign(:user, u)
-          |> assign(:source, s)
-          |> post(
-            log_path(conn, :create),
-            %{
-              "log_entry" => "valid",
-              "level" => "info",
-              "metadata" => metadata
-            }
-          )
+      conn =
+        conn
+        |> assign(:user, u)
+        |> assign(:source, s)
+        |> post(
+          log_path(conn, :create),
+          %{
+            "log_entry" => "valid",
+            "level" => "info",
+            "metadata" => metadata
+          }
+        )
 
-        assert json_response(conn, 200) == %{"message" => "Logged!"}
-      end
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
   end
 

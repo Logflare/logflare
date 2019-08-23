@@ -1,4 +1,5 @@
 defmodule Logflare.Source.Data do
+  @moduledoc false
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
   alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}

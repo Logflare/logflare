@@ -46,7 +46,7 @@ defmodule Logflare.Logs do
   end
 
   defp ingest_by_source_rules(%LE{source: %Source{} = source, via_rule: nil} = le) do
-    for rule <- source.rules, Regex.match?(~r{#{rule.regex}}, le.body.message) do
+    for rule <- source.rules, rule_match?(rule, le.body.message) do
       sink_source = Sources.Cache.get_by(token: rule.sink)
 
       if sink_source do
@@ -56,6 +56,10 @@ defmodule Logflare.Logs do
       end
     end
   end
+
+  def rule_match?(%{regex_struct: nil}, _), do: false
+
+  def rule_match?(rule, message), do: Regex.match?(rule.regex_struct, message)
 
   defp ingest_and_broadcast(%LE{source: %Source{} = source} = le) do
     source_table_string = Atom.to_string(source.token)

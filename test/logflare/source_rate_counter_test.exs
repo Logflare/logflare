@@ -11,6 +11,7 @@ defmodule Logflare.Source.RateCounterServerTest do
     u1 = insert(:user)
     s1 = insert(:source, user_id: u1.id)
     Sources.Counters.start_link()
+    Sources.RateCounters.start_link()
     {:ok, pid} = RCS.start_link(%RLS{source_id: s1.token})
 
     {:ok, sources: [s1]}
@@ -23,7 +24,7 @@ defmodule Logflare.Source.RateCounterServerTest do
       s1_id_string = "#{s1.token}"
 
       assert_broadcast event,
-                       %{source_token: s1_id_string, rate: "0", average_rate: "0", max_rate: "0"},
+                       %{source_token: s1_id_string, rate: 0, average_rate: 0, max_rate: 0},
                        1_100
     end
 

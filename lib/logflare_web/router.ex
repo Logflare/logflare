@@ -1,7 +1,6 @@
 defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
-  import Phoenix.LiveView.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -55,17 +54,22 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through :browser
     get "/", MarketingController, :index
-    get "/bigquery-datastudio", MarketingController, :big_query
     get "/terms", MarketingController, :terms
     get "/privacy", MarketingController, :privacy
     get "/cookies", MarketingController, :cookies
+    get "/contact", ContactController, :contact
+    post "/contact", ContactController, :new
+    get "/guides", MarketingController, :guides
   end
 
   scope "/guides", LogflareWeb do
     pipe_through :browser
+    get "/overview", MarketingController, :overview
     get "/bigquery-setup", MarketingController, :big_query_setup
     get "/data-studio-setup", MarketingController, :data_studio_setup
     get "/event-analytics", MarketingController, :event_analytics_demo
+    get "/log-search", MarketingController, :log_search
+    get "/getting-started", MarketingController, :getting_started
   end
 
   scope "/", LogflareWeb do
@@ -94,6 +98,7 @@ defmodule LogflareWeb.Router do
 
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
+    get "/:id/explore", SourceController, :explore
   end
 
   scope "/account", LogflareWeb do

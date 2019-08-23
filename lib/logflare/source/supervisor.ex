@@ -26,7 +26,7 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
-    Logger.info("Table manager started!")
+    Logger.info("Source.Supervisor started!")
 
     query =
       from(s in "sources",
@@ -49,26 +49,22 @@ defmodule Logflare.Source.Supervisor do
         Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
       end)
 
-    search_query_servers = Enum.map(source_ids, &Logflare.Logs.SearchQueryExecutor.child_spec/1)
-
-    children = [children | search_query_servers] |> List.flatten()
-
     Supervisor.start_link(children, strategy: :one_for_one)
 
     {:noreply, source_ids}
   end
 
   def handle_call({:create, source_id}, _from, state) do
-    rls = %RLS{source_id: source_id}
+    case create_source(source_id) do
+      {:ok, _pid} ->
+        state = Enum.uniq([source_id | state])
+        {:reply, source_id, state}
 
-    children = [
-      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
-    ]
+      {:error, _reason} ->
+        Logger.error("Failed to start RecentLogsServer: #{source_id}")
 
-    Supervisor.start_link(children, strategy: :one_for_one)
-
-    state = Enum.uniq([source_id | state])
-    {:reply, source_id, state}
+        {:reply, source_id, state}
+    end
   end
 
   def handle_call({:delete, source_id}, _from, state) do
@@ -85,16 +81,26 @@ defmodule Logflare.Source.Supervisor do
     end
   end
 
-  def handle_call({:restart, source_id}, _from, state) do
+  def handle_cast({:restart, source_id}, state) do
     case Process.whereis(source_id) do
       nil ->
-        {:reply, source_id, state}
+        {:noreply, state}
 
       _ ->
-        send(source_id, {:stop_please, :reseting})
-        Counters.delete(source_id)
+        send(source_id, {:stop_please, :shutdown})
 
-        {:reply, source_id, state}
+        Process.sleep(1_000)
+
+        case create_source(source_id) do
+          {:ok, _pid} ->
+            state = Enum.uniq([source_id | state])
+            {:noreply, state}
+
+          {:error, _reason} ->
+            Logger.error("Failed to start RecentLogsServer: #{source_id}")
+
+            {:noreply, state}
+        end
     end
   end
 
@@ -106,26 +112,35 @@ defmodule Logflare.Source.Supervisor do
 
   ## Public Functions
 
-  def new_table(source_id) do
+  def new_source(source_id) do
     GenServer.call(__MODULE__, {:create, source_id})
   end
 
-  def delete_table(source_id) do
+  def delete_source(source_id) do
     GenServer.call(__MODULE__, {:delete, source_id})
     BigQuery.delete_table(source_id)
 
     {:ok, source_id}
   end
 
-  def reset_table(source_id) do
-    GenServer.call(__MODULE__, {:restart, source_id})
-    # supervisor is automatically restarting for us here
+  def reset_source(source_id) do
+    GenServer.cast(__MODULE__, {:restart, source_id})
 
     {:ok, source_id}
   end
 
-  def reset_all_user_tables(user) do
+  def reset_all_user_sources(user) do
     sources = Repo.all(Ecto.assoc(user, :sources))
-    Enum.each(sources, fn s -> reset_table(s.token) end)
+    Enum.each(sources, fn s -> GenServer.cast(__MODULE__, {:restart, s.token}) end)
+  end
+
+  defp create_source(source_id) do
+    rls = %RLS{source_id: source_id}
+
+    children = [
+      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one)
   end
 end

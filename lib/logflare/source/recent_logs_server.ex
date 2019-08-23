@@ -23,6 +23,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Logs.SearchQueryExecutor
   alias __MODULE__, as: RLS
 
   require Logger
@@ -37,7 +38,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(rls) do
     Process.flag(:trap_exit, true)
-    prune()
+    # prune()
 
     {:ok, rls, {:continue, :boot}}
   end
@@ -48,7 +49,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  @spec handle_continue(:boot, RLS.t()) :: {:noreply, RLS.t()}
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     %{
       user_id: user_id,
@@ -86,8 +86,9 @@ defmodule Logflare.Source.RecentLogsServer do
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {Buffer, rls},
+      {Schema, rls},
       {Pipeline, rls},
-      {Schema, rls}
+      {SearchQueryExecutor, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
@@ -96,7 +97,7 @@ defmodule Logflare.Source.RecentLogsServer do
       load_init_log_message(source_id, bigquery_project_id)
     end)
 
-    Logger.info("ETS table started: #{source_id}")
+    Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
   end
 

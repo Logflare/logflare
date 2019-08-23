@@ -84,17 +84,19 @@ defmodule Logflare.Source do
   end
 
   def put_bq_table_id(%__MODULE__{} = source) do
-    %{source | bq_table_id: to_bq_table_id(source)}
+    %{source | bq_table_id: generate_bq_table_id(source)}
   end
 
-  def to_bq_table_id(%__MODULE__{} = source) do
-    bq_project_id =
-      source.user.bigquery_project_id ||
-        Application.get_env(:logflare, Logflare.Google)[:project_id]
+  def generate_bq_table_id(%__MODULE__{} = source) do
+    default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+    bq_project_id = source.user.bigquery_project_id || default_project_id
 
     env = Application.get_env(:logflare, :env)
     table = GenUtils.format_table_name(source.token)
-    dataset = "#{source.user.id}_#{env}"
-    "`#{bq_project_id}`.#{dataset}.#{table}"
+
+    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}_#{env}"
+
+    "`#{bq_project_id}`.#{dataset_id}.#{table}"
   end
 end

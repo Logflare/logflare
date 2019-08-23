@@ -19,7 +19,7 @@ defmodule Logflare.SourcesTest do
     test "get_bq_schema/1", %{sources: [s | _]} do
       source_id = s.token
       bigquery_project_id = GenUtils.get_project_id(source_id)
-      bigquery_table_ttl = GenUtils.get_table_ttl(source_id)
+      bigquery_table_ttl = GenUtils.get_bq_user_info(source_id).bigquery_table_ttl
       BigQuery.init_table!(source_id, bigquery_project_id, bigquery_table_ttl)
 
       schema = %TS{

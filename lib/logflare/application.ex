@@ -1,4 +1,5 @@
 defmodule Logflare.Application do
+  @moduledoc false
   use Application
 
   def start(_type, _args) do
@@ -9,7 +10,8 @@ defmodule Logflare.Application do
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
       supervisor(Logflare.Repo, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(LogflareWeb.Endpoint, []),
+      {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
     dev_prod_children = [
@@ -17,8 +19,8 @@ defmodule Logflare.Application do
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
       # init Counters before Manager as Manager calls Counters through table create
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),
       supervisor(Logflare.SystemMetrics, []),

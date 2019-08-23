@@ -3,9 +3,10 @@ use Mix.Config
 config :logflare, env: :staging
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 10]],
+  http: [port: 4_000, transport_options: [max_connections: 16_384, num_acceptors: 10]],
   url: [host: "logflarestaging.com", scheme: "https"],
   cache_static_manifest: "priv/static/cache_manifest.json",
+  check_origin: false,
   server: true,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)
@@ -18,7 +19,7 @@ config :logger,
 config :phoenix, :serve_endpoints, true
 
 config :logflare, Logflare.Repo,
-  pool_size: 15,
+  pool_size: 5,
   ssl: true,
   prepare: :unnamed,
   timeout: 30_000
@@ -61,4 +62,6 @@ config :logflare_agent,
   ],
   url: "https://api.logflare.app"
 
-import_config "staging.secret.exs"
+if File.exists?("config/staging.secret.exs") do
+  import_config "staging.secret.exs"
+end

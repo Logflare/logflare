@@ -25,7 +25,7 @@ defmodule Logflare.DummyFactory do
   end
 
   def rule_factory do
-    %Rule{}
+    %Rule{regex: "."}
   end
 
   def log_event_factory(attrs) do

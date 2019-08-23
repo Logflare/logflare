@@ -11,8 +11,8 @@ defmodule LogflareWeb.UserControllerTest do
   import Logflare.DummyFactory
 
   setup do
-    u1 = insert(:user)
-    u2 = insert(:user)
+    u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
+    u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
     allow Users.Cache.get_by(any()), return: :should_not_happen
 
     {:ok, users: [u1, u2], conn: Phoenix.ConnTest.build_conn()}
@@ -97,7 +97,7 @@ defmodule LogflareWeb.UserControllerTest do
       conn: conn,
       users: [u1 | _]
     } do
-      allow BigQuery.create_dataset(any, any), return: {:ok, []}
+      allow BigQuery.create_dataset(any, any, any, any), return: {:ok, []}
       allow Source.Supervisor.reset_all_user_tables(any), return: :ok
 
       conn =

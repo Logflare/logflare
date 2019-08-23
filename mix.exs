@@ -1,4 +1,5 @@
 defmodule Logflare.Mixfile do
+  @moduledoc false
   use Mix.Project
 
   def project do
@@ -17,6 +18,13 @@ defmodule Logflare.Mixfile do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test
+      ],
+      releases: [
+        logflare: [
+          version: "0.14.0",
+          include_executables_for: [:unix],
+          applications: [runtime_tools: :permanent, ssl: :permanent]
+        ]
       ]
     ]
   end
@@ -32,7 +40,8 @@ defmodule Logflare.Mixfile do
         :runtime_tools,
         :ueberauth_github,
         :edeliver,
-        :ueberauth_google
+        :ueberauth_google,
+        :ssl
       ]
     ]
   end
@@ -66,13 +75,13 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
-      {:google_api_big_query, "~> 0.20.0"},
+      {:google_api_big_query, "~> 0.21.0"},
       {:goth, "~> 0.8.0"},
-      {:broadway, "~> 0.3.0"},
+      {:broadway, "~> 0.4.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
-      {:credo, "~> 1.1.0", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.1", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
       {:mox, "~> 0.5", only: :test},

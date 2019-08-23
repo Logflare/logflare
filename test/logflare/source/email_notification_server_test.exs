@@ -4,13 +4,15 @@ defmodule Logflare.Source.EmailNotificationServerTest do
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.LogEvent, as: LE
+  alias Logflare.Sources
   import Logflare.DummyFactory
 
   setup do
     u1 = insert(:user)
     s1 = insert(:source, user_id: u1.id)
     sid = s1.token
-    rls = %RLS{source_id: sid}
+    rls = %RLS{source_id: sid, notifications_every: 1_000}
+    Sources.Counters.start_link()
 
     {:ok, sources: [s1], args: rls}
   end

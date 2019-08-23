@@ -39,10 +39,11 @@ defmodule LogflareWeb.RuleControllerTest do
           }
         )
 
-      rules_db = Sources.get_by(id: u1s1.id).rules
+      rules = Sources.get_by(id: u1s1.id).rules
 
-      assert length(rules_db) == 1
-      assert hd(rules_db).regex == "\| 4.. \| "
+      assert length(rules) == 1
+      assert hd(rules).regex == "\| 4.. \| "
+      assert %Regex{source: "\| 4.. \| "} = hd(rules).regex_struct
       assert get_flash(conn, :info) === "Rule created successfully!"
       assert redirected_to(conn, 302) == source_rule_path(conn, :index, u1s1.id)
     end

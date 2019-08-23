@@ -55,7 +55,7 @@ defmodule Logflare.Source.RateCounterServer do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
 
-    Logger.info("Rate counter started: #{source_id}")
+    Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
   end
 
@@ -203,7 +203,7 @@ defmodule Logflare.Source.RateCounterServer do
     end
   end
 
-  def ets_table_is_undefined?(source_id) do
+  def ets_table_is_undefined?(_source_id) do
     :ets.info(@ets_table_name) == :undefined
   end
 

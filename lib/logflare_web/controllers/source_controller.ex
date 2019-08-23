@@ -11,7 +11,8 @@ defmodule LogflareWeb.SourceController do
               :clear_logs,
               :rejected_logs,
               :favorite,
-              :search
+              :search,
+              :explore
             ]
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
@@ -66,7 +67,7 @@ defmodule LogflareWeb.SourceController do
     |> case do
       {:ok, source} ->
         spawn(fn ->
-          Supervisor.new_table(source.token)
+          Supervisor.new_source(source.token)
         end)
 
         if get_session(conn, :oauth_params) do
@@ -89,13 +90,7 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
-  def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate <= 25 do
-    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
-
-    explore_link =
-      bigquery_project_id &&
-        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
-
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 25 do
     search_tip = Search.Utils.gen_search_tip()
 
     render(
@@ -104,18 +99,11 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || "",
       search_tip: search_tip
     )
   end
 
-  def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate > 25 do
-    bigquery_project_id = user && (user.bigquery_project_id || @project_id)
-
-    explore_link =
-      bigquery_project_id &&
-        generate_explore_link(user.id, user.email, source.token, bigquery_project_id)
-
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 25 do
     search_tip = Search.Utils.gen_search_tip()
 
     conn
@@ -128,9 +116,25 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      explore_link: explore_link || "",
       search_tip: search_tip
     )
+  end
+
+  def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
+    if user.provider == "google" do
+      bigquery_project_id = user.bigquery_project_id || @project_id
+      dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
+
+      explore_link =
+        generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)
+
+      conn
+      |> redirect(external: explore_link)
+    else
+      conn
+      |> put_flash(:error, "Sign in with Google to explore in Data Studio.")
+      |> redirect(to: Routes.source_path(conn, :show, source.id))
+    end
   end
 
   def search(%{assigns: %{user: user, source: source}} = conn, params) do
@@ -223,14 +227,14 @@ defmodule LogflareWeb.SourceController do
         del_source_and_redirect_with_info(conn, source)
 
       :ets.first(token) == :"$end_of_table" ->
-        {:ok, _table} = Supervisor.delete_table(source.token)
+        {:ok, _table} = Supervisor.delete_source(source.token)
         del_source_and_redirect_with_info(conn, source)
 
       {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
         now = System.os_time(:microsecond)
 
         if now - timestamp > 3_600_000_000 do
-          {:ok, _table} = Supervisor.delete_table(source.token)
+          {:ok, _table} = Supervisor.delete_source(source.token)
           del_source_and_redirect_with_info(conn, source)
         else
           put_flash_and_redirect_to_dashboard(
@@ -243,7 +247,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def clear_logs(%{assigns: %{source: source}} = conn, _params) do
-    {:ok, _table} = Supervisor.reset_table(source.token)
+    {:ok, _table} = Supervisor.reset_source(source.token)
     {:ok, true} = RejectedLogEvents.delete_by_source(source)
 
     conn
@@ -252,15 +256,13 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp generate_explore_link(
-         user_id,
          user_email,
          source_id,
-         project_id
+         project_id,
+         dataset_id
          # billing_project_id
        )
        when is_atom(source_id) do
-    dataset_id = Integer.to_string(user_id) <> @dataset_id_append
-
     {:ok, explore_link_config} =
       Jason.encode(%{
         "projectId" => project_id,

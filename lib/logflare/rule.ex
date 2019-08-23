@@ -6,6 +6,7 @@ defmodule Logflare.Rule do
 
   schema "rules" do
     field :regex, :string
+    field :regex_struct, Ecto.Regex
     field :sink, Ecto.UUID.Atom
     # TODO update sink field to be an belongs_to association
     # belongs_to :sink, Source, foreign_key: :sink_id, type: Ecto.UUID.Atom, references: :token
@@ -20,6 +21,8 @@ defmodule Logflare.Rule do
     |> cast(attrs, [:regex, :sink])
     |> validate_required([:regex, :sink])
     |> validate_regex()
+    |> cast(%{"regex_struct" => attrs["regex"]}, [:regex_struct])
+    |> Map.update!(:errors, &Keyword.drop(&1, [:regex_struct]))
   end
 
   def validate_regex(changeset) do

@@ -5,8 +5,8 @@ defmodule Logflare.Google.BigQuery do
 
   require Logger
 
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id] || ""
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] || ""
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
 
   alias GoogleApi.BigQuery.V2.Api
@@ -198,6 +198,9 @@ defmodule Logflare.Google.BigQuery do
     )
   end
 
+  @doc """
+  Creates dataset, accepts user_id, dataset_id, dataset_location, project_id
+  """
   @spec create_dataset(integer, binary, binary, binary) ::
           {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Dataset.t()}
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do
@@ -299,12 +302,14 @@ defmodule Logflare.Google.BigQuery do
     end)
   end
 
-  @spec delete_dataset(integer) :: ok_err_tup
-  def delete_dataset(user_id) do
+  @spec delete_dataset(User.t()) :: ok_err_tup
+  @doc """
+  Deletes dataset for the given user.
+  """
+  def delete_dataset(user) do
     conn = GenUtils.get_conn()
-    user = Users.get_by(id: user_id)
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user_id) <> @dataset_id_append
-    project_id = user.bigquery_project_id
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
+    project_id = user.bigquery_project_id || @project_id
 
     Api.Datasets.bigquery_datasets_delete(conn, project_id, dataset_id, deleteContents: true)
   end

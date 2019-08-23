@@ -40,6 +40,14 @@ defmodule Logflare.Logs.Search.Parser do
       ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 1)
     ])
 
+  date_or_datetime = ascii_string([?0..?9, ?Z, ?T, ?-, ?:], min: 1)
+
+  timestamp_value =
+    choice([
+      date_or_datetime |> concat(string("..")) |> concat(date_or_datetime),
+      date_or_datetime
+    ])
+
   timestamp_field =
     string("timestamp")
     |> ignore(ascii_char([?:]))
@@ -49,7 +57,7 @@ defmodule Logflare.Logs.Search.Parser do
         string("") |> replace("=")
       ])
     )
-    |> concat(ascii_string([?0..?9, ?Z, ?T, ?-, ?:], min: 1))
+    |> concat(timestamp_value)
     |> tag(:timestamp_field)
 
   metadata_field_op_val =
@@ -110,22 +118,7 @@ defmodule Logflare.Logs.Search.Parser do
           }
 
         :timestamp_field ->
-          [_, operator, datetime] = tokens
-
-          datetime =
-            if String.length(datetime) === 10 do
-              {:timestamp, {:ok, date}} = {:timestamp, Date.from_iso8601(datetime)}
-              date
-            else
-              {:timestamp, {:ok, datetime, _}} = {:timestamp, DateTime.from_iso8601(datetime)}
-              datetime
-            end
-
-          %{
-            path: "timestamp",
-            value: datetime,
-            operator: operator
-          }
+          to_path_val_op(:timestamp_field, tokens)
 
         :metadata_field ->
           to_path_val_op(:metadata_field, tokens)
@@ -141,7 +134,29 @@ defmodule Logflare.Logs.Search.Parser do
     }
   end
 
-  defp to_path_val_op(:metadata_field, [path, "=", lvalue, "..", rvalue]) do
+  defp to_path_val_op(field, [path, "=", lvalue, "..", rvalue])
+       when field in ~w(metadata_field timestamp_field)a do
+    to_range_path_val_op([path, "=", lvalue, "..", rvalue])
+  end
+
+  defp to_path_val_op(:timestamp_field, [_, operator, datetime]) do
+    datetime =
+      if String.length(datetime) === 10 do
+        {:timestamp, {:ok, date}} = {:timestamp, Date.from_iso8601(datetime)}
+        date
+      else
+        {:timestamp, {:ok, datetime, _}} = {:timestamp, DateTime.from_iso8601(datetime)}
+        datetime
+      end
+
+    %{
+      path: "timestamp",
+      value: datetime,
+      operator: operator
+    }
+  end
+
+  defp to_range_path_val_op([path, "=", lvalue, "..", rvalue]) do
     [
       %{
         path: path,

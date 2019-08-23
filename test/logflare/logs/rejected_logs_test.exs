@@ -18,6 +18,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     allow(Source.Data.get_max_rate()) |> exec(fn _ -> 0 end)
     allow(Source.Data.get_buffer()) |> exec(fn _ -> 0 end)
     allow(Source.Data.get_total_inserts()) |> exec(fn _ -> 0 end)
+    allow(Source.Data.get_ets_count()) |> exec(fn _ -> 0 end)
 
     {:ok, users: [u1], sources: sources}
   end

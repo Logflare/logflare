@@ -92,7 +92,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaSpec do
     changeset
     # validates that the key starts from ascii letter or underscore
     |> validate_format(key, ~r/^[a-zA-Z_].*$/)
-    # validates that the key starts from ascii letter or underscore
+    # validates that the key contains only letters (a-z, A-Z), numbers (0-9), or underscores (_)
     |> validate_format(key, ~r/^[a-zA-Z0-9_]*$/)
     # validates that the key is not longer than 128 symbols
     |> validate_length(key, max: 128, min: 1)

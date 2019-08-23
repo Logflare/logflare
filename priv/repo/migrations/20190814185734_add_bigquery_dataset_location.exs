@@ -1,4 +1,5 @@
 defmodule Logflare.Repo.Migrations.AddBigqueryDatasetLocation do
+  @moduledoc false
   use Ecto.Migration
 
   def change do
