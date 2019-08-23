@@ -4,8 +4,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Logs.Search.SearchOperation, as: SO
   import Logflare.Logs.Search.Utils
   alias Logflare.LogEvent
+  alias Logflare.Source.RecentLogsServer, as: RLS
   require Logger
-  @query_timeout 30_000
+  @query_timeout 60_000
 
   @moduledoc """
   Handles all search queries for the specific source
@@ -13,14 +14,14 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   # API
 
-  def start_link(source_id, _opts \\ %{}) do
+  def start_link(%RLS{source_id: source_id}, _opts \\ %{}) do
     GenServer.start_link(__MODULE__, %{source_id: source_id}, name: name(source_id))
   end
 
-  def child_spec(source_id) do
+  def child_spec(%RLS{source_id: source_id} = rls) do
     %{
       id: name(source_id),
-      start: {__MODULE__, :start_link, [source_id]}
+      start: {__MODULE__, :start_link, [rls]}
     }
   end
 

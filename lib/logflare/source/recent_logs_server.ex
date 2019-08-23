@@ -23,6 +23,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Logs.SearchQueryExecutor
   alias __MODULE__, as: RLS
 
   require Logger
@@ -48,7 +49,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  @spec handle_continue(:boot, RLS.t()) :: {:noreply, RLS.t()}
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     %{
       user_id: user_id,
@@ -87,7 +87,8 @@ defmodule Logflare.Source.RecentLogsServer do
       {TextNotificationServer, rls},
       {Buffer, rls},
       {Pipeline, rls},
-      {Schema, rls}
+      {Schema, rls},
+      {SearchQueryExecutor, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
