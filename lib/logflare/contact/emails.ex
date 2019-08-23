@@ -2,7 +2,7 @@ defmodule Logflare.Contact.Emails do
   import Swoosh.Email
 
   def contact(
-        %{"name" => name, "email" => email, "subject" => subject, "body" => body} = form_data
+        %{"name" => name, "email" => email, "subject" => subject, "body" => body} = _form_data
       ) do
     new()
     |> to("support@logflare.app")

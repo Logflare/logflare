@@ -5,9 +5,6 @@ defmodule LogflareWeb.Source.SearchLV do
   use Phoenix.LiveView
   alias LogflareWeb.SourceView
 
-  alias Logflare.Logs.Search
-  alias Logflare.Logs.Search.SearchOperation, as: SO
-  alias Logflare.LogEvent
   alias Logflare.Logs.SearchQueryExecutor
   alias __MODULE__.SearchParams
   import Logflare.Logs.Search.Utils

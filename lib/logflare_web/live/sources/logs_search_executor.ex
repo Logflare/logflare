@@ -2,8 +2,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   use GenServer
   alias Logflare.Logs.Search
   alias Logflare.Logs.Search.SearchOperation, as: SO
-  alias Logflare.{LogEvent, Source}
   import Logflare.Logs.Search.Utils
+  alias Logflare.LogEvent
   require Logger
   @query_timeout 30_000
 

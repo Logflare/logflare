@@ -1,4 +1,5 @@
 defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
+  @moduledoc false
   use GenServer
 
   require Logger
@@ -26,8 +27,10 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     {:ok, all_logs_logged} = AllLogsLogged.log_count(:total_logs_logged)
     logs_last_second = all_logs_logged - state.last_total
 
-    Logger.info("All logs logged!", all_logs_logged: all_logs_logged)
-    Logger.info("Logs last second!", logs_per_second: logs_last_second)
+    if Application.get_env(:logflare, :env) == :prod do
+      Logger.info("All logs logged!", all_logs_logged: all_logs_logged)
+      Logger.info("Logs last second!", logs_per_second: logs_last_second)
+    end
 
     {:noreply, %{last_total: all_logs_logged, last_second: logs_last_second}}
   end

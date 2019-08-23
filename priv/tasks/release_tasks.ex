@@ -1,4 +1,5 @@
 defmodule Logflare.Tasks.ReleaseTasks do
+  @moduledoc false
   @start_apps [
     :postgrex,
     :ecto,

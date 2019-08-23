@@ -1,6 +1,6 @@
 <div id="logs-list-container">
   <div id="logs-list" class="list-unstyled console-text-list">
-    <%= @log_events |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
+    <%= @log_events |> Enum.with_index |> Enum.map(fn {log, _inx} -> %>
     <li>
       <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
       <mark class="log-datestamp" data-timestamp="<%= timestamp %>"><%= format_timestamp(timestamp) <> " UTC"%></mark>

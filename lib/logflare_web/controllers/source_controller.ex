@@ -90,7 +90,7 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
-  def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate <= 25 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 25 do
     search_tip = Search.Utils.gen_search_tip()
 
     render(
@@ -103,7 +103,7 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def render_show_with_assigns(conn, user, source, avg_rate) when avg_rate > 25 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 25 do
     search_tip = Search.Utils.gen_search_tip()
 
     conn

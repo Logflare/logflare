@@ -1,4 +1,5 @@
 defmodule Logflare.Google.CloudResourceManager do
+  @moduledoc false
   require Logger
 
   import Ecto.Query, only: [from: 2]

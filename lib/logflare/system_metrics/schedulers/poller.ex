@@ -1,4 +1,5 @@
 defmodule Logflare.SystemMetrics.Schedulers.Poller do
+  @moduledoc false
   use GenServer
 
   require Logger
@@ -25,7 +26,9 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
     scheduler_metrics =
       Schedulers.scheduler_utilization(last_scheduler_metrics, current_scheduler_metrics)
 
-    Logger.info("Scheduler metrics!", scheduler_metrics: scheduler_metrics)
+    if Application.get_env(:logflare, :env) == :prod do
+      Logger.info("Scheduler metrics!", scheduler_metrics: scheduler_metrics)
+    end
 
     {:noreply, current_scheduler_metrics}
   end

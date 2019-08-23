@@ -1,4 +1,7 @@
 defmodule Logflare.Sources do
+  @moduledoc """
+  Sources-related context
+  """
   alias Logflare.{Repo, Source}
   alias Logflare.Source.RateCounterServer, as: SRC
   require Logger
@@ -52,7 +55,7 @@ defmodule Logflare.Sources do
               {:ok, regex} ->
                 regex
 
-              {:error, msg} ->
+              {:error, _} ->
                 Logger.error(
                   "Rule #{rule.id} for #{source.token} is invalid. Regex string:#{rule.regex}"
                 )

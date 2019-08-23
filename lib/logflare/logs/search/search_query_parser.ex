@@ -139,21 +139,6 @@ defmodule Logflare.Logs.Search.Parser do
     to_range_path_val_op([path, "=", lvalue, "..", rvalue])
   end
 
-  defp to_range_path_val_op([path, "=", lvalue, "..", rvalue]) do
-    [
-      %{
-        path: path,
-        value: lvalue,
-        operator: ">="
-      },
-      %{
-        path: path,
-        value: rvalue,
-        operator: "<="
-      }
-    ]
-  end
-
   defp to_path_val_op(:timestamp_field, [_, operator, datetime]) do
     datetime =
       if String.length(datetime) === 10 do
@@ -169,6 +154,21 @@ defmodule Logflare.Logs.Search.Parser do
       value: datetime,
       operator: operator
     }
+  end
+
+  defp to_range_path_val_op([path, "=", lvalue, "..", rvalue]) do
+    [
+      %{
+        path: path,
+        value: lvalue,
+        operator: ">="
+      },
+      %{
+        path: path,
+        value: rvalue,
+        operator: "<="
+      }
+    ]
   end
 
   def maybe_tagged_to_literal({:quoted_string, [literal]}) do

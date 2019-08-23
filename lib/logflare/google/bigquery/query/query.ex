@@ -2,13 +2,7 @@ defmodule Logflare.Google.BigQuery.Query do
   @moduledoc false
   require Logger
 
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
-
   alias GoogleApi.BigQuery.V2.{Api, Model}
-  alias Logflare.Google.BigQuery.{GenUtils}
-  alias Logflare.SourceBigQuerySchema
-  alias Logflare.Google.BigQuery
   #
   #  @spec get_events_for_ets(atom, atom) :: []
   #  def get_events_for_ets(
