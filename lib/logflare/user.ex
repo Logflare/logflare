@@ -68,9 +68,9 @@ defmodule Logflare.User do
       :bigquery_dataset_id,
       :bigquery_dataset_location
     ])
-    |> update_change(:bigquery_dataset_location, &String.trim/1)
-    |> update_change(:bigquery_dataset_id, &String.trim/1)
-    |> update_change(:bigquery_project_id, &String.trim/1)
+    # |> update_change(:bigquery_dataset_location, &String.trim/1)
+    # |> update_change(:bigquery_dataset_id, &String.trim/1)
+    # |> update_change(:bigquery_project_id, &String.trim/1)
     |> default_validations(user)
   end
 
