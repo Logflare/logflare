@@ -94,6 +94,7 @@ defmodule Logflare.Google.CloudResourceManager do
     query =
       from(u in "users",
         where: u.provider == "google",
+        where: u.valid_google_account == true or is_nil(u.valid_google_account),
         select: %{
           email: u.email
         }
