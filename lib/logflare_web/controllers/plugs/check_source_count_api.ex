@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Plugs.CheckSourceCountApi do
+  @moduledoc false
   import Phoenix.Controller
   import Plug.Conn
 

@@ -1,7 +1,6 @@
 defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
-  import Phoenix.LiveView.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
 

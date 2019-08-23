@@ -1,4 +1,5 @@
 defmodule Logflare.Repo.Migrations.AlterSourcesModifyConstraints do
+  @moduledoc false
   use Ecto.Migration
 
   def up do

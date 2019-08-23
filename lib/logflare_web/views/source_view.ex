@@ -5,7 +5,7 @@ defmodule LogflareWeb.SourceView do
   alias Logflare.BigQuery.SchemaTypes
   import Phoenix.LiveView
 
-  def render_modal("searchHelpModal", source, _log_events) do
+  def render_modal("searchHelpModal", _source, _log_events) do
     ~E"""
     <div class="source-logs-search-modals">
       <%= render "logs_search_modal.html",

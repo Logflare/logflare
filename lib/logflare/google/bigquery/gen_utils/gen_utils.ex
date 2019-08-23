@@ -1,8 +1,8 @@
 defmodule Logflare.Google.BigQuery.GenUtils do
-  @doc """
+  @moduledoc """
   Generic utils for BigQuery.
   """
-  alias Logflare.{Sources, Users, User}
+  alias Logflare.{Sources, Users}
   alias GoogleApi.BigQuery.V2.Connection
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]

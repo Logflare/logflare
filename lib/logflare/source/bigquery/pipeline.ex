@@ -38,8 +38,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
-  @spec handle_batch(:bq, list(Broadway.Message.t()), any, Logflare.Source.RecentLogsServer.t()) ::
-          any
+  @spec handle_batch(:bq, list(Broadway.Message.t()), any, RLS.t()) :: any
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
     hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
     LogflareLogger.context(hackney_stats: hackney_stats, source_id: context.source_id)

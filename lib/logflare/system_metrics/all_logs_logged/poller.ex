@@ -1,4 +1,5 @@
 defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
+  @moduledoc false
   use GenServer
 
   require Logger
