@@ -32,6 +32,8 @@ steps:
         "logflare-app-main-managed-group",
         "--zone",
         "us-central1-a",
+        "--max-surge",
+        "1",
       ]
     timeout: 600s
 
