@@ -35,55 +35,8 @@
   <% end %>
 
   <h5 class="header-margin">BigQuery Backend</h5>
-  <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner permissions.</p>
-  <%= if is_nil(@user.bigquery_project_id) == false do %>
-    <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-      <div class="form-group">
-        <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control", readonly: true %>
-        <%= error_tag e, :bigquery_project_id %>
-        <small class="form-text text-muted">
-          Your Google Cloud Platform project ID.
-        </small>
-        <%= text_input e, :bigquery_dataset_id, placeholder: "wobbly_wombat", class: "form-control", readonly: true %>
-        <%= error_tag e, :bigquery_dataset_id %>
-        <small class="form-text text-muted">
-          Your dataset name. Alphanumberic string, and underscores are valid. Creates a new dataset if it doesn't exist.
-        </small>
-        <%= text_input e, :bigquery_dataset_location, placeholder: "US", class: "form-control", readonly: true %>
-        <%= error_tag e, :bigquery_dataset_location %>
-        <small class="form-text text-muted">
-          Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.
-        </small>
-      </div>
-    <% end %>
-    <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-      <%= hidden_input e, :bigquery_project_id, value: nil, class: "form-control" %>
-      <%= hidden_input e, :bigquery_dataset_id, value: nil, class: "form-control" %>
-      <%= hidden_input e, :bigquery_dataset_location, value: nil, class: "form-control" %>
-      <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
-    <% end %>
-  <% else %>
-    <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-      <div class="form-group">
-        <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control" %>
-        <%= error_tag e, :bigquery_project_id %>
-        <small class="form-text text-muted">
-          Your Google Cloud Platform project ID.
-        </small>
-        <%= text_input e, :bigquery_dataset_id, placeholder: "wobbly_wombat", class: "form-control" %>
-        <%= error_tag e, :bigquery_dataset_id %>
-        <small class="form-text text-muted">
-          Your dataset name. Alphanumberic string, and underscores are valid. Creates a new dataset if it doesn't exist.
-        </small>
-        <%= text_input e, :bigquery_dataset_location, placeholder: "US", class: "form-control" %>
-        <%= error_tag e, :bigquery_dataset_location %>
-        <small class="form-text text-muted">
-          Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.
-        </small>
-      </div>
-      <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>
-    <% end %>
-  <% end %>
+  <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner and BigQuery Job User permissions. See <%= link "this guide", to: Routes.marketing_path(@conn, :big_query_setup) %> for more info.</p>
+  <%= render(LogflareWeb.UserView, "edit_bq_form.html", conn: @conn, changeset: @changeset, user: @user) %>
 
   <h5 class="header-margin">Signed In with <%= String.capitalize(@user.provider) %></h5>
   <p>You signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
