@@ -9,6 +9,10 @@ defmodule Logflare.User do
   alias Logflare.Source
   alias Logflare.Google.BigQuery
 
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+  @default_dataset_location "US"
+
   schema "users" do
     field :email, :string
     field :provider, :string
@@ -81,21 +85,25 @@ defmodule Logflare.User do
     changeset
     |> validate_required([:email, :provider, :token])
     |> validate_bq_dataset_location()
-
-    # |> validate_gcp_project(:bigquery_project_id,
-    #   user_id: user.id,
-    #   bigquery_dataset_location: user.bigquery_dataset_location,
-    #   bigquery_dataset_id: user.bigquery_dataset_id
-    # )
+    |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
   end
 
   def validate_gcp_project(changeset, field, options \\ []) do
     validate_change(changeset, field, fn _, bigquery_project_id ->
+      user_id = Integer.to_string(options[:user_id])
+
+      dataset_id =
+        changeset.changes[:bigquery_dataset_id] || "#{options[:user_id]}" <> @dataset_id_append
+
+      location = changeset.changes[:bigquery_dataset_location] || @default_dataset_location
+
+      project_id = bigquery_project_id || @project_id
+
       case BigQuery.create_dataset(
-             Integer.to_string(options[:user_id]),
-             options[:bigquery_dataset_location],
-             # options[:bigquery_dataset_id],
-             bigquery_project_id
+             user_id,
+             dataset_id,
+             location,
+             project_id
            ) do
         {:ok, _} ->
           []
