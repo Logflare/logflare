@@ -43,4 +43,5 @@
     </div>
   </div>
 </div>
+
 <%= render LogflareWeb.SharedView, "footer.html", assigns %>
