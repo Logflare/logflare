@@ -24,6 +24,7 @@ steps:
   - name: "gcr.io/cloud-builders/gcloud"
     args:
       [
+        "beta",
         "compute",
         "instance-groups",
         "managed",
@@ -34,6 +35,10 @@ steps:
         "us-central1-a",
         "--max-surge",
         "1",
+        "--max-unavailable",
+        "0",
+        "--min-ready",
+        "1m",
       ]
     timeout: 600s
 
