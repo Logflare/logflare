@@ -75,7 +75,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
         new_state = %{state | read_receipts: new_read_receipts}
 
         if :queue.is_empty(state.buffer) && new_read_receipts == %{} do
-          Logger.info("BigQuery.Buffer hibernating: #{state.source_id}")
           {:reply, log_event, new_state, :hibernate}
         else
           {:reply, log_event, new_state}
