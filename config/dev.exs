@@ -3,7 +3,10 @@ use Mix.Config
 config :logflare, env: :dev
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 10]],
+  http: [
+    port: System.get_env("PORT") || 4000,
+    transport_options: [max_connections: 16384, num_acceptors: 10]
+  ],
   url: [host: "dev.chasegranberry.net", scheme: "http"],
   debug_errors: true,
   code_reloader: true,
