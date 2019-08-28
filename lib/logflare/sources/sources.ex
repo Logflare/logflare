@@ -18,13 +18,9 @@ defmodule Logflare.Sources do
     end
   end
 
-  def get_metrics(source, bucket: :default) do
+  def get_rate_metrics(source, bucket: :default) do
     # Source bucket metrics
-    SRC.get_metrics(source.token, :default)
-  end
-
-  def get_api_rate(source, bucket: :default) do
-    SRC.get_avg_rate(source.token)
+    SRC.get_cluster_rate_metrics(source.token, :default)
   end
 
   def get_bq_schema(%Source{} = source) do

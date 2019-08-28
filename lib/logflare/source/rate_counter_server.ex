@@ -170,8 +170,9 @@ defmodule Logflare.Source.RateCounterServer do
     |> Map.get(:max_rate)
   end
 
-  @spec get_metrics(atom, atom) :: map
-  def get_metrics(source_id, bucket \\ :default) when bucket == :default and is_atom(source_id) do
+  @spec get_rate_metrics(atom, atom) :: map
+  def get_rate_metrics(source_id, bucket \\ :default)
+      when bucket == :default and is_atom(source_id) do
     source_id
     |> get_data_from_ets()
     |> Map.get(:buckets)
@@ -179,10 +180,47 @@ defmodule Logflare.Source.RateCounterServer do
     |> Map.drop([:queue])
   end
 
+  @spec get_cluster_rate_metrics(atom, atom) :: map
+  def get_cluster_rate_metrics(source_id, bucket \\ :default)
+      when bucket == :default and is_atom(source_id) do
+    nodes_metrics =
+      source_id
+      |> get_data_from_all_nodes
+
+    metrics =
+      Enum.reduce(nodes_metrics, %{}, fn x, acc ->
+        x
+        |> Map.get(:buckets)
+        |> Map.get(@default_bucket_width)
+        |> Map.drop([:queue])
+        |> Map.merge(acc, fn _k, v1, v2 ->
+          v1 + v2
+        end)
+      end)
+
+    duration = (metrics.duration / Enum.count(nodes_metrics)) |> Kernel.trunc()
+
+    %{metrics | duration: duration}
+  end
+
   defp setup_ets_table(source_id) when is_atom(source_id) do
     initial = RCS.new(source_id)
 
     insert_to_ets_table(source_id, initial)
+  end
+
+  def get_data_from_all_nodes(source_id) do
+    nodes = [Node.self() | Node.list()]
+
+    for n <- nodes do
+      Task.Supervisor.async(
+        {Logflare.TaskSupervisor, n},
+        __MODULE__,
+        :get_data_from_ets,
+        [source_id]
+      )
+      |> Task.await()
+    end
   end
 
   @spec get_data_from_ets(atom) :: map
