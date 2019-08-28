@@ -3,7 +3,6 @@ defmodule Logflare.Users.CacheTest do
   alias Logflare.Users.Cache
   import Cache
   use Logflare.DataCase
-  alias Logflare.{Repo, User, Source}
 
   setup do
     source = build(:source)
@@ -13,7 +12,11 @@ defmodule Logflare.Users.CacheTest do
 
   describe "users cache" do
     test "get_by_id/1", %{user: user} do
-      assert get_by(id: user.id) == user
+      u =
+        get_by(id: user.id)
+        |> Map.update!(:sources, &Enum.map(&1, fn s -> %{s | rules: []} end))
+
+      assert u == user
     end
   end
 end

@@ -51,7 +51,7 @@ defmodule Logflare.Google.BigQuery.Query do
   #    )
   #  end
 
-  def query(conn, project_id, sql, params) do
+  def query(conn, project_id, sql, params \\ []) do
     Api.Jobs.bigquery_jobs_query(
       conn,
       project_id,

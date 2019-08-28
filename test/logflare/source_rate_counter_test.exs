@@ -12,7 +12,7 @@ defmodule Logflare.Source.RateCounterServerTest do
     s1 = insert(:source, user_id: u1.id)
     Sources.Counters.start_link()
     Sources.RateCounters.start_link()
-    {:ok, pid} = RCS.start_link(%RLS{source_id: s1.token})
+    {:ok, _pid} = RCS.start_link(%RLS{source_id: s1.token})
 
     {:ok, sources: [s1]}
   end
@@ -20,11 +20,12 @@ defmodule Logflare.Source.RateCounterServerTest do
   describe "RateCounterServer GenServer" do
     test "broadcast state", %{sources: [s1 | _]} do
       @endpoint.subscribe("dashboard:#{s1.token}")
-      event = "dashboard:#{s1.token}:rate"
-      s1_id_string = "#{s1.token}"
 
-      assert_broadcast event,
-                       %{source_token: s1_id_string, rate: 0, average_rate: 0, max_rate: 0},
+      event = "dashboard:#{s1.token}:rate"
+      sid = s1.token
+
+      assert_broadcast ^event,
+                       %{source_token: ^sid, rate: 0, average_rate: 0, max_rate: 0},
                        1_100
     end
 
@@ -74,7 +75,7 @@ defmodule Logflare.Source.RateCounterServerTest do
         |> update_state(50)
         |> update_state(60)
 
-      %{source_id: source_id} = state
+      %{source_id: ^source_id} = state
       assert state.buckets[60].average == 20
       assert state.max_rate == 45
       assert state.last_rate == 10

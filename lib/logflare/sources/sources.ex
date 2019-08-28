@@ -28,7 +28,8 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    Logflare.Google.BigQuery.get_table(source.token)
+    {:ok, table} = Logflare.Google.BigQuery.get_table(source.token)
+    {:ok, table.schema}
   end
 
   def preload_defaults(source) do
@@ -40,10 +41,10 @@ defmodule Logflare.Sources do
     |> Source.put_bq_table_id()
   end
 
-  @doc """
-  Compiles regex_struct if it's not present in the source rules.
-  By setting regex_struct to nil if invalid, prevents malformed regex matching during log ingest.
-  """
+  # """
+  # Compiles regex_struct if it's not present in the source rules.
+  # By setting regex_struct to nil if invalid, prevents malformed regex matching during log ingest.
+  # """
   defp maybe_compile_rule_regexes(%{rules: rules} = source) do
     rules =
       for rule <- rules do
