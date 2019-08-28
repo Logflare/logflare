@@ -26,6 +26,26 @@ defmodule Logflare.Validator.BigQuerySchemaSpecTest do
       assert valid?(@valid_payload)
     end
 
+    test "doesn't reject payload with capitalized fields" do
+      payload = %{
+        "message" => "Set IAM policy: 5 accounts",
+        "metadata" => %{
+          "Logflare" => %{
+            "Google" => %{
+              "CloudResourceManager" => %{
+                "set_iam_policy_0" => %{
+                  "accounts" => 5,
+                  "response" => "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert valid?(payload)
+    end
+
     test "rejects nested key starting from a digit" do
       refute @valid_payload
              |> Map.put("nested1", %{"1datacenter" => "aws"})
