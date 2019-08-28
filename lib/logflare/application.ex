@@ -14,7 +14,10 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
+    topologies = Application.get_env(:libcluster, :topologies)
+
     dev_prod_children = [
+      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,

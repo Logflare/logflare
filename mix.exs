@@ -104,7 +104,8 @@ defmodule Logflare.Mixfile do
       {:nimble_parsec, "~> 0.5.0"},
       {:scrivener_ecto, "~> 2.2.0"},
       {:scrivener_list, "~> 2.0.1"},
-      {:scrivener_html, "~> 1.8.1"}
+      {:scrivener_html, "~> 1.8.1"},
+      {:libcluster, "~> 3.1.1"}
     ]
   end
 

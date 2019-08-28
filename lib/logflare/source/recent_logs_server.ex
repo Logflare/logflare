@@ -24,6 +24,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Cluster
   alias __MODULE__, as: RLS
 
   require Logger
@@ -44,7 +45,8 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def push(source_id, %LE{} = log_event) do
-    GenServer.cast(source_id, {:push, source_id, log_event})
+    {:ok, ui_node} = Cluster.Utils.get_ui_node_name()
+    GenServer.cast({source_id, ui_node}, {:push, source_id, log_event})
   end
 
   ## Server
