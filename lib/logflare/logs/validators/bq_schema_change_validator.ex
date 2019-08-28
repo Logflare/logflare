@@ -49,31 +49,6 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   def to_typemap(nil), do: nil
 
-  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
-  def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
-    to_typemap(fields, from: :bigquery_schema)
-  end
-
-  def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
-    fields
-    |> Enum.map(fn
-      %TFS{fields: fields, name: n, type: t} ->
-        k = String.to_atom(n)
-
-        v = %{t: bq_type_to_ex(t)}
-
-        v =
-          if fields do
-            Map.put(v, :fields, to_typemap(fields, from: :bigquery_schema))
-          else
-            v
-          end
-
-        {k, v}
-    end)
-    |> Enum.into(Map.new())
-  end
-
   def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
 
   @spec to_typemap(map) :: %{required(atom) => map | atom}
@@ -107,6 +82,31 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
       {k, v}
     end
+  end
+
+  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
+  def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
+    to_typemap(fields, from: :bigquery_schema)
+  end
+
+  def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
+    fields
+    |> Enum.map(fn
+      %TFS{fields: fields, name: n, type: t} ->
+        k = String.to_atom(n)
+
+        v = %{t: bq_type_to_ex(t)}
+
+        v =
+          if fields do
+            Map.put(v, :fields, to_typemap(fields, from: :bigquery_schema))
+          else
+            v
+          end
+
+        {k, v}
+    end)
+    |> Enum.into(Map.new())
   end
 
   def message() do

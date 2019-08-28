@@ -19,7 +19,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
   describe "GenServer" do
     test "start_link, push, pop, ack, broadcast", %{sources: [s1 | _], args: rls} do
       sid = s1.token
-      rls = {:ok, _pid} = Buffer.start_link(rls)
+      {:ok, _pid} = Buffer.start_link(rls)
       le = LE.make(%{"message" => "test"}, %{source: s1})
       le2 = LE.make(%{"message" => "test2"}, %{source: s1})
       Buffer.push(sid, le)
@@ -30,8 +30,8 @@ defmodule Logflare.Source.BigQuery.BufferTest do
       assert le == Buffer.ack(sid, le.id)
       assert Buffer.get_count(sid) == 1
       event = "dashboard:#{sid}:buffer"
-      sid_string = "#{sid}"
-      assert_broadcast event, %{source_token: sid_string, buffer: "1"}, 1_100
+      sid = "#{sid}"
+      assert_broadcast ^event, %{source_token: ^sid, buffer: 1}, 1_100
     end
 
     test "init", %{args: rls} do

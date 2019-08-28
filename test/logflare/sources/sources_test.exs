@@ -9,18 +9,31 @@ defmodule Logflare.SourcesTest do
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
   setup do
-    u = insert(:user)
+    u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
 
-    {:ok, sources: [s]}
+    {:ok, sources: [s], users: [u]}
   end
 
   describe "Sources" do
-    test "get_bq_schema/1", %{sources: [s | _]} do
+    test "get_bq_schema/1", %{sources: [s | _], users: [u | _]} do
       source_id = s.token
-      bigquery_project_id = GenUtils.get_project_id(source_id)
-      bigquery_table_ttl = GenUtils.get_bq_user_info(source_id).bigquery_table_ttl
-      BigQuery.init_table!(source_id, bigquery_project_id, bigquery_table_ttl)
+
+      %{
+        bigquery_table_ttl: bigquery_table_ttl,
+        bigquery_dataset_location: bigquery_dataset_location,
+        bigquery_project_id: bigquery_project_id,
+        bigquery_dataset_id: bigquery_dataset_id
+      } = GenUtils.get_bq_user_info(source_id)
+
+      BigQuery.init_table!(
+        u.id,
+        source_id,
+        bigquery_project_id,
+        bigquery_table_ttl,
+        bigquery_dataset_location,
+        bigquery_dataset_id
+      )
 
       schema = %TS{
         fields: [
@@ -56,9 +69,11 @@ defmodule Logflare.SourcesTest do
         ]
       }
 
-      assert {:ok, _} = BigQuery.patch_table(source_id, schema, bigquery_project_id)
+      assert {:ok, _} =
+               BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id)
 
-      assert Sources.get_bq_schema(s) == schema
+      {:ok, left_schema} = Sources.get_bq_schema(s)
+      assert left_schema == schema
     end
   end
 end

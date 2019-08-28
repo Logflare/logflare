@@ -4,7 +4,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   alias Logflare.Google.BigQuery, as: GoogleBigQuery
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.LogEvent, as: LE
   import Logflare.DummyFactory
   use Placebo
 
@@ -17,7 +16,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
 
   describe "Schema GenServer" do
     test "start_link/1", %{sources: [s1 | _]} do
-      expect GoogleBigQuery.get_table(s1.token, any()), return: nil
+      # expect GoogleBigQuery.get_table(s1.token), return: nil
 
       sid = s1.token
       rls = %RLS{source_id: sid}
@@ -26,6 +25,9 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
 
       assert Schema.get_state(sid) === %{
                bigquery_project_id: nil,
+               bigquery_dataset_id: nil,
+               field_count: nil,
+               type_map: %{},
                schema: %GoogleApi.BigQuery.V2.Model.TableSchema{
                  fields: [
                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{

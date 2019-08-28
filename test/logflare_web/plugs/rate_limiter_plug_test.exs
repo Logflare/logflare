@@ -1,7 +1,7 @@
 defmodule LogflareWeb.Plugs.RateLimiterTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.{Source, User, Users, Sources}
+  alias Logflare.{Users, Sources}
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.RecentLogsServer, as: RLS
