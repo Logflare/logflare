@@ -1,6 +1,7 @@
 defmodule Logflare.Source.Data do
   @moduledoc false
   alias Logflare.Sources.Counters
+  alias Logflare.Cluster
   alias Logflare.Google.BigQuery
   alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}
 
@@ -80,6 +81,27 @@ defmodule Logflare.Source.Data do
       _ ->
         List.flatten(:ets.match(source_id, {:_, :"$1"}))
     end
+  end
+
+  def get_logs_across_cluster(source_id) when is_atom(source_id) do
+    nodes = Cluster.Utils.node_list_all()
+
+    log_events =
+      for n <- nodes do
+        Task.Supervisor.async(
+          {Logflare.TaskSupervisor, n},
+          __MODULE__,
+          :get_logs,
+          [source_id]
+        )
+        |> Task.await()
+      end
+
+    Enum.reduce(log_events, [], fn x, acc ->
+      x ++ acc
+    end)
+    |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+    |> Enum.take(-100)
   end
 
   @spec get_avg_rate(map) :: non_neg_integer

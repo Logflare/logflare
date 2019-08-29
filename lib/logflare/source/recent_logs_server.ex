@@ -45,8 +45,7 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def push(source_id, %LE{} = log_event) do
-    {:ok, ui_node} = Cluster.Utils.get_ui_node_name()
-    GenServer.cast({source_id, ui_node}, {:push, source_id, log_event})
+    GenServer.cast(source_id, {:push, source_id, log_event})
   end
 
   ## Server

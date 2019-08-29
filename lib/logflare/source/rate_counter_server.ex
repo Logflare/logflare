@@ -13,6 +13,7 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Sources.Counters
   alias Logflare.Source.Data
   alias Logflare.Source
+  alias Logflare.Cluster
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
@@ -210,7 +211,7 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def get_data_from_all_nodes(source_id) do
-    nodes = [Node.self() | Node.list()]
+    nodes = Cluster.Utils.node_list_all()
 
     for n <- nodes do
       Task.Supervisor.async(

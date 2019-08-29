@@ -284,7 +284,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    log_events = Data.get_logs(source.token)
+    log_events = Data.get_logs_across_cluster(source.token)
 
     for le <- log_events, le do
       le =
