@@ -39,7 +39,7 @@
   "httpoison": {:hex, :httpoison, "1.5.1", "0f55b5b673b03c5c327dac7015a67cb571b99b631acc0bc1b0b98dcd6b9f2104", [:mix], [{:hackney, "~> 1.8", [hex: :hackney, repo: "hexpm", optional: false]}], "hexpm"},
   "idna": {:hex, :idna, "6.0.0", "689c46cbcdf3524c44d5f3dde8001f364cd7608a99556d8fbd8239a5798d4c10", [:rebar3], [{:unicode_util_compat, "0.4.1", [hex: :unicode_util_compat, repo: "hexpm", optional: false]}], "hexpm"},
   "inflex": {:hex, :inflex, "1.10.0", "8366a7696e70e1813aca102e61274addf85d99f4a072b2f9c7984054ea1b9d29", [:mix], [], "hexpm"},
-  "iteraptor": {:hex, :iteraptor, "1.8.0", "fac52823838e5d1b49674185fd0d02a7710a9e0c7f356456a79f9b47103eb0a6", [:mix], [], "hexpm"},
+  "iteraptor": {:hex, :iteraptor, "1.9.0", "8c5ede3e70e866b63e7b332aaee9a73a17ff6465e73d348d3080ca53fba4d5b5", [:mix], [], "hexpm"},
   "jason": {:hex, :jason, "1.1.2", "b03dedea67a99223a2eaf9f1264ce37154564de899fd3d8b9a21b1a6fd64afe7", [:mix], [{:decimal, "~> 1.0", [hex: :decimal, repo: "hexpm", optional: true]}], "hexpm"},
   "joken": {:hex, :joken, "2.1.0", "bf21a73105d82649f617c5e59a7f8919aa47013d2519ebcc39d998d8d12adda9", [:mix], [{:jose, "~> 1.9", [hex: :jose, repo: "hexpm", optional: false]}], "hexpm"},
   "jose": {:hex, :jose, "1.9.0", "4167c5f6d06ffaebffd15cdb8da61a108445ef5e85ab8f5a7ad926fdf3ada154", [:mix, :rebar3], [{:base64url, "~> 0.0.1", [hex: :base64url, repo: "hexpm", optional: false]}], "hexpm"},
