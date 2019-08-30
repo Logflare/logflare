@@ -5,12 +5,12 @@ defmodule Logflare.Source.ChannelTopics do
   require Logger
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Source.Data
   alias Number.Delimit
-  alias Logflare.Sources.Counters
 
   @spec broadcast_log_count(Logflare.Source.t()) :: :ok | {:error, any}
   def broadcast_log_count(%Source{token: source_id}) do
-    {:ok, log_count} = Counters.get_total_inserts(source_id)
+    log_count = Data.get_total_inserts_cluster(source_id)
 
     LogflareWeb.Endpoint.broadcast(
       "dashboard:#{source_id}",

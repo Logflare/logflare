@@ -29,7 +29,6 @@ defmodule Logflare.Sources.Counters do
   @spec incriment(atom) :: success_tuple
   def incriment(table) do
     :ets.update_counter(@ets_table_name, table, {2, 1}, {table, 0, 0, 0})
-    :ets.update_counter(@ets_table_name, table, {4, 1}, {table, 0, 0, 0})
     {:ok, table}
   end
 
@@ -39,8 +38,8 @@ defmodule Logflare.Sources.Counters do
     {:ok, table}
   end
 
-  @spec incriment_total_count(atom, non_neg_integer) :: success_tuple
-  def incriment_total_count(table, count) do
+  @spec incriment_bq_count(atom, non_neg_integer) :: success_tuple
+  def incriment_bq_count(table, count) do
     :ets.update_counter(@ets_table_name, table, {4, count}, {table, 0, 0, 0})
     {:ok, table}
   end
@@ -68,8 +67,8 @@ defmodule Logflare.Sources.Counters do
     end
   end
 
-  @spec get_total_inserts(atom) :: {:ok, non_neg_integer}
-  def get_total_inserts(table) do
+  @spec get_bq_inserts(atom) :: {:ok, non_neg_integer}
+  def get_bq_inserts(table) do
     case :ets.lookup(@ets_table_name, table) do
       [{_table, _inserts, _deletes, total_inserts_in_bq}] ->
         {:ok, total_inserts_in_bq}

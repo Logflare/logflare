@@ -45,6 +45,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
     GenServer.call(name(source_id), :get_count)
   end
 
+  def get_count(source_id, node) do
+    GenServer.call({name(source_id), node}, :get_count)
+  end
+
   def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
     new_state = %{state | buffer: new_buffer}
@@ -88,7 +92,17 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    Source.ChannelTopics.broadcast_buffer(state.source_id, :queue.len(state.buffer))
+    other_nodes = Node.list()
+
+    other_buffers =
+      for n <- other_nodes do
+        __MODULE__.get_count(state.source_id, n)
+      end
+      |> Enum.sum()
+
+    total_buffers = other_buffers + :queue.len(state.buffer)
+
+    Source.ChannelTopics.broadcast_buffer(state.source_id, total_buffers)
     check_buffer()
     {:noreply, state}
   end

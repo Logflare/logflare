@@ -287,6 +287,6 @@ defmodule Logflare.Source.RateCounterServer do
     Counters.delete(source_id)
     Counters.create(source_id)
     Counters.incriment_ets_count(source_id, 0)
-    Counters.incriment_total_count(source_id, log_count)
+    Counters.incriment_bq_count(source_id, log_count)
   end
 end
