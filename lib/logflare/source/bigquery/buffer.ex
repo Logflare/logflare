@@ -25,7 +25,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
     Logger.info("BigQuery.Buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
 
-    check_buffer()
+    #    check_buffer()
     {:ok, state}
   end
 
@@ -43,10 +43,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def get_count(source_id) do
     GenServer.call(name(source_id), :get_count)
-  end
-
-  def get_count(source_id, node) do
-    GenServer.call({name(source_id), node}, :get_count)
   end
 
   def handle_cast({:push, %LE{} = event}, state) do
@@ -91,21 +87,21 @@ defmodule Logflare.Source.BigQuery.Buffer do
     {:reply, count, state}
   end
 
-  def handle_info(:check_buffer, state) do
-    other_nodes = Node.list()
-
-    other_buffers =
-      for n <- other_nodes do
-        __MODULE__.get_count(state.source_id, n)
-      end
-      |> Enum.sum()
-
-    total_buffers = other_buffers + :queue.len(state.buffer)
-
-    Source.ChannelTopics.broadcast_buffer(state.source_id, total_buffers)
-    check_buffer()
-    {:noreply, state}
-  end
+  #  def handle_info(:check_buffer, state) do
+  #    other_nodes = Node.list()
+  #
+  #    other_buffers =
+  #      for n <- other_nodes do
+  #        __MODULE__.get_count(state.source_id, n)
+  #      end
+  #      |> Enum.sum()
+  #
+  #    total_buffers = other_buffers + :queue.len(state.buffer)
+  #
+  #    Source.ChannelTopics.broadcast_buffer(state.source_id, total_buffers)
+  #    check_buffer()
+  #    {:noreply, state}
+  #  end
 
   def terminate(reason, _state) do
     # Do Shutdown Stuff

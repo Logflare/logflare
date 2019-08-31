@@ -41,7 +41,7 @@ defmodule Logflare.Source.ChannelTopics do
           source_id: atom()
         }) :: :ok | {:error, any}
   def broadcast_rates(%{source_id: source_id} = payload) do
-    maybe_broadcast(
+    LogflareWeb.Endpoint.broadcast(
       "dashboard:#{source_id}",
       "dashboard:#{source_id}:rate",
       %{

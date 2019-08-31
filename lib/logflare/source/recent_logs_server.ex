@@ -98,6 +98,8 @@ defmodule Logflare.Source.RecentLogsServer do
       load_init_log_message(source_id, bigquery_project_id)
     end)
 
+    Phoenix.Tracker.track(Logflare.Tracker, self(), source_id, Node.self(), %{})
+
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
   end

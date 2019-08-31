@@ -28,7 +28,8 @@ defmodule Logflare.Application do
       supervisor(Logflare.Sources.RateCounters, []),
       supervisor(Logflare.SystemMetrics, []),
       supervisor(Logflare.Source.Supervisor, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(LogflareWeb.Endpoint, []),
+      {Logflare.Tracker, [name: Logflare.Tracker, pubsub_server: Logflare.PubSub]}
     ]
 
     env = Application.get_env(:logflare, :env)

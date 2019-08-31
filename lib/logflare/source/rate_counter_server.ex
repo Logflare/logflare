@@ -22,10 +22,10 @@ defmodule Logflare.Source.RateCounterServer do
   use Publicist
 
   typedstruct do
-    field :source_id, atom(), enforce: true
+    field :source_id, atom(), enforce: false
     field :count, non_neg_integer(), default: 0
     field :last_rate, non_neg_integer(), default: 0
-    field :begin_time, non_neg_integer(), enforce: true
+    field :begin_time, non_neg_integer(), enforce: false
     field :max_rate, non_neg_integer(), default: 0
 
     field :buckets, map,
@@ -70,8 +70,9 @@ defmodule Logflare.Source.RateCounterServer do
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
-    broadcast(state)
 
+    update_tracker(state)
+    broadcast(state)
     {:noreply, source_id}
   end
 
@@ -266,11 +267,44 @@ defmodule Logflare.Source.RateCounterServer do
     String.to_atom("#{source_id}" <> "-rate")
   end
 
+  defp update_tracker(%RCS{} = state) do
+    pid = Process.whereis(state.source_id)
+
+    state =
+      state
+      |> state_to_external()
+      |> Map.put(:source_id, state.source_id)
+
+    Phoenix.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), state)
+  end
+
   defp broadcast(%RCS{} = state) do
-    state
-    |> state_to_external()
-    |> Map.put(:source_id, state.source_id)
-    |> Source.ChannelTopics.broadcast_rates()
+    list = Phoenix.Tracker.list(Logflare.Tracker, state.source_id)
+
+    rate_metadata =
+      list
+      |> merge_rates()
+      |> Map.put(:source_id, state.source_id)
+
+    Source.ChannelTopics.broadcast_rates(rate_metadata)
+  end
+
+  defp merge_rates(list) do
+    {_, data} =
+      Enum.reduce(list, {:noop, %{}}, fn {_, y}, {_, acc} ->
+        y
+        |> Map.update(:average_rate, 0, &(&1 + (acc[:average_rate] || 0)))
+        |> Map.update(
+          :max_rate,
+          0,
+          &if(&1 < (acc[:max_rate] || 0), do: &1, else: acc[:max_rate] || 0)
+        )
+        |> Map.update(:last_rate, 0, &(&1 + (acc[:last_rate] || 0)))
+
+        {:noop, y}
+      end)
+
+    data
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
