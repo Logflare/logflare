@@ -56,6 +56,8 @@ defmodule Logflare.Source.RateCounterServer do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
 
+    Phoenix.Tracker.track(Logflare.Tracker, self(), name(source_id), Node.self(), %{})
+
     Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
   end
@@ -268,18 +270,18 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   defp update_tracker(%RCS{} = state) do
-    pid = Process.whereis(state.source_id)
+    pid = Process.whereis(name(state.source_id))
 
     state =
       state
       |> state_to_external()
       |> Map.put(:source_id, state.source_id)
 
-    Phoenix.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), state)
+    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
   end
 
-  defp broadcast(%RCS{} = state) do
-    list = Phoenix.Tracker.list(Logflare.Tracker, state.source_id)
+  def broadcast(%RCS{} = state) do
+    list = Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
 
     rate_metadata =
       list
@@ -289,7 +291,7 @@ defmodule Logflare.Source.RateCounterServer do
     Source.ChannelTopics.broadcast_rates(rate_metadata)
   end
 
-  defp merge_rates(list) do
+  def merge_rates(list) do
     {_, data} =
       Enum.reduce(list, {:noop, %{}}, fn {_, y}, {_, acc} ->
         y

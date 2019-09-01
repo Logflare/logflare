@@ -22,8 +22,9 @@ defmodule Logflare.Source.ChannelTopics do
     )
   end
 
-  @spec broadcast_buffer(atom, number | Decimal.t()) :: :ok | {:error, any}
-  def broadcast_buffer(source_id, count) when is_atom(source_id) do
+  @spec broadcast_buffer(%{source_id: atom(), buffer: integer()}) :: :ok | {:error, any}
+  def broadcast_buffer(%{source_id: source_id, buffer: count} = payload)
+      when is_atom(source_id) do
     maybe_broadcast(
       "dashboard:#{source_id}",
       "dashboard:#{source_id}:buffer",
