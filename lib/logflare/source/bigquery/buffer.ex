@@ -2,6 +2,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   @moduledoc false
   use GenServer
   alias Logflare.LogEvent, as: LE
+  alias Logflare.Source.ChannelTopics, as: CT
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
 
@@ -25,7 +26,15 @@ defmodule Logflare.Source.BigQuery.Buffer do
     Logger.info("BigQuery.Buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
 
-    Phoenix.Tracker.track(Logflare.Tracker, self(), name(state.source_id), Node.self(), %{})
+    init_metadata = %{source_token: "#{state.source_id}", buffer: 0}
+
+    Phoenix.Tracker.track(
+      Logflare.Tracker,
+      self(),
+      name(state.source_id),
+      Node.self(),
+      init_metadata
+    )
 
     check_buffer()
     {:ok, state}
@@ -107,14 +116,13 @@ defmodule Logflare.Source.BigQuery.Buffer do
     payload =
       Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
       |> merge_metadata
-      |> IO.inspect()
 
     Source.ChannelTopics.broadcast_buffer(payload)
   end
 
   defp update_tracker(state) do
     pid = Process.whereis(name(state.source_id))
-    payload = %{source_id: state.source_id, buffer: :queue.len(state.buffer)}
+    payload = %{source_token: state.source_id, buffer: :queue.len(state.buffer)}
 
     Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), payload)
   end

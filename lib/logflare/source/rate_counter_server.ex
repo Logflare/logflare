@@ -9,6 +9,7 @@ defmodule Logflare.Source.RateCounterServer do
   require Logger
   alias __MODULE__, as: RCS
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source.ChannelTopics, as: CT
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Counters
   alias Logflare.Source.Data
@@ -56,7 +57,9 @@ defmodule Logflare.Source.RateCounterServer do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
 
-    Phoenix.Tracker.track(Logflare.Tracker, self(), name(source_id), Node.self(), %{})
+    init_metadata = %{source_token: "#{source_id}", rate: 0, average_rate: 0, max_rate: 0}
+
+    Phoenix.Tracker.track(Logflare.Tracker, self(), name(source_id), Node.self(), init_metadata)
 
     Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
@@ -275,9 +278,9 @@ defmodule Logflare.Source.RateCounterServer do
     state =
       state
       |> state_to_external()
-      |> Map.put(:source_id, state.source_id)
+      |> Map.put(:source_token, state.source_id)
 
-    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
+    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_token), Node.self(), state)
   end
 
   def broadcast(%RCS{} = state) do
@@ -286,7 +289,7 @@ defmodule Logflare.Source.RateCounterServer do
     rate_metadata =
       list
       |> merge_rates()
-      |> Map.put(:source_id, state.source_id)
+      |> Map.put(:source_token, state.source_id)
 
     Source.ChannelTopics.broadcast_rates(rate_metadata)
   end

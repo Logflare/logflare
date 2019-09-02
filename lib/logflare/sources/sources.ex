@@ -72,14 +72,14 @@ defmodule Logflare.Sources do
     alias Number.Delimit
 
     rejected_count = RejectedLogEvents.count(source)
-    inserts_string = Delimit.number_to_delimited(get_total_inserts_cluster(token))
-    inserts = get_total_inserts_cluster(token)
-    buffer = get_buffer_cluster(token)
+    inserts_string = Delimit.number_to_delimited(get_total_inserts(token))
+    inserts = get_total_inserts(token)
+    buffer = get_buffer(token)
     max = get_max_rate(token)
     avg = get_avg_rate(token)
     latest = get_latest_date(token)
     rate = get_rate(token)
-    recent = get_ets_count_cluster(token)
+    recent = get_ets_count(token)
     fields = 0
 
     metrics = %Source.Metrics{

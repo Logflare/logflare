@@ -49,7 +49,8 @@ config :logflare, Logflare.Repo,
   database: "logtail_dev",
   hostname: "localhost",
   pool_size: 10,
-  prepare: :unnamed
+  prepare: :unnamed,
+  log: false
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_dev",

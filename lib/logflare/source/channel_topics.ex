@@ -3,58 +3,70 @@ defmodule Logflare.Source.ChannelTopics do
   Broadcasts all source-related events to source-related topics
   """
   require Logger
+
+  alias __MODULE__, as: CT
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Source.Data
   alias Number.Delimit
 
-  @spec broadcast_log_count(Logflare.Source.t()) :: :ok | {:error, any}
-  def broadcast_log_count(%Source{token: source_id}) do
-    log_count = Data.get_total_inserts_cluster(source_id)
+  use TypedStruct
+
+  typedstruct do
+    field :source_token, String.t(), enforce: true
+    field :log_count, integer(), default: 0
+    field :buffer, integer(), default: 0
+    field :average_rate, integer(), default: 0
+    field :rate, integer(), default: 0
+    field :max_rate, integer(), default: 0
+  end
+
+  def broadcast_log_count(payload) do
+    payload = %{payload | log_count: Delimit.number_to_delimited(payload[:log_count])}
 
     LogflareWeb.Endpoint.broadcast(
-      "dashboard:#{source_id}",
-      "dashboard:#{source_id}:log_count",
-      %{
-        log_count: Delimit.number_to_delimited(log_count),
-        source_token: "#{source_id}"
-      }
+      "dashboard:#{payload.source_token}",
+      "dashboard:#{payload.source_token}:log_count",
+      payload
     )
   end
 
-  @spec broadcast_buffer(%{source_id: atom(), buffer: integer()}) :: :ok | {:error, any}
-  def broadcast_buffer(%{source_id: source_id, buffer: count} = payload)
-      when is_atom(source_id) do
+  %{
+    average_rate: 0,
+    buffer: 0,
+    log_count: 0,
+    max_rate: 0,
+    phx_ref: "8RbO1+4QuHw=",
+    rate: 0,
+    source_token: "2acb785d-8487-4717-9d49-4e4c2ba31edd"
+  }
+
+  def broadcast_buffer(payload) do
+    payload = %{payload | buffer: payload[:buffer]}
+
     maybe_broadcast(
-      "dashboard:#{source_id}",
-      "dashboard:#{source_id}:buffer",
-      %{
-        source_token: "#{source_id}",
-        buffer: count
-      }
+      "dashboard:#{payload.source_token}",
+      "dashboard:#{payload.source_token}:buffer",
+      payload
     )
   end
 
-  @spec broadcast_rates(%{
-          average_rate: number | Decimal.t(),
-          last_rate: number | Decimal.t(),
-          max_rate: number | Decimal.t(),
-          source_id: atom()
-        }) :: :ok | {:error, any}
-  def broadcast_rates(%{source_id: source_id} = payload) do
+  def broadcast_rates(payload) do
+    payload =
+      %{
+        payload
+        | average_rate: payload[:average_rate],
+          max_rate: payload[:max_rate]
+      }
+      |> Map.put(:rate, payload[:last_rate])
+
     LogflareWeb.Endpoint.broadcast(
-      "dashboard:#{source_id}",
-      "dashboard:#{source_id}:rate",
-      %{
-        source_token: source_id,
-        rate: payload.last_rate,
-        average_rate: payload.average_rate,
-        max_rate: payload.max_rate
-      }
+      "dashboard:#{payload.source_token}",
+      "dashboard:#{payload.source_token}:rate",
+      payload
     )
   end
 
-  @spec broadcast_new(Logflare.LogEvent.t()) :: :ok | {:error, any}
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
       body: body |> Map.from_struct(),
