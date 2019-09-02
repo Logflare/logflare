@@ -31,16 +31,6 @@ defmodule Logflare.Source.ChannelTopics do
     )
   end
 
-  %{
-    average_rate: 0,
-    buffer: 0,
-    log_count: 0,
-    max_rate: 0,
-    phx_ref: "8RbO1+4QuHw=",
-    rate: 0,
-    source_token: "2acb785d-8487-4717-9d49-4e4c2ba31edd"
-  }
-
   def broadcast_buffer(payload) do
     payload = %{payload | buffer: payload[:buffer]}
 

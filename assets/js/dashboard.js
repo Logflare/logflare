@@ -6,14 +6,14 @@ import { timestampNsToAgo } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
 export async function main() {
-    const { sourceTokens, apiKey } = $("#__phx-assigns__").data()
+    const { sourceTokens, apiKey, currentNode } = $("#__phx-assigns__").data()
 
     await initClipboards()
     await initApiClipboard()
     await initTooltips()
 
     for (let token of sourceTokens) {
-        joinSourceChannel(token)
+        joinSourceChannel(token, currentNode)
     }
     await applyToAllLogTimestamps(timestampNsToAgo)
 
@@ -32,14 +32,14 @@ async function initApiClipboard() {
     activateClipboardForSelector("#api-key")
 }
 
-function joinSourceChannel(sourceToken) {
+function joinSourceChannel(sourceToken, currentNode) {
     let channel = socket.channel(`dashboard:${sourceToken}`, {})
 
     channel
         .join()
         .receive("ok", resp => {
             console.log(
-                `Dashboard channel for source ${sourceToken} joined successfully`,
+                `Dashboard channel for source ${sourceToken} joined successfully on node ${currentNode}`,
                 resp
             )
         })

@@ -32,7 +32,8 @@ defmodule LogflareWeb.SourceController do
 
     render(conn, "dashboard.html",
       sources: sources,
-      user_email: conn.assigns.user.email
+      user_email: conn.assigns.user.email,
+      current_node: Node.self()
     )
   end
 
