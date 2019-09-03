@@ -98,6 +98,6 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaSpec do
     |> validate_length(key, max: 128, min: 1)
     # validates that the key doesn't start from a reserved prefix using
     # a negative lookahead regex
-    |> validate_format(key, ~r/^(?![_TABLE_|_FILE_|_PARTITION_]).*/)
+    |> validate_format(key, ~r/^(?!_TABLE_|_FILE_|_PARTITION_).*/)
   end
 end
