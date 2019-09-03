@@ -27,7 +27,7 @@ steps:
       ]
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"]
-  - name: "gcr.io/cloud-builders/kubectl:stable"
+  - name: "gcr.io/cloud-builders/kubectl"
     args:
       - set
       - image
