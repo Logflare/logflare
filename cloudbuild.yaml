@@ -18,29 +18,24 @@ steps:
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
   - name: "gcr.io/cloud-builders/docker"
-    args: ["build", "-t", "gcr.io/logflare-staging/logflare_origin:latest", "."]
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/logflare-staging/logflare_origin:latest"]
-  - name: "gcr.io/cloud-builders/gcloud"
     args:
       [
-        "beta",
-        "compute",
-        "instance-groups",
-        "managed",
-        "rolling-action",
-        "replace",
-        "logflare-app-main-managed-group",
-        "--zone",
-        "us-central1-a",
-        "--max-surge",
-        "1",
-        "--max-unavailable",
-        "0",
-        "--min-ready",
-        "1m",
+        "build",
+        "-t",
+        "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
+        ".",
       ]
-    timeout: 600s
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"]
+  - name: "gcr.io/cloud-builders/kubectl:stable"
+    args:
+      - set
+      - image
+      - deployment/logflare-staging
+      - logflare=gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA
+    env:
+      - CLOUDSDK_COMPUTE_ZONE=us-central1-a
+      - CLOUDSDK_CONTAINER_CLUSTER=logflare-staging-cluster
 
 timeout: 1800s
 
