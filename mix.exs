@@ -91,7 +91,7 @@ defmodule Logflare.Mixfile do
       {:cachex, "~> 3.1"},
       {:faker, "~> 0.12", only: :test},
       {:ex_machina, "~> 2.3"},
-      {:iteraptor, "~> 1.8.0"},
+      {:iteraptor, "~> 1.9.0"},
       {:bertex, ">= 0.0.0"},
       {:excoveralls, "~> 0.11", only: :test, runtime: false},
       {:placebo, "~> 1.2"},
