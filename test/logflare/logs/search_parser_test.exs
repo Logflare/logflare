@@ -88,6 +88,7 @@ defmodule Logflare.Logs.Search.ParserTest do
                ])
     end
 
+    @tag :run
     test "nested fields filter with timestamp 3" do
       str = ~S|
          log "was generated" "by logflare pinger"
@@ -101,6 +102,8 @@ defmodule Logflare.Logs.Search.ParserTest do
          metadata.user.group_id:5
          metadata.user.cluster_id:200..300
          metadata.log.metric1:<10
+         -metadata.log.metric1:<10
+         -timestamp:<=2010-04-20
        |
 
       {:ok, result} = Parser.parse(str)
@@ -120,7 +123,9 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "<", path: "timestamp", value: ~U[2020-01-01 03:14:15Z]},
                  %{operator: "~", path: "event_message", value: "by logflare pinger"},
                  %{operator: "~", path: "event_message", value: "log"},
-                 %{operator: "~", path: "event_message", value: "was generated"}
+                 %{operator: "~", path: "event_message", value: "was generated"},
+                 %{operator: "!<", path: "metadata.log.metric1", value: "10"},
+                 %{operator: "!<=", path: "timestamp", value: ~D[2010-04-20]}
                ])
     end
 
@@ -133,7 +138,7 @@ defmodule Logflare.Logs.Search.ParserTest do
       assert {:error, "Timestamp parse error: invalid_format"} = Parser.parse(str)
     end
 
-    test "returns humand error for invalid query" do
+    test "returns human readable error for invalid query" do
       str = ~S|
          metadata.user.emailAddress:
          metadata.user.clusterId:200..300

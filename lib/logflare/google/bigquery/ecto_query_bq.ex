@@ -74,24 +74,38 @@ defmodule Logflare.EctoQueryBQ do
   end
 
   def build_where_condition(_column = c, _operator = op, _value = v) do
-    case op do
-      ">" ->
-        dynamic([..., n1], field(n1, ^c) > ^v)
+    op_negated? = is_negated_operator?(op)
 
-      ">=" ->
-        dynamic([..., n1], field(n1, ^c) >= ^v)
+    op = if op_negated?, do: String.trim_leading(op, "!"), else: op
 
-      "<" ->
-        dynamic([..., n1], field(n1, ^c) < ^v)
+    clause =
+      case op do
+        ">" ->
+          dynamic([..., n1], field(n1, ^c) > ^v)
 
-      "<=" ->
-        dynamic([..., n1], field(n1, ^c) <= ^v)
+        ">=" ->
+          dynamic([..., n1], field(n1, ^c) >= ^v)
 
-      "=" ->
-        dynamic([..., n1], field(n1, ^c) == ^v)
+        "<" ->
+          dynamic([..., n1], field(n1, ^c) < ^v)
 
-      "~" ->
-        dynamic([..., n1], fragment(~s|REGEXP_CONTAINS(?, ?)|, field(n1, ^c), ^v))
+        "<=" ->
+          dynamic([..., n1], field(n1, ^c) <= ^v)
+
+        "=" ->
+          dynamic([..., n1], field(n1, ^c) == ^v)
+
+        "~" ->
+          dynamic([..., n1], fragment(~s|REGEXP_CONTAINS(?, ?)|, field(n1, ^c), ^v))
+      end
+
+    if op_negated? do
+      dynamic([..., n1], not (^clause))
+    else
+      clause
     end
   end
+
+  def is_negated_operator?("!" <> _), do: true
+  def is_negated_operator?(_), do: false
 end

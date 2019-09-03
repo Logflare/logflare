@@ -72,9 +72,15 @@ defmodule Logflare.Logs.Search.Parser do
     |> concat(choice([field_value, quoted_string]))
     |> tag(:metadata_field)
 
+  negated_field =
+    string("-")
+    |> ignore()
+    |> concat(choice([timestamp_field, metadata_field_op_val]))
+    |> tag(:negated_field)
+
   defparsec(
     :parse_query,
-    choice([timestamp_field, metadata_field_op_val, quoted_string, word])
+    choice([timestamp_field, metadata_field_op_val, quoted_string, word, negated_field])
     |> ignore(optional(ascii_string([?\s, ?\n], min: 1)))
     |> wrap()
     |> repeat()
@@ -82,15 +88,15 @@ defmodule Logflare.Logs.Search.Parser do
 
   def parse(querystring) do
     try do
-      result =
-        querystring
-        |> String.trim()
-        |> parse_query()
-        |> convert_to_pathvalops()
-        |> List.flatten()
-        |> Enum.map(&maybe_cast_value/1)
+    result =
+      querystring
+      |> String.trim()
+      |> parse_query()
+      |> convert_to_pathvalops()
+      |> List.flatten()
+      |> Enum.map(&maybe_cast_value/1)
 
-      {:ok, result}
+    {:ok, result}
     rescue
       e in MatchError ->
         %MatchError{term: {filter, {:error, errstring}}} = e
@@ -122,6 +128,11 @@ defmodule Logflare.Logs.Search.Parser do
 
         :metadata_field ->
           to_path_val_op(:metadata_field, tokens)
+
+        :negated_field ->
+          [{tag, [path, op, value]}] = tokens
+          op = "!" <> op
+          to_path_val_op(tag, [path, op, value])
       end
     end
   end
