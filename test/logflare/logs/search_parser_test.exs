@@ -88,7 +88,6 @@ defmodule Logflare.Logs.Search.ParserTest do
                ])
     end
 
-    @tag :run
     test "nested fields filter with timestamp 3" do
       str = ~S|
          log "was generated" "by logflare pinger"
@@ -104,6 +103,7 @@ defmodule Logflare.Logs.Search.ParserTest do
          metadata.log.metric1:<10
          -metadata.log.metric1:<10
          -timestamp:<=2010-04-20
+         -error
        |
 
       {:ok, result} = Parser.parse(str)
@@ -112,6 +112,7 @@ defmodule Logflare.Logs.Search.ParserTest do
                Enum.sort([
                  %{operator: "<", path: "metadata.log.metric1", value: 10},
                  %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
+                 %{operator: "!~", path: "event_message", value: "error"},
                  %{operator: "~", path: "metadata.context.address", value: ~S"\d\d\d ST"},
                  %{operator: "=", path: "metadata.context.line_number", value: 100},
                  %{operator: ">=", path: "metadata.user.cluster_id", value: 200},
