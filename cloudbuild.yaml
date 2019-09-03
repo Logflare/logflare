@@ -40,4 +40,4 @@ steps:
 timeout: 1800s
 
 images:
-  - gcr.io/logflare-staging/logflare_origin:latest
+  - gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA
