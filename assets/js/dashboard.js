@@ -49,7 +49,7 @@ function joinSourceChannel(sourceToken, currentNode) {
 
     const sourceSelector = `#${sourceToken}`
 
-    channel.on(`dashboard:${sourceToken}:log_count`, event => {
+    channel.on(`log_count`, event => {
         $(`${sourceSelector}-latest`).html(
             timestampNsToAgo(new Date().getTime() * 1000)
         )
@@ -58,12 +58,12 @@ function joinSourceChannel(sourceToken, currentNode) {
         )
     })
 
-    channel.on(`dashboard:${sourceToken}:rate`, event => {
+    channel.on(`rate`, event => {
         $(`${sourceSelector}-rate`).html(`${event.rate}`)
         $(`${sourceSelector}-avg-rate`).html(`${event.average_rate}`)
         $(`${sourceSelector}-max-rate`).html(`${event.max_rate}`)
     })
-    channel.on(`dashboard:${sourceToken}:buffer`, event => {
+    channel.on(`buffer`, event => {
         $(`${sourceSelector}-buffer`).html(`${event.buffer}`)
     })
 }
