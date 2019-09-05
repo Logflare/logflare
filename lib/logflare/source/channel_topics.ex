@@ -23,7 +23,6 @@ defmodule Logflare.Source.ChannelTopics do
 
   def broadcast_log_count(payload) do
     payload = %{payload | log_count: Delimit.number_to_delimited(payload[:log_count])}
-
     topic = "dashboard:#{payload.source_token}"
     event = "log_count"
     payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
@@ -33,12 +32,11 @@ defmodule Logflare.Source.ChannelTopics do
 
   def broadcast_buffer(payload) do
     payload = %{payload | buffer: payload[:buffer]}
+    topic = "dashboard:#{payload.source_token}"
+    event = "buffer"
+    payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
 
-    maybe_broadcast(
-      "dashboard:#{payload.source_token}",
-      "buffer",
-      payload
-    )
+    Phoenix.PubSub.direct_broadcast(node(), Logflare.PubSub, topic, payload)
   end
 
   def broadcast_rates(payload) do

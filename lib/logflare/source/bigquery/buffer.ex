@@ -8,7 +8,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   require Logger
 
-  @broadcast_every 1_000
+  @broadcast_every 250
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
@@ -128,12 +128,13 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def merge_metadata(list) do
-    {_, data} =
-      Enum.reduce(list, {:noop, %{}}, fn {_, y}, {_, acc} ->
-        y
-        |> Map.update(:buffer, 0, &(&1 + (acc[:buffer] || 0)))
+    payload = {:noop, %{buffer: 0}}
 
-        {:noop, y}
+    {:noop, data} =
+      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
+        buffer = y.buffer + acc.buffer
+
+        {:noop, %{y | buffer: buffer}}
       end)
 
     data
