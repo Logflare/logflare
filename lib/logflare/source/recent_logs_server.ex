@@ -24,7 +24,6 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Source.ChannelTopics, as: CT
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
   alias __MODULE__, as: RLS
@@ -207,7 +206,9 @@ defmodule Logflare.Source.RecentLogsServer do
 
     if log_count > 0 do
       message =
-        "Initialized. Waiting for new events. #{Delimit.number_to_delimited(log_count)} available to explore & search."
+        "Initialized on node #{Node.self()}. Waiting for new events. #{
+          Delimit.number_to_delimited(log_count)
+        } available to explore & search."
 
       log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
       push(source_id, log_event)

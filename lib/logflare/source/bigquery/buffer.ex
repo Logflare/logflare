@@ -2,7 +2,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   @moduledoc false
   use GenServer
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Source.ChannelTopics, as: CT
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
 

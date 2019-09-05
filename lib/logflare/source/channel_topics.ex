@@ -4,10 +4,8 @@ defmodule Logflare.Source.ChannelTopics do
   """
   require Logger
 
-  alias __MODULE__, as: CT
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
-  alias Logflare.Source.Data
   alias Number.Delimit
 
   use TypedStruct
@@ -31,7 +29,6 @@ defmodule Logflare.Source.ChannelTopics do
   end
 
   def broadcast_buffer(payload) do
-    payload = %{payload | buffer: payload[:buffer]}
     topic = "dashboard:#{payload.source_token}"
     event = "buffer"
     payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
@@ -41,18 +38,14 @@ defmodule Logflare.Source.ChannelTopics do
 
   def broadcast_rates(payload) do
     payload =
-      %{
-        payload
-        | average_rate: payload[:average_rate],
-          max_rate: payload[:max_rate]
-      }
+      payload
       |> Map.put(:rate, payload[:last_rate])
 
-    LogflareWeb.Endpoint.broadcast(
-      "dashboard:#{payload.source_token}",
-      "rate",
-      payload
-    )
+    topic = "dashboard:#{payload.source_token}"
+    event = "rate"
+    payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
+
+    Phoenix.PubSub.direct_broadcast(node(), Logflare.PubSub, topic, payload)
   end
 
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do

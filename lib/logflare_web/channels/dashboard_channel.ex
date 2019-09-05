@@ -29,6 +29,13 @@ defmodule LogflareWeb.DashboardChannel do
     {:noreply, socket}
   end
 
+  intercept ["rate"]
+
+  def handle_out("rate", msg, socket) do
+    push(socket, "rate", msg)
+    {:noreply, socket}
+  end
+
   defp has_source?(source_token, socket) do
     Enum.map(socket.assigns[:user].sources, & &1.token)
     |> Enum.member?(String.to_existing_atom(source_token))

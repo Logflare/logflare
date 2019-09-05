@@ -9,7 +9,6 @@ defmodule Logflare.Source.RateCounterServer do
   require Logger
   alias __MODULE__, as: RCS
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Source.ChannelTopics, as: CT
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Counters
   alias Logflare.Source.Data
@@ -295,18 +294,15 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def merge_rates(list) do
-    {_, data} =
-      Enum.reduce(list, {:noop, %{}}, fn {_, y}, {_, acc} ->
-        y
-        |> Map.update(:average_rate, 0, &(&1 + (acc[:average_rate] || 0)))
-        |> Map.update(
-          :max_rate,
-          0,
-          &if(&1 < (acc[:max_rate] || 0), do: &1, else: acc[:max_rate] || 0)
-        )
-        |> Map.update(:last_rate, 0, &(&1 + (acc[:last_rate] || 0)))
+    payload = {:noop, %{average_rate: 0, max_rate: 0, last_rate: 0}}
 
-        {:noop, y}
+    {:noop, data} =
+      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
+        average_rate = y.average_rate + acc.average_rate
+        max_rate = if y.max_rate > acc.max_rate, do: y.max_rate, else: acc.max_rate
+        last_rate = y.last_rate + acc.last_rate
+
+        {:noop, %{y | average_rate: average_rate, max_rate: max_rate, last_rate: last_rate}}
       end)
 
     data
