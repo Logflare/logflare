@@ -15,8 +15,6 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.{Users}
 
-  @table_ttl 604_800_000
-  # seven days
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
   @spec init_table!(integer(), atom, String.t(), integer(), String.t(), String.t()) :: ok_err_tup
