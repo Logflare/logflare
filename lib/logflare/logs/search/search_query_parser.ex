@@ -72,9 +72,15 @@ defmodule Logflare.Logs.Search.Parser do
     |> concat(choice([field_value, quoted_string]))
     |> tag(:metadata_field)
 
+  negated_field =
+    string("-")
+    |> ignore()
+    |> concat(choice([timestamp_field, metadata_field_op_val, word, quoted_string]))
+    |> tag(:negated_field)
+
   defparsec(
     :parse_query,
-    choice([timestamp_field, metadata_field_op_val, quoted_string, word])
+    choice([negated_field, timestamp_field, metadata_field_op_val, quoted_string, word])
     |> ignore(optional(ascii_string([?\s, ?\n], min: 1)))
     |> wrap()
     |> repeat()
@@ -108,22 +114,25 @@ defmodule Logflare.Logs.Search.Parser do
   def convert_to_pathvalops({:ok, matches, "", %{}, _, _}) do
     for [{type, tokens}] <- matches do
       case type do
-        t when t in [:word, :quoted_string] ->
-          [regex] = tokens
+        t when t in [:word, :quoted_string, :timestamp_field, :metadata_field] ->
+          to_path_val_op(t, tokens)
 
-          %{
-            path: "event_message",
-            value: regex,
-            operator: "~"
-          }
+        :negated_field ->
+          [{type, tokens}] = tokens
 
-        :timestamp_field ->
-          to_path_val_op(:timestamp_field, tokens)
-
-        :metadata_field ->
-          to_path_val_op(:metadata_field, tokens)
+          type
+          |> to_path_val_op(tokens)
+          |> Map.update!(:operator, &("!" <> &1))
       end
     end
+  end
+
+  defp to_path_val_op(tag, [regex]) when tag in ~w(word quoted_string)a do
+    %{
+      path: "event_message",
+      value: regex,
+      operator: "~"
+    }
   end
 
   defp to_path_val_op(:metadata_field, [path, operator, value]) do

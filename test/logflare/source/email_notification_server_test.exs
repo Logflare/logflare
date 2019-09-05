@@ -3,7 +3,6 @@ defmodule Logflare.Source.EmailNotificationServerTest do
   use Logflare.DataCase
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.LogEvent, as: LE
   alias Logflare.Sources
   import Logflare.DummyFactory
 
@@ -18,7 +17,7 @@ defmodule Logflare.Source.EmailNotificationServerTest do
   end
 
   describe "GenServer" do
-    test "start_link/1", %{sources: [s1 | _], args: rls} do
+    test "start_link/1", %{sources: [_s1 | _], args: rls} do
       assert {:ok, _pid} = EmailNotificationServer.start_link(rls)
     end
 

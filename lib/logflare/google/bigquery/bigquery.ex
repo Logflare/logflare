@@ -15,8 +15,6 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.{Users}
 
-  @table_ttl 604_800_000
-  # seven days
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
   @spec init_table!(integer(), atom, String.t(), integer(), String.t(), String.t()) :: ok_err_tup
@@ -26,8 +24,9 @@ defmodule Logflare.Google.BigQuery do
         Logger.info("BigQuery dataset created: #{dataset_id}")
 
         case create_table(source, dataset_id, project_id, ttl) do
-          {:ok, _} ->
+          {:ok, table} ->
             Logger.info("BigQuery table created: #{source}")
+            {:ok, table}
 
           {:error, message} ->
             Logger.error("Init error: #{GenUtils.get_tesla_error_message(message)}")
@@ -37,8 +36,9 @@ defmodule Logflare.Google.BigQuery do
         Logger.info("BigQuery dataset found: #{dataset_id}")
 
         case create_table(source, dataset_id, project_id, ttl) do
-          {:ok, _} ->
+          {:ok, table} ->
             Logger.info("BigQuery table created: #{source}")
+            {:ok, table}
 
           {:error, %Tesla.Env{status: 409}} ->
             Logger.info("BigQuery table existed: #{source}")

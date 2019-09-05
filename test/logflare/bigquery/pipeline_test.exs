@@ -13,7 +13,7 @@ defmodule Logflare.Google.BigQuery.PipelineTest do
   end
 
   describe "Pipeline" do
-    test "le_to_bq_row/1", %{sources: [source | _], users: [user | _]} do
+    test "le_to_bq_row/1", %{sources: [source | _], users: [_user | _]} do
       datetime = DateTime.utc_now()
 
       le =

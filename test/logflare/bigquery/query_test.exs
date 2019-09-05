@@ -13,17 +13,30 @@ defmodule Logflare.Google.BigQuery.QueryTest do
   end
 
   describe "query" do
-    test "returns nil rows for a new empty table", %{sources: [source], users: [user]} do
+    test "returns nil rows for a new empty table", %{sources: [source], users: [u]} do
       conn = GenUtils.get_conn()
-      project_id = GenUtils.get_project_id(source.token)
 
-      assert {:ok, _} = BigQuery.create_dataset("#{user.id}", project_id)
-      assert {:ok, _} = BigQuery.create_table(source.token, project_id)
+      %{
+        bigquery_table_ttl: bigquery_table_ttl,
+        bigquery_dataset_location: bigquery_dataset_location,
+        bigquery_project_id: bigquery_project_id,
+        bigquery_dataset_id: bigquery_dataset_id
+      } = GenUtils.get_bq_user_info(source.token)
 
-      table = source.token |> Atom.to_string() |> String.replace("-", "_")
-      sql = "SELECT timestamp FROM `#{project_id}`.#{user.id}_test.`#{table}`"
+      {:ok, table} =
+        BigQuery.init_table!(
+          u.id,
+          source.token,
+          bigquery_project_id,
+          bigquery_table_ttl,
+          bigquery_dataset_location,
+          bigquery_dataset_id
+        )
 
-      {:ok, response} = Query.query(conn, project_id, sql)
+      table_id = table.id |> String.replace(":", ".")
+      sql = "SELECT timestamp FROM `#{table_id}`"
+
+      {:ok, response} = Query.query(conn, bigquery_project_id, sql)
       assert is_nil(response.rows)
       assert response.totalRows == "0"
     end

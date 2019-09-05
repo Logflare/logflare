@@ -2,7 +2,7 @@ defmodule LogflareWeb.RuleControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
-  alias Logflare.{SystemCounter, Sources, Repo}
+  alias Logflare.{Sources, Repo}
   import Logflare.DummyFactory
 
   setup do
@@ -23,8 +23,8 @@ defmodule LogflareWeb.RuleControllerTest do
   describe "RuleController create" do
     test "succeeds for authorized user", %{
       conn: conn,
-      users: [u1, u2],
-      sources: [u1s1, u1s2, u2s1 | _]
+      users: [u1, _u2],
+      sources: [u1s1, u1s2 | _]
     } do
       conn =
         conn
@@ -66,7 +66,7 @@ defmodule LogflareWeb.RuleControllerTest do
           }
         )
 
-      rules_db = Sources.get_by(id: u1s1.id).rules
+      _rules_db = Sources.get_by(id: u1s1.id).rules
 
       assert get_flash(conn, :error) === "regex: nothing to repeat at position 0\n"
 
@@ -84,14 +84,14 @@ defmodule LogflareWeb.RuleControllerTest do
           }
         )
 
-      rules_db = Sources.get_by(id: u1s1.id).rules
+      _rules_db = Sources.get_by(id: u1s1.id).rules
 
       assert get_flash(conn, :error) === "regex: can't be blank\n"
     end
 
     test "fails for unauthorized user", %{
       conn: conn,
-      users: [u1, u2 | _],
+      users: [u1 | _],
       sources: [u1s1, u1s2, u2s1 | _]
     } do
       conn =
@@ -115,8 +115,8 @@ defmodule LogflareWeb.RuleControllerTest do
   describe "RuleController index" do
     test "succeeds for authorized user", %{
       conn: conn,
-      users: [u1, u2],
-      sources: [u1s1, u1s2, u2s1 | _]
+      users: [u1 | _],
+      sources: [u1s1 | _]
     } do
       conn =
         conn
@@ -128,8 +128,8 @@ defmodule LogflareWeb.RuleControllerTest do
 
     test "fails for unauthorized user", %{
       conn: conn,
-      users: [u1, u2 | _],
-      sources: [u1s1, u1s2, u2s1 | _]
+      users: [u1, _u2 | _],
+      sources: [_u1s1, _u1s2, u2s1 | _]
     } do
       conn =
         conn

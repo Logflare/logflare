@@ -252,7 +252,7 @@ defmodule LogflareWeb.LogControllerTest do
           %{
             "log_entry" => "valid",
             "level" => "info",
-            "metadata" => metadata
+            "metadata" => metadata()
           }
         )
 

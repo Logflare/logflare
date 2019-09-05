@@ -11,7 +11,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   alias Logflare.DummyFactory
   alias Logflare.Sources
 
-  describe "bigquery bigquery schema change validation" do
+  describe "bigquery schema change validation" do
     test "validate/1 returns :ok with no metadata in BQ schema" do
       u1 = DummyFactory.insert(:user)
       s1 = DummyFactory.insert(:source, user_id: u1.id)

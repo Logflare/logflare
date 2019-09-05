@@ -4,9 +4,7 @@ defmodule Logflare.LogsTest do
   use Placebo
   import Logflare.DummyFactory
   alias Logflare.Logs
-  alias Logflare.Logs.LogEvent, as: LE
-  alias Logflare.Logs.{RejectedLogEvents}
-  alias Logflare.{SystemMetrics, Source, Sources}
+  alias Logflare.{SystemMetrics, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.{Query, GenUtils}
@@ -19,29 +17,33 @@ defmodule Logflare.LogsTest do
     rule1 = build(:rule, sink: sink1.token, regex: "pattern2")
     rule2 = build(:rule, sink: sink2.token, regex: "pattern3")
     s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
-
+    s1 = Sources.get_by(token: s1.token)
+    SystemMetrics.start_link()
+    Counters.start_link()
     {:ok, sources: [s1], sinks: [sink1, sink2]}
   end
 
   describe "log event ingest" do
     setup :with_iam_create_auth
 
+    @tag :skip
     test "succeeds for floats", %{sources: [s]} do
       conn = GenUtils.get_conn()
       project_id = GenUtils.get_project_id(s.token)
+      dataset_id = "test_dataset_#{s.user.id}"
 
       assert {:ok, _} =
                BigQuery.create_dataset(
                  "#{s.user_id}",
-                 "test_dataset_#{s.user.id}",
+                 dataset_id,
                  @test_dataset_location,
                  project_id
                )
 
-      assert {:ok, _} = BigQuery.create_table(s.token, project_id)
+      assert {:ok, table} = BigQuery.create_table(s.token, dataset_id, project_id, 300_000)
 
-      table = s.token |> Atom.to_string() |> String.replace("-", "_")
-      sql = "SELECT timestamp FROM `#{project_id}`.#{s.user_id}_test.`#{table}`"
+      table_id = table.id |> String.replace(":", ".")
+      sql = "SELECT * FROM `#{table_id}`"
 
       Logs.ingest_logs([%{"message" => "test", "metadata" => %{"float" => 0.001}}], s)
       Process.sleep(5_000)
@@ -74,7 +76,7 @@ defmodule Logflare.LogsTest do
       assert Logs.ingest_logs(log_params_batch, s1) == :ok
 
       # Original source
-      assert_called RecentLogsServer.push(s1.token, any), times(3)
+      assert_called RecentLogsServer.push(s1.token, any()), times(3)
       assert_called Sources.Counters.incriment(s1.token), times(3)
       assert_called Sources.Counters.get_total_inserts(s1.token), times(3)
       assert_called Buffer.push("#{s1.token}", any()), times(3)
@@ -132,10 +134,10 @@ defmodule Logflare.LogsTest do
 
       last_sink = insert(:source, user_id: u.id)
 
-      first_sink_rule =
+      _first_sink_rule =
         insert(:rule, sink: last_sink.token, regex: "test", source_id: first_sink.id)
 
-      s1rule1 = insert(:rule, sink: first_sink.token, regex: "test", source_id: s1.id)
+      _s1rule1 = insert(:rule, sink: first_sink.token, regex: "test", source_id: s1.id)
 
       log_params_batch = [
         %{"message" => "test"}
@@ -143,19 +145,19 @@ defmodule Logflare.LogsTest do
 
       s1 = Sources.get_by(id: s1.id)
 
-      Logs.ingest_logs(log_params_batch, s1) == :ok
+      assert Logs.ingest_logs(log_params_batch, s1) == :ok
 
-      assert_called RecentLogsServer.push(s1.token, any), once()
+      assert_called RecentLogsServer.push(s1.token, any()), once()
       assert_called Sources.Counters.incriment(s1.token), once()
       assert_called Sources.Counters.get_total_inserts(s1.token), once()
       assert_called Buffer.push("#{s1.token}", any()), once()
 
-      assert_called RecentLogsServer.push(first_sink.token, any), once()
+      assert_called RecentLogsServer.push(first_sink.token, any()), once()
       assert_called Sources.Counters.incriment(first_sink.token), once()
       assert_called Sources.Counters.get_total_inserts(first_sink.token), once()
       assert_called Buffer.push("#{first_sink.token}", any()), once()
 
-      refute_called RecentLogsServer.push(last_sink.token, any), once()
+      refute_called RecentLogsServer.push(last_sink.token, any()), once()
       refute_called Sources.Counters.incriment(last_sink.token), once()
       refute_called Sources.Counters.get_total_inserts(last_sink.token), once()
       refute_called Buffer.push("#{last_sink.token}", any()), once()

@@ -1,7 +1,6 @@
 defmodule Logflare.Source.RecentLogsServerTest do
   @moduledoc false
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Google.BigQuery, as: GoogleBigQuery
   alias Logflare.Sources
   alias Logflare.Source.Data
   use LogflareWeb.ChannelCase
@@ -27,12 +26,12 @@ defmodule Logflare.Source.RecentLogsServerTest do
 
       event = "source:#{s1.token}:new"
 
-      assert_broadcast event,
+      assert_broadcast ^event,
                        %{
                          body: %{
                            timestamp: _,
                            message:
-                             "Initialized and waiting for new events. 1 archived and available to explore."
+                             "Initialized. Waiting for new events. 1 available to explore & search."
                          }
                        },
                        1_000

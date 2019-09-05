@@ -86,7 +86,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:error, %Tesla.Env{} = response} ->
         LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-        Logger.error("Stream batch response error!")
+        Logger.warn("Stream batch response error!")
         messages
 
       {:error, :emfile = response} ->
@@ -96,7 +96,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:error, :timeout = response} ->
         LogflareLogger.context(tesla_response: response)
-        Logger.error("Stream batch timeout error!")
+        Logger.warn("Stream batch timeout error!")
         messages
     end
   end
@@ -131,7 +131,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
               {:error, response} ->
                 LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-                Logger.error("Source schema update error!")
+                Logger.warn("Source schema update error!")
             end
           end
 
@@ -142,7 +142,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
             new_body = %{body | metadata: %{"error" => err}}
 
-            Logger.error(err)
+            Logger.warn(err)
 
             %{log_event | body: new_body}
         end
