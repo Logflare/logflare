@@ -299,7 +299,7 @@ defmodule Logflare.Source.RateCounterServer do
     {:noop, data} =
       Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
         average_rate = y.average_rate + acc.average_rate
-        max_rate = if y.max_rate > acc.max_rate, do: y.max_rate, else: acc.max_rate
+        max_rate = y.max_rate + acc.max_rate
         last_rate = y.last_rate + acc.last_rate
 
         {:noop, %{y | average_rate: average_rate, max_rate: max_rate, last_rate: last_rate}}
