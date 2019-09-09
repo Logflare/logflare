@@ -29,7 +29,8 @@ defmodule Logflare.Application do
       supervisor(Logflare.SystemMetrics, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(LogflareWeb.Endpoint, []),
-      {Logflare.Tracker, [name: Logflare.Tracker, pubsub_server: Logflare.PubSub]}
+      {Logflare.Tracker,
+       [name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250]}
     ]
 
     env = Application.get_env(:logflare, :env)
