@@ -104,7 +104,20 @@ defmodule Logflare.Mixfile do
       {:nimble_parsec, "~> 0.5.0"},
       {:scrivener_ecto, "~> 2.2.0"},
       {:scrivener_list, "~> 2.0.1"},
-      {:scrivener_html, "~> 1.8.1"}
+      {:scrivener_html, "~> 1.8.1"},
+
+      # Telemetry
+      {:telemetry, "~> 0.4.0"},
+      {:telemetry_poller, "~> 0.4.0"},
+      {:telemetry_metrics, "~> 0.3.0"},
+
+      # ETS
+      {:ets, "~> 0.7.1"},
+      {:ex2ms, "~> 1.0"},
+      {:etso, "~> 0.1.1"},
+
+      # Statistics
+      {:statistex, "~> 1.0.0"}
     ]
   end
 
