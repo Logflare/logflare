@@ -105,6 +105,7 @@ defmodule Logflare.Mixfile do
       {:scrivener_ecto, "~> 2.2.0"},
       {:scrivener_list, "~> 2.0.1"},
       {:scrivener_html, "~> 1.8.1"},
+      {:map_keys, "~> 0.1.0"},
 
       # Telemetry
       {:telemetry, "~> 0.4.0"},

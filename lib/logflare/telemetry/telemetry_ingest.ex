@@ -5,6 +5,29 @@ defmodule Logflare.TelemetryBackend.BQ do
   alias Logflare.Sources
   @default_source_id Application.get_env(:logflare_telemetry, :source_id)
   alias Telemetry.Metrics.{Counter, Distribution, LastValue, Sum, Summary}
+  alias LogflareTelemetry, as: LT
+  alias LT.LogflareMetrics, as: LfMetrics
+
+  def ingest(%LfMetrics.All{} = metric, values) do
+    source = Sources.Cache.get_by_id(@default_source_id)
+
+    log_params_batch =
+      for value <- values do
+        metadata =
+          metric.name
+          |> Enum.reverse()
+          |> Enum.reduce(value, fn
+            key, acc -> %{key => acc}
+          end)
+          |> MapKeys.to_strings()
+
+        %{"metadata" => metadata, "message" => Enum.join(metric.name, ".")}
+      end
+
+    Logs.ingest_logs(log_params_batch, source)
+
+    :ok
+  end
 
   def ingest(metric, value) do
     source = Sources.Cache.get_by_id(@default_source_id)

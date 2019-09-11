@@ -4,7 +4,9 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
   """
   use GenServer
   alias LogflareTelemetry.MetricsCache
-  alias Telemetry.Metrics.{Counter, Distribution, LastValue, Sum, Summary}
+  alias Telemetry.Metrics.{Counter, LastValue, Sum, Summary}
+  alias LogflareTelemetry, as: LT
+  alias LT.LogflareMetrics
   @default_percentiles [25, 50, 75, 90, 95, 99]
   @default_summary_fields [:average, :median, :percentiles]
   @backend Logflare.TelemetryBackend.BQ
@@ -57,6 +59,9 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
 
                 {:ok, value}
             end
+
+          %LogflareMetrics.All{} ->
+            MetricsCache.get(metric)
         end
 
       if value do

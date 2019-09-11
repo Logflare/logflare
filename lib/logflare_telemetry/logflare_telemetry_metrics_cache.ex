@@ -4,6 +4,7 @@ defmodule LogflareTelemetry.MetricsCache do
   """
   @c :logflare_telemetry_measurement_cache
   alias Telemetry.Metrics.{Counter, Summary, Sum, LastValue, Distribution}
+  alias LogflareTelemetry.LogflareMetrics, as: LMetrics
 
   @type telemetry_metric :: Counter | Distribution | LastValue | Sum | Summary
 
@@ -47,6 +48,7 @@ defmodule LogflareTelemetry.MetricsCache do
         %Summary{} -> []
         %Distribution{} -> []
         %LastValue{} -> nil
+        %LMetrics.All{} -> []
       end
     )
   end
@@ -68,6 +70,7 @@ defmodule LogflareTelemetry.MetricsCache do
         %LastValue{} -> :last_value
         %Counter{} -> :counter
         %Distribution{} -> :distribution
+        %LMetrics.All{} -> []
       end
 
     metric.name ++ metric_type
