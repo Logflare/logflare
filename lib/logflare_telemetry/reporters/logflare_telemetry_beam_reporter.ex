@@ -26,4 +26,9 @@ defmodule LogflareTelemetry.Reporters.BEAM.V0 do
       :telemetry.attach(id, event, &Reporter.handle_event/4, metrics)
     end)
   end
+
+  def terminate(_, events) do
+    Enum.each(events, &:telemetry.detach({__MODULE__, &1, self()}))
+    :ok
+  end
 end

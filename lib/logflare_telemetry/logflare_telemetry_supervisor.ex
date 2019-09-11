@@ -3,15 +3,16 @@ defmodule LogflareTelemetry.Supervisor do
   use Supervisor
   alias Telemetry.Metrics
   alias LogflareTelemetry, as: LT
+  alias LT.LogflareMetrics
   alias LT.MetricsCache
 
   def start_link(args \\ %{}) do
-    ecto_metrics =
-      if Application.get_env(:logflare, :env) == :test do
-        args.metrics
-      else
-        metrics(:ecto)
-      end
+    Supervisor.start_link(__MODULE__, args, name: __MODULE__)
+  end
+
+  def init(args) do
+    # ecto_metrics = args[:ecto_metrics] || metrics(:ecto)
+    ecto_metrics = metrics(:ecto)
 
     children = [
       {LT.Reporters.Ecto.V0, metrics: ecto_metrics},
@@ -21,8 +22,7 @@ defmodule LogflareTelemetry.Supervisor do
       MetricsCache
     ]
 
-    opts = [strategy: :one_for_one, name: __MODULE__]
-    Supervisor.start_link(children, opts)
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   def metrics(:ecto) do
@@ -31,6 +31,7 @@ defmodule LogflareTelemetry.Supervisor do
 
     measurement_names
     |> Enum.map(&[Metrics.summary(event_id ++ [&1])])
+    |> Enum.concat([LogflareMetrics.all(event_id)])
     |> List.flatten()
   end
 
