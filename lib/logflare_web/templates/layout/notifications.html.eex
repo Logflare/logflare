@@ -2,7 +2,7 @@
   <div class="message">
     <div class="inner-message alert alert-info" role="alert">
       <span><%= @flash.info %></span>
-      <a href="#" phx-click="remove_flash" phx-value="warning">
+      <a href="#" phx-click="remove_flash" phx-value-flash_key="warning">
         <button 
       type="button" 
       class="close" 
@@ -19,7 +19,7 @@
     <div class="inner-message alert alert-warning" role="alert">
       <span><%= @flash.error %></span>
       <a href="#" phx-click="remove_flash" 
-      phx-value="error">
+      phx-value-flash_key="error">
         <button 
       type="button" 
       class="close"

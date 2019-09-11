@@ -86,8 +86,9 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("activate_modal" = ev, modal_id, socket) do
+  def handle_event("activate_modal" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
+    modal_id = metadata["modal_id"]
     {:noreply, assign(socket, :active_modal, modal_id)}
   end
 
@@ -96,9 +97,9 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, assign(socket, :active_modal, nil)}
   end
 
-  def handle_event("remove_flash" = ev, key, socket) do
+  def handle_event("remove_flash" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
-    key = String.to_existing_atom(key)
+    key = String.to_existing_atom(metadata["flash_key"])
     socket = assign_flash(socket, key, nil)
     {:noreply, socket}
   end
