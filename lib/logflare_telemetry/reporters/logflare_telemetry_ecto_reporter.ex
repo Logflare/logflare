@@ -45,7 +45,7 @@ defmodule LogflareTelemetry.Reporters.Ecto.V0 do
       metadata
       |> Transformer.prepare_metadata()
       |> Map.merge(%{
-        measurements: measurements
+        measurements: Transformer.prepare_measurements(measurements)
       })
 
     MetricsCache.push(metric, tele_event)
