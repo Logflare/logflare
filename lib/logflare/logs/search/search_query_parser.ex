@@ -34,10 +34,10 @@ defmodule Logflare.Logs.Search.Parser do
 
   field_value =
     choice([
-      ascii_string([?0..?9], min: 1)
+      ascii_string([?0..?9, ?.], min: 1)
       |> concat(string(".."))
-      |> ascii_string([?0..?9], min: 1),
-      ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 1)
+      |> ascii_string([?0..?9, ?.], min: 1),
+      ascii_string([?a..?z, ?A..?Z, ?0..?9, ?.], min: 1)
     ])
 
   date_or_datetime = ascii_string([?0..?9, ?Z, ?T, ?-, ?:], min: 1)
@@ -87,27 +87,31 @@ defmodule Logflare.Logs.Search.Parser do
   )
 
   def parse(querystring) do
-    try do
-      result =
-        querystring
-        |> String.trim()
-        |> parse_query()
-        |> convert_to_pathvalops()
-        |> List.flatten()
-        |> Enum.map(&maybe_cast_value/1)
+      try do
+        do_parse(querystring)
+      rescue
+        e in MatchError ->
+          %MatchError{term: {filter, {:error, errstring}}} = e
+          {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
 
-      {:ok, result}
-    rescue
-      e in MatchError ->
-        %MatchError{term: {filter, {:error, errstring}}} = e
-        {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
+        _e in FunctionClauseError ->
+          {:error, "Invalid query! Please consult search syntax guide."}
 
-      _e in FunctionClauseError ->
-        {:error, "Invalid query! Please consult search syntax guide."}
+        e ->
+          {:error, inspect(e)}
+      end
+  end
 
-      e ->
-        {:error, inspect(e)}
-    end
+  def do_parse(querystring) do
+    result =
+      querystring
+      |> String.trim()
+      |> parse_query()
+      |> convert_to_pathvalops()
+      |> List.flatten()
+      |> Enum.map(&maybe_cast_value/1)
+
+    {:ok, result}
   end
 
   @arithmetic_operators ~w[> >= < <= =]

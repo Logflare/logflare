@@ -3,7 +3,7 @@ defmodule Logflare.Logs.Search.ParserTest do
   use Logflare.DataCase
   alias Logflare.Logs.Search.Parser
 
-  describe "Parser parse" do
+  describe "search query parser for" do
     test "simple message search string" do
       str = ~S|user sign up|
       {:ok, result} = Parser.parse(str)
@@ -107,26 +107,55 @@ defmodule Logflare.Logs.Search.ParserTest do
        |
 
       {:ok, result} = Parser.parse(str)
+      sorted_result = Enum.sort(result)
+
+      expected =
+        Enum.sort([
+          %{operator: "!<", path: "metadata.log.metric1", value: "10"},
+          %{operator: "!<=", path: "timestamp", value: ~D[2010-04-20]},
+          %{operator: "!~", path: "event_message", value: "error"},
+          %{operator: "<", path: "metadata.log.metric1", value: 10},
+          %{operator: "<", path: "timestamp", value: ~U[2020-01-01 03:14:15Z]},
+          %{operator: "<=", path: "timestamp", value: ~D[2019-04-20]},
+          %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
+          %{operator: "=", path: "metadata.context.line_number", value: 100},
+          %{operator: "=", path: "metadata.user.cluster_id", value: "200..300"},
+          %{operator: "=", path: "metadata.user.group_id", value: 5},
+          %{operator: ">", path: "timestamp", value: ~D[2019-01-01]},
+          %{operator: ">=", path: "timestamp", value: ~U[2019-01-01 03:14:15Z]},
+          %{operator: "~", path: "event_message", value: "by logflare pinger"},
+          %{operator: "~", path: "event_message", value: "log"},
+          %{operator: "~", path: "event_message", value: "was generated"},
+          %{operator: "~", path: "metadata.context.address", value: "\\d\\d\\d ST"}
+        ])
+
+      assert length(sorted_result) == length(expected)
+
+      sorted_result
+      |> Enum.with_index()
+      |> Enum.each(fn {pathvalop, i} ->
+        assert pathvalop == Enum.at(expected, i)
+      end)
+
+      assert sorted_result == expected
+    end
+
+    test "lt, lte, gte, gt for float values" do
+      str = ~S|
+         metadata.log.metric5:<10.0
+         metadata.user.cluster_group:>=200.0420..300.1337
+       |
+
+      {:ok, result} = Parser.parse(str)
 
       assert Enum.sort(result) ==
                Enum.sort([
-                 %{operator: "<", path: "metadata.log.metric1", value: 10},
-                 %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
-                 %{operator: "!~", path: "event_message", value: "error"},
-                 %{operator: "~", path: "metadata.context.address", value: ~S"\d\d\d ST"},
-                 %{operator: "=", path: "metadata.context.line_number", value: 100},
-                 %{operator: ">=", path: "metadata.user.cluster_id", value: 200},
-                 %{operator: "<=", path: "metadata.user.cluster_id", value: 300},
-                 %{operator: "=", path: "metadata.user.group_id", value: 5},
-                 %{operator: ">=", path: "timestamp", value: ~U[2019-01-01 03:14:15Z]},
-                 %{operator: "<=", path: "timestamp", value: ~D[2019-04-20]},
-                 %{operator: ">", path: "timestamp", value: ~D[2019-01-01]},
-                 %{operator: "<", path: "timestamp", value: ~U[2020-01-01 03:14:15Z]},
-                 %{operator: "~", path: "event_message", value: "by logflare pinger"},
-                 %{operator: "~", path: "event_message", value: "log"},
-                 %{operator: "~", path: "event_message", value: "was generated"},
-                 %{operator: "!<", path: "metadata.log.metric1", value: "10"},
-                 %{operator: "!<=", path: "timestamp", value: ~D[2010-04-20]}
+                 %{operator: "<", path: "metadata.log.metric5", value: "10.0"},
+                 %{
+                   path: "metadata.user.cluster_group",
+                   value: "200.0420..300.1337",
+                   operator: ">="
+                 }
                ])
     end
 
