@@ -96,6 +96,7 @@ defmodule LogflareWeb.SourceView do
         |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
         |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
         |> Enum.map(fn {k, v} -> {k, SchemaTypes.to_schema_type(v)} end)
+        |> Enum.sort_by(fn {k, v} -> k end)
 
       ~E"""
       <div class="table-responsive">
