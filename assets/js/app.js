@@ -1,5 +1,6 @@
 import css from "../css/app.scss"
 import socket from "./socket"
+import { Socket } from "phoenix"
 import "bootstrap"
 import "@babel/polyfill"
 import $ from "jquery"
@@ -10,7 +11,11 @@ import * as Logs from "./logs"
 
 import LiveSocket from "phoenix_live_view"
 
-let liveSocket = new LiveSocket("/live")
+import sourceLiveViewHooks from "./source_lv_hooks"
+
+const hooks = Object.assign({}, sourceLiveViewHooks)
+
+let liveSocket = new LiveSocket("/live", { hooks })
 liveSocket.connect()
 
 window.Dashboard = Dashboard

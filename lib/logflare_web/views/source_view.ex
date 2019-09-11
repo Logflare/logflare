@@ -99,7 +99,7 @@ defmodule LogflareWeb.SourceView do
         |> Enum.sort_by(fn {k, v} -> k end)
 
       ~E"""
-      <div class="table-responsive">
+      <div class="table-responsive" phx-hook="SourceSchemaModalTable">
         <table class="table table-dark show-source-schema">
           <thead>
             <td>Field path</td>
@@ -108,7 +108,13 @@ defmodule LogflareWeb.SourceView do
           <tbody>
             <%= for {field, type} <- fields_and_types do %>
             <tr>
-              <td class="metadata-field"><%= field %></td>
+              <td class="metadata-field">
+              <a href="#">
+              <span class="copy-metadata-field"
+              data-clipboard-text="<%= field %>">
+              <i style="color:green;" class="fas fa-copy"></i>
+              </span></a>
+              <span class="metadata-field-value"> <%= field %> </span> </td>
               <td><%= type %></td>
             </tr>
             <% end %>
