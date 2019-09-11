@@ -150,7 +150,7 @@ defmodule Logflare.Logs.Search.ParserTest do
 
       assert Enum.sort(result) ==
                Enum.sort([
-                 %{operator: "<", path: "metadata.log.metric5", value: "10.0"},
+                 %{operator: "<", path: "metadata.log.metric5", value: 10.0},
                  %{
                    path: "metadata.user.cluster_group",
                    value: "200.0420..300.1337",

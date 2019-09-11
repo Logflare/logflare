@@ -87,19 +87,19 @@ defmodule Logflare.Logs.Search.Parser do
   )
 
   def parse(querystring) do
-      try do
-        do_parse(querystring)
-      rescue
-        e in MatchError ->
-          %MatchError{term: {filter, {:error, errstring}}} = e
-          {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
+    try do
+      do_parse(querystring)
+    rescue
+      e in MatchError ->
+        %MatchError{term: {filter, {:error, errstring}}} = e
+        {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
 
-        _e in FunctionClauseError ->
-          {:error, "Invalid query! Please consult search syntax guide."}
+      _e in FunctionClauseError ->
+        {:error, "Invalid query! Please consult search syntax guide."}
 
-        e ->
-          {:error, inspect(e)}
-      end
+      e ->
+        {:error, inspect(e)}
+    end
   end
 
   def do_parse(querystring) do
@@ -198,13 +198,18 @@ defmodule Logflare.Logs.Search.Parser do
 
   defp maybe_cast_value(%{operator: op, value: sourcevalue} = c)
        when op in @arithmetic_operators and is_binary(sourcevalue) do
+    int_parsed = Integer.parse(c.value)
+    float_parsed = Float.parse(c.value)
+
     value =
-      with :error <- Integer.parse(c.value),
-           :error <- Float.parse(c.value) do
-        c.value
-      else
-        {value, ""} -> value
-        {_, _} -> c.value
+      cond do
+        match?({_, ""}, int_parsed) ->
+          {value, ""} = int_parsed
+          value
+        match?({_, ""}, float_parsed) ->
+          {value, ""} = float_parsed
+          value
+        true -> c.value
       end
 
     %{c | value: value}
