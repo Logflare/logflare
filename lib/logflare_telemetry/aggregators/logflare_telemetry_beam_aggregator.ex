@@ -6,6 +6,9 @@ defmodule LogflareTelemetry.Aggregators.BEAM.V0 do
   alias LogflareTelemetry.MetricsCache
   alias LogflareTelemetry.BQBackend
   alias Telemetry.Metrics.{Counter, LastValue, Sum}
+  alias LogflareTelemetry, as: LT
+  alias LT.LogflareMetrics, as: LM
+  alias LT.Aggregators.GenAggregator
   @backend Logflare.TelemetryBackend.BQ
 
   defmodule Config do
@@ -37,9 +40,12 @@ defmodule LogflareTelemetry.Aggregators.BEAM.V0 do
 
           %LastValue{} ->
             MetricsCache.get(metric)
+
+          %LM.LastValues{} ->
+            MetricsCache.get(metric)
         end
 
-      if value do
+      if GenAggregator.measurement_exists?(value) do
         :ok = @backend.ingest(metric, value)
         MetricsCache.reset(metric)
       end

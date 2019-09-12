@@ -49,6 +49,7 @@ defmodule LogflareTelemetry.MetricsCache do
         %Distribution{} -> []
         %LastValue{} -> nil
         %LMetrics.All{} -> []
+        %LMetrics.LastValues{} -> []
       end
     )
   end
@@ -71,6 +72,7 @@ defmodule LogflareTelemetry.MetricsCache do
         %Counter{} -> :counter
         %Distribution{} -> :distribution
         %LMetrics.All{} -> []
+        %LMetrics.LastValues{} -> []
       end
 
     metric.name ++ metric_type
