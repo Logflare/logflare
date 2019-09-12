@@ -121,24 +121,7 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-    tailing? = socket.assigns.tailing?
-    querystring = socket.assigns.querystring
-    log_events_empty? = search_op.rows == []
-
-    warning =
-      cond do
-        log_events_empty? and not tailing? ->
-          "No log events matching your search query."
-
-        log_events_empty? and tailing? ->
-          "No log events matching your search query ingested during last 24 hours..."
-
-        querystring == "" and log_events_empty? and tailing? ->
-          "No log events ingested during last 24 hours..."
-
-        true ->
-          nil
-      end
+    warning = warning_message(socket.assigns, search_op)
 
     socket =
       socket
@@ -166,19 +149,18 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_search = msg, socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, socket.assigns.source)
-
       maybe_execute_query(socket.assigns)
     end
 
     {:noreply, socket}
   end
 
-  def assign_flash(socket, key, message) do
+  defp assign_flash(socket, key, message) do
     flash = socket.assigns.flash
     assign(socket, flash: put_in(flash, [key], message))
   end
 
-  def maybe_execute_query(assigns) do
+  defp maybe_execute_query(assigns) do
     assigns.source.token
     |> SearchQueryExecutor.name()
     |> Process.whereis()
@@ -186,6 +168,26 @@ defmodule LogflareWeb.Source.SearchLV do
       :ok = SearchQueryExecutor.query(assigns)
     else
       Logger.error("Search Query Executor process for not alive")
+    end
+  end
+
+  defp warning_message(assigns, search_op) do
+    tailing? = assigns.tailing?
+    querystring = assigns.querystring
+    log_events_empty? = search_op.rows == []
+
+    cond do
+      log_events_empty? and not tailing? ->
+        "No log events matching your search query."
+
+      log_events_empty? and tailing? ->
+        "No log events matching your search query ingested during last 24 hours..."
+
+      querystring == "" and log_events_empty? and tailing? ->
+        "No log events ingested during last 24 hours..."
+
+      true ->
+        nil
     end
   end
 end
