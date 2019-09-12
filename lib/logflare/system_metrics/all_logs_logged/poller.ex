@@ -6,7 +6,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
   alias Logflare.SystemMetrics.AllLogsLogged
 
-  @poll_every 1_000
+  @poll_per_second 1_000
+  @poll_total_every 250
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -16,28 +17,85 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     GenServer.call(__MODULE__, :logs_last_second)
   end
 
-  def init(_state) do
-    poll_metrics()
-    {:ok, all_logs_logged} = AllLogsLogged.log_count(:total_logs_logged)
-    {:ok, %{last_total: all_logs_logged, last_second: 0}}
+  def logs_last_second_cluster() do
+    nodes = Phoenix.Tracker.list(Logflare.Tracker, __MODULE__)
+
+    Enum.map(nodes, fn {_x, y} -> y.last_second end)
+    |> Enum.sum()
   end
 
-  def handle_info(:poll_metrics, state) do
-    poll_metrics()
-    {:ok, all_logs_logged} = AllLogsLogged.log_count(:total_logs_logged)
-    logs_last_second = all_logs_logged - state.last_total
+  def total_logs_logged_cluster() do
+    nodes = Phoenix.Tracker.list(Logflare.Tracker, __MODULE__)
 
-    if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("All logs logged!", all_logs_logged: all_logs_logged)
-      Logger.info("Logs last second!", logs_per_second: logs_last_second)
-    end
+    highest_init =
+      Enum.map(nodes, fn {_x, y} -> y.init_total end)
+      |> Enum.max()
 
-    {:noreply, %{last_total: all_logs_logged, last_second: logs_last_second}}
+    total_cluster_inserts =
+      Enum.map(nodes, fn {_x, y} -> y.inserts_since_init end)
+      |> Enum.sum()
+
+    highest_init + total_cluster_inserts
+  end
+
+  def init(_state) do
+    poll_per_second()
+    poll_total_logs()
+
+    {:ok, metrics} = AllLogsLogged.all_metrics(:total_logs_logged)
+
+    state = %{
+      init_total: metrics.init_log_count,
+      last_total: metrics.total,
+      inserts_since_init: metrics.inserts_since_init,
+      last_second: 0
+    }
+
+    Phoenix.Tracker.track(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+
+    {:ok, state}
+  end
+
+  def handle_info(:poll_per_second, state) do
+    poll_per_second()
+
+    {:ok, metrics} = AllLogsLogged.all_metrics(:total_logs_logged)
+    logs_last_second = metrics.total - state.last_total
+
+    state = %{state | last_second: logs_last_second, last_total: metrics.total}
+
+    Phoenix.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+
+    log_stuff(logs_last_second, metrics)
+    {:noreply, state}
+  end
+
+  def handle_info(:poll_total_logs, state) do
+    poll_total_logs()
+
+    {:ok, metrics} = AllLogsLogged.all_metrics(:total_logs_logged)
+
+    state = %{state | inserts_since_init: metrics.inserts_since_init}
+
+    Phoenix.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+
+    {:noreply, state}
   end
 
   def handle_call(:logs_last_second, _from, state), do: {:reply, state.last_second, state}
 
-  defp poll_metrics() do
-    Process.send_after(self(), :poll_metrics, @poll_every)
+  defp poll_per_second() do
+    Process.send_after(self(), :poll_per_second, @poll_per_second)
+  end
+
+  defp poll_total_logs() do
+    Process.send_after(self(), :poll_total_logs, @poll_total_every)
+  end
+
+  defp log_stuff(logs_last_second, metrics) do
+    if Application.get_env(:logflare, :env) == :prod do
+      Logger.info("All logs logged!", all_logs_logged: metrics.total)
+      Logger.info("Logs last second!", logs_per_second: logs_last_second)
+    end
   end
 end

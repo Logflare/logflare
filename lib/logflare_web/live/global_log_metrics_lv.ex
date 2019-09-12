@@ -12,7 +12,7 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
   end
 
   def mount(_session, socket) do
-    if connected?(socket), do: :timer.send_interval(100, self(), :tick)
+    if connected?(socket), do: :timer.send_interval(250, self(), :tick)
 
     {:ok, put_data(socket)}
   end
@@ -22,8 +22,8 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
   end
 
   defp put_data(socket) do
-    {:ok, log_count} = AllLogsLogged.log_count(:total_logs_logged)
-    total_logs_per_second = AllLogsLogged.Poller.get_total_logs_per_second()
+    log_count = AllLogsLogged.Poller.total_logs_logged_cluster()
+    total_logs_per_second = AllLogsLogged.Poller.logs_last_second_cluster()
     log_count = number_to_delimited(log_count)
     total_logs_per_second = number_to_delimited(total_logs_per_second)
 
