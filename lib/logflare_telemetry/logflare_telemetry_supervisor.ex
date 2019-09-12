@@ -31,35 +31,46 @@ defmodule LogflareTelemetry.Supervisor do
 
     measurement_names
     |> Enum.map(&[Metrics.summary(event_id ++ [&1])])
-    |> Enum.concat([LogflareMetrics.all(event_id)])
+    |> Enum.concat([LogflareMetrics.every(event_id)])
     |> List.flatten()
   end
 
   def metrics(:beam) do
-    vm_memory_measurements = [
-      :atom,
-      :atom_used,
-      :binary,
-      :code,
-      :ets,
-      :processes,
-      :processes_used,
-      :system,
-      :total
+    # last atom is required to subscribe to the teleemetry events but is irrelevant as all measurements are collected
+    vm_memory = [:vm, :memory]
+    vm_total_run_queue_lengths = [:vm, :total_run_queue_lengths]
+
+    [
+      LogflareMetrics.last_values(vm_memory),
+      LogflareMetrics.last_values(vm_total_run_queue_lengths)
     ]
-
-    vm_total_run_queue_length_measurements = [:cpu, :io, :total]
-
-    vm_memory_metrics =
-      for m <- vm_memory_measurements do
-        Metrics.last_value([:vm, :memory, m])
-      end
-
-    vm_total_run_queue_length_metrics =
-      for m <- vm_total_run_queue_length_measurements do
-        Metrics.last_value([:vm, :total_run_queue_lengths, m])
-      end
-
-    vm_memory_metrics ++ vm_total_run_queue_length_metrics
   end
+
+  # def metrics(:prev_beam) do
+  #   vm_memory_measurements = [
+  #     :atom,
+  #     :atom_used,
+  #     :binary,
+  #     :code,
+  #     :ets,
+  #     :processes,
+  #     :processes_used,
+  #     :system,
+  #     :total
+  #   ]
+
+  #   vm_total_run_queue_length_measurements = [:cpu, :io, :total]
+
+  #   vm_memory_metrics =
+  #     for m <- vm_memory_measurements do
+  #       Metrics.last_value([:vm, :memory, m])
+  #     end
+
+  #   vm_total_run_queue_length_metrics =
+  #     for m <- vm_total_run_queue_length_measurements do
+  #       Metrics.last_value([:vm, :total_run_queue_lengths, m])
+  #     end
+
+  #   vm_memory_metrics ++ vm_total_run_queue_length_metrics
+  # end
 end

@@ -6,9 +6,9 @@ defmodule Logflare.TelemetryBackend.BQ do
   @default_source_id Application.get_env(:logflare_telemetry, :source_id)
   alias Telemetry.Metrics.{Counter, Distribution, LastValue, Sum, Summary}
   alias LogflareTelemetry, as: LT
-  alias LT.LogflareMetrics, as: LfMetrics
+  alias LT.LogflareMetrics, as: LMetrics
 
-  def ingest(%LfMetrics.All{} = metric, values) do
+  def ingest(%LMetrics.All{} = metric, values) do
     source = Sources.Cache.get_by_id(@default_source_id)
 
     log_params_batch =
@@ -38,18 +38,18 @@ defmodule Logflare.TelemetryBackend.BQ do
         _ -> value
       end
 
+    metric_id = metric.name ++ [metric_to_type(metric)]
+
     metadata =
-      (metric.event_name ++ [metric.measurement] ++ [metric_to_type(metric)])
+      metric_id
       |> Enum.reverse()
       |> Enum.reduce(value, fn
-        key, acc when is_atom(key) ->
-          %{Atom.to_string(key) => acc}
-
         key, acc ->
           %{key => acc}
       end)
+      |> MapKeys.to_strings()
 
-    Logs.ingest_logs([%{"metadata" => metadata, "message" => "telemetry"}], source)
+    Logs.ingest_logs([%{"metadata" => metadata, "message" => Enum.join(metric_id, ".")}], source)
 
     :ok
   end
@@ -73,4 +73,5 @@ defmodule Logflare.TelemetryBackend.BQ do
   def metric_to_type(%Counter{}), do: :counter
   def metric_to_type(%Distribution{}), do: :distribution
   def metric_to_type(%Sum{}), do: :sum
+  def metric_to_type(%LMetrics.LastValues{}), do: :last_values
 end

@@ -7,6 +7,7 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
   alias Telemetry.Metrics.{Counter, LastValue, Sum, Summary}
   alias LogflareTelemetry, as: LT
   alias LT.LogflareMetrics
+  alias LT.Aggregators.GenAggregator
   @default_percentiles [25, 50, 75, 90, 95, 99]
   @default_summary_fields [:average, :median, :percentiles]
   @backend Logflare.TelemetryBackend.BQ
@@ -62,9 +63,12 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
 
           %LogflareMetrics.All{} ->
             MetricsCache.get(metric)
+
+          %LogflareMetrics.LastValues{} ->
+            MetricsCache.get(metric)
         end
 
-      if value do
+      if GenAggregator.measurement_exists?(value) do
         :ok = @backend.ingest(metric, value)
         MetricsCache.reset(metric)
       end

@@ -79,3 +79,4 @@ config :logflare,
   sigterm_shutdown_grace_period_ms: 120_000
 
 import_config "#{Mix.env()}.exs"
+import_config "telemetry.exs"
