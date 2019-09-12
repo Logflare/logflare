@@ -181,12 +181,6 @@ export async function search() {
         window.searchStarted = true
     }
 
-    let $firstSearch = $("#first-search")
-    let firstSearch = JSON.parse($firstSearch.text())
-    if (firstSearch && $("#logs-list li:nth(1)")[0]) {
-        $("#logs-list li:nth(1)")[0].scrollIntoView()
-    }
-
     const $queryDebugModal = $("#queryDebugModal")
     if ($queryDebugModal) {
         const code = $("#search-query-debug code")

@@ -10,4 +10,9 @@ hooks.SourceSchemaModalTable = {
     },
 }
 
+hooks.SourceLogsSearchList = {
+    mounted() {
+        $("#logs-list li:nth(1)")[0].scrollIntoView()
+    },
+}
 export default hooks
