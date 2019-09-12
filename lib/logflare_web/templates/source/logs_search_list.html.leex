@@ -1,4 +1,4 @@
-<div id="logs-list-container">
+<div id="logs-list-container" phx-hook="SourceLogsSearchList">
   <div id="logs-list" class="list-unstyled console-text-list">
     <%= @log_events |> Enum.with_index |> Enum.map(fn {log, _inx} -> %>
     <li>

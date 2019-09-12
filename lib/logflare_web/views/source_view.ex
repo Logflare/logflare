@@ -51,7 +51,7 @@ defmodule LogflareWeb.SourceView do
 
   def render_modal("queryDebugModal", _source, _log_events) do
     ~E"""
-    <div class="source-logs-search-modals">
+    <div class="source-logs-search-modals" phx-hook="SourceQueryDebugModal">
       <%= render "logs_search_modal.html",
         id: "queryDebugModal",
         title: "Query Debugging",
@@ -96,7 +96,7 @@ defmodule LogflareWeb.SourceView do
         |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
         |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
         |> Enum.map(fn {k, v} -> {k, SchemaTypes.to_schema_type(v)} end)
-        |> Enum.sort_by(fn {k, v} -> k end)
+        |> Enum.sort_by(fn {k, _v} -> k end)
 
       ~E"""
       <div class="table-responsive" phx-hook="SourceSchemaModalTable">

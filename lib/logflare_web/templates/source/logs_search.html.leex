@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
@@ -70,15 +70,9 @@
   </div>
 <% end %>
 </div>
-<div id="first-search" class="d-none" data-value="<%= @first_search? %>"> <%= @first_search? %></div>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <div>
   <%= if @active_modal do %>
     <%= render_modal(@active_modal, @source, @log_events) %>
   <% end %>
 </div>
-<script>
-  document.addEventListener("DOMContentLoaded", async () => {
-     await Source.initSearch()
-  })
-</script>
