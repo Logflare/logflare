@@ -134,7 +134,10 @@ function resetScrollTracker() {
     let nav_height = 110
 
     // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-    if (window_inner_height + window_offset - nav_height >= client_height - 100) {
+    if (
+        window_inner_height + window_offset - nav_height >=
+        client_height - 100
+    ) {
         window.scrollTracker = true
     } else {
         window.scrollTracker = false
@@ -176,21 +179,9 @@ export async function initSearch() {
 }
 
 export async function search() {
-    if (!searchStarted) {
+    if (!window.searchStarted) {
         $("button#search").click()
         window.searchStarted = true
-    }
-
-    const $queryDebugModal = $("#queryDebugModal")
-    if ($queryDebugModal) {
-        const code = $("#search-query-debug code")
-        const fmtSql = sqlFormatter.format(code.text())
-        // replace with formatted sql
-        code.text(fmtSql)
-
-        $queryDebugModal
-            .find(".modal-body")
-            .html($("#search-query-debug").html())
     }
 }
 

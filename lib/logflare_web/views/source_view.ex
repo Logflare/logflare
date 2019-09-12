@@ -51,7 +51,7 @@ defmodule LogflareWeb.SourceView do
 
   def render_modal("queryDebugModal", _source, _log_events) do
     ~E"""
-    <div class="source-logs-search-modals">
+    <div class="source-logs-search-modals" phx-hook="SourceQueryDebugModal">
       <%= render "logs_search_modal.html",
         id: "queryDebugModal",
         title: "Query Debugging",
