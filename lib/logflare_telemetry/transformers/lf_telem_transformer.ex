@@ -19,7 +19,10 @@ defmodule LogflareTelemetry.Transformer do
 
   def event_to_payload(telem_metric, value, %{schema_type: :flat}) do
     metric = telem_metric.name ++ [metric_to_type(telem_metric)]
-    %{Enum.join(metric, ".") => MapKeys.to_strings(value)}
+    key = Enum.join(metric, ".")
+    val = MapKeys.to_strings(value)
+    %{key => val}
+    |> Iteraptor.to_flatmap
   end
 
   def event_to_payload(metric, val, config) do

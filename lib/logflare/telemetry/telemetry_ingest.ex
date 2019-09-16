@@ -19,11 +19,9 @@ defmodule Logflare.TelemetryBackend.BQ do
 
   def prepare_for_bq(payload) when is_map(payload) do
     for {k, v} <- payload, into: %{} do
-      k =
-        k
-        |> String.replace("logflare.", "")
+      k = k
+        |> String.trim_leading("logflare.")
         |> String.replace(".", "__")
-
       {k, prepare_for_bq(v)}
     end
   end
