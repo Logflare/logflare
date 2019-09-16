@@ -29,6 +29,10 @@ defmodule LogflareTelemetry.Aggregators.GenAggregator do
       |> hd
       |> elem(0)
 
+      message =
+        message
+        |> String.replace("logflare.", "")
+
       %{
         "metadata" => value,
         "message" => message
