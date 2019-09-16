@@ -3,26 +3,38 @@ defmodule LogflareTelemetry.Supervisor do
   use Supervisor
   alias Telemetry.Metrics
   alias LogflareTelemetry, as: LT
-  alias LT.LogflareMetrics
+  alias LT.ExtendedMetrics, as: ExtMetrics
   alias LT.MetricsCache
+  alias LT.Config
+  @backend Logflare.TelemetryBackend.BQ
 
   def start_link(args \\ %{}) do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def init(args) do
-    # ecto_metrics = args[:ecto_metrics] || metrics(:ecto)
-    ecto_metrics = metrics(:ecto)
+    config = args[:config] || default_config()
 
     children = [
-      {LT.Reporters.Ecto.V0, metrics: ecto_metrics},
-      {LT.Reporters.BEAM.V0, metrics: metrics(:beam)},
-      {LT.Aggregators.Ecto.V0, tick_interval: 1_000, metrics: ecto_metrics},
-      {LT.Aggregators.BEAM.V0, tick_interval: 1_000, metrics: metrics(:beam)},
+      {LT.Reporters.V0.Ecto, config.ecto},
+      {LT.Reporters.V0.BEAM, config.beam},
+      {LT.Aggregators.V0.Ecto, config.ecto},
+      {LT.Aggregators.V0.BEAM, config.beam},
       MetricsCache
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def default_config() do
+    %Config{
+      beam: %Config{
+        metrics: metrics(:beam),
+        tick_interval: 1_000,
+        backend: @backend
+      },
+      ecto: %Config{metrics: metrics(:ecto), tick_interval: 1_000, backend: @backend}
+    }
   end
 
   def metrics(:ecto) do
@@ -31,7 +43,7 @@ defmodule LogflareTelemetry.Supervisor do
 
     measurement_names
     |> Enum.map(&[Metrics.summary(event_id ++ [&1])])
-    |> Enum.concat([LogflareMetrics.every(event_id)])
+    |> Enum.concat([ExtMetrics.every(event_id)])
     |> List.flatten()
   end
 
@@ -41,8 +53,8 @@ defmodule LogflareTelemetry.Supervisor do
     vm_total_run_queue_lengths = [:vm, :total_run_queue_lengths]
 
     [
-      LogflareMetrics.last_values(vm_memory),
-      LogflareMetrics.last_values(vm_total_run_queue_lengths)
+      ExtMetrics.last_values(vm_memory),
+      ExtMetrics.last_values(vm_total_run_queue_lengths)
     ]
   end
 

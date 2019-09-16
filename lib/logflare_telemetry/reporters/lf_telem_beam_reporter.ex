@@ -1,22 +1,25 @@
-defmodule LogflareTelemetry.Reporters.BEAM.V0 do
+defmodule LogflareTelemetry.Reporters.V0.BEAM do
+  @moduledoc """
+  Custom LogflareTelemetry reporter for handling BEAM telemetry events
+  """
   use GenServer
   require Logger
   @env Application.get_env(:logflare, :env)
   alias LogflareTelemetry.Reporters.Gen.V0, as: Reporter
   alias LogflareTelemetry.MetricsCache
   alias LogflareTelemetry, as: LT
-  alias LT.LogflareMetrics, as: LM
+  alias LT.ExtendedMetrics, as: ExtMetrics
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts[:metrics])
+  def start_link(config) do
+    GenServer.start_link(__MODULE__, config)
   end
 
-  def init(metrics) do
+  def init(config) do
     if @env != :test do
       Process.flag(:trap_exit, true)
     end
 
-    attach_handlers(metrics)
+    attach_handlers(config.metrics)
 
     {:ok, %{}}
   end
@@ -41,7 +44,7 @@ defmodule LogflareTelemetry.Reporters.BEAM.V0 do
     end
   end
 
-  def handle_metric(%LM.LastValues{} = metric, measurements, _metadata) do
+  def handle_metric(%ExtMetrics.LastValues{} = metric, measurements, _metadata) do
     measurement = extract_measurement(metric, measurements)
     MetricsCache.put(metric, measurement)
   end

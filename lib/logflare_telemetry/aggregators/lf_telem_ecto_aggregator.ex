@@ -1,4 +1,4 @@
-defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
+defmodule LogflareTelemetry.Aggregators.V0.Ecto do
   @moduledoc """
   Aggregates Ecto telemetry metrics
   """
@@ -10,15 +10,9 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
   alias LT.Aggregators.GenAggregator
   @default_percentiles [25, 50, 75, 90, 95, 99]
   @default_summary_fields [:average, :median, :percentiles]
-  @backend Logflare.TelemetryBackend.BQ
+  alias LT.Config
 
-  defmodule Config do
-    @moduledoc false
-    defstruct [:tick_interval, :metrics]
-  end
-
-  def start_link(args, opts \\ []) do
-    config = struct!(Config, args)
+  def start_link(config, opts \\ []) do
     GenServer.start_link(__MODULE__, config, opts)
   end
 
@@ -31,20 +25,12 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
   @impl true
   def handle_info(:tick, %{config: %Config{} = config} = state) do
     for metric <- config.metrics do
+      value = MetricsCache.get(metric)
+
       {:ok, value} =
         case metric do
-          %Counter{} ->
-            MetricsCache.get(metric)
-
-          %Sum{} ->
-            MetricsCache.get(metric)
-
-          %LastValue{} ->
-            MetricsCache.get(metric)
-
           %Summary{} ->
-            metric
-            |> MetricsCache.get()
+            value
             |> case do
               {:ok, nil} ->
                 {:ok, nil}
@@ -61,17 +47,12 @@ defmodule LogflareTelemetry.Aggregators.Ecto.V0 do
                 {:ok, value}
             end
 
-          %LogflareMetrics.All{} ->
-            MetricsCache.get(metric)
-
-          %LogflareMetrics.LastValues{} ->
-            MetricsCache.get(metric)
+          _ ->
+            value
         end
 
-      if GenAggregator.measurement_exists?(value) do
-        :ok = @backend.ingest(metric, value)
-        MetricsCache.reset(metric)
-      end
+      GenAggregator.dispatch(metric, value, config)
+      MetricsCache.reset(metric)
     end
 
     Process.send_after(self(), :tick, config.tick_interval)
