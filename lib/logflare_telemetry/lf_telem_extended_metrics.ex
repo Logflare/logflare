@@ -1,6 +1,6 @@
-defmodule LogflareTelemetry.LogflareMetrics do
+defmodule LogflareTelemetry.ExtendedMetrics do
   @moduledoc false
-  defmodule All do
+  defmodule Every do
     @moduledoc false
     defstruct [:description, :event_name, :measurement, :name, :tag_values, :tags, :unit]
   end
@@ -12,9 +12,9 @@ defmodule LogflareTelemetry.LogflareMetrics do
 
   def every(event_name) when is_list(event_name) do
     measurement = :every
-    name = event_name ++ [measurement]
+    name = event_name
 
-    %All{
+    %Every{
       description: nil,
       event_name: event_name,
       measurement: measurement,

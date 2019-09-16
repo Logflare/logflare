@@ -1,4 +1,7 @@
-defmodule LogflareTelemetry.Reporters.Ecto.V0 do
+defmodule LogflareTelemetry.Reporters.V0.Ecto do
+  @moduledoc """
+  Custom LogflareTelemetry reporter for handling Ecto repos telemetry events
+  """
   use GenServer
   require Logger
   @env Application.get_env(:logflare, :env)
@@ -6,21 +9,22 @@ defmodule LogflareTelemetry.Reporters.Ecto.V0 do
   alias LT.Reporters.Gen.V0, as: Reporter
   alias LT.Reporters.Ecto.Transformer.V0, as: Transformer
   alias LT.{MetricsCache, LogflareMetrics}
+  alias LT.ExtendedMetrics, as: ExtMetrics
 
   require Logger
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts[:metrics])
+  def start_link(config) do
+    GenServer.start_link(__MODULE__, config)
   end
 
-  def init(metrics) do
+  def init(config) do
     Logger.info("Logflare Telemetry Ecto Reporter is being initialized...")
 
     if @env != :test do
       Process.flag(:trap_exit, true)
     end
 
-    attach_handlers(metrics)
+    attach_handlers(config.metrics)
 
     {:ok, %{}}
   end
@@ -40,7 +44,7 @@ defmodule LogflareTelemetry.Reporters.Ecto.V0 do
     Enum.map(metrics, &handle_metric(&1, measurements, metadata))
   end
 
-  def handle_metric(%LogflareMetrics.All{} = metric, measurements, metadata) do
+  def handle_metric(%ExtMetrics.Every{} = metric, measurements, metadata) do
     tele_event =
       metadata
       |> Transformer.prepare_metadata()

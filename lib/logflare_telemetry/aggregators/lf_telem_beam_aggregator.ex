@@ -1,4 +1,4 @@
-defmodule LogflareTelemetry.Aggregators.BEAM.V0 do
+defmodule LogflareTelemetry.Aggregators.V0.BEAM do
   @moduledoc """
   Aggregates Ecto telemetry metrics
   """
@@ -9,15 +9,9 @@ defmodule LogflareTelemetry.Aggregators.BEAM.V0 do
   alias LogflareTelemetry, as: LT
   alias LT.LogflareMetrics, as: LM
   alias LT.Aggregators.GenAggregator
-  @backend Logflare.TelemetryBackend.BQ
+  alias LT.Config
 
-  defmodule Config do
-    @moduledoc false
-    defstruct [:tick_interval, :metrics]
-  end
-
-  def start_link(args, opts \\ []) do
-    config = struct!(Config, args)
+  def start_link(%Config{} = config, opts \\ []) do
     GenServer.start_link(__MODULE__, config, opts)
   end
 
@@ -32,23 +26,12 @@ defmodule LogflareTelemetry.Aggregators.BEAM.V0 do
     for metric <- config.metrics do
       {:ok, value} =
         case metric do
-          %Counter{} ->
-            MetricsCache.get(metric)
-
-          %Sum{} ->
-            MetricsCache.get(metric)
-
-          %LastValue{} ->
-            MetricsCache.get(metric)
-
-          %LM.LastValues{} ->
+          _ ->
             MetricsCache.get(metric)
         end
 
-      if GenAggregator.measurement_exists?(value) do
-        :ok = @backend.ingest(metric, value)
-        MetricsCache.reset(metric)
-      end
+      GenAggregator.dispatch(metric, value, config)
+      MetricsCache.reset(metric)
     end
 
     Process.send_after(self(), :tick, config.tick_interval)
