@@ -24,9 +24,14 @@ defmodule LogflareTelemetry.Aggregators.GenAggregator do
 
   def transform_to_logs_ingest_dispatch(values) do
     for value <- values do
+      message = value
+      |> Map.to_list()
+      |> hd
+      |> elem(0)
+
       %{
         "metadata" => value,
-        "message" => "telemetry"
+        "message" => message
       }
     end
   end
