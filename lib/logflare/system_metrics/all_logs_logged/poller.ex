@@ -27,15 +27,15 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   def total_logs_logged_cluster() do
     nodes = Phoenix.Tracker.list(Logflare.Tracker, __MODULE__)
 
-    highest_init =
+    init_inserts =
       Enum.map(nodes, fn {_x, y} -> y.init_total end)
-      |> Enum.max()
+      |> Enum.sum()
 
-    total_cluster_inserts =
+    inserts_since_init =
       Enum.map(nodes, fn {_x, y} -> y.inserts_since_init end)
       |> Enum.sum()
 
-    highest_init + total_cluster_inserts
+    init_inserts + inserts_since_init
   end
 
   def init(_state) do

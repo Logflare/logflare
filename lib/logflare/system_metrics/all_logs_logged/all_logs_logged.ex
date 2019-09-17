@@ -7,8 +7,6 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   require Logger
 
-  import Ecto.Query, only: [from: 2]
-
   @total_logs :total_logs_logged
   @table :system_counter
   @persist_every 60_000
@@ -20,13 +18,11 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   def init(state) do
     persist()
 
-    query = from m in SystemMetric, select: m, limit: 1, order_by: [desc: m.inserted_at]
-
-    case total_logs = Repo.one(query) do
+    case Repo.get_by(SystemMetric, node: node_name()) do
       nil ->
         create(@total_logs, 0)
 
-      _ ->
+      total_logs ->
         create(@total_logs, total_logs.all_logs_logged)
     end
 
@@ -38,7 +34,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
     {:ok, log_count} = log_count(@total_logs)
 
-    Repo.insert(%SystemMetric{all_logs_logged: log_count})
+    insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
 
     {:noreply, state}
   end
@@ -91,6 +87,24 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   end
 
   ## Private Functions
+
+  defp node_name() do
+    Atom.to_string(node())
+  end
+
+  defp insert_or_update_node_metric(params) do
+    case Repo.get_by(SystemMetric, node: node_name()) do
+      nil ->
+        changeset = SystemMetric.changeset(%SystemMetric{}, params)
+
+        Repo.insert(changeset)
+
+      metric ->
+        changeset = SystemMetric.changeset(metric, params)
+
+        Repo.update(changeset)
+    end
+  end
 
   defp persist() do
     Process.send_after(self(), :persist, @persist_every)

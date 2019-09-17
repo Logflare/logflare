@@ -4,6 +4,7 @@ defmodule Logflare.Repo.Migrations.AddSystemMetricsTable do
   def change do
     create table("system_metrics") do
       add :all_logs_logged, :integer
+      add :node, :string
 
       timestamps()
     end
