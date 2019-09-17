@@ -5,6 +5,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   require Logger
 
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Cluster
 
   @poll_per_second 1_000
   @poll_total_every 250
@@ -35,7 +36,31 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
       Enum.map(nodes, fn {_x, y} -> y.inserts_since_init end)
       |> Enum.sum()
 
-    init_inserts + inserts_since_init
+    old_nodes_total_logs_logged() + init_inserts + inserts_since_init
+  end
+
+  def old_nodes_total_logs_logged() do
+    all_nodes_metrics = Logflare.Repo.all(Logflare.SystemMetric)
+
+    current_nodes =
+      Cluster.Utils.node_list_all()
+      |> Enum.map(fn k -> Atom.to_string(k) end)
+      |> MapSet.new()
+
+    all_nodes_ever =
+      all_nodes_metrics
+      |> MapSet.new(fn v -> v.node end)
+
+    old_nodes = MapSet.difference(all_nodes_ever, current_nodes)
+
+    Enum.reduce(all_nodes_metrics, fn %{node: node, all_logs_logged: x}, acc ->
+      if MapSet.member?(old_nodes, node) do
+        %{acc | all_logs_logged: x + acc.all_logs_logged}
+      else
+        %{acc | all_logs_logged: acc.all_logs_logged}
+      end
+    end)
+    |> Map.get(:all_logs_logged)
   end
 
   def init(_state) do
