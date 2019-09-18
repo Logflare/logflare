@@ -1,5 +1,4 @@
 defmodule Logflare.Tracker do
-  use GenServer
   @behaviour Phoenix.Tracker
 
   def start_link(opts) do

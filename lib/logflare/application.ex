@@ -28,8 +28,10 @@ defmodule Logflare.Application do
       supervisor(Logflare.Sources.RateCounters, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(LogflareWeb.Endpoint, []),
-      {Logflare.Tracker,
-       [name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250]},
+      worker(
+        Logflare.Tracker,
+        [[name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250]]
+      ),
       supervisor(Logflare.SystemMetricsSup, [])
     ]
 
