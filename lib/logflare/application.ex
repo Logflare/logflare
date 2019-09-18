@@ -21,7 +21,10 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
+    topologies = Application.get_env(:libcluster, :topologies)
+
     dev_prod_children = [
+      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
@@ -30,9 +33,13 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),
-      supervisor(Logflare.SystemMetrics, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(LogflareWeb.Endpoint, []),
+      worker(
+        Logflare.Tracker,
+        [[name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250]]
+      ),
+      supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareTelemetry.Supervisor, [])
     ]
 

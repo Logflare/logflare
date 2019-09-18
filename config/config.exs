@@ -49,6 +49,8 @@ config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,
   domain: "logflare.app"
 
+config :swoosh, local: false
+
 config :tesla,
   adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50]}
 
@@ -74,8 +76,24 @@ config :scrivener_html,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
   view_style: :bootstrap_v4
 
+
+config :libcluster,
+  topologies: [
+    gossip_example: [
+      strategy: Elixir.Cluster.Strategy.Gossip,
+      config: [
+        port: 45892,
+        if_addr: "0.0.0.0",
+        multicast_addr: "230.1.1.251",
+        multicast_ttl: 1,
+        secret: "somepassword"
+      ]
+    ]
+  ]
+
 config :logflare,
   sigterm_shutdown_grace_period_ms: 120_000
+
 
 import_config "#{Mix.env()}.exs"
 import_config "telemetry.exs"

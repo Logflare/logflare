@@ -7,7 +7,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   require Logger
 
-  @broadcast_every 1_000
+  @broadcast_every 250
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
@@ -24,6 +24,16 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def init(state) do
     Logger.info("BigQuery.Buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
+
+    init_metadata = %{source_token: "#{state.source_id}", buffer: 0}
+
+    Phoenix.Tracker.track(
+      Logflare.Tracker,
+      self(),
+      name(state.source_id),
+      Node.self(),
+      init_metadata
+    )
 
     check_buffer()
     {:ok, state}
@@ -88,8 +98,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    Source.ChannelTopics.broadcast_buffer(state.source_id, :queue.len(state.buffer))
+    update_tracker(state)
+    broadcast_buffer(state)
     check_buffer()
+
     {:noreply, state}
   end
 
@@ -97,6 +109,34 @@ defmodule Logflare.Source.BigQuery.Buffer do
     # Do Shutdown Stuff
     Logger.info("Going Down: #{__MODULE__}")
     reason
+  end
+
+  defp broadcast_buffer(state) do
+    payload =
+      Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
+      |> merge_metadata
+
+    Source.ChannelTopics.broadcast_buffer(payload)
+  end
+
+  defp update_tracker(state) do
+    pid = Process.whereis(name(state.source_id))
+    payload = %{source_token: state.source_id, buffer: :queue.len(state.buffer)}
+
+    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), payload)
+  end
+
+  def merge_metadata(list) do
+    payload = {:noop, %{buffer: 0}}
+
+    {:noop, data} =
+      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
+        buffer = y.buffer + acc.buffer
+
+        {:noop, %{y | buffer: buffer}}
+      end)
+
+    data
   end
 
   defp check_buffer() do

@@ -6,14 +6,14 @@ import { timestampNsToAgo } from "./formatters"
 import { applyToAllLogTimestamps } from "./logs"
 
 export async function main() {
-    const { sourceTokens, apiKey } = $("#__phx-assigns__").data()
+    const { sourceTokens, apiKey, currentNode } = $("#__phx-assigns__").data()
 
     await initClipboards()
     await initApiClipboard()
     await initTooltips()
 
     for (let token of sourceTokens) {
-        joinSourceChannel(token)
+        joinSourceChannel(token, currentNode)
     }
     await applyToAllLogTimestamps(timestampNsToAgo)
 
@@ -32,14 +32,14 @@ async function initApiClipboard() {
     activateClipboardForSelector("#api-key")
 }
 
-function joinSourceChannel(sourceToken) {
+function joinSourceChannel(sourceToken, currentNode) {
     let channel = socket.channel(`dashboard:${sourceToken}`, {})
 
     channel
         .join()
         .receive("ok", resp => {
             console.log(
-                `Dashboard channel for source ${sourceToken} joined successfully`,
+                `Dashboard channel for source ${sourceToken} joined successfully on node ${currentNode}`,
                 resp
             )
         })
@@ -49,7 +49,7 @@ function joinSourceChannel(sourceToken) {
 
     const sourceSelector = `#${sourceToken}`
 
-    channel.on(`dashboard:${sourceToken}:log_count`, event => {
+    channel.on(`log_count`, event => {
         $(`${sourceSelector}-latest`).html(
             timestampNsToAgo(new Date().getTime() * 1000)
         )
@@ -58,12 +58,12 @@ function joinSourceChannel(sourceToken) {
         )
     })
 
-    channel.on(`dashboard:${sourceToken}:rate`, event => {
+    channel.on(`rate`, event => {
         $(`${sourceSelector}-rate`).html(`${event.rate}`)
         $(`${sourceSelector}-avg-rate`).html(`${event.average_rate}`)
         $(`${sourceSelector}-max-rate`).html(`${event.max_rate}`)
     })
-    channel.on(`dashboard:${sourceToken}:buffer`, event => {
+    channel.on(`buffer`, event => {
         $(`${sourceSelector}-buffer`).html(`${event.buffer}`)
     })
 }

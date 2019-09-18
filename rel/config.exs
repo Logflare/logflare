@@ -37,7 +37,7 @@ environment :staging do
   set(include_erts: true)
   set(include_src: false)
   set(cookie: System.get_env("COOKIE") |> String.to_atom())
-  #  set(cookie: :derp)
+  set(node_type: System.get_env("NODE_TYPE") |> String.to_atom())
   set(vm_args: "rel/vm.args")
 end
 
@@ -45,6 +45,7 @@ environment :prod do
   set(include_erts: true)
   set(include_src: false)
   set(cookie: System.get_env("COOKIE") |> String.to_atom())
+  set(node_type: System.get_env("NODE_TYPE") |> String.to_atom())
   #  set(cookie: :derp)
   set(vm_args: "rel/vm.args")
 end
