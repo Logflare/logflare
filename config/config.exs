@@ -50,8 +50,7 @@ config :logflare, Logflare.Mailer,
   domain: "logflare.app"
 
 config :tesla,
-  adapter:
-    {Tesla.Adapter.Hackney, [pool: Client.BigQuery, recv_timeout: 10_000, max_connections: 50]}
+  adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50]}
 
 # use to test Tesla timeouts with BigQuery.
 # adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, recv_timeout: 100]}
