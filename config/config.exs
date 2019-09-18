@@ -49,6 +49,8 @@ config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,
   domain: "logflare.app"
 
+config :swoosh, local: false
+
 config :tesla,
   adapter:
     {Tesla.Adapter.Hackney, [pool: Client.BigQuery, recv_timeout: 10_000, max_connections: 50]}
