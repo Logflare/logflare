@@ -1,4 +1,4 @@
-<div id="logs-list-container">
+<div id="logs-list-container" phx-hook="SourceLogsSearchList">
   <div id="logs-list" class="list-unstyled console-text-list">
     <%= @log_events |> Enum.with_index |> Enum.map(fn {log, _inx} -> %>
     <li>
@@ -7,7 +7,7 @@
       <%= message %>
       <%= if map_size(metadata) > 0 do %>
         <a class="metadata-link"
-                phx-click="activate_modal" phx-value="metadataModal:<%= timestamp %>"
+                phx-click="activate_modal" phx-value-modal_id="metadataModal:<%= timestamp %>"
                 href="#" aria-expanded="false">
           metadata
         </a>

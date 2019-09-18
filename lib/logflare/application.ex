@@ -5,6 +5,13 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
+    :ok =
+      :gen_event.swap_sup_handler(
+        :erl_signal_server,
+        {:erl_signal_handler, []},
+        {Logflare.SigtermHandler, []}
+      )
+
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
@@ -32,7 +39,8 @@ defmodule Logflare.Application do
         Logflare.Tracker,
         [[name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250]]
       ),
-      supervisor(Logflare.SystemMetricsSup, [])
+      supervisor(Logflare.SystemMetricsSup, []),
+      supervisor(LogflareTelemetry.Supervisor, [])
     ]
 
     env = Application.get_env(:logflare, :env)

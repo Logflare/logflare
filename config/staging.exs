@@ -62,6 +62,9 @@ config :logflare_agent,
   ],
   url: "https://api.logflare.app"
 
+config :logflare_telemetry,
+  source_id: :"00a9997c-3e77-4220-bdb7-5f63be2247f5"
+
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"
 end

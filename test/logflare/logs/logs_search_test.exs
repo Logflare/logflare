@@ -8,7 +8,6 @@ defmodule Logflare.Logs.SearchTest do
   alias Logflare.Source.BigQuery.Pipeline
   use Logflare.DataCase
   import Logflare.DummyFactory
-  alias GoogleApi.BigQuery.V2.Api
   alias Logflare.Source.RecentLogsServer, as: RLS
   @test_dataset "test_dataset_01"
   @test_dataset_location "us-east4"
@@ -61,7 +60,7 @@ defmodule Logflare.Logs.SearchTest do
   end
 
   describe "Search" do
-    test "search for source and regex", %{sources: [source | _], users: [user | _]} do
+    test "search for source and regex", %{sources: [source | _], users: [_user | _]} do
       Process.sleep(1_000)
       search_op = %SO{source: source, querystring: ~S|x[123] \d\d1|}
       {:ok, %{rows: rows}} = Search.search(search_op)

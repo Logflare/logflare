@@ -5,7 +5,6 @@ defmodule LogflareWeb.AdminController do
   alias Logflare.{Repo, Source, Sources}
 
   @page_size 50
-  @default_sort_by :latest
 
   def dashboard(conn, params) do
     sort_options = [
@@ -48,13 +47,12 @@ defmodule LogflareWeb.AdminController do
     |> Repo.all()
     |> Enum.map(&Sources.preload_defaults/1)
     |> Enum.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(&Map.fetch(&1.metrics, @default_sort_by), &>=/2)
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
   defp query() do
     from s in Source,
-      order_by: s.name,
+      order_by: [desc: s.inserted_at],
       select: s
   end
 end

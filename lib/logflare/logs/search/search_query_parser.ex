@@ -34,10 +34,10 @@ defmodule Logflare.Logs.Search.Parser do
 
   field_value =
     choice([
-      ascii_string([?0..?9], min: 1)
+      ascii_string([?0..?9, ?.], min: 1)
       |> concat(string(".."))
-      |> ascii_string([?0..?9], min: 1),
-      ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 1)
+      |> ascii_string([?0..?9, ?.], min: 1),
+      ascii_string([?a..?z, ?A..?Z, ?0..?9, ?.], min: 1)
     ])
 
   date_or_datetime = ascii_string([?0..?9, ?Z, ?T, ?-, ?:], min: 1)
@@ -72,9 +72,15 @@ defmodule Logflare.Logs.Search.Parser do
     |> concat(choice([field_value, quoted_string]))
     |> tag(:metadata_field)
 
+  negated_field =
+    string("-")
+    |> ignore()
+    |> concat(choice([timestamp_field, metadata_field_op_val, word, quoted_string]))
+    |> tag(:negated_field)
+
   defparsec(
     :parse_query,
-    choice([timestamp_field, metadata_field_op_val, quoted_string, word])
+    choice([negated_field, timestamp_field, metadata_field_op_val, quoted_string, word])
     |> ignore(optional(ascii_string([?\s, ?\n], min: 1)))
     |> wrap()
     |> repeat()
@@ -82,15 +88,7 @@ defmodule Logflare.Logs.Search.Parser do
 
   def parse(querystring) do
     try do
-      result =
-        querystring
-        |> String.trim()
-        |> parse_query()
-        |> convert_to_pathvalops()
-        |> List.flatten()
-        |> Enum.map(&maybe_cast_value/1)
-
-      {:ok, result}
+      do_parse(querystring)
     rescue
       e in MatchError ->
         %MatchError{term: {filter, {:error, errstring}}} = e
@@ -104,26 +102,41 @@ defmodule Logflare.Logs.Search.Parser do
     end
   end
 
+  def do_parse(querystring) do
+    result =
+      querystring
+      |> String.trim()
+      |> parse_query()
+      |> convert_to_pathvalops()
+      |> List.flatten()
+      |> Enum.map(&maybe_cast_value/1)
+
+    {:ok, result}
+  end
+
   @arithmetic_operators ~w[> >= < <= =]
   def convert_to_pathvalops({:ok, matches, "", %{}, _, _}) do
     for [{type, tokens}] <- matches do
       case type do
-        t when t in [:word, :quoted_string] ->
-          [regex] = tokens
+        t when t in [:word, :quoted_string, :timestamp_field, :metadata_field] ->
+          to_path_val_op(t, tokens)
 
-          %{
-            path: "event_message",
-            value: regex,
-            operator: "~"
-          }
+        :negated_field ->
+          [{type, tokens}] = tokens
 
-        :timestamp_field ->
-          to_path_val_op(:timestamp_field, tokens)
-
-        :metadata_field ->
-          to_path_val_op(:metadata_field, tokens)
+          type
+          |> to_path_val_op(tokens)
+          |> Map.update!(:operator, &("!" <> &1))
       end
     end
+  end
+
+  defp to_path_val_op(tag, [regex]) when tag in ~w(word quoted_string)a do
+    %{
+      path: "event_message",
+      value: regex,
+      operator: "~"
+    }
   end
 
   defp to_path_val_op(:metadata_field, [path, operator, value]) do
@@ -185,13 +198,18 @@ defmodule Logflare.Logs.Search.Parser do
 
   defp maybe_cast_value(%{operator: op, value: sourcevalue} = c)
        when op in @arithmetic_operators and is_binary(sourcevalue) do
+    int_parsed = Integer.parse(c.value)
+    float_parsed = Float.parse(c.value)
+
     value =
-      with :error <- Integer.parse(c.value),
-           :error <- Float.parse(c.value) do
-        c.value
-      else
-        {value, ""} -> value
-        {_, _} -> c.value
+      cond do
+        match?({_, ""}, int_parsed) ->
+          {value, ""} = int_parsed
+          value
+        match?({_, ""}, float_parsed) ->
+          {value, ""} = float_parsed
+          value
+        true -> c.value
       end
 
     %{c | value: value}
