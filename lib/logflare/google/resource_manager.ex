@@ -68,7 +68,7 @@ defmodule Logflare.Google.CloudResourceManager do
           )
 
         {:error, response} ->
-          Logger.info("Set IAM policy: #{Enum.count(members)} accounts",
+          Logger.error("Set IAM policy error: #{Enum.count(members)} accounts",
             logflare: %{
               google: %{
                 cloudresourcemanager: %{
