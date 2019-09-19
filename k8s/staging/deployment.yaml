@@ -31,6 +31,8 @@ spec:
               protocol: TCP
             - containerPort: 9001
               protocol: TCP
+            - containerPort: 4369
+              protocol: TCP
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
