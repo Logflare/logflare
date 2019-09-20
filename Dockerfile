@@ -19,4 +19,3 @@ RUN mix phx.digest
 RUN mix release --force --overwrite
 
 ENTRYPOINT ["/logflare/run.bash"]
-CMD ["/logflare/run.bash"]
