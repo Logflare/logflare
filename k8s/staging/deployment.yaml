@@ -36,7 +36,7 @@ spec:
           env:
             - name: RELEASE_COOKIE
               value: "temp_secret_cookie"
-            - name: POD_IP
+            - name: MY_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
