@@ -13,10 +13,6 @@ spec:
     app: logflare-staging
   ports:
     - protocol: TCP
-      port: 4369
-      name: epmd
-      targetPort: 4000
-    - protocol: TCP
       port: 80
       name: http-phx
       targetPort: 4000

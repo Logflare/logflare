@@ -29,10 +29,6 @@ spec:
           ports:
             - containerPort: 4000
               protocol: TCP
-            - containerPort: 9001
-              protocol: TCP
-            - containerPort: 4369
-              protocol: TCP
           env:
             - name: RELEASE_COOKIE
               value: "temp_secret_cookie"
