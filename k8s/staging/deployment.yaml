@@ -35,7 +35,12 @@ spec:
               protocol: TCP
           env:
             - name: RELEASE_COOKIE
-              value: "temp_secret_cookier"
+              value: "temp_secret_cookie"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
