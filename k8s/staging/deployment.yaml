@@ -40,7 +40,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
