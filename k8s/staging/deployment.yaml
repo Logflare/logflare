@@ -33,6 +33,9 @@ spec:
               protocol: TCP
             - containerPort: 4369
               protocol: TCP
+          env:
+            - name: RELEASE_COOKIE
+              value: "temp_secret_cookier"
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler

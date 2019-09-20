@@ -76,20 +76,18 @@ config :scrivener_html,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
   view_style: :bootstrap_v4
 
+
 config :libcluster,
   debug: true,
   topologies: [
-    gossip_example: [
-      strategy: Elixir.Cluster.Strategy.Gossip,
-      config: [
-        port: 45_892,
-        if_addr: "0.0.0.0",
-        multicast_addr: "230.1.1.251",
-        multicast_ttl: 1,
-        secret: "somepassword"
+    k8s_chat: [
+      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
+        config: [
+          service: "logflare-staging-service",
+          application_name: "logflare-staging"
+        ]
       ]
     ]
-  ]
 
 config :logflare,
   sigterm_shutdown_grace_period_ms: 120_000
