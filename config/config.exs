@@ -84,7 +84,7 @@ config :libcluster,
       strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
         config: [
           mode: :ip,
-          service: "logflare-staging-service",
+          service: "logflare-staging-headless",
           application_name: "logflare-staging"
         ]
       ]
