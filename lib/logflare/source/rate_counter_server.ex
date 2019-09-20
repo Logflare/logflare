@@ -193,13 +193,19 @@ defmodule Logflare.Source.RateCounterServer do
   def get_cluster_rate_metrics(source_id, bucket \\ :default)
       when bucket == :default and is_atom(source_id) do
     nodes_metrics =
-      Phoenix.Tracker.list(Logflare.Tracker, name(source_id))
-      |> Enum.map(fn {_x, y} ->
-        y
-        |> Map.get(:buckets)
-        |> Map.get(@default_bucket_width)
-        |> Map.drop([:queue])
-      end)
+      case Phoenix.Tracker.list(Logflare.Tracker, name(source_id)) do
+        [] ->
+          [%{average: 0, duration: 60, sum: 0}]
+
+        metrics ->
+          metrics
+          |> Enum.map(fn {_x, y} ->
+            y
+            |> Map.get(:buckets)
+            |> Map.get(@default_bucket_width)
+            |> Map.drop([:queue])
+          end)
+      end
 
     cluster_metrics =
       Enum.reduce(nodes_metrics, fn x, acc ->
