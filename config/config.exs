@@ -83,7 +83,7 @@ config :libcluster,
     k8s_chat: [
       strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
         config: [
-          mode: :hostname,
+          mode: :ip,
           service: "logflare-staging-service",
           application_name: "logflare-staging"
         ]
