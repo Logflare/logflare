@@ -119,7 +119,8 @@ defmodule Logflare.Mixfile do
       {:etso, "~> 0.1.1"},
 
       # Statistics
-      {:statistex, "~> 1.0.0"}
+      {:statistex, "~> 1.0.0"},
+      {:hackney, github: "benoitc/hackney", ref: "18723ef36a121af1023ee582e714c0f0dee6a640", override: true}
     ]
   end
 
