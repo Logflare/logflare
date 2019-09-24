@@ -77,18 +77,6 @@ config :scrivener_html,
   view_style: :bootstrap_v4
 
 
-config :libcluster,
-  debug: true,
-  topologies: [
-    k8s_chat: [
-      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
-        config: [
-          service: "logflare-staging-headless",
-          application_name: "logflare"
-        ]
-      ]
-    ]
-
 config :logflare,
   sigterm_shutdown_grace_period_ms: 120_000
 

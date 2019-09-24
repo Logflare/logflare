@@ -40,6 +40,18 @@ config :logflare_logger_backend,
 config :logflare_telemetry,
   source_id: :"00a9997c-3e77-4220-bdb7-5f63be2247f5"
 
+config :libcluster,
+  debug: true,
+  topologies: [
+    k8s_chat: [
+      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
+        config: [
+          service: "logflare-staging-headless",
+          application_name: "logflare"
+        ]
+      ]
+    ]
+
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"
 end
