@@ -37,7 +37,7 @@ defmodule Logflare.Application do
       supervisor(LogflareWeb.Endpoint, []),
       worker(
         Logflare.Tracker,
-        [[name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250]]
+        [[name: Logflare.Tracker, pubsub_server: Logflare.PubSub, broadcast_period: 250, down_period: 1_000, permdown_period: 30_000]]
       ),
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareTelemetry.Supervisor, [])
