@@ -45,12 +45,13 @@ config :libcluster,
   topologies: [
     k8s_chat: [
       strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
-        config: [
-          service: "logflare-staging-headless",
-          application_name: "logflare"
-        ]
+      config: [
+        service: "logflare-staging-headless",
+        application_name: "logflare",
+        polling_interval: 100
       ]
     ]
+  ]
 
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"
