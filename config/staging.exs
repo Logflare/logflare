@@ -48,7 +48,7 @@ config :libcluster,
       config: [
         service: "logflare-staging-headless",
         application_name: "logflare",
-        polling_interval: 100
+        polling_interval: 1_000
       ]
     ]
   ]
