@@ -43,7 +43,8 @@ defmodule Logflare.Application do
             pubsub_server: Logflare.PubSub,
             broadcast_period: 250,
             down_period: 1_000,
-            permdown_period: 30_000
+            permdown_period: 30_000,
+            pool_size: 10
           ]
         ]
       ),
