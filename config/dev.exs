@@ -59,12 +59,23 @@ config :logflare, Logflare.Google,
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
 
 config :libcluster,
-  debug: true,
   topologies: [
     dev: [
       strategy: Cluster.Strategy.Epmd,
-      config: [hosts: [:"a@127.0.0.1", :"b@127.0.0.1"]]
+      config: [
+        hosts: [:"pink@Chases-MBP-2017", :"orange@Chases-MBP-2017", :"red@Chases-MBP-2017"]
+      ]
     ]
+    # gossip_example: [
+    #   strategy: Elixir.Cluster.Strategy.Gossip,
+    #   config: [
+    #     port: 45892,
+    #     if_addr: "0.0.0.0",
+    #     multicast_addr: "230.1.1.251",
+    #     multicast_ttl: 1,
+    #     secret: "somepassword"
+    #   ]
+    # ]
   ]
 
 import_config "dev.secret.exs"
