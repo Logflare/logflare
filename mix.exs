@@ -75,7 +75,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
-      {:google_api_big_query, "~> 0.23.0"},
+      {:google_api_big_query, "~> 0.24.0"},
       {:goth, "~> 0.8.0"},
       {:broadway, "~> 0.4.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
@@ -120,7 +120,6 @@ defmodule Logflare.Mixfile do
 
       # Statistics
       {:statistex, "~> 1.0.0"},
-      {:hackney, github: "benoitc/hackney", ref: "18723ef36a121af1023ee582e714c0f0dee6a640", override: true}
     ]
   end
 
