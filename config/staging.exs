@@ -53,6 +53,8 @@ config :libcluster,
     ]
   ]
 
+import_config "telemetry.exs"
+
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"
 end

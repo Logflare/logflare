@@ -4,9 +4,6 @@ defmodule Logflare.TelemetryBackend.BQ do
   alias Logflare.Logs
   alias Logflare.Sources
   @default_source_id Application.get_env(:logflare_telemetry, :source_id)
-  alias Telemetry.Metrics.{Counter, Distribution, LastValue, Sum, Summary}
-  alias LogflareTelemetry, as: LT
-  alias LT.ExtendedMetrics, as: ExtMetrics
 
   def ingest(payload) do
     source = Sources.Cache.get_by_id(@default_source_id)
@@ -19,9 +16,11 @@ defmodule Logflare.TelemetryBackend.BQ do
 
   def prepare_for_bq(payload) when is_map(payload) do
     for {k, v} <- payload, into: %{} do
-      k = k
+      k =
+        k
         |> String.trim_leading("logflare.")
         |> String.replace(".", "__")
+
       {k, prepare_for_bq(v)}
     end
   end

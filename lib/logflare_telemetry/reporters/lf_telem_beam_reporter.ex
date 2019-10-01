@@ -49,10 +49,6 @@ defmodule LogflareTelemetry.Reporters.V0.BEAM do
     MetricsCache.put(metric, measurement)
   end
 
-  # def handle_metric(metric, measurements, metadata) do
-  #   Reporter.handle_metric(metric, measurements, metadata)
-  # end
-
   def terminate(_, events) do
     Enum.each(events, &:telemetry.detach({__MODULE__, &1, self()}))
     :ok

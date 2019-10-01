@@ -8,7 +8,7 @@ defmodule LogflareTelemetry.Reporters.V0.Ecto do
   alias LogflareTelemetry, as: LT
   alias LT.Reporters.Gen.V0, as: Reporter
   alias LT.Reporters.Ecto.Transformer.V0, as: Transformer
-  alias LT.{MetricsCache, LogflareMetrics}
+  alias LT.MetricsCache
   alias LT.ExtendedMetrics, as: ExtMetrics
 
   require Logger
