@@ -26,15 +26,12 @@ defmodule Logflare.Application do
     dev_prod_children = [
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
-      Logflare.Users.Cache,
-      Logflare.Sources.Cache,
-      Logflare.Logs.RejectedLogEvents,
-      # init Counters before Manager as Manager calls Counters through table create
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
-      supervisor(Logflare.Sources.Counters, []),
-      supervisor(Logflare.Sources.RateCounters, []),
-      supervisor(Logflare.Source.Supervisor, []),
-      supervisor(LogflareWeb.Endpoint, []),
+      supervisor(Phoenix.PubSub.PG2, [
+        [
+          name: Logflare.PubSub,
+          fastlane: Phoenix.Channel.Server
+        ]
+      ]),
       worker(
         Logflare.Tracker,
         [
@@ -48,8 +45,17 @@ defmodule Logflare.Application do
           ]
         ]
       ),
+      supervisor(LogflareTelemetry.Supervisor, []),
+      Logflare.Users.Cache,
+      Logflare.Sources.Cache,
+      Logflare.Logs.RejectedLogEvents,
+      # init Counters before Manager as Manager calls Counters through table create
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
+      supervisor(Logflare.Sources.Counters, []),
+      supervisor(Logflare.Sources.RateCounters, []),
+      supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareTelemetry.Supervisor, [])
+      supervisor(LogflareWeb.Endpoint, [])
     ]
 
     env = Application.get_env(:logflare, :env)
