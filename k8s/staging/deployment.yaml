@@ -8,6 +8,7 @@ spec:
   progressDeadlineSeconds: 600
   replicas: 3
   revisionHistoryLimit: 10
+  minReadySeconds: 30
   selector:
     matchLabels:
       app: logflare-staging
@@ -15,7 +16,6 @@ spec:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-      minReadySeconds: 30
     type: RollingUpdate
   template:
     metadata:
