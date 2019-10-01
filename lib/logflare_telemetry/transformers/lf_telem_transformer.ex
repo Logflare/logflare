@@ -6,23 +6,43 @@ defmodule LogflareTelemetry.Transformer do
   alias Telemetry.Metrics.{Counter, Distribution, LastValue, Sum, Summary}
   alias LogflareTelemetry, as: LT
   alias LT.ExtendedMetrics, as: ExtMetrics
-  @default_schema_type :flat
+  alias LT.Enricher
+  @default_schema_type :nested
 
   def event_to_payload(telem_metric, value, %{schema_type: :nested}) do
-    telem_metric.name
-    |> Enum.reverse()
-    |> Enum.reduce(value, fn
-      key, acc -> %{key => acc}
-    end)
-    |> MapKeys.to_strings()
+    metric = telem_metric.name ++ [metric_to_type(telem_metric)]
+    metric = clean_metric(metric)
+
+    metadata =
+      metric
+      |> Enum.reverse()
+      |> Enum.reduce(value, fn
+        key, acc -> %{key => acc}
+      end)
+      |> MapKeys.to_strings()
+
+    metadata =
+      Map.merge(
+        metadata,
+        %{
+          "context" => %{
+            "beam" => Enricher.beam_context()
+          }
+        }
+      )
+
+    %{
+      "metadata" => metadata,
+      "message" => Enum.join(metric, ".")
+    }
   end
 
   def event_to_payload(telem_metric, value, %{schema_type: :flat}) do
     metric = telem_metric.name ++ [metric_to_type(telem_metric)]
     key = Enum.join(metric, ".")
     val = MapKeys.to_strings(value)
-    %{key => val}
-    |> Iteraptor.to_flatmap
+
+    Iteraptor.to_flatmap(%{key => val})
   end
 
   def event_to_payload(metric, val, config) do
@@ -40,6 +60,14 @@ defmodule LogflareTelemetry.Transformer do
 
       _ ->
         event_to_payload(metric, val, config)
+    end
+  end
+
+  def clean_metric([first | rest] = metric) do
+    if first === :logflare do
+      rest
+    else
+      metric
     end
   end
 

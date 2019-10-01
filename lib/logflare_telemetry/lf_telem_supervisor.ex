@@ -12,8 +12,8 @@ defmodule LogflareTelemetry.Supervisor do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  def init(args) do
-    config = args[:config] || default_config()
+  def init(config \\ %{}) do
+    config = merge_configs(config)
 
     children = [
       {LT.Reporters.V0.Ecto, config.ecto},
@@ -26,14 +26,16 @@ defmodule LogflareTelemetry.Supervisor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def default_config() do
+  def merge_configs(config) do
+    default_backend = config[:backend] || @backend
+
     %Config{
       beam: %Config{
         metrics: metrics(:beam),
         tick_interval: 1_000,
-        backend: @backend
+        backend: default_backend
       },
-      ecto: %Config{metrics: metrics(:ecto), tick_interval: 1_000, backend: @backend}
+      ecto: %Config{metrics: metrics(:ecto), tick_interval: 1_000, backend: default_backend}
     }
   end
 
@@ -57,32 +59,4 @@ defmodule LogflareTelemetry.Supervisor do
       ExtMetrics.last_values(vm_total_run_queue_lengths)
     ]
   end
-
-  # def metrics(:prev_beam) do
-  #   vm_memory_measurements = [
-  #     :atom,
-  #     :atom_used,
-  #     :binary,
-  #     :code,
-  #     :ets,
-  #     :processes,
-  #     :processes_used,
-  #     :system,
-  #     :total
-  #   ]
-
-  #   vm_total_run_queue_length_measurements = [:cpu, :io, :total]
-
-  #   vm_memory_metrics =
-  #     for m <- vm_memory_measurements do
-  #       Metrics.last_value([:vm, :memory, m])
-  #     end
-
-  #   vm_total_run_queue_length_metrics =
-  #     for m <- vm_total_run_queue_length_measurements do
-  #       Metrics.last_value([:vm, :total_run_queue_lengths, m])
-  #     end
-
-  #   vm_memory_metrics ++ vm_total_run_queue_length_metrics
-  # end
 end

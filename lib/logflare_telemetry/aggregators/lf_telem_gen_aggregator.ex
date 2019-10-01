@@ -11,7 +11,7 @@ defmodule LogflareTelemetry.Aggregators.GenAggregator do
         metric
         |> Transformer.event_to_payload(value, config)
         |> List.wrap()
-        |> transform_to_logs_ingest_dispatch()
+        # |> transform_to_logs_ingest_dispatch()
         |> backend.ingest()
     end
 
@@ -24,10 +24,11 @@ defmodule LogflareTelemetry.Aggregators.GenAggregator do
 
   def transform_to_logs_ingest_dispatch(values) do
     for value <- values do
-      message = value
-      |> Map.to_list()
-      |> hd
-      |> elem(0)
+      message =
+        value
+        |> Map.to_list()
+        |> hd
+        |> elem(0)
 
       message =
         message

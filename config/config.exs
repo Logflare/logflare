@@ -76,9 +76,7 @@ config :scrivener_html,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
   view_style: :bootstrap_v4
 
-
 config :logflare,
   sigterm_shutdown_grace_period_ms: 120_000
 
 import_config "#{Mix.env()}.exs"
-import_config "telemetry.exs"
