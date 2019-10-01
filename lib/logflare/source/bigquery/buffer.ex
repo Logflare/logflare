@@ -7,7 +7,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   require Logger
 
-  @broadcast_every 250
+  @broadcast_every 1_000
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(

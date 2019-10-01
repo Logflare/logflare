@@ -5,7 +5,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.14.2",
+      version: "0.14.3",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -119,7 +119,7 @@ defmodule Logflare.Mixfile do
       {:etso, "~> 0.1.1"},
 
       # Statistics
-      {:statistex, "~> 1.0.0"},
+      {:statistex, "~> 1.0.0"}
     ]
   end
 

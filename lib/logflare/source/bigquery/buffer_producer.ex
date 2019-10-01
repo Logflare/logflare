@@ -6,7 +6,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   alias Logflare.Source.BigQuery.Buffer
   alias Logflare.LogEvent, as: LE
 
-  @default_receive_interval 1000
+  @default_receive_interval 1_000
 
   @impl true
   def init(%{source_id: source_id}) when is_atom(source_id) do

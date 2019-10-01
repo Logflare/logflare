@@ -8,7 +8,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   alias Logflare.Cluster
 
   @poll_per_second 1_000
-  @poll_total_every 250
+  @poll_total_every 1_000
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
