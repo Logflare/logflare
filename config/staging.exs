@@ -38,7 +38,7 @@ config :logflare_logger_backend,
   url: "http://example.com"
 
 config :logflare_telemetry,
-  source_id: :"00a9997c-3e77-4220-bdb7-5f63be2247f5"
+  source_id: :"e5d18201-f0e0-459b-b6b3-2d3bc7d16fa4"
 
 config :libcluster,
   debug: true,
