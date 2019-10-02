@@ -120,6 +120,10 @@ defmodule Logflare.Mixfile do
 
       # Statistics
       {:statistex, "~> 1.0.0"},
+
+      # Redis
+      {:redix, ">= 0.0.0"},
+      {:castore, ">= 0.0.0"}
     ]
   end
 

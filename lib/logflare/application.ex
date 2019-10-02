@@ -24,6 +24,7 @@ defmodule Logflare.Application do
     topologies = Application.get_env(:libcluster, :topologies)
 
     dev_prod_children = [
+      Logflare.Redix,
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       Logflare.Users.Cache,
