@@ -123,7 +123,11 @@ defmodule Logflare.Mixfile do
 
       # Redis
       {:redix, ">= 0.0.0"},
-      {:castore, ">= 0.0.0"}
+      {:castore, ">= 0.0.0"},
+
+      # Cluster utils
+
+      {:local_cluster, "~> 1.1", only: [:test]}
     ]
   end
 

@@ -15,6 +15,7 @@ defmodule Logflare.Application do
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Redix,
       Logflare.Logs.RejectedLogEvents,
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
@@ -33,6 +34,7 @@ defmodule Logflare.Application do
           fastlane: Phoenix.Channel.Server
         ]
       ]),
+      Logflare.Redix,
       worker(
         Logflare.Tracker,
         [
