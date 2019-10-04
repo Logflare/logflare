@@ -8,6 +8,7 @@ defmodule Logflare.Logs do
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Rule
+  alias Logflare.Sources
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{} = source) do
@@ -68,8 +69,14 @@ defmodule Logflare.Logs do
     RecentLogsServer.push(source.token, le)
     Buffer.push(source_table_string, le)
 
+    %{user_rate: user_rate, source_rate: source_rate} =
+      Sources.Store.increment_and_get_rates(source)
+
+    Logflare.Users.API.Cache.put_source_rate(source, source_rate)
+    Logflare.Users.API.Cache.put_user_rate(source.user, user_rate)
+
     # all sources genservers
-    Sources.Counters.incriment(source.token)
+    # Sources.Counters.incriment(source.token)
     SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
     # broadcasters

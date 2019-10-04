@@ -1,4 +1,6 @@
 defmodule Logflare.Users.API do
+  require Logger
+
   @type api_rates_quotas :: %{
           message: String.t(),
           metrics: %{
@@ -13,6 +15,57 @@ defmodule Logflare.Users.API do
           }
         }
 
+  defmodule Cache do
+    @moduledoc """
+    Caches API rate data from external cluster store
+    """
+    @ttl 2_000
+    import Cachex.Spec
+    @cache __MODULE__
+
+    def child_spec(_) do
+      %{
+        id: @cache,
+        start: {
+          Cachex,
+          :start_link,
+          [
+            @cache,
+            [expiration: expiration(default: @ttl)]
+          ]
+        }
+      }
+    end
+
+    def get_ingest_rates(source) do
+      %{
+        source_rate: get({:rate, :source, source.token}, 0),
+        user_rate: get({:rate, :user, source.user.id}, 0)
+      }
+    end
+
+    def put_user_rate(user, rate) do
+      Cachex.put(@cache, {:rate, :user, user.id}, rate)
+    end
+
+    def put_source_rate(source, rate) do
+      Cachex.put(@cache, {:rate, :source, source.token}, rate)
+    end
+
+    def get(key, default) do
+      case Cachex.get(@cache, key) do
+        {:ok, nil} ->
+          default
+
+        {:ok, value} ->
+          value
+
+        {:error, error} ->
+          Logger.error("Cachex error: #{inspect(error)}")
+      end
+    end
+  end
+
   @source_rate_message "Source rate is over the API quota. Email support@logflare.app to increase your rate limit."
   @user_rate_message "User rate is over the API quota. Email support@logflare.app to increase your rate limit."
 
@@ -23,18 +76,22 @@ defmodule Logflare.Users.API do
   alias Logflare.{Sources, User}
   @api_call_logs {:api_call, :logs_post}
 
+  @duration 60
+
   @spec verify_api_rates_quotas(map) :: ok_err_tup
   def verify_api_rates_quotas(%{type: @api_call_logs} = action) do
     %{source: source, user: user} = action
 
-    source_bucket_metrics = Sources.get_rate_metrics(source, bucket: :default)
-    user_sum_of_sources = get_total_user_api_rate(user)
+    %{
+      source_rate: source_rate,
+      user_rate: user_rate
+    } = Cache.get_ingest_rates(source)
 
-    source_limit = source_bucket_metrics.duration * source.api_quota
-    source_remaining = source_limit - source_bucket_metrics.sum
+    source_limit = @duration * source.api_quota
+    source_remaining = source_limit - source_rate
 
-    user_limit = source_bucket_metrics.duration * user.api_quota
-    user_remaining = user_limit - user_sum_of_sources
+    user_limit = @duration * user.api_quota
+    user_remaining = user_limit - user_rate
 
     {status, message} =
       cond do
@@ -63,12 +120,5 @@ defmodule Logflare.Users.API do
     }
 
     {status, metrics_message}
-  end
-
-  def get_total_user_api_rate(%User{sources: sources}) when is_list(sources) do
-    sources
-    |> Enum.map(&Sources.get_rate_metrics(&1, bucket: :default))
-    |> Enum.map(&Map.get(&1, :sum))
-    |> Enum.sum()
   end
 end
