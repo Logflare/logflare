@@ -9,3 +9,11 @@
 
 ## Tweak GC to run more often
 ##-env ERL_FULLSWEEP_AFTER 10
+
+## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
++sbwt none
++sbwtdcpu none
++sbwtdio none
+
+## Set process limit
++P 1000000
