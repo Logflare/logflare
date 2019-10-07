@@ -35,3 +35,8 @@
 # Enable SMP automatically based on availability
 # On OTP21+, this is not needed anymore.
 -smp auto
+
+## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
++sbwt none
++sbwtdcpu none
++sbwtdio none
