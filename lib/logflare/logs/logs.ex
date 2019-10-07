@@ -7,6 +7,7 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
+  alias Logflare.Sources.ClusterStore
   alias Logflare.Rule
   alias Logflare.Sources
 
@@ -66,17 +67,11 @@ defmodule Logflare.Logs do
     source_table_string = Atom.to_string(source.token)
 
     # indvididual source genservers
-    RecentLogsServer.push(source.token, le)
     Buffer.push(source_table_string, le)
 
-    %{user_rate: user_rate, source_rate: source_rate} =
-      Sources.Store.increment_and_get_rates(source)
-
-    Logflare.Users.API.Cache.put_source_rate(source, source_rate)
-    Logflare.Users.API.Cache.put_user_rate(source.user, user_rate)
+    ClusterStore.increment_counters(source)
 
     # all sources genservers
-    # Sources.Counters.incriment(source.token)
     SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
     # broadcasters

@@ -26,7 +26,7 @@ defmodule Logflare.Application do
 
     dev_prod_children = [
       # Logflare.Sources.PubSub,
-      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+      # {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       supervisor(Phoenix.PubSub.PG2, [
         [

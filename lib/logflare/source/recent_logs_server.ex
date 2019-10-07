@@ -27,6 +27,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
   alias __MODULE__, as: RLS
+  alias Logflare.Source.LocalStore
 
   require Logger
 
@@ -95,7 +96,8 @@ defmodule Logflare.Source.RecentLogsServer do
       {Buffer, rls},
       {Schema, rls},
       {Pipeline, rls},
-      {SearchQueryExecutor, rls}
+      {SearchQueryExecutor, rls},
+      {LocalStore, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
