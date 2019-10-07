@@ -295,7 +295,9 @@ defmodule Logflare.Google.BigQuery do
         }
 
         {:ok, _response} =
-          Api.Datasets.bigquery_datasets_patch(conn, project_id, dataset_id, body: body)
+          Api.Datasets.bigquery_datasets_patch(conn, project_id || @project_id, dataset_id,
+            body: body
+          )
 
         Logger.info("Dataset patched: #{dataset_id} | #{email}")
       end
