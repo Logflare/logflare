@@ -22,64 +22,41 @@ defmodule Logflare.Sources.ClusterStore do
   end
 
   def get_user_log_counts(user_id) do
-    match = "*user::#{user_id}::log_count::timestamp*"
+    unix_ts = unix_ts_now()
 
-    {:ok,
-     [
-       "0",
-       keys
-     ]} =
-      LogflareRedix.command([
-        "SCAN",
-        "0",
-        "MATCH",
-        match,
-        "COUNT",
-        1000
-      ])
+    keys =
+      for i <- 0..@default_ttl_sec do
+        gen_user_log_count_key(user_id, gen_suffix(unix_ts - i))
+      end
 
-    if keys === [] do
-      {:ok, []}
-    else
-      cmd = ["MGET" | keys]
-      {:ok, result} = LogflareRedix.command(cmd)
+    {:ok, result} = LogflareRedix.command(["MGET" | keys])
 
-      result = clean_and_parse(result)
+    result =
+      result
+      # TODO
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&String.to_integer/1)
 
-      {:ok, result}
-    end
+    {:ok, result}
   end
 
   def get_source_log_counts(source) do
-    match = "*source::#{Atom.to_string(source.token)}::log_count::#{timestamp_suffix()}*"
+    unix_ts = unix_ts_now()
 
-    {:ok,
-     [
-       "0",
-       keys
-     ]} =
-      LogflareRedix.command([
-        "SCAN",
-        "0",
-        "MATCH",
-        match,
-        "COUNT",
-        1000
-      ])
+    keys =
+      for i <- 0..@default_ttl_sec do
+        gen_source_log_count_key(source.token, gen_suffix(unix_ts - i))
+      end
 
-    if keys === [] do
-      {:ok, []}
-    else
-      {:ok, result} = LogflareRedix.command(["MGET" | keys])
+    {:ok, result} = LogflareRedix.command(["MGET" | keys])
 
-      result =
-        result
-        # TODO
-        |> Enum.reject(&is_nil/1)
-        |> Enum.map(&String.to_integer/1)
+    result =
+      result
+      # TODO
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&String.to_integer/1)
 
-      {:ok, result}
-    end
+    {:ok, result}
   end
 
   def clean_and_parse(result) do
@@ -149,8 +126,8 @@ defmodule Logflare.Sources.ClusterStore do
 
   def increment_counters(%Source{} = source) do
     suffix = gen_suffix()
-    source_key = gen_source_key(source.token, suffix)
-    user_key = gen_user_key(source.user.id, suffix)
+    source_key = gen_source_log_count_key(source.token, suffix)
+    user_key = gen_user_log_count_key(source.user.id, suffix)
     incr_and_expire(source_key)
     incr_and_expire(user_key)
   end
@@ -163,17 +140,20 @@ defmodule Logflare.Sources.ClusterStore do
   end
 
   # Name generators
-  def gen_source_key(source_id, suffix) do
+  def gen_source_log_count_key(source_id, suffix) do
     "source::#{source_id}::log_count::#{suffix}::v1"
   end
 
-  def gen_user_key(user_id, suffix) do
+  def gen_user_log_count_key(user_id, suffix) do
     "user::#{user_id}::log_count::#{suffix}::v1"
   end
 
-  def gen_suffix() do
-    ts = NaiveDateTime.utc_now() |> Timex.to_unix()
+  def gen_suffix(ts \\ unix_ts_now()) do
     "#{timestamp_suffix()}:#{ts}"
+  end
+
+  def unix_ts_now() do
+    NaiveDateTime.utc_now() |> Timex.to_unix()
   end
 
   def timestamp_suffix() do
