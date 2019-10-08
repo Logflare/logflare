@@ -77,10 +77,6 @@ defmodule Logflare.Source.RecentLogsServer do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
 
-    # Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-    #   load_init_log_message(source_id, bigquery_project_id)
-    # end)
-
     {:ok, bq_count} = load_init_log_message(source_id, bigquery_project_id)
 
     rls = %{
@@ -91,7 +87,6 @@ defmodule Logflare.Source.RecentLogsServer do
     }
 
     children = [
-      {RateCounterServer, rls},
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {Buffer, rls},
@@ -102,8 +97,6 @@ defmodule Logflare.Source.RecentLogsServer do
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
-
-    init_metadata = %{source_token: "#{source_id}", log_count: 0, bq_count: bq_count, inserts: 0}
 
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}

@@ -44,18 +44,6 @@ defmodule Logflare.Source.ChannelTopics do
     Phoenix.PubSub.direct_broadcast(node(), Logflare.PubSub, topic, payload)
   end
 
-  def broadcast_rates(payload) do
-    payload =
-      payload
-      |> Map.put(:rate, payload[:last_rate])
-
-    topic = "dashboard:#{payload.source_token}"
-    event = "rate"
-    payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
-
-    Phoenix.PubSub.direct_broadcast(node(), Logflare.PubSub, topic, payload)
-  end
-
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
       body: body |> Map.from_struct(),
