@@ -4,6 +4,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
+  alias Logflare.ClusterStore
 
   require Logger
 
@@ -98,6 +99,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
+    ClusterStore.set_buffer_count(:queue.len(state.buffer))
     update_tracker(state)
     broadcast_buffer(state)
     check_buffer()

@@ -35,12 +35,13 @@ defmodule Logflare.Source.LocalStore do
 
     unless Enum.empty?(sec_counters) do
       {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
+      {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
       prev_max = prev_max || 0
       max = Enum.max([prev_max | sec_counters])
       avg = Enum.sum(sec_counters) / Enum.count(sec_counters)
       last = hd(sec_counters)
 
-      rates = %{
+      rates_payload = %{
         last_rate: last,
         rate: last,
         average_rate: round(avg),
@@ -48,7 +49,10 @@ defmodule Logflare.Source.LocalStore do
         source_token: source.token
       }
 
-      Source.ChannelTopics.broadcast_rates(rates)
+      buffer_payload = %{source_token: state.source_id, buffer: buffer}
+
+      Source.ChannelTopics.broadcast_rates(rates_payload)
+      Source.ChannelTopics.broadcast_buffer(buffer_payload)
 
       ClusterStore.set_max_rate(source_id, max)
       ClusterStore.set_avg_rate(source_id, avg)
