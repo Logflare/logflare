@@ -53,6 +53,10 @@ config :libcluster,
     ]
   ]
 
+config :logflare, :logflare_redix,
+  host: "10.143.23.4"
+  port: 6379
+
 import_config "telemetry.exs"
 
 if File.exists?("config/staging.secret.exs") do

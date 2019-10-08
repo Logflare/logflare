@@ -1,9 +1,12 @@
 defmodule Logflare.Redix do
   @default_conn :logflare_redix
+
   def child_spec(_args) do
+    host = Application.get_env(:logflare, @default_conn)[:host]
+    port = Application.get_env(:logflare, @default_conn)[:port]
     # Specs for the Redix connections.
     children = [
-      Supervisor.child_spec({Redix, name: @default_conn, host: "localhost", port: 6379},
+      Supervisor.child_spec({Redix, name: @default_conn, host: host, port: port},
         id: {Redix, 0}
       )
     ]
