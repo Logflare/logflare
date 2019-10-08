@@ -8,6 +8,8 @@ defmodule Logflare.Source.LocalStore do
   alias Logflare.Source.RecentLogsServer, as: RLS
   use GenServer
 
+  @tick_interval 250
+
   # def start_link(%{source: %Source{} = source} = args, opts) do
   def start_link(%RLS{source_id: source_id} = args, opts \\ []) do
     GenServer.start_link(__MODULE__, args, opts)
@@ -42,10 +44,10 @@ defmodule Logflare.Source.LocalStore do
       last = hd(sec_counters)
 
       rates_payload = %{
-        last_rate: last,
-        rate: last,
-        average_rate: round(avg),
-        max_rate: max,
+        last_rate: last || 0,
+        rate: last || 0,
+        average_rate: round(avg) || 0,
+        max_rate: max || 0,
         source_token: source.token
       }
 
@@ -73,6 +75,6 @@ defmodule Logflare.Source.LocalStore do
   end
 
   def tick() do
-    Process.send_after(self(), :tick, 100)
+    Process.send_after(self(), :tick, @tick_interval)
   end
 end
