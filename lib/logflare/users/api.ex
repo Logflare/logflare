@@ -19,7 +19,7 @@ defmodule Logflare.Users.API do
     @moduledoc """
     Caches API rate data from external cluster store
     """
-    @ttl 2_000
+    @ttl 1_000
     import Cachex.Spec
     @cache __MODULE__
 
@@ -60,8 +60,9 @@ defmodule Logflare.Users.API do
         {:ok, value} ->
           value
 
-        {:error, error} ->
+        {:error, error} = errtup ->
           Logger.error("Cachex error: #{inspect(error)}")
+          errtup
       end
     end
   end

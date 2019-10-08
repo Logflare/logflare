@@ -15,6 +15,7 @@ defmodule Logflare.Application do
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Users.API.Cache,
       Logflare.Redix,
       Logflare.Logs.RejectedLogEvents,
       supervisor(Logflare.Repo, []),
@@ -26,7 +27,7 @@ defmodule Logflare.Application do
 
     dev_prod_children = [
       # Logflare.Sources.PubSub,
-      # {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       supervisor(Phoenix.PubSub.PG2, [
         [
@@ -52,6 +53,7 @@ defmodule Logflare.Application do
       supervisor(LogflareTelemetry.Supervisor, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Users.API.Cache,
       Logflare.Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
       {Task.Supervisor, name: Logflare.TaskSupervisor},
