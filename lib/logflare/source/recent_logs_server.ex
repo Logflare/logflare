@@ -25,6 +25,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Sources.ClusterStore
   alias Logflare.Logs.SearchQueryExecutor
   alias __MODULE__, as: RLS
   alias Logflare.Source.LocalStore
@@ -104,8 +105,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
     init_metadata = %{source_token: "#{source_id}", log_count: 0, bq_count: bq_count, inserts: 0}
 
-    Phoenix.Tracker.track(Logflare.Tracker, self(), source_id, Node.self(), init_metadata)
-
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
   end
@@ -121,10 +120,10 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:broadcast, state) do
-    update_tracker(state)
-    {:ok, total_cluster_inserts} = broadcast_count(state)
-    broadcast()
-    {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
+    bq_count = state.bq_total_on_boot
+    inserts = Data.get_inserts(state.source_id)
+    ClusterStore.set_total_log_count(state.source_id, bq_count + inserts)
+    {:noreply, state}
   end
 
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
@@ -153,40 +152,6 @@ defmodule Logflare.Source.RecentLogsServer do
     # Do Shutdown Stuff
     Logger.info("Going Down: #{state.source_id}")
     reason
-  end
-
-  ## Private Functions
-  defp broadcast_count(state) do
-    p =
-      Phoenix.Tracker.list(Logflare.Tracker, state.source_id)
-      |> merge_metadata
-
-    {_, payload} =
-      Map.get_and_update(p, :log_count, fn current_value ->
-        {current_value, p.bq_count + p.inserts}
-      end)
-
-    if payload.log_count > state.total_cluster_inserts do
-      Source.ChannelTopics.broadcast_log_count(payload)
-    end
-
-    {:ok, payload.log_count}
-  end
-
-  defp update_tracker(state) do
-    pid = Process.whereis(state.source_id)
-
-    bq_count = state.bq_total_on_boot
-    inserts = Data.get_inserts(state.source_id)
-
-    payload = %{
-      source_token: state.source_id,
-      bq_count: bq_count,
-      inserts: inserts,
-      log_count: 0
-    }
-
-    Phoenix.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), payload)
   end
 
   def merge_metadata(list) do

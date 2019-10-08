@@ -108,6 +108,24 @@ defmodule Logflare.Sources.ClusterStore do
     LogflareRedix.command(["SET", key, value, "EX", 1])
   end
 
+  # Log count
+  def set_total_log_count(source_id, value) do
+    key = "source::#{source_id}::total_log_count::#{Node.self()}::v1"
+    LR.command(["SET", key, value, "EX", 300])
+  end
+
+  def get_total_log_count(source_id) do
+    with {:ok, keys} <- LR.scan_all_match("*source::#{source_id}::total_log_count::*"),
+         {:ok, result} <- LR.multi_get(keys) do
+      values = clean_and_parse(result)
+      total_log_count = Enum.max(values)
+      {:ok, total_log_count}
+    else
+      {:error, :empty_keys_list} -> {:ok, 0}
+      errtup -> errtup
+    end
+  end
+
   def set_buffer_count(source_id, value) do
     key = "source::#{source_id}::buffer::#{Node.self()}::v1"
     LR.command(["SET", key, value, "EX", 5])

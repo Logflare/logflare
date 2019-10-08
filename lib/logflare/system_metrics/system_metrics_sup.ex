@@ -12,7 +12,7 @@ defmodule Logflare.SystemMetricsSup do
     children = [
       {SystemMetrics.Observer.Poller, []},
       {SystemMetrics.AllLogsLogged, []},
-      {SystemMetrics.AllLogsLogged.Poller, []},
+      # {SystemMetrics.AllLogsLogged.Poller, []},
       {SystemMetrics.Schedulers.Poller, []}
     ]
 

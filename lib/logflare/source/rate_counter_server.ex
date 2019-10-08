@@ -57,14 +57,6 @@ defmodule Logflare.Source.RateCounterServer do
 
     init_tracker_metadata = RCS.new(source_id)
 
-    Phoenix.Tracker.track(
-      Logflare.Tracker,
-      self(),
-      name(source_id),
-      Node.self(),
-      init_tracker_metadata
-    )
-
     Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
   end
@@ -77,7 +69,6 @@ defmodule Logflare.Source.RateCounterServer do
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
-    update_tracker(state)
     broadcast(state)
 
     {:noreply, source_id}
