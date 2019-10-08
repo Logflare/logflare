@@ -52,7 +52,7 @@ defmodule Logflare.Source.LocalStore do
         source_token: source.token
       }
 
-      buffer_payload = %{source_token: state.source_id, buffer: buffer || 0)}
+      buffer_payload = %{source_token: state.source_id, buffer: buffer || 0}
 
       Source.ChannelTopics.broadcast_rates(rates_payload)
       Source.ChannelTopics.broadcast_buffer(buffer_payload)
