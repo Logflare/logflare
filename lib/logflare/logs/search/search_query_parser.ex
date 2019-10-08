@@ -206,10 +206,13 @@ defmodule Logflare.Logs.Search.Parser do
         match?({_, ""}, int_parsed) ->
           {value, ""} = int_parsed
           value
+
         match?({_, ""}, float_parsed) ->
           {value, ""} = float_parsed
           value
-        true -> c.value
+
+        true ->
+          c.value
       end
 
     %{c | value: value}

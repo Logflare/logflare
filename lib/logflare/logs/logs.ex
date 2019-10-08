@@ -7,7 +7,9 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
+  alias Logflare.Sources.ClusterStore
   alias Logflare.Rule
+  alias Logflare.Sources
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{} = source) do
@@ -65,11 +67,11 @@ defmodule Logflare.Logs do
     source_table_string = Atom.to_string(source.token)
 
     # indvididual source genservers
-    RecentLogsServer.push(source.token, le)
     Buffer.push(source_table_string, le)
 
+    ClusterStore.increment_counters(source)
+
     # all sources genservers
-    Sources.Counters.incriment(source.token)
     SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
     # broadcasters

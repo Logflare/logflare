@@ -75,7 +75,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
-      {:google_api_big_query, "~> 0.24.0"},
+      {:google_api_big_query, "~> 0.25.0"},
       {:goth, "~> 0.8.0"},
       {:broadway, "~> 0.4.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
@@ -119,7 +119,15 @@ defmodule Logflare.Mixfile do
       {:etso, "~> 0.1.1"},
 
       # Statistics
-      {:statistex, "~> 1.0.0"}
+      {:statistex, "~> 1.0.0"},
+
+      # Redis
+      {:redix, ">= 0.0.0"},
+      {:castore, ">= 0.0.0"},
+
+      # Cluster utils
+
+      {:local_cluster, "~> 1.1", only: [:test]}
     ]
   end
 

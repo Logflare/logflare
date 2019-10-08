@@ -15,6 +15,7 @@ defmodule Logflare.Application do
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Redix,
       Logflare.Logs.RejectedLogEvents,
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
@@ -24,7 +25,8 @@ defmodule Logflare.Application do
     topologies = Application.get_env(:libcluster, :topologies)
 
     dev_prod_children = [
-      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+      # Logflare.Sources.PubSub,
+      # {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       supervisor(Phoenix.PubSub.PG2, [
         [
@@ -32,6 +34,7 @@ defmodule Logflare.Application do
           fastlane: Phoenix.Channel.Server
         ]
       ]),
+      Logflare.Redix,
       worker(
         Logflare.Tracker,
         [
