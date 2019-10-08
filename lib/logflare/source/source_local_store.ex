@@ -33,25 +33,26 @@ defmodule Logflare.Source.LocalStore do
 
     source = Sources.Cache.get_by_id(source_id)
 
-    {:ok, sec_counters} = ClusterStore.get_source_log_counts(source)
+    {:ok, source_counters_sec} = ClusterStore.get_source_log_counts(source)
+    {:ok, user_log_counts} = ClusterStore.get_user_log_counts(source.user.id)
 
-    unless Enum.empty?(sec_counters) do
+    unless Enum.empty?(source_counters_sec) do
       {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
       {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
       prev_max = prev_max || 0
-      max = Enum.max([prev_max | sec_counters])
-      avg = Enum.sum(sec_counters) / Enum.count(sec_counters)
-      last = hd(sec_counters)
+      max = Enum.max([prev_max | source_counters_sec])
+      avg = Enum.sum(source_counters_sec) / Enum.count(source_counters_sec)
+      last = hd(source_counters_sec)
 
       rates_payload = %{
         last_rate: last || 0,
         rate: last || 0,
-        average_rate: round(avg) || 0,
+        average_rate: round(avg),
         max_rate: max || 0,
         source_token: source.token
       }
 
-      buffer_payload = %{source_token: state.source_id, buffer: buffer}
+      buffer_payload = %{source_token: state.source_id, buffer: buffer || 0)}
 
       Source.ChannelTopics.broadcast_rates(rates_payload)
       Source.ChannelTopics.broadcast_buffer(buffer_payload)
@@ -62,10 +63,8 @@ defmodule Logflare.Source.LocalStore do
     end
 
     sum_log_counts = fn counts -> counts |> Enum.slice(0..60) |> Enum.sum() end
-    source_rate = sum_log_counts.(sec_counters)
 
-    {:ok, user_log_counts} = ClusterStore.get_user_log_counts(source.user.id)
-
+    source_rate = sum_log_counts.(source_counters_sec)
     user_rate = sum_log_counts.(user_log_counts)
 
     Users.API.Cache.put_user_rate(source.user, user_rate)
