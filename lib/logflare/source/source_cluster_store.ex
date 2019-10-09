@@ -3,53 +3,45 @@ defmodule Logflare.Sources.ClusterStore do
   alias LogflareRedix, as: LR
   alias Logflare.Source
   alias Timex.Duration
-  @default_ttl_sec 100
-  @hourly_counter_expiration_ttl_sec Duration.from_hours(24) |> Duration.to_seconds()
+
+  @second_counter_expiration_sec 60
+  @hour_counter_expiration_sec Duration.from_hours(24) |> Duration.to_seconds() |> round()
+  @minute_counter_expiration_sec Duration.from_minutes(10) |> Duration.to_seconds() |> round()
 
   def increment_counters(%Source{} = source) do
     source.token
-    |> source_log_count_key(:second, Timex.now())
-    |> LR.increment(expire: @default_ttl_sec)
-
-    source.user.id
-    |> user_log_count_key(:second, Timex.now())
-    |> LR.increment(expire: @default_ttl_sec)
-
-    source.token
     |> source_log_count_key(:hour, Timex.now())
-    |> LR.increment(expire: @hourly_counter_expiration_ttl_sec)
+    |> LR.increment(expire: @hour_counter_expiration_sec)
+
+    {:ok, last_second_source_counter} =
+      source.token
+      |> source_log_count_key(:second, Timex.now())
+      |> LR.increment(expire: @second_counter_expiration_sec)
+
+    set_source_last_rate(source.token, last_second_source_counter, period: :second)
+
+    {:ok, last_second_user_counter} =
+      source.user.id
+      |> user_log_count_key(:second, Timex.now())
+      |> LR.increment(expire: @second_counter_expiration_sec)
+
+    set_user_last_rate(source.token, last_second_user_counter, period: :second)
+
+    {:ok, last_minute_source_counter} =
+      source.token
+      |> source_log_count_key(:minute, Timex.now())
+      |> LR.increment(expire: @minute_counter_expiration_sec)
+
+    set_source_last_rate(source.token, last_minute_source_counter, period: :minute)
+
+    {:ok, last_minute_user_counter} =
+      source.token
+      |> source_log_count_key(:minute, Timex.now())
+      |> LR.increment(expire: @minute_counter_expiration_sec)
+
+    set_user_last_rate(source.token, last_minute_user_counter, period: :minute)
 
     incr_total_log_count(source.token)
-  end
-
-  def get_user_log_counts(user_id) do
-    unix_ts = unix_ts_now()
-
-    keys =
-      for i <- 0..@default_ttl_sec do
-        user_log_count_key(user_id, :second, unix_ts - i)
-      end
-
-    {:ok, result} = LR.multi_get(keys)
-
-    result = clean_and_parse(result)
-
-    {:ok, result}
-  end
-
-  def get_source_log_counts(source) do
-    unix_ts = unix_ts_now()
-
-    keys =
-      for i <- 0..@default_ttl_sec do
-        source_log_count_key(source.token, :second, unix_ts - i)
-      end
-
-    {:ok, result} = LR.multi_get(keys)
-
-    result = clean_and_parse(result)
-
-    {:ok, result}
   end
 
   # Max rate
@@ -81,19 +73,39 @@ defmodule Logflare.Sources.ClusterStore do
 
     result = clean_and_parse(result)
 
-    rate = Enum.sum(result) / Duration.to_seconds(Duration.from_hours(length(result)))
+    period_seconds =
+      result
+      |> length()
+      |> Duration.from_hours()
+      |> Duration.to_seconds()
 
-    {:ok, rate}
+    rps =
+      if period_seconds == 0 do
+        0
+      else
+        Enum.sum(result) / period_seconds
+      end
+
+    {:ok, rps}
   end
 
   # Last rate
 
-  def get_last_rate(source_id) do
-    LR.get("source::#{source_id}::last_rate::global::v1")
+  def get_source_last_rate(source_id, period: period) do
+    LR.get("source::#{source_id}::last_rate::#{period}::global::v1")
   end
 
-  def set_last_rate(source_id, value) do
-    key = "source::#{source_id}::last_rate::global::v1"
+  def set_source_last_rate(source_id, value, period: period) do
+    key = "source::#{source_id}::last_rate::#{period}::global::v1"
+    LR.set(key, value, expire: 3)
+  end
+
+  def get_user_last_rate(user_id, period: period) do
+    LR.get("user::#{user_id}::last_rate::#{period}::global::v1")
+  end
+
+  def set_user_last_rate(user_id, value, period: period) do
+    key = "user::#{user_id}::last_rate::#{period}::global::v1"
     LR.set(key, value, expire: 3)
   end
 

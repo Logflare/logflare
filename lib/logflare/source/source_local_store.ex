@@ -33,44 +33,35 @@ defmodule Logflare.Source.LocalStore do
 
     source = Sources.Cache.get_by_id(source_id)
 
-    {:ok, source_counters_sec} = ClusterStore.get_source_log_counts(source)
-    {:ok, user_log_counts} = ClusterStore.get_user_log_counts(source.user.id)
     {:ok, total_log_count} = ClusterStore.get_total_log_count(source_id)
 
-    unless Enum.empty?(source_counters_sec) do
-      {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
-      {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
-      prev_max = prev_max || 0
-      {:ok, avg} = ClusterStore.get_avg_rate(source_id)
-      last = hd(source_counters_sec)
-      max = Enum.max([prev_max, last])
+    {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
+    {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
+    {:ok, avg} = ClusterStore.get_avg_rate(source_id)
+    {:ok, last_source_rate} = ClusterStore.get_source_last_rate(source.token, period: :second)
+    max = Enum.max([prev_max, last_source_rate])
 
-      rates_payload = %{
-        last_rate: last || 0,
-        rate: last || 0,
-        average_rate: round(avg),
-        max_rate: max || 0,
-        source_token: source.token
-      }
+    rates_payload = %{
+      last_rate: last_source_rate || 0,
+      rate: last_source_rate || 0,
+      average_rate: round(avg),
+      max_rate: max || 0,
+      source_token: source.token
+    }
 
-      buffer_payload = %{source_token: state.source_id, buffer: buffer}
-      log_count_payload = %{source_token: state.source_id, log_count: total_log_count}
+    buffer_payload = %{source_token: state.source_id, buffer: buffer}
+    log_count_payload = %{source_token: state.source_id, log_count: total_log_count || 0}
 
-      Source.ChannelTopics.broadcast_rates(rates_payload)
-      Source.ChannelTopics.broadcast_buffer(buffer_payload)
-      Source.ChannelTopics.broadcast_log_count(log_count_payload)
+    Source.ChannelTopics.broadcast_rates(rates_payload)
+    Source.ChannelTopics.broadcast_buffer(buffer_payload)
+    Source.ChannelTopics.broadcast_log_count(log_count_payload)
 
-      if max > prev_max do
-        ClusterStore.set_max_rate(source_id, max)
-      end
-
-      ClusterStore.set_last_rate(source_id, last)
+    if max > prev_max do
+      ClusterStore.set_max_rate(source_id, max)
     end
 
-    sum_log_counts = fn counts -> counts |> Enum.slice(0..60) |> Enum.sum() end
-
-    source_rate = sum_log_counts.(source_counters_sec)
-    user_rate = sum_log_counts.(user_log_counts)
+    source_rate = ClusterStore.get_source_last_rate(source.token, period: :minute)
+    user_rate = ClusterStore.get_user_last_rate(source.user.id, period: :minute)
 
     Users.API.Cache.put_user_rate(source.user, user_rate)
     Users.API.Cache.put_source_rate(source, source_rate)

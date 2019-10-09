@@ -27,7 +27,11 @@ defmodule Logflare.Redix do
     expire = opts[:expire]
 
     if opts && expire do
-      pipeline([["INCR", key], ["EXPIRE", key, expire]])
+      with {:ok, [incremented_value, 1]} <- pipeline([["INCR", key], ["EXPIRE", key, expire]]) do
+        {:ok, incremented_value}
+      else
+        errtup -> errtup
+      end
     else
       increment(key)
     end
@@ -49,7 +53,7 @@ defmodule Logflare.Redix do
     expire = opts[:expire]
 
     if opts && expire do
-      Redix.command(@default_conn, ["SET", key, value, "EX", expire])
+      command(["SET", key, value, "EX", expire])
     else
       set(key, value)
     end
