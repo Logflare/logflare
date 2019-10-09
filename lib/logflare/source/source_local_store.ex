@@ -35,6 +35,7 @@ defmodule Logflare.Source.LocalStore do
 
     {:ok, source_counters_sec} = ClusterStore.get_source_log_counts(source)
     {:ok, user_log_counts} = ClusterStore.get_user_log_counts(source.user.id)
+    {:ok, total_log_count} = ClusterStore.get_total_log_count(source_id)
 
     unless Enum.empty?(source_counters_sec) do
       {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
@@ -53,9 +54,11 @@ defmodule Logflare.Source.LocalStore do
       }
 
       buffer_payload = %{source_token: state.source_id, buffer: buffer}
+      log_count_payload = %{source_token: state.source_id, log_count: total_log_count}
 
       Source.ChannelTopics.broadcast_rates(rates_payload)
       Source.ChannelTopics.broadcast_buffer(buffer_payload)
+      Source.ChannelTopics.broadcast_log_count(log_count_payload)
 
       ClusterStore.set_max_rate(source_id, max)
       ClusterStore.set_avg_rate(source_id, avg)

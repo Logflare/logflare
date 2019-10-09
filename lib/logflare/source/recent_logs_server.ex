@@ -45,8 +45,6 @@ defmodule Logflare.Source.RecentLogsServer do
     Process.flag(:trap_exit, true)
     prune()
 
-    broadcast()
-
     {:ok, rls, {:continue, :boot}}
   end
 
@@ -78,6 +76,8 @@ defmodule Logflare.Source.RecentLogsServer do
     :ets.new(source_id, table_args)
 
     {:ok, bq_count} = load_init_log_message(source_id, bigquery_project_id)
+
+    ClusterStore.set_total_log_count(source_id, bq_count)
 
     rls = %{
       rls
@@ -112,13 +112,6 @@ defmodule Logflare.Source.RecentLogsServer do
     {:stop, reason, state}
   end
 
-  def handle_info(:broadcast, state) do
-    bq_count = state.bq_total_on_boot
-    inserts = Data.get_inserts(state.source_id)
-    ClusterStore.set_total_log_count(state.source_id, bq_count + inserts)
-    {:noreply, state}
-  end
-
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
     count = Data.get_ets_count(source_id)
 
@@ -147,20 +140,6 @@ defmodule Logflare.Source.RecentLogsServer do
     reason
   end
 
-  def merge_metadata(list) do
-    payload = {:noop, %{inserts: 0, bq_count: 0}}
-
-    {:noop, data} =
-      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
-        total = y.inserts + acc.inserts
-        bq_count = if y.bq_count > acc.bq_count, do: y.bq_count, else: acc.bq_count
-
-        {:noop, %{y | inserts: total, bq_count: bq_count}}
-      end)
-
-    data
-  end
-
   defp load_init_log_message(source_id, bigquery_project_id) do
     log_count = Data.get_log_count(source_id, bigquery_project_id)
 
@@ -181,9 +160,5 @@ defmodule Logflare.Source.RecentLogsServer do
 
   defp prune() do
     Process.send_after(self(), :prune, @prune_timer)
-  end
-
-  defp broadcast() do
-    Process.send_after(self(), :broadcast, @broadcast_every)
   end
 end

@@ -10,6 +10,7 @@ defmodule Logflare.Sources.ClusterStore do
     user_key = gen_user_log_count_key(source.user.id, suffix)
     LR.increment(source_key, expire: @default_ttl_sec)
     LR.increment(user_key, expire: @default_ttl_sec)
+    incr_total_log_count(source.token)
   end
 
   def get_user_log_counts(user_id) do
@@ -71,21 +72,18 @@ defmodule Logflare.Sources.ClusterStore do
 
   # Log count
 
+  def incr_total_log_count(source_id) do
+    key = "source::#{source_id}::total_log_count::v1"
+    LR.increment(key)
+  end
+
   def set_total_log_count(source_id, value) do
-    key = "source::#{source_id}::total_log_count::#{Node.self()}::v1"
-    LR.set(key, value, expire: 300)
+    key = "source::#{source_id}::total_log_count::v1"
+    LR.set(key, value, expire: 86_400)
   end
 
   def get_total_log_count(source_id) do
-    with {:ok, keys} <- LR.scan_all_match("*source::#{source_id}::total_log_count::*"),
-         {:ok, result} <- LR.multi_get(keys) do
-      values = clean_and_parse(result)
-      total_log_count = Enum.max(values)
-      {:ok, total_log_count}
-    else
-      {:error, :empty_keys_list} -> {:ok, 0}
-      errtup -> errtup
-    end
+    LR.get("source::#{source_id}::total_log_count::v1")
   end
 
   # Buffer counts
