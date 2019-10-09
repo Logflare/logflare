@@ -33,7 +33,6 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @prune_timer 1_000
-  @broadcast_every 1_000
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: source_id)
