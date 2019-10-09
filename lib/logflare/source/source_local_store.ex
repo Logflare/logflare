@@ -39,6 +39,7 @@ defmodule Logflare.Source.LocalStore do
     {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
     {:ok, avg} = ClusterStore.get_avg_rate(source_id)
     {:ok, last_source_rate} = ClusterStore.get_source_last_rate(source.token, period: :second)
+    {:ok, last_user_rate} = ClusterStore.get_user_last_rate(source.user.id, period: :second)
     max = Enum.max([prev_max, last_source_rate])
 
     rates_payload = %{
@@ -60,11 +61,22 @@ defmodule Logflare.Source.LocalStore do
       ClusterStore.set_max_rate(source_id, max)
     end
 
-    source_rate = ClusterStore.get_source_last_rate(source.token, period: :minute)
-    user_rate = ClusterStore.get_user_last_rate(source.user.id, period: :minute)
+    last_source_rate =
+      cond do
+        is_nil(last_source_rate) -> 0
+        is_integer(last_source_rate) -> last_source_rate
+        is_binary(last_source_rate) -> String.to_integer(last_source_rate)
+      end
 
-    Users.API.Cache.put_user_rate(source.user, user_rate)
-    Users.API.Cache.put_source_rate(source, source_rate)
+    last_user_rate =
+      cond do
+        is_nil(last_user_rate) -> 0
+        is_integer(last_user_rate) -> last_user_rate
+        is_binary(last_user_rate) -> String.to_integer(last_user_rate)
+      end
+
+    Users.API.Cache.put_user_rate(source.user, last_user_rate)
+    Users.API.Cache.put_source_rate(source, last_source_rate)
 
     {:noreply, state}
   end
