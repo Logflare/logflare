@@ -8,7 +8,7 @@ defmodule Logflare.Source.LocalStore do
   alias Logflare.Source.RecentLogsServer, as: RLS
   use GenServer
 
-  @tick_interval 250
+  @tick_interval 1_000
 
   # def start_link(%{source: %Source{} = source} = args, opts) do
   def start_link(%RLS{source_id: source_id} = args, opts \\ []) do
@@ -52,7 +52,7 @@ defmodule Logflare.Source.LocalStore do
         source_token: source.token
       }
 
-      buffer_payload = %{source_token: state.source_id, buffer: buffer || 0}
+      buffer_payload = %{source_token: state.source_id, buffer: buffer}
 
       Source.ChannelTopics.broadcast_rates(rates_payload)
       Source.ChannelTopics.broadcast_buffer(buffer_payload)
