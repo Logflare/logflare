@@ -8,7 +8,7 @@ defmodule Logflare.Source.LocalStore do
   alias Logflare.Source.RecentLogsServer, as: RLS
   use GenServer
 
-  @tick_interval 250
+  @tick_interval 1_000
 
   # def start_link(%{source: %Source{} = source} = args, opts) do
   def start_link(%RLS{source_id: source_id} = args, opts \\ []) do
@@ -35,14 +35,15 @@ defmodule Logflare.Source.LocalStore do
 
     {:ok, source_counters_sec} = ClusterStore.get_source_log_counts(source)
     {:ok, user_log_counts} = ClusterStore.get_user_log_counts(source.user.id)
+    {:ok, total_log_count} = ClusterStore.get_total_log_count(source_id)
 
     unless Enum.empty?(source_counters_sec) do
       {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
       {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
       prev_max = prev_max || 0
-      max = Enum.max([prev_max | source_counters_sec])
-      avg = Enum.sum(source_counters_sec) / Enum.count(source_counters_sec)
+      {:ok, avg} = ClusterStore.get_avg_rate(source_id)
       last = hd(source_counters_sec)
+      max = Enum.max([prev_max, last])
 
       rates_payload = %{
         last_rate: last || 0,
@@ -52,13 +53,17 @@ defmodule Logflare.Source.LocalStore do
         source_token: source.token
       }
 
-      buffer_payload = %{source_token: state.source_id, buffer: buffer || 0}
+      buffer_payload = %{source_token: state.source_id, buffer: buffer}
+      log_count_payload = %{source_token: state.source_id, log_count: total_log_count}
 
       Source.ChannelTopics.broadcast_rates(rates_payload)
       Source.ChannelTopics.broadcast_buffer(buffer_payload)
+      Source.ChannelTopics.broadcast_log_count(log_count_payload)
 
-      ClusterStore.set_max_rate(source_id, max)
-      ClusterStore.set_avg_rate(source_id, avg)
+      if max > prev_max do
+        ClusterStore.set_max_rate(source_id, max)
+      end
+
       ClusterStore.set_last_rate(source_id, last)
     end
 

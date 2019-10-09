@@ -20,15 +20,39 @@ defmodule Logflare.Redix do
   end
 
   def increment(key) do
-    Redix.command(@default_conn, ["INCR", key])
+    command(["INCR", key])
+  end
+
+  def increment(key, opts) do
+    expire = opts[:expire]
+
+    if opts && expire do
+      pipeline([["INCR", key], ["EXPIRE", key, expire]])
+    else
+      increment(key)
+    end
+  end
+
+  def pipeline(commands) when is_list(commands) do
+    Redix.pipeline(@default_conn, commands)
   end
 
   def get(key) do
-    Redix.command(@default_conn, ["GET", key])
+    command(["GET", key])
   end
 
   def set(key, value) do
-    Redix.command(@default_conn, ["SET", key, value])
+    command(["SET", key, value])
+  end
+
+  def set(key, value, opts) do
+    expire = opts[:expire]
+
+    if opts && expire do
+      Redix.command(@default_conn, ["SET", key, value, "EX", expire])
+    else
+      set(key, value)
+    end
   end
 
   def command(args) when is_list(args) do
