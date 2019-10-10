@@ -11,7 +11,7 @@ defmodule Logflare.Source.LocalStore do
   @tick_interval 1_000
 
   # def start_link(%{source: %Source{} = source} = args, opts) do
-  def start_link(%RLS{source_id: source_id} = args, opts \\ []) do
+  def start_link(%RLS{} = args, opts \\ []) do
     GenServer.start_link(__MODULE__, args, opts)
   end
 
@@ -38,8 +38,9 @@ defmodule Logflare.Source.LocalStore do
     {:ok, prev_max} = ClusterStore.get_max_rate(source_id)
     {:ok, buffer} = ClusterStore.get_buffer_count(source_id)
     {:ok, avg} = ClusterStore.get_avg_rate(source_id)
+
     {:ok, last_source_rate} = ClusterStore.get_source_last_rate(source.token, period: :second)
-    {:ok, last_user_rate} = ClusterStore.get_user_last_rate(source.user.id, period: :second)
+
     max = Enum.max([prev_max, last_source_rate])
 
     rates_payload = %{
@@ -51,7 +52,7 @@ defmodule Logflare.Source.LocalStore do
     }
 
     buffer_payload = %{source_token: state.source_id, buffer: buffer}
-    log_count_payload = %{source_token: state.source_id, log_count: total_log_count || 0}
+    log_count_payload = %{source_token: state.source_id, log_count: total_log_count}
 
     Source.ChannelTopics.broadcast_rates(rates_payload)
     Source.ChannelTopics.broadcast_buffer(buffer_payload)
@@ -61,22 +62,22 @@ defmodule Logflare.Source.LocalStore do
       ClusterStore.set_max_rate(source_id, max)
     end
 
-    last_source_rate =
-      cond do
-        is_nil(last_source_rate) -> 0
-        is_integer(last_source_rate) -> last_source_rate
-        is_binary(last_source_rate) -> String.to_integer(last_source_rate)
-      end
+    {:ok, last_source_minute_rate} =
+      ClusterStore.get_source_last_rate(source.token, period: :minute)
 
-    last_user_rate =
-      cond do
-        is_nil(last_user_rate) -> 0
-        is_integer(last_user_rate) -> last_user_rate
-        is_binary(last_user_rate) -> String.to_integer(last_user_rate)
-      end
+    {:ok, last_user_minute_rate} =
+      ClusterStore.get_user_last_rate(source.user.id, period: :minute)
 
-    Users.API.Cache.put_user_rate(source.user, last_user_rate)
-    Users.API.Cache.put_source_rate(source, last_source_rate)
+    parse_rate = fn maybe_num ->
+      cond do
+        is_nil(maybe_num) -> 0
+        is_integer(maybe_num) -> maybe_num
+        is_binary(maybe_num) -> String.to_integer(maybe_num)
+      end
+    end
+
+    Users.API.Cache.put_user_rate(source.user, parse_rate.(last_user_minute_rate))
+    Users.API.Cache.put_source_rate(source, parse_rate.(last_source_minute_rate))
 
     {:noreply, state}
   end

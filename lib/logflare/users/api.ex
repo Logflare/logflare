@@ -19,7 +19,7 @@ defmodule Logflare.Users.API do
     @moduledoc """
     Caches API rate data from external cluster store
     """
-    @ttl 1_000
+    @ttl 60_000
     import Cachex.Spec
     @cache __MODULE__
 
@@ -74,7 +74,6 @@ defmodule Logflare.Users.API do
 
   @callback verify_api_rates_quotas(map) :: ok_err_tup
 
-  alias Logflare.{Sources, User}
   @api_call_logs {:api_call, :logs_post}
 
   @duration 60
