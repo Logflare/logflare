@@ -6,9 +6,13 @@ defmodule Logflare.TelemetryBackend.BQ do
   @default_source_id Application.get_env(:logflare_telemetry, :source_id)
 
   def ingest(payload) do
-    source = Sources.Cache.get_by_id(@default_source_id)
+    source =
+      @default_source_id
+      |> Sources.Cache.get_by_id()
+      |> Map.put(:type, :telemetry)
 
     payload = prepare_for_bq(payload)
+
     Logs.ingest_logs(payload, source)
 
     :ok

@@ -63,6 +63,14 @@ defmodule Logflare.Logs do
 
   def rule_match?(rule, message), do: Regex.match?(rule.regex_struct, message)
 
+  defp ingest_and_broadcast(%LE{source: %Source{type: :telemetry} = source} = le) do
+    source_table_string = Atom.to_string(source.token)
+
+    # indvididual source genservers
+    Buffer.push(source_table_string, le)
+    Source.ChannelTopics.broadcast_new(le)
+  end
+
   defp ingest_and_broadcast(%LE{source: %Source{} = source} = le) do
     source_table_string = Atom.to_string(source.token)
 

@@ -16,10 +16,17 @@ defmodule LogflareTelemetry.Supervisor do
     config = merge_configs(config)
 
     children = [
-      {LT.Reporters.V0.Ecto, config.ecto},
+      # BEAM
       {LT.Reporters.V0.BEAM, config.beam},
-      {LT.Aggregators.V0.Ecto, config.ecto},
       {LT.Aggregators.V0.BEAM, config.beam},
+
+      # Ecto
+      {LT.Reporters.V0.Ecto, config.ecto},
+      {LT.Aggregators.V0.Ecto, config.ecto},
+
+      # Redix
+      {LT.Reporters.V0.Redix, config.redix},
+      {LT.Aggregators.V0.Redix, config.redix},
       MetricsCache
     ]
 
@@ -35,8 +42,21 @@ defmodule LogflareTelemetry.Supervisor do
         tick_interval: 1_000,
         backend: default_backend
       },
-      ecto: %Config{metrics: metrics(:ecto), tick_interval: 1_000, backend: default_backend}
+      ecto: %Config{metrics: metrics(:ecto), tick_interval: 1_000, backend: default_backend},
+      redix: %Config{metrics: metrics(:redix), tick_interval: 1_000, backend: default_backend}
     }
+  end
+
+  def metrics(:redix) do
+    events = [
+      [:redix, :disconnection],
+      [:redix, :failed_connection],
+      [:redix, :reconnection],
+      [:redix, :pipeline],
+      [:redix, :pipeline, :error]
+    ]
+
+    for ev <- events, do: ExtMetrics.every(ev)
   end
 
   def metrics(:ecto) do
