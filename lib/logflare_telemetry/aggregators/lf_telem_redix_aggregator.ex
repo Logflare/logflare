@@ -14,6 +14,7 @@ defmodule LogflareTelemetry.Aggregators.V0.Redix do
 
   @impl true
   def init(%Config{} = config) do
+    Process.send_after(self(), :tick, config.tick_interval)
     {:ok, %{config: config}}
   end
 

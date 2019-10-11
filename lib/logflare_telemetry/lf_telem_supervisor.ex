@@ -17,12 +17,12 @@ defmodule LogflareTelemetry.Supervisor do
 
     children = [
       # BEAM
-      {LT.Reporters.V0.BEAM, config.beam},
-      {LT.Aggregators.V0.BEAM, config.beam},
+      # {LT.Reporters.V0.BEAM, config.beam},
+      # {LT.Aggregators.V0.BEAM, config.beam},
 
-      # Ecto
-      {LT.Reporters.V0.Ecto, config.ecto},
-      {LT.Aggregators.V0.Ecto, config.ecto},
+      # # Ecto
+      # {LT.Reporters.V0.Ecto, config.ecto},
+      # {LT.Aggregators.V0.Ecto, config.ecto},
 
       # Redix
       {LT.Reporters.V0.Redix, config.redix},

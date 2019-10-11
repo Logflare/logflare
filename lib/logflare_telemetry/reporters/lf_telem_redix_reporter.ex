@@ -20,13 +20,20 @@ defmodule LogflareTelemetry.Reporters.V0.Redix do
     |> Enum.group_by(& &1.event_name)
     |> Enum.each(fn {event, metrics} ->
       id = {__MODULE__, event, self()}
-      IO.inspect(event)
       :telemetry.attach(id, event, &handle_event/4, metrics)
     end)
   end
 
   def handle_event(_event, measurements, metadata, metrics) do
     Enum.map(metrics, &handle_metric(&1, measurements, metadata))
+  end
+
+  def handle_metric(%ExtMetrics.Every{} = metric, measurements, _metadata) do
+    measurements =
+      measurements
+      |> Map.update!(:elapsed_time, &System.convert_time_unit(&1, :native, :microsecond))
+
+    MetricsCache.push(metric, measurements)
   end
 
   def handle_metric(%ExtMetrics.Every{} = metric, measurements, _metadata) do
