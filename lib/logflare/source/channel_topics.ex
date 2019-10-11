@@ -37,6 +37,10 @@ defmodule Logflare.Source.ChannelTopics do
   end
 
   def broadcast_rates(payload) do
+    payload =
+      payload
+      |> Map.put(:rate, payload[:last_rate])
+
     topic = "dashboard:#{payload.source_token}"
     event = "rate"
     payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}

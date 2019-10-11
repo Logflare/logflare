@@ -57,6 +57,14 @@ defmodule Logflare.Source.RateCounterServer do
 
     init_tracker_metadata = RCS.new(source_id)
 
+    Phoenix.Tracker.track(
+      Logflare.Tracker,
+      self(),
+      name(source_id),
+      Node.self(),
+      init_tracker_metadata
+    )
+
     Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
   end
@@ -69,6 +77,10 @@ defmodule Logflare.Source.RateCounterServer do
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
+    update_tracker(state)
+    broadcast(state)
+
+    {:noreply, source_id}
   end
 
   def terminate(reason, _state) do
@@ -254,6 +266,22 @@ defmodule Logflare.Source.RateCounterServer do
 
   defp name(source_id) do
     String.to_atom("#{source_id}" <> "-rate")
+  end
+
+  defp update_tracker(%RCS{} = state) do
+    pid = Process.whereis(name(state.source_id))
+
+    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
+  end
+
+  def broadcast(%RCS{} = state) do
+    rates =
+      Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
+      |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
+      |> merge_rates()
+      |> Map.put(:source_token, state.source_id)
+
+    Source.ChannelTopics.broadcast_rates(rates)
   end
 
   def merge_rates(list) do
