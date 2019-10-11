@@ -56,5 +56,25 @@ config :logflare_agent,
   ],
   url: "https://api.logflarestaging.com"
 
+config :libcluster,
+  topologies: [
+    dev: [
+      strategy: Cluster.Strategy.Epmd,
+      config: [
+        hosts: [:"pink@Chases-MBP-2017", :"orange@Chases-MBP-2017", :"red@Chases-MBP-2017"]
+      ]
+    ]
+    # gossip_example: [
+    #   strategy: Elixir.Cluster.Strategy.Gossip,
+    #   config: [
+    #     port: 45892,
+    #     if_addr: "0.0.0.0",
+    #     multicast_addr: "230.1.1.251",
+    #     multicast_ttl: 1,
+    #     secret: "somepassword"
+    #   ]
+    # ]
+  ]
+
 import_config "prod.secret.exs"
 import_config "telemetry.exs"
