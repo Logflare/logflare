@@ -27,7 +27,9 @@ config :logflare, Logflare.Google,
   dataset_id_append: "_prod",
   project_number: "1074203751359",
   project_id: "logflare-232118",
-  service_account: "logflare@logflare-232118.iam.gserviceaccount.com"
+  service_account: "logflare@logflare-232118.iam.gserviceaccount.com",
+  compute_engine_sa: "1074203751359-compute@developer.gserviceaccount.com",
+  api_sa: "1074203751359@cloudservices.gserviceaccount.com"
 
 config :logflare_agent,
   sources: [
