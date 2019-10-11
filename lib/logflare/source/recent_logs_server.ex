@@ -75,17 +75,17 @@ defmodule Logflare.Source.RecentLogsServer do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
 
-    # Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-    #   load_init_log_message(source_id, bigquery_project_id)
-    # end)
+    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+      load_init_log_message(source_id, bigquery_project_id)
+    end)
 
-    {:ok, bq_count} = load_init_log_message(source_id, bigquery_project_id)
+    # {:ok, bq_count} = load_init_log_message(source_id, bigquery_project_id)
 
     rls = %{
       rls
       | bigquery_project_id: bigquery_project_id,
         bigquery_dataset_id: bigquery_dataset_id,
-        bq_total_on_boot: bq_count
+        bq_total_on_boot: 0
     }
 
     children = [
