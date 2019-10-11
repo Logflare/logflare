@@ -78,9 +78,5 @@ config :libcluster,
     # ]
   ]
 
-config :logflare, :logflare_redix,
-  host: "localhost",
-  port: 6379
-
 import_config "dev.secret.exs"
 import_config "telemetry.exs"

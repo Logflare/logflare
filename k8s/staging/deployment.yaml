@@ -48,8 +48,6 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
       dnsPolicy: ClusterFirst
-      nodeSelector:
-        logflare-node: "true"
       restartPolicy: Always
       schedulerName: default-scheduler
       securityContext: {}

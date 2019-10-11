@@ -37,7 +37,6 @@ defmodule Logflare.Source do
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
 
-    field :type, :map, virtual: true
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true

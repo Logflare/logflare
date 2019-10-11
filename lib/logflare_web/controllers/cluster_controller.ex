@@ -5,4 +5,5 @@ defmodule LogflareWeb.ClusterController do
   def index(conn, _params) do
     live_render(conn, ClusterLV, session: %{})
   end
+
 end

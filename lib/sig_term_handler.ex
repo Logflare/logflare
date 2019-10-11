@@ -29,10 +29,7 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_event(ev, _state) do
-    Logger.warn(
-      "#{__MODULE__}: has received a system signal: #{ev} and redirected it to :erl_signal_server"
-    )
-
+    Logger.warn("#{__MODULE__}: has received a system signal: #{ev} and redirected it to :erl_signal_server")
     :gen_event.notify(:erl_signal_server, ev)
   end
 
