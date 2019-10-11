@@ -5,12 +5,12 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
-    # :ok =
-    #   :gen_event.swap_sup_handler(
-    #     :erl_signal_server,
-    #     {:erl_signal_handler, []},
-    #     {Logflare.SigtermHandler, []}
-    #   )
+    :ok =
+      :gen_event.swap_sup_handler(
+        :erl_signal_server,
+        {:erl_signal_handler, []},
+        {Logflare.SigtermHandler, []}
+      )
 
     children = [
       Logflare.Users.Cache,
