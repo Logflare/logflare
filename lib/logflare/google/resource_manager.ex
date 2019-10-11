@@ -12,6 +12,8 @@ defmodule Logflare.Google.CloudResourceManager do
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
+  @api_sa Application.get_env(:logflare, Logflare.Google)[:api_sa]
+  @compute_engine_sa Application.get_env(:logflare, Logflare.Google)[:compute_engine_sa]
 
   def get_iam_policy() do
     conn = get_conn()
@@ -27,20 +29,13 @@ defmodule Logflare.Google.CloudResourceManager do
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
       members = build_members()
 
-      bindings = [
-        %Model.Binding{
-          members: ["serviceAccount:#{@service_account}"],
-          role: "roles/bigquery.admin"
-        },
-        %Model.Binding{
-          members: members,
-          role: "roles/bigquery.jobUser"
-        },
-        %Model.Binding{
-          members: ["serviceAccount:#{@service_account}"],
-          role: "roles/resourcemanager.projectIamAdmin"
-        }
-      ]
+      bindings =
+        [
+          %Model.Binding{
+            members: members,
+            role: "roles/bigquery.jobUser"
+          }
+        ] ++ get_service_accounts()
 
       policy = %Model.Policy{
         bindings: bindings
@@ -68,7 +63,7 @@ defmodule Logflare.Google.CloudResourceManager do
           )
 
         {:error, response} ->
-          Logger.error("Set IAM policy error: #{Enum.count(members)} accounts",
+          Logger.error("Set IAM policy error: #{GenUtils.get_tesla_error_message(response)}",
             logflare: %{
               google: %{
                 cloudresourcemanager: %{
@@ -88,6 +83,27 @@ defmodule Logflare.Google.CloudResourceManager do
   def list_projects() do
     conn = get_conn()
     Api.Projects.cloudresourcemanager_projects_list(conn)
+  end
+
+  defp get_service_accounts() do
+    [
+      %Model.Binding{
+        members: ["serviceAccount:#{@service_account}"],
+        role: "roles/bigquery.admin"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{@compute_engine_sa}"],
+        role: "roles/editor"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{@api_sa}"],
+        role: "roles/editor"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{@service_account}"],
+        role: "roles/resourcemanager.projectIamAdmin"
+      }
+    ]
   end
 
   defp build_members() do

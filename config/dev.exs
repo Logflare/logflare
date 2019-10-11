@@ -52,6 +52,8 @@ config :logflare, Logflare.Google,
   dataset_id_append: "_dev",
   project_number: "1023172132421",
   project_id: "logflare-dev-238720",
-  service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
+  service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
+  compute_engine_sa: "1023172132421-compute@developer.gserviceaccount.com",
+  api_sa: "1023172132421@cloudservices.gserviceaccount.com"
 
 import_config "dev.secret.exs"
