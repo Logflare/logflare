@@ -25,7 +25,8 @@ defmodule LogflareWeb.AuthController do
       provider: Atom.to_string(auth.provider),
       api_key: api_key,
       image: auth.info.image,
-      name: auth.info.name
+      name: auth.info.name,
+      provider_uid: to_string_provider_uid(auth.uid)
     }
 
     changeset = User.changeset(%User{}, user_params)
@@ -204,23 +205,48 @@ defmodule LogflareWeb.AuthController do
   end
 
   defp insert_or_update_user(changeset) do
-    case Repo.get_by(User, email: changeset.changes.email) do
-      nil ->
+    updated_params = %{
+      token: changeset.changes.token,
+      provider: changeset.changes.provider,
+      image: changeset.changes.image,
+      provider_uid: changeset.changes.provider_uid,
+      email: changeset.changes.email
+    }
+
+    cond do
+      user = Repo.get_by(User, provider_uid: changeset.changes.provider_uid) ->
+        update_user_by_provider_id(changeset, user, updated_params)
+
+      user = Repo.get_by(User, email: changeset.changes.email) ->
+        update_user_by_email(changeset, user, updated_params)
+
+      true ->
         Repo.insert(changeset)
-
-      user ->
-        updated_params = %{
-          token: changeset.changes.token,
-          provider: changeset.changes.provider,
-          image: changeset.changes.image
-        }
-
-        updated_changeset = User.changeset(user, updated_params)
-
-        Repo.update(updated_changeset)
-        updated_user = Repo.get_by(User, email: changeset.changes.email)
-        {:ok_found_user, updated_user}
     end
+  end
+
+  defp update_user_by_email(changeset, user, updated_params) do
+    updated_changeset = User.changeset(user, updated_params)
+
+    Repo.update(updated_changeset)
+    updated_user = Repo.get_by(User, email: changeset.changes.email)
+
+    {:ok_found_user, updated_user}
+  end
+
+  defp update_user_by_provider_id(changeset, user, updated_params) do
+    updated_changeset = User.changeset(user, updated_params)
+
+    Repo.update(updated_changeset)
+    updated_user = Repo.get_by(User, provider_uid: changeset.changes.provider_uid)
+
+    {:ok_found_user, updated_user}
+  end
+
+  defp to_string_provider_uid(provider_uid) when is_bitstring(provider_uid), do: provider_uid
+
+  defp to_string_provider_uid(provider_uid) when is_integer(provider_uid) do
+    Integer.to_string(provider_uid)
   end
 
   defp verify_token(token),

@@ -31,6 +31,7 @@ defmodule Logflare.User do
     field :bigquery_dataset_id, :string
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
+    field :provider_uid, :string
 
     timestamps()
   end
@@ -54,9 +55,10 @@ defmodule Logflare.User do
       :api_quota,
       :bigquery_dataset_location,
       :bigquery_dataset_id,
-      :valid_google_account
+      :valid_google_account,
+      :provider_uid
     ])
-    |> validate_required([:email, :provider, :token])
+    |> validate_required([:email, :provider, :token, :provider_uid])
     |> default_validations(user)
   end
 
@@ -73,7 +75,8 @@ defmodule Logflare.User do
       :bigquery_project_id,
       :bigquery_dataset_id,
       :bigquery_dataset_location,
-      :valid_google_account
+      :valid_google_account,
+      :provider_uid
     ])
     # |> update_change(:bigquery_dataset_location, &String.trim/1)
     # |> update_change(:bigquery_dataset_id, &String.trim/1)
@@ -83,7 +86,7 @@ defmodule Logflare.User do
 
   def default_validations(changeset, user) do
     changeset
-    |> validate_required([:email, :provider, :token])
+    |> validate_required([:email, :provider, :token, :provider_uid])
     |> validate_bq_dataset_location()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
   end

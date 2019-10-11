@@ -84,6 +84,17 @@ defmodule Logflare.Source.Supervisor do
   def handle_cast({:restart, source_id}, state) do
     case Process.whereis(source_id) do
       nil ->
+        case create_source(source_id) do
+          {:ok, _pid} ->
+            state = Enum.uniq([source_id | state])
+            {:noreply, state}
+
+          {:error, _reason} ->
+            Logger.error("Failed to start RecentLogsServer: #{source_id}")
+
+            {:noreply, state}
+        end
+
         {:noreply, state}
 
       _ ->

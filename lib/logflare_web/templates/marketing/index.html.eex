@@ -293,15 +293,27 @@
 		<div class="row">
 			<div class="col-md-6">
 				<blockquote class="twitter-tweet" data-lang="en">
-					<p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem. Enter Logflare! <a
-							href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a>
+					<p lang="en" dir="ltr">Been using the great (and free!) <a href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests
+						and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Apps! Great job!</p>&mdash; Matteo Manfredi (@itsmatteomanf) <a
+						href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a>
 				</blockquote>
 			</div>
 			<div class="col-md-6">
 				<blockquote class="twitter-tweet" data-lang="en">
-					<p lang="en" dir="ltr">Been using the great (and free!) <a href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests
-						and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Apps! Great job!</p>&mdash; Matteo Manfredi (@itsmatteomanf) <a
-						href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a>
+					<p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack of logs on the free tier is annoying when debugging a specific problem. Enter Logflare! <a
+							href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>&mdash; Bryan Ross (@bryanrossUK) <a href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a>
+				</blockquote>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-md-6">
+				<blockquote class="twitter-tweet">
+					<p lang="en" dir="ltr">Logflare by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> is the missing link that every <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> customer should be using! Logflare has provided us with unprecedented visibility in monitoring and debugging our service. Check it out: <a href="https://t.co/jweR1rFFwq">https://t.co/jweR1rFFwq</a></p>&mdash; TicketSource (@TicketSource) <a href="https://twitter.com/TicketSource/status/1174614196803330049?ref_src=twsrc%5Etfw">September 19, 2019</a>
+				</blockquote>
+			</div>
+			<div class="col-md-6">
+				<blockquote class="twitter-tweet">
+					<p lang="en" dir="ltr">Hoorah. I finally managed to get Logflare going with Cloudflare and Data Studio to pipe server log files to Logflare. 🎉🎉🎉🎉🎉</p>&mdash; Dawn Anderson (@dawnieando) <a href="https://twitter.com/dawnieando/status/1167551594549977089?ref_src=twsrc%5Etfw">August 30, 2019</a>
 				</blockquote>
 			</div>
 		</div>

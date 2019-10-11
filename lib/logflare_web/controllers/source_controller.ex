@@ -68,6 +68,8 @@ defmodule LogflareWeb.SourceController do
     |> case do
       {:ok, source} ->
         spawn(fn ->
+          # wait a second for the db
+          Process.sleep(1_000)
           Supervisor.new_source(source.token)
         end)
 
