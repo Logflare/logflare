@@ -53,6 +53,20 @@ config :libcluster,
     ]
   ]
 
+# config :libcluster,
+#   topologies: [
+#     k8s_example: [
+#       strategy: Elixir.Cluster.Strategy.Kubernetes,
+#       config: [
+#         mode: :ip,
+#         kubernetes_node_basename: "logflare",
+#         kubernetes_selector: "app=logflare-staging",
+#         kubernetes_namespace: "default",
+#         polling_interval: 1_000
+#       ]
+#     ]
+#   ]
+
 import_config "telemetry.exs"
 
 if File.exists?("config/staging.secret.exs") do
