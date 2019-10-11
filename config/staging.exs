@@ -39,30 +39,37 @@ config :logflare_logger_backend,
   max_batch_size: 50,
   url: "http://example.com"
 
-config :logflare_agent,
-  sources: [
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.1",
-      source: "06709b0b-a5de-4cda-a31b-3dedcd71bc5d"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.2",
-      source: "06709b0b-a5de-4cda-a31b-3dedcd71bc5d"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.3",
-      source: "06709b0b-a5de-4cda-a31b-3dedcd71bc5d"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.4",
-      source: "06709b0b-a5de-4cda-a31b-3dedcd71bc5d"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.5",
-      source: "06709b0b-a5de-4cda-a31b-3dedcd71bc5d"
-    }
-  ],
-  url: "https://api.logflare.app"
+config :logflare_telemetry,
+  source_id: :"e5d18201-f0e0-459b-b6b3-2d3bc7d16fa4"
+
+config :libcluster,
+  debug: true,
+  topologies: [
+    k8s_chat: [
+      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
+      config: [
+        service: "logflare-staging-headless",
+        application_name: "logflare",
+        polling_interval: 1_000
+      ]
+    ]
+  ]
+
+# config :libcluster,
+#   topologies: [
+#     k8s_example: [
+#       strategy: Elixir.Cluster.Strategy.Kubernetes,
+#       config: [
+#         mode: :ip,
+#         kubernetes_node_basename: "logflare",
+#         kubernetes_selector: "app=logflare-staging",
+#         kubernetes_namespace: "default",
+#         polling_interval: 1_000
+#       ]
+#     ]
+#   ]
+
+import_config "telemetry.exs"
 
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"

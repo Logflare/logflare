@@ -1,4 +1,4 @@
-defmodule Logflare.SystemMetrics do
+defmodule Logflare.SystemMetricsSup do
   alias Logflare.SystemMetrics
 
   use Supervisor

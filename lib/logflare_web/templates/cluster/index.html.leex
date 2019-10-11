@@ -1,0 +1,10 @@
+<div class="container">
+  <h1>Self node</h1>
+  <%= @node_self %>
+  <h1>Nodes</h1>
+  <%= for node <- @nodes do %>
+    <div>
+      <%= node %>
+    </div>
+  <% end %>
+</div>

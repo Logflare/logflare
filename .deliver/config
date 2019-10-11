@@ -4,7 +4,7 @@ BUILD_HOST="logflare-build.us-central1-a.logflare-232118"
 BUILD_USER="logflare"
 BUILD_AT="/home/logflare/app_build"
 
-PRODUCTION_HOSTS="logflare-production-3.us-central1-a.logflare-232118"
+PRODUCTION_HOSTS="logflare-prod-cluster-group-1tc1.us-central1-b.logflare-232118"
 PRODUCTION_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 
@@ -57,12 +57,12 @@ pre_erlang_clean_compile() {
   "
 }
 
-post_extract_release_archive() {
-  status "Removing start_erl.data"
-  __remote "
-    [ -f ~/.profile ] && source ~/.profile
-    set -e
-    cd $DELIVER_TO/$APP/var $SILENCE
-    rm start_erl.data
-  "
-}
+# post_extract_release_archive() {
+#   status "Removing start_erl.data"
+#   __remote "
+#     [ -f ~/.profile ] && source ~/.profile
+#     set -e
+#     cd $DELIVER_TO/$APP/var $SILENCE
+#     rm start_erl.data
+#   "
+# }

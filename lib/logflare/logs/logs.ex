@@ -73,7 +73,6 @@ defmodule Logflare.Logs do
     SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
     # broadcasters
-    Source.ChannelTopics.broadcast_log_count(source)
     Source.ChannelTopics.broadcast_new(le)
   end
 end

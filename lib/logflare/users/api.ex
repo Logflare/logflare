@@ -27,7 +27,7 @@ defmodule Logflare.Users.API do
   def verify_api_rates_quotas(%{type: @api_call_logs} = action) do
     %{source: source, user: user} = action
 
-    source_bucket_metrics = Sources.get_metrics(source, bucket: :default)
+    source_bucket_metrics = Sources.get_rate_metrics(source, bucket: :default)
     user_sum_of_sources = get_total_user_api_rate(user)
 
     source_limit = source_bucket_metrics.duration * source.api_quota
@@ -67,7 +67,7 @@ defmodule Logflare.Users.API do
 
   def get_total_user_api_rate(%User{sources: sources}) when is_list(sources) do
     sources
-    |> Enum.map(&Sources.get_metrics(&1, bucket: :default))
+    |> Enum.map(&Sources.get_rate_metrics(&1, bucket: :default))
     |> Enum.map(&Map.get(&1, :sum))
     |> Enum.sum()
   end

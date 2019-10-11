@@ -21,10 +21,10 @@ defmodule Logflare.Source.RateCounterServer do
   use Publicist
 
   typedstruct do
-    field :source_id, atom(), enforce: true
+    field :source_id, atom(), enforce: false
     field :count, non_neg_integer(), default: 0
     field :last_rate, non_neg_integer(), default: 0
-    field :begin_time, non_neg_integer(), enforce: true
+    field :begin_time, non_neg_integer(), enforce: false
     field :max_rate, non_neg_integer(), default: 0
 
     field :buckets, map,
@@ -55,6 +55,16 @@ defmodule Logflare.Source.RateCounterServer do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
 
+    init_tracker_metadata = RCS.new(source_id)
+
+    Phoenix.Tracker.track(
+      Logflare.Tracker,
+      self(),
+      name(source_id),
+      Node.self(),
+      init_tracker_metadata
+    )
+
     Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
   end
@@ -63,12 +73,11 @@ defmodule Logflare.Source.RateCounterServer do
     put_current_rate()
 
     {:ok, new_count} = get_insert_count(source_id)
-
     state = get_data_from_ets(source_id)
-
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
+    update_tracker(state)
     broadcast(state)
 
     {:noreply, source_id}
@@ -170,13 +179,45 @@ defmodule Logflare.Source.RateCounterServer do
     |> Map.get(:max_rate)
   end
 
-  @spec get_metrics(atom, atom) :: map
-  def get_metrics(source_id, bucket \\ :default) when bucket == :default and is_atom(source_id) do
+  @spec get_rate_metrics(atom, atom) :: map
+  def get_rate_metrics(source_id, bucket \\ :default)
+      when bucket == :default and is_atom(source_id) do
     source_id
     |> get_data_from_ets()
     |> Map.get(:buckets)
     |> Map.get(@default_bucket_width)
     |> Map.drop([:queue])
+  end
+
+  @spec get_cluster_rate_metrics(atom, atom) :: map
+  def get_cluster_rate_metrics(source_id, bucket \\ :default)
+      when bucket == :default and is_atom(source_id) do
+    nodes_metrics =
+      case Phoenix.Tracker.list(Logflare.Tracker, name(source_id)) do
+        [] ->
+          [%{average: 0, duration: 60, sum: 0}]
+
+        metrics ->
+          metrics
+          |> Enum.map(fn {_x, y} ->
+            y
+            |> Map.get(:buckets)
+            |> Map.get(@default_bucket_width)
+            |> Map.drop([:queue])
+          end)
+      end
+
+    cluster_metrics =
+      Enum.reduce(nodes_metrics, fn x, acc ->
+        Map.merge(x, acc, fn _k, v1, v2 ->
+          v1 + v2
+        end)
+      end)
+
+    %{
+      cluster_metrics
+      | duration: Kernel.floor(cluster_metrics.duration / Enum.count(nodes_metrics))
+    }
   end
 
   defp setup_ets_table(source_id) when is_atom(source_id) do
@@ -227,11 +268,35 @@ defmodule Logflare.Source.RateCounterServer do
     String.to_atom("#{source_id}" <> "-rate")
   end
 
-  defp broadcast(%RCS{} = state) do
-    state
-    |> state_to_external()
-    |> Map.put(:source_id, state.source_id)
-    |> Source.ChannelTopics.broadcast_rates()
+  defp update_tracker(%RCS{} = state) do
+    pid = Process.whereis(name(state.source_id))
+
+    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
+  end
+
+  def broadcast(%RCS{} = state) do
+    rates =
+      Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
+      |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
+      |> merge_rates()
+      |> Map.put(:source_token, state.source_id)
+
+    Source.ChannelTopics.broadcast_rates(rates)
+  end
+
+  def merge_rates(list) do
+    payload = {:noop, %{average_rate: 0, max_rate: 0, last_rate: 0}}
+
+    {:noop, data} =
+      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
+        average_rate = y.average_rate + acc.average_rate
+        max_rate = y.max_rate + acc.max_rate
+        last_rate = y.last_rate + acc.last_rate
+
+        {:noop, %{y | average_rate: average_rate, max_rate: max_rate, last_rate: last_rate}}
+      end)
+
+    data
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
@@ -248,6 +313,6 @@ defmodule Logflare.Source.RateCounterServer do
     Counters.delete(source_id)
     Counters.create(source_id)
     Counters.incriment_ets_count(source_id, 0)
-    Counters.incriment_total_count(source_id, log_count)
+    Counters.incriment_bq_count(source_id, log_count)
   end
 end

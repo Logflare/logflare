@@ -21,8 +21,32 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
+    topologies = Application.get_env(:libcluster, :topologies)
+
     dev_prod_children = [
+      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
+      supervisor(Phoenix.PubSub.PG2, [
+        [
+          name: Logflare.PubSub,
+          fastlane: Phoenix.Channel.Server
+        ]
+      ]),
+      worker(
+        Logflare.Tracker,
+        [
+          [
+            name: Logflare.Tracker,
+            pubsub_server: Logflare.PubSub,
+            broadcast_period: 1_000,
+            down_period: 5_000,
+            permdown_period: 30_000,
+            pool_size: 1,
+            log_level: :debug
+          ]
+        ]
+      ),
+      supervisor(LogflareTelemetry.Supervisor, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
@@ -30,8 +54,8 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),
-      supervisor(Logflare.SystemMetrics, []),
       supervisor(Logflare.Source.Supervisor, []),
+      supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, [])
     ]
 

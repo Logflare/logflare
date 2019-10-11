@@ -1,48 +1,58 @@
 @import "named_variables";
 
 .source-logs-search-container {
-  & .search-control {
-    & .source-name {
-      text-align: left;
+    & .search-control {
+        & .source-name {
+            text-align: left;
+        }
+        margin-top: 20px;
     }
-    margin-top: 20px;
-  }
 
-  & .alert {
-    margin: 10px 10px 0 0;
-  }
+    & .alert {
+        margin: 10px 10px 0 0;
+    }
 
-  #logs-list-container {
-    /* height: calc(100vh - 250px); */
-    /* overflow-y: scroll; */
-  }
+    #logs-list-container {
+        /* height: calc(100vh - 250px); */
+        /* overflow-y: scroll; */
+    }
 
-  #logs-list-container-empty {
-    /* height: calc(100vh - 250px); */
-  }
+    #logs-list-container-empty {
+        /* height: calc(100vh - 250px); */
+    }
 
-  & #logs-list {
-    display: flex;
-    flex-direction: column-reverse;
-    flex-grow: 1;
-    /* min-height: 100vh; */
-  }
+    & #logs-list {
+        display: flex;
+        flex-direction: column-reverse;
+        flex-grow: 1;
+        /* min-height: 100vh; */
+    }
 }
 
 .source-logs-search-modals {
-  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
-  word-break: normal;
-  overflow-wrap: normal;
+    font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,
+        Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji,
+        Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
+    word-break: normal;
+    overflow-wrap: normal;
 
-  & kbd {
-    white-space: nowrap;
-  }
+    & kbd {
+        white-space: nowrap;
+    }
+
+    & .show-source-schema {
+        & .fas.fa-copy {
+            color: $brand-brighter-green;
+        }
+    }
 }
 
 .message {
-  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
+    font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,
+        Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji,
+        Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
 }
 
 .source-logs-search-modals .modal {
-  overflow-y: scroll;
+    overflow-y: scroll;
 }

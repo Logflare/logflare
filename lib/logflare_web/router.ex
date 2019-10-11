@@ -113,6 +113,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :check_admin]
 
     get "/dashboard", AdminController, :dashboard
+    get "/cluster", ClusterController, :index
   end
 
   scope "/auth", LogflareWeb do
