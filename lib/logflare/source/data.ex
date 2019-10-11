@@ -1,6 +1,7 @@
 defmodule Logflare.Source.Data do
   @moduledoc false
   alias Logflare.Sources.Counters
+  alias Logflare.Cluster
   alias Logflare.Google.BigQuery
   alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}
 
@@ -33,8 +34,8 @@ defmodule Logflare.Source.Data do
   end
 
   @spec get_ets_count(atom) :: non_neg_integer
-  def get_ets_count(token) when is_atom(token) do
-    log_table_info = :ets.info(token)
+  def get_ets_count(source_id) when is_atom(source_id) do
+    log_table_info = :ets.info(source_id)
 
     case log_table_info do
       :undefined ->
@@ -54,7 +55,21 @@ defmodule Logflare.Source.Data do
         0
 
       _ ->
-        {:ok, inserts} = Counters.get_total_inserts(source_id)
+        {:ok, bq_inserts} = Counters.get_bq_inserts(source_id)
+        {:ok, inserts} = Counters.get_inserts(source_id)
+        inserts + bq_inserts
+    end
+  end
+
+  def get_inserts(source_id) when is_atom(source_id) do
+    log_table_info = :ets.info(source_id)
+
+    case log_table_info do
+      :undefined ->
+        0
+
+      _ ->
+        {:ok, inserts} = Counters.get_inserts(source_id)
         inserts
     end
   end
@@ -80,6 +95,27 @@ defmodule Logflare.Source.Data do
       _ ->
         List.flatten(:ets.match(source_id, {:_, :"$1"}))
     end
+  end
+
+  def get_logs_across_cluster(source_id) when is_atom(source_id) do
+    nodes = Cluster.Utils.node_list_all()
+
+    log_events =
+      for n <- nodes do
+        Task.Supervisor.async(
+          {Logflare.TaskSupervisor, n},
+          __MODULE__,
+          :get_logs,
+          [source_id]
+        )
+        |> Task.await()
+      end
+
+    Enum.reduce(log_events, [], fn x, acc ->
+      x ++ acc
+    end)
+    |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+    |> Enum.take(-100)
   end
 
   @spec get_avg_rate(map) :: non_neg_integer
@@ -135,13 +171,13 @@ defmodule Logflare.Source.Data do
   end
 
   @spec get_buffer(atom, integer) :: integer
-  def get_buffer(token, fallback \\ 0) do
-    case Process.whereis(String.to_atom("#{token}-buffer")) do
+  def get_buffer(source_id, fallback \\ 0) do
+    case Process.whereis(String.to_atom("#{source_id}-buffer")) do
       nil ->
         fallback
 
       _ ->
-        Buffer.get_count(token)
+        Buffer.get_count(source_id)
     end
   end
 

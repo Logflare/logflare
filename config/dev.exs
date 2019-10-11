@@ -3,7 +3,10 @@ use Mix.Config
 config :logflare, env: :dev
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4000, transport_options: [max_connections: 16384, num_acceptors: 10]],
+  http: [
+    port: System.get_env("PORT") || 4000,
+    transport_options: [max_connections: 16_384, num_acceptors: 10]
+  ],
   url: [host: "dev.chasegranberry.net", scheme: "http"],
   debug_errors: true,
   code_reloader: true,
@@ -46,7 +49,8 @@ config :logflare, Logflare.Repo,
   database: "logtail_dev",
   hostname: "localhost",
   pool_size: 10,
-  prepare: :unnamed
+  prepare: :unnamed,
+  log: false
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_dev",
@@ -56,4 +60,25 @@ config :logflare, Logflare.Google,
   compute_engine_sa: "1023172132421-compute@developer.gserviceaccount.com",
   api_sa: "1023172132421@cloudservices.gserviceaccount.com"
 
+config :libcluster,
+  topologies: [
+    dev: [
+      strategy: Cluster.Strategy.Epmd,
+      config: [
+        hosts: [:"pink@Chases-MBP-2017", :"orange@Chases-MBP-2017", :"red@Chases-MBP-2017"]
+      ]
+    ]
+    # gossip_example: [
+    #   strategy: Elixir.Cluster.Strategy.Gossip,
+    #   config: [
+    #     port: 45892,
+    #     if_addr: "0.0.0.0",
+    #     multicast_addr: "230.1.1.251",
+    #     multicast_ttl: 1,
+    #     secret: "somepassword"
+    #   ]
+    # ]
+  ]
+
 import_config "dev.secret.exs"
+import_config "telemetry.exs"

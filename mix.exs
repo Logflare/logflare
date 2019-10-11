@@ -5,7 +5,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.14.0",
+      version: "0.14.5",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -58,7 +58,7 @@ defmodule Logflare.Mixfile do
       {:phoenix, "~> 1.4.0"},
       {:phoenix_pubsub, "~> 1.0"},
       {:phoenix_ecto, "~> 4.0"},
-      {:ecto_sql, "~> 3.1"},
+      {:ecto_sql, "~> 3.2"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
@@ -75,7 +75,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.7.0"},
-      {:google_api_big_query, "~> 0.21.0"},
+      {:google_api_big_query, "~> 0.24.0"},
       {:goth, "~> 0.8.0"},
       {:broadway, "~> 0.4.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
@@ -96,15 +96,30 @@ defmodule Logflare.Mixfile do
       {:excoveralls, "~> 0.11", only: :test, runtime: false},
       {:placebo, "~> 1.2"},
       {:logflare_logger_backend, "~> 0.6.2"},
-      {:logflare_agent, "~> 0.6.1", only: [:staging, :prod]},
-      {:phoenix_live_view, github: "phoenixframework/phoenix_live_view"},
+      {:logflare_agent, "~> 0.6.1", only: [:prod]},
+      {:phoenix_live_view, "0.1.1"},
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
       {:scrivener_ecto, "~> 2.2.0"},
       {:scrivener_list, "~> 2.0.1"},
-      {:scrivener_html, "~> 1.8.1"}
+      {:scrivener_html, "~> 1.8.1"},
+      {:libcluster, "~> 3.1.1"},
+      {:map_keys, "~> 0.1.0"},
+
+      # Telemetry
+      {:telemetry, "~> 0.4.0"},
+      {:telemetry_poller, "~> 0.4.0"},
+      {:telemetry_metrics, "~> 0.3.0"},
+
+      # ETS
+      {:ets, "~> 0.7.1"},
+      {:ex2ms, "~> 1.0"},
+      {:etso, "~> 0.1.1"},
+
+      # Statistics
+      {:statistex, "~> 1.0.0"}
     ]
   end
 

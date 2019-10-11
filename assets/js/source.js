@@ -5,8 +5,6 @@ import _ from "lodash"
 import { userSelectedFormatter } from "./formatters"
 import { activateClipboardForSelector } from "./utils"
 import { applyToAllLogTimestamps } from "./logs"
-import idle from "./vendor/idle"
-import sqlFormatter from "sql-formatter"
 
 export async function main({ scrollTracker }, { avgEventsPerSecond }) {
     const { sourceToken, logs } = $("#__phx-assigns__").data()
@@ -134,69 +132,13 @@ function resetScrollTracker() {
     let nav_height = 110
 
     // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-    if (window_inner_height + window_offset - nav_height >= client_height - 100) {
+    if (
+        window_inner_height + window_offset - nav_height >=
+        client_height - 100
+    ) {
         window.scrollTracker = true
     } else {
         window.scrollTracker = false
-    }
-}
-
-export async function initSearch() {
-    window.searchStarted = false
-    // Clipboards
-    activateClipboardForSelector("#search-uri-query", {
-        text: trigger =>
-            location.href.replace(/\?.+$/, "") +
-            trigger.getAttribute("data-clipboard-text"),
-    })
-
-    activateClipboardForSelector(".show-source-schema td.metadata-field")
-
-    const idleInterval = $("#user-idle").data("user-idle-interval")
-
-    // Activate user idle tracking
-    idle({
-        onIdle: () => {
-            const $searchTailingButton = $("#search-tailing-button")
-            const $searchTailingCheckbox = $(
-                "input#" + $.escapeSelector("search_tailing?")
-            )
-
-            if ($searchTailingCheckbox.prop("value") === "true") {
-                console.log(`User idle for ${idleInterval}, tail search paused`)
-                $searchTailingButton.click()
-                $("#user-idle").click()
-            }
-        },
-        keepTracking: true,
-        idle: idleInterval,
-    }).start()
-
-    $(document).on("phx:update", search)
-}
-
-export async function search() {
-    if (!searchStarted) {
-        $("button#search").click()
-        window.searchStarted = true
-    }
-
-    let $firstSearch = $("#first-search")
-    let firstSearch = JSON.parse($firstSearch.text())
-    if (firstSearch && $("#logs-list li:nth(1)")[0]) {
-        $("#logs-list li:nth(1)")[0].scrollIntoView()
-    }
-
-    const $queryDebugModal = $("#queryDebugModal")
-    if ($queryDebugModal) {
-        const code = $("#search-query-debug code")
-        const fmtSql = sqlFormatter.format(code.text())
-        // replace with formatted sql
-        code.text(fmtSql)
-
-        $queryDebugModal
-            .find(".modal-body")
-            .html($("#search-query-debug").html())
     }
 }
 

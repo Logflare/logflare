@@ -14,7 +14,7 @@ config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
-  pubsub: [name: Logflare.PubSub, adapter: Phoenix.PubSub.PG2]
+  pubsub: [name: Logflare.PubSub]
 
 # Configures Elixir's Logger
 config :logger, :console,
@@ -49,6 +49,8 @@ config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,
   domain: "logflare.app"
 
+config :swoosh, local: false
+
 config :tesla,
   adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50]}
 
@@ -75,6 +77,6 @@ config :scrivener_html,
   view_style: :bootstrap_v4
 
 config :logflare,
-  sigterm_shutdown_grace_period_ms: 120_000
+  sigterm_shutdown_grace_period_ms: 90_000
 
 import_config "#{Mix.env()}.exs"

@@ -57,3 +57,4 @@ config :logflare_agent,
   url: "https://api.logflarestaging.com"
 
 import_config "prod.secret.exs"
+import_config "telemetry.exs"

@@ -63,7 +63,8 @@
 
 <div id="__phx-assigns__"
 data-user-api-key="<%= @user.api_key %>"
-data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.token))) %>">
+data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.token))) %>"
+data-current-node="<%= @current_node %>">
 </div>
 
 
