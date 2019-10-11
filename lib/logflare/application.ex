@@ -46,7 +46,7 @@ defmodule Logflare.Application do
           ]
         ]
       ),
-      supervisor(LogflareTelemetry.Supervisor, []),
+      # supervisor(LogflareTelemetry.Supervisor, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
