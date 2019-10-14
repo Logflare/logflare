@@ -21,7 +21,16 @@ defmodule Logflare.Tracker do
 
   def update(tracker_name, pid, topic, key, meta) do
     task =
-      Process.spawn(fn -> Phoenix.Tracker.update(tracker_name, pid, topic, key, meta) end, [])
+      Process.spawn(
+        fn ->
+          try do
+            Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
+          catch
+            :exit, _ -> Logger.warn("Tracker timeout!")
+          end
+        end,
+        []
+      )
 
     # case Task.yield(task, @timeout) || Task.shutdown(task) do
     #   {:ok, result} ->
@@ -34,7 +43,17 @@ defmodule Logflare.Tracker do
   end
 
   def track(tracker_name, pid, topic, key, meta) do
-    task = Process.spawn(fn -> Phoenix.Tracker.track(tracker_name, pid, topic, key, meta) end, [])
+    task =
+      Process.spawn(
+        fn ->
+          try do
+            Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
+          catch
+            :exit, _ -> Logger.warn("Tracker timeout!")
+          end
+        end,
+        []
+      )
 
     # case Task.yield(task, @timeout) || Task.shutdown(task) do
     #  {:ok, result} ->
