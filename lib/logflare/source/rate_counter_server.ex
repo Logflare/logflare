@@ -197,7 +197,7 @@ defmodule Logflare.Source.RateCounterServer do
   def get_cluster_rate_metrics(source_id, bucket \\ :default)
       when bucket == :default and is_atom(source_id) do
     nodes_metrics =
-      case Phoenix.Tracker.list(Logflare.Tracker, name(source_id)) do
+      case Logflare.Tracker.dirty_list(Logflare.Tracker, name(source_id)) do
         [] ->
           [%{average: 0, duration: 60, sum: 0}]
 
@@ -280,7 +280,7 @@ defmodule Logflare.Source.RateCounterServer do
 
   def broadcast(%RCS{} = state) do
     rates =
-      Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
+      Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
       |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
       |> merge_rates()
       |> Map.put(:source_token, state.source_id)

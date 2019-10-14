@@ -117,7 +117,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   defp broadcast_buffer(state) do
     payload =
-      Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
+      Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
       |> merge_metadata
 
     Source.ChannelTopics.broadcast_buffer(payload)

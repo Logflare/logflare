@@ -22,6 +22,7 @@ defmodule Logflare.Application do
     ]
 
     topologies = Application.get_env(:libcluster, :topologies)
+    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     dev_prod_children = [
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
@@ -41,7 +42,7 @@ defmodule Logflare.Application do
             broadcast_period: 1_000,
             down_period: 5_000,
             permdown_period: 30_000,
-            pool_size: 50,
+            pool_size: tracker_pool_size,
             log_level: :debug
           ]
         ]

@@ -19,14 +19,14 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   end
 
   def logs_last_second_cluster() do
-    nodes = Phoenix.Tracker.list(Logflare.Tracker, __MODULE__)
+    nodes = Logflare.Tracker.dirty_list(Logflare.Tracker, __MODULE__)
 
     Enum.map(nodes, fn {_x, y} -> y.last_second end)
     |> Enum.sum()
   end
 
   def total_logs_logged_cluster() do
-    nodes = Phoenix.Tracker.list(Logflare.Tracker, __MODULE__)
+    nodes = Logflare.Tracker.dirty_list(Logflare.Tracker, __MODULE__)
 
     init_inserts =
       Enum.map(nodes, fn {_x, y} -> y.init_total end)

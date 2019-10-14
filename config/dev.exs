@@ -69,16 +69,18 @@ config :libcluster,
       ]
     ]
     # gossip_example: [
-    #   strategy: Elixir.Cluster.Strategy.Gossip,
-    #   config: [
-    #     port: 45892,
-    #     if_addr: "0.0.0.0",
-    #     multicast_addr: "230.1.1.251",
-    #     multicast_ttl: 1,
-    #     secret: "somepassword"
-    #   ]
+    #  strategy: Elixir.Cluster.Strategy.Gossip,
+    #  config: [
+    #    port: 45892,
+    #    if_addr: "0.0.0.0",
+    #    multicast_addr: "230.1.1.251",
+    #    multicast_ttl: 1,
+    #    secret: "somepassword"
+    #  ]
     # ]
   ]
+
+config :logflare, Logflare.Tracker, pool_size: 1
 
 import_config "dev.secret.exs"
 import_config "telemetry.exs"

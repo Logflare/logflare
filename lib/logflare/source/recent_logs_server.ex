@@ -156,7 +156,7 @@ defmodule Logflare.Source.RecentLogsServer do
   ## Private Functions
   defp broadcast_count(state) do
     p =
-      Phoenix.Tracker.list(Logflare.Tracker, state.source_id)
+      Logflare.Tracker.dirty_list(Logflare.Tracker, state.source_id)
       |> merge_metadata
 
     {_, payload} =
@@ -199,6 +199,12 @@ defmodule Logflare.Source.RecentLogsServer do
       end)
 
     data
+  end
+
+  def dirty_list(tracker_name, topic) do
+    tracker_name
+    |> Phoenix.Tracker.Shard.name_for_topic(topic, 50)
+    |> Phoenix.Tracker.Shard.list(topic)
   end
 
   defp load_init_log_message(source_id, bigquery_project_id) do
