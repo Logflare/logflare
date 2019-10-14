@@ -20,6 +20,6 @@ defmodule Logflare.Tracker do
 
     tracker_name
     |> Phoenix.Tracker.Shard.name_for_topic(topic, pool_size)
-    |> Phoenix.Tracker.Shard.list(topic)
+    |> Phoenix.Tracker.Shard.dirty_list(topic)
   end
 end
