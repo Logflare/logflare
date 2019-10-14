@@ -201,12 +201,6 @@ defmodule Logflare.Source.RecentLogsServer do
     data
   end
 
-  def dirty_list(tracker_name, topic) do
-    tracker_name
-    |> Phoenix.Tracker.Shard.name_for_topic(topic, 50)
-    |> Phoenix.Tracker.Shard.list(topic)
-  end
-
   defp load_init_log_message(source_id, bigquery_project_id) do
     log_count = Data.get_log_count(source_id, bigquery_project_id)
 
