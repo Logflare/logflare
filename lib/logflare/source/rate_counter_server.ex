@@ -50,6 +50,11 @@ defmodule Logflare.Source.RateCounterServer do
 
   def init(source_id) when is_atom(source_id) do
     Process.flag(:trap_exit, true)
+
+    {:ok, source_id, {:continue, :boot}}
+  end
+
+  def handle_continue(:boot, source_id) do
     setup_ets_table(source_id)
     put_current_rate()
     bigquery_project_id = GenUtils.get_project_id(source_id)
@@ -65,7 +70,7 @@ defmodule Logflare.Source.RateCounterServer do
       init_tracker_metadata
     )
 
-    {:ok, source_id}
+    {:noreply, source_id}
   end
 
   def handle_info(:put_rate, source_id) when is_atom(source_id) do

@@ -24,6 +24,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def init(state) do
     Process.flag(:trap_exit, true)
 
+    {:ok, state, {:continue, :boot}}
+  end
+
+  def handle_continue(:boot, state) do
     init_metadata = %{source_token: "#{state.source_id}", buffer: 0}
 
     Phoenix.Tracker.track(
@@ -35,7 +39,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
     )
 
     check_buffer()
-    {:ok, state}
+
+    {:noreply, state}
   end
 
   def push(source_id, %LE{} = log_event) do
