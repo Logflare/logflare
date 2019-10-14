@@ -62,7 +62,7 @@ defmodule Logflare.Source.RateCounterServer do
 
     init_tracker_metadata = RCS.new(source_id)
 
-    Phoenix.Tracker.track(
+    Logflare.Tracker.track(
       Logflare.Tracker,
       self(),
       name(source_id),
@@ -275,7 +275,7 @@ defmodule Logflare.Source.RateCounterServer do
   defp update_tracker(%RCS{} = state) do
     pid = Process.whereis(name(state.source_id))
 
-    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
+    Logflare.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
   end
 
   def broadcast(%RCS{} = state) do

@@ -76,7 +76,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
       last_second: 0
     }
 
-    Phoenix.Tracker.track(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+    Logflare.Tracker.track(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
 
     {:ok, state}
   end
@@ -89,7 +89,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
     state = %{state | last_second: logs_last_second, last_total: metrics.total}
 
-    Phoenix.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+    Logflare.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
 
     log_stuff(logs_last_second, metrics)
     {:noreply, state}
@@ -102,7 +102,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
     state = %{state | inserts_since_init: metrics.inserts_since_init}
 
-    Phoenix.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+    Logflare.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
 
     {:noreply, state}
   end

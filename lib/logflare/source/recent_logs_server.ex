@@ -184,7 +184,7 @@ defmodule Logflare.Source.RecentLogsServer do
       log_count: 0
     }
 
-    Phoenix.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), payload)
+    Logflare.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), payload)
   end
 
   def merge_metadata(list) do

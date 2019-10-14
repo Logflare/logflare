@@ -30,7 +30,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_continue(:boot, state) do
     init_metadata = %{source_token: "#{state.source_id}", buffer: 0}
 
-    Phoenix.Tracker.track(
+    Logflare.Tracker.track(
       Logflare.Tracker,
       self(),
       name(state.source_id),
@@ -127,7 +127,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
     pid = Process.whereis(name(state.source_id))
     payload = %{source_token: state.source_id, buffer: :queue.len(state.buffer)}
 
-    Phoenix.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), payload)
+    Logflare.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), payload)
   end
 
   def merge_metadata(list) do
