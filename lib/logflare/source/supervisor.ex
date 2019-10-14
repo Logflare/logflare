@@ -26,7 +26,7 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
-    Logger.info("Source.Supervisor started!")
+    timer_prev = System.monotonic_time()
 
     query =
       from(s in "sources",
@@ -50,7 +50,10 @@ defmodule Logflare.Source.Supervisor do
       end)
 
     Supervisor.start_link(children, strategy: :one_for_one)
+    timer_next = System.monotonic_time()
+    diff = (timer_next - timer_prev) / 1_000_000
 
+    Logger.info("Source.Supervisor started in #{diff} ms!", source_sup_startup_time: diff)
     {:noreply, source_ids}
   end
 

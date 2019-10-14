@@ -14,4 +14,12 @@ defmodule Logflare.Tracker do
   def handle_diff(diff, state) do
     {:ok, state}
   end
+
+  def dirty_list(tracker_name, topic) do
+    pool_size = Application.get_env(:logflare, __MODULE__)[:pool_size]
+
+    tracker_name
+    |> Phoenix.Tracker.Shard.name_for_topic(topic, pool_size)
+    |> Phoenix.Tracker.Shard.dirty_list(topic)
+  end
 end

@@ -50,6 +50,11 @@ defmodule Logflare.Source.RateCounterServer do
 
   def init(source_id) when is_atom(source_id) do
     Process.flag(:trap_exit, true)
+
+    {:ok, source_id, {:continue, :boot}}
+  end
+
+  def handle_continue(:boot, source_id) do
     setup_ets_table(source_id)
     put_current_rate()
     bigquery_project_id = GenUtils.get_project_id(source_id)
@@ -65,8 +70,7 @@ defmodule Logflare.Source.RateCounterServer do
       init_tracker_metadata
     )
 
-    Logger.info("RateCounterServer started: #{source_id}")
-    {:ok, source_id}
+    {:noreply, source_id}
   end
 
   def handle_info(:put_rate, source_id) when is_atom(source_id) do
@@ -193,7 +197,7 @@ defmodule Logflare.Source.RateCounterServer do
   def get_cluster_rate_metrics(source_id, bucket \\ :default)
       when bucket == :default and is_atom(source_id) do
     nodes_metrics =
-      case Phoenix.Tracker.list(Logflare.Tracker, name(source_id)) do
+      case Logflare.Tracker.dirty_list(Logflare.Tracker, name(source_id)) do
         [] ->
           [%{average: 0, duration: 60, sum: 0}]
 
@@ -276,7 +280,7 @@ defmodule Logflare.Source.RateCounterServer do
 
   def broadcast(%RCS{} = state) do
     rates =
-      Phoenix.Tracker.list(Logflare.Tracker, name(state.source_id))
+      Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
       |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
       |> merge_rates()
       |> Map.put(:source_token, state.source_id)
