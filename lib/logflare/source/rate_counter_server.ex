@@ -65,7 +65,6 @@ defmodule Logflare.Source.RateCounterServer do
       init_tracker_metadata
     )
 
-    Logger.info("RateCounterServer started: #{source_id}")
     {:ok, source_id}
   end
 

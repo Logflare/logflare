@@ -43,8 +43,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def init(args) do
-    Logger.info("Logs.SearchQueryExecutor started: #{args.source_id}")
-
     {:ok, Map.merge(args, %{query_tasks: %{}})}
   end
 

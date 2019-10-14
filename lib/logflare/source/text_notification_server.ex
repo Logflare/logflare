@@ -22,8 +22,6 @@ defmodule Logflare.Source.TextNotificationServer do
 
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
 
-    Logger.info("TextNotificationServer started: #{rls.source_id}")
-
     {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 

@@ -22,7 +22,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def init(state) do
-    Logger.info("BigQuery.Buffer started: #{state.source_id}")
     Process.flag(:trap_exit, true)
 
     init_metadata = %{source_token: "#{state.source_id}", buffer: 0}

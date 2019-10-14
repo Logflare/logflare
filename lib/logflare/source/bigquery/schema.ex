@@ -44,7 +44,6 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def init(state) do
     Process.flag(:trap_exit, true)
-    Logger.info("BigQuery.Schema started: #{state.source_token}")
 
     {:ok, state, {:continue, :boot}}
   end
