@@ -3,7 +3,7 @@ defmodule Logflare.Tracker do
 
   require Logger
 
-  @timeout 1_000
+  @timeout 5_000
 
   def start_link(opts) do
     opts = Keyword.merge([name: __MODULE__], opts)
@@ -20,29 +20,30 @@ defmodule Logflare.Tracker do
   end
 
   def update(tracker_name, pid, topic, key, meta) do
-    task = Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
+    task =
+      Process.spawn(fn -> Phoenix.Tracker.update(tracker_name, pid, topic, key, meta) end, [])
 
-    case Task.yield(task, @timeout) || Task.shutdown(task) do
-      {:ok, result} ->
-        result
+    # case Task.yield(task, @timeout) || Task.shutdown(task) do
+    #   {:ok, result} ->
+    #     result
 
-      nil ->
-        Logger.warn("Tracker timed out in #{@timeout}ms")
-        nil
-    end
+    #   nil ->
+    #     Logger.warn("Tracker timed out in #{@timeout}ms")
+    #     nil
+    # end
   end
 
   def track(tracker_name, pid, topic, key, meta) do
-    task = Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
+    task = Process.spawn(fn -> Phoenix.Tracker.track(tracker_name, pid, topic, key, meta) end, [])
 
-    case Task.yield(task, @timeout) || Task.shutdown(task) do
-      {:ok, result} ->
-        result
+    # case Task.yield(task, @timeout) || Task.shutdown(task) do
+    #  {:ok, result} ->
+    #    result
 
-      nil ->
-        Logger.warn("Tracker timed out in #{@timeout}ms")
-        nil
-    end
+    #  nil ->
+    #    Logger.warn("Tracker timed out in #{@timeout}ms")
+    #    nil
+    # end
   end
 
   def dirty_list(tracker_name, topic) do
