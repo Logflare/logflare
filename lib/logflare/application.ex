@@ -41,7 +41,7 @@ defmodule Logflare.Application do
             broadcast_period: 1_000,
             down_period: 5_000,
             permdown_period: 30_000,
-            pool_size: 1,
+            pool_size: 50,
             log_level: :debug
           ]
         ]
