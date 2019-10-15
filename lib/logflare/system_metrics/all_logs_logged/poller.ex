@@ -36,7 +36,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
       Enum.map(nodes, fn {_x, y} -> y.inserts_since_init end)
       |> Enum.sum()
 
-    old_nodes_total_logs_logged() + init_inserts + inserts_since_init
+    # old_nodes_total_logs_logged() + init_inserts + inserts_since_init
+    init_inserts + inserts_since_init
   end
 
   def old_nodes_total_logs_logged() do
@@ -57,7 +58,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
       if MapSet.member?(old_nodes, node) do
         %{acc | all_logs_logged: x + acc.all_logs_logged}
       else
-        %{acc | all_logs_logged: acc.all_logs_logged}
+        %{acc | all_logs_logged: 0}
       end
     end)
     |> Map.get(:all_logs_logged)
@@ -75,6 +76,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
       inserts_since_init: metrics.inserts_since_init,
       last_second: 0
     }
+
+    IO.inspect(state)
 
     Logflare.Tracker.track(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
 
