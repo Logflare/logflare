@@ -1,3 +1,4 @@
+require Logger
 use Mix.Config
 
 config :logflare, env: :prod
@@ -93,5 +94,8 @@ config :logflare, Logflare.Tracker, pool_size: 50
 import_config "telemetry.exs"
 
 if File.exists?("config/prod.secret.exs") do
-  import_config "prod.secret.exs"
+  Logger.info("prod.secret.exs found, importing..")
+  Logger.import_config("prod.secret.exs")
+else
+  Logger.warn("prod.secret.exs doesn't exist")
 end
