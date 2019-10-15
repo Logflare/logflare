@@ -1,4 +1,4 @@
-FROM gcr.io/logflare/logflare_base:latest
+FROM gcr.io/logflare-232118/logflare_app:latest
 
 COPY ./ /logflare
 WORKDIR /logflare
