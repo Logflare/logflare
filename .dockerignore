@@ -21,11 +21,6 @@ npm-debug.log
 
 /config/secrets
 
-# Local secrets
-
-gcloud.json
-gcloud_staging.json
-
 # IDEs
 
 /.elixir_ls/
