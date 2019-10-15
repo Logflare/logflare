@@ -14,6 +14,18 @@ defmodule Logflare.Google.CloudResourceManager do
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
   @api_sa Application.get_env(:logflare, Logflare.Google)[:api_sa]
   @compute_engine_sa Application.get_env(:logflare, Logflare.Google)[:compute_engine_sa]
+  @cloud_build_sa Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
+  @gcp_cloud_build_sa Application.get_env(:logflare, Logflare.Google)[:gcp_cloud_build_sa]
+  @compute_system_iam_sa Application.get_env(:logflare, Logflare.Google)[:compute_system_iam_sa]
+  @container_engine_robot_sa Application.get_env(:logflare, Logflare.Google)[
+                               :container_engine_robot_sa
+                             ]
+  @dataproc_sa Application.get_env(:logflare, Logflare.Google)[:dataproc_sa]
+  @container_registry_sa Application.get_env(:logflare, Logflare.Google)[:container_registry_sa]
+  @redis_sa Application.get_env(:logflare, Logflare.Google)[:redis_sa]
+  @serverless_robot_sa Application.get_env(:logflare, Logflare.Google)[:serverless_robot_sa]
+  @service_networking_sa Application.get_env(:logflare, Logflare.Google)[:service_networking_sa]
+  @source_repo_sa Application.get_env(:logflare, Logflare.Google)[:source_repo_sa]
 
   def get_iam_policy() do
     conn = get_conn()
@@ -102,6 +114,84 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         members: ["serviceAccount:#{@service_account}"],
         role: "roles/resourcemanager.projectIamAdmin"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@cloud_build_sa}"],
+        role: "roles/cloudbuild.builds.builder"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@gcp_cloud_build_sa}"],
+        role: "roles/cloudbuild.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@cloud_build_sa}"],
+        role: "roles/compute.admin"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@compute_system_iam_sa}"],
+        role: "roles/compute.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@cloud_build_sa}"],
+        role: "roles/container.admin"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: [
+          "serviceAccount:#{@container_engine_robot_sa}"
+        ],
+        role: "roles/container.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@dataproc_sa}"],
+        role: "roles/dataproc.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: [
+          "serviceAccount:#{@compute_engine_sa}",
+          "serviceAccount:#{@api_sa}",
+          "serviceAccount:#{@container_registry_sa}"
+        ],
+        role: "roles/editor"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: [
+          "serviceAccount:#{@compute_engine_sa}",
+          "serviceAccount:#{@cloud_build_sa}"
+        ],
+        role: "roles/iam.serviceAccountUser"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@redis_sa}"],
+        role: "roles/redis.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: [
+          "serviceAccount:#{@serverless_robot_sa}"
+        ],
+        role: "roles/run.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{@service_networking_sa}"],
+        role: "roles/servicenetworking.serviceAgent"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: [
+          "serviceAccount:#{@source_repo_sa}"
+        ],
+        role: "roles/sourcerepo.serviceAgent"
       }
     ]
   end
