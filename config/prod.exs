@@ -90,5 +90,8 @@ config :libcluster,
 
 config :logflare, Logflare.Tracker, pool_size: 50
 
-import_config "prod.secret.exs"
 import_config "telemetry.exs"
+
+if File.exists?("config/prod.secret.exs") do
+  import_config "prod.secret.exs"
+end
