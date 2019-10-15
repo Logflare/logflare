@@ -70,21 +70,14 @@ config :logflare_agent,
   url: "https://api.logflarestaging.com"
 
 config :libcluster,
+  debug: true,
   topologies: [
-    # dev: [
-    #   strategy: Cluster.Strategy.Epmd,
-    #   config: [
-    #     hosts: [:"pink@Chases-MBP-2017", :"orange@Chases-MBP-2017", :"red@Chases-MBP-2017"]
-    #   ]
-    # ]
-    gossip_example: [
-      strategy: Elixir.Cluster.Strategy.Gossip,
+    k8s_chat: [
+      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
       config: [
-        port: 45892,
-        if_addr: "0.0.0.0",
-        multicast_addr: "230.1.1.251",
-        multicast_ttl: 1,
-        secret: "somepassword"
+        service: "logflare-prod-headless",
+        application_name: "logflare",
+        polling_interval: 1_000
       ]
     ]
   ]
