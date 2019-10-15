@@ -1,0 +1,15 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: logflare-prod-ingress
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: "logflare-prod-cluster-static-ip"
+    ingress.gcp.kubernetes.io/pre-shared-cert: "logflare-instant-ssl, logflarelogs-instant-ssl, cf-origin-cert"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /*
+            backend:
+              serviceName: logflare-prod-service
+              servicePort: 80

@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: logflare-staging
+  name: logflare-prod
   labels:
-    app: logflare-staging
+    app: logflare-prod
 spec:
   progressDeadlineSeconds: 600
   replicas: 3
@@ -11,7 +11,7 @@ spec:
   minReadySeconds: 30
   selector:
     matchLabels:
-      app: logflare-staging
+      app: logflare-prod
   strategy:
     rollingUpdate:
       maxSurge: 1
@@ -21,20 +21,20 @@ spec:
     metadata:
       creationTimestamp: null
       labels:
-        app: logflare-staging
+        app: logflare-prod
     spec:
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - logflare-staging
-            topologyKey: kubernetes.io/hostname
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - logflare-prod
+              topologyKey: kubernetes.io/hostname
       containers:
-        - image: gcr.io/logflare-staging/logflare_origin:latest
+        - image: gcr.io/logflare/logflare_app:latest
           imagePullPolicy: Always
           name: logflare
           ports:
