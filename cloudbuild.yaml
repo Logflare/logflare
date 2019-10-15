@@ -16,7 +16,7 @@ steps:
       - --plaintext-file=./config/prod.secret.exs
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
-      - --key=logflare-secrets-key
+      - --key=logflare-prod-secrets-key
   - name: "gcr.io/cloud-builders/docker"
     args: ["build", "-t", "gcr.io/logflare/logflare_app:$COMMIT_SHA", "."]
   - name: "gcr.io/cloud-builders/docker"
