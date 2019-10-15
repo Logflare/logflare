@@ -119,6 +119,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
     payload =
       Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
       |> merge_metadata
+      |> Map.put(:source_token, state.source_id)
 
     Source.ChannelTopics.broadcast_buffer(payload)
   end
