@@ -18,15 +18,16 @@ steps:
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
   - name: "gcr.io/cloud-builders/docker"
-    args: ["build", "-t", "gcr.io/logflare/logflare_app:$COMMIT_SHA", "."]
+    args:
+      ["build", "-t", "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA", "."]
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/logflare/logflare_app:$COMMIT_SHA"]
+    args: ["push", "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/kubectl"
     args:
       - set
       - image
       - deployment/logflare-prod
-      - logflare=gcr.io/logflare/logflare_app:$COMMIT_SHA
+      - logflare=gcr.io/logflare-232118/logflare_app:$COMMIT_SHA
     env:
       - CLOUDSDK_COMPUTE_ZONE=us-central1-a
       - CLOUDSDK_CONTAINER_CLUSTER=logflare-prod-cluster
