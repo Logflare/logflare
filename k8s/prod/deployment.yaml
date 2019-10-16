@@ -47,6 +47,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+        tolerations:
+          - key: "node-role.kubernetes.io/master"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
