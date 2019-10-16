@@ -72,12 +72,10 @@ config :logflare_agent,
 config :libcluster,
   debug: true,
   topologies: [
-    k8s_chat: [
-      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
+    gce: [
+      strategy: Cluster.Strategy.GoogleComputeEngine,
       config: [
-        service: "logflare-prod-headless",
-        application_name: "logflare",
-        polling_interval: 1_000
+        release_name: :logflare
       ]
     ]
   ]

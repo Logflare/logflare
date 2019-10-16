@@ -119,7 +119,8 @@ defmodule Logflare.Mixfile do
       {:etso, "~> 0.1.1"},
 
       # Statistics
-      {:statistex, "~> 1.0.0"}
+      {:statistex, "~> 1.0.0"},
+      {:libcluster_gce_strategy, "~> 0.1"}
     ]
   end
 
