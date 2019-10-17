@@ -37,6 +37,6 @@ steps:
       - logflare=gcr.io/logflare-232118/logflare_app:$COMMIT_SHA
     env:
       - CLOUDSDK_COMPUTE_ZONE=us-central1-a
-      - CLOUDSDK_CONTAINER_CLUSTER=logflare-prod-cluster
+      - CLOUDSDK_CONTAINER_CLUSTER=logflare-prod-regional-cluster
 
 timeout: 1800s
