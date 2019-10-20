@@ -73,7 +73,7 @@ config :libcluster,
   debug: true,
   topologies: [
     gce: [
-      strategy: Cluster.Strategy.GoogleComputeEngine,
+      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
       config: [
         release_name: :logflare
       ]
