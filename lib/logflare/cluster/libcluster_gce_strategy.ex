@@ -6,7 +6,8 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
   @default_polling_interval 10_000
   @metadata_base_url 'http://metadata.google.internal/computeMetadata/v1'
-  @google_api_base_url 'https://www.googleapis.com/compute/v1'
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
+  @google_api_base_url 'https://compute.googleapis.com/compute/v1/projects/#{@project_id}'
   @default_release_name :node
 
   def start_link(args) do
@@ -56,9 +57,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       |> Jason.decode!()
       |> Map.get("access_token")
 
-    # zone = get_metadata('/instance/zone')
-
-    zone = "us-central1-a"
+    region = "us-central1"
 
     group_id =
       get_metadata('/instance/attributes/created-by')
@@ -70,7 +69,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
     headers = [{'Authorization', 'Bearer #{auth_token}'}]
 
-    url = @google_api_base_url ++ '/#{zone}/instanceGroups/#{group_id}/listInstances'
+    url = @google_api_base_url ++ '/regions/#{region}/instanceGroups/#{group_id}/listInstances'
 
     Cluster.Logger.info(:gce, "Fetching instances from #{inspect(url)}")
 
