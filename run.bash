@@ -5,7 +5,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/logflare/gcloud.json
 set -ex
 
 export MY_POD_IP=$(curl \
-    -s "http://metadata.google.internal/computeMetadata/v1/instance/hostname" \
+    -s "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip" \
     -H "Metadata-Flavor: Google")
 
 mix ecto.migrate && \
