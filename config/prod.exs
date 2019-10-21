@@ -76,7 +76,6 @@ config :logflare_logger_backend,
   url: "https://api.logflarestaging.com"
 
 config :libcluster,
-  debug: true,
   topologies: [
     gce: [
       strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
