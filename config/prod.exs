@@ -69,6 +69,12 @@ config :logflare_agent,
   ],
   url: "https://api.logflarestaging.com"
 
+config :logflare_logger_backend,
+  source_id: "8a1fec4a-532c-4033-bbca-8269b328e804",
+  flush_interval: 1_000,
+  max_batch_size: 50,
+  url: "https://api.logflarestaging.com"
+
 config :libcluster,
   debug: true,
   topologies: [
