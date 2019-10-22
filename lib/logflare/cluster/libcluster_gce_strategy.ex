@@ -87,7 +87,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
            )
         |> Enum.map(
              fn %{"instance" => url} ->
-               {:ok, {{_, 200, _}, _headers, body}} = :httpc.request( :post, {url, headers, 'application/json', ''}, [], [] )
+               {:ok, {{_, 200, _}, _headers, body}} = :httpc.request( :post, {to_char_list(url), headers, 'application/json', ''}, [], [] )
                Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
                network_ip = body
