@@ -86,10 +86,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
              end
            )
         |> Enum.map(
-             fn %{"instance" => instance} ->
-               url = instance
-                     |> String.replace("https://www.", "https://compute.")
-                     |> to_char_list
+             fn %{"instance" => url} ->
                {:ok, {{_, 200, _}, _headers, body}} = :httpc.request( :post, {url, headers, 'application/json', ''}, [], [] )
                Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
