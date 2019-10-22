@@ -102,7 +102,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
     init_metadata = %{source_token: "#{source_id}", log_count: 0, bq_count: bq_count, inserts: 0}
 
-    Phoenix.Tracker.track(Logflare.Tracker, self(), source_id, Node.self(), init_metadata)
+    Logflare.Tracker.track(Logflare.Tracker, self(), source_id, Node.self(), init_metadata)
 
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}

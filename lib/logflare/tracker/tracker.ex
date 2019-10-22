@@ -26,7 +26,7 @@ defmodule Logflare.Tracker do
           try do
             Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
           catch
-            :exit, _ -> Logger.warn("Tracker timeout!")
+            :exit, _ -> Logger.warn("Tracker.update timeout!")
           end
         end,
         []
@@ -49,7 +49,7 @@ defmodule Logflare.Tracker do
           try do
             Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
           catch
-            :exit, _ -> Logger.warn("Tracker timeout!")
+            :exit, _ -> Logger.warn("Tracker.track timeout!")
           end
         end,
         []
