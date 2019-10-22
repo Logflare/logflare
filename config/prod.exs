@@ -13,7 +13,7 @@ config :logflare, LogflareWeb.Endpoint,
 
 config :logger,
   level: :info,
-  backends: [LogflareLogger.HttpBackend, :console]
+  backends: [LogflareLogger.HttpBackend]
 
 config :phoenix, :serve_endpoints, true
 
