@@ -39,9 +39,9 @@ defmodule Logflare.Application do
           [
             name: Logflare.Tracker,
             pubsub_server: Logflare.PubSub,
-            # broadcast_period: 1_000,
-            # down_period: 5_000,
-            # permdown_period: 30_000,
+            broadcast_period: 1_000,
+            down_period: 5_000,
+            permdown_period: 30_000,
             pool_size: tracker_pool_size,
             log_level: false
           ]
