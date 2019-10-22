@@ -4,6 +4,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
+  alias Logflare.Source.RateCounterServer, as: RCS
 
   require Logger
 
@@ -102,8 +103,11 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    update_tracker(state)
-    broadcast_buffer(state)
+    if RCS.get_rate(state.source_id) > 0 do
+      update_tracker(state)
+      broadcast_buffer(state)
+    end
+
     check_buffer()
 
     {:noreply, state}

@@ -81,8 +81,11 @@ defmodule Logflare.Source.RateCounterServer do
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
-    update_tracker(state)
-    broadcast(state)
+
+    if get_rate(source_id) > 0 do
+      update_tracker(state)
+      broadcast(state)
+    end
 
     {:noreply, source_id}
   end

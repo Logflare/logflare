@@ -22,7 +22,8 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Number.Delimit
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
-  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
+  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer}
+  alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
@@ -89,7 +90,7 @@ defmodule Logflare.Source.RecentLogsServer do
     }
 
     children = [
-      {RateCounterServer, rls},
+      {RCS, rls},
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {Buffer, rls},
@@ -119,10 +120,15 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:broadcast, state) do
-    update_tracker(state)
-    {:ok, total_cluster_inserts} = broadcast_count(state)
-    broadcast()
-    {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
+    if RCS.get_rate(state.source_id) > 0 do
+      update_tracker(state)
+      {:ok, total_cluster_inserts} = broadcast_count(state)
+      broadcast()
+      {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
+    else
+      broadcast()
+      {:noreply, state}
+    end
   end
 
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
