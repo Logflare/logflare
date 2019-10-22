@@ -50,7 +50,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   end
 
   defp get_nodes(state) do
-    Cluster.Logger.info(:gce, "Loading nodes from GCE API...")
+    Cluster.Logger.debug(:gce, "Loading nodes from GCE API...")
 
     auth_token =
       get_metadata('/instance/service-accounts/default/token')
@@ -71,11 +71,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
     url = @google_api_base_url ++ '/regions/#{region}/instanceGroups/#{group_id}/listInstances'
 
-    Cluster.Logger.info(:gce, "Fetching instances from #{inspect(url)}")
+    Cluster.Logger.debug(:gce, "Fetching instances from #{inspect(url)}")
 
     case :httpc.request(:post, {url, headers, 'application/json', ''}, [], []) do
       {:ok, {{_, 200, _}, _headers, body}} ->
-        Cluster.Logger.info(:gce, "    Received body: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
 
         Jason.decode!(body)
         |> Map.get("items")
@@ -90,7 +90,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
             |> List.last()
 
           node_name = :"#{release_name}@#{instance_name}"
-          Cluster.Logger.info(:gce, "   - Found node: #{inspect(node_name)}")
+          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
 
           node_name
         end)
@@ -101,11 +101,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
     headers = [{'Metadata-Flavor', 'Google'}]
     url = @metadata_base_url ++ path
 
-    Cluster.Logger.info(:gce, "Fetching Metadata from #{inspect(url)}...")
+    Cluster.Logger.debug(:gce, "Fetching Metadata from #{inspect(url)}...")
 
     case :httpc.request(:get, {url, headers}, [], []) do
       {:ok, {{_, 200, _}, _headers, body}} ->
-        Cluster.Logger.info(:gce, "    Received body: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
         body
     end
   end
