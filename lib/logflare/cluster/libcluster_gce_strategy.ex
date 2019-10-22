@@ -97,7 +97,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
                             |> Jason.decode!
                             |> Map.get("networkInterfaces")
                             |> hd
-                            |> Map.get("networkIp")
+                            |> Map.get("networkIP")
 
                Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
 
