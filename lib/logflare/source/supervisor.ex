@@ -9,6 +9,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Cluster
 
   import Ecto.Query, only: [from: 2]
 
@@ -127,25 +128,25 @@ defmodule Logflare.Source.Supervisor do
   ## Public Functions
 
   def new_source(source_id) do
-    GenServer.call(__MODULE__, {:create, source_id})
+    GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
   end
 
   def delete_source(source_id) do
-    GenServer.call(__MODULE__, {:delete, source_id})
+    GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:delete, source_id})
     BigQuery.delete_table(source_id)
 
     {:ok, source_id}
   end
 
   def reset_source(source_id) do
-    GenServer.cast(__MODULE__, {:restart, source_id})
+    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:restart, source_id})
 
     {:ok, source_id}
   end
 
   def reset_all_user_sources(user) do
     sources = Repo.all(Ecto.assoc(user, :sources))
-    Enum.each(sources, fn s -> GenServer.cast(__MODULE__, {:restart, s.token}) end)
+    Enum.each(sources, fn s -> reset_source(s.token) end)
   end
 
   defp create_source(source_id) do
