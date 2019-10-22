@@ -79,21 +79,35 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
         Jason.decode!(body)
         |> Map.get("items")
-        |> Enum.filter(fn
-          %{"status" => "RUNNING"} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn %{"instance" => instance} ->
-          instance_name =
-            instance
-            |> String.split("/")
-            |> List.last()
+        |> Enum.filter(
+             fn
+               %{"status" => "RUNNING"} -> true
+               _ -> false
+             end
+           )
+        |> Enum.map(
+             fn %{"instance" => instance} ->
+               url = instance
+                     |> String.replace("https://www.", "https://compute.")
+                     |> to_char_list
+               {:ok, {{_, 200, _}, _headers, body}} = :httpc.request( :post, {url, headers, 'application/json', ''}, [], [] )
+               Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
-          node_name = :"#{release_name}@#{instance_name}"
-          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+               network_ip = body
+                            |> Jason.decode!
+                            |> Map.get("networkInterfaces")
+                            |> hd
+                            |> Map.get("networkIp")
 
-          node_name
-        end)
+               Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+
+               node_name = :"#{release_name}@#{network_ip}"
+
+               Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+
+               node_name
+             end
+           )
     end
   end
 
