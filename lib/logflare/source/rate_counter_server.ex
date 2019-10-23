@@ -196,6 +196,13 @@ defmodule Logflare.Source.RateCounterServer do
     |> Map.drop([:queue])
   end
 
+  def get_cluster_rates(source_id) do
+    Logflare.Tracker.dirty_list(Logflare.Tracker, name(source_id))
+    |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
+    |> merge_rates()
+    |> Map.put(:source_token, source_id)
+  end
+
   @spec get_cluster_rate_metrics(atom, atom) :: map
   def get_cluster_rate_metrics(source_id, bucket \\ :default)
       when bucket == :default and is_atom(source_id) do
@@ -282,11 +289,7 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def broadcast(%RCS{} = state) do
-    rates =
-      Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
-      |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
-      |> merge_rates()
-      |> Map.put(:source_token, state.source_id)
+    rates = get_cluster_rates(state.source_id)
 
     Source.ChannelTopics.broadcast_rates(rates)
   end
