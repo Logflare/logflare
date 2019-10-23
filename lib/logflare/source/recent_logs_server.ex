@@ -120,7 +120,7 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:broadcast, state) do
-    if RCS.get_rate(state.source_id) > 0 do
+    if Source.Data.get_ets_count(state.source_id) > 0 do
       update_tracker(state)
       {:ok, total_cluster_inserts} = broadcast_count(state)
       broadcast()

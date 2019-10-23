@@ -82,7 +82,7 @@ defmodule Logflare.Source.RateCounterServer do
 
     update_ets_table(state)
 
-    if get_rate(source_id) > 0 do
+    if Source.Data.get_ets_count(source_id) > 0 do
       update_tracker(state)
       broadcast(state)
     end

@@ -85,7 +85,7 @@ config :libcluster,
     ]
   ]
 
-config :logflare, Logflare.Tracker, pool_size: 10
+config :logflare, Logflare.Tracker, pool_size: 50
 
 import_config "telemetry.exs"
 
