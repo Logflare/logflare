@@ -5,9 +5,16 @@ defmodule LogflareWeb.HealthCheckController do
 
   def check(conn, params) do
     nodes = Cluster.Utils.node_list_all()
+    proc_count = Process.list() |> Enum.count()
 
     response =
-      %{status: :ok, nodes: nodes, nodes_count: Enum.count(nodes)}
+      %{
+        status: :ok,
+        proc_count: proc_count,
+        this_node: Node.self(),
+        nodes: nodes,
+        nodes_count: Enum.count(nodes)
+      }
       |> Jason.encode!()
 
     conn
