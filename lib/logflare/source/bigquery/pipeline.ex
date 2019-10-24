@@ -98,6 +98,16 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         LogflareLogger.context(tesla_response: response)
         Logger.warn("Stream batch timeout error!")
         messages
+
+      {:error, :checkout_timeout = response} ->
+        LogflareLogger.context(tesla_response: response)
+        Logger.warn("Stream batch checkout_timeout error!")
+        messages
+
+      {:error, response} ->
+        LogflareLogger.context(tesla_response: response)
+        Logger.warn("Stream batch unknown error!")
+        messages
     end
   end
 
