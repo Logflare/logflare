@@ -19,9 +19,9 @@ defmodule Logflare.Source.ChannelTopics do
     field :max_rate, integer(), default: 0
   end
 
-  def broadcast_log_count(payload) do
-    payload = %{payload | log_count: Delimit.number_to_delimited(payload[:log_count])}
-    topic = "dashboard:#{payload.source_token}"
+  def broadcast_log_count(%{log_count: log_count, source_token: source_token} = payload) do
+    payload = %{payload | log_count: Delimit.number_to_delimited(log_count)}
+    topic = "dashboard:#{source_token}"
     event = "log_count"
     payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
 

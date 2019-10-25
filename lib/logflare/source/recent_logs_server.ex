@@ -27,12 +27,13 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Tracker.SourceNodeMetrics
   alias __MODULE__, as: RLS
 
   require Logger
 
   @prune_timer 1_000
-  @broadcast_every 1_000
+  @broadcast_every 250
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: source_id)
@@ -101,10 +102,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
     Supervisor.start_link(children, strategy: :one_for_all)
 
-    init_metadata = %{source_token: "#{source_id}", log_count: 0, bq_count: bq_count, inserts: 0}
-
-    Logflare.Tracker.track(Logflare.Tracker, self(), source_id, Node.self(), init_metadata)
-
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
   end
@@ -121,7 +118,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_info(:broadcast, state) do
     if Source.Data.get_ets_count(state.source_id) > 0 do
-      update_tracker(state)
       {:ok, total_cluster_inserts} = broadcast_count(state)
       broadcast()
       {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
@@ -161,50 +157,15 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
-    p =
-      Logflare.Tracker.dirty_list(Logflare.Tracker, state.source_id)
-      |> merge_metadata
+    inserts = SourceNodeMetrics.get_cluster_inserts(state.source_id)
 
-    {_, payload} =
-      Map.get_and_update(p, :log_count, fn current_value ->
-        {current_value, p.bq_count + p.inserts}
-      end)
+    payload = %{log_count: inserts, source_token: state.source_id}
 
-    if payload.log_count > state.total_cluster_inserts do
+    if inserts > state.total_cluster_inserts do
       Source.ChannelTopics.broadcast_log_count(payload)
     end
 
-    {:ok, payload.log_count}
-  end
-
-  defp update_tracker(state) do
-    pid = Process.whereis(state.source_id)
-
-    bq_count = state.bq_total_on_boot
-    inserts = Data.get_inserts(state.source_id)
-
-    payload = %{
-      source_token: state.source_id,
-      bq_count: bq_count,
-      inserts: inserts,
-      log_count: 0
-    }
-
-    Logflare.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), payload)
-  end
-
-  def merge_metadata(list) do
-    payload = {:noop, %{inserts: 0, bq_count: 0}}
-
-    {:noop, data} =
-      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
-        total = y.inserts + acc.inserts
-        bq_count = if y.bq_count > acc.bq_count, do: y.bq_count, else: acc.bq_count
-
-        {:noop, %{y | inserts: total, bq_count: bq_count}}
-      end)
-
-    data
+    {:ok, inserts}
   end
 
   defp load_init_log_message(source_id, bigquery_project_id) do
