@@ -3,8 +3,6 @@ defmodule Logflare.Tracker do
 
   require Logger
 
-  @timeout 5_000
-
   def start_link(opts) do
     opts = Keyword.merge([name: __MODULE__], opts)
     Phoenix.Tracker.start_link(__MODULE__, opts, opts)
@@ -15,54 +13,38 @@ defmodule Logflare.Tracker do
     {:ok, %{pubsub_server: server, node_name: Phoenix.PubSub.node_name(server)}}
   end
 
-  def handle_diff(diff, state) do
+  def handle_diff(_diff, state) do
     {:ok, state}
   end
 
   def update(tracker_name, pid, topic, key, meta) do
-    task =
-      Process.spawn(
-        fn ->
-          try do
-            Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
-          catch
-            :exit, _ -> Logger.warn("Tracker.update timeout!")
-          end
-        end,
-        []
-      )
-
-    # case Task.yield(task, @timeout) || Task.shutdown(task) do
-    #   {:ok, result} ->
-    #     result
-
-    #   nil ->
-    #     Logger.warn("Tracker timed out in #{@timeout}ms")
-    #     nil
-    # end
+    Process.spawn(
+      fn ->
+        try do
+          Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
+        catch
+          :exit, _ -> Logger.warn("Tracker.update timeout!")
+        end
+      end,
+      []
+    )
   end
 
   def track(tracker_name, pid, topic, key, meta) do
-    task =
-      Process.spawn(
-        fn ->
-          try do
-            Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
-          catch
-            :exit, _ -> Logger.warn("Tracker.track timeout!")
-          end
-        end,
-        []
-      )
+    Process.spawn(
+      fn ->
+        try do
+          Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
+        catch
+          :exit, _ -> Logger.warn("Tracker.track timeout!")
+        end
+      end,
+      []
+    )
+  end
 
-    # case Task.yield(task, @timeout) || Task.shutdown(task) do
-    #  {:ok, result} ->
-    #    result
-
-    #  nil ->
-    #    Logger.warn("Tracker timed out in #{@timeout}ms")
-    #    nil
-    # end
+  def list(tracker_name, topic) do
+    Phoenix.Tracker.list(tracker_name, topic)
   end
 
   def dirty_list(tracker_name, topic) do

@@ -115,7 +115,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
   end
 
   def get_cluster_rates(source_id) do
-    rates = Logflare.Tracker.dirty_list(Logflare.Tracker, "rates")
+    rates = Logflare.Tracker.list(Logflare.Tracker, "rates")
 
     max_rate =
       rates
@@ -156,13 +156,13 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
   end
 
   def get_cluster_buffer(source_id) do
-    Logflare.Tracker.dirty_list(Logflare.Tracker, "buffers")
+    Logflare.Tracker.list(Logflare.Tracker, "buffers")
     |> Enum.map(fn {_node, data} -> data[Atom.to_string(source_id)].buffer end)
     |> Enum.sum()
   end
 
   def get_cluster_inserts(source_id) do
-    inserts = Logflare.Tracker.dirty_list(Logflare.Tracker, "inserts")
+    inserts = Logflare.Tracker.list(Logflare.Tracker, "inserts")
 
     cluster_inserts =
       inserts
