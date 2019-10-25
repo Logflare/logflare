@@ -145,12 +145,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
       end)
       |> Enum.sum()
 
-    duration =
-      rates
-      |> Enum.map(fn {_node, data} ->
-        if x = data[Atom.to_string(source_id)], do: x.limiter_metrics.duration, else: 60
-      end)
-      |> Enum.fetch!(0)
+    duration = 60
 
     sum =
       rates
