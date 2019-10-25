@@ -10,7 +10,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
   @check_buffers_every 1_000
   @check_rates_every 1_000
-  @check_total_inserts_every 250
+  @check_total_inserts_every 500
 
   def start_link() do
     GenServer.start_link(

@@ -18,29 +18,19 @@ defmodule Logflare.Tracker do
   end
 
   def update(tracker_name, pid, topic, key, meta) do
-    Process.spawn(
-      fn ->
-        try do
-          Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
-        catch
-          :exit, _ -> Logger.warn("Tracker.update timeout!")
-        end
-      end,
-      []
-    )
+    try do
+      Phoenix.Tracker.update(tracker_name, pid, topic, key, meta)
+    catch
+      :exit, _ -> Logger.warn("Tracker.update timeout!")
+    end
   end
 
   def track(tracker_name, pid, topic, key, meta) do
-    Process.spawn(
-      fn ->
-        try do
-          Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
-        catch
-          :exit, _ -> Logger.warn("Tracker.track timeout!")
-        end
-      end,
-      []
-    )
+    try do
+      Phoenix.Tracker.track(tracker_name, pid, topic, key, meta)
+    catch
+      :exit, _ -> Logger.warn("Tracker.track timeout!")
+    end
   end
 
   def list(tracker_name, topic) do
