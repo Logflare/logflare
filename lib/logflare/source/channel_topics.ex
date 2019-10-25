@@ -28,8 +28,8 @@ defmodule Logflare.Source.ChannelTopics do
     Phoenix.PubSub.direct_broadcast(node(), Logflare.PubSub, topic, payload)
   end
 
-  def broadcast_buffer(payload) do
-    topic = "dashboard:#{payload.source_token}"
+  def broadcast_buffer(%{buffer: _buffer, source_token: source_token} = payload) do
+    topic = "dashboard:#{source_token}"
     event = "buffer"
     payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
 

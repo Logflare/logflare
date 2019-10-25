@@ -5,6 +5,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
   alias Logflare.Source.RateCounterServer, as: RCS
+  alias Logflare.Tracker.SourceNodeMetrics
 
   require Logger
 
@@ -29,16 +30,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_continue(:boot, state) do
-    init_metadata = %{source_token: "#{state.source_id}", buffer: 0}
-
-    Logflare.Tracker.track(
-      Logflare.Tracker,
-      self(),
-      name(state.source_id),
-      Node.self(),
-      init_metadata
-    )
-
     check_buffer()
 
     {:noreply, state}
@@ -104,7 +95,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def handle_info(:check_buffer, state) do
     if Source.Data.get_ets_count(state.source_id) > 0 do
-      update_tracker(state)
       broadcast_buffer(state)
     end
 
@@ -120,32 +110,14 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   defp broadcast_buffer(state) do
-    payload =
-      Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
-      |> merge_metadata
-      |> Map.put(:source_token, state.source_id)
+    buffer = SourceNodeMetrics.get_cluster_buffer(state.source_id)
+
+    payload = %{
+      buffer: buffer,
+      source_token: state.source_id
+    }
 
     Source.ChannelTopics.broadcast_buffer(payload)
-  end
-
-  defp update_tracker(state) do
-    pid = Process.whereis(name(state.source_id))
-    payload = %{source_token: state.source_id, buffer: :queue.len(state.buffer)}
-
-    Logflare.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), payload)
-  end
-
-  def merge_metadata(list) do
-    payload = {:noop, %{buffer: 0}}
-
-    {:noop, data} =
-      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
-        buffer = y.buffer + acc.buffer
-
-        {:noop, %{y | buffer: buffer}}
-      end)
-
-    data
   end
 
   defp check_buffer() do
