@@ -3,7 +3,6 @@ defmodule Logflare.Sources do
   Sources-related context
   """
   alias Logflare.{Repo, Source, Tracker}
-  alias Logflare.Source.RateCounterServer, as: SRC
   require Logger
 
   def get_by(kw) do

@@ -186,37 +186,6 @@ defmodule Logflare.Source.RateCounterServer do
     |> Map.drop([:queue])
   end
 
-  @spec get_cluster_rate_metrics(atom, atom) :: map
-  def get_cluster_rate_metrics(source_id, bucket \\ :default)
-      when bucket == :default and is_atom(source_id) do
-    nodes_metrics =
-      case Logflare.Tracker.dirty_list(Logflare.Tracker, name(source_id)) do
-        [] ->
-          [%{average: 0, duration: 60, sum: 0}]
-
-        metrics ->
-          metrics
-          |> Enum.map(fn {_x, y} ->
-            y
-            |> Map.get(:buckets)
-            |> Map.get(@default_bucket_width)
-            |> Map.drop([:queue])
-          end)
-      end
-
-    cluster_metrics =
-      Enum.reduce(nodes_metrics, fn x, acc ->
-        Map.merge(x, acc, fn _k, v1, v2 ->
-          v1 + v2
-        end)
-      end)
-
-    %{
-      cluster_metrics
-      | duration: Kernel.floor(cluster_metrics.duration / Enum.count(nodes_metrics))
-    }
-  end
-
   defp setup_ets_table(source_id) when is_atom(source_id) do
     initial = RCS.new(source_id)
 
