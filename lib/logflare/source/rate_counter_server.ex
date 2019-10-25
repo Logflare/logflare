@@ -13,6 +13,7 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Sources.Counters
   alias Logflare.Source.Data
   alias Logflare.Source
+  alias Logflare.Tracker
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
@@ -60,16 +61,6 @@ defmodule Logflare.Source.RateCounterServer do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
 
-    init_tracker_metadata = RCS.new(source_id)
-
-    Logflare.Tracker.track(
-      Logflare.Tracker,
-      self(),
-      name(source_id),
-      Node.self(),
-      init_tracker_metadata
-    )
-
     {:noreply, source_id}
   end
 
@@ -83,7 +74,6 @@ defmodule Logflare.Source.RateCounterServer do
     update_ets_table(state)
 
     if Source.Data.get_ets_count(source_id) > 0 do
-      update_tracker(state)
       broadcast(state)
     end
 
@@ -196,13 +186,6 @@ defmodule Logflare.Source.RateCounterServer do
     |> Map.drop([:queue])
   end
 
-  def get_cluster_rates(source_id) do
-    Logflare.Tracker.dirty_list(Logflare.Tracker, name(source_id))
-    |> Enum.map(fn {x, y} -> {x, state_to_external(y)} end)
-    |> merge_rates()
-    |> Map.put(:source_token, source_id)
-  end
-
   @spec get_cluster_rate_metrics(atom, atom) :: map
   def get_cluster_rate_metrics(source_id, bucket \\ :default)
       when bucket == :default and is_atom(source_id) do
@@ -282,31 +265,12 @@ defmodule Logflare.Source.RateCounterServer do
     String.to_atom("#{source_id}" <> "-rate")
   end
 
-  defp update_tracker(%RCS{} = state) do
-    pid = Process.whereis(name(state.source_id))
-
-    Logflare.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), state)
-  end
-
   def broadcast(%RCS{} = state) do
-    rates = get_cluster_rates(state.source_id)
+    rates =
+      Tracker.SourceNodeMetrics.get_cluster_rates(state.source_id)
+      |> Map.put(:source_token, state.source_id)
 
     Source.ChannelTopics.broadcast_rates(rates)
-  end
-
-  def merge_rates(list) do
-    payload = {:noop, %{average_rate: 0, max_rate: 0, last_rate: 0}}
-
-    {:noop, data} =
-      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
-        average_rate = y.average_rate + acc.average_rate
-        max_rate = y.max_rate + acc.max_rate
-        last_rate = y.last_rate + acc.last_rate
-
-        {:noop, %{y | average_rate: average_rate, max_rate: max_rate, last_rate: last_rate}}
-      end)
-
-    data
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}

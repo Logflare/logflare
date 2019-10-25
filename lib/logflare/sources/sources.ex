@@ -2,7 +2,7 @@ defmodule Logflare.Sources do
   @moduledoc """
   Sources-related context
   """
-  alias Logflare.{Repo, Source}
+  alias Logflare.{Repo, Source, Tracker}
   alias Logflare.Source.RateCounterServer, as: SRC
   require Logger
 
@@ -20,7 +20,9 @@ defmodule Logflare.Sources do
 
   def get_rate_metrics(source, bucket: :default) do
     # Source bucket metrics
-    SRC.get_cluster_rate_metrics(source.token, :default)
+    rates = Tracker.SourceNodeMetrics.get_cluster_rates(source.token)
+
+    rates.limiter_metrics
   end
 
   def get_bq_schema(%Source{} = source) do
