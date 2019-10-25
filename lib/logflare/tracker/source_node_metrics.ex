@@ -172,7 +172,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
     bq_inserts_max =
       inserts
       |> Enum.map(fn {_node, data} -> data[Atom.to_string(source_id)].bq_inserts end)
-      |> Enum.max()
+      |> Enum.max(fn -> 0 end)
 
     cluster_inserts + bq_inserts_max
   end
