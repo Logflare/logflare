@@ -10,7 +10,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
   @check_buffers_every 1_000
   @check_rates_every 1_000
-  @check_total_inserts_every Enum.random(500..1_500)
+  @check_total_inserts_every 1_000
 
   def start_link() do
     GenServer.start_link(
@@ -39,7 +39,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
     sources =
       Repo.all(query)
-      |> Enum.map(fn x ->
+      |> Stream.map(fn x ->
         {:ok, source_id} = Ecto.UUID.load(x.source_id)
         buffer = Source.Data.get_buffer(source_id)
 
@@ -63,7 +63,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
     sources =
       Repo.all(query)
-      |> Enum.map(fn x ->
+      |> Stream.map(fn x ->
         {:ok, source_id} = Ecto.UUID.load(x.source_id)
         source_id_atom = String.to_atom(source_id)
         node_inserts = Source.Data.get_node_inserts(source_id_atom)
@@ -89,7 +89,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
     sources =
       Repo.all(query)
-      |> Enum.map(fn x ->
+      |> Stream.map(fn x ->
         {:ok, source_id} = Ecto.UUID.load(x.source_id)
         source_id_atom = String.to_atom(source_id)
         avg_rate = Source.Data.get_avg_rate(source_id_atom)
@@ -115,79 +115,90 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
   end
 
   def get_cluster_rates(source_id) do
-    rates = Logflare.Tracker.dirty_list(Logflare.Tracker, "rates")
+    #   rates = Logflare.Tracker.dirty_list(Logflare.Tracker, "rates")
 
-    max_rate =
-      rates
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.max_rate, else: 0
-      end)
-      |> Enum.sum()
+    #   max_rate =
+    #     rates
+    #     |> Enum.map(fn {_node, sources} ->
+    #       if x = sources[Atom.to_string(source_id)], do: x.max_rate, else: 0
+    #     end)
+    #     |> Enum.sum()
 
-    avg_rate =
-      rates
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.average_rate, else: 0
-      end)
-      |> Enum.sum()
+    #   avg_rate =
+    #     rates
+    #     |> Enum.map(fn {_node, sources} ->
+    #       if x = sources[Atom.to_string(source_id)], do: x.average_rate, else: 0
+    #     end)
+    #     |> Enum.sum()
 
-    last_rate =
-      rates
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.last_rate, else: 0
-      end)
-      |> Enum.sum()
+    #   last_rate =
+    #     rates
+    #     |> Enum.map(fn {_node, sources} ->
+    #       if x = sources[Atom.to_string(source_id)], do: x.last_rate, else: 0
+    #     end)
+    #     |> Enum.sum()
 
-    average =
-      rates
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.limiter_metrics.average, else: 0
-      end)
-      |> Enum.sum()
+    #   average =
+    #     rates
+    #     |> Enum.map(fn {_node, sources} ->
+    #       if x = sources[Atom.to_string(source_id)], do: x.limiter_metrics.average, else: 0
+    #     end)
+    #     |> Enum.sum()
 
-    duration = 60
+    #   duration = 60
 
-    sum =
-      rates
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.limiter_metrics.sum, else: 0
-      end)
-      |> Enum.sum()
+    #   sum =
+    #     rates
+    #     |> Enum.map(fn {_node, sources} ->
+    #       if x = sources[Atom.to_string(source_id)], do: x.limiter_metrics.sum, else: 0
+    #     end)
+    #     |> Enum.sum()
+
+    #   %{
+    #     average_rate: avg_rate,
+    #     last_rate: last_rate,
+    #     max_rate: max_rate,
+    #     limiter_metrics: %{average: average, duration: duration, sum: sum}
+    #   }
 
     %{
-      average_rate: avg_rate,
-      last_rate: last_rate,
-      max_rate: max_rate,
-      limiter_metrics: %{average: average, duration: duration, sum: sum}
+      average_rate: 0,
+      last_rate: 0,
+      max_rate: 0,
+      limiter_metrics: %{average: 0, duration: 60, sum: 0}
     }
   end
 
   def get_cluster_buffer(source_id) do
-    Logflare.Tracker.dirty_list(Logflare.Tracker, "buffers")
-    |> Enum.map(fn {_node, sources} ->
-      if x = sources[Atom.to_string(source_id)], do: x.buffer, else: 0
-    end)
-    |> Enum.sum()
+    # Logflare.Tracker.dirty_list(Logflare.Tracker, "buffers")
+    # |> Enum.map(fn {_node, sources} ->
+    #   if x = sources[Atom.to_string(source_id)], do: x.buffer, else: 0
+    # end)
+    # |> Enum.sum()
+
+    0
   end
 
   def get_cluster_inserts(source_id) do
-    inserts = Logflare.Tracker.dirty_list(Logflare.Tracker, "inserts")
+    # inserts = Logflare.Tracker.dirty_list(Logflare.Tracker, "inserts")
 
-    cluster_inserts =
-      inserts
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.node_inserts, else: 0
-      end)
-      |> Enum.sum()
+    # cluster_inserts =
+    #   inserts
+    #   |> Enum.map(fn {_node, sources} ->
+    #     if x = sources[Atom.to_string(source_id)], do: x.node_inserts, else: 0
+    #   end)
+    #   |> Enum.sum()
 
-    bq_inserts_max =
-      inserts
-      |> Enum.map(fn {_node, sources} ->
-        if x = sources[Atom.to_string(source_id)], do: x.bq_inserts, else: 0
-      end)
-      |> Enum.max(fn -> 0 end)
+    # bq_inserts_max =
+    #   inserts
+    #   |> Enum.map(fn {_node, sources} ->
+    #     if x = sources[Atom.to_string(source_id)], do: x.bq_inserts, else: 0
+    #   end)
+    #   |> Enum.max(fn -> 0 end)
 
-    cluster_inserts + bq_inserts_max
+    # cluster_inserts + bq_inserts_max
+
+    0
   end
 
   defp update_tracker(sources, type) do
