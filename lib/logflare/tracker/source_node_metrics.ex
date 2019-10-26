@@ -21,7 +21,6 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
   end
 
   def init(state) do
-    Process.flag(:trap_exit, true)
     init_trackers()
     check_buffers()
     check_total_inserts()
@@ -170,13 +169,11 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
   end
 
   def get_cluster_buffer(source_id) do
-    # Logflare.Tracker.dirty_list(Logflare.Tracker, "buffers")
-    # |> Enum.map(fn {_node, sources} ->
-    #   if x = sources[Atom.to_string(source_id)], do: x.buffer, else: 0
-    # end)
-    # |> Enum.sum()
-
-    0
+    Logflare.Tracker.dirty_list(Logflare.Tracker, "buffers")
+    |> Stream.map(fn {_node, sources} ->
+      if x = sources[Atom.to_string(source_id)], do: x.buffer, else: 0
+    end)
+    |> Enum.sum()
   end
 
   def get_cluster_inserts(source_id) do
