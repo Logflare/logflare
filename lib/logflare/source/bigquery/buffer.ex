@@ -6,6 +6,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.Source
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Tracker.SourceNodeMetrics
+  alias Logflare.Tracker
 
   require Logger
 
@@ -110,7 +111,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   defp broadcast_buffer(state) do
-    buffer = SourceNodeMetrics.get_cluster_buffer(state.source_id)
+    buffer = Tracker.Cache.get_cluster_buffer(state.source_id)
 
     payload = %{
       buffer: buffer,
