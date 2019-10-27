@@ -49,7 +49,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
       |> Enum.into(%{})
 
     update_tracker(sources_with_buffer, "buffers")
-    Tracker.Cache.cache_cluster_buffers(sources)
+    Tracker.Cache.cache_cluster_buffers()
 
     check_buffers()
     {:noreply, state}
