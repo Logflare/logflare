@@ -112,64 +112,10 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
       |> Enum.into(%{})
 
     update_tracker(sources, "rates")
+    Tracker.Cache.cache_cluster_rates()
 
     check_rates()
     {:noreply, state}
-  end
-
-  def get_cluster_rates(source_id) do
-    #   rates = Logflare.Tracker.dirty_list(Logflare.Tracker, "rates")
-
-    #   max_rate =
-    #     rates
-    #     |> Enum.map(fn {_node, sources} ->
-    #       if x = sources[Atom.to_string(source_id)], do: x.max_rate, else: 0
-    #     end)
-    #     |> Enum.sum()
-
-    #   avg_rate =
-    #     rates
-    #     |> Enum.map(fn {_node, sources} ->
-    #       if x = sources[Atom.to_string(source_id)], do: x.average_rate, else: 0
-    #     end)
-    #     |> Enum.sum()
-
-    #   last_rate =
-    #     rates
-    #     |> Enum.map(fn {_node, sources} ->
-    #       if x = sources[Atom.to_string(source_id)], do: x.last_rate, else: 0
-    #     end)
-    #     |> Enum.sum()
-
-    #   average =
-    #     rates
-    #     |> Enum.map(fn {_node, sources} ->
-    #       if x = sources[Atom.to_string(source_id)], do: x.limiter_metrics.average, else: 0
-    #     end)
-    #     |> Enum.sum()
-
-    #   duration = 60
-
-    #   sum =
-    #     rates
-    #     |> Enum.map(fn {_node, sources} ->
-    #       if x = sources[Atom.to_string(source_id)], do: x.limiter_metrics.sum, else: 0
-    #     end)
-    #     |> Enum.sum()
-
-    #   %{
-    #     average_rate: avg_rate,
-    #     last_rate: last_rate,
-    #     max_rate: max_rate,
-    #     limiter_metrics: %{average: average, duration: duration, sum: sum}
-    #   }
-
-    %{
-      average_rate: 0,
-      last_rate: 0,
-      max_rate: 0,
-      limiter_metrics: %{average: 0, duration: 60, sum: 0}
-    }
   end
 
   defp update_tracker(sources, type) do

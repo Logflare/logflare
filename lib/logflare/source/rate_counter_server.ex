@@ -230,13 +230,13 @@ defmodule Logflare.Source.RateCounterServer do
     Process.send_after(self(), :put_rate, rate_period)
   end
 
-  defp name(source_id) do
+  def name(source_id) do
     String.to_atom("#{source_id}" <> "-rate")
   end
 
   def broadcast(%RCS{} = state) do
     rates =
-      Tracker.SourceNodeMetrics.get_cluster_rates(state.source_id)
+      Tracker.Cache.get_cluster_rates(state.source_id)
       |> Map.put(:source_token, state.source_id)
 
     Source.ChannelTopics.broadcast_rates(rates)
