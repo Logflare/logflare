@@ -36,7 +36,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           ]
         },
         type_map: %{},
-        field_count: nil
+        field_count: 2
       },
       name: name(rls.source_id)
     )
