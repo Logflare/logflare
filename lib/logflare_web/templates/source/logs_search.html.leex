@@ -5,6 +5,18 @@
         <li><a href="javascript:Source.scrollOverflowBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
+        <li>
+          <a id="search-local-time" href="#" phx-click="set_local_time" phx-value-use_local_time="<%= @use_local_time %>" phx-value-local_time_timezone="">
+            <span>
+              <%= if @use_local_time do %>
+                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
+              <% else %>
+                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
+              <% end %>
+            </span>
+            <span class="hide-on-mobile">local time</span>
+          </a>
+        </li>
         <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share search</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug query</span></a></li>
       </ul>

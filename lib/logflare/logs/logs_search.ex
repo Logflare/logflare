@@ -49,6 +49,7 @@ defmodule Logflare.Logs.Search do
     |> default_from
     |> parse_querystring()
     |> verify_path_in_schema()
+    |> apply_local_timestamp_correction()
     |> partition_or_streaming()
     |> apply_wheres()
     |> apply_selects()
@@ -244,6 +245,17 @@ defmodule Logflare.Logs.Search do
       end)
 
     put_result_in(result, so)
+  end
+
+  @decorate pass_through_on_error_field()
+  def apply_local_timestamp_correction(%SO{} = so) do
+    pathvalops =
+      Enum.map(so.pathvalops, fn
+        %{path: "timestamp", value: value} = pvo ->
+          %{pvo | value: Timex.Timezone.convert(value, so.user_local_timezone)}
+      end)
+
+    %{so | pathvalops: pathvalops}
   end
 
   @decorate pass_through_on_error_field()
