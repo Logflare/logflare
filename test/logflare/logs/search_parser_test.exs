@@ -2,11 +2,16 @@ defmodule Logflare.Logs.Search.ParserTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.Logs.Search.Parser
+  alias Logflare.Source.BigQuery.SchemaBuilder
+
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
+  @default_schema Logflare.BigQuery.TableSchema.SchemaBuilderHelpers.schemas().initial
 
   describe "search query parser for" do
     test "simple message search string" do
+      schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
       str = ~S|user sign up|
-      {:ok, result} = Parser.parse(str)
+      {:ok, result} = Parser.parse(str, schema)
 
       assert result == [
                %{operator: "~", path: "event_message", value: "user"},
@@ -16,8 +21,9 @@ defmodule Logflare.Logs.Search.ParserTest do
     end
 
     test "quoted message search string" do
+      schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
       str = ~S|new "user sign up" server|
-      {:ok, result} = Parser.parse(str)
+      {:ok, result} = Parser.parse(str, schema)
 
       assert Enum.sort(result) ==
                Enum.sort([
@@ -28,6 +34,22 @@ defmodule Logflare.Logs.Search.ParserTest do
     end
 
     test "nested fields filter" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            user: %{
+              type: "string",
+              id: 1,
+              views: 1,
+              about: "string"
+            },
+            users: %{source_count: 100},
+            context: %{error_count: 100}
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
       str = ~S|
         metadata.user.type:paid
         metadata.user.id:<1
@@ -39,7 +61,7 @@ defmodule Logflare.Logs.Search.ParserTest do
         timestamp:2019-01-01T00:13:37..2019-02-01T00:23:34
       |
 
-      {:ok, result} = Parser.parse(str)
+      {:ok, result} = Parser.parse(str, schema)
 
       assert result == [
                %{operator: "=", path: "metadata.user.type", value: "paid"},
@@ -56,6 +78,26 @@ defmodule Logflare.Logs.Search.ParserTest do
     end
 
     test "nested fields filter 2" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            context: %{
+              file: "string",
+              line_number: 1
+            },
+            user: %{group_id: 5, admin: false},
+            log: %{
+              label1: "string",
+              metric1: 10,
+              metric2: 10,
+              metric3: 10,
+              metric4: 10
+            }
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
       str = ~S|
          log "was generated" "by logflare pinger"
          metadata.context.file:"some module.ex"
@@ -69,7 +111,7 @@ defmodule Logflare.Logs.Search.ParserTest do
          metadata.log.metric4:>=10
        |
 
-      {:ok, result} = Parser.parse(str)
+      {:ok, result} = Parser.parse(str, schema)
 
       assert Enum.sort(result) ==
                Enum.sort([
@@ -88,7 +130,28 @@ defmodule Logflare.Logs.Search.ParserTest do
                ])
     end
 
+    @tag :run
     test "nested fields filter with timestamp 3" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            context: %{
+              file: "string",
+              line_number: 1
+            },
+            user: %{group_id: 5, admin: false},
+            log: %{
+              label1: "string",
+              metric1: 10,
+              metric2: 10,
+              metric3: 10,
+              metric4: 10
+            }
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
       str = ~S|
          log "was generated" "by logflare pinger"
          timestamp:>2019-01-01
@@ -106,12 +169,12 @@ defmodule Logflare.Logs.Search.ParserTest do
          -error
        |
 
-      {:ok, result} = Parser.parse(str)
+      {:ok, result} = Parser.parse(str, schema)
       sorted_result = Enum.sort(result)
 
       expected =
         Enum.sort([
-          %{operator: "!<", path: "metadata.log.metric1", value: "10"},
+          %{operator: "!<", path: "metadata.log.metric1", value: 10},
           %{operator: "!<=", path: "timestamp", value: ~D[2010-04-20]},
           %{operator: "!~", path: "event_message", value: "error"},
           %{operator: "<", path: "metadata.log.metric1", value: 10},
@@ -141,12 +204,26 @@ defmodule Logflare.Logs.Search.ParserTest do
     end
 
     test "lt, lte, gte, gt for float values" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            log: %{
+              metric5: 10.0
+            },
+            user: %{
+              cluster_group: 1.0
+            }
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
       str = ~S|
          metadata.log.metric5:<10.0
          metadata.user.cluster_group:>=200.0420..300.1337
        |
 
-      {:ok, result} = Parser.parse(str)
+      {:ok, result} = Parser.parse(str, schema)
 
       assert Enum.sort(result) ==
                Enum.sort([
@@ -160,21 +237,34 @@ defmodule Logflare.Logs.Search.ParserTest do
     end
 
     test "returns error on malformed timestamp filter" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{},
+          @default_schema
+        )
+
       str = ~S|
          log "was generated" "by logflare pinger"
          timestamp:>20
        |
 
-      assert {:error, "Timestamp parse error: invalid_format"} = Parser.parse(str)
+      assert {:error, "Timestamp parse error: invalid_format"} = Parser.parse(str, schema)
     end
 
     test "returns human readable error for invalid query" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{},
+          @default_schema
+        )
+
       str = ~S|
          metadata.user.emailAddress:
          metadata.user.clusterId:200..300
        |
 
-      assert {:error, "Invalid query! Please consult search syntax guide."} = Parser.parse(str)
+      assert {:error, "Invalid query! Please consult search syntax guide."} =
+               Parser.parse(str, schema)
     end
   end
 end
