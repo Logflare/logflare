@@ -89,32 +89,6 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def create_test(name) do
-    source = %{"name" => name, "token" => Ecto.UUID.generate()}
-
-    user = %Logflare.User{
-      id: 67
-    }
-
-    user
-    |> Ecto.build_assoc(:sources)
-    |> Source.update_by_user_changeset(source)
-    |> Repo.insert()
-    |> case do
-      {:ok, source} ->
-        spawn(fn ->
-          # wait a second for the db
-          Process.sleep(1_000)
-          Supervisor.new_source(source.token)
-        end)
-
-        :ok
-
-      {:error, changeset} ->
-        :error
-    end
-  end
-
   def show(%{assigns: %{user: user, source: source}} = conn, _params) do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end

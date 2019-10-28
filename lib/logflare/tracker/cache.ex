@@ -30,7 +30,7 @@ defmodule Logflare.Tracker.Cache do
                 vv1 + vv2
 
               :max_rate ->
-                if vv1 > vv2, do: vv1, else: vv2
+                vv1 + vv2
 
               :limiter_metrics ->
                 Map.merge(vv1, vv2, fn kkk, vvv1, vvv2 ->
