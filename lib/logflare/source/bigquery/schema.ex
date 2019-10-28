@@ -38,7 +38,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           ]
         },
         type_map: %{event_message: %{t: :string}, timestamp: %{t: :datetime}},
-        field_count: 2
+        field_count: nil
       },
       name: name(rls.source_id)
     )
