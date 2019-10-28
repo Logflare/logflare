@@ -4,8 +4,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
-  alias Logflare.Source.RateCounterServer, as: RCS
-  alias Logflare.Tracker.SourceNodeMetrics
   alias Logflare.Tracker
 
   require Logger
@@ -125,7 +123,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
     Process.send_after(self(), :check_buffer, @broadcast_every)
   end
 
-  defp name(source_id) do
+  def name(source_id) do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 end

@@ -27,7 +27,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.Tracker.SourceNodeMetrics
+  alias Logflare.Tracker
   alias __MODULE__, as: RLS
 
   require Logger
@@ -157,7 +157,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
-    inserts = SourceNodeMetrics.get_cluster_inserts(state.source_id)
+    inserts = Tracker.Cache.get_cluster_inserts(state.source_id)
 
     payload = %{log_count: inserts, source_token: state.source_id}
 

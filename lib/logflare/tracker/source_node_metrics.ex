@@ -76,6 +76,7 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
       |> Enum.into(%{})
 
     update_tracker(sources, "inserts")
+    Tracker.Cache.cache_cluster_inserts()
 
     check_total_inserts()
     {:noreply, state}
@@ -169,28 +170,6 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
       max_rate: 0,
       limiter_metrics: %{average: 0, duration: 60, sum: 0}
     }
-  end
-
-  def get_cluster_inserts(source_id) do
-    # inserts = Logflare.Tracker.dirty_list(Logflare.Tracker, "inserts")
-
-    # cluster_inserts =
-    #   inserts
-    #   |> Enum.map(fn {_node, sources} ->
-    #     if x = sources[Atom.to_string(source_id)], do: x.node_inserts, else: 0
-    #   end)
-    #   |> Enum.sum()
-
-    # bq_inserts_max =
-    #   inserts
-    #   |> Enum.map(fn {_node, sources} ->
-    #     if x = sources[Atom.to_string(source_id)], do: x.bq_inserts, else: 0
-    #   end)
-    #   |> Enum.max(fn -> 0 end)
-
-    # cluster_inserts + bq_inserts_max
-
-    0
   end
 
   defp update_tracker(sources, type) do
