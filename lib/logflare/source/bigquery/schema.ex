@@ -20,22 +20,24 @@ defmodule Logflare.Source.BigQuery.Schema do
         schema: %Model.TableSchema{
           fields: [
             %Model.TableFieldSchema{
-              description: nil,
-              fields: nil,
-              mode: "REQUIRED",
-              name: "timestamp",
-              type: "TIMESTAMP"
-            },
-            %Model.TableFieldSchema{
+              categories: nil,
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "event_message",
               type: "STRING"
+            },
+            %Model.TableFieldSchema{
+              categories: nil,
+              description: nil,
+              fields: nil,
+              mode: "REQUIRED",
+              name: "timestamp",
+              type: "TIMESTAMP"
             }
           ]
         },
-        type_map: %{},
+        type_map: %{event_message: %{t: :string}, timestamp: %{t: :datetime}},
         field_count: 2
       },
       name: name(rls.source_id)
@@ -51,14 +53,20 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     case BigQuery.get_table(state.source_token) do
       {:ok, table} ->
-        schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
-        type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
+        schema =
+          SchemaBuilder.deep_sort_by_fields_name(table.schema) |> IO.inspect(label: "schema")
+
+        type_map =
+          Logs.Validators.BigQuerySchemaChange.to_typemap(schema) |> IO.inspect(label: "typemap")
+
         field_count = count_fields(type_map)
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
         {:noreply, %{state | schema: schema, type_map: type_map, field_count: field_count}}
 
       {:error, _response} ->
+        Sources.Cache.put_bq_schema(state.source_token, state.schema)
+
         Logger.info("Table schema manager init error: #{state.source_token}")
         {:noreply, state}
     end
