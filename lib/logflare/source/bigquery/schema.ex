@@ -53,11 +53,9 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     case BigQuery.get_table(state.source_token) do
       {:ok, table} ->
-        schema =
-          SchemaBuilder.deep_sort_by_fields_name(table.schema) |> IO.inspect(label: "schema")
+        schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
 
-        type_map =
-          Logs.Validators.BigQuerySchemaChange.to_typemap(schema) |> IO.inspect(label: "typemap")
+        type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
 
         field_count = count_fields(type_map)
 
