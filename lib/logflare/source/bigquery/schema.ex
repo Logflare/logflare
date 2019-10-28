@@ -91,6 +91,10 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.cast(name(source_token), {:update, schema})
   end
 
+  def set_next_update(source_token) do
+    GenServer.call(name(source_token), :set_next_update)
+  end
+
   def handle_call(:get, _from, state) do
     {:reply, state, state}
   end
@@ -110,6 +114,12 @@ defmodule Logflare.Source.BigQuery.Schema do
          field_count: field_count,
          next_update: next_update()
      }}
+  end
+
+  def handle_call(:set_next_update, _from, state) do
+    next = next_update()
+
+    {:reply, {:ok, next}, %{state | next_update: next}}
   end
 
   defp count_fields(type_map) do
