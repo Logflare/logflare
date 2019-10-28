@@ -70,8 +70,13 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: any
   def get_tesla_error_message(%Tesla.Env{} = message) do
-    {:ok, message_body} = Jason.decode(message.body)
-    message_body["error"]["message"]
+    case Jason.decode(message.body) do
+      {:ok, message_body} ->
+        message_body["error"]["message"]
+
+      {:error, message} ->
+        "Not JSON!"
+    end
   end
 
   def get_tesla_error_message(:emfile), do: "emfile"
