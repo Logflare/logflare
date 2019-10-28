@@ -38,7 +38,8 @@ defmodule Logflare.Source.BigQuery.Schema do
           ]
         },
         type_map: %{event_message: %{t: :string}, timestamp: %{t: :datetime}},
-        field_count: nil
+        field_count: 2,
+        next_update: System.system_time(:second)
       },
       name: name(rls.source_id)
     )
@@ -54,13 +55,19 @@ defmodule Logflare.Source.BigQuery.Schema do
     case BigQuery.get_table(state.source_token) do
       {:ok, table} ->
         schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
-
         type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
-
         field_count = count_fields(type_map)
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
-        {:noreply, %{state | schema: schema, type_map: type_map, field_count: field_count}}
+
+        {:noreply,
+         %{
+           state
+           | schema: schema,
+             type_map: type_map,
+             field_count: field_count,
+             next_update: next_update()
+         }}
 
       {:error, _response} ->
         Sources.Cache.put_bq_schema(state.source_token, state.schema)
@@ -94,12 +101,24 @@ defmodule Logflare.Source.BigQuery.Schema do
     field_count = count_fields(type_map)
 
     Sources.Cache.put_bq_schema(state.source_token, sorted)
-    {:noreply, %{state | schema: sorted, type_map: type_map, field_count: field_count}}
+
+    {:noreply,
+     %{
+       state
+       | schema: sorted,
+         type_map: type_map,
+         field_count: field_count,
+         next_update: next_update()
+     }}
   end
 
   defp count_fields(type_map) do
     Iteraptor.to_flatmap(type_map)
     |> Enum.count()
+  end
+
+  defp next_update() do
+    System.system_time(:second) + 60
   end
 
   defp name(source_token) do
