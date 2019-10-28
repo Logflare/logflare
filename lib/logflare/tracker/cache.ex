@@ -19,10 +19,17 @@ defmodule Logflare.Tracker.Cache do
       Logflare.Tracker.dirty_list(Logflare.Tracker, "inserts")
       |> Enum.map(fn {_x, y} ->
         Map.drop(y, [:phx_ref, :phx_ref_prev])
+        |> Enum.into(%{})
       end)
       |> Enum.reduce(fn x, acc ->
-        Enum.into(x, acc, fn {x, %{bq_inserts: y, node_inserts: z}} ->
-          {x, %{bq_inserts: y, node_inserts: z + z}}
+        Map.merge(x, acc, fn _k, v1, v2 ->
+          Map.merge(v1, v2, fn kk, vv1, vv2 ->
+            case kk do
+              :node_inserts -> vv1 + vv2
+              :bq_inserts -> Enum.max([vv1, vv2])
+              _ -> vv1
+            end
+          end)
         end)
       end)
 
