@@ -32,8 +32,6 @@ config :ueberauth, Ueberauth,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :ex_oauth2_provider, ExOauth2Provider, force_ssl_in_redirect_uri: true
-
 config :logflare, ExOauth2Provider,
   repo: Logflare.Repo,
   resource_owner: Logflare.User,
@@ -45,7 +43,8 @@ config :logflare, ExOauth2Provider,
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
-  web_module: LogflareWeb
+  web_module: LogflareWeb,
+  force_ssl_in_redirect_uri: true
 
 config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,
