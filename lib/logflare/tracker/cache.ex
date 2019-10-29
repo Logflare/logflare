@@ -3,8 +3,12 @@ defmodule Logflare.Tracker.Cache do
   import Cachex.Spec
   require Logger
 
+  @ttl 5_000
+
   def child_spec(_) do
-    cachex_opts = []
+    cachex_opts = [
+      expiration: expiration(default: @ttl)
+    ]
 
     %{
       id: :cachex_tracker_cache,
