@@ -56,18 +56,21 @@ defmodule Logflare.Tracker.Cache do
 
   def get_cluster_rates(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, Source.RateCounterServer.name(source_id)) do
-      {:ok, inserts} ->
-        inserts
+      {:ok, nil} ->
+        Logger.error("Tracker cache expired!")
+
+        %{
+          average_rate: "err",
+          last_rate: "err",
+          max_rate: "err",
+          limiter_metrics: %{average: 100_000, duration: 60, sum: 6_000_000}
+        }
+
+      {:ok, rates} ->
+        rates
 
       {:error, _} ->
         Logger.error("Tracker cache error!")
-
-        %{
-          average_rate: 0,
-          last_rate: 0,
-          max_rate: 0,
-          limiter_metrics: %{average: 0, duration: 60, sum: 0}
-        }
     end
   end
 
