@@ -56,7 +56,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     # Terrible
-    # Enum.random(0..60_000) |> Process.sleep()
+    Enum.random(0..60_000) |> Process.sleep()
 
     %{
       user_id: user_id,
