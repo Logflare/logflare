@@ -56,7 +56,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     # Terrible
-    Enum.random(0..60_000) |> Process.sleep()
+    # Enum.random(0..60_000) |> Process.sleep()
 
     %{
       user_id: user_id,
@@ -75,8 +75,7 @@ defmodule Logflare.Source.RecentLogsServer do
       bigquery_dataset_id
     )
 
-    table_args = [:named_table, :ordered_set, :public]
-    :ets.new(source_id, table_args)
+    :ets.new(source_id, [:named_table, :ordered_set, :public])
 
     load_init_log_message(source_id, bigquery_project_id)
 
