@@ -57,7 +57,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     # Terrible
-    Enum.random(0..30_000) |> Process.sleep()
+    Enum.random(0..60_000) |> Process.sleep()
 
     %{
       user_id: user_id,
@@ -167,7 +167,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   defp load_init_log_message(source_id, bigquery_project_id) do
     message =
-      "Initialized on node #{Node.self()}. Waiting for new events. Try to explore & search!"
+      "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 
     log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
     push(source_id, log_event)
