@@ -12,7 +12,6 @@ defmodule Logflare.Source.RecentLogsServer do
     field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
     field :bigquery_dataset_id, binary()
-    field :bq_total_on_boot, integer(), default: 0
     field :total_cluster_inserts, integer(), default: 0
   end
 
@@ -80,17 +79,12 @@ defmodule Logflare.Source.RecentLogsServer do
     table_args = [:named_table, :ordered_set, :public]
     :ets.new(source_id, table_args)
 
-    # Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-    #   load_init_log_message(source_id, bigquery_project_id)
-    # end)
-
-    {:ok, bq_count} = load_init_log_message(source_id, bigquery_project_id)
+    load_init_log_message(source_id, bigquery_project_id)
 
     rls = %{
       rls
       | bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id,
-        bq_total_on_boot: bq_count
+        bigquery_dataset_id: bigquery_dataset_id
     }
 
     children = [
@@ -172,21 +166,13 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   defp load_init_log_message(source_id, bigquery_project_id) do
-    log_count = Data.get_log_count(source_id, bigquery_project_id)
+    message =
+      "Initialized on node #{Node.self()}. Waiting for new events. Try to explore & search!"
 
-    if log_count > 0 do
-      message =
-        "Initialized on node #{Node.self()}. Waiting for new events. #{
-          Delimit.number_to_delimited(log_count)
-        } available to explore & search."
+    log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
+    push(source_id, log_event)
 
-      log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
-      push(source_id, log_event)
-
-      Source.ChannelTopics.broadcast_new(log_event)
-    end
-
-    {:ok, log_count}
+    Source.ChannelTopics.broadcast_new(log_event)
   end
 
   defp prune() do
