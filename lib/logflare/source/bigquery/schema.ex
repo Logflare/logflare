@@ -69,11 +69,27 @@ defmodule Logflare.Source.BigQuery.Schema do
              next_update: next_update()
          }}
 
-      {:error, _response} ->
-        Sources.Cache.put_bq_schema(state.source_token, state.schema)
+      {:error, response} ->
+        schema = SchemaBuilder.deep_sort_by_fields_name(state.schema)
+        type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
+        field_count = count_fields(type_map)
 
-        Logger.info("Table schema manager init error: #{state.source_token}")
-        {:noreply, state}
+        Sources.Cache.put_bq_schema(state.source_token, schema)
+
+        Logger.info(
+          "Schema manager init error: #{state.source_token}: #{
+            BigQuery.GenUtils.get_tesla_error_message(response)
+          } "
+        )
+
+        {:noreply,
+         %{
+           state
+           | schema: schema,
+             type_map: type_map,
+             field_count: field_count,
+             next_update: next_update()
+         }}
     end
   end
 

@@ -19,7 +19,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
   alias Logflare.Sources.Counters
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
-  alias Number.Delimit
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
   alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer}
   alias Logflare.Source.RateCounterServer, as: RCS
@@ -165,7 +164,7 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, inserts}
   end
 
-  defp load_init_log_message(source_id, bigquery_project_id) do
+  defp load_init_log_message(source_id, _bigquery_project_id) do
     message =
       "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 
