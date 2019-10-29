@@ -32,6 +32,8 @@ config :ueberauth, Ueberauth,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :ex_oauth2_provider, ExOauth2Provider, force_ssl_in_redirect_uri: true
+
 config :logflare, ExOauth2Provider,
   repo: Logflare.Repo,
   resource_owner: Logflare.User,
@@ -39,8 +41,7 @@ config :logflare, ExOauth2Provider,
   use_refresh_token: true,
   default_scopes: ~w(public),
   optional_scopes: ~w(read write),
-  revoke_refresh_token_on_use: true,
-  force_ssl_in_redirect_uri: true
+  revoke_refresh_token_on_use: true
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
