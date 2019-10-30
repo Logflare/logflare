@@ -41,7 +41,8 @@ defmodule Logflare.Mixfile do
         :ueberauth_github,
         :edeliver,
         :ueberauth_google,
-        :ssl
+        :ssl,
+        :mix
       ]
     ]
   end
