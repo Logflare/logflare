@@ -22,14 +22,14 @@ steps:
       [
         "build",
         "-t",
-        "gcr.io/logflare-232118/logflare_app:lib_cluster_gce",
+        "gcr.io/logflare-232118/logflare_app:lib_cluster_gce_$COMMIT_SHA",
         ".",
       ]
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "push",
-        "gcr.io/logflare-232118/logflare_app:lib_cluster_gce",
+        "gcr.io/logflare-232118/logflare_app:lib_cluster_gce_$COMMIT_SHA",
       ]
 
 timeout: 1800s
