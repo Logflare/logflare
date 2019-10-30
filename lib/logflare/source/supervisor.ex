@@ -42,7 +42,7 @@ defmodule Logflare.Source.Supervisor do
         source
       end)
 
-    # Rate limit is 100/second
+    # BigQuery Rate limit is 100/second
     Enum.map(source_ids, fn source_id ->
       rls = %RLS{source_id: source_id}
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
