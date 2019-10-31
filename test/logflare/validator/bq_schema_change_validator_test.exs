@@ -8,13 +8,13 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaFactory
-  alias Logflare.DummyFactory
+  alias Logflare.Factory
   alias Logflare.Sources
 
   describe "bigquery schema change validation" do
     test "validate/1 returns :ok with no metadata in BQ schema" do
-      u1 = DummyFactory.insert(:user)
-      s1 = DummyFactory.insert(:source, user_id: u1.id)
+      u1 = Factory.insert(:user)
+      s1 = Factory.insert(:source, user_id: u1.id)
       s1 = Sources.get_by(id: s1.id)
       schema = SchemaBuilder.initial_table_schema()
       allow Sources.Cache.get_bq_schema(s1), return: schema

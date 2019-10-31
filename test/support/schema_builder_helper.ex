@@ -39,6 +39,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   def get_params(:first) do
     %{
       "event_message" => "This is an example.",
+      "id" => "uuid",
       "metadata" => [
         %{
           "datacenter" => "aws",
@@ -53,6 +54,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   def get_params(:second) do
     %{
       "event_message" => "This is an example.",
+      "id" => "uuid",
       "metadata" => [
         %{
           "datacenter" => "aws",
@@ -77,6 +79,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   def get_params(:third_deep_nested_removed) do
     %{
       "event_message" => "This is an example.",
+      "id" => "uuid",
       "metadata" => [
         %{
           "datacenter" => "aws",
@@ -101,6 +104,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   def get_params(:third) do
     %{
       "event_message" => "This is an example.",
+      "id" => "uuid",
       "metadata" => [
         %{
           "ip_address" => "100.100.100.100",
@@ -125,6 +129,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   def get_params(:list_of_maps) do
     %{
       "event_message" => "This is an example.",
+      "id" => "uuid",
       "metadata" => [
         %{
           "datacenter" => "aws",
@@ -197,6 +202,13 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
           fields: nil,
           mode: "NULLABLE",
           name: "event_message",
+          type: "STRING"
+        },
+        %TFS{
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "id",
           type: "STRING"
         },
         %TFS{
@@ -367,6 +379,10 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   end
 
   def get_schema(:initial) do
+   SchemaBuilder.initial_table_schema()
+  end
+
+  def get_schema(:first) do
     %TS{
       fields: [
         %TFS{
@@ -379,23 +395,9 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "NULLABLE",
-          name: "event_message",
-          type: "STRING"
-        }
-      ]
-    }
-  end
-
-  def get_schema(:first) do
-    %TS{
-      fields: [
-        %TFS{
-          description: nil,
-          fields: nil,
           mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
+          name: "id",
+          type: "STRING"
         },
         %TFS{
           description: nil,
@@ -446,6 +448,13 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
+        },
+        %TFS{
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "id",
+          type: "STRING"
         },
         %TFS{
           description: nil,
@@ -554,6 +563,13 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
+        },
+        %TFS{
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "id",
+          type: "STRING"
         },
         %TFS{
           description: nil,
@@ -676,6 +692,13 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
           mode: "REQUIRED",
           name: "timestamp",
           type: "TIMESTAMP"
+        },
+        %TFS{
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "id",
+          type: "STRING"
         },
         %TFS{
           description: nil,

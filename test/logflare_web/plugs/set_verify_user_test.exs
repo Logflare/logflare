@@ -2,7 +2,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.SetVerifyUser
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)

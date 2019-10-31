@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.SearchQueryExecutor do
   use GenServer
   alias Logflare.Logs.Search
-  alias Logflare.Logs.Search.SearchOperation, as: SO
+  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
   import Logflare.Logs.Search.Utils
   alias Logflare.LogEvent
   alias Logflare.Source.RecentLogsServer, as: RLS
@@ -81,8 +81,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       |> Enum.uniq_by(& &1.body)
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(100)
-
-    # |> Enum.reverse()
 
     maybe_send(lv_pid, {:search_result, %{so | rows: log_events}})
 

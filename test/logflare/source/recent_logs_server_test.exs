@@ -5,7 +5,7 @@ defmodule Logflare.Source.RecentLogsServerTest do
   alias Logflare.Source.Data
   use LogflareWeb.ChannelCase
   use Placebo
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)

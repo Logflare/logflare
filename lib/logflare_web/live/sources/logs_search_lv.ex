@@ -9,8 +9,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias __MODULE__.SearchParams
   import Logflare.Logs.Search.Utils
   require Logger
-  @tail_search_interval 5_000
-  @user_idle_interval 120_000
+  @tail_search_interval 1_000
+  @user_idle_interval 3_000_000
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)

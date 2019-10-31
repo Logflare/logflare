@@ -1,13 +1,14 @@
 <div id="logs-list-container" phx-hook="SourceLogsSearchList">
-  <div id="logs-list" class="list-unstyled console-text-list">
-    <%= @log_events |> Enum.with_index |> Enum.map(fn {log, _inx} -> %>
-    <li>
+  <div phx-update="prepend" id="logs-list" class="list-unstyled console-text-list">
+    <%= Enum.map(@log_events, fn log -> %>
+    <li id="<%= log.id %>">
       <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
       <mark class="log-datestamp" data-timestamp="<%= timestamp %>"><%= format_timestamp(timestamp) <> " UTC"%></mark>
       <%= message %>
       <%= if map_size(metadata) > 0 do %>
         <a class="metadata-link"
-                phx-click="activate_modal" phx-value-modal_id="metadataModal:<%= timestamp %>"
+                phx-click="activate_modal"
+                phx-value-modal_id="metadataModal:<%= log.id %>"
                 href="#" aria-expanded="false">
           metadata
         </a>
