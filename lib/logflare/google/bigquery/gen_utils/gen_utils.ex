@@ -75,11 +75,12 @@ defmodule Logflare.Google.BigQuery.GenUtils do
         message_body["error"]["message"]
 
       {:error, message} ->
-        "Not JSON!"
+        "#{message}"
     end
   end
 
   def get_tesla_error_message(:emfile), do: "emfile"
-
   def get_tesla_error_message(:timeout), do: "timeout"
+  def get_tesla_error_message(:closed), do: "closed"
+  def get_tesla_error_message(message), do: "#{message}"
 end
