@@ -41,8 +41,7 @@ defmodule Logflare.Mixfile do
         :ueberauth_github,
         :edeliver,
         :ueberauth_google,
-        :ssl,
-        :mix
+        :ssl
       ]
     ]
   end
@@ -72,6 +71,7 @@ defmodule Logflare.Mixfile do
       {:edeliver, ">= 1.7.0"},
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider, "~> 0.5.1"},
+      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
       {:poison, "~> 3.1"},
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
