@@ -79,11 +79,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
         {%LE{} = log_event, new_read_receipts} = Map.pop(state.read_receipts, log_event_id)
         new_state = %{state | read_receipts: new_read_receipts}
 
-        if :queue.is_empty(state.buffer) && new_read_receipts == %{} do
-          {:reply, log_event, new_state, :hibernate}
-        else
-          {:reply, log_event, new_state}
-        end
+        {:reply, log_event, new_state}
     end
   end
 
