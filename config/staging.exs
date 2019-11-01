@@ -43,42 +43,19 @@ config :logflare, Logflare.Google,
   service_networking_sa: "service-395392434060@service-networking.iam.gserviceaccount.com",
   source_repo_sa: "service-395392434060@sourcerepo-service-accounts.iam.gserviceaccount.com"
 
-config :logflare_logger_backend,
-  api_key: "aaaaa",
-  source_id: "bbbbbb",
-  flush_interval: 1_000,
-  max_batch_size: 50,
-  url: "http://example.com"
-
 config :logflare_telemetry,
   source_id: :"e5d18201-f0e0-459b-b6b3-2d3bc7d16fa4"
 
 config :libcluster,
-  debug: true,
   topologies: [
-    k8s_chat: [
-      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
+    gce: [
+      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
       config: [
-        service: "logflare-staging-headless",
-        application_name: "logflare",
-        polling_interval: 1_000
+        release_name: :logflare
       ]
     ]
   ]
 
-# config :libcluster,
-#   topologies: [
-#     k8s_example: [
-#       strategy: Elixir.Cluster.Strategy.Kubernetes,
-#       config: [
-#         mode: :ip,
-#         kubernetes_node_basename: "logflare",
-#         kubernetes_selector: "app=logflare-staging",
-#         kubernetes_namespace: "default",
-#         polling_interval: 1_000
-#       ]
-#     ]
-#   ]
 
 config :logflare, Logflare.Tracker, pool_size: 1
 
