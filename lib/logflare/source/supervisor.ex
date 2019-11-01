@@ -27,8 +27,6 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
-    timer_prev = System.monotonic_time()
-
     query =
       from(s in "sources",
         select: %{
@@ -44,17 +42,17 @@ defmodule Logflare.Source.Supervisor do
         source
       end)
 
-    children =
-      Enum.map(source_ids, fn source_id ->
-        rls = %RLS{source_id: source_id}
-        Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
-      end)
+    # BigQuery Rate limit is 100/second
+    Enum.map(source_ids, fn source_id ->
+      rls = %RLS{source_id: source_id}
+      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
+    end)
+    |> Enum.chunk_every(25)
+    |> Enum.each(fn x ->
+      Supervisor.start_link(x, strategy: :one_for_one)
+      Process.sleep(1_000)
+    end)
 
-    Supervisor.start_link(children, strategy: :one_for_one)
-    timer_next = System.monotonic_time()
-    diff = (timer_next - timer_prev) / 1_000_000
-
-    Logger.info("Source.Supervisor started in #{diff} ms!", source_sup_startup_time: diff)
     {:noreply, source_ids}
   end
 

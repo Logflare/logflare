@@ -20,23 +20,26 @@ defmodule Logflare.Source.BigQuery.Schema do
         schema: %Model.TableSchema{
           fields: [
             %Model.TableFieldSchema{
-              description: nil,
-              fields: nil,
-              mode: "REQUIRED",
-              name: "timestamp",
-              type: "TIMESTAMP"
-            },
-            %Model.TableFieldSchema{
+              categories: nil,
               description: nil,
               fields: nil,
               mode: "NULLABLE",
               name: "event_message",
               type: "STRING"
+            },
+            %Model.TableFieldSchema{
+              categories: nil,
+              description: nil,
+              fields: nil,
+              mode: "REQUIRED",
+              name: "timestamp",
+              type: "TIMESTAMP"
             }
           ]
         },
-        type_map: %{},
-        field_count: nil
+        type_map: %{event_message: %{t: :string}, timestamp: %{t: :datetime}},
+        field_count: 2,
+        next_update: System.system_time(:second)
       },
       name: name(rls.source_id)
     )
@@ -56,11 +59,37 @@ defmodule Logflare.Source.BigQuery.Schema do
         field_count = count_fields(type_map)
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
-        {:noreply, %{state | schema: schema, type_map: type_map, field_count: field_count}}
 
-      {:error, _response} ->
-        Logger.info("Table schema manager init error: #{state.source_token}")
-        {:noreply, state}
+        {:noreply,
+         %{
+           state
+           | schema: schema,
+             type_map: type_map,
+             field_count: field_count,
+             next_update: next_update()
+         }}
+
+      {:error, response} ->
+        schema = SchemaBuilder.deep_sort_by_fields_name(state.schema)
+        type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
+        field_count = count_fields(type_map)
+
+        Sources.Cache.put_bq_schema(state.source_token, schema)
+
+        Logger.info(
+          "Schema manager init error: #{state.source_token}: #{
+            BigQuery.GenUtils.get_tesla_error_message(response)
+          } "
+        )
+
+        {:noreply,
+         %{
+           state
+           | schema: schema,
+             type_map: type_map,
+             field_count: field_count,
+             next_update: next_update()
+         }}
     end
   end
 
@@ -78,6 +107,10 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.cast(name(source_token), {:update, schema})
   end
 
+  def set_next_update(source_token) do
+    GenServer.call(name(source_token), :set_next_update)
+  end
+
   def handle_call(:get, _from, state) do
     {:reply, state, state}
   end
@@ -88,13 +121,31 @@ defmodule Logflare.Source.BigQuery.Schema do
     field_count = count_fields(type_map)
 
     Sources.Cache.put_bq_schema(state.source_token, sorted)
-    {:noreply, %{state | schema: sorted, type_map: type_map, field_count: field_count}}
+
+    {:noreply,
+     %{
+       state
+       | schema: sorted,
+         type_map: type_map,
+         field_count: field_count,
+         next_update: next_update()
+     }}
+  end
+
+  def handle_call(:set_next_update, _from, state) do
+    next = next_update()
+
+    {:reply, {:ok, next}, %{state | next_update: next}}
   end
 
   defp count_fields(type_map) do
     type_map
     |> Iteraptor.to_flatmap()
     |> Enum.count()
+  end
+
+  defp next_update() do
+    System.system_time(:second) + 60
   end
 
   defp name(source_token) do

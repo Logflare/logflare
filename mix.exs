@@ -5,7 +5,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.14.7",
+      version: "0.14.9",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -71,6 +71,7 @@ defmodule Logflare.Mixfile do
       {:edeliver, ">= 1.7.0"},
       {:httpoison, "~> 1.4"},
       {:phoenix_oauth2_provider, "~> 0.5.1"},
+      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
       {:poison, "~> 3.1"},
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
@@ -95,7 +96,7 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:excoveralls, "~> 0.11", only: :test, runtime: false},
       {:placebo, "~> 1.2"},
-      {:logflare_logger_backend, "~> 0.6.2"},
+      {:logflare_logger_backend, "~> 0.6.3"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
       {:phoenix_live_view, "0.1.1"},
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},

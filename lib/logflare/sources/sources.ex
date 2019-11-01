@@ -19,7 +19,7 @@ defmodule Logflare.Sources do
 
   def get_rate_metrics(source, bucket: :default) do
     # Source bucket metrics
-    rates = Tracker.SourceNodeMetrics.get_cluster_rates(source.token)
+    rates = Tracker.Cache.get_cluster_rates(source.token)
 
     rates.limiter_metrics
   end

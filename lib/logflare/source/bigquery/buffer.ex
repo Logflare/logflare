@@ -4,8 +4,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
-  alias Logflare.Source.RateCounterServer, as: RCS
-  alias Logflare.Tracker.SourceNodeMetrics
+  alias Logflare.Tracker
 
   require Logger
 
@@ -80,11 +79,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
         {%LE{} = log_event, new_read_receipts} = Map.pop(state.read_receipts, log_event_id)
         new_state = %{state | read_receipts: new_read_receipts}
 
-        if :queue.is_empty(state.buffer) && new_read_receipts == %{} do
-          {:reply, log_event, new_state, :hibernate}
-        else
-          {:reply, log_event, new_state}
-        end
+        {:reply, log_event, new_state}
     end
   end
 
@@ -110,7 +105,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   defp broadcast_buffer(state) do
-    buffer = SourceNodeMetrics.get_cluster_buffer(state.source_id)
+    buffer = Tracker.Cache.get_cluster_buffer(state.source_id)
 
     payload = %{
       buffer: buffer,
@@ -124,7 +119,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
     Process.send_after(self(), :check_buffer, @broadcast_every)
   end
 
-  defp name(source_id) do
+  def name(source_id) do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 end
