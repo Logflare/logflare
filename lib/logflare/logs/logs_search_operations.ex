@@ -3,6 +3,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.{Source, Sources, EctoQueryBQ}
   alias Logflare.Logs.Search.Parser
+  alias Logflare.Logs.Search.Utils
   import Ecto.Query
 
   alias GoogleApi.BigQuery.V2.Api
@@ -11,11 +12,8 @@ defmodule Logflare.Logs.SearchOperations do
   use Logflare.GenDecorators
   @decorate_all pass_through_on_error_field()
 
-
   @default_limit 100
   @default_processed_bytes_limit 10_000_000_000
-
-
 
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
@@ -39,6 +37,8 @@ defmodule Logflare.Logs.SearchOperations do
       field :pathvalops, [map()]
       field :error, term()
       field :stats, :map
+      field :use_local_time, boolean
+      field :user_local_timezone, :string
     end
   end
 
@@ -154,7 +154,6 @@ defmodule Logflare.Logs.SearchOperations do
     |> Utils.put_result_in(so, :pathvalops)
   end
 
-
   def partition_or_streaming(%SO{tailing?: true, tailing_initial?: true} = so) do
     query =
       where(
@@ -172,7 +171,10 @@ defmodule Logflare.Logs.SearchOperations do
 
   def partition_or_streaming(%SO{tailing?: true} = so) do
     so
-    |> Map.update!(:query, &query_only_streaming_buffer/1)
+    |> Map.update!(
+      :query,
+      &where(&1, [l], fragment("_PARTITIONTIME IS NULL"))
+    )
     |> drop_timestamp_pathvalops
   end
 
@@ -181,8 +183,6 @@ defmodule Logflare.Logs.SearchOperations do
   def drop_timestamp_pathvalops(%SO{} = so) do
     %{so | pathvalops: Enum.reject(so.pathvalops, &(&1.path === "timestamp"))}
   end
-
-  def query_only_streaming_buffer(q), do: where(q, [l], fragment("_PARTITIONTIME IS NULL"))
 
   def verify_path_in_schema(%SO{} = so) do
     flatmap =
@@ -209,7 +209,18 @@ defmodule Logflare.Logs.SearchOperations do
     pathvalops =
       Enum.map(so.pathvalops, fn
         %{path: "timestamp", value: value} = pvo ->
-          %{pvo | value: Timex.Timezone.convert(value, so.user_local_timezone)}
+          if so.user_local_timezone do
+            value =
+              value
+              |> Timex.to_datetime(so.user_local_timezone)
+              |> Timex.Timezone.convert(dt, "Etc/UTC")
+              |> Timex.to_naive_datetime()
+
+            %{pvo | value: value}
+          end
+
+        pvo ->
+          pvo
       end)
 
     %{so | pathvalops: pathvalops}

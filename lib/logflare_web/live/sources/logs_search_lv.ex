@@ -70,15 +70,17 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("start_search" = ev, _, socket) do
+  def handle_event("start_search" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
     if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
+    user_local_tz = metadata["search"]["user_local_timezone"]
 
     socket =
       socket
       |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
+      |> assign(:user_local_timezone, user_local_tz)
       |> assign_flash(:warning, nil)
       |> assign_flash(:error, nil)
 
@@ -96,9 +98,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> String.to_existing_atom()
       |> Kernel.not()
 
-    tz = Map.get(metadata, "local_timezone")
-
-    {:noreply, assign(socket, use_local_time: use_local_time, user_local_timezone: tz)}
+    {:noreply, assign(socket, use_local_time: use_local_time)}
   end
 
   def handle_event("activate_modal" = ev, metadata, socket) do

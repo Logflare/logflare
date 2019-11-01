@@ -33,6 +33,12 @@ hooks.SourceQueryDebugModal = {
 }
 
 hooks.SourceLogsSearch = {
+    updated() {
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+        console.log("Setting timezone " + timeZone)
+        $("#search-local-time").attr("phx-value-user_local_timezone", timeZone)
+    },
+
     mounted() {
         activateClipboardForSelector("#search-uri-query", {
             text: trigger =>
@@ -41,8 +47,10 @@ hooks.SourceLogsSearch = {
         })
 
         const idleInterval = $("#user-idle").data("user-idle-interval")
+
+        // Set user timezone
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-        $("#search-local-time").attr("phx-value-local_time_timezone", timeZone)
+        $("#user-local-timezone").val(timeZone)
 
         // Activate user idle tracking
         idle({

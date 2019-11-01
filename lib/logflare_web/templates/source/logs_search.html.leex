@@ -6,7 +6,7 @@
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
         <li>
-          <a id="search-local-time" href="#" phx-click="set_local_time" phx-value-use_local_time="<%= @use_local_time %>" phx-value-local_time_timezone="">
+          <a href="#" phx-click="set_local_time" phx-value-use_local_time="<%= @use_local_time %>">
             <span>
               <%= if @use_local_time do %>
                 <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
@@ -52,6 +52,7 @@
           Live Search
         <% end %>
         <%= checkbox f, :tailing?, value: @tailing?, class: "d-none" %>
+        <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
       </div>
     </div>
   </form>

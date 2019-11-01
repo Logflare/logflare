@@ -2,6 +2,7 @@ defmodule Logflare.Logs.Search do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.{Source, Sources, EctoQueryBQ}
+
   alias Logflare.Logs.Search.Parser
   import Ecto.Query
 
@@ -36,9 +37,8 @@ defmodule Logflare.Logs.Search do
       %{error: nil} = so ->
         {:ok, so}
 
-      so ->
+      %{error: e} when not is_nil(e) ->
         {:error, so}
     end
   end
-
 end

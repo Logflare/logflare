@@ -76,7 +76,7 @@ defmodule Logflare.LogEvent do
       "body" => %{
         "message" => message,
         "metadata" => metadata,
-        "timestamp" => timestamp,
+        "timestamp" => timestamp
       },
       "id" => id
     }
