@@ -85,7 +85,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
         end)
         |> Enum.map(fn %{"instance" => url} ->
           {:ok, {{_, 200, _}, _headers, body}} =
-            :httpc.request(:get, {to_char_list(url), headers}, [], [])
+            :httpc.request(:get, {to_charlist(url), headers}, [], [])
 
           Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
@@ -106,11 +106,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
         end)
 
       {:ok, {{_, resp_code, _}, _headers, body}} ->
-        Cluster.Logger.error("GCP API error: #{resp_code}: #{inspect(body)}")
+        Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.error("GCP API error: #{inspect(message)}")
+        Cluster.Logger.error(:gce, "GCP API error: #{inspect(message)}")
         []
     end
   end
