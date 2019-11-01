@@ -1,4 +1,4 @@
-defmodule Logflare.Tracker.SourceNodeMetrics do
+defmodule Logflare.Tracker.SourceNodeInserts do
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.Tracker
@@ -9,7 +9,6 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
   use GenServer
 
-  @check_buffers_every 1_000
   @check_total_inserts_every 250
 
   def start_link() do
@@ -22,35 +21,8 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
 
   def init(state) do
     init_trackers()
-    check_buffers()
     check_total_inserts()
     {:ok, state}
-  end
-
-  def handle_info(:check_buffers, state) do
-    query =
-      from(s in "sources",
-        select: %{
-          source_id: s.token
-        }
-      )
-
-    sources = Repo.all(query)
-
-    sources_with_buffer =
-      Stream.map(sources, fn x ->
-        {:ok, source_id} = Ecto.UUID.load(x.source_id)
-        buffer = Source.Data.get_buffer(source_id)
-
-        {source_id, %{buffer: buffer}}
-      end)
-      |> Enum.into(%{})
-
-    update_tracker(sources_with_buffer, "buffers")
-    Tracker.Cache.cache_cluster_buffers()
-
-    check_buffers()
-    {:noreply, state}
   end
 
   def handle_info(:check_total_inserts, state) do
@@ -88,22 +60,10 @@ defmodule Logflare.Tracker.SourceNodeMetrics do
     Logflare.Tracker.track(
       Logflare.Tracker,
       self(),
-      "buffers",
-      Node.self(),
-      %{}
-    )
-
-    Logflare.Tracker.track(
-      Logflare.Tracker,
-      self(),
       "inserts",
       Node.self(),
       %{}
     )
-  end
-
-  defp check_buffers() do
-    Process.send_after(self(), :check_buffers, @check_buffers_every)
   end
 
   defp check_total_inserts() do

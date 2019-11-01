@@ -73,22 +73,21 @@ defmodule Logflare.Sources do
     alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
 
+    rates = Tracker.Cache.get_cluster_rates(token)
+    buffer = Tracker.Cache.get_cluster_buffer(token)
+    inserts = Tracker.Cache.get_cluster_inserts(token)
+    inserts_string = Delimit.number_to_delimited(inserts)
+
     rejected_count = RejectedLogEvents.count(source)
-    inserts_string = Delimit.number_to_delimited(get_total_inserts(token))
-    inserts = get_total_inserts(token)
-    buffer = get_buffer(token)
-    max = get_max_rate(token)
-    avg = get_avg_rate(token)
     latest = get_latest_date(token)
-    rate = get_rate(token)
     recent = get_ets_count(token)
     fields = 0
 
     metrics = %Source.Metrics{
-      rate: rate,
+      rate: rates.last_rate,
       latest: latest,
-      avg: avg,
-      max: max,
+      avg: rates.average_rate,
+      max: rates.max_rate,
       buffer: buffer,
       inserts_string: inserts_string,
       inserts: inserts,
