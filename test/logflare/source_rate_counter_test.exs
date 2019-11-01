@@ -5,7 +5,7 @@ defmodule Logflare.Source.RateCounterServerTest do
   import RCS
   alias Logflare.Sources
   use LogflareWeb.ChannelCase
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)
@@ -92,7 +92,6 @@ defmodule Logflare.Source.RateCounterServerTest do
       assert get_rate(source_id) == 5
       assert get_avg_rate(source_id) == 5
       assert get_max_rate(source_id) == 5
-      assert get_metrics(source_id) == %{average: 5, sum: 5, duration: 60}
 
       state = update_state(state, 50)
       update_ets_table(state)
@@ -100,7 +99,6 @@ defmodule Logflare.Source.RateCounterServerTest do
       assert get_rate(source_id) == 45
       assert get_avg_rate(source_id) == 25
       assert get_max_rate(source_id) == 45
-      assert get_metrics(source_id) == %{average: 25, sum: 50, duration: 60}
 
       state = update_state(state, 60)
       update_ets_table(state)
@@ -108,7 +106,6 @@ defmodule Logflare.Source.RateCounterServerTest do
       assert get_rate(source_id) == 10
       assert get_avg_rate(source_id) == 20
       assert get_max_rate(source_id) == 45
-      assert get_metrics(source_id) == %{average: 20, sum: 60, duration: 60}
     end
   end
 end

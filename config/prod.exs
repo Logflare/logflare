@@ -1,3 +1,4 @@
+require Logger
 use Mix.Config
 
 config :logflare, env: :prod
@@ -24,12 +25,24 @@ config :logflare, Logflare.Repo,
   queue_target: 5_000
 
 config :logflare, Logflare.Google,
+  # gcloud services enable cloudbuild.googleapis.com container.googleapis.com dataproc.googleapis.com redis.googleapis.com cloudfunctions.googleapis.com run.googleapis.com servicenetworking.googleapis.com sourcerepo.googleapis.com
   dataset_id_append: "_prod",
   project_number: "1074203751359",
   project_id: "logflare-232118",
   service_account: "logflare@logflare-232118.iam.gserviceaccount.com",
   compute_engine_sa: "1074203751359-compute@developer.gserviceaccount.com",
-  api_sa: "1074203751359@cloudservices.gserviceaccount.com"
+  api_sa: "1074203751359@cloudservices.gserviceaccount.com",
+  cloud_build_sa: "1074203751359@cloudbuild.gserviceaccount.com",
+  gcp_cloud_build_sa: "service-1074203751359@gcp-sa-cloudbuild.iam.gserviceaccount.com",
+  compute_system_iam_sa: "service-1074203751359@compute-system.iam.gserviceaccount.com",
+  container_engine_robot_sa:
+    "service-1074203751359@container-engine-robot.iam.gserviceaccount.com",
+  dataproc_sa: "service-1074203751359@dataproc-accounts.iam.gserviceaccount.com",
+  container_registry_sa: "service-1074203751359@containerregistry.iam.gserviceaccount.com",
+  redis_sa: "service-1074203751359@cloud-redis.iam.gserviceaccount.com",
+  serverless_robot_sa: "service-1074203751359@serverless-robot-prod.iam.gserviceaccount.com",
+  service_networking_sa: "service-1074203751359@service-networking.iam.gserviceaccount.com",
+  source_repo_sa: "service-1074203751359@sourcerepo-service-accounts.iam.gserviceaccount.com"
 
 config :logflare_agent,
   sources: [
@@ -56,27 +69,29 @@ config :logflare_agent,
   ],
   url: "https://api.logflarestaging.com"
 
+config :logflare_logger_backend,
+  source_id: "8a1fec4a-532c-4033-bbca-8269b328e804",
+  flush_interval: 1_000,
+  max_batch_size: 50,
+  url: "https://api.logflarestaging.com"
+
 config :libcluster,
   topologies: [
-    # dev: [
-    #   strategy: Cluster.Strategy.Epmd,
-    #   config: [
-    #     hosts: [:"pink@Chases-MBP-2017", :"orange@Chases-MBP-2017", :"red@Chases-MBP-2017"]
-    #   ]
-    # ]
-    gossip_example: [
-      strategy: Elixir.Cluster.Strategy.Gossip,
+    gce: [
+      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
       config: [
-        port: 45892,
-        if_addr: "0.0.0.0",
-        multicast_addr: "230.1.1.251",
-        multicast_ttl: 1,
-        secret: "somepassword"
+        release_name: :logflare
       ]
     ]
   ]
 
-config :logflare, Logflare.Tracker, pool_size: 50
+config :logflare, Logflare.Tracker, pool_size: 5
 
-import_config "prod.secret.exs"
 import_config "telemetry.exs"
+
+if File.exists?("config/prod.secret.exs") do
+  Logger.info("prod.secret.exs found, importing..")
+  import_config("prod.secret.exs")
+else
+  Logger.warn("prod.secret.exs doesn't exist")
+end

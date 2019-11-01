@@ -41,6 +41,8 @@ hooks.SourceLogsSearch = {
         })
 
         const idleInterval = $("#user-idle").data("user-idle-interval")
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+        $("#search-local-time").attr("phx-value-local_time_timezone", timeZone)
 
         // Activate user idle tracking
         idle({

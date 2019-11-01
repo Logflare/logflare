@@ -1,4 +1,4 @@
-defmodule Logflare.DummyFactory do
+defmodule Logflare.Factory do
   @moduledoc """
   Generates fixtures for schemas
   """
@@ -11,7 +11,8 @@ defmodule Logflare.DummyFactory do
       email: sequence(:email, &"email-#{&1}@example.com"),
       provider: "google",
       token: Faker.String.base64(64),
-      api_key: Faker.String.base64(10)
+      api_key: Faker.String.base64(10),
+      provider_uid: "provider_uid"
     }
   end
 

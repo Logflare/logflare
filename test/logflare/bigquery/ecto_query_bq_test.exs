@@ -4,7 +4,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
   alias Logflare.EctoQueryBQ
   use Logflare.DataCase
   import Ecto.Query
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))

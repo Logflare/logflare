@@ -7,7 +7,7 @@ defmodule LogflareWeb.LogControllerTest do
   use Placebo
 
   setup do
-    import Logflare.DummyFactory
+    import Logflare.Factory
 
     allow AllLogsLogged.log_count(any()), return: {:ok, 0}
     allow AllLogsLogged.incriment(any()), return: :ok
@@ -237,7 +237,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert_called Sources.Counters.incriment(s.token), times(3)
-      assert_called Sources.Counters.get_total_inserts(s.token), times(3)
+      assert_called Sources.Counters.get_inserts(s.token), times(3)
       assert_called SourceBuffer.push("#{s.token}", any()), times(3)
       assert_called AllLogsLogged.incriment(any()), times(3)
     end
@@ -262,7 +262,7 @@ defmodule LogflareWeb.LogControllerTest do
 
   defp assert_called_modules_from_logs_context(token) do
     assert_called Sources.Counters.incriment(token), once()
-    assert_called Sources.Counters.get_total_inserts(token), once()
+    assert_called Sources.Counters.get_inserts(token), once()
     assert_called SourceBuffer.push("#{token}", any()), once()
     assert_called AllLogsLogged.incriment(any()), once()
   end
@@ -270,7 +270,7 @@ defmodule LogflareWeb.LogControllerTest do
   defp allow_mocks(_context) do
     allow Sources.Counters.incriment(any()), return: :ok
     allow SourceBuffer.push(any(), any()), return: :ok
-    allow Sources.Counters.get_total_inserts(any()), return: {:ok, 1}
+    allow Sources.Counters.get_inserts(any()), return: {:ok, 1}
     allow AllLogsLogged.incriment(any()), return: :ok
     :ok
   end

@@ -4,7 +4,8 @@ BUILD_HOST="logflare-build.us-central1-a.logflare-232118"
 BUILD_USER="logflare"
 BUILD_AT="/home/logflare/app_build"
 
-PRODUCTION_HOSTS="logflare-prod-cluster-group-m1q8.us-central1-f.logflare-232118 logflare-prod-cluster-group-8kxx.us-central1-c.logflare-232118 logflare-prod-cluster-group-6kz9.us-central1-b.logflare-232118"
+# PRODUCTION_HOSTS="logflare-prod-cluster-group-m1q8.us-central1-f.logflare-232118 logflare-prod-cluster-group-8kxx.us-central1-c.logflare-232118 logflare-prod-cluster-group-6kz9.us-central1-b.logflare-232118"
+PRODUCTION_HOSTS="logflare-production-3.us-central1-a.logflare-232118"
 PRODUCTION_USER="logflare"
 DELIVER_TO="/home/logflare/app_release"
 

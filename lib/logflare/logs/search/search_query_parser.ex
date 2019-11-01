@@ -1,6 +1,7 @@
 defmodule Logflare.Logs.Search.Parser do
   @moduledoc false
   import NimbleParsec
+  alias Logflare.Logs.Validators.BigQuerySchemaChange
 
   word =
     ascii_string([48..125], min: 1)
@@ -86,20 +87,34 @@ defmodule Logflare.Logs.Search.Parser do
     |> repeat()
   )
 
-  def parse(querystring) do
-    try do
-      do_parse(querystring)
-    rescue
-      e in MatchError ->
-        %MatchError{term: {filter, {:error, errstring}}} = e
-        {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
+  def parse(querystring, schema) do
+    typemap =
+      BigQuerySchemaChange.to_typemap(schema)
+      |> Iteraptor.to_flatmap()
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".t", ""), v} end)
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
+      |> Enum.uniq()
+      |> Enum.reject(fn {_k, v} -> v === :map end)
+      |> Map.new()
 
-      _e in FunctionClauseError ->
-        {:error, "Invalid query! Please consult search syntax guide."}
+    {:ok, path_val_ops} = do_parse(querystring)
 
-      e ->
-        {:error, inspect(e)}
-    end
+    result =
+      for %{path: path} = path_val_op <- path_val_ops do
+        maybe_cast_value(path_val_op, typemap[path])
+      end
+
+    {:ok, result}
+  rescue
+    e in MatchError ->
+      %MatchError{term: {filter, {:error, errstring}}} = e
+      {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
+
+    _e in FunctionClauseError ->
+      {:error, "Invalid query! Please consult search syntax guide."}
+
+    e ->
+      {:error, inspect(e)}
   end
 
   def do_parse(querystring) do
@@ -109,7 +124,6 @@ defmodule Logflare.Logs.Search.Parser do
       |> parse_query()
       |> convert_to_pathvalops()
       |> List.flatten()
-      |> Enum.map(&maybe_cast_value/1)
 
     {:ok, result}
   end
@@ -193,27 +207,20 @@ defmodule Logflare.Logs.Search.Parser do
   defp not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
   defp not_quote(_, context, _, _), do: {:cont, context}
 
-  defp maybe_cast_value(%{value: "true"} = c), do: %{c | value: true}
-  defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
+  defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
+  defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}
 
-  defp maybe_cast_value(%{operator: op, value: sourcevalue} = c)
-       when op in @arithmetic_operators and is_binary(sourcevalue) do
-    int_parsed = Integer.parse(c.value)
-    float_parsed = Float.parse(c.value)
-
-    value =
-      cond do
-        match?({_, ""}, int_parsed) ->
-          {value, ""} = int_parsed
-          value
-        match?({_, ""}, float_parsed) ->
-          {value, ""} = float_parsed
-          value
-        true -> c.value
-      end
+  defp maybe_cast_value(%{value: sourcevalue} = c, :integer) when is_binary(sourcevalue) do
+    {value, ""} = Integer.parse(sourcevalue)
 
     %{c | value: value}
   end
 
-  defp maybe_cast_value(c), do: c
+  defp maybe_cast_value(%{value: sourcevalue} = c, :float) when is_binary(sourcevalue) do
+    {value, ""} = Float.parse(c.value)
+
+    %{c | value: value}
+  end
+
+  defp maybe_cast_value(c, _type), do: c
 end

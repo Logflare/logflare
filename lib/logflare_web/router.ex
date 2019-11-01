@@ -148,6 +148,11 @@ defmodule LogflareWeb.Router do
     post "/cloudflare/v1", CloudflareControllerV1, :event
   end
 
+  scope "/health", LogflareWeb do
+    pipe_through :api
+    get "/", HealthCheckController, :check
+  end
+
   scope "/logs", LogflareWeb do
     pipe_through [:api, :require_api_auth]
     post "/", LogController, :create

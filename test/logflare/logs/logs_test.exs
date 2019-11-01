@@ -2,12 +2,13 @@ defmodule Logflare.LogsTest do
   @moduledoc false
   use Logflare.DataCase
   use Placebo
-  import Logflare.DummyFactory
+  import Logflare.Factory
   alias Logflare.Logs
-  alias Logflare.{SystemMetrics, Sources}
+  alias Logflare.{AllLogsLogged, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.{Query, GenUtils}
+  alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   @test_dataset_location "us-east4"
 
@@ -18,7 +19,7 @@ defmodule Logflare.LogsTest do
     rule2 = build(:rule, sink: sink2.token, regex: "pattern3")
     s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
     s1 = Sources.get_by(token: s1.token)
-    SystemMetrics.start_link()
+    SystemMetricsSup.start_link()
     Counters.start_link()
     {:ok, sources: [s1], sinks: [sink1, sink2]}
   end

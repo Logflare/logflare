@@ -55,10 +55,18 @@ defmodule Logflare.Source.Data do
         0
 
       _ ->
-        {:ok, bq_inserts} = Counters.get_bq_inserts(source_id)
-        {:ok, inserts} = Counters.get_inserts(source_id)
-        inserts + bq_inserts
+        get_node_inserts(source_id) + get_bq_inserts(source_id)
     end
+  end
+
+  def get_node_inserts(source_id) do
+    {:ok, inserts} = Counters.get_inserts(source_id)
+    inserts
+  end
+
+  def get_bq_inserts(source_id) do
+    {:ok, bq_inserts} = Counters.get_bq_inserts(source_id)
+    bq_inserts
   end
 
   def get_inserts(source_id) when is_atom(source_id) do

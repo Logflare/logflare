@@ -9,7 +9,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   @total_logs :total_logs_logged
   @table :system_counter
-  @persist_every 60_000
+  @persist_every 250
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)

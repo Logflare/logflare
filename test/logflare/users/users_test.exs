@@ -1,6 +1,6 @@
 defmodule Logflare.UsersTest do
   @moduledoc false
-  import Logflare.DummyFactory
+  import Logflare.Factory
   use Logflare.DataCase
   alias Logflare.{Repo, Users, Source}
   import Users

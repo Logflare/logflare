@@ -9,8 +9,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias __MODULE__.SearchParams
   import Logflare.Logs.Search.Utils
   require Logger
-  @tail_search_interval 5_000
-  @user_idle_interval 120_000
+  @tail_search_interval 1_000
+  @user_idle_interval 3_000_000
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
@@ -38,7 +38,9 @@ defmodule LogflareWeb.Source.SearchLV do
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
         active_modal: nil,
-        search_tip: gen_search_tip()
+        search_tip: gen_search_tip(),
+        user_local_timezone: nil,
+        use_local_time: true
       )
 
     {:ok, socket}
@@ -83,6 +85,20 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_execute_query(socket.assigns)
 
     {:noreply, socket}
+  end
+
+  def handle_event("set_local_time" = ev, metadata, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+
+    use_local_time =
+      metadata
+      |> Map.get("use_local_time")
+      |> String.to_existing_atom()
+      |> Kernel.not()
+
+    tz = Map.get(metadata, "local_timezone")
+
+    {:noreply, assign(socket, use_local_time: use_local_time, user_local_timezone: tz)}
   end
 
   def handle_event("activate_modal" = ev, metadata, socket) do

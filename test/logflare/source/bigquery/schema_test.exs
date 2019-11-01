@@ -4,7 +4,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   alias Logflare.Google.BigQuery, as: GoogleBigQuery
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.DummyFactory
+  import Logflare.Factory
   use Placebo
 
   setup do

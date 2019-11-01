@@ -53,6 +53,7 @@ defmodule Logflare.LogEvent do
   def mapper(params) do
     message = params["log_entry"] || params["message"] || params["event_message"]
     metadata = params["metadata"]
+    id = params["id"]
 
     timestamp =
       case params["timestamp"] do
@@ -75,8 +76,9 @@ defmodule Logflare.LogEvent do
       "body" => %{
         "message" => message,
         "metadata" => metadata,
-        "timestamp" => timestamp
-      }
+        "timestamp" => timestamp,
+      },
+      "id" => id
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
@@ -91,7 +93,7 @@ defmodule Logflare.LogEvent do
 
     changes =
       %__MODULE__{}
-      |> cast(params, [:source, :valid?, :validation_error])
+      |> cast(params, [:source, :valid?, :validation_error, :id])
       |> cast_embed(:body, with: &make_body/2)
       |> Map.get(:changes)
 

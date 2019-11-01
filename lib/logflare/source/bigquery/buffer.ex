@@ -4,6 +4,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
+  alias Logflare.Tracker
 
   require Logger
 
@@ -28,16 +29,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_continue(:boot, state) do
-    init_metadata = %{source_token: "#{state.source_id}", buffer: 0}
-
-    Logflare.Tracker.track(
-      Logflare.Tracker,
-      self(),
-      name(state.source_id),
-      Node.self(),
-      init_metadata
-    )
-
     check_buffer()
 
     {:noreply, state}
@@ -88,11 +79,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
         {%LE{} = log_event, new_read_receipts} = Map.pop(state.read_receipts, log_event_id)
         new_state = %{state | read_receipts: new_read_receipts}
 
-        if :queue.is_empty(state.buffer) && new_read_receipts == %{} do
-          {:reply, log_event, new_state, :hibernate}
-        else
-          {:reply, log_event, new_state}
-        end
+        {:reply, log_event, new_state}
     end
   end
 
@@ -102,8 +89,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    update_tracker(state)
-    broadcast_buffer(state)
+    if Source.Data.get_ets_count(state.source_id) > 0 do
+      broadcast_buffer(state)
+    end
+
     check_buffer()
 
     {:noreply, state}
@@ -116,38 +105,21 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   defp broadcast_buffer(state) do
-    payload =
-      Logflare.Tracker.dirty_list(Logflare.Tracker, name(state.source_id))
-      |> merge_metadata
+    buffer = Tracker.Cache.get_cluster_buffer(state.source_id)
+
+    payload = %{
+      buffer: buffer,
+      source_token: state.source_id
+    }
 
     Source.ChannelTopics.broadcast_buffer(payload)
-  end
-
-  defp update_tracker(state) do
-    pid = Process.whereis(name(state.source_id))
-    payload = %{source_token: state.source_id, buffer: :queue.len(state.buffer)}
-
-    Logflare.Tracker.update(Logflare.Tracker, pid, name(state.source_id), Node.self(), payload)
-  end
-
-  def merge_metadata(list) do
-    payload = {:noop, %{buffer: 0}}
-
-    {:noop, data} =
-      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
-        buffer = y.buffer + acc.buffer
-
-        {:noop, %{y | buffer: buffer}}
-      end)
-
-    data
   end
 
   defp check_buffer() do
     Process.send_after(self(), :check_buffer, @broadcast_every)
   end
 
-  defp name(source_id) do
+  def name(source_id) do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 end

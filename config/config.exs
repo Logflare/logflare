@@ -43,7 +43,8 @@ config :logflare, ExOauth2Provider,
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
-  web_module: LogflareWeb
+  web_module: LogflareWeb,
+  force_ssl_in_redirect_uri: true
 
 config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,
@@ -52,7 +53,9 @@ config :logflare, Logflare.Mailer,
 config :swoosh, local: false
 
 config :tesla,
-  adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50]}
+  adapter:
+    {Tesla.Adapter.Hackney,
+     [pool: Client.BigQuery, max_connections: 200, checkout_timeout: 30_000]}
 
 # use to test Tesla timeouts with BigQuery.
 # adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, recv_timeout: 100]}

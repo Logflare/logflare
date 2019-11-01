@@ -2,12 +2,12 @@ defmodule Logflare.Logs.SearchTest do
   @moduledoc false
   alias Logflare.Sources
   alias Logflare.Logs.Search
-  alias Logflare.Logs.Search.SearchOperation, as: SO
+  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Pipeline
   use Logflare.DataCase
-  import Logflare.DummyFactory
+  import Logflare.Factory
   alias Logflare.Source.RecentLogsServer, as: RLS
   @test_dataset "test_dataset_01"
   @test_dataset_location "us-east4"

@@ -12,17 +12,38 @@ defmodule Logflare.Application do
         {Logflare.SigtermHandler, []}
       )
 
+    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
+
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
+      supervisor(Phoenix.PubSub.PG2, [
+        [
+          name: Logflare.PubSub,
+          fastlane: Phoenix.Channel.Server
+        ]
+      ]),
+      worker(
+        Logflare.Tracker,
+        [
+          [
+            name: Logflare.Tracker,
+            pubsub_server: Logflare.PubSub,
+            broadcast_period: 1_000,
+            down_period: 5_000,
+            permdown_period: 30_000,
+            pool_size: tracker_pool_size,
+            log_level: false
+          ]
+        ]
+      ),
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
-      {Task.Supervisor, name: Logflare.TaskSupervisor}
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
     ]
 
     topologies = Application.get_env(:libcluster, :topologies)
-    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     dev_prod_children = [
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
@@ -43,18 +64,20 @@ defmodule Logflare.Application do
             down_period: 5_000,
             permdown_period: 30_000,
             pool_size: tracker_pool_size,
-            log_level: :debug
+            log_level: false
           ]
         ]
       ),
       # supervisor(LogflareTelemetry.Supervisor, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Tracker.Cache,
       Logflare.Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),
+      supervisor(Logflare.Tracker.SourceNodeMetrics, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, [])

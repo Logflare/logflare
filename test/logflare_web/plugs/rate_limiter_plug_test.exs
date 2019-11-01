@@ -5,7 +5,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.DummyFactory
+  import Logflare.Factory
   use Placebo
 
   setup do

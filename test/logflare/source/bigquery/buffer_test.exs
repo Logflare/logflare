@@ -4,7 +4,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
   alias Logflare.Source.BigQuery.Buffer
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.LogEvent, as: LE
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)
