@@ -79,32 +79,39 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
         Jason.decode!(body)
         |> Map.get("items")
-        |> Enum.filter(
-             fn
-               %{"status" => "RUNNING"} -> true
-               _ -> false
-             end
-           )
-        |> Enum.map(
-             fn %{"instance" => url} ->
-               {:ok, {{_, 200, _}, _headers, body}} = :httpc.request( :get, {to_char_list(url), headers}, [], [] )
-               Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
+        |> Enum.filter(fn
+          %{"status" => "RUNNING"} -> true
+          _ -> false
+        end)
+        |> Enum.map(fn %{"instance" => url} ->
+          {:ok, {{_, 200, _}, _headers, body}} =
+            :httpc.request(:get, {to_char_list(url), headers}, [], [])
 
-               network_ip = body
-                            |> Jason.decode!
-                            |> Map.get("networkInterfaces")
-                            |> hd
-                            |> Map.get("networkIP")
+          Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
-               Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+          network_ip =
+            body
+            |> Jason.decode!()
+            |> Map.get("networkInterfaces")
+            |> hd
+            |> Map.get("networkIP")
 
-               node_name = :"#{release_name}@#{network_ip}"
+          Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
 
-               Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+          node_name = :"#{release_name}@#{network_ip}"
 
-               node_name
-             end
-           )
+          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+
+          node_name
+        end)
+
+      {:ok, {{_, resp_code, _}, _headers, body}} ->
+        Cluster.Logger.error("GCP API error: #{resp_code}: #{inspect(body)}")
+        []
+
+      {:error, message} ->
+        Cluster.Logger.error("GCP API error: #{inspect(message)}")
+        []
     end
   end
 
