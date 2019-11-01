@@ -57,6 +57,7 @@ defmodule Logflare.Application do
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),
       supervisor(Logflare.Tracker.SourceNodeMetrics, []),
+      supervisor(Logflare.Tracker.SourceNodeRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, [])
