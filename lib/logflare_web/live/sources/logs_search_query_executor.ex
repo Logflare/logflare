@@ -127,7 +127,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     Task.async(fn ->
       SO
       |> struct(params)
-      |> Search.search()
+      |> Search.search_events()
       |> case do
         {:ok, search_op} ->
           {:search_result, lv_pid, search_op}
@@ -143,18 +143,18 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       SO
       |> struct(params)
       |> Search.search_events()
-      |> process_search_response(:events)
+      |> process_search_response(lv_pid, :events)
     end)
 
     Task.async(fn ->
       SO
       |> struct(params)
       |> Search.search_result_aggregates()
-      |> process_search_response(:aggregates)
+      |> process_search_response(lv_pid, :aggregates)
     end)
   end
 
-  def process_search_response(tup, type) when type in ~w(events aggregates)a do
+  def process_search_response(tup, lv_pid, type) when type in ~w(events aggregates)a do
     case tup do
       {:ok, search_op} ->
         {:search_result, type, lv_pid, search_op}

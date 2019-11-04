@@ -14,7 +14,7 @@ defmodule Logflare.Logs.Search do
 
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
 
-  @spec search_result_aggregates(SO.t()) | {:ok, SO.t()} | {:error, SO.t()}
+  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_result_aggregates(%SO{} = so) do
     so
     |> do_search_without_select()
@@ -33,7 +33,7 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search_result_aggregates(SO.t()) | {:ok, SO.t()} | {:error, SO.t()}
+  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_events(%SO{} = so) do
     so
     |> do_search_without_select()
@@ -51,7 +51,7 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search_result_aggregates(SO.t()) | {:ok, SO.t()} | {:error, SO.t()}
+  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def do_search_without_select(%SO{} = so) do
     so
     |> Map.put(:stats, %{
