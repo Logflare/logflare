@@ -5,7 +5,6 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   require Logger
 
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Cluster
 
   @poll_per_second 1_000
 
