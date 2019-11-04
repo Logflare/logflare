@@ -40,8 +40,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   @spec handle_batch(:bq, list(Broadway.Message.t()), any, RLS.t()) :: any
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
-    hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-    LogflareLogger.context(hackney_stats: hackney_stats, source_id: context.source_id)
     stream_batch(context.source_id, messages)
   end
 
@@ -98,6 +96,16 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         LogflareLogger.context(tesla_response: response)
         Logger.warn("Stream batch timeout error!")
         messages
+
+      {:error, :checkout_timeout = response} ->
+        LogflareLogger.context(tesla_response: response)
+        Logger.warn("Stream batch checkout_timeout error!")
+        messages
+
+      {:error, response} ->
+        LogflareLogger.context(tesla_response: response)
+        Logger.warn("Stream batch unknown error!")
+        messages
     end
   end
 
@@ -111,43 +119,46 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    if map_size(body.metadata) > 0 do
-      if field_count < 500 do
-        old_schema = schema_state.schema
-        bigquery_project_id = schema_state.bigquery_project_id
-        bigquery_dataset_id = schema_state.bigquery_dataset_id
+    if map_size(body.metadata) > 0 and
+         field_count < 500 and
+         schema_state.next_update < System.system_time(:second) do
+      old_schema = schema_state.schema
+      bigquery_project_id = schema_state.bigquery_project_id
+      bigquery_dataset_id = schema_state.bigquery_dataset_id
 
-        try do
-          schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
+      try do
+        schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
-          if same_schemas?(old_schema, schema) == false do
-            hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-            LogflareLogger.context(hackney_stats: hackney_stats)
+        if same_schemas?(old_schema, schema) == false do
+          case BigQuery.patch_table(
+                 source_id,
+                 schema,
+                 bigquery_dataset_id,
+                 bigquery_project_id
+               ) do
+            {:ok, table_info} ->
+              Schema.update(source_id, table_info.schema)
+              Logger.info("Source schema updated!")
 
-            case BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id) do
-              {:ok, table_info} ->
-                Schema.update(source_id, table_info.schema)
-                Logger.info("Source schema updated!")
+            {:error, response} ->
+              Schema.set_next_update(source_id)
 
-              {:error, response} ->
-                LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-                Logger.warn("Source schema update error!")
-            end
+              Logger.warn("Source schema update error!",
+                tesla_response: GenUtils.get_tesla_error_message(response)
+              )
           end
-
-          log_event
-        rescue
-          _e ->
-            err = "Field schema type change error!"
-
-            new_body = %{body | metadata: %{"error" => err}}
-
-            Logger.warn(err)
-
-            %{log_event | body: new_body}
         end
-      else
+
         log_event
+      rescue
+        _e ->
+          err = "Field schema type change error!"
+
+          new_body = %{body | metadata: %{"error" => err}}
+
+          Logger.warn(err)
+
+          %{log_event | body: new_body}
       end
     else
       log_event

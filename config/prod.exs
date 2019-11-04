@@ -69,20 +69,23 @@ config :logflare_agent,
   ],
   url: "https://api.logflarestaging.com"
 
+config :logflare_logger_backend,
+  source_id: "8a1fec4a-532c-4033-bbca-8269b328e804",
+  flush_interval: 1_000,
+  max_batch_size: 50,
+  url: "https://api.logflarestaging.com"
+
 config :libcluster,
-  debug: true,
   topologies: [
-    k8s_chat: [
-      strategy: Elixir.Cluster.Strategy.Kubernetes.DNS,
+    gce: [
+      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
       config: [
-        service: "logflare-prod-headless",
-        application_name: "logflare",
-        polling_interval: 1_000
+        release_name: :logflare
       ]
     ]
   ]
 
-config :logflare, Logflare.Tracker, pool_size: 50
+config :logflare, Logflare.Tracker, pool_size: 5
 
 import_config "telemetry.exs"
 

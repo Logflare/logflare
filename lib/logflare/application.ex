@@ -43,18 +43,22 @@ defmodule Logflare.Application do
             down_period: 5_000,
             permdown_period: 30_000,
             pool_size: tracker_pool_size,
-            log_level: :debug
+            log_level: false
           ]
         ]
       ),
       # supervisor(LogflareTelemetry.Supervisor, []),
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
+      Logflare.Tracker.Cache,
       Logflare.Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Logflare.Sources.Counters, []),
       supervisor(Logflare.Sources.RateCounters, []),
+      supervisor(Logflare.Tracker.SourceNodeInserts, []),
+      supervisor(Logflare.Tracker.SourceNodeBuffers, []),
+      supervisor(Logflare.Tracker.SourceNodeRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, [])

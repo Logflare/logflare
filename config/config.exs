@@ -43,7 +43,8 @@ config :logflare, ExOauth2Provider,
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
-  web_module: LogflareWeb
+  web_module: LogflareWeb,
+  force_ssl_in_redirect_uri: true
 
 config :logflare, Logflare.Mailer,
   adapter: Swoosh.Adapters.Mailgun,

@@ -12,7 +12,6 @@ defmodule Logflare.Source.RecentLogsServer do
     field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
     field :bigquery_dataset_id, binary()
-    field :bq_total_on_boot, integer(), default: 0
     field :total_cluster_inserts, integer(), default: 0
   end
 
@@ -20,12 +19,13 @@ defmodule Logflare.Source.RecentLogsServer do
 
   alias Logflare.Sources.Counters
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
-  alias Number.Delimit
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
-  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer, RateCounterServer}
+  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer}
+  alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Tracker
   alias __MODULE__, as: RLS
 
   require Logger
@@ -72,24 +72,18 @@ defmodule Logflare.Source.RecentLogsServer do
       bigquery_dataset_id
     )
 
-    table_args = [:named_table, :ordered_set, :public]
-    :ets.new(source_id, table_args)
+    :ets.new(source_id, [:named_table, :ordered_set, :public])
 
-    # Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-    #   load_init_log_message(source_id, bigquery_project_id)
-    # end)
-
-    {:ok, bq_count} = load_init_log_message(source_id, bigquery_project_id)
+    load_init_log_message(source_id, bigquery_project_id)
 
     rls = %{
       rls
       | bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id,
-        bq_total_on_boot: bq_count
+        bigquery_dataset_id: bigquery_dataset_id
     }
 
     children = [
-      {RateCounterServer, rls},
+      {RCS, rls},
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {Buffer, rls},
@@ -99,10 +93,6 @@ defmodule Logflare.Source.RecentLogsServer do
     ]
 
     Supervisor.start_link(children, strategy: :one_for_all)
-
-    init_metadata = %{source_token: "#{source_id}", log_count: 0, bq_count: bq_count, inserts: 0}
-
-    Phoenix.Tracker.track(Logflare.Tracker, self(), source_id, Node.self(), init_metadata)
 
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
@@ -119,10 +109,14 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:broadcast, state) do
-    update_tracker(state)
-    {:ok, total_cluster_inserts} = broadcast_count(state)
-    broadcast()
-    {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
+    if Source.Data.get_ets_count(state.source_id) > 0 do
+      {:ok, total_cluster_inserts} = broadcast_count(state)
+      broadcast()
+      {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
+    else
+      broadcast()
+      {:noreply, state}
+    end
   end
 
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
@@ -155,68 +149,25 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
-    p =
-      Logflare.Tracker.dirty_list(Logflare.Tracker, state.source_id)
-      |> merge_metadata
+    inserts = Tracker.Cache.get_cluster_inserts(state.source_id)
 
-    {_, payload} =
-      Map.get_and_update(p, :log_count, fn current_value ->
-        {current_value, p.bq_count + p.inserts}
-      end)
+    payload = %{log_count: inserts, source_token: state.source_id}
 
-    if payload.log_count > state.total_cluster_inserts do
+    if inserts > state.total_cluster_inserts do
       Source.ChannelTopics.broadcast_log_count(payload)
     end
 
-    {:ok, payload.log_count}
+    {:ok, inserts}
   end
 
-  defp update_tracker(state) do
-    pid = Process.whereis(state.source_id)
+  defp load_init_log_message(source_id, _bigquery_project_id) do
+    message =
+      "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 
-    bq_count = state.bq_total_on_boot
-    inserts = Data.get_inserts(state.source_id)
+    log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
+    push(source_id, log_event)
 
-    payload = %{
-      source_token: state.source_id,
-      bq_count: bq_count,
-      inserts: inserts,
-      log_count: 0
-    }
-
-    Logflare.Tracker.update(Logflare.Tracker, pid, state.source_id, Node.self(), payload)
-  end
-
-  def merge_metadata(list) do
-    payload = {:noop, %{inserts: 0, bq_count: 0}}
-
-    {:noop, data} =
-      Enum.reduce(list, payload, fn {_, y}, {_, acc} ->
-        total = y.inserts + acc.inserts
-        bq_count = if y.bq_count > acc.bq_count, do: y.bq_count, else: acc.bq_count
-
-        {:noop, %{y | inserts: total, bq_count: bq_count}}
-      end)
-
-    data
-  end
-
-  defp load_init_log_message(source_id, bigquery_project_id) do
-    log_count = Data.get_log_count(source_id, bigquery_project_id)
-
-    if log_count > 0 do
-      message =
-        "Initialized on node #{Node.self()}. Waiting for new events. #{
-          Delimit.number_to_delimited(log_count)
-        } available to explore & search."
-
-      log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
-      push(source_id, log_event)
-
-      Source.ChannelTopics.broadcast_new(log_event)
-    end
-
-    {:ok, log_count}
+    Source.ChannelTopics.broadcast_new(log_event)
   end
 
   defp prune() do

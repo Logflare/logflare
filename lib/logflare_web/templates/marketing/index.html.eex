@@ -59,7 +59,7 @@
 					<div class="col-md-6">
 						<p>Log and application performance management in one solution. We use the software we're building to log events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good example of what you can do with
 							the Elixir library.</p>
-						<center><%= link "Backend status (Elixir) »", to: "https://datastudio.google.com/s/o3GvxZNpNr0", class: "btn btn-secondary", role: "button", target: "_blank" %> <%= link "CDN status (Cloudflare) »", to: "https://datastudio.google.com/s/gd1TdcgCvtw", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
+						<center><%= link "Backend status (Elixir) »", to: "https://datastudio.google.com/s/gIAFsUMbDS4", class: "btn btn-secondary", role: "button", target: "_blank" %> <%= link "CDN status (Cloudflare) »", to: "https://datastudio.google.com/s/pKMWyqEWiTA", class: "btn btn-secondary", role: "button", target: "_blank" %></center>
 					</div>
 				</div>
 

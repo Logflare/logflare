@@ -9,6 +9,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Cluster
 
   import Ecto.Query, only: [from: 2]
 
@@ -26,8 +27,6 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
-    timer_prev = System.monotonic_time()
-
     query =
       from(s in "sources",
         select: %{
@@ -43,17 +42,17 @@ defmodule Logflare.Source.Supervisor do
         source
       end)
 
-    children =
-      Enum.map(source_ids, fn source_id ->
-        rls = %RLS{source_id: source_id}
-        Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
-      end)
+    # BigQuery Rate limit is 100/second
+    Enum.map(source_ids, fn source_id ->
+      rls = %RLS{source_id: source_id}
+      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
+    end)
+    |> Enum.chunk_every(25)
+    |> Enum.each(fn x ->
+      Supervisor.start_link(x, strategy: :one_for_one)
+      Process.sleep(1_000)
+    end)
 
-    Supervisor.start_link(children, strategy: :one_for_one)
-    timer_next = System.monotonic_time()
-    diff = (timer_next - timer_prev) / 1_000_000
-
-    Logger.info("Source.Supervisor started in #{diff} ms!", source_sup_startup_time: diff)
     {:noreply, source_ids}
   end
 
@@ -127,25 +126,25 @@ defmodule Logflare.Source.Supervisor do
   ## Public Functions
 
   def new_source(source_id) do
-    GenServer.call(__MODULE__, {:create, source_id})
+    GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
   end
 
   def delete_source(source_id) do
-    GenServer.call(__MODULE__, {:delete, source_id})
+    GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:delete, source_id})
     BigQuery.delete_table(source_id)
 
     {:ok, source_id}
   end
 
   def reset_source(source_id) do
-    GenServer.cast(__MODULE__, {:restart, source_id})
+    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:restart, source_id})
 
     {:ok, source_id}
   end
 
   def reset_all_user_sources(user) do
     sources = Repo.all(Ecto.assoc(user, :sources))
-    Enum.each(sources, fn s -> GenServer.cast(__MODULE__, {:restart, s.token}) end)
+    Enum.each(sources, fn s -> reset_source(s.token) end)
   end
 
   defp create_source(source_id) do
