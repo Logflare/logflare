@@ -98,7 +98,7 @@ defmodule Logflare.Mixfile do
       {:placebo, "~> 1.2"},
       {:logflare_logger_backend, "~> 0.6.3"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "0.1.1"},
+      {:phoenix_live_view, "0.3.1"},
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
