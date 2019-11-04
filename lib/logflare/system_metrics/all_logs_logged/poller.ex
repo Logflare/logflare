@@ -48,14 +48,13 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   end
 
   def handle_info(:poll_per_second, state) do
-    poll_per_second()
-
     {:ok, metrics} = AllLogsLogged.all_metrics(:total_logs_logged)
     logs_last_second = metrics.total - state.last_total
     state = %{state | last_second: logs_last_second, last_total: metrics.total}
 
     Logflare.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
 
+    poll_per_second()
     log_stuff(logs_last_second)
     {:noreply, state}
   end

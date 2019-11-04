@@ -19,8 +19,6 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
   end
 
   def handle_info(:poll_metrics, last_scheduler_metrics) do
-    poll_metrics()
-
     current_scheduler_metrics = :scheduler.sample()
 
     scheduler_metrics =
@@ -30,6 +28,7 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
       Logger.info("Scheduler metrics!", scheduler_metrics: scheduler_metrics)
     end
 
+    poll_metrics()
     {:noreply, current_scheduler_metrics}
   end
 
