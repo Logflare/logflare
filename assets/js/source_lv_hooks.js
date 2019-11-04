@@ -74,4 +74,8 @@ hooks.SourceLogsSearch = {
         $("button#search").click()
     },
 }
+
+hooks.SourceLogsSearchAggregates = {
+    mounted() {},
+}
 export default hooks

@@ -86,7 +86,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(100)
 
-    maybe_send(lv_pid, {:search_result, %{so | rows: log_events}})
+    maybe_send(lv_pid, {{:search_result, :events}, %{so | rows: log_events}})
 
     state = %{state | query_tasks: new_query_tasks}
     {:noreply, state}
@@ -100,7 +100,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     aggregates = Map.get(so, :rows)
 
-    maybe_send(lv_pid, {:search_result, %{so | aggregates: aggregates}})
+    maybe_send(lv_pid, {{:search_result, :aggregates}, %{so | aggregates: aggregates}})
 
     {:noreply, state}
   end
@@ -143,24 +143,24 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       SO
       |> struct(params)
       |> Search.search_events()
-      |> process_search_response
+      |> process_search_response(:events)
     end)
 
     Task.async(fn ->
       SO
       |> struct(params)
       |> Search.search_result_aggregates()
-      |> process_search_response
+      |> process_search_response(:aggregates)
     end)
   end
 
-  def process_search_response(tup) do
+  def process_search_response(tup, type) when type in ~w(events aggregates)a do
     case tup do
       {:ok, search_op} ->
-        {:search_result, :events, lv_pid, search_op}
+        {:search_result, type, lv_pid, search_op}
 
       {:error, err} ->
-        {:search_error, :aggregates, lv_pid, err}
+        {:search_error, type, lv_pid, err}
     end
   end
 end

@@ -126,27 +126,61 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_result, search_op}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
+  def handle_info({{:search_result, :events}, search_op}, socket) do
+    log_lv_received_event("search_result events", socket.assigns.source)
 
-    tailing_timer =
-      if socket.assigns.tailing? do
-        log_lv(socket.assigns.source, "is scheduling tail search")
-        Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
-      else
-        nil
-      end
+    if socket.store.aggregates do
+      tailing_timer =
+        if socket.assigns.tailing? do
+          log_lv(socket.assigns.source, "is scheduling tail search")
+          Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
+        else
+          nil
+        end
 
-    warning = warning_message(socket.assigns, search_op)
+      warning = warning_message(socket.assigns, search_op)
 
-    socket =
       socket
-      |> assign(:log_events, search_op.rows)
+      |> assign(:log_events, socket.store.aggregates)
+      |> assign(:log_aggregates, search_op.rows)
       |> assign(:search_op, search_op)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
       |> assign_flash(:warning, warning)
+    else
+      put_in(socket, ~w(store events)a, search_op.events)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({{:search_result, :aggregates}, search_op}, socket) do
+    log_lv_received_event("search_result aggregates", socket.assigns.source)
+
+    socket =
+      if socket.store.events do
+        tailing_timer =
+          if socket.assigns.tailing? do
+            log_lv(socket.assigns.source, "is scheduling tail search")
+            Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
+          else
+            nil
+          end
+
+        warning = warning_message(socket.assigns, search_op)
+
+        socket
+        |> assign(:log_events, socket.store.events)
+        |> assign(:log_aggregates, search_op.aggregates)
+        |> assign(:search_op, search_op)
+        |> assign(:tailing_timer, tailing_timer)
+        |> assign(:loading, false)
+        |> assign(:tailing_initial?, false)
+        |> assign_flash(:warning, warning)
+      else
+        put_in(socket, ~w(store aggregates)a, search_op.aggregates)
+      end
 
     {:noreply, socket}
   end
