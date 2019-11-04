@@ -14,21 +14,12 @@ defmodule Logflare.Logs.Search do
 
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
 
-  def search(%SO{} = so) do
+  @spec search_result_aggregates(SO.t()) | {:ok, SO.t()} | {:error, SO.t()}
+  def search_result_aggregates(%SO{} = so) do
     so
-    |> Map.put(:stats, %{
-      start_monotonic_time: System.monotonic_time(:millisecond),
-      total_duration: nil
-    })
-    |> default_from
-    |> parse_querystring()
-    |> verify_path_in_schema()
-    |> apply_local_timestamp_correction()
-    |> partition_or_streaming()
-    |> apply_wheres()
-    |> apply_selects()
-    |> order_by_default()
-    |> apply_limit_to_query()
+    |> do_search_without_select()
+    |> apply_select_count()
+    |> exclude(:limit)
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
@@ -40,5 +31,40 @@ defmodule Logflare.Logs.Search do
       %{error: e} when not is_nil(e) ->
         {:error, so}
     end
+  end
+
+  @spec search_result_aggregates(SO.t()) | {:ok, SO.t()} | {:error, SO.t()}
+  def search_events(%SO{} = so) do
+    so
+    |> do_search_without_select()
+    |> apply_select_all_schema()
+    |> apply_to_sql()
+    |> do_query()
+    |> process_query_result()
+    |> put_stats()
+    |> case do
+      %{error: nil} = so ->
+        {:ok, so}
+
+      %{error: e} when not is_nil(e) ->
+        {:error, so}
+    end
+  end
+
+  @spec search_result_aggregates(SO.t()) | {:ok, SO.t()} | {:error, SO.t()}
+  def do_search_without_select(%SO{} = so) do
+    so
+    |> Map.put(:stats, %{
+      start_monotonic_time: System.monotonic_time(:millisecond),
+      total_duration: nil
+    })
+    |> default_from
+    |> parse_querystring()
+    |> verify_path_in_schema()
+    |> apply_local_timestamp_correction()
+    |> partition_or_streaming()
+    |> apply_wheres()
+    |> order_by_default()
+    |> apply_limit_to_query()
   end
 end

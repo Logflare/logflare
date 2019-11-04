@@ -65,7 +65,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   @impl true
-  def handle_info({_ref, {:search_result, lv_pid, so}}, state) do
+  def handle_info({_ref, {:search_result, :events, lv_pid, so}}, state) do
+    Logger.debug(
+      "Getting event search results from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
+    )
+
     {%{params: params}, new_query_tasks} = Map.pop(state.query_tasks, lv_pid)
 
     rows =
@@ -85,6 +89,19 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     maybe_send(lv_pid, {:search_result, %{so | rows: log_events}})
 
     state = %{state | query_tasks: new_query_tasks}
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({_ref, {:search_result, :aggregates, lv_pid, so}}, state) do
+    Logger.debug(
+      "Getting aggregate results from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
+    )
+
+    aggregates = Map.get(so, :rows)
+
+    maybe_send(lv_pid, {:search_result, %{so | aggregates: aggregates}})
+
     {:noreply, state}
   end
 
@@ -119,5 +136,31 @@ defmodule Logflare.Logs.SearchQueryExecutor do
           {:search_error, lv_pid, err}
       end
     end)
+  end
+
+  def start_search_tasks(lv_pid, params) do
+    Task.async(fn ->
+      SO
+      |> struct(params)
+      |> Search.search_events()
+      |> process_search_response
+    end)
+
+    Task.async(fn ->
+      SO
+      |> struct(params)
+      |> Search.search_result_aggregates()
+      |> process_search_response
+    end)
+  end
+
+  def process_search_response(tup) do
+    case tup do
+      {:ok, search_op} ->
+        {:search_result, :events, lv_pid, search_op}
+
+      {:error, err} ->
+        {:search_error, :aggregates, lv_pid, err}
+    end
   end
 end

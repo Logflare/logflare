@@ -213,7 +213,7 @@ defmodule Logflare.Logs.SearchOperations do
             value =
               value
               |> Timex.to_datetime(so.user_local_timezone)
-              |> Timex.Timezone.convert(dt, "Etc/UTC")
+              |> Timex.Timezone.convert("Etc/UTC")
               |> Timex.to_naive_datetime()
 
             %{pvo | value: value}
@@ -226,7 +226,7 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | pathvalops: pathvalops}
   end
 
-  def apply_selects(%SO{} = so) do
+  def apply_select_all_schema(%SO{} = so) do
     top_level_fields =
       so.source
       |> Sources.Cache.get_bq_schema()
@@ -234,5 +234,13 @@ defmodule Logflare.Logs.SearchOperations do
       |> Map.keys()
 
     %{so | query: select(so.query, ^top_level_fields)}
+  end
+
+  def apply_select_count(%SO{} = so) do
+    %{so | query: select(so.query, [c, ...], count(c))}
+  end
+
+  def exclude_limit(%SO{} = so) do
+    %{so | query: Ecto.Query.exclude(so.query, :limit)}
   end
 end
