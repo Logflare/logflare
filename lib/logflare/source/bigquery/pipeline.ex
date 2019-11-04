@@ -73,8 +73,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   def stream_batch(source_id, messages) do
     rows = le_messages_to_bq_rows(messages)
-    hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
-    LogflareLogger.context(hackney_stats: hackney_stats)
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
     # All others send to the rejected list with the message from BigQuery.
