@@ -2,8 +2,10 @@ defmodule Logflare.Sources do
   @moduledoc """
   Sources-related context
   """
-  alias Logflare.{Repo, Source, Tracker}
+  alias Logflare.{Repo, Source, Tracker, Cluster}
   require Logger
+
+  @default_bucket_width 60
 
   def get_by(kw) do
     Source
@@ -17,11 +19,35 @@ defmodule Logflare.Sources do
     end
   end
 
-  def get_rate_metrics(source, bucket: :default) do
+  def get_rate_limiter_metrics(source, bucket: :default) do
     # Source bucket metrics
-    rates = Tracker.Cache.get_cluster_rates(source.token)
+    cluster_size = Cluster.Utils.node_list_all() |> Enum.count()
+    cluster_metrics = Tracker.Cache.get_cluster_rates(source.token).limiter_metrics
+    quota_per_node = source.api_quota / cluster_size
+    node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)
+    failsafe = node_rate_limiter_failsafe(node_metrics, cluster_size)
 
-    rates.limiter_metrics
+    if source.api_quota * @default_bucket_width < node_metrics.sum * cluster_size do
+      failsafe
+    else
+      cluster_metrics
+    end
+  end
+
+  def node_rate_limiter_failsafe(node_metrics, cluster_size) do
+    %{
+      node_metrics
+      | average: node_metrics.average * cluster_size,
+        sum: node_metrics.sum * cluster_size
+    }
+  end
+
+  def get_node_rate_limiter_metrics(source, bucket: :default) do
+    source.token
+    |> Source.RateCounterServer.get_data_from_ets()
+    |> Map.get(:buckets)
+    |> Map.get(@default_bucket_width)
+    |> Map.drop([:queue])
   end
 
   def get_bq_schema(%Source{} = source) do
