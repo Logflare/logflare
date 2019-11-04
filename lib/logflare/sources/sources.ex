@@ -20,10 +20,8 @@ defmodule Logflare.Sources do
   end
 
   def get_rate_limiter_metrics(source, bucket: :default) do
-    # Source bucket metrics
     cluster_size = Cluster.Utils.node_list_all() |> Enum.count()
     cluster_metrics = Tracker.Cache.get_cluster_rates(source.token).limiter_metrics
-    quota_per_node = source.api_quota / cluster_size
     node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)
     failsafe = node_rate_limiter_failsafe(node_metrics, cluster_size)
 
