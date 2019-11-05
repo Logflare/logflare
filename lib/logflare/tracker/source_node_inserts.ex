@@ -21,7 +21,7 @@ defmodule Logflare.Tracker.SourceNodeInserts do
 
   def init(state) do
     init_trackers()
-    check_total_inserts()
+    check_total_inserts(0)
     {:ok, state}
   end
 
@@ -66,7 +66,7 @@ defmodule Logflare.Tracker.SourceNodeInserts do
     )
   end
 
-  defp check_total_inserts() do
-    Process.send_after(self(), :check_total_inserts, @check_total_inserts_every)
+  defp check_total_inserts(delay \\ @check_total_inserts_every) do
+    Process.send_after(self(), :check_total_inserts, delay)
   end
 end
