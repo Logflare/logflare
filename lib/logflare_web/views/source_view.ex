@@ -4,6 +4,7 @@ defmodule LogflareWeb.SourceView do
   alias Logflare.{Sources, Logs}
   alias Logflare.BigQuery.SchemaTypes
   import Phoenix.LiveView
+  import PhoenixLiveReact, only: [live_react_component: 2]
 
   def render_modal("searchHelpModal", _source, _log_events) do
     ~E"""

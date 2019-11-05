@@ -95,7 +95,7 @@ defmodule LogflareWeb.Router do
 
     get "/:id/rejected", SourceController, :rejected_logs
     get "/:id/search", SourceController, :search
-    live "/live/:id/search", LogflareWeb.Source.SearchLV, session: [:assigns, :params]
+    live "/live/:id/search", Source.SearchLV, session: [:assigns, :params]
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
