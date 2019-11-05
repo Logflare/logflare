@@ -36,7 +36,7 @@ module.exports = (env, options) => {
     module: {
       rules: [
         {
-          test: /\.js$/,
+          test: /\.jsx$/,
           exclude: /node_modules/,
           use: {
             loader: "babel-loader",
@@ -93,5 +93,11 @@ module.exports = (env, options) => {
       new CopyWebpackPlugin([{ from: "static/", to: "../" }]),
       new Webpack.ProvidePlugin({}),
     ],
+    resolve: {
+      alias: {
+        react: path.resolve(__dirname, "./node_modules/react"),
+        "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
+      },
+    },
   }
 }
