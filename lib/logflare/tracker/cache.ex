@@ -1,5 +1,5 @@
 defmodule Logflare.Tracker.Cache do
-  alias Logflare.{Tracker, Source}
+  alias Logflare.{Tracker, Source, Cluster}
   import Cachex.Spec
   require Logger
 
@@ -56,7 +56,7 @@ defmodule Logflare.Tracker.Cache do
   def get_cluster_rates(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, Source.RateCounterServer.name(source_id)) do
       {:ok, nil} ->
-        Logger.error("Tracker cache expired!")
+        Logger.error("Tracker rates cache expired!")
 
         %{
           average_rate: "err",
@@ -69,7 +69,12 @@ defmodule Logflare.Tracker.Cache do
         rates
 
       {:error, _} ->
-        Logger.error("Tracker cache error!")
+        %{
+          average_rate: "err",
+          last_rate: "err",
+          max_rate: "err",
+          limiter_metrics: %{average: 100_000, duration: 60, sum: 6_000_000}
+        }
     end
   end
 
@@ -98,11 +103,16 @@ defmodule Logflare.Tracker.Cache do
 
   def get_cluster_inserts(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, source_id) do
+      {:ok, nil} ->
+        Logger.error("Tracker inserts cache expired!")
+        inserts = Source.Data.get_inserts(source_id)
+
+        inserts
+
       {:ok, inserts} ->
         inserts
 
       {:error, _} ->
-        Logger.error("Tracker cache error!")
         0
     end
   end
@@ -125,11 +135,17 @@ defmodule Logflare.Tracker.Cache do
 
   def get_cluster_buffer(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, Source.BigQuery.Buffer.name(source_id)) do
+      {:ok, nil} ->
+        Logger.error("Tracker buffer cache expired!")
+        buffer = Source.Data.get_buffer(source_id)
+        node_count = Cluster.Utils.node_list_all() |> Enum.count()
+
+        buffer * node_count
+
       {:ok, buffer} ->
         buffer
 
       {:error, _} ->
-        Logger.error("Tracker cache error!")
         0
     end
   end
