@@ -65,15 +65,17 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   @impl true
-  def handle_info({_ref, {:search_result, :events, lv_pid, so}}, state) do
+  def handle_info({_ref, {:search_result, lv_pid, result}}, state) do
     Logger.debug(
       "Getting event search results from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
     )
 
+    %{events: events_so, aggregates: aggregates_so} = result
+
     {%{params: params}, new_query_tasks} = Map.pop(state.query_tasks, lv_pid)
 
     rows =
-      so
+      events_so
       |> Map.get(:rows)
       |> Enum.map(&LogEvent.make_from_db(&1, %{source: params.source}))
 
@@ -86,22 +88,16 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(100)
 
-    maybe_send(lv_pid, {{:search_result, :events}, %{so | rows: log_events}})
-
-    state = %{state | query_tasks: new_query_tasks}
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({_ref, {:search_result, :aggregates, lv_pid, so}}, state) do
-    Logger.debug(
-      "Getting aggregate results from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
+    maybe_send(
+      lv_pid,
+      {{:search_result, :events},
+       %{
+         events: %{events_so | rows: log_events},
+         aggregates: aggregates_so
+       }}
     )
 
-    aggregates = Map.get(so, :rows)
-
-    maybe_send(lv_pid, {{:search_result, :aggregates}, %{so | aggregates: aggregates}})
-
+    state = %{state | query_tasks: new_query_tasks}
     {:noreply, state}
   end
 
@@ -111,9 +107,19 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     {:noreply, state}
   end
 
-  @impl true
   # handles task shutdown messages
-  def handle_info(_task, state), do: {:noreply, state}
+  @impl true
+  def handle_info({:DOWN, _, _, _, _}, state) do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    IO.inspect(msg)
+    throw("unnknown message received")
+    {:noreply, state}
+  end
+
 
   def maybe_send(lv_pid, msg) do
     if Process.alive?(lv_pid) do
@@ -127,30 +133,14 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     Task.async(fn ->
       SO
       |> struct(params)
-      |> Search.search_events()
+      |> Search.search_and_aggs()
       |> case do
-        {:ok, search_op} ->
-          {:search_result, lv_pid, search_op}
+        {:ok, result} ->
+          {:search_result, lv_pid, result}
 
-        {:error, err} ->
-          {:search_error, lv_pid, err}
+        {:error, result} ->
+          {:search_error, lv_pid, result}
       end
-    end)
-  end
-
-  def start_search_tasks(lv_pid, params) do
-    Task.async(fn ->
-      SO
-      |> struct(params)
-      |> Search.search_events()
-      |> process_search_response(lv_pid, :events)
-    end)
-
-    Task.async(fn ->
-      SO
-      |> struct(params)
-      |> Search.search_result_aggregates()
-      |> process_search_response(lv_pid, :aggregates)
     end)
   end
 

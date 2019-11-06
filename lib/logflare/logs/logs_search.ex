@@ -14,12 +14,43 @@ defmodule Logflare.Logs.Search do
 
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
 
+  def search_and_aggs(%SO{} = so) do
+    tasks = [
+      Task.async(fn -> search_events(so) end),
+      Task.async(fn -> search_result_aggregates(so) end)
+    ]
+
+    tasks_with_results = Task.yield_many(tasks, 5000)
+
+    results =
+      tasks_with_results
+      |> Enum.map(fn {task, res} ->
+        res || Task.shutdown(task, :brutal_kill)
+      end)
+
+    [event_result, agg_result] = results
+
+    with {:ok, {:ok, events_so}} <- event_result,
+         {:ok, {:ok, agg_so}} <- agg_result do
+      {:ok, %{events: events_so, aggregates: agg_so}}
+    else
+      {:ok, result} ->
+        {:error, result}
+
+      {:error, result} ->
+        {:error, result}
+
+      nil ->
+        {:error, "search timeout"}
+    end
+  end
+
   @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_result_aggregates(%SO{} = so) do
     so
     |> do_search_without_select()
     |> apply_select_count()
-    |> exclude(:limit)
+    |> exclude_limit()
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
@@ -33,10 +64,12 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
+  @spec search_events(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_events(%SO{} = so) do
     so
     |> do_search_without_select()
+    |> order_by_default()
+    |> apply_limit_to_query()
     |> apply_select_all_schema()
     |> apply_to_sql()
     |> do_query()
@@ -51,20 +84,21 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
+  @spec do_search_without_select(SO.t()) :: SO.t()
   def do_search_without_select(%SO{} = so) do
     so
-    |> Map.put(:stats, %{
-      start_monotonic_time: System.monotonic_time(:millisecond),
-      total_duration: nil
-    })
+    |> Map.put(
+      :stats,
+      %{
+        start_monotonic_time: System.monotonic_time(:millisecond),
+        total_duration: nil
+      }
+    )
     |> default_from
     |> parse_querystring()
     |> verify_path_in_schema()
     |> apply_local_timestamp_correction()
     |> partition_or_streaming()
     |> apply_wheres()
-    |> order_by_default()
-    |> apply_limit_to_query()
   end
 end
