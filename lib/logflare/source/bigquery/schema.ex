@@ -9,6 +9,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs
+  alias Logflare.Cluster
 
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
@@ -93,7 +94,9 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def update(source_token, schema) do
-    GenServer.cast(name(source_token), {:update, schema})
+    nodes = Cluster.Utils.node_list_all()
+
+    GenServer.multi_call(nodes, name(source_token), {:update, schema})
   end
 
   def set_next_update(source_token) do
@@ -104,14 +107,14 @@ defmodule Logflare.Source.BigQuery.Schema do
     {:reply, state, state}
   end
 
-  def handle_cast({:update, schema}, state) do
+  def handle_call({:update, schema}, _from, state) do
     sorted = SchemaBuilder.deep_sort_by_fields_name(schema)
     type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(sorted)
     field_count = count_fields(type_map)
 
     Sources.Cache.put_bq_schema(state.source_token, sorted)
 
-    {:noreply,
+    {:reply, :ok,
      %{
        state
        | schema: sorted,
@@ -124,7 +127,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_call(:set_next_update, _from, state) do
     next = next_update()
 
-    {:reply, {:ok, next}, %{state | next_update: next}}
+    {:reply, :ok, %{state | next_update: next}}
   end
 
   defp count_fields(type_map) do
