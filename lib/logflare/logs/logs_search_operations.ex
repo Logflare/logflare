@@ -33,12 +33,14 @@ defmodule Logflare.Logs.SearchOperations do
       field :sql_params, {term(), term()}
       field :tailing?, boolean
       field :tailing_initial?, boolean
-      field :rows, [map()]
+      field :rows, [map()], default: []
       field :pathvalops, [map()]
       field :error, term()
       field :stats, :map
       field :use_local_time, boolean
       field :user_local_timezone, :string
+      field :search_chart_period, atom()
+      field :timestamp_truncator, term()
     end
   end
 
@@ -237,10 +239,63 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_select_count(%SO{} = so) do
-    %{so | query: select(so.query, [c, ...], count(c))}
+    query =
+      select(so.query, [c, ...], %{
+        count: count(c)
+      })
+
+    query =
+      case so.search_chart_period do
+        :day ->
+          select_merge(query, [t, ...], %{
+            timestamp: fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp)
+          })
+
+        :hour ->
+          select_merge(query, [t, ...], %{
+            timestamp: fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp)
+          })
+
+        :minute ->
+          select_merge(query, [t, ...], %{
+            timestamp: fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp)
+          })
+
+        :second ->
+          select_merge(query, [t, ...], %{
+            timestamp: fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp)
+          })
+      end
+
+    %{so | query: query}
+  end
+
+  def apply_group_by_timestamp_period(%SO{} = so) do
+    truncator = timestamp_truncator(so)
+
+    group_by = [
+      :timestamp,
+      truncator
+    ]
+
+    query = group_by(so.query, ^group_by)
+    %{so | query: query}
   end
 
   def exclude_limit(%SO{} = so) do
     %{so | query: Ecto.Query.exclude(so.query, :limit)}
+  end
+
+  def add_to_query(%SO{} = so) do
+    %{so | query: Ecto.Query.exclude(so.query, :limit)}
+  end
+
+  defp timestamp_truncator(%SO{} = so) do
+    case so.search_chart_period do
+      :day -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp))
+      :hour -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp))
+      :minute -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp))
+      :second -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp))
+    end
   end
 end

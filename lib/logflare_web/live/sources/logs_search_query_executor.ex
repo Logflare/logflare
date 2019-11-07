@@ -120,7 +120,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     {:noreply, state}
   end
 
-
   def maybe_send(lv_pid, msg) do
     if Process.alive?(lv_pid) do
       send(lv_pid, msg)

@@ -51,6 +51,7 @@ defmodule Logflare.Logs.Search do
     |> do_search_without_select()
     |> apply_select_count()
     |> exclude_limit()
+    |> apply_group_by_timestamp_period()
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()

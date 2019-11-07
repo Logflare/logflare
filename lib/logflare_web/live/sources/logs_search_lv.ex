@@ -42,7 +42,8 @@ defmodule LogflareWeb.Source.SearchLV do
         active_modal: nil,
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
-        use_local_time: true
+        use_local_time: true,
+        search_chart_period: session[:search_chart_period]
       )
 
     {:ok, socket}
@@ -77,12 +78,21 @@ defmodule LogflareWeb.Source.SearchLV do
     if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
     user_local_tz = metadata["search"]["user_local_timezone"]
 
+    search_chart_period =
+      case hd(metadata["search"]["search_chart_period"]) do
+        "day" -> :day
+        "hour" -> :hour
+        "minute" -> :minute
+        "second" -> :second
+      end
+
     socket =
       socket
       |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
+      |> assign(:search_chart_period, search_chart_period)
       |> assign_flash(:warning, nil)
       |> assign_flash(:error, nil)
 
@@ -139,13 +149,12 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-      warning = warning_message(socket.assigns, search_op)
-#    warning = warning_message(socket.assigns, search_result)
+    warning = warning_message(socket.assigns, search_result)
 
     socket
     |> assign(:log_events, search_result.events)
     |> assign(:log_aggregates, search_result.aggregates)
-    |> assign(:search_result, search_result)
+    |> assign(:search_result, search_result.events)
     |> assign(:tailing_timer, tailing_timer)
     |> assign(:loading, false)
     |> assign(:tailing_initial?, false)
@@ -193,7 +202,7 @@ defmodule LogflareWeb.Source.SearchLV do
   defp warning_message(assigns, search_op) do
     tailing? = assigns.tailing?
     querystring = assigns.querystring
-    log_events_empty? = search_op.rows == []
+    log_events_empty? = search_op.events.rows == []
 
     cond do
       log_events_empty? and not tailing? ->

@@ -38,6 +38,7 @@
       <small class="form-text text-muted">
         random(tips): <%= @search_tip %>
       </small>
+      <%= multiple_select f, :search_chart_period, ["day", "hour", "minute", "second"], selected: @search_chart_period || "minute", class: "custom-select custom-select-sm" %>
     </div>
     <div class="form-row align-items-center">
       <div class="col-auto mt-2">
