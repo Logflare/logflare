@@ -53,7 +53,8 @@ config :logflare, Logflare.Mailer,
 config :swoosh, local: false
 
 config :tesla,
-  adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50]}
+  adapter:
+    {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50, recv_timeout: 60_000]}
 
 config :number,
   delimit: [
