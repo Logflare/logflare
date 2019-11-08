@@ -67,11 +67,7 @@ defmodule LogflareWeb.SourceController do
     |> Repo.insert()
     |> case do
       {:ok, source} ->
-        spawn(fn ->
-          # wait a second for the db
-          Process.sleep(1_000)
-          Supervisor.new_source(source.token)
-        end)
+        Supervisor.new_source(source.token)
 
         if get_session(conn, :oauth_params) do
           conn
