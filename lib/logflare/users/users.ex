@@ -18,7 +18,7 @@ defmodule Logflare.Users do
   end
 
   def get_by_source(source_id) when is_atom(source_id) do
-    %Logflare.Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
-    Users.Cache.get_by_id(user_id)
+    %Logflare.Source{user_id: user_id} = Sources.get_by(token: source_id)
+    Users.get_by_id(user_id)
   end
 end
