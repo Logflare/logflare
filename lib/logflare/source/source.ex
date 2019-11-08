@@ -33,6 +33,7 @@ defmodule Logflare.Source do
     field :user_text_notifications, :boolean, default: false
     field :bigquery_table_ttl, :integer
     field :api_quota, :integer, default: @default_source_api_quota
+    field :webhook_notification_url, :string
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
@@ -56,7 +57,8 @@ defmodule Logflare.Source do
       :other_email_notifications,
       :user_text_notifications,
       :bigquery_table_ttl,
-      :api_quota
+      :api_quota,
+      :webhook_notification_url
     ])
     |> default_validations()
   end
@@ -71,7 +73,8 @@ defmodule Logflare.Source do
       :user_email_notifications,
       :other_email_notifications,
       :user_text_notifications,
-      :bigquery_table_ttl
+      :bigquery_table_ttl,
+      :webhook_notification_url
     ])
     |> default_validations()
   end

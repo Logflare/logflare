@@ -16,7 +16,7 @@ defmodule LogflareWeb.SourceController do
             ]
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
-  alias Logflare.Source.{Supervisor, Data}
+  alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer}
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
 
@@ -181,6 +181,27 @@ defmodule LogflareWeb.SourceController do
       source: source,
       sources: conn.assigns.user.sources
     )
+  end
+
+  def test_alerts(conn, %{"id" => source_id}) do
+    source = Sources.get_by(id: source_id)
+
+    case WebhookNotificationServer.test_post(source) do
+      {:ok, %Tesla.Env{} = response} ->
+        conn
+        |> put_flash(:info, "Webhook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, %Tesla.Env{} = response} ->
+        conn
+        |> put_flash(:error, "Webhook test failed! Response status code was #{response.status}.")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, response} ->
+        conn
+        |> put_flash(:error, "Webhook test failed! Error response: #{response}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
   end
 
   def update(conn, %{"source" => source_params}) do

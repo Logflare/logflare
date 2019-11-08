@@ -93,9 +93,9 @@ defmodule LogflareWeb.Router do
       delete "/rules/:id", RuleController, :delete
     end
 
+    get "/:id/test-alerts", SourceController, :test_alerts
     get "/:id/rejected", SourceController, :rejected_logs
     get "/:id/search", SourceController, :search
-
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore

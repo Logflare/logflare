@@ -108,6 +108,7 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8.1"},
       {:libcluster, "~> 3.1.1"},
       {:map_keys, "~> 0.1.0"},
+      {:tesla, "~> 1.3.0"},
 
       # Telemetry
       {:telemetry, "~> 0.4.0"},
