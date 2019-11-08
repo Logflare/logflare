@@ -13,7 +13,7 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
          max_retries: 10,
          max_delay: 4_000,
          should_retry: fn
-           {:ok, %{status: status}} when status in [400, 500] -> true
+           {:ok, %{status: status}} when status in 400..599 -> true
            {:ok, _} -> false
            {:error, _} -> true
          end}
