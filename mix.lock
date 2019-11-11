@@ -99,7 +99,7 @@
   "ueberauth": {:hex, :ueberauth, "0.6.2", "25a31111249d60bad8b65438b2306a4dc91f3208faa62f5a8c33e8713989b2e8", [:mix], [{:plug, "~> 1.5", [hex: :plug, repo: "hexpm", optional: false]}], "hexpm"},
   "ueberauth_github": {:hex, :ueberauth_github, "0.8.0", "2216c8cdacee0de6245b422fb397921b64a29416526985304e345dab6a799d17", [:mix], [{:oauth2, "~> 1.0 or ~> 2.0", [hex: :oauth2, repo: "hexpm", optional: false]}, {:ueberauth, "~> 0.6.0", [hex: :ueberauth, repo: "hexpm", optional: false]}], "hexpm"},
   "ueberauth_google": {:hex, :ueberauth_google, "0.9.0", "e098e1d6df647696b858b0289eae7e4dc8c662abee9e309d64bc115192c51bf5", [:mix], [{:oauth2, "~> 1.0 or ~> 2.0", [hex: :oauth2, repo: "hexpm", optional: false]}, {:ueberauth, "~> 0.6.0", [hex: :ueberauth, repo: "hexpm", optional: false]}], "hexpm"},
-  "ueberauth_slack": {:git, "https://github.com/ueberauth/ueberauth_slack.git", "e80abc0228e2707f810b5b04b3983fe9bf486b01", []},
+  "ueberauth_slack": {:hex, :ueberauth_slack, "0.6.0", "485c73dd5d7f2a1bfdb961911a02efc649e1cf49a75044f9d057524130f360f0", [:mix], [{:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: false]}, {:oauth2, "~> 1.0", [hex: :oauth2, repo: "hexpm", optional: false]}, {:ueberauth, "~> 0.6", [hex: :ueberauth, repo: "hexpm", optional: false]}], "hexpm"},
   "unicode_util_compat": {:hex, :unicode_util_compat, "0.4.1", "d869e4c68901dd9531385bb0c8c40444ebf624e60b6962d95952775cac5e90cd", [:rebar3], [], "hexpm"},
   "unsafe": {:hex, :unsafe, "1.0.1", "a27e1874f72ee49312e0a9ec2e0b27924214a05e3ddac90e91727bc76f8613d8", [:mix], [], "hexpm"},
 }

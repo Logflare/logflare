@@ -110,7 +110,7 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.1.1"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
-      {:ueberauth_slack, github: "ueberauth/ueberauth_slack"},
+      {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
 
       # Telemetry
