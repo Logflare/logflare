@@ -26,7 +26,7 @@ defmodule LogflareWeb.AuthController do
       api_key: api_key,
       image: auth.info.image,
       name: auth.info.name,
-      provider_uid: to_string_provider_uid(auth.uid)
+      provider_uid: generate_provider_uid(auth, auth.provider)
     }
 
     changeset = User.changeset(%User{}, user_params)
@@ -243,10 +243,16 @@ defmodule LogflareWeb.AuthController do
     {:ok_found_user, updated_user}
   end
 
-  defp to_string_provider_uid(provider_uid) when is_bitstring(provider_uid), do: provider_uid
+  defp generate_provider_uid(auth, :slack) do
+    auth.credentials.other.user_id
+  end
 
-  defp to_string_provider_uid(provider_uid) when is_integer(provider_uid) do
-    Integer.to_string(provider_uid)
+  defp generate_provider_uid(auth, provider) when provider in [:google, :github] do
+    if is_integer(auth.uid) do
+      Integer.to_string(auth.uid)
+    else
+      auth.uid
+    end
   end
 
   defp verify_token(token),

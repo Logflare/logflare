@@ -26,8 +26,10 @@ config :logger, :console,
 config :ueberauth, Ueberauth,
   providers: [
     github: {Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"]},
-    google: {Ueberauth.Strategy.Google, []}
-  ]
+    google: {Ueberauth.Strategy.Google, []},
+    slack: {Ueberauth.Strategy.Slack, [default_scope: "identity.basic,identity.email"]}
+  ],
+  json_library: Jason
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
