@@ -27,6 +27,7 @@
     <meta name="theme-color" content="#5eeb8f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="slack-app-id" content="AQEDJ7H7G">
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
     <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
