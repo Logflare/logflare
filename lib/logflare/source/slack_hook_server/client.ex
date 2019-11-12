@@ -38,7 +38,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
           type: "section",
           text: %{
             type: "mrkdwn",
-            text: "#{rate} new event(s) for your source #{source.name}."
+            text: "#{rate} new event(s) for your source `#{source.name}`"
           }
         },
         %{
@@ -56,6 +56,15 @@ defmodule Logflare.Source.SlackHookServer.Client do
             url: source_link,
             style: "primary"
           }
+        },
+        %{
+          type: "context",
+          elements: [
+            %{
+              type: "mrkdwn",
+              text: "Ideas for the Logflare Slack app? Contact support@logflare.app!"
+            }
+          ]
         }
       ]
     }
@@ -87,14 +96,23 @@ defmodule Logflare.Source.SlackHookServer.Client do
     cond do
       rate in 0..3 ->
         Enum.take(recent_events, -rate)
-        |> Enum.map(fn x -> "#{x.ingested_at} UTC - #{x.body.message}" end)
+        |> Enum.map(fn x ->
+          slack_event_message(x)
+        end)
         |> Enum.join("\r")
 
       true ->
         Enum.take(recent_events, -3)
-        |> Enum.map(fn x -> "#{x.ingested_at} UTC - #{x.body.message}" end)
+        |> Enum.map(fn x ->
+          slack_event_message(x)
+        end)
         |> Enum.join("\r")
     end
+  end
+
+  defp slack_event_message(event) do
+    time = Kernel.floor(event.body.timestamp / 1_000_000)
+    "<!date^#{time}^{date_pretty} at {time_secs}|#{event.ingested_at}>\r>#{event.body.message}"
   end
 
   defp build_host() do
