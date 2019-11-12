@@ -52,7 +52,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
     end
   end
 
-  def handle_info({:EXIT, pid, :normal}, rls) do
+  def handle_info({:EXIT, _pid, :normal}, rls) do
     :noop
 
     {:noreply, rls}
