@@ -15,7 +15,7 @@ defmodule LogflareWeb.AuthController do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
 
-  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, %{"state" => ""} = params) do
+  def callback(%{assigns: %{ueberauth_auth: _auth}} = conn, %{"state" => ""} = params) do
     callback(conn, Map.drop(params, ["state"]))
   end
 
