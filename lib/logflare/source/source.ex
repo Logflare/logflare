@@ -4,6 +4,7 @@ defmodule Logflare.Source do
   alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
+  @derive {Jason.Encoder, only: [:name, :token, :id]}
 
   defmodule Metrics do
     @moduledoc false
