@@ -95,6 +95,7 @@ defmodule LogflareWeb.Router do
 
     get "/:id/test-alerts", SourceController, :test_alerts
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
+    get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
     get "/:id/search", SourceController, :search
     get "/:id/favorite", SourceController, :favorite

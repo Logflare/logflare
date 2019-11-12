@@ -138,4 +138,10 @@ defmodule Logflare.Sources do
   end
 
   def valid_source_token_param?(_), do: false
+
+  def delete_slack_hook_url(source) do
+    source
+    |> Source.changeset(%{slack_hook_url: nil})
+    |> Repo.update()
+  end
 end

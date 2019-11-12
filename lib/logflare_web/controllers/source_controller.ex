@@ -224,6 +224,22 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
+  def delete_slack_hook(conn, %{"id" => source_id}) do
+    Repo.get(Source, source_id)
+    |> Sources.delete_slack_hook_url()
+    |> case do
+      {:ok, _source} ->
+        conn
+        |> put_flash(:info, "Slack hook deleted!")
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Delete failed! Contact support if this continues.")
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+    end
+  end
+
   def update(conn, %{"source" => source_params}) do
     %{source: old_source, user: user} = conn.assigns
     # FIXME: Restricted params are filtered without notice
