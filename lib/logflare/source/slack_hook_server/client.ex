@@ -1,0 +1,104 @@
+defmodule Logflare.Source.SlackHookServer.Client do
+  require Logger
+
+  alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.Endpoint
+
+  @middleware [Tesla.Middleware.JSON]
+
+  @adapter Tesla.Adapter.Hackney
+
+  def new() do
+    middleware =
+      [
+        {Tesla.Middleware.Retry,
+         delay: 500,
+         max_retries: 10,
+         max_delay: 4_000,
+         should_retry: fn
+           {:ok, %{status: status}} when status in 400..599 -> true
+           {:ok, _} -> false
+           {:error, _} -> true
+         end}
+      ] ++ @middleware
+
+    adapter = {@adapter, pool: __MODULE__, recv_timeout: 60_000}
+
+    Tesla.client(middleware, adapter)
+  end
+
+  def post(client, source, rate, recent_events \\ []) do
+    prepped_recent_events = prep_recent_events(recent_events, rate)
+
+    source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
+
+    body = %{
+      blocks: [
+        %{
+          type: "section",
+          text: %{
+            type: "mrkdwn",
+            text: "#{rate} new event(s) for your source #{source.name}."
+          }
+        },
+        %{
+          type: "section",
+          text: %{
+            type: "mrkdwn",
+            text: "*Recent Events*\r#{prepped_recent_events}"
+          },
+          accessory: %{
+            type: "button",
+            text: %{
+              type: "plain_text",
+              text: "See all events"
+            },
+            url: source_link,
+            style: "primary"
+          }
+        }
+      ]
+    }
+
+    post = Tesla.post(client, source.slack_hook_url, body)
+
+    case post do
+      {:ok, %Tesla.Env{status: 200} = response} ->
+        {:ok, response}
+
+      {:ok, %Tesla.Env{} = response} ->
+        resp = prep_tesla_resp_for_log(response)
+
+        Logger.warn("Slack hook error!", webhook_response: resp)
+        {:error, response}
+
+      {:error, response} ->
+        Logger.warn("Slack hook error!", webhook_response: %{error: response})
+        {:error, response}
+    end
+  end
+
+  defp prep_tesla_resp_for_log(response) do
+    Map.from_struct(response)
+    |> Map.drop([:__client__, :__module__, :headers, :opts, :query])
+  end
+
+  defp prep_recent_events(recent_events, rate) do
+    cond do
+      rate in 0..3 ->
+        Enum.take(recent_events, -rate)
+        |> Enum.map(fn x -> "#{x.ingested_at} UTC - #{x.body.message}" end)
+        |> Enum.join("\r")
+
+      true ->
+        Enum.take(recent_events, -3)
+        |> Enum.map(fn x -> "#{x.ingested_at} UTC - #{x.body.message}" end)
+        |> Enum.join("\r")
+    end
+  end
+
+  defp build_host() do
+    host_info = LogflareWeb.Endpoint.struct_url()
+    host_info.scheme <> "://" <> host_info.host
+  end
+end

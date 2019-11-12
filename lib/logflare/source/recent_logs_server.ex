@@ -25,7 +25,8 @@ defmodule Logflare.Source.RecentLogsServer do
     Data,
     EmailNotificationServer,
     TextNotificationServer,
-    WebhookNotificationServer
+    WebhookNotificationServer,
+    SlackHookServer
   }
 
   alias Logflare.Source.RateCounterServer, as: RCS
@@ -94,6 +95,7 @@ defmodule Logflare.Source.RecentLogsServer do
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {WebhookNotificationServer, rls},
+      {SlackHookServer, rls},
       {Buffer, rls},
       {Schema, rls},
       {Pipeline, rls},
