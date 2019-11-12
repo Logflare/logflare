@@ -60,7 +60,7 @@
   <% end %>
 
   <h5 class="header-margin">Slack Alerts</h5>
-  <p>Get Logflare notification in your Slack channels!</p>
+  <p>Get Logflare notifications in your Slack channels! Separate from signing in with Slack. You can send alerts to any Slack channel from any Logflare source.</p>
     <div class="form-button">
       <a href="https://slack.com/oauth/authorize?client_id=689539426144.830460255254&scope=bot,incoming-webhook&state=<%= Jason.encode!(%{"action" => "save_hook_url", "source" => @source}) %>"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
     </div>
@@ -71,7 +71,7 @@
 
 
   <h5 class="header-margin">Webhook Alerts</h5>
-  <p></p>
+  <p>We recommend setting up <%= link "RequestBin", to: "https://requestbin.com/", target: "_blank" %> to see what our payloads look like. Once a webhook url is saved here you can send a test request to it.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
     <div class="form-group">
       <%= text_input f, :webhook_notification_url, placeholder: "https://mydomain.com/webhooks/logflare", class: "form-control" %>
