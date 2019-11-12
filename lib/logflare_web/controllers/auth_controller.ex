@@ -15,6 +15,40 @@ defmodule LogflareWeb.AuthController do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
 
+  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, %{"state" => ""} = params) do
+    callback(conn, Map.drop(params, ["state"]))
+  end
+
+  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, %{"state" => state} = _params)
+      when is_binary(state) do
+    state = Jason.decode!(state)
+
+    case state["action"] do
+      "save_hook_url" ->
+        source = state["source"]
+        slack_hook_url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
+        source_changes = %{slack_hook_url: slack_hook_url}
+
+        changeset =
+          Source.changeset(
+            %Source{id: source["id"], name: source["name"], token: source["token"]},
+            source_changes
+          )
+
+        case Repo.update(changeset) do
+          {:ok, _source} ->
+            conn
+            |> put_flash(:info, "Slack connected!")
+            |> redirect(to: Routes.source_path(conn, :edit, source["id"]))
+
+          {:error, _changeset} ->
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> redirect(to: Routes.source_path(conn, :edit, source["id"]))
+        end
+    end
+  end
+
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
 
@@ -33,6 +67,12 @@ defmodule LogflareWeb.AuthController do
 
     conn
     |> signin(changeset)
+  end
+
+  def callback(%{assigns: %{ueberauth_failure: _auth}} = conn, _params) do
+    conn
+    |> put_flash(:error, "Authentication error! Please contact support if this continues.")
+    |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
   def logout(conn, _params) do

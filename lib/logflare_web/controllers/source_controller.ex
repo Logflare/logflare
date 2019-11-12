@@ -183,7 +183,7 @@ defmodule LogflareWeb.SourceController do
     source = Sources.get_by(id: source_id)
 
     case WebhookNotificationServer.test_post(source) do
-      {:ok, %Tesla.Env{} = response} ->
+      {:ok, %Tesla.Env{} = _response} ->
         conn
         |> put_flash(:info, "Webhook test successful!")
         |> redirect(to: Routes.source_path(conn, :edit, source.id))
