@@ -50,14 +50,11 @@ defmodule LogflareWeb.AuthController do
   end
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
-    api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
-
     auth_params = %{
       token: auth.credentials.token,
       email: auth.info.email,
       email_preferred: auth.info.email,
       provider: Atom.to_string(auth.provider),
-      api_key: api_key,
       image: auth.info.image,
       name: auth.info.name,
       provider_uid: generate_provider_uid(auth, auth.provider)
@@ -251,6 +248,9 @@ defmodule LogflareWeb.AuthController do
         update_user_by_email(user, auth_params)
 
       true ->
+        api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
+        auth_params = Map.put(auth_params, :api_key, api_key)
+
         changeset = User.changeset(%User{}, auth_params)
         Repo.insert(changeset)
     end
