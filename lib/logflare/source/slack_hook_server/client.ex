@@ -71,7 +71,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
   defp prep_recent_events(recent_events, rate) do
     cond do
-      0 = rate ->
+      0 == rate ->
         slack_no_events_message()
 
       rate in 1..3 ->
