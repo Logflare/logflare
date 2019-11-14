@@ -27,6 +27,7 @@ defmodule LogflareWeb.SourceController do
     sources =
       conn.assigns.user.sources
       |> Enum.map(&Sources.preload_defaults/1)
+      |> Enum.map(&Sources.preload_saved_searches/1)
       |> Enum.map(&Sources.put_schema_field_count/1)
       |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
 

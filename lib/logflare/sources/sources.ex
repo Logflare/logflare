@@ -54,13 +54,18 @@ defmodule Logflare.Sources do
   end
 
   def preload_defaults(source) do
+    # Careful. This is called on every event.
     source
     |> Repo.preload(:user)
     |> Repo.preload(:rules)
-    |> Repo.preload(:saved_searches)
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
     |> Source.put_bq_table_id()
+  end
+
+  def preload_saved_searches(source) do
+    source
+    |> Repo.preload(:saved_searches)
   end
 
   # """
