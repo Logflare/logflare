@@ -20,6 +20,20 @@
   <% else %>
   <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
   <% end %>
+
+  <div id="saved-searches" class="">
+  <h5 class="header-margin">Saved Searches</h5>
+  <ul class="list-unstyled">
+    <%= for source <- @sources do %>
+      <%= for saved_searches <- source.saved_searches do %>
+      <li>
+        <%= link "#{source.name}.#{saved_searches.querystring}", to: Routes.source_path(@conn, :search, source.id), class: "" %>
+      </li>
+      <% end %>
+    <% end %>
+  </ul>
+</div>
+
   <ul class="list-group">
     <%= for source <- @sources do %>
       <li class="list-group-item">
@@ -58,7 +72,7 @@
       </li>
     <% end %>
   </ul>
-  <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
+  <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary float-right" %>
 </div>
 
 <div id="__phx-assigns__"

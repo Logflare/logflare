@@ -39,6 +39,7 @@ defmodule Logflare.Source do
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
+    has_many :saved_searches, Logflare.SavedSearch
 
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true

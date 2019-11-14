@@ -6,6 +6,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.SourceView
 
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.SavedSearches
   alias __MODULE__.SearchParams
   import Logflare.Logs.Search.Utils
   require Logger
@@ -108,6 +109,20 @@ defmodule LogflareWeb.Source.SearchLV do
     socket = assign_flash(socket, :warning, "Live search paused due to user inactivity.")
 
     {:noreply, socket}
+  end
+
+  def handle_event("save_search" = ev, _, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+
+    case SavedSearches.insert(socket.assigns.querystring, socket.assigns.source) do
+      {:ok, saved_search} ->
+        socket = assign_flash(socket, :warning, "Search saved: #{saved_search.querystring}")
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        socket = assign_flash(socket, :warning, "Search not saved!")
+        {:noreply, socket}
+    end
   end
 
   def handle_info({:search_result, search_op}, socket) do

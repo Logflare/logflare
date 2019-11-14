@@ -57,6 +57,7 @@ defmodule Logflare.Sources do
     source
     |> Repo.preload(:user)
     |> Repo.preload(:rules)
+    |> Repo.preload(:saved_searches)
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
     |> Source.put_bq_table_id()
