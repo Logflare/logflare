@@ -1,13 +1,15 @@
 defmodule LogflareWeb.SavedSearchesController do
   use LogflareWeb, :controller
-  alias Logflare.SavedSearches
+  alias Logflare.{SavedSearches, Sources}
 
   plug LogflareWeb.Plugs.SetVerifySource
        when action in [:delete]
 
   def delete(conn, %{"id" => search_id} = _params) do
+    source = conn.assigns.source |> Sources.preload_saved_searches()
+
     saved_search =
-      Enum.find(conn.assigns.source.saved_searches, fn x ->
+      Enum.find(source.saved_searches, fn x ->
         x.id == String.to_integer(search_id)
       end)
 
