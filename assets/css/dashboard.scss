@@ -8,6 +8,10 @@
   margin-right: 20px;
 }
 
+#saved-searches li {
+  word-break: break-word;
+}
+
 .dashboard-links:hover {
   text-decoration: none;
   color: white;
