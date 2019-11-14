@@ -16,10 +16,28 @@
 
 <div class="dashboard container mx-auto" hidden>
   <%= if @user.provider == "google" do %>
-  <div id="explore-dashboard"><center><%= link "Explore in Google Data Studio!", to: "https://datastudio.google.com/?authuser=#{@user_email}", target: "_blank" %></center></div>
+  <div id="explore-dashboard"><center><%= link "Explore in Google Data Studio!", to: "https://datastudio.google.com/?authuser=#{@user.email}", target: "_blank" %></center></div>
   <% else %>
   <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
   <% end %>
+
+  <div id="saved-searches" class="">
+  <h5 class="header-margin">Saved Searches</h5>
+  <ul class="list-unstyled">
+    <%= if Enum.map(@sources, &Map.get(&1, :saved_searches)) |> Enum.concat == [], do: "Your saved searches will show up here. Save some searches!" %>
+    <%= for source <- @sources do %>
+      <%= for saved_search <- source.saved_searches do %>
+      <li>
+        <%= link "#{source.name}.#{saved_search.querystring}", to: Routes.source_path(@conn, :search, source.id, q: saved_search.querystring, tailing: true), class: "" %>
+        <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
+          <i class="fa fa-trash"></i>
+          <% end %>
+      </li>
+      <% end %>
+    <% end %>
+  </ul>
+</div>
+
   <ul class="list-group">
     <%= for source <- @sources do %>
       <li class="list-group-item">
@@ -58,7 +76,7 @@
       </li>
     <% end %>
   </ul>
-  <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary" %>
+  <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary float-right" %>
 </div>
 
 <div id="__phx-assigns__"
