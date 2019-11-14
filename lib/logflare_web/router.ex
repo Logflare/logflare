@@ -91,6 +91,7 @@ defmodule LogflareWeb.Router do
       post "/rules", RuleController, :create
       get "/rules", RuleController, :index
       delete "/rules/:id", RuleController, :delete
+      delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
     get "/:id/test-alerts", SourceController, :test_alerts

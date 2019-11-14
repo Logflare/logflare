@@ -5,6 +5,7 @@
 #saved-searches {
   width: 25%;
   float: left;
+  margin-right: 20px;
 }
 
 .dashboard-links:hover {
@@ -15,6 +16,7 @@
 .dashboard-links {
   margin-left: 0.5em;
   color: white;
+  font-size: 80%;
 }
 
 .dashboard {
@@ -100,5 +102,5 @@
 
 .source-details {
   margin-right: 1em;
-  color: #6c757d;
+  color: $brand-gray;
 }

@@ -9,4 +9,8 @@ defmodule Logflare.SavedSearches do
 
     Repo.insert(changeset)
   end
+
+  def delete(search) do
+    Repo.delete(search)
+  end
 end
