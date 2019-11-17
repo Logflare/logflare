@@ -91,8 +91,12 @@ defmodule LogflareWeb.Router do
       post "/rules", RuleController, :create
       get "/rules", RuleController, :index
       delete "/rules/:id", RuleController, :delete
+      delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
+    get "/:id/test-alerts", SourceController, :test_alerts
+    get "/:id/test-slack-hook", SourceController, :test_slack_hook
+    get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
     get "/:id/search", SourceController, :search
     live "/live/:id/search", Source.SearchLV, session: [:assigns, :params]

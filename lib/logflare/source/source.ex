@@ -4,6 +4,7 @@ defmodule Logflare.Source do
   alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
+  @derive {Jason.Encoder, only: [:name, :token, :id]}
 
   defmodule Metrics do
     @moduledoc false
@@ -33,9 +34,12 @@ defmodule Logflare.Source do
     field :user_text_notifications, :boolean, default: false
     field :bigquery_table_ttl, :integer
     field :api_quota, :integer, default: @default_source_api_quota
+    field :webhook_notification_url, :string
+    field :slack_hook_url, :string
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
+    has_many :saved_searches, Logflare.SavedSearch
 
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
@@ -56,7 +60,9 @@ defmodule Logflare.Source do
       :other_email_notifications,
       :user_text_notifications,
       :bigquery_table_ttl,
-      :api_quota
+      :api_quota,
+      :webhook_notification_url,
+      :slack_hook_url
     ])
     |> default_validations()
   end
@@ -71,7 +77,9 @@ defmodule Logflare.Source do
       :user_email_notifications,
       :other_email_notifications,
       :user_text_notifications,
-      :bigquery_table_ttl
+      :bigquery_table_ttl,
+      :webhook_notification_url,
+      :slack_hook_url
     ])
     |> default_validations()
   end

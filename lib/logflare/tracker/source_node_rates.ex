@@ -21,7 +21,7 @@ defmodule Logflare.Tracker.SourceNodeRates do
 
   def init(state) do
     init_trackers()
-    check_rates()
+    check_rates(0)
     {:ok, state}
   end
 
@@ -75,7 +75,7 @@ defmodule Logflare.Tracker.SourceNodeRates do
     )
   end
 
-  defp check_rates() do
-    Process.send_after(self(), :check_rates, @check_rates_every)
+  defp check_rates(delay \\ @check_rates_every) do
+    Process.send_after(self(), :check_rates, delay)
   end
 end

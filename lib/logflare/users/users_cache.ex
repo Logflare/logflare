@@ -1,7 +1,7 @@
 defmodule Logflare.Users.Cache do
   alias Logflare.{Users}
   import Cachex.Spec
-  @ttl 500
+  @ttl 5_000
 
   @cache __MODULE__
 

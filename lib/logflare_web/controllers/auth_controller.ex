@@ -15,24 +15,59 @@ defmodule LogflareWeb.AuthController do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
 
-  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
-    api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
+  def callback(%{assigns: %{ueberauth_auth: _auth}} = conn, %{"state" => ""} = params) do
+    callback(conn, Map.drop(params, ["state"]))
+  end
 
-    user_params = %{
+  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, %{"state" => state} = _params)
+      when is_binary(state) do
+    state = Jason.decode!(state)
+
+    case state["action"] do
+      "save_hook_url" ->
+        source = state["source"]
+        slack_hook_url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
+        source_changes = %{slack_hook_url: slack_hook_url}
+
+        changeset =
+          Source.changeset(
+            %Source{id: source["id"], name: source["name"], token: source["token"]},
+            source_changes
+          )
+
+        case Repo.update(changeset) do
+          {:ok, _source} ->
+            conn
+            |> put_flash(:info, "Slack connected!")
+            |> redirect(to: Routes.source_path(conn, :edit, source["id"]))
+
+          {:error, _changeset} ->
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> redirect(to: Routes.source_path(conn, :edit, source["id"]))
+        end
+    end
+  end
+
+  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
+    auth_params = %{
       token: auth.credentials.token,
       email: auth.info.email,
       email_preferred: auth.info.email,
       provider: Atom.to_string(auth.provider),
-      api_key: api_key,
       image: auth.info.image,
       name: auth.info.name,
-      provider_uid: to_string_provider_uid(auth.uid)
+      provider_uid: generate_provider_uid(auth, auth.provider)
     }
 
-    changeset = User.changeset(%User{}, user_params)
-
     conn
-    |> signin(changeset)
+    |> signin(auth_params)
+  end
+
+  def callback(%{assigns: %{ueberauth_failure: _auth}} = conn, _params) do
+    conn
+    |> put_flash(:error, "Authentication error! Please contact support if this continues.")
+    |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
   def logout(conn, _params) do
@@ -51,9 +86,9 @@ defmodule LogflareWeb.AuthController do
         %{assigns: %{user: user}} = conn
         new_api_key = user.old_api_key
         old_api_key = user.api_key
-        user_params = %{api_key: new_api_key, old_api_key: old_api_key}
+        auth_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
-        changeset = User.changeset(user, user_params)
+        changeset = User.changeset(user, auth_params)
         Repo.update(changeset)
 
         conn
@@ -64,9 +99,9 @@ defmodule LogflareWeb.AuthController do
         %{assigns: %{user: user}} = conn
         new_api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
         old_api_key = user.api_key
-        user_params = %{api_key: new_api_key, old_api_key: old_api_key}
+        auth_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
-        changeset = User.changeset(user, user_params)
+        changeset = User.changeset(user, auth_params)
         Repo.update(changeset)
 
         conn
@@ -78,10 +113,10 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
-  defp signin(conn, changeset) do
+  defp signin(conn, auth_params) do
     oauth_params = get_session(conn, :oauth_params)
 
-    case insert_or_update_user(changeset) do
+    case insert_or_update_user(auth_params) do
       {:ok, user} ->
         AccountEmail.welcome(user) |> Mailer.deliver()
         CloudResourceManager.set_iam_policy()
@@ -204,49 +239,57 @@ defmodule LogflareWeb.AuthController do
     |> Enum.join(", ")
   end
 
-  defp insert_or_update_user(changeset) do
-    updated_params = %{
-      token: changeset.changes.token,
-      provider: changeset.changes.provider,
-      image: changeset.changes.image,
-      provider_uid: changeset.changes.provider_uid,
-      email: changeset.changes.email
-    }
-
+  defp insert_or_update_user(auth_params) do
     cond do
-      user = Repo.get_by(User, provider_uid: changeset.changes.provider_uid) ->
-        update_user_by_provider_id(changeset, user, updated_params)
+      user = Repo.get_by(User, provider_uid: auth_params.provider_uid) ->
+        update_user_by_provider_id(user, auth_params)
 
-      user = Repo.get_by(User, email: changeset.changes.email) ->
-        update_user_by_email(changeset, user, updated_params)
+      user = Repo.get_by(User, email: auth_params.email) ->
+        update_user_by_email(user, auth_params)
 
       true ->
+        api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
+        auth_params = Map.put(auth_params, :api_key, api_key)
+
+        changeset = User.changeset(%User{}, auth_params)
         Repo.insert(changeset)
     end
   end
 
-  defp update_user_by_email(changeset, user, updated_params) do
-    updated_changeset = User.changeset(user, updated_params)
+  defp update_user_by_email(user, auth_params) do
+    updated_changeset = User.changeset(user, auth_params)
 
-    Repo.update(updated_changeset)
-    updated_user = Repo.get_by(User, email: changeset.changes.email)
+    case Repo.update(updated_changeset) do
+      {:ok, user} ->
+        {:ok_found_user, user}
 
-    {:ok_found_user, updated_user}
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
-  defp update_user_by_provider_id(changeset, user, updated_params) do
-    updated_changeset = User.changeset(user, updated_params)
+  defp update_user_by_provider_id(user, auth_params) do
+    updated_changeset = User.changeset(user, auth_params)
 
-    Repo.update(updated_changeset)
-    updated_user = Repo.get_by(User, provider_uid: changeset.changes.provider_uid)
+    case Repo.update(updated_changeset) do
+      {:ok, user} ->
+        {:ok_found_user, user}
 
-    {:ok_found_user, updated_user}
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
-  defp to_string_provider_uid(provider_uid) when is_bitstring(provider_uid), do: provider_uid
+  defp generate_provider_uid(auth, :slack) do
+    auth.credentials.other.user_id
+  end
 
-  defp to_string_provider_uid(provider_uid) when is_integer(provider_uid) do
-    Integer.to_string(provider_uid)
+  defp generate_provider_uid(auth, provider) when provider in [:google, :github] do
+    if is_integer(auth.uid) do
+      Integer.to_string(auth.uid)
+    else
+      auth.uid
+    end
   end
 
   defp verify_token(token),

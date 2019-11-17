@@ -26,8 +26,10 @@ config :logger, :console,
 config :ueberauth, Ueberauth,
   providers: [
     github: {Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"]},
-    google: {Ueberauth.Strategy.Google, []}
-  ]
+    google: {Ueberauth.Strategy.Google, []},
+    slack: {Ueberauth.Strategy.Slack, [default_scope: "identity.basic,identity.email"]}
+  ],
+  json_library: Jason
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
@@ -54,11 +56,7 @@ config :swoosh, local: false
 
 config :tesla,
   adapter:
-    {Tesla.Adapter.Hackney,
-     [pool: Client.BigQuery, max_connections: 200, checkout_timeout: 30_000]}
-
-# use to test Tesla timeouts with BigQuery.
-# adapter: {Tesla.Adapter.Hackney, [pool: Client.BigQuery, recv_timeout: 100]}
+    {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50, recv_timeout: 60_000]}
 
 config :number,
   delimit: [

@@ -13,7 +13,8 @@ defmodule Logflare.SystemMetricsSup do
       {SystemMetrics.Observer.Poller, []},
       {SystemMetrics.AllLogsLogged, []},
       {SystemMetrics.AllLogsLogged.Poller, []},
-      {SystemMetrics.Schedulers.Poller, []}
+      {SystemMetrics.Schedulers.Poller, []},
+      {SystemMetrics.Hackney.Poller, []}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

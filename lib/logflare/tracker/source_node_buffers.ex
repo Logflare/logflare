@@ -21,7 +21,7 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
 
   def init(state) do
     init_trackers()
-    check_buffers()
+    check_buffers(0)
 
     {:ok, state}
   end
@@ -66,7 +66,7 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
     )
   end
 
-  defp check_buffers() do
-    Process.send_after(self(), :check_buffers, @check_buffers_every)
+  defp check_buffers(delay \\ @check_buffers_every) do
+    Process.send_after(self(), :check_buffers, delay)
   end
 end

@@ -260,12 +260,12 @@
 				</p>
 			</div>
 			<div class="col-md-4">
-				<h3>100% open source</h3>
+				<h3>Source available</h3>
 				<div class="imgs">
 					<a class="github-button" href="https://github.com/Logflare/logflare" data-size="large" data-show-count="true" aria-label="Star Logflare/logflare on GitHub">Star</a>
 				</div>
 				<p>
-					Our entire product is open source. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)
+					Check out our souce code on Github. Spin up your own instance of Logflare if you want, but if you need help managing serious log volume let us do that for you :)
 				</p>
 			</div>
 		</div>

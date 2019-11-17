@@ -30,12 +30,10 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   end
 
   def handle_info(:persist, state) do
-    persist()
-
     {:ok, log_count} = log_count(@total_logs)
 
     insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
-
+    persist()
     {:noreply, state}
   end
 

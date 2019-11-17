@@ -16,7 +16,7 @@ defmodule LogflareWeb.SourceController do
             ]
 
   alias Logflare.{Source, Sources, Repo, Google.BigQuery}
-  alias Logflare.Source.{Supervisor, Data}
+  alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
 
@@ -27,12 +27,12 @@ defmodule LogflareWeb.SourceController do
     sources =
       conn.assigns.user.sources
       |> Enum.map(&Sources.preload_defaults/1)
+      |> Enum.map(&Sources.preload_saved_searches/1)
       |> Enum.map(&Sources.put_schema_field_count/1)
       |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
 
     render(conn, "dashboard.html",
       sources: sources,
-      user_email: conn.assigns.user.email,
       current_node: Node.self()
     )
   end
@@ -67,11 +67,7 @@ defmodule LogflareWeb.SourceController do
     |> Repo.insert()
     |> case do
       {:ok, source} ->
-        spawn(fn ->
-          # wait a second for the db
-          Process.sleep(1_000)
-          Supervisor.new_source(source.token)
-        end)
+        Supervisor.new_source(source.token)
 
         if get_session(conn, :oauth_params) do
           conn
@@ -182,6 +178,67 @@ defmodule LogflareWeb.SourceController do
       source: source,
       sources: conn.assigns.user.sources
     )
+  end
+
+  def test_alerts(conn, %{"id" => source_id}) do
+    source = Sources.get_by(id: source_id)
+
+    case WebhookNotificationServer.test_post(source) do
+      {:ok, %Tesla.Env{} = _response} ->
+        conn
+        |> put_flash(:info, "Webhook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, %Tesla.Env{} = response} ->
+        conn
+        |> put_flash(:error, "Webhook test failed! Response status code was #{response.status}.")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, response} ->
+        conn
+        |> put_flash(:error, "Webhook test failed! Error response: #{response}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
+  def test_slack_hook(conn, %{"id" => source_id}) do
+    source = Sources.get_by(id: source_id)
+
+    case SlackHookServer.test_post(source) do
+      {:ok, %Tesla.Env{} = _response} ->
+        conn
+        |> put_flash(:info, "Slack hook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, %Tesla.Env{} = response} ->
+        conn
+        |> put_flash(
+          :error,
+          "Slack hook test failed! Response status code was #{response.status}."
+        )
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, response} ->
+        conn
+        |> put_flash(:error, "Slack hook test failed! Error response: #{response}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
+  def delete_slack_hook(conn, %{"id" => source_id}) do
+    Repo.get(Source, source_id)
+    |> Sources.delete_slack_hook_url()
+    |> case do
+      {:ok, _source} ->
+        conn
+        |> put_flash(:info, "Slack hook deleted!")
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Delete failed! Contact support if this continues.")
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+    end
   end
 
   def update(conn, %{"source" => source_params}) do

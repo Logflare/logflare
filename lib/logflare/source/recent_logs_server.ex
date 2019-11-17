@@ -20,7 +20,15 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Sources.Counters
   alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
-  alias Logflare.Source.{Data, EmailNotificationServer, TextNotificationServer}
+
+  alias Logflare.Source.{
+    Data,
+    EmailNotificationServer,
+    TextNotificationServer,
+    WebhookNotificationServer,
+    SlackHookServer
+  }
+
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
@@ -86,6 +94,8 @@ defmodule Logflare.Source.RecentLogsServer do
       {RCS, rls},
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
+      {WebhookNotificationServer, rls},
+      {SlackHookServer, rls},
       {Buffer, rls},
       {Schema, rls},
       {Pipeline, rls},

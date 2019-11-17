@@ -23,7 +23,6 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
   end
 
   def handle_info(:poll_metrics, state) do
-    poll_metrics()
     observer_metrics = Observer.get_metrics()
     observer_memory = Observer.get_memory()
     current_processes = Observer.get_processes()
@@ -35,6 +34,7 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
       Logger.info("Observer metrics!", observer_metrics: observer_metrics)
     end
 
+    poll_metrics()
     {:noreply, %{last_processes: current_processes}}
   end
 

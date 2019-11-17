@@ -41,7 +41,8 @@ defmodule Logflare.Mixfile do
         :ueberauth_github,
         :edeliver,
         :ueberauth_google,
-        :ssl
+        :ssl,
+        :ueberauth_slack
       ]
     ]
   end
@@ -108,6 +109,9 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8.1"},
       {:libcluster, "~> 3.1.1"},
       {:map_keys, "~> 0.1.0"},
+      {:tesla, "~> 1.3.0"},
+      {:ueberauth_slack, "~> 0.6"},
+      {:oauth2, "~> 2.0.0", override: true},
 
       # Telemetry
       {:telemetry, "~> 0.4.0"},
