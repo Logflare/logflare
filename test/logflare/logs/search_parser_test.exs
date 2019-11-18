@@ -13,11 +13,12 @@ defmodule Logflare.Logs.Search.ParserTest do
       str = ~S|user sign up|
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result == [
-               %{operator: "~", path: "event_message", value: "user"},
-               %{operator: "~", path: "event_message", value: "sign"},
-               %{operator: "~", path: "event_message", value: "up"}
-             ]
+      assert result.search ==
+               Enum.sort([
+                 %{operator: "~", path: "event_message", value: "user"},
+                 %{operator: "~", path: "event_message", value: "sign"},
+                 %{operator: "~", path: "event_message", value: "up"}
+               ])
     end
 
     test "quoted message search string" do
@@ -25,7 +26,7 @@ defmodule Logflare.Logs.Search.ParserTest do
       str = ~S|new "user sign up" server|
       {:ok, result} = Parser.parse(str, schema)
 
-      assert Enum.sort(result) ==
+      assert Enum.sort(result.search) ==
                Enum.sort([
                  %{operator: "~", path: "event_message", value: "user sign up"},
                  %{operator: "~", path: "event_message", value: "new"},
@@ -63,18 +64,19 @@ defmodule Logflare.Logs.Search.ParserTest do
 
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result == [
-               %{operator: "=", path: "metadata.user.type", value: "paid"},
-               %{operator: "<", path: "metadata.user.id", value: 1},
-               %{operator: "<=", path: "metadata.user.views", value: 1},
-               %{operator: ">", path: "metadata.users.source_count", value: 100},
-               %{operator: ">=", path: "metadata.context.error_count", value: 100},
-               %{operator: "~", path: "metadata.user.about", value: "referrall"},
-               %{operator: ">=", path: "timestamp", value: "2019-01-01"},
-               %{operator: "<=", path: "timestamp", value: "2019-02-01"},
-               %{operator: ">=", path: "timestamp", value: "2019-01-01T00:13:37"},
-               %{operator: "<=", path: "timestamp", value: "2019-02-01T00:23:34"}
-             ]
+      assert result.search ==
+               Enum.sort([
+                 %{operator: "=", path: "metadata.user.type", value: "paid"},
+                 %{operator: "<", path: "metadata.user.id", value: 1},
+                 %{operator: "<=", path: "metadata.user.views", value: 1},
+                 %{operator: ">", path: "metadata.users.source_count", value: 100},
+                 %{operator: ">=", path: "metadata.context.error_count", value: 100},
+                 %{operator: "~", path: "metadata.user.about", value: "referrall"},
+                 %{operator: ">=", path: "timestamp", value: "2019-01-01"},
+                 %{operator: "<=", path: "timestamp", value: "2019-02-01"},
+                 %{operator: ">=", path: "timestamp", value: "2019-01-01T00:13:37"},
+                 %{operator: "<=", path: "timestamp", value: "2019-02-01T00:23:34"}
+               ])
     end
 
     test "nested fields filter 2" do
@@ -109,11 +111,12 @@ defmodule Logflare.Logs.Search.ParserTest do
          metadata.log.metric2:<=10
          metadata.log.metric3:>10
          metadata.log.metric4:>=10
+         chart:metadata.log.metric4
        |
 
       {:ok, result} = Parser.parse(str, schema)
 
-      assert Enum.sort(result) ==
+      assert Enum.sort(result.search) ==
                Enum.sort([
                  %{operator: "<", path: "metadata.log.metric1", value: 10},
                  %{operator: "<=", path: "metadata.log.metric2", value: 10},
@@ -128,9 +131,27 @@ defmodule Logflare.Logs.Search.ParserTest do
                  %{operator: "~", path: "event_message", value: "was generated"},
                  %{operator: "~", path: "metadata.log.label1", value: "origin"}
                ])
+
+      assert result == %{
+               chart: %{operator: "chart", path: "metadata.log.metric4", value: :integer},
+               search:
+                 Enum.sort([
+                   %{operator: "<", path: "metadata.log.metric1", value: 10},
+                   %{operator: "<=", path: "metadata.log.metric2", value: 10},
+                   %{operator: "=", path: "metadata.context.file", value: "some module.ex"},
+                   %{operator: "=", path: "metadata.context.line_number", value: 100},
+                   %{operator: "=", path: "metadata.user.admin", value: false},
+                   %{operator: "=", path: "metadata.user.group_id", value: 5},
+                   %{value: 10, operator: ">", path: "metadata.log.metric3"},
+                   %{operator: ">=", path: "metadata.log.metric4", value: 10},
+                   %{operator: "~", path: "event_message", value: "by logflare pinger"},
+                   %{operator: "~", path: "event_message", value: "log"},
+                   %{operator: "~", path: "event_message", value: "was generated"},
+                   %{operator: "~", path: "metadata.log.label1", value: "origin"}
+                 ])
+             }
     end
 
-    @tag :run
     test "nested fields filter with timestamp 3" do
       schema =
         SchemaBuilder.build_table_schema(
@@ -170,7 +191,7 @@ defmodule Logflare.Logs.Search.ParserTest do
        |
 
       {:ok, result} = Parser.parse(str, schema)
-      sorted_result = Enum.sort(result)
+      sorted_result = Enum.sort(result.search)
 
       expected =
         Enum.sort([
@@ -225,7 +246,7 @@ defmodule Logflare.Logs.Search.ParserTest do
 
       {:ok, result} = Parser.parse(str, schema)
 
-      assert Enum.sort(result) ==
+      assert Enum.sort(result.search) ==
                Enum.sort([
                  %{operator: "<", path: "metadata.log.metric5", value: 10.0},
                  %{

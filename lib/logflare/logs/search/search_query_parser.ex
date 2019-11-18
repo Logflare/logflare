@@ -23,6 +23,12 @@ defmodule Logflare.Logs.Search.Parser do
     |> reduce({List, :to_string, []})
     |> label("metadata field")
 
+  chart_option =
+    string("chart")
+    |> ignore(ascii_char([?:]))
+    |> concat(metadata_field)
+    |> tag(:chart_option)
+
   operator =
     choice([
       string(">="),
@@ -81,7 +87,14 @@ defmodule Logflare.Logs.Search.Parser do
 
   defparsec(
     :parse_query,
-    choice([negated_field, timestamp_field, metadata_field_op_val, quoted_string, word])
+    choice([
+      chart_option,
+      negated_field,
+      timestamp_field,
+      metadata_field_op_val,
+      quoted_string,
+      word
+    ])
     |> ignore(optional(ascii_string([?\s, ?\n], min: 1)))
     |> wrap()
     |> repeat()
@@ -104,7 +117,16 @@ defmodule Logflare.Logs.Search.Parser do
         maybe_cast_value(path_val_op, typemap[path])
       end
 
-    {:ok, result}
+    %{search: search, chart: chart} = group_by_type(result)
+
+    chart =
+      if chart do
+        %{chart | value: typemap[chart.path]}
+      else
+        chart
+      end
+
+    {:ok, %{search: search, chart: chart}}
   rescue
     e in MatchError ->
       %MatchError{term: {filter, {:error, errstring}}} = e
@@ -128,7 +150,15 @@ defmodule Logflare.Logs.Search.Parser do
     {:ok, result}
   end
 
-  @arithmetic_operators ~w[> >= < <= =]
+  def group_by_type(pathvalops) do
+    chart = Enum.find(pathvalops, &(&1.operator == "chart"))
+
+    %{
+      chart: chart,
+      search: Enum.sort(Enum.reject(pathvalops, &(&1.operator == "chart")))
+    }
+  end
+
   def convert_to_pathvalops({:ok, matches, "", %{}, _, _}) do
     for [{type, tokens}] <- matches do
       case type do
@@ -141,6 +171,10 @@ defmodule Logflare.Logs.Search.Parser do
           type
           |> to_path_val_op(tokens)
           |> Map.update!(:operator, &("!" <> &1))
+
+        :chart_option ->
+          [_, metadata_field] = tokens
+          %{operator: "chart", path: metadata_field, value: nil}
       end
     end
   end
