@@ -70,6 +70,7 @@ defmodule LogflareWeb.Router do
     get "/event-analytics", MarketingController, :event_analytics_demo
     get "/log-search", MarketingController, :log_search
     get "/getting-started", MarketingController, :getting_started
+    get "/slack-app-setup", MarketingController, :slack_app_setup
   end
 
   scope "/", LogflareWeb do
