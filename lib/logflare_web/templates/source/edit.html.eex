@@ -62,7 +62,7 @@
   <h5 class="header-margin">Slack Alerts</h5>
   <p>Get Logflare notifications in your Slack channels! Separate from signing in with Slack. You can send alerts to any Slack channel from any Logflare source.</p>
     <div class="form-button">
-      <a href="https://slack.com/oauth/authorize?client_id=689539426144.830460255254&scope=bot,incoming-webhook&state=<%= Jason.encode!(%{"action" => "save_hook_url", "source" => @source}) %>"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
+      <a href="https://slack.com/oauth/authorize?client_id=689539426144.830460255254&scope=incoming-webhook&state=<%= Jason.encode!(%{"action" => "save_hook_url", "source" => @source}) %>"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
     </div>
     <%= if @source.slack_hook_url do %>
       <%= link "Test Slack webhook", to: Routes.source_path(@conn, :test_slack_hook, @source), class: "btn btn-primary form-button", role: "button" %>
