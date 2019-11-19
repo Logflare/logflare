@@ -3,41 +3,33 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=gcloud_prod.json.enc
+      - --ciphertext-file=gcloud.json.enc
       - --plaintext-file=gcloud.json
       - --location=us-central1
-      - --keyring=logflare-prod-keyring-us-central1
-      - --key=logflare-prod-secrets-key
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
   - name: gcr.io/cloud-builders/gcloud
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./config/prod.secret.exs.enc
-      - --plaintext-file=./config/prod.secret.exs
+      - --ciphertext-file=./config/staging.secret.exs.enc
+      - --plaintext-file=./config/staging.secret.exs
       - --location=us-central1
-      - --keyring=logflare-prod-keyring-us-central1
-      - --key=logflare-prod-secrets-key
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
         "-t",
-        "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA",
+        "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
         "-t",
-        "gcr.io/logflare-232118/logflare_app:latest",
+        "gcr.io/logflare-staging/logflare_origin:latest",
         ".",
       ]
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "push",
-        "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA",
-      ]
+    args: ["push", "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "push",
-        "gcr.io/logflare-232118/logflare_app:latest",
-      ]
+    args: ["push", "gcr.io/logflare-staging/logflare_origin:latest"]
 
 timeout: 1800s
