@@ -35,11 +35,13 @@ defmodule Logflare.Logs.SearchOperations do
       field :tailing_initial?, boolean
       field :rows, [map()], default: []
       field :pathvalops, [map()]
+      field :chart, map(), default: nil
       field :error, term()
       field :stats, :map
       field :use_local_time, boolean
       field :user_local_timezone, :string
       field :search_chart_period, atom()
+      field :search_chart_aggregate, atom(), default: :avg
       field :timestamp_truncator, term()
     end
   end
@@ -151,9 +153,13 @@ defmodule Logflare.Logs.SearchOperations do
       so.source
       |> Sources.Cache.get_bq_schema()
 
-    so.querystring
-    |> Parser.parse(schema)
-    |> Utils.put_result_in(so, :pathvalops)
+    with {:ok, %{search: search, chart: chart}} <- Parser.parse(so.querystring, schema) do
+      so = Utils.put_result_in({:ok, search}, so, :pathvalops)
+      Utils.put_result_in({:ok, chart}, so, :chart)
+    else
+      err ->
+        Utils.put_result_in(err, so, :pathvalops)
+    end
   end
 
   def partition_or_streaming(%SO{tailing?: true, tailing_initial?: true} = so) do
@@ -238,31 +244,26 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: select(so.query, ^top_level_fields)}
   end
 
-  def apply_select_count(%SO{} = so) do
-    query =
-      select(so.query, [c, ...], %{
-        count: count(c)
-      })
-
+  def apply_select_timestamp(%SO{} = so) do
     query =
       case so.search_chart_period do
         :day ->
-          select_merge(query, [t, ...], %{
+          select(so.query, [t, ...], %{
             timestamp: fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp)
           })
 
         :hour ->
-          select_merge(query, [t, ...], %{
+          select(so.query, [t, ...], %{
             timestamp: fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp)
           })
 
         :minute ->
-          select_merge(query, [t, ...], %{
+          select(so.query, [t, ...], %{
             timestamp: fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp)
           })
 
         :second ->
-          select_merge(query, [t, ...], %{
+          select(so.query, [t, ...], %{
             timestamp: fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp)
           })
       end
@@ -274,7 +275,6 @@ defmodule Logflare.Logs.SearchOperations do
     truncator = timestamp_truncator(so)
 
     group_by = [
-      :timestamp,
       truncator
     ]
 
@@ -297,5 +297,77 @@ defmodule Logflare.Logs.SearchOperations do
       :minute -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp))
       :second -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp))
     end
+  end
+
+  def apply_numeric_aggs(%SO{chart: chart = %{value: chart_value}} = so)
+      when chart_value in [:integer, :float] do
+    query =
+      case so.search_chart_period do
+        :day -> limit(so.query, 30)
+        :hour -> limit(so.query, 168)
+        :minute -> limit(so.query, 120)
+        :second -> limit(so.query, 180)
+      end
+
+    last_chart_field =
+      so.chart.path
+      |> String.split(".")
+      |> List.last()
+      |> String.to_existing_atom()
+
+    query = EctoQueryBQ.join_nested(query, chart)
+
+    query =
+      case so.search_chart_aggregate do
+        :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
+        :avg -> select_merge(query, [..., l], %{value: avg(field(l, ^last_chart_field))})
+        :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
+      end
+
+    query = order_by(query, [t, ...], desc: 1)
+    %{so | query: query}
+  end
+
+  def apply_numeric_aggs(%SO{} = so) do
+    query =
+      select_merge(so.query, [c, ...], %{
+        count: count(c)
+      })
+
+    query =
+      case so.search_chart_period do
+        :day -> limit(query, 30)
+        :hour -> limit(query, 168)
+        :minute -> limit(query, 120)
+        :second -> limit(query, 180)
+      end
+
+    query = order_by(query, [t, ...], desc: 1)
+    %{so | query: query}
+  end
+
+  def row_keys_to_descriptive_names(%SO{} = so) do
+    rows =
+      so.rows
+      |> Enum.map(fn row ->
+        row
+        |> Enum.map(fn {k, v} ->
+          case k do
+            "f0_" ->
+              {:ok, v} =
+                v
+                |> Timex.from_unix(:microseconds)
+                |> Timex.format("{ISO:Extended}")
+
+              {"timestamp", v}
+
+            "f1_" ->
+              {"value", v}
+          end
+        end)
+        |> Map.new()
+      end)
+
+    %{so | rows: rows}
   end
 end

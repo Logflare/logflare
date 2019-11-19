@@ -20,7 +20,7 @@ defmodule Logflare.Logs.Search do
       Task.async(fn -> search_result_aggregates(so) end)
     ]
 
-    tasks_with_results = Task.yield_many(tasks, 5000)
+    tasks_with_results = Task.yield_many(tasks, 30_000)
 
     results =
       tasks_with_results
@@ -49,12 +49,14 @@ defmodule Logflare.Logs.Search do
   def search_result_aggregates(%SO{} = so) do
     so
     |> do_search_without_select()
-    |> apply_select_count()
+    |> apply_select_timestamp()
     |> exclude_limit()
     |> apply_group_by_timestamp_period()
+    |> apply_numeric_aggs()
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
+    |> row_keys_to_descriptive_names()
     |> put_stats()
     |> case do
       %{error: nil} = so ->

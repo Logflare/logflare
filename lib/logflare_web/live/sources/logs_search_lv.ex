@@ -44,7 +44,8 @@ defmodule LogflareWeb.Source.SearchLV do
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
         use_local_time: true,
-        search_chart_period: session[:search_chart_period]
+        search_chart_period: session[:search_chart_period],
+        search_chart_aggregate: nil
       )
 
     {:ok, socket}
@@ -80,11 +81,18 @@ defmodule LogflareWeb.Source.SearchLV do
     user_local_tz = metadata["search"]["user_local_timezone"]
 
     search_chart_period =
-      case hd(metadata["search"]["search_chart_period"]) do
+      case metadata["search"]["search_chart_period"] do
         "day" -> :day
         "hour" -> :hour
         "minute" -> :minute
         "second" -> :second
+      end
+
+    search_chart_aggregate =
+      case metadata["search"]["search_chart_aggregate"] do
+        "sum" -> :sum
+        "avg" -> :avg
+        "count" -> :count
       end
 
     socket =
@@ -94,6 +102,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
       |> assign(:search_chart_period, search_chart_period)
+      |> assign(:search_chart_aggregate, search_chart_aggregate)
       |> assign_flash(:warning, nil)
       |> assign_flash(:error, nil)
 
@@ -153,7 +162,7 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_info({:search_result, search_op}, socket) do
+  def handle_info({:search_result, search_result}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
 
     tailing_timer =
@@ -166,14 +175,15 @@ defmodule LogflareWeb.Source.SearchLV do
 
     warning = warning_message(socket.assigns, search_result)
 
-    socket
-    |> assign(:log_events, search_result.events)
-    |> assign(:log_aggregates, search_result.aggregates)
-    |> assign(:search_result, search_result.events)
-    |> assign(:tailing_timer, tailing_timer)
-    |> assign(:loading, false)
-    |> assign(:tailing_initial?, false)
-    |> assign_flash(:warning, warning)
+    socket =
+      socket
+      |> assign(:log_events, search_result.events.rows)
+      |> assign(:log_aggregates, search_result.aggregates.rows)
+      |> assign(:search_result, search_result.events)
+      |> assign(:tailing_timer, tailing_timer)
+      |> assign(:loading, false)
+      |> assign(:tailing_initial?, false)
+      |> assign_flash(:warning, warning)
 
     {:noreply, socket}
   end

@@ -2,6 +2,13 @@ defmodule Logflare.EctoQueryBQ do
   @moduledoc false
   import Ecto.Query
 
+  def join_nested(q, pathvalop) do
+    pathvalop.path
+    |> split_by_dots()
+    |> Enum.slice(0..-2)
+    |> apply_nested_joins(q)
+  end
+
   def where_nesteds(q, pathvalops) do
     pathvalops
     |> group_by_nested_column_path()

@@ -90,7 +90,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     maybe_send(
       lv_pid,
-      {{:search_result, :events},
+      {:search_result,
        %{
          events: %{events_so | rows: log_events},
          aggregates: aggregates_so
@@ -115,8 +115,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def handle_info(msg, state) do
-    IO.inspect(msg)
-    throw("unnknown message received")
+    Logger.error("SearchQueryExecutor received unknown message: #{inspect(msg)}")
+    throw("Unknown message received")
     {:noreply, state}
   end
 
