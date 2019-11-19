@@ -54,7 +54,12 @@ defmodule Logflare.Sources do
   end
 
   def preload_defaults(source) do
-    # Careful. This is called on every event.
+    # This is unintentially being called in places it doesn't
+    # need to be via Sources.Cache. All the notification servers for instance.
+    # At some point we need to make preload_defaults called more intentially
+    # as to not accidentally overload the system because it's also being called
+    # on every request.
+
     source
     |> Repo.preload(:user)
     |> Repo.preload(:rules)

@@ -1,0 +1,57 @@
+<div class="container-fluid heroguidepage no-subhead">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-12">
+				<h1>Setup the Logflare Slack App</h1>
+				<p>Get log event alerts in your Slack channels</p>
+			</div>
+		</div>
+	</div>
+	<div class="miniimgbox">
+		<img src="/images/marketing/guides/slackLogo.png" alt="">
+	</div>
+</div>
+
+<div class="container-fluid contentguidepage">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-3 hide-on-mobile">
+				<div class="forfixed">
+					<div class="contentmenu">
+            <h2>Content</h2>
+            <%= link "Add to Slack", to: "#add-to-slack", class: "scrollmenu menu1 activecon" %>
+            <%= link "Get Alerts", to: "#get-alerts", class: "scrollmenu menu2" %>
+						<%= link "Send Feedback", to: "#send-feedback", class: "scrollmenu menu2" %>
+          </div>
+        </div>
+      </div>
+
+    <div class="col-lg-9">
+      <div class="cont">
+        <h1 class="menu1cont" id="add-to-slack">Add to Slack</h1>
+        <p>Slack channels are tied to Logflare sources. When you edit a Logflare source you can see options for alerts. Simply click the Add to Slack button and follow the prompts.		</p>
+				<div class="minimg">
+          <div class="purplebox">
+          </div>
+          <img class="imgf img-fluid guide-img" src="/images/marketing/edit-source.png">
+        </div>
+				<div class="minimg">
+          <div class="purplebox">
+          </div>
+          <img class="imgf img-fluid guide-img" src="/images/marketing/add-to-slack.png">
+        </div>
+        <h2 class="menu2cont" id="get-alerts">Get Alerts</h2>
+				<p>Once you have your Logflare source connected to a Slack channel you will get alerts about events in that source when they come in.</p>
+        <div class="minimg">
+          <div class="purplebox">
+          </div>
+          <img class="imgf img-fluid guide-img" src="/images/marketing/slack-notifications-example.png">
+        </div>
+				<h2 class="menu2cont" id="send-feedback">Send Feedback</h2>
+				<p>We'd love to know what you think of the Slack app! Email us at <a href="mailto:support@logflare.app">support@logflare.app</a> with your ideas.</p>
+  </div>
+</div>
+</div>
+</div>
+</div>
+  <%= render LogflareWeb.SharedView, "footer.html", assigns %>

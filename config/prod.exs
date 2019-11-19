@@ -9,7 +9,7 @@ config :logflare, LogflareWeb.Endpoint,
     transport_options: [max_connections: 16_384, num_acceptors: 100],
     protocol_options: [max_keepalive: 1_000]
   ],
-  url: [host: "logflare.app", scheme: "https"],
+  url: [host: "logflare.app", scheme: "https", port: 443],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
   code_reloader: false,

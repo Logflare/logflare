@@ -19,6 +19,10 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "bigquery_setup.html")
   end
 
+  def slack_app_setup(conn, _params) do
+    render(conn, "slack_app_setup.html")
+  end
+
   def data_studio_setup(conn, _params) do
     render(conn, "data_studio_setup.html")
   end

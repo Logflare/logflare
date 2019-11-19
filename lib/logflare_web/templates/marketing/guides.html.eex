@@ -53,6 +53,18 @@
 				<% end %>
 			</div>
 		</div>
+		<div class="row">
+			<div class="col-lg-4">
+        <%= link to: Routes.marketing_path(@conn, :slack_app_setup), class: "miniboxguid fr3" do %>
+					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
+					<h2>Setup the Logflare Slack App</h2>
+					<p>Get Loflare alerts in your Slack channels.</p>
+					<div class="miniimgbox">
+						<img src="/images/marketing/guides/slackLogo.png" alt="">
+					</div>
+        <% end %>
+			</div>
+		</div>
     <!-- <div class="row">
 			<div class="col-lg-4">
 				<%= link to: Routes.marketing_path(@conn, :log_search), class: "miniboxguid fr1" do %>
