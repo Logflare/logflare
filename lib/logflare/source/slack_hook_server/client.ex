@@ -92,15 +92,20 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
   defp slack_post_body(source, rate, recent_events) do
     prepped_recent_events = prep_recent_events(recent_events, rate)
-    source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
+
+    source_link =
+      LogflareWeb.Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
+
+    main_message = "#{rate} new event(s) for your source `#{source.name}`"
 
     %{
+      text: main_message,
       blocks: [
         %{
           type: "section",
           text: %{
             type: "mrkdwn",
-            text: "#{rate} new event(s) for your source `#{source.name}`"
+            text: main_message
           }
         },
         %{
@@ -140,10 +145,5 @@ defmodule Logflare.Source.SlackHookServer.Client do
   defp slack_no_events_message() do
     time = DateTime.to_unix(DateTime.utc_now())
     "<!date^#{time}^{date_pretty} at {time_secs}|blah>\r>Your events will show up here!"
-  end
-
-  defp build_host() do
-    host_info = LogflareWeb.Endpoint.struct_url()
-    host_info.scheme <> "://" <> host_info.host
   end
 end
