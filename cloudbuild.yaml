@@ -3,7 +3,7 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=gcloud.json.enc
+      - --ciphertext-file=gcloud_staging.json.enc
       - --plaintext-file=gcloud.json
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
