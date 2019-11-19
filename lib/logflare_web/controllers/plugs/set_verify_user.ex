@@ -22,7 +22,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       |> maybe_parse_binary_to_int()
       |> case do
         id when is_integer(id) ->
-          Users.get_by(id: id)
+          Users.get_by_and_preload(id: id)
 
         _ ->
           nil
@@ -37,7 +37,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       |> Enum.into(%{})
       |> Map.get("x-api-key")
 
-    case api_key && Users.Cache.get_by(api_key: api_key) do
+    case api_key && Users.Cache.get_by_and_preload(api_key: api_key) do
       %User{} = user ->
         assign(conn, :user, user)
 

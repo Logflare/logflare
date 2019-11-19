@@ -4,21 +4,29 @@ defmodule Logflare.Users do
   alias Logflare.Sources
   @moduledoc false
 
+  def get(user_id) do
+    User
+    |> Repo.get(user_id)
+  end
+
   def get_by(keyword) do
     User
     |> Repo.get_by(keyword)
-    |> default_preloads()
   end
 
-  def get_by_id(id), do: get_by(id: id)
+  def get_by_and_preload(keyword) do
+    User
+    |> Repo.get_by(keyword)
+    |> preload_defaults()
+  end
 
-  def default_preloads(user) do
+  def preload_defaults(user) do
     user
     |> Repo.preload(:sources)
   end
 
   def get_by_source(source_id) when is_atom(source_id) do
     %Logflare.Source{user_id: user_id} = Sources.get_by(token: source_id)
-    Users.get_by_id(user_id)
+    Users.get_by_and_preload(id: user_id)
   end
 end

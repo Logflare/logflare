@@ -34,7 +34,7 @@ defmodule Logflare.Source.TextNotificationServer do
         check_rate(rls.notifications_every)
 
         source = Sources.Cache.get_by_id(rls.source_id)
-        user = Users.Cache.get_by_id(source.user_id)
+        user = Users.Cache.get_by(id: source.user_id)
         source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
         {target_number, body} =
