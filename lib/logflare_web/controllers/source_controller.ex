@@ -156,7 +156,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def public(conn, %{"public_token" => public_token}) do
-    Sources.Cache.get_by(public_token: public_token)
+    Sources.Cache.get_by_and_preload(public_token: public_token)
     |> case do
       %Source{} = source ->
         avg_rate = source.metrics.avg
@@ -180,7 +180,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def test_alerts(conn, %{"id" => source_id}) do
-    source = Sources.get_by(id: source_id)
+    source = Sources.get_by_and_preload(id: source_id)
 
     case WebhookNotificationServer.test_post(source) do
       {:ok, %Tesla.Env{} = _response} ->
@@ -201,7 +201,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def test_slack_hook(conn, %{"id" => source_id}) do
-    source = Sources.get_by(id: source_id)
+    source = Sources.get_by_and_preload(id: source_id)
 
     case SlackHookServer.test_post(source) do
       {:ok, %Tesla.Env{} = _response} ->
