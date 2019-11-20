@@ -32,8 +32,7 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def terms(conn, _params) do
-    conn
-    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/terms.md")
+    render(conn, "terms_of_service.html")
   end
 
   def privacy(conn, _params) do
