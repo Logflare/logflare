@@ -351,7 +351,7 @@ defmodule Logflare.Logs.SearchOperations do
         :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
       end
 
-    query = order_by(query, [t, ...], asc: 1)
+    query = order_by(query, [t, ...], desc: 1)
     %{so | query: query}
   end
 
@@ -369,7 +369,7 @@ defmodule Logflare.Logs.SearchOperations do
         :second -> limit(query, 180)
       end
 
-    query = order_by(query, [t, ...], asc: 1)
+    query = order_by(query, [t, ...], desc: 1)
     %{so | query: query}
   end
 

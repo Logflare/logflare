@@ -176,10 +176,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
     warning = warning_message(socket.assigns, search_result)
 
+    log_aggregates = Enum.reverse(search_result.aggregates.rows)
+
     socket =
       socket
       |> assign(:log_events, search_result.events.rows)
-      |> assign(:log_aggregates, search_result.aggregates.rows)
+      |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_result, search_result.events)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
