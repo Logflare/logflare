@@ -23,6 +23,6 @@
     </li>
   </ul>
   <p class="text-center">
-    <small>When using the Logflare hosted service you agree to our <a href="https://github.com/Logflare/logflare/tree/master/legal">terms of service, privacy policy and cookie policy</a>.</small>
+    <small>When using the Logflare hosted service you agree to our <%= link "terms of service", to: Routes.marketing_path(@conn, :terms) %>, <%= link "privacy policy", to: Routes.marketing_path(@conn, :privacy) %> and <%= link "cookie policy", to: Routes.marketing_path(@conn, :cookies) %>.</small>
   </p>
 </div>
