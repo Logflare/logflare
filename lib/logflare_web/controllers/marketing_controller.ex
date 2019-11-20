@@ -37,8 +37,7 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def privacy(conn, _params) do
-    conn
-    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/privacy.md")
+    render(conn, "privacy_policy.html")
   end
 
   def cookies(conn, _params) do

@@ -17,4 +17,4 @@ Logflare may disclose personally identifiable information under special circumst
 We transfer information about you if Logflare is acquired by or merged with another company. In this event, Logflare will notify you before information about you is transferred and becomes subject to a different privacy policy.
 
 ## Changes to This Policy
-Although changes to our Privacy Policy are unlikley to be significant, Logflare may periodically update this policy. We will notify you about significant changes in the way we treat personal information by sending a notice to the primary email address specified in your Logflare primary account holder account or by placing a prominent notice on our site.
+Although changes to our Privacy Policy are unlikely to be significant, Logflare may periodically update this policy. We will notify you about significant changes in the way we treat personal information by sending a notice to the primary email address specified in your Logflare primary account holder account or by placing a prominent notice on our site.
