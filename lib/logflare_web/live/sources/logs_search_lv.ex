@@ -10,8 +10,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias __MODULE__.SearchParams
   import Logflare.Logs.Search.Utils
   require Logger
-  @tail_search_interval 1_000
-  @user_idle_interval 3_000_000
+  @tail_search_interval 5_000
+  @user_idle_interval 300_000
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
@@ -77,6 +77,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("start_search" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
+
     if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
     user_local_tz = metadata["search"]["user_local_timezone"]
 

@@ -1,49 +1,42 @@
 import * as _ from "lodash"
 import React from "react"
-import {
-  Sparkline,
-  BarSeries,
-  LineSeries,
-  HorizontalReferenceLine,
-  PointSeries,
-  WithTooltip,
-} from "@data-ui/sparkline"
-import { allColors } from "@data-ui/theme" // open-color colors
-
-const renderTooltip = ({ event, datum, data, color }) => {
-  return <div>
-    <strong style={{ color }}>{datum.label}</strong>
-    <div>
-      <strong>Timestamp </strong>
-      {datum.timestamp}
-    </div>
-    <div>
-      <strong>Value </strong>
-      {datum.value}
-    </div>
-  </div>
-}
+import { Bar } from "@nivo/bar"
 
 const LogSparklines = ({ data }) => {
   const width = innerWidth * 0.9
-  return <WithTooltip renderTooltip={renderTooltip}>
-    {({ onMouseMove, onMouseLeave, tooltipData }) => (
-      <Sparkline
-        onMouseLeave={onMouseLeave}
-        onMouseMove={onMouseMove}
-        ariaLabel="Log events count"
-        margin={{ top: 50, right: 20, bottom: 50, left: 20 }}
-        width={width}
-        height={150}
-        data={data}
-        valueAccessor={x => x.value}
-      >
-        <LineSeries
-          stroke={allColors.green[7]}
-        />
-      </Sparkline>
-    )}
-  </WithTooltip>
+  return <Bar
+    data={data}
+    width={width}
+    height={200}
+    margin={{ top: 50, right: 60, bottom: 50, left: 60 }}
+    padding={0.3}
+    enableGridY={true}
+    indexBy={"timestamp"}
+    tooltip={(tooltipData) => {
+      const { value, color, indexValue } = tooltipData
+      return <strong style={{ color }}>
+        {indexValue}
+      </strong>
+    }}
+    colors={{ scheme: "pastel1" }}
+    axisTop={null}
+    axisRight={null}
+    axisBottom={null}
+    axisLeft={{
+      tickSize: 5,
+      tickPadding: 5,
+      tickRotation: 0,
+      legend: "events",
+      legendPosition: "middle",
+      legendOffset: -40,
+    }}
+    labelSkipWidth={12}
+    labelSkipHeight={12}
+    labelTextColor={"white"}
+    animate={true}
+    motionStiffness={90}
+    motionDamping={15}
+  />
 }
 
 export { LogSparklines }

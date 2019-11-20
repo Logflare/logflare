@@ -31,7 +31,7 @@ defmodule LogflareWeb.SourceView do
   def render_modal("metadataModal:" <> id, _source, log_events) do
     fmt_metadata =
       log_events
-      |> Enum.find(&(&1.id === String.to_integer(id)))
+      |> Enum.find(&(&1.id === id))
       |> Map.get(:body)
       |> Map.get(:metadata)
       |> encode_metadata

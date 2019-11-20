@@ -7,8 +7,10 @@
     },
     "dependencies": {
         "@babel/polyfill": "^7.4.4",
-        "@data-ui/sparkline": "^0.0.82",
-        "@data-ui/theme": "^0.0.82",
+        "@data-ui/sparkline": "^0.0.84",
+        "@data-ui/theme": "^0.0.84",
+        "@nivo/bar": "^0.59.2",
+        "@nivo/core": "^0.59.1",
         "bootstrap": "^4.3.1",
         "clipboard": "^2.0.4",
         "date-fns": "^2.0.0-beta.2",
@@ -23,7 +25,6 @@
         "phoenix_live_view": "file:../deps/phoenix_live_view",
         "react": "^16.11.0",
         "react-dom": "^16.11.0",
-        "react-sparklines": "^1.7.0",
         "sql-formatter": "^2.3.3",
         "tooltip.js": "^1.3.2"
     },
