@@ -19,8 +19,12 @@ defmodule Logflare.Source.BigQuery.Schema do
         bigquery_project_id: rls.bigquery_project_id,
         bigquery_dataset_id: rls.bigquery_dataset_id,
         schema: SchemaBuilder.initial_table_schema(),
-        type_map: %{event_message: %{t: :string}, timestamp: %{t: :datetime}},
-        field_count: 2,
+        type_map: %{
+          event_message: %{t: :string},
+          timestamp: %{t: :datetime},
+          id: %{t: :string}
+        },
+        field_count: 3,
         next_update: System.system_time(:second)
       },
       name: name(rls.source_id)
