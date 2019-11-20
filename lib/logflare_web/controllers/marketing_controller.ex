@@ -32,18 +32,15 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def terms(conn, _params) do
-    conn
-    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/terms.md")
+    render(conn, "terms_of_service.html")
   end
 
   def privacy(conn, _params) do
-    conn
-    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/privacy.md")
+    render(conn, "privacy_policy.html")
   end
 
   def cookies(conn, _params) do
-    conn
-    |> redirect(external: "https://github.com/Logflare/logflare/blob/master/legal/cookies.md")
+    render(conn, "cookie_policy.html")
   end
 
   def guides(conn, _params) do

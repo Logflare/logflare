@@ -7,7 +7,17 @@ defmodule Logflare.Sources do
 
   @default_bucket_width 60
 
+  def get(source_id) do
+    Source
+    |> Repo.get(source_id)
+  end
+
   def get_by(kw) do
+    Source
+    |> Repo.get_by(kw)
+  end
+
+  def get_by_and_preload(kw) do
     Source
     |> Repo.get_by(kw)
     |> case do
@@ -54,12 +64,6 @@ defmodule Logflare.Sources do
   end
 
   def preload_defaults(source) do
-    # This is unintentially being called in places it doesn't
-    # need to be via Sources.Cache. All the notification servers for instance.
-    # At some point we need to make preload_defaults called more intentially
-    # as to not accidentally overload the system because it's also being called
-    # on every request.
-
     source
     |> Repo.preload(:user)
     |> Repo.preload(:rules)
