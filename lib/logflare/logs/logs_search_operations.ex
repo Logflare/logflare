@@ -303,19 +303,46 @@ defmodule Logflare.Logs.SearchOperations do
       when chart_value in [:integer, :float] do
     query =
       case so.search_chart_period do
-        :day -> limit(so.query, 30)
-        :hour -> limit(so.query, 168)
-        :minute -> limit(so.query, 120)
-        :second -> limit(so.query, 180)
+        :day ->
+          so.query
+          |> where(
+            [t, ...],
+            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 30 DAY) > CURRENT_TIMESTAMP()")
+          )
+          |> limit(30)
+
+        :hour ->
+          so.query
+          |> where(
+            [t, ...],
+            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 168 HOUR) > CURRENT_TIMESTAMP()")
+          )
+          |> limit(168)
+
+        :minute ->
+          so.query
+          |> where(
+            [t, ...],
+            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 120 HOUR) > CURRENT_TIMESTAMP()")
+          )
+          |> limit(120)
+
+        :second ->
+          so.query
+          |> where(
+            [t, ...],
+            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 180 SECOND) > CURRENT_TIMESTAMP()")
+          )
+          |> limit(180)
       end
+
+    query = EctoQueryBQ.join_nested(query, chart)
 
     last_chart_field =
       so.chart.path
       |> String.split(".")
       |> List.last()
       |> String.to_existing_atom()
-
-    query = EctoQueryBQ.join_nested(query, chart)
 
     query =
       case so.search_chart_aggregate do

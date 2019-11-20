@@ -71,6 +71,7 @@ defmodule Logflare.Logs.Search do
   def search_events(%SO{} = so) do
     so
     |> do_search_without_select()
+    |> partition_or_streaming()
     |> order_by_default()
     |> apply_limit_to_query()
     |> apply_select_all_schema()
@@ -101,7 +102,6 @@ defmodule Logflare.Logs.Search do
     |> parse_querystring()
     |> verify_path_in_schema()
     |> apply_local_timestamp_correction()
-    |> partition_or_streaming()
     |> apply_wheres()
   end
 end
