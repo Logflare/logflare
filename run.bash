@@ -9,4 +9,4 @@ export MY_POD_IP=$(curl \
     -H "Metadata-Flavor: Google")
 
 mix ecto.migrate && \
-/logflare/_build/prod/rel/logflare/bin/logflare start
+/logflare/_build/staging/rel/logflare/bin/logflare start
