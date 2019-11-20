@@ -62,13 +62,13 @@
         Chart period:
       </div>
       <div class="col-auto mt-2">
-        <%= select f, :search_chart_period, ["day", "hour", "minute", "second"], selected: "minute", class: "form-control form-control-sm" %>
+        <%= select f, :search_chart_period, ["day", "hour", "minute", "second"], selected: @search_chart_period, class: "form-control form-control-sm" %>
       </div>
       <div class="col-auto mt-2">
         Chart aggregate:
       </div>
       <div class="col-auto mt-2">
-        <%= select f, :search_chart_aggregate, ["sum", "avg", "count"], selected: "count", class: "form-control form-control-sm" %>
+        <%= select f, :search_chart_aggregate, ["sum", "avg", "count"], selected: @search_chart_aggregate , class: "form-control form-control-sm" %>
       </div>
     </div>
   </form>

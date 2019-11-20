@@ -44,8 +44,8 @@ defmodule LogflareWeb.Source.SearchLV do
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
         use_local_time: true,
-        search_chart_period: session[:search_chart_period],
-        search_chart_aggregate: nil
+        search_chart_period: session[:search_chart_period] || :minute,
+        search_chart_aggregate: session[:search_chart_aggregate] || :count
       )
 
     {:ok, socket}
@@ -59,6 +59,21 @@ defmodule LogflareWeb.Source.SearchLV do
     querystring = params[:querystring] || ""
     tailing? = params[:tailing?] || false
 
+    search_chart_period =
+      case search["search_chart_period"] do
+        "day" -> :day
+        "hour" -> :hour
+        "minute" -> :minute
+        "second" -> :second
+      end
+
+    search_chart_aggregate =
+      case search["search_chart_aggregate"] do
+        "sum" -> :sum
+        "avg" -> :avg
+        "count" -> :count
+      end
+
     warning =
       if tailing? && String.contains?(querystring, "timestamp") do
         "Timestamp field is ignored if live tail search is active"
@@ -70,6 +85,8 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:tailing?, tailing?)
       |> assign(:querystring, querystring)
+      |> assign(:search_chart_period, search_chart_period)
+      |> assign(:search_chart_aggregate, search_chart_aggregate)
       |> assign_flash(:warning, warning)
 
     {:noreply, socket}
@@ -81,29 +98,12 @@ defmodule LogflareWeb.Source.SearchLV do
     if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
     user_local_tz = metadata["search"]["user_local_timezone"]
 
-    search_chart_period =
-      case metadata["search"]["search_chart_period"] do
-        "day" -> :day
-        "hour" -> :hour
-        "minute" -> :minute
-        "second" -> :second
-      end
-
-    search_chart_aggregate =
-      case metadata["search"]["search_chart_aggregate"] do
-        "sum" -> :sum
-        "avg" -> :avg
-        "count" -> :count
-      end
-
     socket =
       socket
       |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
-      |> assign(:search_chart_period, search_chart_period)
-      |> assign(:search_chart_aggregate, search_chart_aggregate)
       |> assign_flash(:warning, nil)
       |> assign_flash(:error, nil)
 

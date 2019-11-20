@@ -18,7 +18,7 @@ const LogSparklines = ({ data }) => {
         {indexValue}
       </strong>
     }}
-    colors={{ scheme: "pastel1" }}
+    colors={"#5eeb8f"}
     axisTop={null}
     axisRight={null}
     axisBottom={null}
