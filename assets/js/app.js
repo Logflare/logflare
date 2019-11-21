@@ -9,7 +9,7 @@ import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
-import { LogSparklines } from "./source_log_chart.jsx"
+import { LogEventsChart } from "./source_log_chart.jsx"
 import LiveReact, { initLiveReact } from "phoenix_live_react"
 
 let liveReactHooks = { LiveReact }
@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", e => {
   initLiveReact()
 })
 
-window.Components = { LogSparklines }
+window.Components = { LogEventsChart }
 
 import LiveSocket from "phoenix_live_view"
 

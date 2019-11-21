@@ -2,7 +2,26 @@ import * as _ from "lodash"
 import React from "react"
 import { Bar } from "@nivo/bar"
 
-const LogSparklines = ({ data }) => {
+const brandLightBlack = "#1d1d1d"
+const brandGray = "#9a9a9a"
+const brandGreen = "#5eeb8f"
+
+const theme = {
+  grid: {
+    line: {
+      stroke: brandLightBlack,
+      strokeWidth: 2,
+      strokeDasharray: "4 4",
+    },
+  },
+  tooltip: {
+    container: {
+      background: brandLightBlack,
+    },
+  },
+}
+
+const LogEventsChart = ({ data }) => {
   const width = innerWidth * 0.9
   return <Bar
     data={data}
@@ -14,29 +33,29 @@ const LogSparklines = ({ data }) => {
     indexBy={"timestamp"}
     tooltip={(tooltipData) => {
       const { value, color, indexValue } = tooltipData
-      return <strong style={{ color }}>
-        {indexValue}
-      </strong>
+      return <div>
+        <strong style={{ color }}>
+          Timestamp: {indexValue}
+        </strong>
+        <br/>
+        <strong style={{ color }}>
+          Value: {value}
+        </strong>
+      </div>
     }}
     colors={"#5eeb8f"}
     axisTop={null}
     axisRight={null}
     axisBottom={null}
-    axisLeft={{
-      tickSize: 5,
-      tickPadding: 5,
-      tickRotation: 0,
-      legend: "events",
-      legendPosition: "middle",
-      legendOffset: -40,
-    }}
+    axisLeft={null}
     labelSkipWidth={12}
     labelSkipHeight={12}
     labelTextColor={"white"}
     animate={true}
     motionStiffness={90}
     motionDamping={15}
+    theme={theme}
   />
 }
 
-export { LogSparklines }
+export { LogEventsChart }
