@@ -44,8 +44,8 @@ defmodule LogflareWeb.Source.SearchLV do
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
         use_local_time: true,
-        search_chart_period: String.to_existing_atom(session[:search_chart_period]) || :minute,
-        search_chart_aggregate: String.to_existing_atom(session[:search_chart_aggregate]) || :count
+        search_chart_period: session[:search_chart_period] || :minute,
+        search_chart_aggregate: session[:search_chart_aggregate] || :count
       )
 
     {:ok, socket}
