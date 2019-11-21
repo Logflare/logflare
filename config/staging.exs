@@ -15,7 +15,7 @@ config :logger,
   level: :info,
   backends: [:console]
 
-config :logger, :console, metadata: :all, device: :standard_error
+config :logger, :console, metadata: :all
 
 config :phoenix, :serve_endpoints, true
 
