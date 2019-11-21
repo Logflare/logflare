@@ -1,5 +1,6 @@
 FROM gcr.io/logflare-staging/logflare_base
 
+COPY ./ /logflare
 WORKDIR /logflare
 
 ENV MIX_ENV staging
