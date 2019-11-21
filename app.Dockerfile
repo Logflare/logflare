@@ -6,7 +6,7 @@ WORKDIR /logflare
 ENV MIX_ENV staging
 
 RUN mix deps.get
-RUN mix compile
+RUN mix compile --force
 
 RUN cd /logflare/assets \
     && yarn \

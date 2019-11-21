@@ -10,28 +10,26 @@ import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
 import { LogEventsChart } from "./source_log_chart.jsx"
+import LiveSocket from "phoenix_live_view"
 import LiveReact, { initLiveReact } from "phoenix_live_react"
+import sourceLiveViewHooks from "./source_lv_hooks"
 
-let liveReactHooks = { LiveReact }
+const liveReactHooks = { LiveReact }
+
+window.Components = { LogEventsChart }
+window.Dashboard = Dashboard
+window.Logs = Logs
+window.Source = Source
+window.$ = $
+window.ClipboardJS = ClipboardJS
 
 document.addEventListener("DOMContentLoaded", e => {
   initLiveReact()
 })
-
-window.Components = { LogEventsChart }
-
-import LiveSocket from "phoenix_live_view"
-
-import sourceLiveViewHooks from "./source_lv_hooks"
 
 const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)
 
 let liveSocket = new LiveSocket("/live", Socket, { hooks })
 liveSocket.connect()
 
-window.window.Dashboard = Dashboard
-window.Logs = Logs
-window.Source = Source
-window.$ = $
-window.ClipboardJS = ClipboardJS
 
