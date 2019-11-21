@@ -11,10 +11,11 @@ config :logflare, LogflareWeb.Endpoint,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)
 
-config :logger, :console, format: "[$level] $message\n"
-
 config :logger,
-  level: :info
+  level: :info,
+  backends: [:console]
+
+config :logger, :console, metadata: :all
 
 config :phoenix, :serve_endpoints, true
 
