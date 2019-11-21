@@ -148,7 +148,8 @@ defmodule LogflareWeb.SourceController do
       source: source,
       user: user,
       querystring: params["q"],
-      search_chart_period: params["search_chart_period"]
+      search_chart_period: params["chart_period"],
+      search_chart_aggregate: params["chart_aggregate"]
     }
 
     session = if not is_nil(tailing?), do: Map.put(session, :tailing?, tailing?), else: session
