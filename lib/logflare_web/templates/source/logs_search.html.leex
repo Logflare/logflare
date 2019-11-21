@@ -18,7 +18,8 @@
           </a>
         </li>
         <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share search</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug query</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug events query</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug aggregate query</span></a></li>
       </ul>
     </div>
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
@@ -75,13 +76,36 @@
 </div>
 </div>
 <%= render_flash(@flash, in_live_view: true) %>
-<%= if @search_op && @search_op.sql_params do %>
-  <div class="d-none" id="search-query-debug">
+<%= if @search_op_log_events && @search_op_log_events.sql_params do %>
+  <div class="d-none" id="search-query-debug-events">
     <div>
-      <% stats = @search_op.stats %>
+      <% stats = @search_op_log_events.stats %>
       <ul class="list-group">
         <li class="list-group-item">
-          <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
+          <pre><code><%= format_sql(@search_op_log_events.sql_params) %></code></pre>
+        </li>
+      </ul>
+      <ul class="list-group list-group-horizontal">
+        <li class="list-group-item flex-fill">
+          Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+<% end %>
+<%= if @search_op_log_aggregates && @search_op_log_aggregates.sql_params do %>
+  <div class="d-none" id="search-query-debug-aggregates">
+    <div>
+      <% stats = @search_op_log_aggregates.stats %>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <pre><code><%= format_sql(@search_op_log_aggregates.sql_params) %></code></pre>
         </li>
       </ul>
       <ul class="list-group list-group-horizontal">

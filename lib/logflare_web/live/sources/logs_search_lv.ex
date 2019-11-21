@@ -38,6 +38,8 @@ defmodule LogflareWeb.Source.SearchLV do
         user: user,
         flash: %{},
         search_op: nil,
+        search_op_log_events: nil,
+        search_op_log_aggregates: nil,
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
         active_modal: nil,
@@ -183,6 +185,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:log_events, search_result.events.rows)
       |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_result, search_result.events)
+      |> assign(:search_op_log_events, search_result.events)
+      |> assign(:search_op_log_aggregates, search_result.aggregates)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)

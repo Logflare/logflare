@@ -50,11 +50,13 @@ defmodule LogflareWeb.SourceView do
     """
   end
 
-  def render_modal("queryDebugModal", _source, _log_events) do
+  def render_modal(id, _source, _log_events) when id in ~w(queryDebugEventsModal queryDebugAggregatesModal) do
+    {first, rest} = String.split_at(id, 1)
+    hook = "Source" <> String.capitalize(first) <> rest
     ~E"""
-    <div class="source-logs-search-modals" phx-hook="SourceQueryDebugModal">
+    <div class="source-logs-search-modals" phx-hook="<%= hook %>">
       <%= render "logs_search_modal.html",
-        id: "queryDebugModal",
+        id: id,
         title: "Query Debugging",
         body: "No query or query is still in progress..." %>
     </div>

@@ -18,17 +18,31 @@ hooks.SourceLogsSearchList = {
   },
 }
 
-hooks.SourceQueryDebugModal = {
+hooks.SourceQueryDebugEventsModal = {
   mounted() {
     const $queryDebugModal = $(this.el)
-    const code = $("#search-query-debug code")
+    const code = $("#search-query-debug-events code")
     const fmtSql = sqlFormatter.format(code.text())
     // replace with formatted sql
     code.text(fmtSql)
 
     $queryDebugModal
       .find(".modal-body")
-      .html($("#search-query-debug").html())
+      .html($("#search-query-debug-events").html())
+  },
+}
+
+hooks.SourceQueryDebugAggregatesModal = {
+  mounted() {
+    const $queryDebugModal = $(this.el)
+    const code = $("#search-query-debug-aggregates code")
+    const fmtSql = sqlFormatter.format(code.text())
+    // replace with formatted sql
+    code.text(fmtSql)
+
+    $queryDebugModal
+      .find(".modal-body")
+      .html($("#search-query-debug-aggregates").html())
   },
 }
 
