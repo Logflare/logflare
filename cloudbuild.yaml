@@ -21,6 +21,8 @@ steps:
     args:
       [
         "build",
+        "-f",
+        "app.Dockerfile",
         "-t",
         "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
         "-t",
