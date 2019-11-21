@@ -44,7 +44,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "REQUIRED",
+          mode: "NULLABLE",
           name: "id",
           type: "STRING"
         },
