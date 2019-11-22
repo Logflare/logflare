@@ -1,5 +1,5 @@
 defmodule Logflare.Tracker.Cache do
-  alias Logflare.{Tracker, Source, Cluster}
+  alias Logflare.{Tracker, Source}
   import Cachex.Spec
   require Logger
 
@@ -138,10 +138,7 @@ defmodule Logflare.Tracker.Cache do
     case Cachex.get(Tracker.Cache, Source.BigQuery.Buffer.name(source_id)) do
       {:ok, nil} ->
         Logger.error("Tracker buffer cache expired!")
-        buffer = Source.Data.get_buffer(source_id)
-        node_count = Cluster.Utils.node_list_all() |> Enum.count()
-
-        buffer * node_count
+        0
 
       {:ok, buffer} ->
         buffer
