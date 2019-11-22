@@ -168,7 +168,7 @@ defmodule Logflare.Logs.SearchOperations do
         so.query,
         [log],
         fragment(
-          "_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR) OR _PARTITIONTIME IS NULL"
+          "_PARTITIONDATE > DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
         )
       )
 
@@ -313,29 +313,33 @@ defmodule Logflare.Logs.SearchOperations do
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) OR _PARTITIONTIME IS NULL")
+            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) OR _PARTITIONDATE IS NULL")
           )
+          |> limit(30)
 
         :hour ->
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 168 HOUR) OR _PARTITIONTIME IS NULL")
+            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) OR _PARTITIONDATE IS NULL")
           )
+          |> limit(168)
 
         :minute ->
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 120 MINUTE) OR _PARTITIONTIME IS NULL")
+            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL")
           )
+          |> limit(120)
 
         :second ->
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 SECOND) OR _PARTITIONTIME IS NULL")
+            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL")
           )
+          |> limit(180)
       end
 
     query = EctoQueryBQ.join_nested(query, chart)
