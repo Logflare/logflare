@@ -7,8 +7,6 @@
     },
     "dependencies": {
         "@babel/polyfill": "^7.4.4",
-        "@data-ui/sparkline": "^0.0.84",
-        "@data-ui/theme": "^0.0.84",
         "@nivo/bar": "^0.59.2",
         "@nivo/core": "^0.59.1",
         "bootstrap": "^4.3.1",

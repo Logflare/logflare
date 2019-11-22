@@ -48,9 +48,7 @@ const LogEventsChart = ({ data }) => {
     axisRight={null}
     axisBottom={null}
     axisLeft={null}
-    labelSkipWidth={12}
-    labelSkipHeight={12}
-    labelTextColor={"white"}
+    enableLabel={false}
     animate={true}
     motionStiffness={90}
     motionDamping={15}
