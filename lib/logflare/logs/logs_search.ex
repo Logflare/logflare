@@ -34,14 +34,14 @@ defmodule Logflare.Logs.Search do
          {:ok, {:ok, agg_so}} <- agg_result do
       {:ok, %{events: events_so, aggregates: agg_so}}
     else
-      {:ok, result} ->
-        {:error, result}
+      {:ok, {:error, result_so}} ->
+        {:error, result_so}
 
-      {:error, result} ->
-        {:error, result}
+      {:error, result_so} ->
+        {:error, result_so}
 
       nil ->
-        {:error, "search timeout"}
+        {:error, "Search task timeout"}
     end
   end
 
@@ -62,7 +62,7 @@ defmodule Logflare.Logs.Search do
       %{error: nil} = so ->
         {:ok, so}
 
-      %{error: e} when not is_nil(e) ->
+      %{error: e} = so when not is_nil(e) ->
         {:error, so}
     end
   end
@@ -83,7 +83,7 @@ defmodule Logflare.Logs.Search do
       %{error: nil} = so ->
         {:ok, so}
 
-      %{error: e} when not is_nil(e) ->
+      %{error: e} = so when not is_nil(e) ->
         {:error, so}
     end
   end

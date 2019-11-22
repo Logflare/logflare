@@ -210,7 +210,13 @@ defmodule Logflare.Logs.SearchOperations do
         end
       end)
 
-    Utils.put_result_in(result, so)
+    so = Utils.put_result_in(result, so)
+
+    if so.chart && so.chart.path not in flatmap do
+      Utils.put_result_in({:error, "chart field #{so.chart.path} not present in source schema"}, so)
+    else
+      so
+    end
   end
 
   def apply_local_timestamp_correction(%SO{} = so) do
@@ -353,6 +359,12 @@ defmodule Logflare.Logs.SearchOperations do
 
     query = order_by(query, [t, ...], desc: 1)
     %{so | query: query}
+  end
+
+  def apply_numeric_aggs(%SO{chart: chart = %{value: chart_value}} = so)
+   when not is_nil(chart_value) do
+    result = {:error, "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
+    Utils.put_result_in(result, so)
   end
 
   def apply_numeric_aggs(%SO{} = so) do
