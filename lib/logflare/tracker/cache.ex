@@ -4,6 +4,7 @@ defmodule Logflare.Tracker.Cache do
   require Logger
 
   @ttl 5_000
+  @default_bucket_width 60
 
   def child_spec(_) do
     cachex_opts = [
@@ -39,7 +40,7 @@ defmodule Logflare.Tracker.Cache do
               Map.merge(vv1, vv2, fn kkk, vvv1, vvv2 ->
                 case kkk do
                   :average -> vvv1 + vvv2
-                  :duration -> 60
+                  :duration -> @default_bucket_width
                   :sum -> vvv1 + vvv2
                 end
               end)
@@ -62,7 +63,7 @@ defmodule Logflare.Tracker.Cache do
           average_rate: "err",
           last_rate: "err",
           max_rate: "err",
-          limiter_metrics: %{average: 100_000, duration: 60, sum: 6_000_000}
+          limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
         }
 
       {:ok, rates} ->
@@ -73,7 +74,7 @@ defmodule Logflare.Tracker.Cache do
           average_rate: "err",
           last_rate: "err",
           max_rate: "err",
-          limiter_metrics: %{average: 100_000, duration: 60, sum: 6_000_000}
+          limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
         }
     end
   end
