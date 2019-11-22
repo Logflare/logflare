@@ -315,7 +315,6 @@ defmodule Logflare.Logs.SearchOperations do
             [t, ...],
             fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 30 DAY) > CURRENT_TIMESTAMP()")
           )
-          |> limit(30)
 
         :hour ->
           so.query
@@ -323,15 +322,13 @@ defmodule Logflare.Logs.SearchOperations do
             [t, ...],
             fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 168 HOUR) > CURRENT_TIMESTAMP()")
           )
-          |> limit(168)
 
         :minute ->
           so.query
           |> where(
             [t, ...],
-            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 120 HOUR) > CURRENT_TIMESTAMP()")
+            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 120 MINUTE) > CURRENT_TIMESTAMP()")
           )
-          |> limit(120)
 
         :second ->
           so.query
@@ -339,7 +336,6 @@ defmodule Logflare.Logs.SearchOperations do
             [t, ...],
             fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 180 SECOND) > CURRENT_TIMESTAMP()")
           )
-          |> limit(180)
       end
 
     query = EctoQueryBQ.join_nested(query, chart)
