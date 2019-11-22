@@ -168,7 +168,7 @@ defmodule Logflare.Logs.SearchOperations do
         so.query,
         [log],
         fragment(
-          "TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 24 HOUR) > CURRENT_TIMESTAMP() OR _PARTITIONTIME IS NULL"
+          "_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR) OR _PARTITIONTIME IS NULL"
         )
       )
 
@@ -313,28 +313,28 @@ defmodule Logflare.Logs.SearchOperations do
           so.query
           |> where(
             [t, ...],
-            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 30 DAY) > CURRENT_TIMESTAMP()")
+            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) OR _PARTITIONTIME IS NULL")
           )
 
         :hour ->
           so.query
           |> where(
             [t, ...],
-            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 168 HOUR) > CURRENT_TIMESTAMP()")
+            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 168 HOUR) OR _PARTITIONTIME IS NULL")
           )
 
         :minute ->
           so.query
           |> where(
             [t, ...],
-            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 120 MINUTE) > CURRENT_TIMESTAMP()")
+            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 120 MINUTE) OR _PARTITIONTIME IS NULL")
           )
 
         :second ->
           so.query
           |> where(
             [t, ...],
-            fragment("TIMESTAMP_ADD(_PARTITIONTIME, INTERVAL 180 SECOND) > CURRENT_TIMESTAMP()")
+            fragment("_PARTITIONTIME > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 SECOND) OR _PARTITIONTIME IS NULL")
           )
       end
 
