@@ -15,11 +15,7 @@
 </div>
 
 <div class="dashboard container mx-auto" hidden>
-  <%= if @user.provider == "google" do %>
-  <div id="explore-dashboard"><center><%= link "Explore in Google Data Studio!", to: "https://datastudio.google.com/?authuser=#{@user.email}", target: "_blank" %></center></div>
-  <% else %>
-  <div id="explore-dashboard"><center><%= link "Login with your Google account", to: Routes.auth_path(@conn, :login)%> to explore in Google Data Studio.</center></div>
-  <% end %>
+  <div id="explore-dashboard"><center><%= link "Setup the new Logflare Slack app!", to: Routes.marketing_path(@conn, :slack_app_setup)%></center></div>
 
   <div id="saved-searches" class="">
   <h5 class="header-margin">Saved Searches</h5>
