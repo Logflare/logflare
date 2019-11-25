@@ -368,20 +368,20 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{} = so) do
+    query = if so.tailing? do
+      apply_wheres(so).query
+    else
+      so.query
+    end
+
     query =
-      select_merge(so.query, [c, ...], %{
+        query
+      |> select_merge([c, ...], %{
         count: count(c)
       })
+      |> order_by(query, [t, ...], desc: 1)
+      |> limit_aggregate_chart_period(so.search_chart_period)
 
-    query =
-      case so.search_chart_period do
-        :day -> limit(query, 30)
-        :hour -> limit(query, 168)
-        :minute -> limit(query, 120)
-        :second -> limit(query, 180)
-      end
-
-    query = order_by(query, [t, ...], desc: 1)
     %{so | query: query}
   end
 
@@ -408,5 +408,15 @@ defmodule Logflare.Logs.SearchOperations do
       end)
 
     %{so | rows: rows}
+  end
+
+  def limit_aggregate_chart_period(query, search_chart_period) do
+      case search_chart_period do
+        :day -> limit(query, 30)
+        :hour -> limit(query, 168)
+        :minute -> limit(query, 120)
+        :second -> limit(query, 180)
+      end
+
   end
 end
