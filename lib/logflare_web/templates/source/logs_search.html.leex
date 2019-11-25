@@ -69,7 +69,28 @@
         Chart aggregate:
       </div>
       <div class="col-auto mt-2">
-        <%= select f, :search_chart_aggregate, ["sum", "avg", "count"], selected: @search_chart_aggregate , class: "form-control form-control-sm" %>
+        <%= if @search_chart_aggregate_enabled? do %>
+          <%= select f,
+         :search_chart_aggregate,
+          ["sum", "avg", "count"],
+          selected: @search_chart_aggregate,
+          class: "form-control form-control-sm"
+           %>
+        <% else %>
+          <span class="d-inline-block" tabindex="0" 
+          data-toggle="tooltip" 
+          title="Chart aggregate setting requires usage of chart: operator"
+          trigger="hover click"
+          delay="100"
+          >
+            <%= select f,
+            :search_chart_aggregate,
+              ["N/A"],
+              class: "form-control form-control-sm",
+              style: "pointer-events: none;",
+              disabled: true %>
+          </span>
+        <% end %>
       </div>
     </div>
   </form>

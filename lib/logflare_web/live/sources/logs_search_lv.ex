@@ -47,7 +47,8 @@ defmodule LogflareWeb.Source.SearchLV do
         user_local_timezone: nil,
         use_local_time: true,
         search_chart_period: session[:search_chart_period] || :minute,
-        search_chart_aggregate: session[:search_chart_aggregate] || :count
+        search_chart_aggregate: session[:search_chart_aggregate] || :count,
+        search_chart_aggregate_enabled?: false
       )
 
     {:ok, socket}
@@ -74,7 +75,10 @@ defmodule LogflareWeb.Source.SearchLV do
         "sum" -> :sum
         "avg" -> :avg
         "count" -> :count
+        _ -> :count
       end
+
+    search_chart_aggregate_enabled? = String.match?(querystring, ~r/chart:\w+/)
 
     warning =
       if tailing? && String.contains?(querystring, "timestamp") do
@@ -89,6 +93,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:querystring, querystring)
       |> assign(:search_chart_period, search_chart_period)
       |> assign(:search_chart_aggregate, search_chart_aggregate)
+      |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
       |> assign_flash(:warning, warning)
 
     {:noreply, socket}
