@@ -5,6 +5,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.Search.Parser
   alias Logflare.Logs.Search.Utils
   import Ecto.Query
+  import Logflare.Logs.Search.Query
 
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
@@ -213,7 +214,10 @@ defmodule Logflare.Logs.SearchOperations do
     so = Utils.put_result_in(result, so)
 
     if so.chart && so.chart.path not in flatmap do
-      Utils.put_result_in({:error, "chart field #{so.chart.path} not present in source schema"}, so)
+      Utils.put_result_in(
+        {:error, "chart field #{so.chart.path} not present in source schema"},
+        so
+      )
     else
       so
     end
@@ -313,36 +317,43 @@ defmodule Logflare.Logs.SearchOperations do
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) OR _PARTITIONDATE IS NULL")
+            fragment(
+              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) OR _PARTITIONDATE IS NULL"
+            )
           )
-          |> limit(30)
 
         :hour ->
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) OR _PARTITIONDATE IS NULL")
+            fragment(
+              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) OR _PARTITIONDATE IS NULL"
+            )
           )
-          |> limit(168)
 
         :minute ->
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL")
+            fragment(
+              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
+            )
           )
-          |> limit(120)
 
         :second ->
           so.query
           |> where(
             [t, ...],
-            fragment("_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL")
+            fragment(
+              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
+            )
           )
-          |> limit(180)
       end
 
-    query = EctoQueryBQ.join_nested(query, chart)
+    query =
+      query
+      |> EctoQueryBQ.join_nested(chart)
+      |> limit_aggregate_chart_period(so.search_chart_period)
 
     last_chart_field =
       so.chart.path
@@ -362,20 +373,24 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{chart: chart = %{value: chart_value}} = so)
-   when not is_nil(chart_value) do
-    result = {:error, "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
+      when not is_nil(chart_value) do
+    result =
+      {:error,
+       "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
+
     Utils.put_result_in(result, so)
   end
 
   def apply_numeric_aggs(%SO{} = so) do
-    query = if so.tailing? do
-      apply_wheres(so).query
-    else
-      so.query
-    end
+    query =
+      if so.tailing? do
+        apply_wheres(so).query
+      else
+        so.query
+      end
 
     query =
-        query
+      query
       |> select_merge([c, ...], %{
         count: count(c)
       })
@@ -408,15 +423,5 @@ defmodule Logflare.Logs.SearchOperations do
       end)
 
     %{so | rows: rows}
-  end
-
-  def limit_aggregate_chart_period(query, search_chart_period) do
-      case search_chart_period do
-        :day -> limit(query, 30)
-        :hour -> limit(query, 168)
-        :minute -> limit(query, 120)
-        :second -> limit(query, 180)
-      end
-
   end
 end
