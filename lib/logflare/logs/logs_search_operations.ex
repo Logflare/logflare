@@ -5,6 +5,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.Search.Parser
   alias Logflare.Logs.Search.Utils
   import Ecto.Query
+  import Logflare.Logs.SearchOperations.Utils
   import Logflare.Logs.Search.Query
 
   alias GoogleApi.BigQuery.V2.Api
@@ -285,7 +286,7 @@ defmodule Logflare.Logs.SearchOperations do
     truncator = timestamp_truncator(so)
 
     group_by = [
-      truncator
+      timestamp_truncator(so.search_chart_period)
     ]
 
     query = group_by(so.query, ^group_by)
@@ -300,61 +301,8 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: Ecto.Query.exclude(so.query, :limit)}
   end
 
-  defp timestamp_truncator(%SO{} = so) do
-    case so.search_chart_period do
-      :day -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp))
-      :hour -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp))
-      :minute -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp))
-      :second -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp))
-    end
-  end
-
   def apply_numeric_aggs(%SO{chart: chart = %{value: chart_value}} = so)
-      when chart_value in [:integer, :float] do
-    query =
-      case so.search_chart_period do
-        :day ->
-          so.query
-          |> where(
-            [t, ...],
-            fragment(
-              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) OR _PARTITIONDATE IS NULL"
-            )
-          )
-
-        :hour ->
-          so.query
-          |> where(
-            [t, ...],
-            fragment(
-              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) OR _PARTITIONDATE IS NULL"
-            )
-          )
-
-        :minute ->
-          so.query
-          |> where(
-            [t, ...],
-            fragment(
-              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
-            )
-          )
-
-        :second ->
-          so.query
-          |> where(
-            [t, ...],
-            fragment(
-              "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
-            )
-          )
-      end
-
-    query =
-      query
-      |> EctoQueryBQ.join_nested(chart)
-      |> limit_aggregate_chart_period(so.search_chart_period)
-
+      when chart_value in ~w[integer float]a do
     last_chart_field =
       so.chart.path
       |> String.split(".")
@@ -362,18 +310,19 @@ defmodule Logflare.Logs.SearchOperations do
       |> String.to_existing_atom()
 
     query =
-      case so.search_chart_aggregate do
-        :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
-        :avg -> select_merge(query, [..., l], %{value: avg(field(l, ^last_chart_field))})
-        :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
-      end
+      so.query
+      |> select_timestamp(so.search_chart_period)
+      |> EctoQueryBQ.join_nested(chart)
+      |> where_tailing_partitiondate(so.search_chart_period)
+      |> limit_aggregate_chart_period(so.search_chart_period)
+      |> select_agg_value(so.search_chart_aggregate, last_chart_field)
+      |> order_by([t, ...], desc: 1)
 
-    query = order_by(query, [t, ...], desc: 1)
     %{so | query: query}
   end
 
-  def apply_numeric_aggs(%SO{chart: chart = %{value: chart_value}} = so)
-      when not is_nil(chart_value) do
+  def apply_numeric_aggs(%SO{chart: %{value: chart_value}} = so)
+      when chart_value not in ~w[integer float]a do
     result =
       {:error,
        "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
@@ -381,7 +330,7 @@ defmodule Logflare.Logs.SearchOperations do
     Utils.put_result_in(result, so)
   end
 
-  def apply_numeric_aggs(%SO{} = so) do
+  def apply_numeric_aggs(%SO{chart: nil} = so) do
     query =
       if so.tailing? do
         apply_wheres(so).query
@@ -391,10 +340,11 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       query
+      |> select_timestamp(so.search_chart_period)
       |> select_merge([c, ...], %{
         count: count(c)
       })
-      |> order_by(query, [t, ...], desc: 1)
+      |> order_by([t, ...], desc: 1)
       |> limit_aggregate_chart_period(so.search_chart_period)
 
     %{so | query: query}
