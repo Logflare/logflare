@@ -20,6 +20,8 @@ defmodule Logflare.EctoQueryBQ.SQL do
     |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
     # removes double quotes around the qualified BQ table id
     |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
+    # removes double quotes around the alias
+    |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
 
   def pg_param_to_bq_param(_pg_sql_param = param) do

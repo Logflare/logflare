@@ -9,7 +9,7 @@ defmodule Logflare.Logs.Search do
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
 
-  use Logflare.GenDecorators
+  import Logflare.Logs.SearchOperations.Utils
   import Logflare.Logs.SearchOperations
 
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
@@ -56,7 +56,7 @@ defmodule Logflare.Logs.Search do
     |> apply_to_sql()
     |> do_query()
     |> process_query_result()
-    |> row_keys_to_descriptive_names()
+    |> process_agg_query_result()
     |> put_stats()
     |> case do
       %{error: nil} = so ->

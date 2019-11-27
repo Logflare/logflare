@@ -255,41 +255,12 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: select(so.query, ^top_level_fields)}
   end
 
-  def apply_select_timestamp(%SO{} = so) do
-    query =
-      case so.search_chart_period do
-        :day ->
-          select(so.query, [t, ...], %{
-            timestamp: fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp)
-          })
-
-        :hour ->
-          select(so.query, [t, ...], %{
-            timestamp: fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp)
-          })
-
-        :minute ->
-          select(so.query, [t, ...], %{
-            timestamp: fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp)
-          })
-
-        :second ->
-          select(so.query, [t, ...], %{
-            timestamp: fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp)
-          })
-      end
-
-    %{so | query: query}
-  end
-
   def apply_group_by_timestamp_period(%SO{} = so) do
-    truncator = timestamp_truncator(so)
-
     group_by = [
       timestamp_truncator(so.search_chart_period)
     ]
 
-    query = group_by(so.query, ^group_by)
+    query = group_by(so.query, 1)
     %{so | query: query}
   end
 
@@ -338,39 +309,44 @@ defmodule Logflare.Logs.SearchOperations do
         so.query
       end
 
+    {min, max} =
+      case so.search_chart_period do
+        :day ->
+          {Timex.shift(Timex.now(), days: -30), Timex.now()}
+
+        :hour ->
+          {Timex.shift(Timex.now(), hours: -168), Timex.now()}
+
+        :minute ->
+          {Timex.shift(Timex.now(), minutes: -120), Timex.now()}
+
+        :second ->
+          {Timex.shift(Timex.now(), seconds: -180), Timex.now()}
+      end
+
     query =
       query
       |> select_timestamp(so.search_chart_period)
       |> select_merge([c, ...], %{
-        count: count(c)
+        value: count(c)
       })
       |> order_by([t, ...], desc: 1)
       |> limit_aggregate_chart_period(so.search_chart_period)
+      |> join_missing_range_timestamps(min, max, so.search_chart_period)
+      |> select([t, ts], %{
+        timestamp: coalesce(t.timestamp, ts.timestamp),
+        value: coalesce(t.value, ts.value)
+      })
+      |> order_by([t], desc: t.timestamp)
 
     %{so | query: query}
   end
 
-  def row_keys_to_descriptive_names(%SO{} = so) do
+  def process_agg_query_result(%SO{} = so) do
     rows =
       so.rows
-      |> Enum.map(fn row ->
-        row
-        |> Enum.map(fn {k, v} ->
-          case k do
-            "f0_" ->
-              {:ok, v} =
-                v
-                |> Timex.from_unix(:microseconds)
-                |> Timex.format("{RFC822z}")
-
-              {"timestamp", v}
-
-            "f1_" ->
-              {"value", v}
-          end
-        end)
-        |> Map.new()
-      end)
+      |> format_agg_row_keys()
+      |> format_agg_row_values()
 
     %{so | rows: rows}
   end

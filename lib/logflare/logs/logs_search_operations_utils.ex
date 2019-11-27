@@ -2,6 +2,13 @@ defmodule Logflare.Logs.SearchOperations.Utils do
   @moduledoc false
   import Ecto.Query
 
+  def min_max_timestamps(pathvalops) do
+    pathvalops
+    |> Enum.filter(&(&1.path === "timestamp"))
+    |> Enum.map(& &1.value)
+    |> Enum.min_max_by(&Timex.to_unix/1)
+  end
+
   def format_agg_row_keys(rows) do
     rows
     |> Enum.map(fn row ->

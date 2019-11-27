@@ -92,4 +92,80 @@ defmodule Logflare.Logs.Search.Query do
         })
     end
   end
+
+  def join_missing_range_timestamps(q, min, max, search_chart_period) do
+    case search_chart_period do
+      :day ->
+        join(
+          subquery(q),
+          :full,
+          [t, ...],
+          ts in fragment(
+            "(SELECT timestamp, 0 as value
+            FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(
+              TIMESTAMP_TRUNC(?, DAY),
+              TIMESTAMP_TRUNC(?, DAY),
+              INTERVAL 1 DAY))
+             AS timestamp)",
+            ^min,
+            ^max
+          ),
+          on: t.timestamp == ts.timestamp
+        )
+
+      :hour ->
+        join(
+          subquery(q),
+          :full,
+          [t, ...],
+          ts in fragment(
+            "(SELECT timestamp, 0 as value
+            FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(
+              TIMESTAMP_TRUNC(?, HOUR),
+              TIMESTAMP_TRUNC(?, HOUR),
+              INTERVAL 1 HOUR))
+             AS timestamp)",
+            ^min,
+            ^max
+          ),
+          on: t.timestamp == ts.timestamp
+        )
+
+      :minute ->
+        join(
+          subquery(q),
+          :full,
+          [t, ...],
+          ts in fragment(
+            "(SELECT timestamp, 0 as value
+            FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(
+              TIMESTAMP_TRUNC(?, MINUTE),
+              TIMESTAMP_TRUNC(?, MINUTE),
+              INTERVAL 1 MINUTE))
+             AS timestamp)",
+            ^min,
+            ^max
+          ),
+          on: t.timestamp == ts.timestamp
+        )
+
+      :second ->
+        join(
+          subquery(q),
+          :full,
+          [t, ...],
+          ts in fragment(
+            "(SELECT timestamp, 0 as value
+            FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(
+              TIMESTAMP_TRUNC(?, SECOND),
+              TIMESTAMP_TRUNC(?, SECOND),
+              INTERVAL 1 SECOND))
+             AS timestamp)",
+            ^min,
+            ^max
+          ),
+          on: t.timestamp == ts.timestamp
+        )
+    end
+  end
 end
