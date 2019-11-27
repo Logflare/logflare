@@ -4,6 +4,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Tracker
 
   require Logger
@@ -24,6 +25,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def init(state) do
     Process.flag(:trap_exit, true)
+
+    Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
 
     {:ok, state, {:continue, :boot}}
   end
@@ -53,12 +56,15 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
     new_state = %{state | buffer: new_buffer}
+    len = :queue.len(new_buffer)
+    Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
     {:noreply, new_state}
   end
 
   def handle_call(:pop, _from, state) do
     case :queue.is_empty(state.buffer) do
       true ->
+        Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
         {:reply, :empty, state}
 
       false ->
@@ -66,6 +72,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
         new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
+
+        Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
         {:reply, log_event, new_state}
     end
   end

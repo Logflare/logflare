@@ -51,6 +51,7 @@ defmodule Logflare.Application do
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Tracker.Cache,
+      Logflare.Sources.Buffers,
       Logflare.Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
       {Task.Supervisor, name: Logflare.TaskSupervisor},
