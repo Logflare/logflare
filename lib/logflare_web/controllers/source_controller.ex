@@ -144,15 +144,17 @@ defmodule LogflareWeb.SourceController do
         _ -> nil
       end
 
-    chart_period = case params["chart_period"] do
-      nil -> nil
-      x -> String.to_existing_atom(x)
-    end
+    chart_period =
+      case params["chart_period"] do
+        nil -> nil
+        x -> String.to_existing_atom(x)
+      end
 
-    chart_aggregate = case params["chart_aggregate"] do
-      nil -> nil
-      x -> String.to_existing_atom(x)
-    end
+    chart_aggregate =
+      case params["chart_aggregate"] do
+        nil -> nil
+        x -> String.to_existing_atom(x)
+      end
 
     session = %{
       source: source,

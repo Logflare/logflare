@@ -1,5 +1,6 @@
 import { activateClipboardForSelector } from "./utils"
 import sqlFormatter from "sql-formatter"
+
 import idle from "./vendor/idle"
 import appear from "./vendor/appear"
 
@@ -15,7 +16,7 @@ hooks.SourceSchemaModalTable = {
 
 hooks.SourceLogsSearchList = {
   mounted() {
-    $("#logs-list li:nth(1)")[0].scrollIntoView()
+    $("html, body").animate({ scrollTop: $(document).height() })
   },
 }
 
@@ -50,7 +51,6 @@ hooks.SourceQueryDebugAggregatesModal = {
 hooks.SourceLogsSearch = {
   updated() {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    console.log("Setting timezone " + timeZone)
     $("#search-local-time").attr("phx-value-user_local_timezone", timeZone)
   },
 
@@ -92,8 +92,9 @@ hooks.SourceLogsSearch = {
       },
       elements: () => $("button#search")
       ,
-      appear: (el) => { },
-      disappear: (el) => this.pushEvent("search_control_out_of_view", {}) ,
+      appear: (el) => {
+      },
+      disappear: (el) => this.pushEvent("search_control_out_of_view", {}),
       bounds: 200,
       reappear: true,
     })

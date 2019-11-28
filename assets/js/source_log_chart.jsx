@@ -1,8 +1,8 @@
 import * as _ from "lodash"
 import React from "react"
-import { ResponsiveBar } from "@nivo/bar"
+import { ResponsiveBar, Bar } from "@nivo/bar"
 
-import { ScaleLoader, BarLoader } from "react-spinners"
+import { BarLoader } from "react-spinners"
 
 const brandLightBlack = "#1d1d1d"
 const brandGray = "#9a9a9a"
@@ -21,6 +21,21 @@ const theme = {
       background: brandLightBlack,
     },
   },
+}
+
+const renderTooltip = tooltipData => {
+  const { value, color, indexValue } = tooltipData
+  return (
+    <div>
+      <strong style={{ color }}>
+        Timestamp: {indexValue}
+      </strong>
+      <br/>
+      <strong style={{ color }}>
+        Value: {value}
+      </strong>
+    </div>
+  )
 }
 
 const LogEventsChart = ({ data, loading }) => {
@@ -51,20 +66,7 @@ const LogEventsChart = ({ data, loading }) => {
           padding={0.3}
           enableGridY={true}
           indexBy={"timestamp"}
-          tooltip={tooltipData => {
-            const { value, color, indexValue } = tooltipData
-            return (
-              <div>
-                <strong style={{ color }}>
-                  Timestamp: {indexValue}
-                </strong>
-                <br/>
-                <strong style={{ color }}>
-                  Value: {value}
-                </strong>
-              </div>
-            )
-          }}
+          tooltip={renderTooltip}
           colors={"#5eeb8f"}
           axisTop={null}
           axisRight={null}

@@ -304,8 +304,10 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_numeric_aggs(%SO{chart: nil} = so) do
     query = apply_wheres(so).query
 
+    timestamp_pathvalops = Enum.filter(so.pathvalops, &(&1.path === "timestamp"))
+
     {min, max} =
-      if so.tailing? do
+      if so.tailing? or Enum.empty?(timestamp_pathvalops) do
         case so.search_chart_period do
           :day ->
             {Timex.shift(Timex.now(), days: -30), Timex.now()}
@@ -320,8 +322,7 @@ defmodule Logflare.Logs.SearchOperations do
             {Timex.shift(Timex.now(), seconds: -180), Timex.now()}
         end
       else
-        so.pathvalops
-        |> Enum.filter(&(&1.path === "timestamp"))
+        timestamp_pathvalops
         |> override_min_max_for_open_intervals()
         |> min_max_timestamps()
       end
