@@ -1,5 +1,4 @@
 import $ from "jquery"
-import Tooltip from "tooltip.js"
 import socket from "./socket"
 import { activateClipboardForSelector } from "./utils"
 import { timestampNsToAgo } from "./formatters"
