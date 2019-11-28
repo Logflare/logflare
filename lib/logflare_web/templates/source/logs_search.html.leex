@@ -77,8 +77,8 @@
           class: "form-control form-control-sm"
            %>
         <% else %>
-          <span class="d-inline-block" tabindex="0" 
-          data-toggle="tooltip" 
+          <span class="d-inline-block" tabindex="0"
+          data-toggle="tooltip"
           title="Chart aggregate setting requires usage of chart: operator"
           trigger="hover click"
           delay="100"
@@ -147,6 +147,8 @@
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <div>
   <%= if @active_modal do %>
-    <%= render_modal(@active_modal, @source, @log_events) %>
+    <div class="source-logs-search-modals">
+      <%= render_modal(@active_modal, @source, @log_events) %>
+    </div>
   <% end %>
 </div>

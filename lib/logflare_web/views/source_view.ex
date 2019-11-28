@@ -7,52 +7,48 @@ defmodule LogflareWeb.SourceView do
   import PhoenixLiveReact, only: [live_react_component: 2]
 
   def render_modal("searchHelpModal", _source, _log_events) do
-    ~E"""
-    <div class="source-logs-search-modals">
-      <%= render "logs_search_modal.html",
-        id: "searchHelpModal",
-        title: "Search Syntax",
-        body: render("logs_search_help.html") %>
-    </div>
-    """
+    render("logs_search_modal.html",
+      id: "searchHelpModal",
+      title: "Search Syntax",
+      body: render("logs_search_help.html")
+    )
   end
 
   def render_modal("sourceSchemaModal", source, _log_events) do
-    ~E"""
-    <div class="source-logs-search-modals">
-      <%= render "logs_search_modal.html",
-        id: "sourceSchemaModal",
-        title: "Source Schema",
-        body: format_bq_schema(source) %>
-    </div>
-    """
+    render("logs_search_modal.html",
+      id: "sourceSchemaModal",
+      title: "Source Schema",
+      body: format_bq_schema(source)
+    )
   end
 
   def render_modal("metadataModal:" <> id, _source, log_events) do
+    log_event = Enum.find(log_events, &(&1.id === id))
+
     fmt_metadata =
-      log_events
-      |> Enum.find(&(&1.id === id))
+      log_event
       |> Map.get(:body)
       |> Map.get(:metadata)
       |> encode_metadata
 
-    body = ~E"""
-      <pre class="pre-metadata"><code><%= fmt_metadata %></code></pre>
-    """
+    body =
+      render("logs_search_metadata_modal_body.html",
+        log_event: log_event,
+        fmt_metadata: fmt_metadata
+      )
 
-    ~E"""
-    <div class="source-logs-search-modals">
-      <%= render "logs_search_modal.html",
-        id: "metadataModal",
-        title: "Metadata",
-        body: body %>
-    </div>
-    """
+    render("logs_search_modal.html",
+      id: "metadataModal",
+      title: "Metadata",
+      body: body
+    )
   end
 
-  def render_modal(id, _source, _log_events) when id in ~w(queryDebugEventsModal queryDebugAggregatesModal) do
+  def render_modal(id, _source, _log_events)
+      when id in ~w(queryDebugEventsModal queryDebugAggregatesModal) do
     {first, rest} = String.split_at(id, 1)
     hook = "Source" <> String.capitalize(first) <> rest
+
     ~E"""
     <div class="source-logs-search-modals" phx-hook="<%= hook %>">
       <%= render "logs_search_modal.html",
