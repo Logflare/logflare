@@ -98,6 +98,14 @@ hooks.SourceLogsSearch = {
       reappear: true,
     })
 
+    setInterval(() => {
+      const $lastQueryCompletedAt = $("#last-query-completed-at")
+      const lastQueryCompletedAt = $lastQueryCompletedAt.attr("data-timestamp")
+      if (lastQueryCompletedAt) {
+        const elapsed = new Date().getTime()/1000 - lastQueryCompletedAt
+        $("#last-query-completed-at span").text(elapsed.toFixed(1))
+      }
+    }, 250)
 
     $("button#search").click()
   },

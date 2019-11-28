@@ -36,6 +36,11 @@
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group">
       <%= text_input f, :querystring, value: @querystring, class: "form-control", readonly: if @loading, do: "true" %>
+      <%= if @last_query_completed_at do %>
+        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
+          Elapsed since last query: <span> 0 </span> seconds
+        </small>
+      <% end %>
       <small class="form-text text-muted">
         random(tips): <%= @search_tip %>
       </small>

@@ -48,7 +48,8 @@ defmodule LogflareWeb.Source.SearchLV do
         use_local_time: true,
         search_chart_period: session[:search_chart_period] || :minute,
         search_chart_aggregate: session[:search_chart_aggregate] || :count,
-        search_chart_aggregate_enabled?: false
+        search_chart_aggregate_enabled?: false,
+        last_query_completed_at: nil
       )
 
     {:ok, socket}
@@ -201,6 +202,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
+      |> assign(:last_query_completed_at, Timex.now())
       |> assign_flash(:warning, warning)
 
     {:noreply, socket}
