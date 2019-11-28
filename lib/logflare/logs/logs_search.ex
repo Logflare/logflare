@@ -49,7 +49,6 @@ defmodule Logflare.Logs.Search do
   def search_result_aggregates(%SO{} = so) do
     so
     |> do_search_without_select()
-    |> apply_select_timestamp()
     |> exclude_limit()
     |> apply_group_by_timestamp_period()
     |> apply_numeric_aggs()

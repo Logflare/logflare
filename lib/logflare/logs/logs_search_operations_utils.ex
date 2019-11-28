@@ -2,11 +2,20 @@ defmodule Logflare.Logs.SearchOperations.Utils do
   @moduledoc false
   import Ecto.Query
 
-  def min_max_timestamps(pathvalops) do
-    pathvalops
-    |> Enum.filter(&(&1.path === "timestamp"))
-    |> Enum.map(& &1.value)
-    |> Enum.min_max_by(&Timex.to_unix/1)
+  def min_max_timestamps(timestamps) do
+    Enum.min_max_by(timestamps, &Timex.to_unix/1)
+  end
+
+  def override_min_max_for_open_intervals([%{operator: ">=", value: ts}]) do
+    [ts, Timex.now()]
+  end
+
+  def override_min_max_for_open_intervals([%{operator: "<=", value: ts}]) do
+    [Timex.now() |> Timex.shift(days: -30), ts]
+  end
+
+  def override_min_max_for_open_intervals(pathvalops) when length(pathvalops) > 1 do
+    Enum.map(pathvalops, & &1.value)
   end
 
   def format_agg_row_keys(rows) do
