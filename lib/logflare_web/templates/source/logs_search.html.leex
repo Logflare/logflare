@@ -28,10 +28,10 @@
 <div class="container source-logs-search-container" id="console-text">
   <%= if length(@log_events) > 0 do %>
     <%= render "logs_search_list.html", log_events: @log_events %>
-    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates}) %>
   <% else %>
     <div id="logs-list-container-empty"></div>
   <% end %>
+  <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group">

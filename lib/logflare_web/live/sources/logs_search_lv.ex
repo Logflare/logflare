@@ -89,6 +89,16 @@ defmodule LogflareWeb.Source.SearchLV do
       end
 
     socket =
+      if search_chart_aggregate != socket.assigns.search_chart_aggregate or
+           search_chart_period != socket.assigns.search_chart_period do
+        socket
+        |> assign(:log_aggregates, [])
+        |> assign(:loading, true)
+      else
+        socket
+      end
+
+    socket =
       socket
       |> assign(:tailing?, tailing?)
       |> assign(:querystring, querystring)
