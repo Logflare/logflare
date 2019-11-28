@@ -131,6 +131,12 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, assign(socket, use_local_time: use_local_time)}
   end
 
+  def handle_event("search_control_out_of_view" = ev, _metadata, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+
+    {:noreply, assign(socket, :tailing?, false)}
+  end
+
   def handle_event("activate_modal" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
     modal_id = metadata["modal_id"]

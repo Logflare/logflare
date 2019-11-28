@@ -1,10 +1,12 @@
 import css from "../css/app.scss"
 import socket from "./socket"
 import { Socket } from "phoenix"
-import * as _ from "lodash"
-import "bootstrap"
 import "@babel/polyfill"
+import * as _ from "lodash"
 import $ from "jquery"
+global.jQuery = $
+global.$ = $
+import "bootstrap"
 import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
 import * as Source from "./source"
@@ -20,16 +22,13 @@ window.Components = { LogEventsChart }
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
-window.$ = $
 window.ClipboardJS = ClipboardJS
 
 document.addEventListener("DOMContentLoaded", e => {
-  initLiveReact()
+    initLiveReact()
 })
 
 const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)
 
 let liveSocket = new LiveSocket("/live", Socket, { hooks })
 liveSocket.connect()
-
-
