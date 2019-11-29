@@ -63,7 +63,7 @@ defmodule LogflareWeb.Source.SearchLV do
     querystring = params[:querystring] || ""
     tailing? = params[:tailing?] || false
 
-    search_chart_period =
+    chart_period =
       case search["search_chart_period"] do
         "day" -> :day
         "hour" -> :hour
@@ -71,7 +71,7 @@ defmodule LogflareWeb.Source.SearchLV do
         "second" -> :second
       end
 
-    search_chart_aggregate =
+    chart_aggregate =
       case search["search_chart_aggregate"] do
         "sum" -> :sum
         "avg" -> :avg
@@ -79,18 +79,20 @@ defmodule LogflareWeb.Source.SearchLV do
         _ -> :count
       end
 
-    search_chart_aggregate_enabled? = String.match?(querystring, ~r/chart:\w+/)
+    search_chart_aggregate_enabled? = querystring =~ ~r/chart:\w+/
 
     warning =
-      if tailing? && String.contains?(querystring, "timestamp") do
+      if tailing? and querystring =~ "timestamp" do
         "Timestamp field is ignored if live tail search is active"
       else
         nil
       end
 
+    %{search_chart_aggregate: prev_chart_aggregate, search_chart_period: prev_chart_period} =
+      socket.assigns
+
     socket =
-      if search_chart_aggregate != socket.assigns.search_chart_aggregate or
-           search_chart_period != socket.assigns.search_chart_period do
+      if {chart_aggregate, chart_period} != {prev_chart_aggregate, prev_chart_period} do
         socket
         |> assign(:log_aggregates, [])
         |> assign(:loading, true)
@@ -102,8 +104,8 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:tailing?, tailing?)
       |> assign(:querystring, querystring)
-      |> assign(:search_chart_period, search_chart_period)
-      |> assign(:search_chart_aggregate, search_chart_aggregate)
+      |> assign(:search_chart_period, chart_period)
+      |> assign(:search_chart_aggregate, chart_aggregate)
       |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
       |> assign_flash(:warning, warning)
 
@@ -204,10 +206,11 @@ defmodule LogflareWeb.Source.SearchLV do
     warning = warning_message(socket.assigns, search_result)
 
     log_aggregates = Enum.reverse(search_result.aggregates.rows)
+    log_events = search_result.events.rows
 
     socket =
       socket
-      |> assign(:log_events, search_result.events.rows)
+      |> assign(:log_events, log_events)
       |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_result, search_result.events)
       |> assign(:search_op_log_events, search_result.events)

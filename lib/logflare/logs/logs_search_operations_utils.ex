@@ -1,6 +1,5 @@
 defmodule Logflare.Logs.SearchOperations.Utils do
   @moduledoc false
-  import Ecto.Query
 
   def min_max_timestamps(timestamps) do
     Enum.min_max_by(timestamps, &Timex.to_unix/1)
@@ -14,8 +13,12 @@ defmodule Logflare.Logs.SearchOperations.Utils do
     [Timex.now() |> Timex.shift(days: -30), ts]
   end
 
-  def override_min_max_for_open_intervals(pathvalops) when length(pathvalops) > 1 do
+  def override_min_max_for_open_intervals(pathvalops) do
     Enum.map(pathvalops, & &1.value)
+  end
+
+  def convert_timestamp_timezone(row, user_timezone) do
+    Map.update!(row, "timestamp", &Timex.Timezone.convert(&1, user_timezone))
   end
 
   def format_agg_row_keys(rows) do

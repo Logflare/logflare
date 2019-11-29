@@ -54,16 +54,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     json = %{
       "timestamp" => bq_timestamp,
-      "event_message" => body.message
+      "event_message" => body.message,
+      "id" => id
     }
 
     json =
       if map_size(body.metadata) > 0 do
         metadata = EventUtils.prepare_for_ingest(body.metadata)
-
-        json
-        |> Map.put("metadata", metadata)
-        |> Map.put("id", id)
+        Map.put(json, "metadata", metadata)
       else
         json
       end

@@ -14,8 +14,11 @@ hooks.SourceSchemaModalTable = {
 }
 
 hooks.SourceLogsSearchList = {
+  updated() {
+    window.scrollTo(0, document.body.scrollHeight)
+  },
   mounted() {
-    $("html, body").animate({ scrollTop: $(document).height() })
+    $("html, body").animate({ scrollTop: document.body.scrollHeight })
   },
 }
 
@@ -50,7 +53,7 @@ hooks.SourceQueryDebugAggregatesModal = {
 hooks.SourceLogsSearch = {
   updated() {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    $("#search-local-time").attr("phx-value-user_local_timezone", timeZone)
+    $("#set_local_time").attr("phx-value-user_local_timezone", timeZone)
   },
 
   mounted() {
@@ -90,7 +93,7 @@ hooks.SourceLogsSearch = {
       const $lastQueryCompletedAt = $("#last-query-completed-at")
       const lastQueryCompletedAt = $lastQueryCompletedAt.attr("data-timestamp")
       if (lastQueryCompletedAt) {
-        const elapsed = new Date().getTime()/1000 - lastQueryCompletedAt
+        const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
         $("#last-query-completed-at span").text(elapsed.toFixed(1))
       }
     }, 250)
