@@ -1,7 +1,7 @@
 <div id="logs-list-container" phx-hook="SourceLogsSearchList">
-  <div id="logs-list" class="list-unstyled console-text-list">
+  <div id="logs-list" phx-update="prepend" class="list-unstyled console-text-list">
     <%= Enum.map(@log_events, fn log -> %>
-    <li id="<%= log.id %>">
+    <li id="log-event_<%= log.id %>">
       <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
       <mark class="log-datestamp" data-timestamp="<%= timestamp %>"><%= format_timestamp(timestamp) <> " UTC"%></mark>
       <%= message %>
