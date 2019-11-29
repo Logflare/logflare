@@ -384,7 +384,7 @@ defmodule Logflare.Logs.SearchOperations do
         timestamp: coalesce(t.timestamp, ts.timestamp),
         value: coalesce(t.value, ts.value)
       })
-      |> order_by([t], desc: t.timestamp)
+      |> order_by([t], desc: 1)
 
     %{so | query: query}
   end
