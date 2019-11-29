@@ -40,10 +40,10 @@ defmodule Logflare.Logs.SearchOperations.Utils do
   defp agg_row_key_to_names({"f1_", v}), do: {"value", v}
 
   defp agg_row_key_formatter({"timestamp", v}) do
-    {:ok, v} =
-      v
-      |> Timex.from_unix(:microseconds)
-      |> Timex.format("{RFC822z}")
+    # {:ok, v} =
+    #   v
+    #   |> Timex.from_unix(:microseconds)
+    #   |> Timex.format("{RFC822z}")
 
     {"timestamp", v}
   end

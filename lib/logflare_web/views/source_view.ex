@@ -132,6 +132,13 @@ defmodule LogflareWeb.SourceView do
     |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)
   end
 
+  def format_timestamp(timestamp, user_local_timezone) do
+    timestamp
+    |> Timex.from_unix(:microsecond)
+    |> Timex.Timezone.convert(user_local_timezone)
+    |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)
+  end
+
   def encode_metadata(metadata) do
     metadata
     |> Iteraptor.map(

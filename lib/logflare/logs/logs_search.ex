@@ -54,7 +54,6 @@ defmodule Logflare.Logs.Search do
     |> apply_numeric_aggs()
     |> apply_to_sql()
     |> do_query()
-    |> process_query_result()
     |> process_agg_query_result()
     |> put_stats()
     |> case do

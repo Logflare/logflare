@@ -41,7 +41,7 @@ defmodule Logflare.Logs.SearchOperations do
       field :error, term()
       field :stats, :map
       field :use_local_time, boolean
-      field :user_local_timezone, :string
+      field :user_local_timezone, String.t()
       field :search_chart_period, atom()
       field :search_chart_aggregate, atom(), default: :avg
       field :timestamp_truncator, term()
@@ -135,6 +135,7 @@ defmodule Logflare.Logs.SearchOperations do
   def process_query_result(%SO{} = so) do
     %{schema: schema, rows: rows} = so.query_result
     rows = SchemaUtils.merge_rows_with_schema(schema, rows)
+
     %{so | rows: rows}
   end
 
@@ -346,8 +347,11 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def process_agg_query_result(%SO{} = so) do
+    %{schema: schema, rows: rows} = so.query_result
+    rows = SchemaUtils.merge_rows_with_schema(schema, rows)
+
     rows =
-      so.rows
+      rows
       |> format_agg_row_keys()
       |> format_agg_row_values()
 

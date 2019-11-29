@@ -6,7 +6,11 @@
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
         <li>
-          <a href="#" phx-click="set_local_time" phx-value-use_local_time="<%= @use_local_time %>">
+          <a href="#" phx-click="set_local_time"
+          id="set_local_time"
+            phx-value-use_local_time="<%= @use_local_time %>"
+            phx-value-user_local_timezone="<%= @user_local_timezone %>"
+            >
             <span>
               <%= if @use_local_time do %>
                 <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
@@ -27,11 +31,12 @@
 </div>
 <div class="container source-logs-search-container" id="console-text">
   <%= if length(@log_events) > 0 do %>
-    <%= render "logs_search_list.html", log_events: @log_events %>
+    <%= render "logs_search_list.html", log_events: @log_events, user_local_timezone: @user_local_timezone %>
   <% else %>
     <div id="logs-list-container-empty"></div>
   <% end %>
-  <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
+  <% log_aggregates = Enum.map(@log_aggregates, fn la -> Map.update!(la, "timestamp", &format_timestamp(&1, @user_local_timezone)) end) %>
+  <%= live_react_component("Components.LogEventsChart", %{data: log_aggregates, loading: @loading}) %>
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group">

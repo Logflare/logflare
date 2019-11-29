@@ -139,7 +139,16 @@ defmodule LogflareWeb.Source.SearchLV do
       |> String.to_existing_atom()
       |> Kernel.not()
 
-    {:noreply, assign(socket, use_local_time: use_local_time)}
+    socket = assign(socket, :use_local_time, use_local_time)
+
+    socket =
+      if use_local_time do
+        assign(socket, :user_local_timezone, metadata["user_local_timezone"])
+      else
+        assign(socket, :user_local_timezone, "Etc/UTC")
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("search_control_out_of_view" = ev, _metadata, socket) do
