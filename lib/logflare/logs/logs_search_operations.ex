@@ -375,7 +375,7 @@ defmodule Logflare.Logs.SearchOperations do
       query
       |> select_timestamp(so.search_chart_period)
       |> select_merge([c, ...], %{
-        value: count(c)
+        value: count(c.timestamp)
       })
       |> order_by([t, ...], desc: 1)
       |> limit_aggregate_chart_period(so.search_chart_period)
