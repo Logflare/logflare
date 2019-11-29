@@ -2,7 +2,6 @@ import { activateClipboardForSelector } from "./utils"
 import sqlFormatter from "sql-formatter"
 
 import idle from "./vendor/idle"
-import appear from "./vendor/appear"
 
 let hooks = {}
 
@@ -86,18 +85,6 @@ hooks.SourceLogsSearch = {
       keepTracking: true,
       idle: idleInterval,
     }).start()
-
-    appear({
-      init: () => {
-      },
-      elements: () => $("button#search")
-      ,
-      appear: (el) => {
-      },
-      disappear: (el) => this.pushEvent("search_control_out_of_view", {}),
-      bounds: 200,
-      reappear: true,
-    })
 
     setInterval(() => {
       const $lastQueryCompletedAt = $("#last-query-completed-at")
