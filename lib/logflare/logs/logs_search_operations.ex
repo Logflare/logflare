@@ -273,16 +273,58 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: Ecto.Query.exclude(so.query, :limit)}
   end
 
-  def apply_numeric_aggs(%SO{chart: chart = %{value: chart_value}} = so)
+  def apply_numeric_aggs(%SO{chart: %{value: chart_value}} = so)
+      when chart_value not in ~w[integer float]a do
+    result =
+      {:error,
+       "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
+
+    Utils.put_result_in(result, so)
+  end
+
+  def apply_numeric_aggs(%SO{query: query, chart: chart = %{value: chart_value}} = so)
       when chart_value in ~w[integer float]a do
+    timestamp_pathvalops = Enum.filter(so.pathvalops, &(&1.path === "timestamp"))
+
     last_chart_field =
       so.chart.path
       |> String.split(".")
       |> List.last()
       |> String.to_existing_atom()
 
+    {min, max} =
+      if so.tailing? or Enum.empty?(timestamp_pathvalops) do
+        case so.search_chart_period do
+          :day ->
+            {Timex.shift(Timex.now(), days: -30), Timex.now()}
+
+          :hour ->
+            {Timex.shift(Timex.now(), hours: -168), Timex.now()}
+
+          :minute ->
+            {Timex.shift(Timex.now(), minutes: -120), Timex.now()}
+
+          :second ->
+            {Timex.shift(Timex.now(), seconds: -180), Timex.now()}
+        end
+      else
+        timestamp_pathvalops
+        |> override_min_max_for_open_intervals()
+        |> min_max_timestamps()
+      end
+
     query =
-      so.query
+      if so.tailing? do
+        query
+        |> where_tailing_partitiondate(so.search_chart_period)
+        |> where_timestamp_tailing(min, max)
+      else
+        query
+        |> where_partitiondate(min, max)
+      end
+
+    query =
+      query
       |> select_timestamp(so.search_chart_period)
       |> EctoQueryBQ.join_nested(chart)
       |> where_tailing_partitiondate(so.search_chart_period)
@@ -291,15 +333,6 @@ defmodule Logflare.Logs.SearchOperations do
       |> order_by([t, ...], desc: 1)
 
     %{so | query: query}
-  end
-
-  def apply_numeric_aggs(%SO{chart: %{value: chart_value}} = so)
-      when chart_value not in ~w[integer float]a do
-    result =
-      {:error,
-       "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
-
-    Utils.put_result_in(result, so)
   end
 
   def apply_numeric_aggs(%SO{chart: nil} = so) do
@@ -326,6 +359,16 @@ defmodule Logflare.Logs.SearchOperations do
         timestamp_pathvalops
         |> override_min_max_for_open_intervals()
         |> min_max_timestamps()
+      end
+
+    query =
+      if so.tailing? do
+        query
+        |> where_tailing_partitiondate(so.search_chart_period)
+        |> where_timestamp_tailing(min, max)
+      else
+        query
+        |> where_partitiondate(min, max)
       end
 
     query =
