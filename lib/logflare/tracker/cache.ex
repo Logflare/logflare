@@ -1,9 +1,10 @@
 defmodule Logflare.Tracker.Cache do
-  alias Logflare.{Tracker, Source, Cluster}
+  alias Logflare.{Tracker, Source}
   import Cachex.Spec
   require Logger
 
   @ttl 5_000
+  @default_bucket_width 60
 
   def child_spec(_) do
     cachex_opts = [
@@ -39,7 +40,7 @@ defmodule Logflare.Tracker.Cache do
               Map.merge(vv1, vv2, fn kkk, vvv1, vvv2 ->
                 case kkk do
                   :average -> vvv1 + vvv2
-                  :duration -> 60
+                  :duration -> @default_bucket_width
                   :sum -> vvv1 + vvv2
                 end
               end)
@@ -62,7 +63,7 @@ defmodule Logflare.Tracker.Cache do
           average_rate: "err",
           last_rate: "err",
           max_rate: "err",
-          limiter_metrics: %{average: 100_000, duration: 60, sum: 6_000_000}
+          limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
         }
 
       {:ok, rates} ->
@@ -73,7 +74,7 @@ defmodule Logflare.Tracker.Cache do
           average_rate: "err",
           last_rate: "err",
           max_rate: "err",
-          limiter_metrics: %{average: 100_000, duration: 60, sum: 6_000_000}
+          limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
         }
     end
   end
@@ -137,10 +138,7 @@ defmodule Logflare.Tracker.Cache do
     case Cachex.get(Tracker.Cache, Source.BigQuery.Buffer.name(source_id)) do
       {:ok, nil} ->
         Logger.error("Tracker buffer cache expired!")
-        buffer = Source.Data.get_buffer(source_id)
-        node_count = Cluster.Utils.node_list_all() |> Enum.count()
-
-        buffer * node_count
+        0
 
       {:ok, buffer} ->
         buffer

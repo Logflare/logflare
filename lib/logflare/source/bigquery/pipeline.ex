@@ -73,6 +73,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   def stream_batch(source_id, messages) do
+    LogflareLogger.context(source_id: source_id)
+
     rows = le_messages_to_bq_rows(messages)
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.

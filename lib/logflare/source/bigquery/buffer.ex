@@ -4,6 +4,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Tracker
 
   require Logger
@@ -24,6 +25,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def init(state) do
     Process.flag(:trap_exit, true)
+
+    Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
 
     {:ok, state, {:continue, :boot}}
   end
@@ -53,12 +56,14 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
     new_state = %{state | buffer: new_buffer}
+    Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
     {:noreply, new_state}
   end
 
   def handle_call(:pop, _from, state) do
     case :queue.is_empty(state.buffer) do
       true ->
+        Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
         {:reply, :empty, state}
 
       false ->
@@ -66,6 +71,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
         new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
 
         new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
+
+        Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
         {:reply, log_event, new_state}
     end
   end
@@ -73,13 +80,23 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_call({:ack, log_event_id}, _from, state) do
     case state.read_receipts == %{} do
       true ->
-        {:reply, :empty, state}
+        {:reply, {:error, :empty}, state}
 
       false ->
-        {%LE{} = log_event, new_read_receipts} = Map.pop(state.read_receipts, log_event_id)
-        new_state = %{state | read_receipts: new_read_receipts}
+        case Map.pop(state.read_receipts, log_event_id) do
+          {nil, _read_receipts} ->
+            Logger.warn("Log event not found when acknowledged.",
+              source_id: state.source_id,
+              log_event_id: log_event_id
+            )
 
-        {:reply, log_event, new_state}
+            {:reply, {:error, :not_found}, state}
+
+          {%LE{} = log_event, new_read_receipts} ->
+            new_state = %{state | read_receipts: new_read_receipts}
+
+            {:reply, {:ok, log_event}, new_state}
+        end
     end
   end
 

@@ -1,5 +1,5 @@
 defmodule Logflare.Tracker.SourceNodeBuffers do
-  alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Repo
   alias Logflare.Tracker
 
@@ -39,7 +39,7 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
     sources_with_buffer =
       Stream.map(sources, fn x ->
         {:ok, source_id} = Ecto.UUID.load(x.source_id)
-        buffer = Source.Data.get_buffer(source_id)
+        buffer = Sources.Buffers.dirty_len(String.to_atom(source_id))
 
         {source_id, %{buffer: buffer}}
       end)
