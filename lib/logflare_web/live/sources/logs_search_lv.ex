@@ -93,6 +93,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       if {chart_aggregate, chart_period} != {prev_chart_aggregate, prev_chart_period} do
+        maybe_cancel_tailing_timer(socket)
+        maybe_execute_query(socket.assigns)
+
         socket
         |> assign(:log_aggregates, [])
         |> assign(:loading, true)
@@ -109,13 +112,14 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
       |> assign_flash(:warning, warning)
 
+
     {:noreply, socket}
   end
 
   def handle_event("start_search" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
-    if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
+    maybe_cancel_tailing_timer(socket)
     user_local_tz = metadata["search"]["user_local_timezone"]
 
     socket =
@@ -278,5 +282,9 @@ defmodule LogflareWeb.Source.SearchLV do
       true ->
         nil
     end
+  end
+
+  def maybe_cancel_tailing_timer(socket) do
+    if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
   end
 end

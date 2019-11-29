@@ -21,20 +21,20 @@ defmodule Logflare.Logs.Search.Query do
     end
   end
 
+  def where_timestamp_tailing(query, min, max) do
+    where(query, [t, ...], t.timestamp >= ^min and t.timestamp <= ^max)
+  end
+
   def where_partitiondate(query, min, max) do
     where(
       query,
       [t, ...],
       fragment(
-        "_PARTITIONDATE BETWEEN TIMESTAMP_TRUNC(?, DAY) AND TIMESTAMP_TRUNC(?, DAY)",
-        ^min,
-        ^max
+        "_PARTITIONDATE BETWEEN DATE_TRUNC(?, DAY) AND DATE_TRUNC(?, DAY) OR _PARTITIONDATE IS NULL",
+        ^Timex.to_date(min),
+        ^Timex.to_date(max)
       )
     )
-  end
-
-  def where_timestamp_tailing(query, min, max) do
-    where(query, [t, ...], t.timestamp >= ^min and t.timestamp <= ^max)
   end
 
   def where_tailing_partitiondate(query, search_chart_period) do
