@@ -89,33 +89,39 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       {:ok, {{_, 200, _}, _headers, body}} ->
         Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
 
-        Jason.decode!(body)
-        |> Map.get("items")
-        |> Enum.filter(fn
-          %{"status" => "RUNNING"} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn %{"instance" => url} ->
-          {:ok, {{_, 200, _}, _headers, body}} =
-            :httpc.request(:get, {to_charlist(url), headers}, [], [])
+        items =
+          Jason.decode!(body)
+          |> Map.get("items")
 
-          Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
+        if is_nil(items) do
+          []
+        else
+          Enum.filter(items, fn
+            %{"status" => "RUNNING"} -> true
+            _ -> false
+          end)
+          |> Enum.map(fn %{"instance" => url} ->
+            {:ok, {{_, 200, _}, _headers, body}} =
+              :httpc.request(:get, {to_charlist(url), headers}, [], [])
 
-          network_ip =
-            body
-            |> Jason.decode!()
-            |> Map.get("networkInterfaces")
-            |> hd
-            |> Map.get("networkIP")
+            Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
-          Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+            network_ip =
+              body
+              |> Jason.decode!()
+              |> Map.get("networkInterfaces")
+              |> hd
+              |> Map.get("networkIP")
 
-          node_name = :"#{release_name}@#{network_ip}"
+            Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
 
-          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+            node_name = :"#{release_name}@#{network_ip}"
 
-          node_name
-        end)
+            Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+
+            node_name
+          end)
+        end
 
       {:ok, {{_, resp_code, _}, _headers, body}} ->
         Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")
@@ -147,33 +153,39 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       {:ok, {{_, 200, _}, _headers, body}} ->
         Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
 
-        Jason.decode!(body)
-        |> Map.get("items")
-        |> Enum.filter(fn
-          %{"status" => "RUNNING"} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn %{"instance" => url} ->
-          {:ok, {{_, 200, _}, _headers, body}} =
-            :httpc.request(:get, {to_charlist(url), headers}, [], [])
+        items =
+          Jason.decode!(body)
+          |> Map.get("items")
 
-          Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
+        if is_nil(items) do
+          []
+        else
+          Enum.filter(items, fn
+            %{"status" => "RUNNING"} -> true
+            _ -> false
+          end)
+          |> Enum.map(fn %{"instance" => url} ->
+            {:ok, {{_, 200, _}, _headers, body}} =
+              :httpc.request(:get, {to_charlist(url), headers}, [], [])
 
-          network_ip =
-            body
-            |> Jason.decode!()
-            |> Map.get("networkInterfaces")
-            |> hd
-            |> Map.get("networkIP")
+            Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
-          Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+            network_ip =
+              body
+              |> Jason.decode!()
+              |> Map.get("networkInterfaces")
+              |> hd
+              |> Map.get("networkIP")
 
-          node_name = :"#{release_name}@#{network_ip}"
+            Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
 
-          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+            node_name = :"#{release_name}@#{network_ip}"
 
-          node_name
-        end)
+            Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+
+            node_name
+          end)
+        end
 
       {:ok, {{_, resp_code, _}, _headers, body}} ->
         Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")
