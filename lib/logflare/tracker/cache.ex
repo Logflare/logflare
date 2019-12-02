@@ -57,7 +57,7 @@ defmodule Logflare.Tracker.Cache do
   def get_cluster_rates(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, Source.RateCounterServer.name(source_id)) do
       {:ok, nil} ->
-        Logger.error("Tracker rates cache expired!")
+        Logger.error("Tracker rates cache expired!", source_id: source_id)
 
         %{
           average_rate: "err",
@@ -105,7 +105,7 @@ defmodule Logflare.Tracker.Cache do
   def get_cluster_inserts(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, source_id) do
       {:ok, nil} ->
-        Logger.error("Tracker inserts cache expired!")
+        Logger.error("Tracker inserts cache expired!", source_id: source_id)
         inserts = Source.Data.get_inserts(source_id)
 
         inserts
@@ -137,7 +137,7 @@ defmodule Logflare.Tracker.Cache do
   def get_cluster_buffer(source_id) when is_atom(source_id) do
     case Cachex.get(Tracker.Cache, Source.BigQuery.Buffer.name(source_id)) do
       {:ok, nil} ->
-        Logger.error("Tracker buffer cache expired!")
+        Logger.error("Tracker buffer cache expired!", source_id: source_id)
         0
 
       {:ok, buffer} ->
