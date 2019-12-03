@@ -45,38 +45,51 @@
         <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
           Elapsed since last query: <span> 0 </span> seconds
         </small>
+        <%= else %>
+        <small class="form-text text-muted">
+          random(tips): <%= @search_tip %>
+        </small>
       <% end %>
-      <small class="form-text text-muted">
-        random(tips): <%= @search_tip %>
-      </small>
     </div>
     <div class="form-row align-items-center">
       <div class="col-auto mt-2">
-        <%= submit "Search", class: "btn btn-primary btn-sm", id: "search", disabled: if @loading, do: true %>
+      <%= if @loading do %>
+        <%= submit disabled: true, id: "search", class: "btn btn-primary btn-sm" do %>
+        <i class="fas fa-search v-align-icon-button"></i> Search
+        <% end %>
+      <% else %>
+        <%= submit disabled: false, id: "search", class: "btn btn-primary btn-sm" do %>
+        <i class="fas fa-search v-align-icon-button"></i> Search
+        <% end %>
+      <% end %>
       </div>
       <div class="col-auto mt-2">
         <div class="btn-group-toggle">
           <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
             <%= if @tailing? do %>
               <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+            <% else %>
+              <i class="fas fa-play v-align-icon-button"></i>
             <% end %>
-            Live Search
+             Live
           <% end %>
           <%= checkbox f, :tailing?, value: @tailing?, class: "d-none" %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
         </div>
       </div>
       <div class="col-auto mt-2">
-        <a href="#" phx-click="save_search" class="btn btn-primary btn-sm">Save search</a>
+        <a href="#" phx-click="save_search" class="btn btn-primary btn-sm">
+          <i class="fas fa-save v-align-icon-button"></i> Save
+        </a>
       </div>
-      <div class="col-auto mt-2">
+      <div class="col-auto mt-2 hide-on-mobile">
         Chart period:
       </div>
       <div class="col-auto mt-2">
         <%= select f, :search_chart_period, ["day", "hour", "minute", "second"], selected: @search_chart_period, class: "form-control form-control-sm" %>
       </div>
-      <div class="col-auto mt-2">
-        Chart aggregate:
+      <div class="col-auto mt-2 hide-on-mobile">
+        Aggregate:
       </div>
       <div class="col-auto mt-2">
         <%= if @search_chart_aggregate_enabled? do %>
