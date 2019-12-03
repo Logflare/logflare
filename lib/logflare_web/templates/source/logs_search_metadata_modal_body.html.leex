@@ -1,15 +1,17 @@
 <ul class="list-group list-group-horizontal">
   <li class="list-group-item flex-fill">
-    <h6 class="header-margin"> Message </h6>
-    <%= @log_event.body.message %>
-  </li>
-  <li class="list-group-item flex-fill">
     <h6 class="header-margin"> Timestamp </h6>
     <%= Timex.from_unix(@log_event.body.timestamp, :microsecond) %>
   </li>
   <li class="list-group-item flex-fill">
     <h6 class="header-margin"> UUID </h6>
     <%= @log_event.id %>
+  </li>
+</ul>
+<ul class="list-group">
+  <li class="list-group-item flex-fill">
+    <h6 class="header-margin"> Message </h6>
+    <%= @log_event.body.message %>
   </li>
 </ul>
 <ul class="list-group">
