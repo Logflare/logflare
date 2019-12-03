@@ -62,7 +62,7 @@ const LogEventsChart = ({ data, loading }) => {
       ) : (
         <ResponsiveBar
           data={data}
-          margin={{ top: 20, right: 0, bottom: 20, left: 0 }}
+          margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
           padding={0.3}
           enableGridY={true}
           indexBy={"timestamp"}
