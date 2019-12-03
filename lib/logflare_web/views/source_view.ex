@@ -9,7 +9,7 @@ defmodule LogflareWeb.SourceView do
   def render_modal("searchHelpModal", _source, _log_events) do
     render("logs_search_modal.html",
       id: "searchHelpModal",
-      title: "Search Syntax",
+      title: "Logflare Query Language",
       body: render("logs_search_help.html")
     )
   end

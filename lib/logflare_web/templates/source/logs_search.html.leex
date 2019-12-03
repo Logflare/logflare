@@ -3,7 +3,7 @@
     <div class="log-settings float-right">
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">LQL</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
         <li>
           <a href="#" phx-click="set_local_time"
@@ -21,9 +21,9 @@
             <span class="hide-on-mobile">local time</span>
           </a>
         </li>
-        <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share search</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug events query</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug aggregate query</span></a></li>
+        <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">events query</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">aggregate query</span></a></li>
       </ul>
     </div>
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
