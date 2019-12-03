@@ -3,6 +3,10 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs
   @message "Logged!"
 
+  def create(conn, %{"batch" => batch}) when is_list(batch) do
+    ingest_and_render(conn, batch, conn.assigns.source)
+  end
+
   def create(conn, log_params) do
     batch =
       log_params
