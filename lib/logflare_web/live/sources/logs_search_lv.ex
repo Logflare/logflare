@@ -112,7 +112,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
       |> assign_flash(:warning, warning)
 
-
     {:noreply, socket}
   end
 
@@ -187,11 +186,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
     case SavedSearches.insert(socket.assigns.querystring, socket.assigns.source) do
       {:ok, saved_search} ->
-        socket = assign_flash(socket, :warning, "Search saved: #{saved_search.querystring}")
+        socket = assign_flash(socket, :warning, "Search saved!")
         {:noreply, socket}
 
-      {:error, _changeset} ->
-        socket = assign_flash(socket, :warning, "Search not saved!")
+      {:error, changeset} ->
+        {message, _} = changeset.errors[:querystring]
+        socket = assign_flash(socket, :warning, "Save search error: #{message}")
         {:noreply, socket}
     end
   end
