@@ -3,10 +3,27 @@
     <div class="log-settings float-right">
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">search syntax</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">LQL</span></a></li>
         <li><a href="#" phx-click="activate_modal" phx-value-modal_id="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
-        <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share search</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug query</span></a></li>
+        <li>
+          <a href="#" phx-click="set_local_time"
+          id="set_local_time"
+            phx-value-use_local_time="<%= @use_local_time %>"
+            phx-value-user_local_timezone="<%= @user_local_timezone %>"
+            >
+            <span>
+              <%= if @use_local_time do %>
+                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
+              <% else %>
+                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
+              <% end %>
+            </span>
+            <span class="hide-on-mobile">local time</span>
+          </a>
+        </li>
+        <li><a href="#" id="search-uri-query" data-clipboard-text="<%= generate_search_link(@querystring, @tailing?) %>"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">events query</span></a></li>
+        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">aggregate query</span></a></li>
       </ul>
     </div>
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
@@ -14,48 +31,125 @@
 </div>
 <div class="container source-logs-search-container" id="console-text">
   <%= if length(@log_events) > 0 do %>
-    <%= render "logs_search_list.html", log_events: @log_events %>
+    <%= render "logs_search_list.html", log_events: @log_events, user_local_timezone: @user_local_timezone %>
   <% else %>
     <div id="logs-list-container-empty"></div>
   <% end %>
+  <% log_aggregates = Enum.map(@log_aggregates, fn la -> Map.update!(la, "timestamp", &format_timestamp(&1, @user_local_timezone)) end) %>
+  <%= live_react_component("Components.LogEventsChart", %{data: log_aggregates, loading: @loading}) %>
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group">
       <%= text_input f, :querystring, value: @querystring, class: "form-control", readonly: if @loading, do: "true" %>
-      <small class="form-text text-muted">
-        random(tips): <%= @search_tip %>
-      </small>
+      <%= if @last_query_completed_at do %>
+        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
+          Elapsed since last query: <span> 0 </span> seconds
+        </small>
+        <%= else %>
+        <small class="form-text text-muted">
+          random(tips): <%= @search_tip %>
+        </small>
+      <% end %>
     </div>
     <div class="form-row align-items-center">
       <div class="col-auto mt-2">
-        <%= submit "Search", class: "btn btn-primary btn-sm", id: "search", disabled: if @loading, do: true %>
-      </button>
-    </div>
-    <div class="col-auto mt-2">
-      <div class="btn-group-toggle">
-        <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
-          <%= if @tailing? do %>
-            <div class="spinner-border spinner-border-sm text-info" role="status"></div>
-          <% end %>
-          Live Search
+      <%= if @loading do %>
+        <%= submit disabled: true, id: "search", class: "btn btn-primary btn-sm" do %>
+        <i class="fas fa-search v-align-icon-button"></i> Search
         <% end %>
-        <%= checkbox f, :tailing?, value: @tailing?, class: "d-none" %>
+      <% else %>
+        <%= submit disabled: false, id: "search", class: "btn btn-primary btn-sm" do %>
+        <i class="fas fa-search v-align-icon-button"></i> Search
+        <% end %>
+      <% end %>
       </div>
-    </div>
-    <div class="col-auto mt-2">
-      <a href="#" phx-click="save_search" class="btn btn-primary btn-sm">Save search</a>
+      <div class="col-auto mt-2">
+        <div class="btn-group-toggle">
+          <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
+            <%= if @tailing? do %>
+              <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+            <% else %>
+              <i class="fas fa-play v-align-icon-button"></i>
+            <% end %>
+             Live
+          <% end %>
+          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none" %>
+          <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
+        </div>
+      </div>
+      <div class="col-auto mt-2">
+        <a href="#" phx-click="save_search" class="btn btn-primary btn-sm">
+          <i class="fas fa-save v-align-icon-button"></i> Save
+        </a>
+      </div>
+      <div class="col-auto mt-2 hide-on-mobile">
+        Chart period:
+      </div>
+      <div class="col-auto mt-2">
+        <%= select f, :search_chart_period, ["day", "hour", "minute", "second"], selected: @search_chart_period, class: "form-control form-control-sm" %>
+      </div>
+      <div class="col-auto mt-2 hide-on-mobile">
+        Aggregate:
+      </div>
+      <div class="col-auto mt-2">
+        <%= if @search_chart_aggregate_enabled? do %>
+          <%= select f,
+         :search_chart_aggregate,
+          ["sum", "avg", "count"],
+          selected: @search_chart_aggregate,
+          class: "form-control form-control-sm"
+           %>
+        <% else %>
+          <span class="d-inline-block" tabindex="0"
+          data-toggle="tooltip"
+          title="Chart aggregate setting requires usage of chart: operator"
+          trigger="hover click"
+          delay="100"
+          >
+            <%= select f,
+            :search_chart_aggregate,
+              ["N/A"],
+              class: "form-control form-control-sm",
+              style: "pointer-events: none;",
+              disabled: true %>
+          </span>
+        <% end %>
+      </div>
     </div>
   </form>
 </div>
 </div>
 <%= render_flash(@flash, in_live_view: true) %>
-<%= if @search_op && @search_op.sql_params do %>
-  <div class="d-none" id="search-query-debug">
+<%= if @search_op_log_events && @search_op_log_events.sql_params do %>
+  <div class="d-none" id="search-query-debug-events">
     <div>
-      <% stats = @search_op.stats %>
+      <% stats = @search_op_log_events.stats %>
       <ul class="list-group">
         <li class="list-group-item">
-          <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
+          <pre><code><%= format_sql(@search_op_log_events.sql_params) %></code></pre>
+        </li>
+      </ul>
+      <ul class="list-group list-group-horizontal">
+        <li class="list-group-item flex-fill">
+          Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+<% end %>
+<%= if @search_op_log_aggregates && @search_op_log_aggregates.sql_params do %>
+  <div class="d-none" id="search-query-debug-aggregates">
+    <div>
+      <% stats = @search_op_log_aggregates.stats %>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <pre><code><%= format_sql(@search_op_log_aggregates.sql_params) %></code></pre>
         </li>
       </ul>
       <ul class="list-group list-group-horizontal">
@@ -76,6 +170,8 @@
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <div>
   <%= if @active_modal do %>
-    <%= render_modal(@active_modal, @source, @log_events) %>
+    <div class="source-logs-search-modals">
+      <%= render_modal(@active_modal, @source, @log_events) %>
+    </div>
   <% end %>
 </div>

@@ -14,6 +14,7 @@ defmodule Logflare.Google.BigQuery do
 
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.{Users}
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
@@ -79,24 +80,7 @@ defmodule Logflare.Google.BigQuery do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
 
-    schema = %Model.TableSchema{
-      fields: [
-        %Model.TableFieldSchema{
-          description: nil,
-          fields: nil,
-          mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
-        },
-        %Model.TableFieldSchema{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "event_message",
-          type: "STRING"
-        }
-      ]
-    }
+    schema = SchemaBuilder.initial_table_schema()
 
     reference = %Model.TableReference{
       datasetId: dataset_id,

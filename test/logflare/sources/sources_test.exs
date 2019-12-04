@@ -1,7 +1,7 @@
 defmodule Logflare.SourcesTest do
   @moduledoc false
   use Logflare.DataCase
-  import Logflare.DummyFactory
+  import Logflare.Factory
   alias Logflare.Sources
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils

@@ -12,17 +12,38 @@ defmodule Logflare.Application do
         {Logflare.SigtermHandler, []}
       )
 
+    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
+
     children = [
       Logflare.Users.Cache,
       Logflare.Sources.Cache,
       Logflare.Logs.RejectedLogEvents,
+      supervisor(Phoenix.PubSub.PG2, [
+        [
+          name: Logflare.PubSub,
+          fastlane: Phoenix.Channel.Server
+        ]
+      ]),
+      worker(
+        Logflare.Tracker,
+        [
+          [
+            name: Logflare.Tracker,
+            pubsub_server: Logflare.PubSub,
+            broadcast_period: 1_000,
+            down_period: 5_000,
+            permdown_period: 30_000,
+            pool_size: tracker_pool_size,
+            log_level: false
+          ]
+        ]
+      ),
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
-      {Task.Supervisor, name: Logflare.TaskSupervisor}
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
     ]
 
     topologies = Application.get_env(:libcluster, :topologies)
-    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     dev_prod_children = [
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
@@ -39,7 +60,7 @@ defmodule Logflare.Application do
           [
             name: Logflare.Tracker,
             pubsub_server: Logflare.PubSub,
-            broadcast_period: 1_000,
+            broadcast_period: 250,
             down_period: 5_000,
             permdown_period: 30_000,
             pool_size: tracker_pool_size,

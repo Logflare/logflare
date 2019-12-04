@@ -61,7 +61,9 @@
     random(tips): <%= @search_tip %>
   </small>
   </div>
-  <%= submit "Search", class: "btn btn-primary form-button btn-sm" %>
+  <%= submit class: "btn btn-primary form-button btn-sm" do %>
+  <i class="fas fa-search v-align-icon-button"></i> Search
+  <% end %>
 <% end %>
 </div>
 <% end %>

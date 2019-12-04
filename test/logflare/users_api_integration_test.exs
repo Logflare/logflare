@@ -2,7 +2,7 @@ defmodule Logflare.Users.APIIntegrationTest do
   @moduledoc false
   import Logflare.Users.API
   alias Logflare.SourceRateCounter, as: SRC
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   use Logflare.DataCase
 

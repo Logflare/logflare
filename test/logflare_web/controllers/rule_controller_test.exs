@@ -3,7 +3,7 @@ defmodule LogflareWeb.RuleControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.{Sources, Repo}
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)

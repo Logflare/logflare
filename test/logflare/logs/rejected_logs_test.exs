@@ -2,7 +2,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
   @moduledoc false
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.{Sources, Source, Users, LogEvent}
-  import Logflare.DummyFactory
+  import Logflare.Factory
   use Logflare.DataCase
   use Placebo
 

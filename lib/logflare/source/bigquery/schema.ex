@@ -18,28 +18,13 @@ defmodule Logflare.Source.BigQuery.Schema do
         source_token: rls.source_id,
         bigquery_project_id: rls.bigquery_project_id,
         bigquery_dataset_id: rls.bigquery_dataset_id,
-        schema: %Model.TableSchema{
-          fields: [
-            %Model.TableFieldSchema{
-              categories: nil,
-              description: nil,
-              fields: nil,
-              mode: "NULLABLE",
-              name: "event_message",
-              type: "STRING"
-            },
-            %Model.TableFieldSchema{
-              categories: nil,
-              description: nil,
-              fields: nil,
-              mode: "REQUIRED",
-              name: "timestamp",
-              type: "TIMESTAMP"
-            }
-          ]
+        schema: SchemaBuilder.initial_table_schema(),
+        type_map: %{
+          event_message: %{t: :string},
+          timestamp: %{t: :datetime},
+          id: %{t: :string}
         },
-        type_map: %{event_message: %{t: :string}, timestamp: %{t: :datetime}},
-        field_count: 2,
+        field_count: 3,
         next_update: System.system_time(:second)
       },
       name: name(rls.source_id)
@@ -131,7 +116,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp count_fields(type_map) do
-    Iteraptor.to_flatmap(type_map)
+    type_map
+    |> Iteraptor.to_flatmap()
     |> Enum.count()
   end
 

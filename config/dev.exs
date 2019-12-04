@@ -77,19 +77,9 @@ config :libcluster,
     dev: [
       strategy: Cluster.Strategy.Epmd,
       config: [
-        hosts: [:"pink@Chases-MBP-2017", :"orange@Chases-MBP-2017", :"red@Chases-MBP-2017"]
+        hosts: []
       ]
     ]
-    # gossip_example: [
-    #  strategy: Elixir.Cluster.Strategy.Gossip,
-    #  config: [
-    #    port: 45892,
-    #    if_addr: "0.0.0.0",
-    #    multicast_addr: "230.1.1.251",
-    #    multicast_ttl: 1,
-    #    secret: "somepassword"
-    #  ]
-    # ]
   ]
 
 config :logflare, Logflare.Tracker, pool_size: 1

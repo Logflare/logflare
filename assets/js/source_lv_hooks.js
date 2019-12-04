@@ -1,67 +1,105 @@
 import { activateClipboardForSelector } from "./utils"
 import sqlFormatter from "sql-formatter"
+
 import idle from "./vendor/idle"
 
 let hooks = {}
 
 hooks.SourceSchemaModalTable = {
-    mounted() {
-        activateClipboardForSelector(
-            `.${this.el.classList} .copy-metadata-field`
-        )
-    },
+  mounted() {
+    activateClipboardForSelector(
+      `.${this.el.classList} .copy-metadata-field`,
+    )
+  },
 }
 
 hooks.SourceLogsSearchList = {
-    mounted() {
-        $("#logs-list li:nth(1)")[0].scrollIntoView()
-    },
+  updated() {
+    window.scrollTo(0, document.body.scrollHeight)
+  },
+  mounted() {
+    $("html, body").animate({ scrollTop: document.body.scrollHeight })
+  },
 }
 
-hooks.SourceQueryDebugModal = {
-    mounted() {
-        const $queryDebugModal = $(this.el)
-        const code = $("#search-query-debug code")
-        const fmtSql = sqlFormatter.format(code.text())
-        // replace with formatted sql
-        code.text(fmtSql)
+hooks.SourceQueryDebugEventsModal = {
+  mounted() {
+    const $queryDebugModal = $(this.el)
+    const code = $("#search-query-debug-events code")
+    const fmtSql = sqlFormatter.format(code.text())
+    // replace with formatted sql
+    code.text(fmtSql)
 
-        $queryDebugModal
-            .find(".modal-body")
-            .html($("#search-query-debug").html())
-    },
+    $queryDebugModal
+      .find(".modal-body")
+      .html($("#search-query-debug-events").html())
+  },
+}
+
+hooks.SourceQueryDebugAggregatesModal = {
+  mounted() {
+    const $queryDebugModal = $(this.el)
+    const code = $("#search-query-debug-aggregates code")
+    const fmtSql = sqlFormatter.format(code.text())
+    // replace with formatted sql
+    code.text(fmtSql)
+
+    $queryDebugModal
+      .find(".modal-body")
+      .html($("#search-query-debug-aggregates").html())
+  },
 }
 
 hooks.SourceLogsSearch = {
-    mounted() {
-        activateClipboardForSelector("#search-uri-query", {
-            text: trigger =>
-                location.href.replace(/\?.+$/, "") +
-                trigger.getAttribute("data-clipboard-text"),
-        })
+  updated() {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    $("#set_local_time").attr("phx-value-user_local_timezone", timeZone)
+  },
 
-        const idleInterval = $("#user-idle").data("user-idle-interval")
+  mounted() {
+    activateClipboardForSelector("#search-uri-query", {
+      text: trigger =>
+        location.href.replace(/\?.+$/, "") +
+        trigger.getAttribute("data-clipboard-text"),
+    })
 
-        // Activate user idle tracking
-        idle({
-            onIdle: () => {
-                const $searchTailingButton = $("#search-tailing-button")
-                const $searchTailingCheckbox = $(
-                    "input#" + $.escapeSelector("search_tailing?")
-                )
+    const idleInterval = $("#user-idle").data("user-idle-interval")
 
-                if ($searchTailingCheckbox.prop("value") === "true") {
-                    console.log(
-                        `User idle for ${idleInterval}, tail search paused`
-                    )
-                    $searchTailingButton.click()
-                    $("#user-idle").click()
-                }
-            },
-            keepTracking: true,
-            idle: idleInterval,
-        }).start()
-        $("button#search").click()
-    },
+    // Set user timezone
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    $("#user-local-timezone").val(timeZone)
+
+    // Activate user idle tracking
+    idle({
+      onIdle: () => {
+        const $searchTailingButton = $("#search-tailing-button")
+        const $searchTailingCheckbox = $(
+          "input#" + $.escapeSelector("search_tailing?"),
+        )
+
+        if ($searchTailingCheckbox.prop("value") === "true") {
+          console.log(
+            `User idle for ${idleInterval}, tail search paused`,
+          )
+          $searchTailingButton.click()
+          $("#user-idle").click()
+        }
+      },
+      keepTracking: true,
+      idle: idleInterval,
+    }).start()
+
+    setInterval(() => {
+      const $lastQueryCompletedAt = $("#last-query-completed-at")
+      const lastQueryCompletedAt = $lastQueryCompletedAt.attr("data-timestamp")
+      if (lastQueryCompletedAt) {
+        const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
+        $("#last-query-completed-at span").text(elapsed.toFixed(1))
+      }
+    }, 250)
+
+    $("button#search").click()
+  },
 }
+
 export default hooks

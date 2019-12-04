@@ -4,7 +4,7 @@ defmodule Logflare.Source.TextNotificationServerTest do
   alias Logflare.Source.TextNotificationServer
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)

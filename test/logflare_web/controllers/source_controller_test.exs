@@ -6,7 +6,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   alias Logflare.{Sources, Repo, LogEvent}
   alias Logflare.Logs.RejectedLogEvents
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u1 = insert(:user)

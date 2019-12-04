@@ -1,12 +1,16 @@
-@media (min-width: 992px) {
+@media (min-width: 993px) {
   .value {
     margin-right: 15%;
     margin-left: 15%;
   }
 }
-@media screen and (max-width: 990px) {
+@media screen and (max-width: 992px) {
   .hide-on-mobile {
     display: none !important;
+  }
+
+  .btn {
+    margin-right: 0;
   }
 
   #saved-searches {

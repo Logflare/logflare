@@ -54,7 +54,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     json = %{
       "timestamp" => bq_timestamp,
-      "event_message" => body.message
+      "event_message" => body.message,
+      "id" => id
     }
 
     json =

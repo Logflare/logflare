@@ -4,7 +4,7 @@ defmodule Logflare.Google.BigQuery.QueryTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.Query
-  import Logflare.DummyFactory
+  import Logflare.Factory
 
   setup do
     u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
