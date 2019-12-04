@@ -1,6 +1,6 @@
 FROM elixir:latest
 
-ENV MIX_ENV staging
+ENV MIX_ENV prod
 
 COPY ./ /logflare
 WORKDIR /logflare
@@ -22,6 +22,6 @@ RUN mix local.hex --force
 RUN mix deps.get
 RUN mix compile
 
-RUN cd /logflare/assets && yarn 
+RUN cd /logflare/assets && yarn
 
 WORKDIR /logflare
