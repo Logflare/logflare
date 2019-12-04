@@ -3,11 +3,7 @@ steps:
     args:
       - kms
       - decrypt
-<<<<<<< HEAD
-      - --ciphertext-file=gcloud_staging.json.enc
-=======
       - --ciphertext-file=gcloud_prod.json.enc
->>>>>>> parent of ba76f91... update staging cloudbuild.yaml
       - --plaintext-file=gcloud.json
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
