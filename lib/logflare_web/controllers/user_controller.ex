@@ -21,7 +21,6 @@ defmodule LogflareWeb.UserController do
   def update(conn, %{"user" => params}) do
     user = conn.assigns.user
     prev_bigquery_project_id = user.bigquery_project_id
-    prev_bigquery_dataset_location = user.bigquery_dataset_location
 
     user
     |> User.update_by_user_changeset(params)
@@ -51,8 +50,10 @@ defmodule LogflareWeb.UserController do
 
   def delete(%{assigns: %{user: user}} = conn, _params) do
     # TODO: soft delete, delayed deleted
-    Repo.delete!(user)
+
+    Supervisor.delete_all_user_sources(user)
     BigQuery.delete_dataset(user)
+    Repo.delete!(user)
 
     spawn(fn ->
       CloudResourceManager.set_iam_policy()
