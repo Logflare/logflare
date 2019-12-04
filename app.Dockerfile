@@ -12,7 +12,7 @@ RUN cd /logflare/assets \
     && yarn \
     && ./node_modules/webpack/bin/webpack.js --mode production --silent
 
-RUN WORKDIR /logflare
+WORKDIR /logflare
 
 RUN mix phx.digest
 RUN mix release --force --overwrite
