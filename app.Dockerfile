@@ -1,9 +1,9 @@
-FROM gcr.io/logflare-staging/logflare_base
+FROM gcr.io/logflare-232118/logflare_base:$COMMIT_SHA
 
 COPY ./ /logflare
 WORKDIR /logflare
 
-ENV MIX_ENV staging
+ENV MIX_ENV prod
 
 RUN mix deps.get
 RUN mix compile --force
@@ -20,5 +20,3 @@ RUN mix release --force --overwrite
 WORKDIR /logflare
 
 ENTRYPOINT [ "/logflare/run.bash" ]
-
-
