@@ -1,4 +1,4 @@
-FROM gcr.io/logflare-232118/logflare_base:$COMMIT_SHA
+FROM gcr.io/logflare-232118/logflare_base:latest
 
 COPY ./ /logflare
 WORKDIR /logflare
