@@ -119,7 +119,7 @@ defmodule Logflare.Mixfile do
       {:telemetry_metrics, "~> 0.3.0"},
 
       # ETS
-      {:ets, "~> 0.7.1"},
+      {:ets, "~> 0.8.0"},
       {:ex2ms, "~> 1.0"},
       {:etso, "~> 0.1.1"},
 

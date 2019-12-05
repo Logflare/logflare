@@ -23,7 +23,7 @@
   "edeliver": {:hex, :edeliver, "1.7.0", "aafb99e55bbb88a725390978304f92a5002871fbd56e2d23970ca7f164338e41", [:mix], [{:distillery, "~> 2.1.0", [hex: :distillery, repo: "hexpm", optional: true]}], "hexpm"},
   "erlex": {:hex, :erlex, "0.2.5", "e51132f2f472e13d606d808f0574508eeea2030d487fc002b46ad97e738b0510", [:mix], [], "hexpm"},
   "eternal": {:hex, :eternal, "1.2.1", "d5b6b2499ba876c57be2581b5b999ee9bdf861c647401066d3eeed111d096bc4", [:mix], [], "hexpm"},
-  "ets": {:hex, :ets, "0.7.3", "60862855af5ae89bb631c787ab9ba946509d59fa632442ef33947b18ac288101", [:mix], [], "hexpm"},
+  "ets": {:hex, :ets, "0.8.0", "90153faafd289bb0801a537d5b05661f46d5e70b2bb55cccf5ab7f0d41d07832", [:mix], [], "hexpm"},
   "etso": {:hex, :etso, "0.1.1", "bfc5e30483d397774a64981fc93511d3ed0dcb9d19bc3cba03df7b9555a68636", [:mix], [{:ecto, "~> 3.0", [hex: :ecto, repo: "hexpm", optional: false]}], "hexpm"},
   "ex2ms": {:hex, :ex2ms, "1.5.0", "19e27f9212be9a96093fed8cdfbef0a2b56c21237196d26760f11dfcfae58e97", [:mix], [], "hexpm"},
   "ex_machina": {:hex, :ex_machina, "2.3.0", "92a5ad0a8b10ea6314b876a99c8c9e3f25f4dde71a2a835845b136b9adaf199a", [:mix], [{:ecto, "~> 2.2 or ~> 3.0", [hex: :ecto, repo: "hexpm", optional: true]}, {:ecto_sql, "~> 3.0", [hex: :ecto_sql, repo: "hexpm", optional: true]}], "hexpm"},
