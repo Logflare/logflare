@@ -45,7 +45,7 @@
         <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
           Elapsed since last query: <span> 0 </span> seconds
         </small>
-        <%= else %>
+        <% else %>
         <small class="form-text text-muted">
           random(tips): <%= @search_tip %>
         </small>
