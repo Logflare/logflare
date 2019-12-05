@@ -11,6 +11,8 @@ defmodule Logflare.SystemMetricsSup do
   def init(_init_arg) do
     children = [
       {SystemMetrics.Observer.Poller, []},
+      {SystemMetrics.Procs.Poller, []},
+      {SystemMetrics.Memory.Poller, []},
       {SystemMetrics.AllLogsLogged, []},
       {SystemMetrics.AllLogsLogged.Poller, []},
       {SystemMetrics.Schedulers.Poller, []},

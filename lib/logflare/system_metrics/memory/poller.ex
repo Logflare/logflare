@@ -1,11 +1,11 @@
-defmodule Logflare.SystemMetrics.Observer.Poller do
+defmodule Logflare.SystemMetrics.Memory.Poller do
   @moduledoc """
-    Polls some observer stats.
+    Polls memory.
   """
 
   use GenServer
 
-  alias Logflare.SystemMetrics.Observer
+  alias Logflare.SystemMetrics.Memory
 
   require Logger
 
@@ -21,10 +21,10 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
   end
 
   def handle_info(:poll_metrics, state) do
-    observer_metrics = Observer.get_metrics()
+    observer_memory = Memory.get_memory()
 
     if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("Observer metrics!", observer_metrics: observer_metrics)
+      Logger.info("Memory metrics!", observer_memory: observer_memory)
     end
 
     poll_metrics()
