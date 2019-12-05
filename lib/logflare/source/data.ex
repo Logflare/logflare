@@ -108,7 +108,7 @@ defmodule Logflare.Source.Data do
   def get_logs_across_cluster(source_id) when is_atom(source_id) do
     nodes = Cluster.Utils.node_list_all()
 
-    log_events =
+    tasks =
       for n <- nodes do
         Task.Supervisor.async(
           {Logflare.TaskSupervisor, n},
@@ -116,12 +116,22 @@ defmodule Logflare.Source.Data do
           :get_logs,
           [source_id]
         )
-        |> Task.await()
       end
 
-    Enum.reduce(log_events, [], fn x, acc ->
-      x ++ acc
-    end)
+    tasks_with_results = Task.yield_many(tasks)
+
+    results =
+      tasks_with_results
+      |> Enum.map(fn {task, res} ->
+        res || Task.shutdown(task, :brutal_kill)
+      end)
+
+    log_events =
+      for {:ok, events} <- results do
+        events
+      end
+
+    List.flatten(log_events)
     |> Enum.sort_by(& &1.body.timestamp, &<=/2)
     |> Enum.take(-100)
   end
