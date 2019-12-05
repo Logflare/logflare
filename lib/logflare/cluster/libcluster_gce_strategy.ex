@@ -9,12 +9,8 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @google_api_base_url 'https://compute.googleapis.com/compute/v1/projects/#{@project_id}'
   @default_release_name :node
-  @regions [{"us-central1", "logflare-prod-cluster-group"}]
-  @zones [
-    {"us-central1-b", "logflare-prod-us-central1-b"},
-    {"us-central1-c", "logflare-prod-us-central1-c"},
-    {"us-central1-f", "logflare-prod-us-central1-f"}
-  ]
+  @regions Application.get_env(:logflare, __MODULE__)[:regions]
+  @zones Application.get_env(:logflare, __MODULE__)[:zones]
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
