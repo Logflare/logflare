@@ -125,7 +125,7 @@ defmodule Logflare.Mixfile do
 
       # Statistics
       {:statistex, "~> 1.0.0"},
-      {:floki, "0.23.0"},
+      {:floki, "0.23.1"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.2"}
