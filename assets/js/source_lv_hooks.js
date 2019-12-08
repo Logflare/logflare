@@ -56,12 +56,10 @@ hooks.SourceLogsSearch = {
     $("#set_local_time").attr("phx-value-user_local_timezone", timeZone)
   },
 
-  mounted() {
-    activateClipboardForSelector("#search-uri-query", {
-      text: trigger =>
-        location.href.replace(/\?.+$/, "") +
-        trigger.getAttribute("data-clipboard-text"),
-    })
+    mounted() {
+        activateClipboardForSelector("#search-uri-query", {
+            text: () => location.href,
+        })
 
     const idleInterval = $("#user-idle").data("user-idle-interval")
 

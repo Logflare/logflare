@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
+  import Phoenix.LiveView.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -99,8 +100,7 @@ defmodule LogflareWeb.Router do
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
-    get "/:id/search", SourceController, :search
-    live "/live/:id/search", Source.SearchLV, session: [:assigns, :params]
+    live "/:id/search", Source.SearchLV, session: [:source_id, :user_id]
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore

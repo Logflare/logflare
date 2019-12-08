@@ -3,6 +3,8 @@ defmodule LogflareWeb.Source.SearchLV do
   Handles all user interactions with the source logs search
   """
   use Phoenix.LiveView
+  alias LogflareWeb.Router.Helpers, as: Routes
+
   alias LogflareWeb.SourceView
 
   alias Logflare.Logs.SearchQueryExecutor
@@ -10,15 +12,21 @@ defmodule LogflareWeb.Source.SearchLV do
   alias __MODULE__.SearchParams
   import Logflare.Logs.Search.Utils
   require Logger
+  alias Logflare.{Sources, Users}
   @tail_search_interval 5_000
   @user_idle_interval 300_000
+  @default_tailing? true
+  @default_chart_aggregate :count
+  @default_chart_period :minute
 
   def render(assigns) do
     Phoenix.View.render(SourceView, "logs_search.html", assigns)
   end
 
   def mount(session, socket) do
-    %{source: source, user: user, querystring: qs} = session
+    %{source_id: source_id, user_id: user_id} = session
+    user = Users.Cache.get_by_and_preload(id: user_id)
+    source = Sources.Cache.get_by_id_and_preload(source_id)
 
     Logger.info(
       "#{pid_source_to_string(self(), source)} is being mounted... Connected: #{
@@ -29,25 +37,25 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       assign(
         socket,
-        querystring: qs || "",
+        source: source,
         log_events: [],
         log_aggregates: [],
-        tailing?: is_nil(session[:tailing?]) || session[:tailing?],
-        source: source,
         loading: false,
         user: user,
         flash: %{},
+        querystring: "",
+        tailing?: true,
         search_op: nil,
         search_op_log_events: nil,
         search_op_log_aggregates: nil,
+        search_chart_period: @default_chart_period,
+        search_chart_aggregate: @default_chart_aggregate,
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
         active_modal: nil,
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
         use_local_time: true,
-        search_chart_period: session[:search_chart_period] || :minute,
-        search_chart_aggregate: session[:search_chart_aggregate] || :count,
         search_chart_aggregate_enabled?: false,
         last_query_completed_at: nil
       )
@@ -55,13 +63,49 @@ defmodule LogflareWeb.Source.SearchLV do
     {:ok, socket}
   end
 
+  def handle_params(params, _uri, socket) do
+    log_lv_received_event("handle params", socket.assigns.source)
+
+    # params = SearchParams.new(params)
+
+    tailing? =
+      case params["tailing?"] do
+        nil -> socket.assigns.tailing?
+        "true" -> true
+        "false" -> false
+      end
+
+    chart_period =
+      case params["chart_period"] do
+        nil -> socket.assigns.search_chart_period
+        x -> String.to_existing_atom(x)
+      end
+
+    chart_aggregate =
+      case params["chart_aggregate"] do
+        nil -> socket.assigns.search_chart_aggregate
+        x -> String.to_existing_atom(x)
+      end
+
+    socket =
+      assign(
+        socket,
+        querystring: params["querystring"] || params["q"] || socket.assigns.querystring,
+        tailing?: tailing?,
+        search_chart_period: chart_period,
+        search_chart_aggregate: chart_aggregate
+      )
+
+    {:noreply, socket}
+  end
+
   def handle_event("form_update" = ev, %{"search" => search}, socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
     params = SearchParams.new(search)
 
+    tailing? = params[:tailing] || socket.assigns.tailing?
     querystring = params[:querystring] || ""
-    tailing? = params[:tailing?] || false
 
     chart_period =
       case search["search_chart_period"] do
@@ -69,6 +113,7 @@ defmodule LogflareWeb.Source.SearchLV do
         "hour" -> :hour
         "minute" -> :minute
         "second" -> :second
+        _ -> :minute
       end
 
     chart_aggregate =
@@ -93,30 +138,43 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       if {chart_aggregate, chart_period} != {prev_chart_aggregate, prev_chart_period} do
-        maybe_cancel_tailing_timer(socket)
+        params = %{
+          chart_aggregate: "#{chart_aggregate}",
+          chart_period: "#{chart_period}"
+        }
+
+        socket =
+          socket
+          |> assign(:querystring, querystring)
+          |> assign(:search_chart_aggregate, chart_aggregate)
+          |> assign(:search_chart_period, chart_period)
+          |> assign(:log_aggregates, [])
+          |> assign(:loading, true)
+          |> assign(:tailing?, tailing?)
+
         maybe_execute_query(socket.assigns)
 
-        socket
-        |> assign(:log_aggregates, [])
-        |> assign(:loading, true)
+        live_redirect(socket,
+          to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
+          replace: true
+        )
       else
         socket
+        |> assign(:querystring, querystring)
+        |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
+        |> assign(:tailing?, tailing?)
+        |> assign_flash(:warning, warning)
       end
-
-    socket =
-      socket
-      |> assign(:tailing?, tailing?)
-      |> assign(:querystring, querystring)
-      |> assign(:search_chart_period, chart_period)
-      |> assign(:search_chart_aggregate, chart_aggregate)
-      |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
-      |> assign_flash(:warning, warning)
 
     {:noreply, socket}
   end
 
   def handle_event("start_search" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
+
+    params =
+      socket.assigns
+      |> Map.take([:search_chart_aggregate, :search_chart_period, :querystring, :tailing?])
 
     maybe_cancel_tailing_timer(socket)
     user_local_tz = metadata["search"]["user_local_timezone"]
@@ -129,6 +187,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:user_local_timezone, user_local_tz)
       |> assign_flash(:warning, nil)
       |> assign_flash(:error, nil)
+      |> live_redirect(
+        to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
+        replace: true
+      )
 
     maybe_execute_query(socket.assigns)
 

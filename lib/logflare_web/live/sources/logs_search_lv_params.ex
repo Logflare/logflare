@@ -6,6 +6,8 @@ defmodule LogflareWeb.Source.SearchLV.SearchParams do
   embedded_schema do
     field :tailing?, :boolean
     field :querystring, :string
+    field :search_chart_aggregate, Ecto.Atom
+    field :search_chart_period, Ecto.Atom
   end
 
   def new(params) do

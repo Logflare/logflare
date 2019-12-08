@@ -136,39 +136,6 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def search(%{assigns: %{user: user, source: source}} = conn, params) do
-    tailing? =
-      case params["tailing"] do
-        "true" -> true
-        "false" -> false
-        _ -> nil
-      end
-
-    chart_period =
-      case params["chart_period"] do
-        nil -> nil
-        x -> String.to_existing_atom(x)
-      end
-
-    chart_aggregate =
-      case params["chart_aggregate"] do
-        nil -> nil
-        x -> String.to_existing_atom(x)
-      end
-
-    session = %{
-      source: source,
-      user: user,
-      querystring: params["q"],
-      search_chart_period: chart_period,
-      search_chart_aggregate: chart_aggregate
-    }
-
-    session = if not is_nil(tailing?), do: Map.put(session, :tailing?, tailing?), else: session
-
-    live_render(conn, LogflareWeb.Source.SearchLV, session: session)
-  end
-
   def public(conn, %{"public_token" => public_token}) do
     Sources.Cache.get_by_and_preload(public_token: public_token)
     |> case do

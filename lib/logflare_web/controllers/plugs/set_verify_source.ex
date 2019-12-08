@@ -44,7 +44,12 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     user_authorized? = &(&1.user_id === user.id || user.admin)
 
     case {source && user_authorized?.(source), is_api_path} do
-      {true, _} ->
+          {true, false} ->
+        conn
+        |> put_session(:source_id, source.id)
+        |> assign(:source, source)
+
+      {true, true} ->
         assign(conn, :source, source)
 
       {false, true} ->

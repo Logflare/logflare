@@ -29,6 +29,10 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     do_query(params)
   end
 
+  def cancel_query(params) do
+    GenServer.call(name(params.source.token), :cancel_query, @query_timeout)
+  end
+
   def name(source_id) do
     String.to_atom("#{source_id}" <> "-search-query-server")
   end
@@ -53,7 +57,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     )
 
     current_lv_task_params = state.query_tasks[lv_pid]
-    if current_lv_task_params, do: Task.shutdown(current_lv_task_params.task, :brutal_kill)
+    if current_lv_task_params do
+      Logger.info("SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view...")
+      IO.inspect(current_lv_task_params.task)
+      Task.shutdown(current_lv_task_params.task, :brutal_kill)
+    end
 
     state =
       put_in(state, [:query_tasks, lv_pid], %{
@@ -65,9 +73,21 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   @impl true
+  def handle_call(:cancel_query, {lv_pid, _ref}, state) do
+    Logger.info("SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view...")
+
+    current_lv_task_params = state.query_tasks[lv_pid]
+    if current_lv_task_params, do: Task.shutdown(current_lv_task_params.task, :brutal_kill)
+
+    state = put_in(state, [:query_tasks, lv_pid], %{})
+
+    {:reply, :ok, state}
+  end
+
+  @impl true
   def handle_info({_ref, {:search_result, lv_pid, result}}, state) do
-    Logger.debug(
-      "Getting event search results from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
+    Logger.info(
+      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     %{events: events_so, aggregates: aggregates_so} = result
@@ -110,6 +130,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # handles task shutdown messages
   @impl true
   def handle_info({:DOWN, _, _, _, _}, state) do
+    Logger.info("SearchQueryExecutor: task was shutdown")
     {:noreply, state}
   end
 
@@ -124,7 +145,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     if Process.alive?(lv_pid) do
       send(lv_pid, msg)
     else
-      Logger.info("Not sending msg to #{pid_to_string(lv_pid)} because it's not alive} ")
+      Logger.info("SearchQueryExecutor not sending msg to #{pid_to_string(lv_pid)} because it's not alive} ")
     end
   end
 

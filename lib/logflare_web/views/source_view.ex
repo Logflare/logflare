@@ -23,7 +23,8 @@ defmodule LogflareWeb.SourceView do
   end
 
   def render_modal("metadataModal:" <> id, _source, log_events) do
-    log_event = Enum.find(log_events, &(&1.id === id))
+    log_event =
+      Enum.find(log_events, &(&1.id === id)) || Enum.find(log_events, &(&1.timestamp === id))
 
     fmt_metadata =
       log_event
@@ -152,19 +153,5 @@ defmodule LogflareWeb.SourceView do
       yield: :all
     )
     |> Jason.encode!(pretty: true)
-  end
-
-  def generate_search_link(querystring, tailing?) do
-    str =
-      URI.encode_query(%{
-        q: querystring,
-        tailing: tailing?
-      })
-
-    if str == "" do
-      ""
-    else
-      "?" <> str
-    end
   end
 end
