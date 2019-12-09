@@ -216,18 +216,18 @@ defmodule Logflare.Logs.Search.Parser do
       if String.length(datetime) === 10 do
         case Date.from_iso8601(datetime) do
             {:ok, date} -> date
-            _ -> throw("Query syntax error: timestamp expected date string in ISO8601 format, got: #{datetime}")
+            {:error, err} -> throw("Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{datetime}, error: #{err}")
         end
       else
         case DateTime.from_iso8601(datetime) do
-            {:ok, dt} -> dt
-            _ -> throw("Query syntax error: timestamp expected date string in ISO8601 format, got: #{datetime}")
+            {:ok, dt, _offset} -> dt
+            {:error, err} -> throw("Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{datetime}, error: #{err}")
         end
       end
 
     %{
       path: "timestamp",
-      value: datetime,
+      value: dt,
       operator: operator
     }
   end
@@ -266,6 +266,10 @@ defmodule Logflare.Logs.Search.Parser do
   end
 
   defp maybe_cast_value(c, :string), do: c
+
+  defp maybe_cast_value(c, :datetime), do: c
+
+  defp maybe_cast_value(c, :naive_datetime), do: c
 
   defp maybe_cast_value(c, nil) do
     throw("Query parsing error: attempting to cast value #{c.value} to nil type for #{c.path}")
