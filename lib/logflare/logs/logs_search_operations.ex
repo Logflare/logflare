@@ -216,7 +216,7 @@ defmodule Logflare.Logs.SearchOperations do
       |> Sources.Cache.get_bq_schema()
       |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
       |> Iteraptor.to_flatmap()
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
       |> Enum.map(fn {k, _} -> String.trim_trailing(k, ".t") end)
 
     result =
@@ -352,7 +352,6 @@ defmodule Logflare.Logs.SearchOperations do
 
   def apply_numeric_aggs(%SO{chart: nil} = so) do
     query = so.query
-
     timestamp_pathvalops = Enum.filter(so.pathvalops, &(&1.path === "timestamp"))
 
     {min, max} =

@@ -105,8 +105,8 @@ defmodule Logflare.Logs.Search.Parser do
       schema
       |> BigQuerySchemaChange.to_typemap()
       |> Iteraptor.to_flatmap()
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".t", ""), v} end)
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
+      |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
       |> Enum.uniq()
       |> Enum.reject(fn {_k, v} -> v === :map end)
       |> Map.new()

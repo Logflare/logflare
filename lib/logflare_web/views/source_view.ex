@@ -93,7 +93,7 @@ defmodule LogflareWeb.SourceView do
         |> Logs.Validators.BigQuerySchemaChange.to_typemap()
         |> Iteraptor.to_flatmap()
         |> Enum.reject(fn {_, v} -> v == :map end)
-        |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
+        |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
         |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
         |> Enum.map(fn {k, v} -> {k, SchemaTypes.to_schema_type(v)} end)
         |> Enum.sort_by(fn {k, _v} -> k end)
