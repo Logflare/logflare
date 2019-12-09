@@ -95,5 +95,4 @@ defmodule Logflare.Logs.Search do
         {:error, so}
     end
   end
-
 end
