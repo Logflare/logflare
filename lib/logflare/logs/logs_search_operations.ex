@@ -189,7 +189,22 @@ defmodule Logflare.Logs.SearchOperations do
     |> drop_timestamp_pathvalops
   end
 
-  def partition_or_streaming(%SO{} = so), do: so
+  def partition_or_streaming(%SO{} = so) do
+    partition_pathvalops =
+      for %{path: "timestamp", operator: op, value: v} <- so.pathvalops do
+        op =
+          case op do
+            ">" -> ">="
+            "<" -> "<="
+            "<=" -> "<="
+            ">=" -> ">="
+          end
+
+        %{path: "_PARTITIONDATE", operator: op, value: Timex.to_date(v)}
+      end
+
+    %{so | pathvalops: so.pathvalops ++ partition_pathvalops}
+  end
 
   def drop_timestamp_pathvalops(%SO{} = so) do
     %{so | pathvalops: Enum.reject(so.pathvalops, &(&1.path === "timestamp"))}

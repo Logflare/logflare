@@ -69,8 +69,8 @@ defmodule Logflare.Logs.Search do
   def search_events(%SO{} = so) do
     so
     |> do_search_without_select()
-    |> partition_or_streaming()
     |> order_by_default()
+    |> partition_or_streaming()
     |> apply_limit_to_query()
     |> apply_select_all_schema()
     |> apply_to_sql()

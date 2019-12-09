@@ -33,7 +33,7 @@ defmodule Logflare.EctoQueryBQ do
   end
 
   def top_level_field?(path) do
-    path in ~w(timestamp event_message)
+    path in ~w(timestamp event_message _PARTITIONTIME _PARTITIONDATE)
   end
 
   def apply_nested_joins(nested_columns, q) do

@@ -196,7 +196,8 @@ defmodule Logflare.Logs.Search.Parser do
     }
   end
 
-  defp to_path_val_op(field, [path, "=", lvalue, "..", rvalue]) when field in ~w(metadata_field timestamp_field)a do
+  defp to_path_val_op(field, [path, "=", lvalue, "..", rvalue])
+       when field in ~w(metadata_field timestamp_field)a do
     [
       %{
         path: path,
@@ -215,13 +216,27 @@ defmodule Logflare.Logs.Search.Parser do
     dt =
       if String.length(datetime) === 10 do
         case Date.from_iso8601(datetime) do
-            {:ok, date} -> date
-            {:error, err} -> throw("Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{datetime}, error: #{err}")
+          {:ok, date} ->
+            date
+
+          {:error, err} ->
+            throw(
+              "Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{
+                datetime
+              }, error: #{err}"
+            )
         end
       else
         case DateTime.from_iso8601(datetime) do
-            {:ok, dt, _offset} -> dt
-            {:error, err} -> throw("Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{datetime}, error: #{err}")
+          {:ok, dt, _offset} ->
+            dt
+
+          {:error, err} ->
+            throw(
+              "Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{
+                datetime
+              }, error: #{err}"
+            )
         end
       end
 
@@ -243,7 +258,9 @@ defmodule Logflare.Logs.Search.Parser do
 
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}
-  defp maybe_cast_value(c, :boolean), do: throw("Query syntax error: Expected boolean for #{c.path}, got: #{c.value}")
+
+  defp maybe_cast_value(c, :boolean),
+    do: throw("Query syntax error: Expected boolean for #{c.path}, got: #{c.value}")
 
   defp maybe_cast_value(%{value: sourcevalue} = c, :integer) when is_binary(sourcevalue) do
     value =

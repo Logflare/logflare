@@ -1,7 +1,7 @@
 <div class="d-none" id="<%= @element_id %>">
   <div>
     <% stats = @search_op.stats %>
-    <% if @search_op.sql_params do %>
+    <%= if @search_op.sql_params do %>
       <ul class="list-group">
         <li class="list-group-item">
           <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
