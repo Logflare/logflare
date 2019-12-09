@@ -157,6 +157,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:querystring, querystring)
           |> assign(:search_chart_aggregate, chart_aggregate)
           |> assign(:search_chart_period, chart_period)
+          |> assign(:search_chart_aggregate_enabled?, search_chart_aggregate_enabled?)
           |> assign(:log_aggregates, [])
           |> assign(:loading, true)
           |> assign(:tailing?, tailing?)
