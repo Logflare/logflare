@@ -250,11 +250,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       if socket.assigns.tailing_paused? do
+        socket = socket
+          |> assign(:tailing_paused?, nil)
+          |> assign(:tailing?, true)
+
         maybe_execute_query(socket.assigns)
 
         socket
-        |> assign(:tailing_paused?, nil)
-        |> assign(:tailing?, true)
       end
 
     {:noreply, socket}
