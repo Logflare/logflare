@@ -23,7 +23,7 @@ config :logger, :console,
 
 config :ueberauth, Ueberauth,
   providers: [
-    github: {Ueberauth.Strategy.Github, [default_scope: "user:email,public_repo"]},
+    github: {Ueberauth.Strategy.Github, [default_scope: "user:email"]},
     google: {Ueberauth.Strategy.Google, []},
     slack: {Ueberauth.Strategy.Slack, [default_scope: "identity.basic,identity.email"]}
   ],
