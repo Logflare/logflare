@@ -59,7 +59,6 @@ defmodule Logflare.Mixfile do
       {:phoenix, "~> 1.4.0"},
       {:phoenix_pubsub, "~> 1.1.2"},
       {:phoenix_ecto, "~> 4.0"},
-      {:ecto_sql, "~> 3.2"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
@@ -76,9 +75,9 @@ defmodule Logflare.Mixfile do
       {:poison, "~> 3.1"},
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
-      {:ex_twilio, "~> 0.7.0"},
+      {:ex_twilio, "~> 0.8.1"},
       {:google_api_big_query, "~> 0.30.0"},
-      {:goth, "~> 0.8.0"},
+      {:goth, "~> 1.2.0"},
       {:broadway, "~> 0.4.0"},
       {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
@@ -100,7 +99,6 @@ defmodule Logflare.Mixfile do
       {:logflare_logger_backend, "~> 0.6.3"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
       {:phoenix_live_view, "0.4.1"},
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
@@ -113,22 +111,28 @@ defmodule Logflare.Mixfile do
       {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
 
+      # Ecto
+      {:ecto_sql, "~> 3.2"},
+
       # Telemetry
       {:telemetry, "~> 0.4.0"},
       {:telemetry_poller, "~> 0.4.0"},
       {:telemetry_metrics, "~> 0.3.0"},
 
       # ETS
-      {:ets, "~> 0.7.1"},
+      {:ets, "~> 0.8.0"},
       {:ex2ms, "~> 1.0"},
       {:etso, "~> 0.1.1"},
 
       # Statistics
       {:statistex, "~> 1.0.0"},
-      {:floki, "0.23.0"},
+      {:floki, "~> 0.23.1"},
 
       # Frontend
-      {:phoenix_live_react, "~> 0.2"}
+      {:phoenix_live_react, "~> 0.2"},
+
+      # Dev
+      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false}
     ]
   end
 
