@@ -46,7 +46,7 @@ defmodule LogflareWeb.SourceView do
   end
 
   def render_modal(id, _source, _log_events)
-      when id in ~w(queryDebugEventsModal queryDebugAggregatesModal) do
+      when id in ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal) do
     {first, rest} = String.split_at(id, 1)
     hook = "Source" <> String.capitalize(first) <> rest
 

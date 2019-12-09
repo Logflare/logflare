@@ -22,8 +22,12 @@
           </a>
         </li>
         <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">events query</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">aggregate query</span></a></li>
+        <%= if @search_op_error do %>
+          <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugErrorModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug error</span></a></li>
+        <% else %>
+          <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">events query</span></a></li>
+          <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">aggregate query</span></a></li>
+        <% end %>
       </ul>
     </div>
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
@@ -143,28 +147,8 @@
     </div>
   </div>
 <% end %>
-<%= if @search_op_log_aggregates && @search_op_log_aggregates.sql_params do %>
-  <div class="d-none" id="search-query-debug-aggregates">
-    <div>
-      <% stats = @search_op_log_aggregates.stats %>
-      <ul class="list-group">
-        <li class="list-group-item">
-          <pre><code><%= format_sql(@search_op_log_aggregates.sql_params) %></code></pre>
-        </li>
-      </ul>
-      <ul class="list-group list-group-horizontal">
-        <li class="list-group-item flex-fill">
-          Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
-        </li>
-        <li class="list-group-item flex-fill">
-          Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
-        </li>
-        <li class="list-group-item flex-fill">
-          Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
-        </li>
-      </ul>
-    </div>
-  </div>
+<%= if @search_op_error do %>
+  <%= render "logs_search_query_debug.html", user: @user, search_op: @search_op_error, element_id: "search-query-debug-error" %>
 <% end %>
 </div>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>

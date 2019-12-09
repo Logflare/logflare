@@ -48,6 +48,7 @@ defmodule LogflareWeb.Source.SearchLV do
         flash: %{},
         querystring: "",
         search_op: nil,
+        search_op_error: nil,
         search_op_log_events: nil,
         search_op_log_aggregates: nil,
         search_chart_period: @default_chart_period,
@@ -325,7 +326,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(:search_op_error, search_op)
       |> assign_flash(:error, format_error(search_op.error))
+      |> assign(:tailing?, false)
       |> assign(:loading, false)
 
     {:noreply, socket}
