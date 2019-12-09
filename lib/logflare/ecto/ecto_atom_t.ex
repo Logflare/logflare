@@ -1,5 +1,4 @@
 defmodule Ecto.Atom do
-
   @behaviour Ecto.Type
 
   def type, do: :string
@@ -11,5 +10,4 @@ defmodule Ecto.Atom do
 
   def dump(value) when is_atom(value), do: {:ok, Atom.to_string(value)}
   def dump(_), do: :error
-
 end

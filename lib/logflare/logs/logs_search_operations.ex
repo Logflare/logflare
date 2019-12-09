@@ -336,7 +336,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{chart: nil} = so) do
-    query = apply_wheres(so).query
+    query = so.query
 
     timestamp_pathvalops = Enum.filter(so.pathvalops, &(&1.path === "timestamp"))
 
@@ -399,5 +399,16 @@ defmodule Logflare.Logs.SearchOperations do
       |> format_agg_row_values()
 
     %{so | rows: rows}
+  end
+
+  def put_time_stats(%SO{} = so) do
+    so
+    |> Map.put(
+      :stats,
+      %{
+        start_monotonic_time: System.monotonic_time(:millisecond),
+        total_duration: nil
+      }
+    )
   end
 end

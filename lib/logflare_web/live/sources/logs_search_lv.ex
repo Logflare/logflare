@@ -41,10 +41,12 @@ defmodule LogflareWeb.Source.SearchLV do
         log_events: [],
         log_aggregates: [],
         loading: false,
+        tailing?: true,
+        tailing_paused?: nil,
+        tailing_timer: nil,
         user: user,
         flash: %{},
         querystring: "",
-        tailing?: true,
         search_op: nil,
         search_op_log_events: nil,
         search_op_log_aggregates: nil,
@@ -66,7 +68,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_params(params, _uri, socket) do
     log_lv_received_event("handle params", socket.assigns.source)
 
-    # params = SearchParams.new(params)
+    querystring = params["querystring"] || params["q"] || socket.assigns.querystring
 
     tailing? =
       case params["tailing?"] do
@@ -90,7 +92,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       assign(
         socket,
-        querystring: params["querystring"] || params["q"] || socket.assigns.querystring,
+        querystring: querystring,
         tailing?: tailing?,
         search_chart_period: chart_period,
         search_chart_aggregate: chart_aggregate
@@ -104,7 +106,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
     params = SearchParams.new(search)
 
-    tailing? = params[:tailing] || socket.assigns.tailing?
+    tailing? =
+      if is_nil(params[:tailing?]) do
+        socket.assigns.tailing?
+      else
+        params[:tailing?]
+      end
+
     querystring = params[:querystring] || ""
 
     chart_period =
@@ -113,7 +121,7 @@ defmodule LogflareWeb.Source.SearchLV do
         "hour" -> :hour
         "minute" -> :minute
         "second" -> :second
-        _ -> :minute
+        _ -> socket.assigns.search_chart_period
       end
 
     chart_aggregate =
@@ -121,7 +129,7 @@ defmodule LogflareWeb.Source.SearchLV do
         "sum" -> :sum
         "avg" -> :avg
         "count" -> :count
-        _ -> :count
+        _ -> socket.assigns.search_chart_aggregate
       end
 
     search_chart_aggregate_enabled? = querystring =~ ~r/chart:\w+/
@@ -221,12 +229,34 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_event("activate_modal" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
     modal_id = metadata["modal_id"]
-    {:noreply, assign(socket, :active_modal, modal_id)}
+
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.cancel_query(socket.assigns)
+
+    socket =
+      socket
+      |> assign(:active_modal, modal_id)
+      |> assign(:tailing?, false)
+      |> assign(:tailing_paused?, true)
+
+    {:noreply, socket}
   end
 
   def handle_event("deactivate_modal" = ev, _, socket) do
     log_lv_received_event(ev, socket.assigns.source)
-    {:noreply, assign(socket, :active_modal, nil)}
+
+    socket = assign(socket, :active_modal, nil)
+
+    socket =
+      if socket.assigns.tailing_paused? do
+        maybe_execute_query(socket.assigns)
+
+        socket
+        |> assign(:tailing_paused?, nil)
+        |> assign(:tailing?, true)
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("remove_flash" = ev, metadata, socket) do

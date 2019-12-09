@@ -89,13 +89,7 @@ defmodule Logflare.Logs.Search do
   @spec do_search_without_select(SO.t()) :: SO.t()
   def do_search_without_select(%SO{} = so) do
     so
-    |> Map.put(
-      :stats,
-      %{
-        start_monotonic_time: System.monotonic_time(:millisecond),
-        total_duration: nil
-      }
-    )
+    |> put_time_stats()
     |> default_from
     |> parse_querystring()
     |> verify_path_in_schema()

@@ -57,9 +57,12 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     )
 
     current_lv_task_params = state.query_tasks[lv_pid]
-    if current_lv_task_params do
-      Logger.info("SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view...")
-      IO.inspect(current_lv_task_params.task)
+
+    if current_lv_task_params && current_lv_task_params[:task] do
+      Logger.info(
+        "SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
+      )
+
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
     end
 
@@ -74,10 +77,15 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def handle_call(:cancel_query, {lv_pid, _ref}, state) do
-    Logger.info("SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view...")
-
     current_lv_task_params = state.query_tasks[lv_pid]
-    if current_lv_task_params, do: Task.shutdown(current_lv_task_params.task, :brutal_kill)
+
+    if current_lv_task_params && current_lv_task_params[:task] do
+      Logger.info(
+        "SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
+      )
+
+      Task.shutdown(current_lv_task_params.task, :brutal_kill)
+    end
 
     state = put_in(state, [:query_tasks, lv_pid], %{})
 
@@ -87,7 +95,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, result}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
+      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
+        state.source_id
+      } source..."
     )
 
     %{events: events_so, aggregates: aggregates_so} = result
@@ -145,7 +155,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     if Process.alive?(lv_pid) do
       send(lv_pid, msg)
     else
-      Logger.info("SearchQueryExecutor not sending msg to #{pid_to_string(lv_pid)} because it's not alive} ")
+      Logger.info(
+        "SearchQueryExecutor not sending msg to #{pid_to_string(lv_pid)} because it's not alive} "
+      )
     end
   end
 
