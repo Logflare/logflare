@@ -147,6 +147,29 @@
     </div>
   </div>
 <% end %>
+<%= if @search_op_log_aggregates && @search_op_log_aggregates.sql_params do %>
+  <div class="d-none" id="search-query-debug-aggregates">
+    <div>
+      <% stats = @search_op_log_aggregates.stats %>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <pre><code><%= format_sql(@search_op_log_aggregates.sql_params) %></code></pre>
+        </li>
+      </ul>
+      <ul class="list-group list-group-horizontal">
+        <li class="list-group-item flex-fill">
+          Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+<% end %>
 <%= if @search_op_error do %>
   <%= render "logs_search_query_debug.html", user: @user, search_op: @search_op_error, element_id: "search-query-debug-error" %>
 <% end %>

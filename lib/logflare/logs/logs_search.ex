@@ -48,7 +48,12 @@ defmodule Logflare.Logs.Search do
   @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_result_aggregates(%SO{} = so) do
     so
-    |> do_search_without_select()
+    |> put_time_stats()
+    |> default_from
+    |> parse_querystring()
+    |> verify_path_in_schema()
+    |> apply_local_timestamp_correction()
+    |> apply_wheres()
     |> exclude_limit()
     |> apply_group_by_timestamp_period()
     |> apply_numeric_aggs()
@@ -68,9 +73,14 @@ defmodule Logflare.Logs.Search do
   @spec search_events(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_events(%SO{} = so) do
     so
-    |> do_search_without_select()
-    |> order_by_default()
+    |> put_time_stats()
+    |> default_from
+    |> parse_querystring()
+    |> verify_path_in_schema()
+    |> apply_local_timestamp_correction()
     |> partition_or_streaming()
+    |> apply_wheres()
+    |> order_by_default()
     |> apply_limit_to_query()
     |> apply_select_all_schema()
     |> apply_to_sql()
@@ -86,14 +96,4 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec do_search_without_select(SO.t()) :: SO.t()
-  def do_search_without_select(%SO{} = so) do
-    so
-    |> put_time_stats()
-    |> default_from
-    |> parse_querystring()
-    |> verify_path_in_schema()
-    |> apply_local_timestamp_correction()
-    |> apply_wheres()
-  end
 end

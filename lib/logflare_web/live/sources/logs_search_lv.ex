@@ -235,11 +235,16 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns)
 
+    socket = assign(socket, :active_modal, modal_id)
+
     socket =
-      socket
-      |> assign(:active_modal, modal_id)
-      |> assign(:tailing?, false)
-      |> assign(:tailing_paused?, true)
+      if socket.assigns.tailing? do
+        socket
+        |> assign(:tailing?, false)
+        |> assign(:tailing_paused?, true)
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
@@ -251,12 +256,15 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       if socket.assigns.tailing_paused? do
-        socket = socket
+        socket =
+          socket
           |> assign(:tailing_paused?, nil)
           |> assign(:tailing?, true)
 
         maybe_execute_query(socket.assigns)
 
+        socket
+      else
         socket
       end
 
