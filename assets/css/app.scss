@@ -183,6 +183,16 @@ main.app {
   text-shadow: 0;
 }
 
+.alert-warning a {
+  color: $brand-fuscia;
+  text-shadow: 0;
+}
+
+.alert-warning a:hover {
+  color: $brand-fuscia;
+  text-shadow: 0;
+}
+
 code {
   color: #e35b8d;
 }

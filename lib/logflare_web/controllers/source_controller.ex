@@ -120,7 +120,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
-    if user.provider == "google" do
+    if user.provider == "google" and user.bigquery_project_id do
       bigquery_project_id = user.bigquery_project_id || @project_id
       dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
 
@@ -131,7 +131,16 @@ defmodule LogflareWeb.SourceController do
       |> redirect(external: explore_link)
     else
       conn
-      |> put_flash(:error, "Sign in with Google to explore in Data Studio.")
+      |> put_flash(
+        :error,
+        [
+          "Sign in with Google and ",
+          Phoenix.HTML.Link.link("setup a BigQuery backend ",
+            to: "#{Routes.user_path(conn, :edit)}#big-query-preferences"
+          ),
+          "to explore in Data Studio. "
+        ]
+      )
       |> redirect(to: Routes.source_path(conn, :show, source.id))
     end
   end
