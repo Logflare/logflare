@@ -282,6 +282,9 @@ defmodule Logflare.Logs.Search.Parser do
     %{c | value: value}
   end
 
+  # Handles chart pathvalop casting
+  defp maybe_cast_value(%{value: nil} = c, :integer), do: c
+
   defp maybe_cast_value(c, :string), do: c
 
   defp maybe_cast_value(c, :datetime), do: c
