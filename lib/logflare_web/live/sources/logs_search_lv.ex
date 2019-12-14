@@ -90,13 +90,16 @@ defmodule LogflareWeb.Source.SearchLV do
         x -> String.to_existing_atom(x)
       end
 
+    search_chart_aggregate_enabled? = querystring =~ ~r/chart:\w+/
+
     socket =
       assign(
         socket,
         querystring: querystring,
         tailing?: tailing?,
         search_chart_period: chart_period,
-        search_chart_aggregate: chart_aggregate
+        search_chart_aggregate: chart_aggregate,
+        search_chart_aggregate_enabled?: search_chart_aggregate_enabled?
       )
 
     {:noreply, socket}
