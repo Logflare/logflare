@@ -7,18 +7,23 @@
 <div id="login" class="container">
   <ul class="list-group">
     <li class="list-group-item">
-      <%= link to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" do %>
-      <span class="login-icon"><i class="fab fa-github"></span></i> Sign in with Github
-      <% end %>
-    </li>
-    <li class="list-group-item">
-      <%= link to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" do %>
+      <%= link to: Routes.oauth_path(@conn, :request, "google"), class: "nav-link" do %>
       <span class="login-icon"><i class="fab fa-google"></span></i> Sign in with Google
       <% end %>
     </li>
     <li class="list-group-item">
-      <%= link to: Routes.auth_path(@conn, :request, "slack"), class: "nav-link" do %>
+      <%= link to: Routes.oauth_path(@conn, :request, "github"), class: "nav-link" do %>
+      <span class="login-icon"><i class="fab fa-github"></span></i> Sign in with Github
+      <% end %>
+    </li>
+    <li class="list-group-item">
+      <%= link to: Routes.oauth_path(@conn, :request, "slack"), class: "nav-link" do %>
       <span class="login-icon"><i class="fab fa-slack"></span></i> Sign in with Slack
+      <% end %>
+    </li>
+    <li class="list-group-item">
+      <%= link to: Routes.email_path(@conn, :login), class: "nav-link" do %>
+      <span class="login-icon"><i class="fas fa-envelope"></span></i> Sign in with email
       <% end %>
     </li>
   </ul>
