@@ -152,7 +152,9 @@ defmodule LogflareWeb.Source.SearchLV do
       if {chart_aggregate, chart_period} != {prev_chart_aggregate, prev_chart_period} do
         params = %{
           chart_aggregate: "#{chart_aggregate}",
-          chart_period: "#{chart_period}"
+          chart_period: "#{chart_period}",
+          querystring: querystring,
+          tailing?: tailing?
         }
 
         socket =
