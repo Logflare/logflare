@@ -4,10 +4,10 @@ defmodule Logflare.Auth do
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
 
   def gen_token(email) do
-    Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, email)
+    Token.sign(LogflareWeb.Endpoint, @salt, email)
   end
 
   def verify_token(token, max_age) do
-    Phoenix.Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: max_age)
+    Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: max_age)
   end
 end
