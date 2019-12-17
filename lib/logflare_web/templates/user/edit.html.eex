@@ -54,5 +54,5 @@
 
   <h5 class="header-margin">Reset Your API Key</h5>
   <p>Immediately resest your API key. All future requests with your old API key will be rejected.</p>
-  <%= link "Reset now", to: Routes.auth_path(@conn, :new_api_key), class: "btn btn-danger form-button" %></li>
+  <%= link "Reset now", to: Routes.user_path(@conn, :new_api_key), class: "btn btn-danger form-button" %></li>
 </div>
