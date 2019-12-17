@@ -77,7 +77,7 @@ config :libcluster,
     dev: [
       strategy: Cluster.Strategy.Epmd,
       config: [
-        hosts: []
+        hosts: [:"orange@127.0.0.1", :"pink@127.0.0.1"]
       ]
     ]
   ]

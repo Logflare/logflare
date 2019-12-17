@@ -142,9 +142,14 @@ defmodule Logflare.Source.Supervisor do
     {:ok, source_id}
   end
 
+  def delete_all_user_sources(user) do
+    Repo.all(Ecto.assoc(user, :sources))
+    |> Enum.each(fn s -> delete_source(s.token) end)
+  end
+
   def reset_all_user_sources(user) do
-    sources = Repo.all(Ecto.assoc(user, :sources))
-    Enum.each(sources, fn s -> reset_source(s.token) end)
+    Repo.all(Ecto.assoc(user, :sources))
+    |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
   defp create_source(source_id) do

@@ -34,7 +34,7 @@
     <%= submit "Update preferences", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <h5 class="header-margin">BigQuery Backend</h5>
+  <h5 id="big-query-preferences" class="header-margin">BigQuery Backend</h5>
   <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner and BigQuery Job User permissions. See <%= link "this guide", to: Routes.marketing_path(@conn, :big_query_setup) %> for more info.</p>
   <%= render(LogflareWeb.UserView, "edit_bq_form.html", conn: @conn, changeset: @changeset, user: @user) %>
 

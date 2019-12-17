@@ -23,7 +23,8 @@
         "react": "^16.11.0",
         "react-dom": "^16.11.0",
         "react-spinners": "^0.6.1",
-        "sql-formatter": "^2.3.3"
+        "sql-formatter": "^2.3.3",
+        "serialize-javascript": "^2.1.1"
     },
     "devDependencies": {
         "@babel/core": "^7.5.5",

@@ -9,6 +9,8 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @google_api_base_url 'https://compute.googleapis.com/compute/v1/projects/#{@project_id}'
   @default_release_name :node
+  @regions Application.get_env(:logflare, __MODULE__)[:regions]
+  @zones Application.get_env(:logflare, __MODULE__)[:zones]
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -49,7 +51,21 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
     state
   end
 
-  defp get_nodes(state) do
+  def get_nodes(state) do
+    region_nodes =
+      Enum.map(@regions, fn {region, group_name} ->
+        get_region_nodes(state, region, group_name)
+      end)
+      |> Enum.concat()
+
+    zone_nodes =
+      Enum.map(@zones, fn {zone, group_name} -> get_zone_nodes(state, zone, group_name) end)
+      |> Enum.concat()
+
+    region_nodes ++ zone_nodes
+  end
+
+  defp get_zone_nodes(state, zone, group_name) do
     Cluster.Logger.debug(:gce, "Loading nodes from GCE API...")
 
     auth_token =
@@ -57,19 +73,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       |> Jason.decode!()
       |> Map.get("access_token")
 
-    region = "us-central1"
-
-    group_id =
-      get_metadata('/instance/attributes/created-by')
-      |> String.Chars.to_string()
-      |> String.split("/")
-      |> List.last()
-
     release_name = get_release_name(state)
 
     headers = [{'Authorization', 'Bearer #{auth_token}'}]
 
-    url = @google_api_base_url ++ '/regions/#{region}/instanceGroups/#{group_id}/listInstances'
+    url = @google_api_base_url ++ '/zones/#{zone}/instanceGroups/#{group_name}/listInstances'
 
     Cluster.Logger.debug(:gce, "Fetching instances from #{inspect(url)}")
 
@@ -77,33 +85,103 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       {:ok, {{_, 200, _}, _headers, body}} ->
         Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
 
-        Jason.decode!(body)
-        |> Map.get("items")
-        |> Enum.filter(fn
-          %{"status" => "RUNNING"} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn %{"instance" => url} ->
-          {:ok, {{_, 200, _}, _headers, body}} =
-            :httpc.request(:get, {to_charlist(url), headers}, [], [])
+        items =
+          Jason.decode!(body)
+          |> Map.get("items")
 
-          Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
+        if is_nil(items) do
+          []
+        else
+          Enum.filter(items, fn
+            %{"status" => "RUNNING"} -> true
+            _ -> false
+          end)
+          |> Enum.map(fn %{"instance" => url} ->
+            {:ok, {{_, 200, _}, _headers, body}} =
+              :httpc.request(:get, {to_charlist(url), headers}, [], [])
 
-          network_ip =
-            body
-            |> Jason.decode!()
-            |> Map.get("networkInterfaces")
-            |> hd
-            |> Map.get("networkIP")
+            Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
 
-          Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+            network_ip =
+              body
+              |> Jason.decode!()
+              |> Map.get("networkInterfaces")
+              |> hd
+              |> Map.get("networkIP")
 
-          node_name = :"#{release_name}@#{network_ip}"
+            Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
 
-          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+            node_name = :"#{release_name}@#{network_ip}"
 
-          node_name
-        end)
+            Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+
+            node_name
+          end)
+        end
+
+      {:ok, {{_, resp_code, _}, _headers, body}} ->
+        Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")
+        []
+
+      {:error, message} ->
+        Cluster.Logger.error(:gce, "GCP API error: #{inspect(message)}")
+        []
+    end
+  end
+
+  defp get_region_nodes(state, region, group_name) do
+    Cluster.Logger.debug(:gce, "Loading nodes from GCE API...")
+
+    auth_token =
+      get_metadata('/instance/service-accounts/default/token')
+      |> Jason.decode!()
+      |> Map.get("access_token")
+
+    release_name = get_release_name(state)
+
+    headers = [{'Authorization', 'Bearer #{auth_token}'}]
+
+    url = @google_api_base_url ++ '/regions/#{region}/instanceGroups/#{group_name}/listInstances'
+
+    Cluster.Logger.debug(:gce, "Fetching instances from #{inspect(url)}")
+
+    case :httpc.request(:post, {url, headers, 'application/json', ''}, [], []) do
+      {:ok, {{_, 200, _}, _headers, body}} ->
+        Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
+
+        items =
+          Jason.decode!(body)
+          |> Map.get("items")
+
+        if is_nil(items) do
+          []
+        else
+          Enum.filter(items, fn
+            %{"status" => "RUNNING"} -> true
+            _ -> false
+          end)
+          |> Enum.map(fn %{"instance" => url} ->
+            {:ok, {{_, 200, _}, _headers, body}} =
+              :httpc.request(:get, {to_charlist(url), headers}, [], [])
+
+            Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
+
+            network_ip =
+              body
+              |> Jason.decode!()
+              |> Map.get("networkInterfaces")
+              |> hd
+              |> Map.get("networkIP")
+
+            Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+
+            node_name = :"#{release_name}@#{network_ip}"
+
+            Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+
+            node_name
+          end)
+        end
 
       {:ok, {{_, resp_code, _}, _headers, body}} ->
         Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")

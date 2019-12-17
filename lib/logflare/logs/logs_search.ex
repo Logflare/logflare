@@ -1,18 +1,9 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
-  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
-  alias Logflare.{Source, Sources, EctoQueryBQ}
-
-  alias Logflare.Logs.Search.Parser
-  import Ecto.Query
-
-  alias GoogleApi.BigQuery.V2.Api
-  alias GoogleApi.BigQuery.V2.Model.QueryRequest
-
-  import Logflare.Logs.SearchOperations.Utils
-  import Logflare.Logs.SearchOperations
 
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
+
+  import Logflare.Logs.SearchOperations
 
   def search_and_aggs(%SO{} = so) do
     tasks = [

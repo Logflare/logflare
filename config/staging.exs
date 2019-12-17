@@ -57,6 +57,10 @@ config :libcluster,
     ]
   ]
 
+config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
+  regions: [{"us-central1", "logflare-cluster-group"}],
+  zones: []
+
 config :logflare, Logflare.Tracker, pool_size: 1
 
 import_config "telemetry.exs"
