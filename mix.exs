@@ -76,10 +76,8 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
-      {:google_api_big_query, "~> 0.30.0"},
       {:goth, "~> 1.2.0"},
       {:broadway, "~> 0.4.0"},
-      {:google_api_cloud_resource_manager, "~> 0.5"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:credo, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -110,6 +108,10 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.3.0"},
       {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
+
+      # GCP
+      {:google_api_cloud_resource_manager, "~> 0.20.0"},
+      {:google_api_big_query, "~> 0.31.0"},
 
       # Ecto
       {:ecto_sql, "~> 3.2"},
