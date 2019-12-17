@@ -19,6 +19,4 @@ RUN mix release --force --overwrite
 
 WORKDIR /logflare
 
-ENTRYPOINT [ "/logflare/run.bash" ]
-
-
+ENTRYPOINT [ "/logflare/run_staging.bash" ]
