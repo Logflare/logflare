@@ -3,6 +3,7 @@ defmodule LogflareWeb.Auth.EmailController do
 
   alias Logflare.Auth
   alias Logflare.Mailer
+  alias LogflareWeb.AuthController
 
   # 30 minutes
   @max_age 1_800
@@ -32,7 +33,7 @@ defmodule LogflareWeb.Auth.EmailController do
         }
 
         conn
-        |> LogflareWeb.AuthController.signin(auth_params)
+        |> AuthController.signin(auth_params)
 
       {:error, :expired} ->
         conn
