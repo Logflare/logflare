@@ -22,7 +22,7 @@ steps:
       [
         "build",
         "-f",
-        "app.Dockerfile",
+        "docker/app.Dockerfile",
         "-t",
         "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA",
         "-t",
