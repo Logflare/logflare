@@ -113,7 +113,7 @@ hooks.SourceLogsSearch = {
             )
             if (lastQueryCompletedAt) {
                 const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
-                this.pushEvent("set_last_query_elapsed_sec", elapsed)
+                $("#last-query-completed-at span").text(elapsed.toFixed(1))
             }
         }, 500)
 

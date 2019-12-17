@@ -60,8 +60,7 @@ defmodule LogflareWeb.Source.SearchLV do
         user_local_timezone: nil,
         use_local_time: true,
         search_chart_aggregate_enabled?: false,
-        last_query_completed_at: nil,
-        last_query_elapsed_sec: 0
+        last_query_completed_at: nil
       )
 
     {:ok, socket}
@@ -232,10 +231,6 @@ defmodule LogflareWeb.Source.SearchLV do
       end
 
     {:noreply, socket}
-  end
-
-  def handle_event("set_last_query_elapsed_sec" = ev, elapsed, socket) do
-    {:noreply, assign(socket, :last_query_elapsed_sec, Float.round(elapsed * 1.0, 1))}
   end
 
   def handle_event("activate_modal" = ev, metadata, socket) do
