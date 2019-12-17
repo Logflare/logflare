@@ -37,7 +37,8 @@
   <%= render("logs_search_list.html",
      log_events: @log_events,
      last_query_completed_at: @last_query_completed_at,
-     user_local_timezone: @user_local_timezone) %>
+     user_local_timezone: @user_local_timezone,
+     use_local_time: @use_local_time) %>
   <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
   <div class="search-control console-text">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
