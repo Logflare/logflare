@@ -259,26 +259,30 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("deactivate_modal" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+  def handle_event("deactivate_modal" = ev, metadata, socket) do
+    if metadata["key"] == "Escape" or is_nil(metadata["code"]) do
+      log_lv_received_event(ev, socket.assigns.source)
 
-    socket = assign(socket, :active_modal, nil)
+      socket = assign(socket, :active_modal, nil)
 
-    socket =
-      if socket.assigns.tailing_paused? do
-        socket =
+      socket =
+        if socket.assigns.tailing_paused? do
+          socket =
+            socket
+            |> assign(:tailing_paused?, nil)
+            |> assign(:tailing?, true)
+
+          maybe_execute_query(socket.assigns)
+
           socket
-          |> assign(:tailing_paused?, nil)
-          |> assign(:tailing?, true)
+        else
+          socket
+        end
 
-        maybe_execute_query(socket.assigns)
-
-        socket
-      else
-        socket
-      end
-
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("remove_flash" = ev, metadata, socket) do
