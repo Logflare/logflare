@@ -1,4 +1,4 @@
-import { activateClipboardForSelector } from "./utils"
+import {activateClipboardForSelector} from "./utils"
 import sqlFormatter from "sql-formatter"
 
 import idle from "./vendor/idle"
@@ -13,54 +13,59 @@ hooks.SourceSchemaModalTable = {
     },
 }
 
+let sourceLogsSearchListLastUpdate
+
+const activateModal = (el, selector) => {
+    const $modal = $(el)
+    const code = $(`${selector} code`)
+    const fmtSql = sqlFormatter.format(code.text())
+    // replace with formatted sql
+    code.text(fmtSql)
+
+    $modal
+        .find(".modal-body")
+        .html($(selector).html())
+}
+
 hooks.SourceLogsSearchList = {
     updated() {
-        window.scrollTo(0, document.body.scrollHeight)
+        let currentUpdate = $(this.el).attr("data-last-query-completed-at")
+        if (sourceLogsSearchListLastUpdate !== currentUpdate) {
+            sourceLogsSearchListLastUpdate = currentUpdate
+            window.scrollTo(0, document.body.scrollHeight)
+        }
     },
     mounted() {
-        $("html, body").animate({ scrollTop: document.body.scrollHeight })
+        console.log("mounted called")
+        $("html, body").animate({scrollTop: document.body.scrollHeight})
     },
 }
 
 hooks.SourceQueryDebugEventsModal = {
+    updated() {
+        activateModal(this.el, "#search-query-debug-events")
+    },
     mounted() {
-        const $queryDebugModal = $(this.el)
-        const code = $("#search-query-debug-events code")
-        const fmtSql = sqlFormatter.format(code.text())
-        // replace with formatted sql
-        code.text(fmtSql)
-
-        $queryDebugModal
-            .find(".modal-body")
-            .html($("#search-query-debug-events").html())
+        activateModal(this.el, "#search-query-debug-events")
     },
 }
 
 hooks.SourceQueryDebugAggregatesModal = {
-    mounted() {
-        const $queryDebugModal = $(this.el)
-        const code = $("#search-query-debug-aggregates code")
-        const fmtSql = sqlFormatter.format(code.text())
-        // replace with formatted sql
-        code.text(fmtSql)
+    updated() {
+        activateModal(this.el, "#search-query-debug-aggregates")
+    },
 
-        $queryDebugModal
-            .find(".modal-body")
-            .html($("#search-query-debug-aggregates").html())
+    mounted() {
+        activateModal(this.el, "#search-query-debug-aggregates")
     },
 }
 
 hooks.SourceQueryDebugErrorModal = {
+    updated() {
+        activateModal(this.el, "#search-query-debug-error")
+    },
     mounted() {
-        const $queryDebugModal = $(this.el)
-        const code = $("#search-query-debug-error code")
-        const fmtSql = sqlFormatter.format(code.text())
-        // replace with formatted sql
-        code.text(fmtSql)
-
-        $queryDebugModal
-          .find(".modal-body")
-          .html($("#search-query-debug-error").html())
+        activateModal(this.el, "#search-query-debug-error")
     },
 }
 
@@ -107,11 +112,10 @@ hooks.SourceLogsSearch = {
                 "data-timestamp"
             )
             if (lastQueryCompletedAt) {
-                const elapsed =
-                    new Date().getTime() / 1000 - lastQueryCompletedAt
-                $("#last-query-completed-at span").text(elapsed.toFixed(1))
+                const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
+                this.pushEvent("set_last_query_elapsed_sec", elapsed)
             }
-        }, 250)
+        }, 500)
 
         $("button#search").click()
     },

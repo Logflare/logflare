@@ -1,23 +1,28 @@
-<div id="logs-list-container" phx-hook="SourceLogsSearchList">
-  <div id="logs-list" phx-update="prepend" class="list-unstyled console-text-list">
-    <%= Enum.map(@log_events, fn log -> %>
-    <li id="log-event_<%= log.id %>">
-      <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
-      <mark class="log-datestamp" data-timestamp="<%= timestamp %>">
-        <%= if @user_local_timezone do %>
-          <%= format_timestamp(timestamp, @user_local_timezone) %>
-        <% else %>
-          <%= format_timestamp(timestamp) <> " UTC"%><% end %></mark>
-      <%= message %>
-      <%= if map_size(metadata) > 0 do %>
-        <a class="metadata-link"
+<%= if length(@log_events) > 0 do %>
+  <div id="logs-list-container" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
+    <div id="logs-list" class="list-unstyled console-text-list"  >
+      <%= for log <- @log_events do %>
+        <li id="log-event_<%= log.id || log.body.timestamp %>">
+          <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
+          <mark class="log-datestamp" data-timestamp="<%= timestamp %>">
+            <%= if @user_local_timezone do %>
+              <%= format_timestamp(timestamp, @user_local_timezone) %>
+            <% else %>
+              <%= format_timestamp(timestamp) <> " UTC"%>
+            <% end %></mark>
+          <%= message %>
+          <%= if map_size(metadata) > 0 do %>
+            <a class="metadata-link"
                 phx-click="activate_modal"
-                phx-value-modal_id="metadataModal:<%= log.id || log.timestamp %>"
+                phx-value-modal_id="metadataModal:<%= log.id || log.body.timestamp %>"
                 href="#" aria-expanded="false">
-          metadata
-        </a>
+              metadata
+            </a>
+          <% end %>
+        </li>
       <% end %>
-    </li>
-  <% end) %>
-</div>
-</div>
+    </div>
+  </div>
+<% else %>
+  <div id="logs-list-container-empty"></div>
+<% end %>

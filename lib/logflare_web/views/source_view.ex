@@ -24,7 +24,8 @@ defmodule LogflareWeb.SourceView do
 
   def render_modal("metadataModal:" <> id, _source, log_events) do
     log_event =
-      Enum.find(log_events, &(&1.id === id)) || Enum.find(log_events, &(&1.timestamp === id))
+      Enum.find(log_events, &(&1.id === id)) ||
+        Enum.find(log_events, &("#{&1.body.timestamp}" === id))
 
     fmt_metadata =
       log_event

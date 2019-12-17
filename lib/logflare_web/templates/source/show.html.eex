@@ -20,7 +20,7 @@
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %></h5>
   </div>
 </div>
-<div class="container mx-auto" id="console-text">
+<div class="container mx-auto console-text">
   <ul id="logs-list" class="list-unstyled console-text-list" hidden>
     <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>

@@ -60,7 +60,8 @@ defmodule LogflareWeb.Source.SearchLV do
         user_local_timezone: nil,
         use_local_time: true,
         search_chart_aggregate_enabled?: false,
-        last_query_completed_at: nil
+        last_query_completed_at: nil,
+        last_query_elapsed_sec: 0
       )
 
     {:ok, socket}
@@ -233,6 +234,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_event("set_last_query_elapsed_sec" = ev, elapsed, socket) do
+    {:noreply, assign(socket, :last_query_elapsed_sec, Float.round(elapsed * 1.0, 1))}
+  end
+
   def handle_event("activate_modal" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
     modal_id = metadata["modal_id"]
@@ -318,14 +323,25 @@ defmodule LogflareWeb.Source.SearchLV do
 
     warning = warning_message(socket.assigns, search_result)
 
-    log_aggregates = Enum.reverse(search_result.aggregates.rows)
     log_events = search_result.events.rows
+
+    log_aggregates =
+      search_result.aggregates.rows
+      |> Enum.reverse()
+      |> Enum.map(fn la ->
+        Map.update!(
+          la,
+          "timestamp",
+          &SourceView.format_timestamp(&1, socket.assigns.user_local_timezone)
+        )
+      end)
 
     socket =
       socket
       |> assign(:log_events, log_events)
       |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_result, search_result.events)
+      |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
       |> assign(:search_op_log_aggregates, search_result.aggregates)
       |> assign(:tailing_timer, tailing_timer)
@@ -343,6 +359,8 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:search_op_error, search_op)
+      |> assign(:search_op_log_events, nil)
+      |> assign(:search_op_log_aggregates, nil)
       |> assign_flash(:error, format_error(search_op.error))
       |> assign(:tailing?, false)
       |> assign(:loading, false)
