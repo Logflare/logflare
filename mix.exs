@@ -108,6 +108,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.3.0"},
       {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
+      {:observer_cli, "~> 1.5"},
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.20.0"},
