@@ -13,7 +13,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   require Logger
   alias Logflare.{Sources, Users}
-  @tail_search_interval 5_000
+  @tail_search_interval 500
   @user_idle_interval 300_000
   @default_tailing? true
   @default_chart_aggregate :count
