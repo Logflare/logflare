@@ -102,10 +102,11 @@ defmodule Logflare.Logs.Search.Parser do
 
   def parse(querystring, schema) do
     typemap =
-      BigQuerySchemaChange.to_typemap(schema)
+      schema
+      |> BigQuerySchemaChange.to_typemap()
       |> Iteraptor.to_flatmap()
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".t", ""), v} end)
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
+      |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
       |> Enum.uniq()
       |> Enum.reject(fn {_k, v} -> v === :map end)
       |> Map.new()
@@ -127,16 +128,16 @@ defmodule Logflare.Logs.Search.Parser do
       end
 
     {:ok, %{search: search, chart: chart}}
+  catch
+    e ->
+      {:error, e}
   rescue
     e in MatchError ->
       %MatchError{term: {filter, {:error, errstring}}} = e
       {:error, "#{String.capitalize(Atom.to_string(filter))} parse error: #{errstring}"}
 
-    _e in FunctionClauseError ->
+    e in FunctionClauseError ->
       {:error, "Invalid query! Please consult search syntax guide."}
-
-    e ->
-      {:error, inspect(e)}
   end
 
   def do_parse(querystring) do
@@ -197,27 +198,6 @@ defmodule Logflare.Logs.Search.Parser do
 
   defp to_path_val_op(field, [path, "=", lvalue, "..", rvalue])
        when field in ~w(metadata_field timestamp_field)a do
-    to_range_path_val_op([path, "=", lvalue, "..", rvalue])
-  end
-
-  defp to_path_val_op(:timestamp_field, [_, operator, datetime]) do
-    datetime =
-      if String.length(datetime) === 10 do
-        {:timestamp, {:ok, date}} = {:timestamp, Date.from_iso8601(datetime)}
-        date
-      else
-        {:timestamp, {:ok, datetime, _}} = {:timestamp, DateTime.from_iso8601(datetime)}
-        datetime
-      end
-
-    %{
-      path: "timestamp",
-      value: datetime,
-      operator: operator
-    }
-  end
-
-  defp to_range_path_val_op([path, "=", lvalue, "..", rvalue]) do
     [
       %{
         path: path,
@@ -232,6 +212,41 @@ defmodule Logflare.Logs.Search.Parser do
     ]
   end
 
+  defp to_path_val_op(:timestamp_field, [_, operator, datetime]) do
+    dt =
+      if String.length(datetime) === 10 do
+        case Date.from_iso8601(datetime) do
+          {:ok, date} ->
+            date
+
+          {:error, err} ->
+            throw(
+              "Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{
+                datetime
+              }, error: #{err}"
+            )
+        end
+      else
+        case DateTime.from_iso8601(datetime) do
+          {:ok, dt, _offset} ->
+            dt
+
+          {:error, err} ->
+            throw(
+              "Query syntax error: timestamp expected date or datetime string in ISO8601 format, got: #{
+                datetime
+              }, error: #{err}"
+            )
+        end
+      end
+
+    %{
+      path: "timestamp",
+      value: dt,
+      operator: operator
+    }
+  end
+
   def maybe_tagged_to_literal({:quoted_string, [literal]}) do
     literal
   end
@@ -244,17 +259,39 @@ defmodule Logflare.Logs.Search.Parser do
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}
 
+  defp maybe_cast_value(c, :boolean),
+    do: throw("Query syntax error: Expected boolean for #{c.path}, got: #{c.value}")
+
   defp maybe_cast_value(%{value: sourcevalue} = c, :integer) when is_binary(sourcevalue) do
-    {value, ""} = Integer.parse(sourcevalue)
+    value =
+      case Integer.parse(sourcevalue) do
+        {value, ""} -> value
+        _ -> throw("Query syntax error: expected integer for #{c.path}, got: #{sourcevalue}")
+      end
 
     %{c | value: value}
   end
 
   defp maybe_cast_value(%{value: sourcevalue} = c, :float) when is_binary(sourcevalue) do
-    {value, ""} = Float.parse(c.value)
+    value =
+      case Float.parse(sourcevalue) do
+        {value, ""} -> value
+        _ -> throw("Query syntax error: expected float for #{c.path}, got: #{sourcevalue}")
+      end
 
     %{c | value: value}
   end
 
-  defp maybe_cast_value(c, _type), do: c
+  # Handles chart pathvalop casting
+  defp maybe_cast_value(%{value: nil} = c, :integer), do: c
+
+  defp maybe_cast_value(c, :string), do: c
+
+  defp maybe_cast_value(c, :datetime), do: c
+
+  defp maybe_cast_value(c, :naive_datetime), do: c
+
+  defp maybe_cast_value(c, nil) do
+    throw("Query parsing error: attempting to cast value #{c.value} to nil type for #{c.path}")
+  end
 end

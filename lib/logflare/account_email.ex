@@ -3,8 +3,7 @@ defmodule Logflare.AccountEmail do
 
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-
-  @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
+  alias Logflare.Auth
 
   def welcome(user) do
     account_edit_link = build_host() <> Routes.user_path(Endpoint, :edit)
@@ -21,13 +20,13 @@ defmodule Logflare.AccountEmail do
   end
 
   def source_notification(user, rate, source) do
-    signature = Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, user.email_preferred)
+    signature = Auth.gen_token(user.email_preferred)
 
     source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
     unsubscribe_link =
       build_host() <>
-        Routes.auth_path(Endpoint, :unsubscribe, source.id, signature)
+        Routes.unsubscribe_path(Endpoint, :unsubscribe, source.id, signature)
 
     new()
     |> to(user.email_preferred)
@@ -41,13 +40,13 @@ defmodule Logflare.AccountEmail do
   end
 
   def source_notification_for_others(email, rate, source) do
-    signature = Phoenix.Token.sign(LogflareWeb.Endpoint, @salt, email)
+    signature = Auth.gen_token(email)
 
     source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
 
     unsubscribe_link =
       build_host() <>
-        Routes.auth_path(Endpoint, :unsubscribe_stranger, source.id, signature)
+        Routes.unsubscribe_path(Endpoint, :unsubscribe_stranger, source.id, signature)
 
     signup_link = build_host() <> Routes.auth_path(Endpoint, :login)
 

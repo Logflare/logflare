@@ -7,8 +7,8 @@
     },
     "dependencies": {
         "@babel/polyfill": "^7.4.4",
-        "@nivo/bar": "^0.59.2",
-        "@nivo/core": "^0.59.1",
+        "@nivo/bar": "^0.60.1",
+        "@nivo/core": "^0.60.0",
         "bootstrap": "^4.3.1",
         "clipboard": "^2.0.4",
         "date-fns": "^2.0.0-beta.2",
@@ -23,8 +23,8 @@
         "react": "^16.11.0",
         "react-dom": "^16.11.0",
         "react-spinners": "^0.6.1",
-        "sql-formatter": "^2.3.3",
-        "serialize-javascript": "^2.1.1"
+        "serialize-javascript": "^2.1.1",
+        "sql-formatter": "^2.3.3"
     },
     "devDependencies": {
         "@babel/core": "^7.5.5",

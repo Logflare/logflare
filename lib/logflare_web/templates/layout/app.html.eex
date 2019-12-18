@@ -86,10 +86,10 @@
               <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "nav-link" %>
             </li>
             <li class="nav-item">
-              <%= link "Sign in with Github", to: Routes.auth_path(@conn, :request, "github"), class: "nav-link" %>
+              <%= link "Sign in with Github", to: Routes.oauth_path(@conn, :request, "github"), class: "nav-link" %>
             </li>
             <li class="nav-item">
-              <%= link "Sign in with Google", to: Routes.auth_path(@conn, :request, "google"), class: "nav-link" %>
+              <%= link "Sign in with Google", to: Routes.oauth_path(@conn, :request, "google"), class: "nav-link" %>
             </li>
           <% end %>
         </ul>

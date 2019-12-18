@@ -102,7 +102,7 @@ defmodule Logflare.Source.RecentLogsServer do
       {SearchQueryExecutor, rls}
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_all)
+    Supervisor.start_link(children, strategy: :one_for_one)
 
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}

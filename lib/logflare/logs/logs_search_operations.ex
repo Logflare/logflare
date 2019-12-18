@@ -14,7 +14,7 @@ defmodule Logflare.Logs.SearchOperations do
   use Logflare.GenDecorators
   @decorate_all pass_through_on_error_field()
 
-  @default_limit 100
+  @default_limit 500
   @default_processed_bytes_limit 10_000_000_000
 
   # Note that this is only a timeout for the request, not the query.
@@ -189,7 +189,22 @@ defmodule Logflare.Logs.SearchOperations do
     |> drop_timestamp_pathvalops
   end
 
-  def partition_or_streaming(%SO{} = so), do: so
+  def partition_or_streaming(%SO{} = so) do
+    partition_pathvalops =
+      for %{path: "timestamp", operator: op, value: v} <- so.pathvalops do
+        op =
+          case op do
+            ">" -> ">="
+            "<" -> "<="
+            "<=" -> "<="
+            ">=" -> ">="
+          end
+
+        %{path: "_PARTITIONDATE", operator: op, value: Timex.to_date(v)}
+      end
+
+    %{so | pathvalops: so.pathvalops ++ partition_pathvalops}
+  end
 
   def drop_timestamp_pathvalops(%SO{} = so) do
     %{so | pathvalops: Enum.reject(so.pathvalops, &(&1.path === "timestamp"))}
@@ -201,7 +216,7 @@ defmodule Logflare.Logs.SearchOperations do
       |> Sources.Cache.get_bq_schema()
       |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
       |> Iteraptor.to_flatmap()
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields", ""), v} end)
+      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
       |> Enum.map(fn {k, _} -> String.trim_trailing(k, ".t") end)
 
     result =
@@ -336,8 +351,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{chart: nil} = so) do
-    query = apply_wheres(so).query
-
+    query = so.query
     timestamp_pathvalops = Enum.filter(so.pathvalops, &(&1.path === "timestamp"))
 
     {min, max} =
@@ -399,5 +413,16 @@ defmodule Logflare.Logs.SearchOperations do
       |> format_agg_row_values()
 
     %{so | rows: rows}
+  end
+
+  def put_time_stats(%SO{} = so) do
+    so
+    |> Map.put(
+      :stats,
+      %{
+        start_monotonic_time: System.monotonic_time(:millisecond),
+        total_duration: nil
+      }
+    )
   end
 end

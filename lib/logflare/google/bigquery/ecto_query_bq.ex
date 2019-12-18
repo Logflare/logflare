@@ -10,20 +10,22 @@ defmodule Logflare.EctoQueryBQ do
   end
 
   def where_nesteds(q, pathvalops) do
-    pathvalops
+    {top_level, nesteds} = Enum.split_with(pathvalops, &top_level_field?(&1.path))
+    top_level = for pvo <- top_level do
+      Map.put(pvo, :column, pvo.path)
+    end
+    q = apply_where_conditions(q, top_level)
+
+    nesteds
     |> group_by_nested_column_path()
     |> apply_grouped_nested_wheres(q)
   end
 
   def where_nested(q, path, colvalops) when is_list(colvalops) do
-    if top_level_field?(path) do
-      apply_where_conditions(q, colvalops)
-    else
-      path
-      |> split_by_dots()
-      |> apply_nested_joins(q)
-      |> apply_where_conditions(colvalops)
-    end
+    path
+    |> split_by_dots()
+    |> apply_nested_joins(q)
+    |> apply_where_conditions(colvalops)
   end
 
   def apply_grouped_nested_wheres(grouped_pathval_opts, q) do
@@ -33,7 +35,7 @@ defmodule Logflare.EctoQueryBQ do
   end
 
   def top_level_field?(path) do
-    path in ~w(timestamp event_message)
+    path in ["timestamp", "event_message", "_PARTITIONTIME", "_PARTITIONDATE"]
   end
 
   def apply_nested_joins(nested_columns, q) do

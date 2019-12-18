@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
+  import Phoenix.LiveView.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -81,8 +82,8 @@ defmodule LogflareWeb.Router do
   scope "/sources", LogflareWeb do
     pipe_through :browser
     get "/public/:public_token", SourceController, :public
-    get "/:id/unsubscribe/:token", AuthController, :unsubscribe
-    get "/:id/unsubscribe/stranger/:token", AuthController, :unsubscribe_stranger
+    get "/:id/unsubscribe/:token", Auth.UnsubscribeController, :unsubscribe
+    get "/:id/unsubscribe/stranger/:token", Auth.UnsubscribeController, :unsubscribe_stranger
   end
 
   scope "/sources", LogflareWeb do
@@ -99,8 +100,7 @@ defmodule LogflareWeb.Router do
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
-    get "/:id/search", SourceController, :search
-    live "/live/:id/search", Source.SearchLV, session: [:assigns, :params]
+    live "/:id/search", Source.SearchLV, session: [:source_id, :user_id]
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
@@ -112,6 +112,7 @@ defmodule LogflareWeb.Router do
     get "/edit", UserController, :edit
     put "/edit", UserController, :update
     delete "/", UserController, :delete
+    get "/new-api-key", UserController, :new_api_key
   end
 
   scope "/admin", LogflareWeb do
@@ -122,17 +123,15 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/auth", LogflareWeb do
-    pipe_through [:browser, :require_auth]
-    get "/new-api-key", AuthController, :new_api_key
-  end
-
-  scope "/auth", LogflareWeb do
     pipe_through :browser
 
     get "/login", AuthController, :login
+    get "/login/email", Auth.EmailController, :login
+    post "/login/email", Auth.EmailController, :send_link
     get "/logout", AuthController, :logout
-    get "/:provider", AuthController, :request
-    get "/:provider/callback", AuthController, :callback
+    get "/:provider", Auth.OauthController, :request
+    get "/email/callback/:token", Auth.EmailController, :callback
+    get "/:provider/callback", Auth.OauthController, :callback
   end
 
   # deprecate

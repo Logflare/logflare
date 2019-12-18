@@ -1,9 +1,8 @@
 <%= if @public_token do %>
-<script>
-  window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>"
-</script>
+  <script>
+    window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>"
+  </script>
 <% end %>
-
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
     <div class="log-settings float-right">
@@ -11,7 +10,7 @@
         <li><a href="javascript:Source.scrollBottom();"><span id="scroll-down"><i class="far fa-arrow-alt-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li><%= link to: Routes.source_path(@conn, :explore, @source), target: "_blank" do %><i class="fas fa-chart-bar"></i><span class="hide-on-mobile"> explore</span><% end %></li>
         <li><a href="javascript:Source.switchDateFormat();"><span id="swap-date">
-        <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
+              <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
         <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
         <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i><span class="hide-on-mobile"> send more logs</a></span></li>
         <li><%= link to: Routes.source_path(@conn, :clear_logs, @source) do %><i class="fas fa-broom"></i><span class="hide-on-mobile"> clear cache</span><% end %></li>
@@ -21,67 +20,60 @@
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %></h5>
   </div>
 </div>
-
-<div class="container mx-auto" id="console-text">
-<ul id="logs-list" class="list-unstyled console-text-list" hidden>
-  <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
+<div class="container mx-auto console-text">
+  <ul id="logs-list" class="list-unstyled console-text-list" hidden>
+    <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>
       <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>">
-         <%= log.body.timestamp %>
+        <%= log.body.timestamp %>
       </mark>
       <%= log.body.message %>
       <%= if map_size(log.body.metadata) > 0 do %>
-      <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
-        metadata
-      </a>
-      <div class="collapse metadata" id="metadata-<%= inx %>">
-        <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
-      </div>
+        <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
+          metadata
+        </a>
+        <div class="collapse metadata" id="metadata-<%= inx %>">
+          <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
+        </div>
       <% end %>
       <%= if log.via_rule do %>
-            <span
+        <span
             data-toggle="tooltip" data-placement="top" title="Matching <%= log.via_rule.regex %> routing from <%= log.origin_source_id %>" style="color: ##5eeb8f;">
-              <i class="fa fa-code-branch" style="font-size: 1em;"></i>
-            </span>
+          <i class="fa fa-code-branch" style="font-size: 1em;"></i>
+        </span>
       <% end %>
     </li>
   <% end) %>
 </ul>
-
 <%= if @logs == [] do %>
-<div id="no-logs-warning">
-  <h4>No logs ... add some logs!</h4>
-</div>
-<% else %>
-<div>
-<%= form_for @conn, Routes.source_path(LogflareWeb.Endpoint, :search, @source), [method: :get], fn f -> %>
-  <div class="form-group">
-  <%= text_input f, :q, placeholder: "404", class: "form-control" %>
-  <small class="form-text text-muted">
-    random(tips): <%= @search_tip %>
-  </small>
+  <div id="no-logs-warning">
+    <h4>No logs ... add some logs!</h4>
   </div>
-  <%= submit class: "btn btn-primary form-button btn-sm" do %>
-  <i class="fas fa-search v-align-icon-button"></i> Search
+<% else %>
+  <div>
+    <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
+    <div class="form-group">
+      <%= text_input f, :q, placeholder: "404", class: "form-control" %>
+      <small class="form-text text-muted">
+        random(tips): <%= @search_tip %>
+      </small>
+    </div>
+    <%= submit class: "btn btn-primary form-button btn-sm" do %>
+      <i class="fas fa-search v-align-icon-button"></i> Search
+    <% end %>
   <% end %>
-<% end %>
 </div>
 <% end %>
-
 </div>
 <!-- Modal -->
 <%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source) %>
-
 <div
 id="__phx-assigns__"
 data-source-token="<%= @source.token %>"
 data-logs="<%= Poison.encode!(@logs) %>">
 </div>
-
 <script>
-
-document.addEventListener("DOMContentLoaded", async () => {
-    await Source.main({scrollTracker: true}, {avgEventsPerSecond: <%= @source.metrics.avg %>})
-  })
-
+  document.addEventListener("DOMContentLoaded", async () => {
+      await Source.main({scrollTracker: true}, {avgEventsPerSecond: <%= @source.metrics.avg %>})
+    })
 </script>

@@ -40,7 +40,7 @@ defmodule Logflare.Application do
       ),
       supervisor(Logflare.Repo, []),
       supervisor(LogflareWeb.Endpoint, []),
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
+      {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
     topologies = Application.get_env(:libcluster, :topologies)

@@ -13,9 +13,26 @@ hooks.SourceSchemaModalTable = {
   },
 }
 
+const activateModal = (el, selector) => {
+  const $modal = $(el)
+  const code = $(`${selector} code`)
+  const fmtSql = sqlFormatter.format(code.text())
+  // replace with formatted sql
+  code.text(fmtSql)
+
+  $modal
+    .find(".modal-body")
+    .html($(selector).html())
+}
+
+let sourceLogsSearchListLastUpdate
 hooks.SourceLogsSearchList = {
   updated() {
-    window.scrollTo(0, document.body.scrollHeight)
+    let currentUpdate = $(this.el).attr("data-last-query-completed-at")
+    if (sourceLogsSearchListLastUpdate !== currentUpdate) {
+      sourceLogsSearchListLastUpdate = currentUpdate
+      window.scrollTo(0, document.body.scrollHeight)
+    }
   },
   mounted() {
     $("html, body").animate({ scrollTop: document.body.scrollHeight })
@@ -23,53 +40,51 @@ hooks.SourceLogsSearchList = {
 }
 
 hooks.SourceQueryDebugEventsModal = {
+  updated() {
+    activateModal(this.el, "#search-query-debug-events")
+  },
   mounted() {
-    const $queryDebugModal = $(this.el)
-    const code = $("#search-query-debug-events code")
-    const fmtSql = sqlFormatter.format(code.text())
-    // replace with formatted sql
-    code.text(fmtSql)
-
-    $queryDebugModal
-      .find(".modal-body")
-      .html($("#search-query-debug-events").html())
+    activateModal(this.el, "#search-query-debug-events")
   },
 }
 
 hooks.SourceQueryDebugAggregatesModal = {
-  mounted() {
-    const $queryDebugModal = $(this.el)
-    const code = $("#search-query-debug-aggregates code")
-    const fmtSql = sqlFormatter.format(code.text())
-    // replace with formatted sql
-    code.text(fmtSql)
-
-    $queryDebugModal
-      .find(".modal-body")
-      .html($("#search-query-debug-aggregates").html())
+  updated() {
+    activateModal(this.el, "#search-query-debug-aggregates")
   },
+
+  mounted() {
+    activateModal(this.el, "#search-query-debug-aggregates")
+  },
+}
+
+hooks.SourceQueryDebugErrorModal = {
+  updated() {
+    activateModal(this.el, "#search-query-debug-error")
+  },
+  mounted() {
+    activateModal(this.el, "#search-query-debug-error")
+  },
+}
+
+const setTimezone = () => {
+  // Set user timezone
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  $("#user-local-timezone").val(timeZone)
 }
 
 hooks.SourceLogsSearch = {
   updated() {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    $("#set_local_time").attr("phx-value-user_local_timezone", timeZone)
+    setTimezone()
   },
 
   mounted() {
-    activateClipboardForSelector("#search-uri-query", {
-      text: trigger =>
-        location.href.replace(/\?.+$/, "") +
-        trigger.getAttribute("data-clipboard-text"),
-    })
+    activateClipboardForSelector("#search-uri-query", { text: () => location.href })
 
-    const idleInterval = $("#user-idle").data("user-idle-interval")
-
-    // Set user timezone
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    $("#user-local-timezone").val(timeZone)
+    setTimezone()
 
     // Activate user idle tracking
+    const idleInterval = $("#user-idle").data("user-idle-interval")
     idle({
       onIdle: () => {
         const $searchTailingButton = $("#search-tailing-button")
@@ -91,7 +106,9 @@ hooks.SourceLogsSearch = {
 
     setInterval(() => {
       const $lastQueryCompletedAt = $("#last-query-completed-at")
-      const lastQueryCompletedAt = $lastQueryCompletedAt.attr("data-timestamp")
+      const lastQueryCompletedAt = $lastQueryCompletedAt.attr(
+        "data-timestamp",
+      )
       if (lastQueryCompletedAt) {
         const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
         $("#last-query-completed-at span").text(elapsed.toFixed(1))
