@@ -2,7 +2,7 @@ defmodule Logflare.Google.CloudResourceManager do
   @moduledoc false
   require Logger
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query
 
   alias GoogleApi.CloudResourceManager.V1.Api
   alias GoogleApi.CloudResourceManager.V1.Model
@@ -203,7 +203,9 @@ defmodule Logflare.Google.CloudResourceManager do
         where: u.valid_google_account == true or is_nil(u.valid_google_account),
         select: %{
           email: u.email
-        }
+        },
+        order_by: [desc: u.updated_at],
+        limit: 1450
       )
 
     emails = Repo.all(query)
