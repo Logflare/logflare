@@ -116,7 +116,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       |> Enum.concat(rows)
       |> Enum.uniq_by(& &1.body)
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
-      |> Enum.take(500)
+      |> Enum.take(100)
 
     maybe_send(
       lv_pid,
