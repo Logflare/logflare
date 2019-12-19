@@ -16,10 +16,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
     Broadway.start_link(__MODULE__,
       name: name(source_id),
-      producers: [
-        ets: [
-          module: {BufferProducer, rls}
-        ]
+      producer: [
+        module: {BufferProducer, rls},
+        hibernate_after: 5_000
       ],
       processors: [
         default: [stages: 5]
