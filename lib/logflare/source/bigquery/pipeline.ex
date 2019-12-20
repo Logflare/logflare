@@ -18,7 +18,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       name: name(source_id),
       producer: [
         module: {BufferProducer, rls},
-        hibernate_after: 5_000
+        hibernate_after: 30_000
       ],
       processors: [
         default: [stages: 5]

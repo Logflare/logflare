@@ -14,7 +14,7 @@ defmodule Logflare.Logs.SearchOperations do
   use Logflare.GenDecorators
   @decorate_all pass_through_on_error_field()
 
-  @default_limit 500
+  @default_limit 100
   @default_processed_bytes_limit 10_000_000_000
 
   # Note that this is only a timeout for the request, not the query.
