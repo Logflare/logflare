@@ -128,6 +128,8 @@ defmodule LogflareWeb.Router do
     get "/login", AuthController, :login
     get "/login/email", Auth.EmailController, :login
     post "/login/email", Auth.EmailController, :send_link
+    get "/login/email/verify", Auth.EmailController, :verify_token
+    post "/login/email/verify", Auth.EmailController, :callback
     get "/logout", AuthController, :logout
     get "/:provider", Auth.OauthController, :request
     get "/email/callback/:token", Auth.EmailController, :callback

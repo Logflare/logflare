@@ -12,13 +12,17 @@ defmodule LogflareWeb.Auth.EmailController do
     render(conn, "email_login.html")
   end
 
+  def verify_token(conn, _params) do
+    render(conn, "verify_token.html")
+  end
+
   def send_link(conn, %{"email" => email}) do
     Auth.Email.auth_email(email)
     |> Mailer.deliver()
 
     conn
     |> put_flash(:info, "Check your email for a sign in link!")
-    |> redirect(to: Routes.auth_path(conn, :login))
+    |> redirect(to: Routes.email_path(conn, :verify_token))
   end
 
   def callback(conn, %{"token" => token}) do

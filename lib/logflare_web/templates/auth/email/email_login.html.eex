@@ -12,7 +12,7 @@
     <div class="form-group">
       <%= text_input f, :email, placeholder: "you@company.com", class: "form-control" %>
       <small class="form-text text-muted">
-        Didn't get the email? Let us know at <a href="mailto:support@logflare.app">support@logflare.app</a>.
+        Emails are sent from <a href="mailto:support@logflare.app">support@logflare.app</a>.
       </small>
       <%= error_tag f, :email %>
     </div>
