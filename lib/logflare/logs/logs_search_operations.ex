@@ -346,6 +346,12 @@ defmodule Logflare.Logs.SearchOperations do
       |> limit_aggregate_chart_period(so.search_chart_period)
       |> select_agg_value(so.search_chart_aggregate, last_chart_field)
       |> order_by([t, ...], desc: 1)
+      |> join_missing_range_timestamps(min, max, so.search_chart_period)
+      |> select([t, ts], %{
+        timestamp: coalesce(t.timestamp, ts.timestamp),
+        value: coalesce(t.value, ts.value)
+      })
+      |> order_by([t], desc: 1)
 
     %{so | query: query}
   end
