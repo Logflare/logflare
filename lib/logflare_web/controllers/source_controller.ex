@@ -351,9 +351,17 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp del_source_and_redirect_with_info(conn, source) do
-    Repo.delete!(source)
+    case Repo.delete(source) do
+      {:ok, _response} ->
+        put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
 
-    put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
+      {:error, _response} ->
+        put_flash_and_redirect_to_dashboard(
+          conn,
+          :error,
+          "Something went wrong! Please try again later."
+        )
+    end
   end
 
   defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do
