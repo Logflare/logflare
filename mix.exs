@@ -112,7 +112,7 @@ defmodule Logflare.Mixfile do
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.20.0"},
-      {:google_api_big_query, "~> 0.31.0"},
+      {:google_api_big_query, "~> 0.32.0"},
 
       # Ecto
       {:ecto_sql, "~> 3.2"},
