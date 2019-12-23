@@ -2,7 +2,7 @@ defmodule Logflare.User do
   @moduledoc """
   User schema and changeset
   """
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   @default_user_api_quota 150
 
@@ -13,7 +13,7 @@ defmodule Logflare.User do
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
   @default_dataset_location "US"
 
-  schema "users" do
+  typed_schema "users" do
     field :email, :string
     field :provider, :string
     field :token, :string

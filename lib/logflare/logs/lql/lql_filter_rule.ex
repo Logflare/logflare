@@ -1,10 +1,10 @@
 defmodule Logfalre.Lql.FilterRule do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
   @primary_key false
-  embedded_schema do
+  typed_embedded_schema do
     field :path, :string, virtual: true
     field :operator, Ecto.Atom, virtual: true
     field :value, :any, virtual: true

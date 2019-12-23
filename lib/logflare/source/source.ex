@@ -1,6 +1,6 @@
 defmodule Logflare.Source do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
@@ -8,9 +8,9 @@ defmodule Logflare.Source do
 
   defmodule Metrics do
     @moduledoc false
-    use Ecto.Schema
+    use TypedEctoSchema
 
-    embedded_schema do
+    typed_embedded_schema do
       field :rate, :integer
       field :latest, :integer
       field :avg, :integer
@@ -24,7 +24,7 @@ defmodule Logflare.Source do
     end
   end
 
-  schema "sources" do
+  typed_schema "sources" do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string

@@ -116,6 +116,7 @@ defmodule Logflare.Mixfile do
 
       # Ecto
       {:ecto_sql, "~> 3.2"},
+      {:typed_ecto_schema, "~> 0.1.0"},
 
       # Telemetry
       {:telemetry, "~> 0.4.0"},

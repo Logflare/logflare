@@ -1,5 +1,5 @@
 defmodule Logflare.LogEvent do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Source
@@ -10,26 +10,20 @@ defmodule Logflare.LogEvent do
 
   defmodule Body do
     @moduledoc false
-    use Ecto.Schema
+    use TypedEctoSchema
 
     @primary_key false
-    embedded_schema do
+    typed_embedded_schema do
       field :metadata, :map, default: %{}
       field :message, :string
       field :timestamp, :integer
       field :created_at, :utc_datetime_usec
     end
 
-    @type t() :: %__MODULE__{
-            metadata: map(),
-            message: String.t(),
-            timestamp: non_neg_integer(),
-            created_at: DateTime.t()
-          }
   end
 
   @primary_key {:id, :binary_id, []}
-  embedded_schema do
+  typed_embedded_schema do
     embeds_one :body, Body
     field :source, :map
     field :valid?, :boolean
@@ -40,15 +34,6 @@ defmodule Logflare.LogEvent do
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
   end
-
-  @type t() :: %__MODULE__{
-          valid?: boolean(),
-          validation_error: [String.t()],
-          ingested_at: DateTime.t(),
-          sys_uint: integer(),
-          params: map(),
-          body: Body.t()
-        }
 
   def mapper(params) do
     message = params["log_entry"] || params["message"] || params["event_message"]

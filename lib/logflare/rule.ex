@@ -1,10 +1,10 @@
 defmodule Logflare.Rule do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   alias Logflare.Source
   import Ecto.Changeset
 
-  schema "rules" do
+  typed_schema "rules" do
     field :regex, :string
     field :regex_struct, Ecto.Regex
     field :sink, Ecto.UUID.Atom
