@@ -1,4 +1,4 @@
-defmodule Logfalre.Lql.ChartRule do
+defmodule Logflare.Lql.ChartRule do
   @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
@@ -6,6 +6,7 @@ defmodule Logfalre.Lql.ChartRule do
   @primary_key false
   typed_embedded_schema do
     field :path, :string, virtual: true
+    field :value_type, Ecto.Atom
   end
 
   def build_from_path(path) do

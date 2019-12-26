@@ -1,0 +1,267 @@
+defmodule Logflare.Logs.Search.Parser.Helpers do
+  import NimbleParsec
+  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.ChartRule
+
+  def word do
+    [?a..?z, ?A..?Z, ?., ?_, ?0..?9]
+    |> ascii_string(min: 1)
+    |> unwrap_and_tag(:word)
+    |> label("word filter")
+    |> reduce({:to_rule, [:event_message]})
+  end
+
+  def quoted_string(path \\ :ignore) when path in [:event_message, :ignore] do
+    ignore(ascii_char([?"]))
+    |> repeat_while(
+      utf8_char([]),
+      {:not_quote, []}
+    )
+    |> ignore(ascii_char([?"]))
+    |> reduce({List, :to_string, []})
+    |> unwrap_and_tag(:quoted_string)
+    |> label("quoted string filter")
+    |> reduce({:to_rule, [path]})
+  end
+
+  def timestamp_clause() do
+    string("timestamp")
+    |> replace({:path, "timestamp"})
+    |> concat(operator())
+    |> concat(timestamp_value())
+    |> reduce({:to_rule, [:filter]})
+    |> reduce(:apply_value_modifiers)
+    |> map({:check_for_no_invalid_metadata_field_values, [:timestamp]})
+    |> label("timestamp filter rule clause")
+  end
+
+  def metadata_clause do
+    metadata_field()
+    |> concat(operator())
+    |> concat(metadata_field_value())
+    |> reduce({:to_rule, [:filter]})
+    |> reduce(:apply_value_modifiers)
+    |> map({:check_for_no_invalid_metadata_field_values, [:metadata]})
+    |> label("metadata filter rule clause")
+  end
+
+  def chart_clause() do
+    string("chart")
+    |> ignore(ascii_char([?:]))
+    |> concat(metadata_field())
+    |> tag(:chart_clause)
+    |> label("chart clause")
+    |> reduce({:to_rule, []})
+  end
+
+  def metadata_field do
+    string("metadata")
+    |> string(".")
+    |> ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
+    |> reduce({List, :to_string, []})
+    |> unwrap_and_tag(:path)
+    |> label("metadata BQ field")
+  end
+
+  def operator() do
+    choice([
+      string(":>=") |> replace(:>=),
+      string(":<=") |> replace(:<=),
+      string(":>") |> replace(:>),
+      string(":<") |> replace(:<),
+      string(":~") |> replace(:"~"),
+      string(":") |> replace(:=)
+    ])
+    |> unwrap_and_tag(:operator)
+    |> label("filter operator")
+  end
+
+  def number() do
+    ascii_string([?0..?9], min: 1)
+    |> concat(
+      optional(
+        string(".")
+        |> ascii_string([?0..?9], min: 1)
+      )
+    )
+    |> reduce({Enum, :join, [""]})
+    |> label("number")
+  end
+
+  def metadata_field_value do
+    choice([
+      range_operator(number()),
+      number(),
+      quoted_string(),
+      ascii_string([?a..?z, ?A..?Z, ?_], min: 1),
+      invalid_match_all_value()
+    ])
+    |> unwrap_and_tag(:value)
+    |> label("valid filter value")
+  end
+
+  def parse_date_or_datetime([{tag, result}]) do
+    mod =
+      case tag do
+        :date -> Date
+        :datetime -> DateTime
+      end
+
+    case mod.from_iso8601(result) do
+      {:ok, dt, _offset} ->
+        dt
+
+      {:ok, dt} ->
+        dt
+
+      {:error, :invalid_format} ->
+        throw(
+          "Error while parsing timestamp #{tag} value: expected ISO8601 string, got #{result}"
+        )
+
+      {:error, e} ->
+        throw(e)
+    end
+  end
+
+  def date do
+    ascii_string([?0..?9], 4)
+    |> string("-")
+    |> ascii_string([?0..?9], 2)
+    |> string("-")
+    |> ascii_string([?0..?9], 2)
+    |> reduce({Enum, :join, [""]})
+    |> unwrap_and_tag(:date)
+    |> label("ISO8601 date")
+    |> reduce(:parse_date_or_datetime)
+  end
+
+  def datetime do
+    date()
+    |> string("T")
+    |> ascii_string([?0..?9], 2)
+    |> string(":")
+    |> ascii_string([?0..?9], 2)
+    |> string(":")
+    |> ascii_string([?0..?9], 2)
+    |> optional(
+      choice([
+        string("Z"),
+        string("+")
+        |> ascii_string([?0..?9], 2)
+        |> string(":")
+        |> ascii_string([?0..?9], 2)
+      ])
+    )
+    |> reduce({Enum, :join, [""]})
+    |> unwrap_and_tag(:datetime)
+    |> label("ISO8601 datetime")
+    |> reduce(:parse_date_or_datetime)
+  end
+
+  def date_or_datetime do
+    [datetime(), date()]
+    |> choice()
+    |> label("date or datetime value")
+  end
+
+  def range_operator(combinator) do
+    combinator
+    |> concat(ignore(string("..")))
+    |> concat(combinator)
+    |> label("range operator")
+    |> tag(:range_operator)
+  end
+
+  def timestamp_value() do
+    choice([
+      range_operator(date_or_datetime()),
+      date_or_datetime(),
+      invalid_match_all_value()
+    ])
+    |> unwrap_and_tag(:value)
+    |> label("timestamp value")
+  end
+
+  def invalid_match_all_value do
+    choice([
+      ascii_string([33..255], min: 1),
+      empty() |> replace(~S|""|)
+    ])
+    |> unwrap_and_tag(:invalid_metadata_field_value)
+  end
+
+  def apply_value_modifiers([rule]) do
+    case rule.value do
+      {:range_operator, [lvalue, rvalue]} ->
+        [
+          %FilterRule{
+            path: rule.path,
+            value: lvalue,
+            operator: ">="
+          },
+          %FilterRule{
+            path: rule.path,
+            value: rvalue,
+            operator: "<="
+          }
+        ]
+
+      _ ->
+        rule
+    end
+  end
+
+  def maybe_apply_negation_modifier([:negate, rule]) do
+    modifiers = [:negate | rule.modifiers]
+    %{rule | modifiers: modifiers}
+  end
+
+  def maybe_apply_negation_modifier(rule), do: rule
+
+  def to_rule(chart_clause: chart_clause) do
+    %ChartRule{
+      path: chart_clause[:path],
+      value_type: nil
+    }
+  end
+
+  def to_rule(args, :ignore), do: args[:quoted_string]
+
+  def to_rule(args, :event_message) do
+    value = args[:quoted_string] || args[:word]
+
+    %FilterRule{
+      path: "event_message",
+      value: value,
+      operator: :"~"
+    }
+  end
+
+  def to_rule(args, :filter) when is_list(args) do
+    struct!(FilterRule, Map.new(args))
+  end
+
+  def check_for_no_invalid_metadata_field_values(
+        %{path: p, value: {:invalid_metadata_field_value, v}},
+        :timestamp
+      ) do
+    throw(
+      "Error while parsing timestamp filter value: expected ISO8601 string or range, got #{v}"
+    )
+  end
+
+  def check_for_no_invalid_metadata_field_values(
+        %{path: p, value: {:invalid_metadata_field_value, v}},
+        :metadata
+      ) do
+    throw("Error while parsing `#{p}` field metadata filter value: #{v}")
+  end
+
+  def check_for_no_invalid_metadata_field_values(rule, _) do
+    rule
+  end
+
+  def not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
+  def not_quote(_, context, _, _), do: {:cont, context}
+end
