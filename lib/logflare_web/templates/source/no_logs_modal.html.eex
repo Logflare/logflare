@@ -131,9 +131,7 @@
                 "Content-Type": "application/json",
                 "User-Agent": `Cloudflare Worker via ${rHost}`
             },
-            body: JSON.stringify(
-                logflareEventBody
-            ),
+            body: JSON.stringify(logflareEventBody),
         }
 
         event.waitUntil(fetch("https://api.logflare.app/logs", init))
