@@ -1,9 +1,9 @@
 defmodule LogflareWeb.Source.SearchLV.SearchParams do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
-  embedded_schema do
+  typed_embedded_schema do
     field :tailing?, :boolean
     field :querystring, :string
     field :search_chart_aggregate, Ecto.Atom
