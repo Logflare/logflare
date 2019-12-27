@@ -299,6 +299,10 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("user_idle" = ev, _, socket) do
     log_lv_received_event(ev, socket.assigns.source)
+
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.cancel_query(socket.assigns)
+
     socket = assign_flash(socket, :warning, "Live search paused due to user inactivity.")
 
     {:noreply, socket}
