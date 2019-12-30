@@ -100,6 +100,127 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
     |> label("valid filter value")
   end
 
+  def timestamp_shorthand_value do
+    choice([
+      string("now"),
+      string("today"),
+      string("yesterday"),
+      string("this")
+      |> ignore(string("@"))
+      |> choice([
+        string("week") |> replace(:weeks),
+        string("month") |> replace(:months),
+        string("day") |> replace(:days),
+        string("year") |> replace(:years),
+        string("hour") |> replace(:hours),
+        string("minute") |> replace(:minutes),
+        string("second") |> replace(:seconds),
+        string("mm") |> replace(:months),
+        string("s") |> replace(:seconds),
+        string("m") |> replace(:minutes),
+        string("h") |> replace(:hours),
+        string("d") |> replace(:days),
+        string("w") |> replace(:weeks),
+        string("y") |> replace(:years)
+      ]),
+      string("last")
+      |> ignore(string("@"))
+      |> optional(integer(min: 1, max: 3))
+      |> choice([
+        string("week") |> replace(:weeks),
+        string("month") |> replace(:months),
+        string("day") |> replace(:days),
+        string("year") |> replace(:years),
+        string("hour") |> replace(:hours),
+        string("minute") |> replace(:minutes),
+        string("second") |> replace(:seconds),
+        string("mm") |> replace(:months),
+        string("s") |> replace(:seconds),
+        string("m") |> replace(:minutes),
+        string("h") |> replace(:hours),
+        string("d") |> replace(:days),
+        string("w") |> replace(:weeks),
+        string("y") |> replace(:years)
+      ])
+    ])
+    |> reduce(:timestamp_shorthand_to_value)
+  end
+
+  def timestamp_shorthand_to_value(["now"]), do: %{Timex.now() | microsecond: {0, 0}}
+  def timestamp_shorthand_to_value(["today"]), do: Timex.today()
+  def timestamp_shorthand_to_value(["yesterday"]), do: Timex.today() |> Timex.shift(days: -1)
+
+  def timestamp_shorthand_to_value(["this", period]) do
+    now_ndt = %{Timex.now() | microsecond: {0, 0}, second: 0}
+
+    case period do
+      :minutes ->
+        {:range_operator, [now_ndt, now_ndt]}
+
+      :hours ->
+        {:range_operator, [%{now_ndt | minute: 0}, now_ndt]}
+
+      :days ->
+        {:range_operator, [%{now_ndt | hour: 0, minute: 0}, now_ndt]}
+
+      :weeks ->
+        {:range_operator,
+         [
+           Timex.beginning_of_week(%{now_ndt | hour: 0, minute: 0}),
+           now_ndt
+         ]}
+
+      :months ->
+        {:range_operator, [Timex.beginning_of_month(%{now_ndt | hour: 0, minute: 0}), now_ndt]}
+
+      :years ->
+        {:range_operator, [Timex.beginning_of_year(%{now_ndt | hour: 0, minute: 0}), now_ndt]}
+    end
+  end
+
+  def timestamp_shorthand_to_value(["last", amount, period]) do
+    amount = -amount
+    now_ndt_with_seconds = %{Timex.now() | microsecond: {0, 0}}
+
+    now_ndt = %{Timex.now() | microsecond: {0, 0}, second: 0}
+
+    case period do
+      :seconds ->
+        {:range_operator, [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
+
+      :minutes ->
+        {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
+
+      :hours ->
+        {:range_operator, [Timex.shift(%{now_ndt | minute: 0}, [{period, amount}]), now_ndt]}
+
+      :days ->
+        {:range_operator,
+         [Timex.shift(%{now_ndt | hour: 0, minute: 0}, [{period, amount}]), now_ndt]}
+
+      :weeks ->
+        {:range_operator,
+         [Timex.shift(%{now_ndt | hour: 0, minute: 0}, [{:days, amount * 7}]), now_ndt]}
+
+      :months ->
+        {:range_operator,
+         [
+           Timex.shift(%{now_ndt | hour: 0, minute: 0, day: 1}, [{period, amount}]),
+           now_ndt
+         ]}
+
+      :years ->
+        {:range_operator,
+         [
+           Timex.shift(
+             %{now_ndt | hour: 0, minute: 0},
+             [{period, amount}]
+           ),
+           now_ndt
+         ]}
+    end
+  end
+
   def parse_date_or_datetime([{tag, result}]) do
     mod =
       case tag do
@@ -177,6 +298,7 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
     choice([
       range_operator(date_or_datetime()),
       date_or_datetime(),
+      timestamp_shorthand_value(),
       invalid_match_all_value()
     ])
     |> unwrap_and_tag(:value)

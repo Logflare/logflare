@@ -539,6 +539,309 @@ defmodule Logflare.LqlParserTest do
       assert result.search == expected
     end
 
+    @tag :run
+    test "timestamp shorthands" do
+      now_ndt = %{Timex.now() | microsecond: {0, 0}}
+      now_udt_zero_sec = %{now_ndt | second: 0}
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: :=,
+                    path: "timestamp",
+                    value: now_ndt
+                  }
+                ]
+              }} == Parser.parse("timestamp:now", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: :=,
+                    path: "timestamp",
+                    value: Timex.today()
+                  }
+                ]
+              }} == Parser.parse("timestamp:today", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: :=,
+                    path: "timestamp",
+                    value: Timex.today() |> Timex.shift(days: -1)
+                  }
+                ]
+              }} == Parser.parse("timestamp:yesterday", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  }
+                ]
+              }} == Parser.parse("timestamp:this@minute", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: %{now_udt_zero_sec | minute: 0}
+                  }
+                ]
+              }} == Parser.parse("timestamp:this@hour", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: %{now_udt_zero_sec | minute: 0, hour: 0}
+                  }
+                ]
+              }} == Parser.parse("timestamp:this@day", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.beginning_of_week(%{now_udt_zero_sec | minute: 0, hour: 0})
+                  }
+                ]
+              }} == Parser.parse("timestamp:this@week", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.beginning_of_month(%{now_udt_zero_sec | minute: 0, hour: 0})
+                  }
+                ]
+              }} == Parser.parse("timestamp:this@month", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.beginning_of_year(%{now_udt_zero_sec | minute: 0, hour: 0})
+                  }
+                ]
+              }} == Parser.parse("timestamp:this@year", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_ndt
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(now_ndt, seconds: -50)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@50s", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(now_udt_zero_sec, minutes: -43)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@43m", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(%{now_udt_zero_sec | minute: 0}, hours: -100)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@100h", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, days: -7)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@7d", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, weeks: -2)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@2w", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0, day: 1}, months: -1)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@1mm", @schema)
+
+      assert {:ok,
+              %{
+                chart: [],
+                search: [
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: "<=",
+                    path: "timestamp",
+                    value: now_udt_zero_sec
+                  },
+                  %Logflare.Lql.FilterRule{
+                    modifiers: [],
+                    operator: ">=",
+                    path: "timestamp",
+                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, years: -1)
+                  }
+                ]
+              }} == Parser.parse("timestamp:last@1y", @schema)
+    end
+
+    @tag :run
+    test "level ranges" do
+      str = ~S|
+         level:debug..warn
+         level:info..error
+         level:debug..error
+       |
+
+      {:ok, result} = Parser.parse(str, @schema)
+    end
+
     test "lt, lte, gte, gt for float values" do
       schema =
         SchemaBuilder.build_table_schema(
