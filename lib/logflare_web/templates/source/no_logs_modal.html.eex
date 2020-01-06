@@ -14,7 +14,7 @@
         </iframe>
         <h5 class="header-margin">With Elixir Logger</h5>
         <p>Using Elixir? Use our Logger backend to send your structured logs.</p>
-        <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare-logger", class: "btn btn-primary form-button" %>
+        <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-primary form-button" %>
         <h5 class="header-margin">With the Elixir Agent</h5>
         <p>Watch log files on a server with our Elixir agent.</p>
         <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button" %>
