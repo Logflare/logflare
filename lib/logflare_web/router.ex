@@ -13,6 +13,8 @@ defmodule LogflareWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser
+    plug LogflareWeb.Plugs.SetTeamIfNil
+    plug LogflareWeb.Plugs.SetVerifyTeamUser
   end
 
   pipeline :api do
@@ -40,6 +42,14 @@ defmodule LogflareWeb.Router do
 
   pipeline :check_admin do
     plug LogflareWeb.Plugs.CheckAdmin
+  end
+
+  pipeline :check_owner do
+    plug LogflareWeb.Plugs.CheckOwner
+  end
+
+  pipeline :check_team_user do
+    plug LogflareWeb.Plugs.CheckTeamUser
   end
 
   scope "/" do
@@ -106,8 +116,21 @@ defmodule LogflareWeb.Router do
     get "/:id/explore", SourceController, :explore
   end
 
-  scope "/account", LogflareWeb do
+  scope "/profile", LogflareWeb do
+    pipe_through [:browser, :require_auth, :check_team_user]
+
+    get "/edit", TeamUserController, :edit
+    put "/edit", TeamUserController, :update
+    delete "/", TeamUserController, :delete
+  end
+
+  scope "/profile", LogflareWeb do
     pipe_through [:browser, :require_auth]
+    get "/switch", TeamUserController, :change_team
+  end
+
+  scope "/account", LogflareWeb do
+    pipe_through [:browser, :require_auth, :check_owner]
 
     get "/edit", UserController, :edit
     put "/edit", UserController, :update

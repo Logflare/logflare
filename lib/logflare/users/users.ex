@@ -20,6 +20,11 @@ defmodule Logflare.Users do
     |> preload_defaults()
   end
 
+  def preload_team_users(user) do
+    user
+    |> Repo.preload(:team_users)
+  end
+
   def preload_defaults(user) do
     user
     |> Repo.preload(:sources)

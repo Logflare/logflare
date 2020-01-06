@@ -2,7 +2,7 @@ defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
-  alias Logflare.{User, Repo}
+  alias Logflare.{User, Repo, Users}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Source.Supervisor
@@ -10,7 +10,7 @@ defmodule LogflareWeb.UserController do
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   def edit(%{assigns: %{user: user}} = conn, _params) do
-    changeset = User.update_by_user_changeset(user, %{})
+    changeset = User.changeset(user, %{})
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -24,7 +24,7 @@ defmodule LogflareWeb.UserController do
     prev_bigquery_project_id = user.bigquery_project_id
 
     user
-    |> User.update_by_user_changeset(params)
+    |> User.changeset(params)
     |> Repo.update()
     |> case do
       {:ok, user} ->
