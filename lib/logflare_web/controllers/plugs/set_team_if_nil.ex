@@ -10,6 +10,8 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
   alias Logflare.User
   alias Logflare.Generators
   alias Logflare.Repo
+  alias Logflare.Teams
+  alias Logflare.Teams.Team
 
   def init(_), do: nil
 
@@ -19,15 +21,10 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
   def call(conn, opts), do: conn
 
   def set_team(%{assigns: %{user: user}} = conn, opts) do
-    changeset = User.changeset(user, %{team: Generators.team_name()})
+    {:ok, team} = Teams.create_team(user, %{name: Generators.team_name()})
 
-    case Repo.update(changeset) do
-      {:ok, user} ->
-        assign(conn, :user, user)
-
-      {:error, changeset} ->
-        Logger.warn("Team was nil and updating user failed for user: #{user.email}")
-        conn
-    end
+    conn
+    |> assign(:user, user)
+    |> assign(:team, team)
   end
 end

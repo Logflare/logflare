@@ -1,7 +1,7 @@
 defmodule LogflareWeb.AuthController do
   use LogflareWeb, :controller
 
-  alias Logflare.{Users, TeamUsers}
+  alias Logflare.{Users, TeamUsers, Teams}
   alias Logflare.Auth
   alias Logflare.AccountEmail
   alias Logflare.Mailer
@@ -30,13 +30,15 @@ defmodule LogflareWeb.AuthController do
   end
 
   def invited_signin(conn, auth_params, invite_token) do
-    {:ok, invited_by_user_id} = Auth.verify_token(invite_token)
-    invited_by_user = Users.get(invited_by_user_id)
-    invitee_exists_as_owner? = invited_by_user.email == auth_params.email
+    {:ok, invited_by_team_id} = Auth.verify_token(invite_token)
+    team = Teams.get_team!(invited_by_team_id) |> Teams.preload_user()
+    invited_by_user = team.user
+    invitee_exists_as_owner? = invited_by_user.provider_uid == auth_params.provider_uid
 
     if invitee_exists_as_owner? do
       conn
       |> put_flash(:error, "Invite error. You are already the owner for this account.")
+      |> put_session(:invite_token, nil)
       |> signin(auth_params)
     else
       signin_invitee(conn, auth_params, invite_token)
@@ -44,19 +46,21 @@ defmodule LogflareWeb.AuthController do
   end
 
   def signin_invitee(conn, auth_params, invite_token) do
-    {:ok, invited_by_user_id} = Auth.verify_token(invite_token)
+    {:ok, invited_by_team_id} = Auth.verify_token(invite_token)
+    invited_by_user_id = Teams.get_team!(invited_by_team_id).user_id
 
-    case TeamUsers.get_team_user_by_user_provider_uid(
-           invited_by_user_id,
+    case TeamUsers.get_team_user_by_team_provider_uid(
+           invited_by_team_id,
            auth_params.provider_uid
          ) do
       nil ->
-        {:ok, team_user} = TeamUsers.create_team_user(invited_by_user_id, auth_params)
+        {:ok, team_user} = TeamUsers.create_team_user(invited_by_team_id, auth_params)
 
         conn
         |> put_flash(:error, "Thanks for joining this Logflare team!")
         |> put_session(:user_id, invited_by_user_id)
         |> put_session(:team_user_id, team_user.id)
+        |> put_session(:invite_token, nil)
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
       team_user ->
@@ -64,6 +68,7 @@ defmodule LogflareWeb.AuthController do
         |> put_flash(:info, "Welcome back!")
         |> put_session(:user_id, invited_by_user_id)
         |> put_session(:team_user_id, team_user.id)
+        |> put_session(:invite_token, nil)
         |> redirect(to: Routes.source_path(conn, :dashboard))
     end
   end

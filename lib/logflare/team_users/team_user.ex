@@ -13,7 +13,7 @@ defmodule Logflare.TeamUsers.TeamUser do
     field :provider_uid, :string
     field :token, :string
     field :valid_google_account, :boolean
-    belongs_to :user, Logflare.User
+    belongs_to :team, Logflare.Teams.Team
 
     timestamps()
   end

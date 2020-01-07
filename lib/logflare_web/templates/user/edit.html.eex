@@ -60,17 +60,19 @@
   <p>Name your team!</p>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn a -> %>
     <div class="form-group">
-      <%= text_input a, :team, placeholder: "Wobbly Wombats", class: "form-control"%>
-      <%= error_tag a, :team %>
+      <%= inputs_for a, :team, fn team -> %>
+        <%= text_input team, :name, placeholder: "Wobbly Wombats", class: "form-control"%>
+        <%= error_tag team, :name %>
+      <% end %>
     </div>
-    <%= submit "Update team", class: "btn btn-primary form-button" %>
+  <%= submit "Update team", class: "btn btn-primary form-button" %>
   <% end %>
 
   <h5 id="team-members" class="header-margin">Team Members</h5>
   <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
   <p>Invite more members!</p>
   <div>
-    <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@user.id)) %></code>
+    <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %></code>
     <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@user.id)) %>">Copy path</button>
   </div>
 

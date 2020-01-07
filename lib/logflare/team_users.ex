@@ -4,7 +4,8 @@ defmodule Logflare.TeamUsers do
   """
   import Ecto.Query, warn: false
 
-  alias Logflare.Users
+  alias Logflare.Teams
+  alias Logflare.Teams.Team
   alias Logflare.Repo
   alias Logflare.TeamUsers.TeamUser
 
@@ -28,7 +29,7 @@ defmodule Logflare.TeamUsers do
         select: t
 
     for team_user <- Repo.all(query) do
-      Repo.preload(team_user, :user)
+      Repo.preload(team_user, :team)
     end
   end
 
@@ -48,8 +49,8 @@ defmodule Logflare.TeamUsers do
   """
   def get_team_user_by(kv), do: Repo.get_by(TeamUser, kv)
 
-  def get_team_user_by_user_provider_uid(user_id, provider_uid) do
-    from(u in TeamUser, where: u.user_id == ^user_id and u.provider_uid == ^provider_uid)
+  def get_team_user_by_team_provider_uid(team_id, provider_uid) do
+    from(u in TeamUser, where: u.team_id == ^team_id and u.provider_uid == ^provider_uid)
     |> Repo.one()
   end
 
@@ -61,7 +62,7 @@ defmodule Logflare.TeamUsers do
         nil
 
       team_user ->
-        Repo.preload(team_user, :user)
+        Repo.preload(team_user, :team)
     end
   end
 
@@ -77,8 +78,8 @@ defmodule Logflare.TeamUsers do
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_team_user(user_id, team_user_attrs \\ %{}) do
-    Users.get(user_id)
+  def create_team_user(team_id, team_user_attrs \\ %{}) do
+    Teams.get_team!(team_id)
     |> Ecto.build_assoc(:team_users)
     |> TeamUser.changeset(team_user_attrs)
     |> Repo.insert()

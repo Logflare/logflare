@@ -23,7 +23,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       |> case do
         id when is_integer(id) ->
           Users.get_by_and_preload(id: id)
-          |> Users.preload_team_users()
+          |> Users.preload_team()
 
         _ ->
           nil

@@ -14,7 +14,8 @@ defmodule LogflareWeb.Router do
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetTeamIfNil
-    plug LogflareWeb.Plugs.SetVerifyTeamUser
+    plug LogflareWeb.Plugs.SetTeamUser
+    plug LogflareWeb.Plugs.SetTeam
   end
 
   pipeline :api do

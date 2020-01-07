@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Plugs.SetVerifyTeamUser do
+defmodule LogflareWeb.Plugs.SetTeamUser do
   @moduledoc """
   Assigns team user if browser session is present in conn
   """

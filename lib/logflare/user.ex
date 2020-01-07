@@ -7,7 +7,7 @@ defmodule Logflare.User do
   @default_user_api_quota 150
 
   alias Logflare.Source
-  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.Teams.Team
   alias Logflare.Google.BigQuery
   alias Logflare.Generators
 
@@ -27,7 +27,7 @@ defmodule Logflare.User do
     field :email_me_product, :boolean, default: true
     field :admin, :boolean, default: false
     has_many :sources, Source
-    has_many :team_users, TeamUser
+    has_one :team, Team
     field :phone, :string
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
@@ -36,7 +36,6 @@ defmodule Logflare.User do
     field :valid_google_account, :boolean
     field :provider_uid, :string
     field :company, :string
-    field :team, :string
 
     timestamps()
   end
@@ -63,9 +62,9 @@ defmodule Logflare.User do
       :bigquery_dataset_id,
       :valid_google_account,
       :provider_uid,
-      :company,
-      :team
+      :company
     ])
+    |> cast_assoc(:team)
     |> default_validations(user)
   end
 

@@ -20,6 +20,7 @@ defmodule LogflareWeb.UserController do
   end
 
   def update(conn, %{"user" => params}) do
+    IO.inspect(params)
     user = conn.assigns.user
     prev_bigquery_project_id = user.bigquery_project_id
 
