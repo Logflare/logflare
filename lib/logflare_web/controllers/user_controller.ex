@@ -2,7 +2,7 @@ defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
-  alias Logflare.{User, Repo, Users}
+  alias Logflare.{User, Repo}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Source.Supervisor

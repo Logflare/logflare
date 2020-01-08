@@ -39,7 +39,7 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def change_team(%{assigns: %{team_user: team_user, user: _user}} = conn, %{
+  def change_team(%{assigns: %{team_user: _team_user, user: _user}} = conn, %{
         "user_id" => user_id,
         "team_user_id" => team_user_id
       }) do
@@ -50,7 +50,7 @@ defmodule LogflareWeb.TeamUserController do
     |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
-  def change_team(%{assigns: %{team_user: team_user, user: _user}} = conn, %{
+  def change_team(%{assigns: %{team_user: _team_user, user: _user}} = conn, %{
         "user_id" => user_id
       }) do
     conn

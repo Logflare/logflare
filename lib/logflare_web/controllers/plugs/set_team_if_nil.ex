@@ -5,13 +5,10 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
   require Logger
 
   import Plug.Conn
-  import Phoenix.Controller
 
   alias Logflare.User
   alias Logflare.Generators
-  alias Logflare.Repo
   alias Logflare.Teams
-  alias Logflare.Teams.Team
 
   def init(_), do: nil
 

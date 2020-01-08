@@ -11,7 +11,7 @@ defmodule LogflareWeb.Plugs.CheckTeamUser do
 
   def call(%{assigns: %{user: _user, team_user: _team_user}} = conn, _params), do: conn
 
-  def call(%{assigns: %{user: user}} = conn, _params) do
+  def call(%{assigns: %{user: _user}} = conn, _params) do
     conn
     |> put_flash(
       :info,

@@ -9,7 +9,6 @@ defmodule Logflare.User do
   alias Logflare.Source
   alias Logflare.Teams.Team
   alias Logflare.Google.BigQuery
-  alias Logflare.Generators
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]

@@ -15,7 +15,7 @@ defmodule LogflareWeb.SourceController do
               :explore
             ]
 
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Users, Teams}
+  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams}
   alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
@@ -23,7 +23,7 @@ defmodule LogflareWeb.SourceController do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
-  def dashboard(%{assigns: %{user: user, team_user: team_user, team: team}} = conn, _params) do
+  def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
     sources =
       user.sources
       |> Enum.map(&Sources.preload_defaults/1)

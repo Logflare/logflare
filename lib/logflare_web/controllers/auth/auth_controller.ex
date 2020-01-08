@@ -14,7 +14,7 @@ defmodule LogflareWeb.AuthController do
     |> redirect(to: Routes.marketing_path(conn, :index))
   end
 
-  def login(conn, %{"invite_token" => invite_token} = params) do
+  def login(conn, %{"invite_token" => invite_token} = _params) do
     put_session(conn, :invite_token, invite_token)
     |> put_flash(:info, "You've been invited to sign into Logflare!")
     |> render("login.html")

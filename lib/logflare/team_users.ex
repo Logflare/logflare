@@ -5,7 +5,6 @@ defmodule Logflare.TeamUsers do
   import Ecto.Query, warn: false
 
   alias Logflare.Teams
-  alias Logflare.Teams.Team
   alias Logflare.Repo
   alias Logflare.TeamUsers.TeamUser
 

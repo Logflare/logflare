@@ -19,8 +19,8 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
 
   def call(
         %{
-          assigns: %{user: user, team_user: team_user, team: team},
-          query_params: %{"user_id" => user_id, "team_user_id" => team_user_id}
+          assigns: %{user: _user, team_user: team_user, team: _team},
+          query_params: %{"user_id" => _user_id, "team_user_id" => team_user_id}
         } = conn,
         opts
       ) do
@@ -39,7 +39,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
 
   def call(
         %{
-          assigns: %{user: user, team_user: team_user, team: team},
+          assigns: %{user: _user, team_user: team_user, team: _team},
           query_params: %{"user_id" => user_id}
         } = conn,
         opts
@@ -59,8 +59,8 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
 
   def call(
         %{
-          assigns: %{user: user, team: team},
-          query_params: %{"user_id" => user_id, "team_user_id" => team_user_id}
+          assigns: %{user: user, team: _team},
+          query_params: %{"user_id" => _user_id, "team_user_id" => team_user_id}
         } = conn,
         opts
       ) do
@@ -78,7 +78,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
   """
 
   def call(
-        %{assigns: %{user: user, team: team}, query_params: %{"user_id" => user_id}} = conn,
+        %{assigns: %{user: user, team: _team}, query_params: %{"user_id" => user_id}} = conn,
         opts
       ) do
     verify(user_id, user.id, conn, opts)
