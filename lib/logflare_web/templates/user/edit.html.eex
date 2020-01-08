@@ -52,12 +52,11 @@
   <% end %>
 </div>
 
-  <h4 class="header-margin">Account Preferences</h4>
-  <p>Set your account wide preferences.</p>
+<h4 class="header-margin">Team Preferences</h4>
+<p>Setup your team.</p>
 
 <div class="sub-form">
   <h5 class="header-margin">Team Name</h5>
-  <p>Name your team!</p>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn a -> %>
     <div class="form-group">
       <%= inputs_for a, :team, fn team -> %>
@@ -70,12 +69,21 @@
 
   <h5 id="team-members" class="header-margin">Team Members</h5>
   <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
-  <p>Invite more members!</p>
-  <div>
-    <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %></code>
-    <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %>">Copy path</button>
-  </div>
 
+  <h5 class="header-margin">Invite Team Members</h5>
+
+  <div class="form-group">
+    <p>Use this link to invite team members. This link will expire 30 minutes from now.</p>
+    <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %></code>
+
+  </div>
+  <button class="btn btn-primary form-button" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %>">Copy invite link</button>
+</div>
+
+  <h4 class="header-margin">Account Preferences</h4>
+  <p>Set your account wide preferences.</p>
+
+<div class="sub-form">
   <h5 id="big-query-preferences" class="header-margin">BigQuery Backend</h5>
   <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner and BigQuery Job User permissions. See <%= link "this guide", to: Routes.marketing_path(@conn, :big_query_setup) %> for more info.</p>
   <%= render(LogflareWeb.UserView, "edit_bq_form.html", conn: @conn, changeset: @changeset, user: @user) %>
