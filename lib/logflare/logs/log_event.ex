@@ -19,7 +19,6 @@ defmodule Logflare.LogEvent do
       field :timestamp, :integer
       field :created_at, :utc_datetime_usec
     end
-
   end
 
   @primary_key {:id, :binary_id, []}

@@ -3,6 +3,7 @@ defmodule Logflare.Sources do
   Sources-related context
   """
   alias Logflare.{Repo, Source, Tracker, Cluster}
+  alias Logflare.Rule
   require Logger
 
   @default_bucket_width 60
@@ -82,23 +83,28 @@ defmodule Logflare.Sources do
   defp maybe_compile_rule_regexes(%{rules: rules} = source) do
     rules =
       for rule <- rules do
-        if rule.regex_struct do
-          rule
-        else
-          regex_struct =
-            case Regex.compile(rule.regex) do
-              {:ok, regex} ->
-                regex
+        case rule do
+          %Rule{lql_filters: lql_filters} when not is_nil(lql_filters) ->
+            rule
 
-              {:error, _} ->
-                Logger.error(
-                  "Rule #{rule.id} for #{source.token} is invalid. Regex string:#{rule.regex}"
-                )
+          %Rule{regex_struct: rs} when not is_nil(rs) ->
+            rule
 
-                nil
-            end
+          %Rule{regex: regex} when not is_nil(regex) ->
+            regex_struct =
+              case Regex.compile(rule.regex) do
+                {:ok, regex} ->
+                  regex
 
-          %{rule | regex_struct: regex_struct}
+                {:error, _} ->
+                  Logger.error(
+                    "Rule #{rule.id} for #{source.token} is invalid. Regex string:#{rule.regex}"
+                  )
+
+                  nil
+              end
+
+            %{rule | regex_struct: regex_struct}
         end
       end
 

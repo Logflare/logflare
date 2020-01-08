@@ -10,6 +10,7 @@ defmodule Logflare.Rule do
     field :regex_struct, Ecto.Regex
     field :sink, Ecto.UUID.Atom
     embeds_many :lql_filters, Lql.FilterRule
+    field :lql_string, :string
     # TODO update sink field to be an belongs_to association
     # belongs_to :sink, Source, foreign_key: :sink_id, type: Ecto.UUID.Atom, references: :token
     belongs_to :source, Source
@@ -20,8 +21,9 @@ defmodule Logflare.Rule do
   @doc false
   def changeset(rule, attrs \\ %{}) do
     rule
-    |> cast(attrs, [:sink, :lql_filters])
-    |> validate_required([:sink, :lql_filters])
+    |> cast(attrs, [:sink, :lql_string])
+    |> cast_embed(:lql_filters)
+    |> validate_required([:sink, :lql_filters, :lql_string])
     |> validate_regex_is_read_only()
   end
 
@@ -35,8 +37,7 @@ defmodule Logflare.Rule do
         ]
       )
     else
-      rule
-      |> cast(%{}, [])
+      cast(rule, %{}, [])
     end
   end
 
@@ -51,9 +52,10 @@ defmodule Logflare.Rule do
   end
 
   def changeset_error_to_string(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
       Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
+        String.replace(acc, "%{#{key}}", to_string(inspect(value)))
       end)
     end)
     |> Enum.reduce("", fn {k, v}, acc ->

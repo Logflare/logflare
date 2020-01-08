@@ -1,0 +1,41 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/rules</h5>
+  </div>
+</div>
+<div id="lql-rules-container" class="container mx-auto">
+  <h5 class="header-margin">Rules</h5>
+  <p>Route logs with rules. Rules will match against a log entry and copy it to the specified sink (another source).
+    Save special entries with rules. Create a rule for signups, or bots or IP addresses using regular expressions.</p>
+  <ul class="list-group">
+    <%= for rule <- @rules do %>
+      <li class="list-group-item">
+        <a href="#" phx-click="delete_rule" phx-value-rule_id="<%= rule.id %>" >
+          <i class="fa fa-trash"></i>
+        </a>
+        Matching <code><%= rule.lql_string %></code> routing to <code><%= rule.sink %></code>
+      </li>
+    <% end %>
+  </ul>
+  <%= f = form_for :rule, "#", phx_submit: :fsubmit, class: "form-group" %>
+  <div class="form-group">
+    <span class="rules">
+      <%= label f, :lql_string, "LQL string", class: "control-label" %>
+      <%= text_input f, :lql_string, placeholder: "", class: "form-control" %>
+      <%= error_tag f, :lql_string %>
+    </span>
+    <span class="rules">
+      <%= label f, :sink, "Sink source", class: "control-label" %>
+      <% sink_form_options =  for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
+      <%= select f, :sink, sink_form_options, prompt: "Choose a sink", class: "form-control rules-input" %>
+      <%= error_tag f, :sink %>
+    </span>
+  </div>
+  <div>
+    <%= if @error_message do %>
+      <%= @error_message %>
+    <% end %>
+  </div>
+  <%= submit "Add rule", class: "btn btn-primary" %>
+</form>
+</div>

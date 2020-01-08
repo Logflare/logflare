@@ -6,6 +6,26 @@ defmodule Logflare.Rules do
   import Ecto.Query
   require Logger
 
+  def create_rule(source, params) do
+    changeset =
+      source
+      |> Repo.preload([:rules], force: true)
+      |> Ecto.build_assoc(:rules)
+      |> Rule.changeset(params)
+
+    case Repo.insert(changeset) do
+      {:ok, rule} ->
+        {:ok, rule}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  def delete_rule!(rule_id) do
+    Rule |> Repo.get!(rule_id) |> Repo.delete!()
+  end
+
   def upgrade_source_rules_from_regex_to_lql(source_id) do
     rules =
       Rule

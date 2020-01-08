@@ -11,9 +11,23 @@ defmodule Logflare.Lql.FilterRule do
     field :modifiers, {:array, :any}, virtual: true, default: []
   end
 
+  def changeset(_, %__MODULE__{} = rule) do
+    rule
+    |> cast(%{}, fields())
+  end
+
+  def changeset(rule, params) do
+    rule
+    |> cast(params, fields())
+  end
+
   def build(params) when is_list(params) do
     %__MODULE__{}
-    |> cast(Map.new(params), __MODULE__.__schema__(:fields))
+    |> cast(Map.new(params), fields())
     |> Map.get(:changes)
+  end
+
+  def fields() do
+    __MODULE__.__schema__(:fields)
   end
 end

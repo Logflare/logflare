@@ -3,7 +3,7 @@ defmodule Logflare.Repo.Migrations.AddLqlFiltersToRules do
 
   def change do
     alter table(:rules) do
-      add :lql_filters, :map
+      add :lql_filters, :map, default: %{}, null: false
     end
   end
 end
