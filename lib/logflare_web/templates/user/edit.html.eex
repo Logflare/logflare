@@ -89,3 +89,18 @@
   <%= link "Reset now", to: Routes.user_path(@conn, :new_api_key), class: "btn btn-danger form-button" %></li>
 </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const clipboard = new ClipboardJS('#copy-path')
+  clipboard.on('success', (e)  => {
+      alert("Copied!");
+      e.clearSelection();
+  });
+
+  clipboard.on('error', (e) => {
+      alert("Something went wrong!");
+      e.clearSelection();
+  })
+})
+</script>
