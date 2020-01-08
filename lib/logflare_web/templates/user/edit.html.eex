@@ -18,19 +18,19 @@
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
     <div class="form-group">
       <%= label f, :name, class: "label-padding"  %>
-      <%= text_input f, :name, placeholder: "Name", class: "form-control"%>
+      <%= text_input f, :name, placeholder: "Name", class: "form-control form-control-margin"%>
       <%= error_tag f, :name %>
       <%= label f, :company, "Company", class: "label-padding" %>
-      <%= text_input f, :company, placeholder: "Company", class: "form-control"%>
+      <%= text_input f, :company, placeholder: "Company", class: "form-control form-control-margin"%>
       <%= error_tag f, :company %>
       <%= label f, :email_preferred, "Preferred email", class: "label-padding" %>
-      <%= email_input f, :email_preferred, placeholder: "Preferred email", class: "form-control"%>
+      <%= email_input f, :email_preferred, placeholder: "Preferred email", class: "form-control form-control-margin"%>
       <small class="form-text text-muted">
         Can be different from the account you authorized with. We'll only send you important product or account related emails.
       </small>
       <%= error_tag f, :email_preferred %>
       <%= label f, :phone, "Phone number", class: "label-padding" %>
-      <%= text_input f, :phone, placeholder: "+15558675309", class: "form-control"%>
+      <%= text_input f, :phone, placeholder: "+15558675309", class: "form-control form-control-margin"%>
       <small class="form-text text-muted">
         Used to send you SMS alerts if enabled on a source.
       </small>
@@ -60,7 +60,7 @@
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn a -> %>
     <div class="form-group">
       <%= inputs_for a, :team, fn team -> %>
-        <%= text_input team, :name, placeholder: "Wobbly Wombats", class: "form-control"%>
+        <%= text_input team, :name, placeholder: "Wobbly Wombats", class: "form-control form-control-margin"%>
         <%= error_tag team, :name %>
       <% end %>
     </div>

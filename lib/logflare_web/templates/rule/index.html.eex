@@ -23,16 +23,16 @@
   <h5 class="header-margin">New Rule</h5>
   <%= form_for @changeset, Routes.source_rule_path(@conn, :create, @source.id), fn f -> %>
     <div class="form-group">
-      <%= hidden_input f, :source, value: @source.id, class: "form-control rules-input" %>
+      <%= hidden_input f, :source, value: @source.id, class: "form-control form-control-margin rules-input" %>
       <%= error_tag f, :source %>
       <span class="rules">
-        <%= label f, :regex, class: "control-label" %>
-        <%= text_input f, :regex, placeholder: "\\| 4.. \\|", class: "form-control" %>
+        <%= label f, :regex, class: "control-label label-padding" %>
+        <%= text_input f, :regex, placeholder: "\\| 4.. \\|", class: "form-control form-control-margin" %>
         <%= error_tag f, :regex %>
       </span>
       <span class="rules">
-        <%= label f, :sink, class: "control-label" %>
-        <%= select f, :sink, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a sink", class: "form-control rules-input" %>
+        <%= label f, :sink, class: "control-label label-padding" %>
+        <%= select f, :sink, Enum.map(@sources, &[key: &1.name, value: &1.token, disabled: &1.disabled]), prompt: "Choose a sink", class: "form-control form-control-margin rules-input" %>
         <%= error_tag f, :sink %>
       </span>
       <small class="form-text text-muted">
