@@ -53,6 +53,10 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.CheckTeamUser
   end
 
+  pipeline :auth_switch do
+    plug LogflareWeb.Plugs.AuthSwitch
+  end
+
   scope "/" do
     pipe_through [:api, :oauth_public]
     oauth_api_routes()
@@ -125,9 +129,9 @@ defmodule LogflareWeb.Router do
     delete "/", TeamUserController, :delete
   end
 
-  scope "/profile", LogflareWeb do
-    pipe_through [:browser, :require_auth]
-    get "/switch", TeamUserController, :change_team
+  scope "/profile/switch", LogflareWeb do
+    pipe_through [:browser, :require_auth, :auth_switch]
+    get "/", TeamUserController, :change_team
   end
 
   scope "/account", LogflareWeb do

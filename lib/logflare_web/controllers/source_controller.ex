@@ -31,7 +31,7 @@ defmodule LogflareWeb.SourceController do
       |> Enum.map(&Sources.put_schema_field_count/1)
       |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
 
-    home_team = Teams.get_home_team(team_user)
+    home_team = Teams.get_home_team!(team_user)
 
     team_users_with_teams =
       TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)

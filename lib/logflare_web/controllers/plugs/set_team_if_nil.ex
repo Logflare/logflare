@@ -18,9 +18,9 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
   def call(%{assigns: %{user: %User{team: team}}} = conn, opts) when is_nil(team),
     do: set_team(conn, opts)
 
-  def call(conn, opts), do: conn
+  def call(conn, _opts), do: conn
 
-  def set_team(%{assigns: %{user: user}} = conn, opts) do
+  def set_team(%{assigns: %{user: user}} = conn, _opts) do
     {:ok, team} = Teams.create_team(user, %{name: Generators.team_name()})
 
     conn

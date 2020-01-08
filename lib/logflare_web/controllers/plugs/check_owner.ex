@@ -9,6 +9,10 @@ defmodule LogflareWeb.Plugs.CheckOwner do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
+  @doc """
+  If I have a `team_user` in the assigns they're not the owner.
+  """
+
   def call(%{assigns: %{team_user: team_user}} = conn, _params) do
     owner_email = conn.assigns.user.email
     owner_name = conn.assigns.user.name || conn.assigns.user.email
