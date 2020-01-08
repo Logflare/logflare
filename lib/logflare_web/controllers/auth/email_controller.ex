@@ -33,7 +33,8 @@ defmodule LogflareWeb.Auth.EmailController do
           email: email,
           email_preferred: email,
           provider: "email",
-          provider_uid: email
+          provider_uid: email,
+          image: Auth.gravatar_link(email)
         }
 
         conn

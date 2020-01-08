@@ -20,4 +20,9 @@ defmodule Logflare.Auth do
   def verify_token(token, max_age \\ @max_age_default) do
     Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: max_age)
   end
+
+  def gravatar_link(email) do
+    hash = :crypto.hash(:md5, String.trim(email)) |> Base.encode16(case: :lower)
+    "https://www.gravatar.com/avatar/" <> hash
+  end
 end
