@@ -10,7 +10,7 @@ defmodule LogflareWeb.UserController do
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   def edit(%{assigns: %{user: user}} = conn, _params) do
-    changeset = User.update_by_user_changeset(user, %{})
+    changeset = User.changeset(user, %{})
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -20,11 +20,12 @@ defmodule LogflareWeb.UserController do
   end
 
   def update(conn, %{"user" => params}) do
+    IO.inspect(params)
     user = conn.assigns.user
     prev_bigquery_project_id = user.bigquery_project_id
 
     user
-    |> User.update_by_user_changeset(params)
+    |> User.changeset(params)
     |> Repo.update()
     |> case do
       {:ok, user} ->

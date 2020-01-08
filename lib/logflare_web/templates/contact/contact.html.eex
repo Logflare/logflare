@@ -22,7 +22,7 @@
 							 <div class="leftside">
  								<h4>Support</h4>
  								<p>Contact us at: </p>
- 								<p><span>support@logflare.app</span></p>
+ 								<p><span><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">support@logflare.app</a></span></p>
  								<p class="lastone">Generally you can expect responses from 8:00 am to 5:00 pm Mountain Standard Time.</p>
                </br>
                  <h4>Office</h4>

@@ -15,7 +15,7 @@ defmodule LogflareWeb.SourceController do
               :explore
             ]
 
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery}
+  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams}
   alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
@@ -23,16 +23,44 @@ defmodule LogflareWeb.SourceController do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
-  def dashboard(conn, _params) do
+  def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
     sources =
-      conn.assigns.user.sources
+      user.sources
       |> Enum.map(&Sources.preload_defaults/1)
       |> Enum.map(&Sources.preload_saved_searches/1)
       |> Enum.map(&Sources.put_schema_field_count/1)
       |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
 
+    home_team = Teams.get_home_team!(team_user)
+
+    team_users_with_teams =
+      TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
+
     render(conn, "dashboard.html",
       sources: sources,
+      home_team: home_team,
+      team_users: team_users_with_teams,
+      current_node: Node.self()
+    )
+  end
+
+  def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
+    sources =
+      user.sources
+      |> Enum.map(&Sources.preload_defaults/1)
+      |> Enum.map(&Sources.preload_saved_searches/1)
+      |> Enum.map(&Sources.put_schema_field_count/1)
+      |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
+
+    home_team = team
+
+    team_users_with_teams =
+      TeamUsers.list_team_users_by_and_preload(provider_uid: user.provider_uid)
+
+    render(conn, "dashboard.html",
+      sources: sources,
+      home_team: home_team,
+      team_users: team_users_with_teams,
       current_node: Node.self()
     )
   end

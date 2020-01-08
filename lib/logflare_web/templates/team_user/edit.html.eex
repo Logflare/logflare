@@ -1,0 +1,49 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+    </div>
+    <h5>~/profile/edit</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h5 class="header-margin">Profile Preferences</h5>
+  <p>Set your profile preferences.</p>
+  <%= form_for @changeset, Routes.team_user_path(@conn, :update), fn f -> %>
+    <div class="form-group">
+      <%= label f, :name %>
+      <%= text_input f, :name, placeholder: "Name", class: "form-control"%>
+      <%= error_tag f, :name %>
+      <%= label f, :email_preferred, "Preferred email", class: "label-padding" %>
+      <%= email_input f, :email_preferred, placeholder: "Preferred email", class: "form-control"%>
+      <small class="form-text text-muted">
+        Can be different from the account you authorized with. We'll only send you important product or account related emails.
+      </small>
+      <%= error_tag f, :email_preferred %>
+      <%= label f, :phone, "Phone number", class: "label-padding" %>
+      <%= text_input f, :phone, placeholder: "+15558675309", class: "form-control"%>
+      <small class="form-text text-muted">
+        Used to send you SMS alerts if enabled on a source.
+      </small>
+      <%= label f, :email_me_product, "Email me product updates", class: "label-padding" %>
+      <%= checkbox f, :email_me_product %>
+    </div>
+    <%= submit "Update preferences", class: "btn btn-primary form-button" %>
+  <% end %>
+
+
+  <h5 class="header-margin">Signed In with <%= String.capitalize(@team_user.provider) %></h5>
+  <p>You signed in with your <code><%= @team_user.provider %></code> account <code><%= @team_user.email %></code>.</p>
+  <%= if @team_user.provider == "github" do %>
+    <p>Review your authorized Oauth applications at Github.</p>
+    <%= link "Visit Github", to: "https://github.com/settings/applications", class: "btn btn-primary form-button" %>
+  <% end %>
+  <%= if @team_user.provider == "google" do %>
+    <p>Review apps with access to your Google account</a>.</p>
+    <%= link "Visit Google", to: "https://myaccount.google.com/permissions?authuser=#{@team_user.email}", class: "btn btn-primary form-button" %>
+  <% end %>
+
+  <h5 class="header-margin">Delete Your Profile</h5>
+  <p>This will immediately delete everything associated with your profile. There is no undo.</p>
+  <%= link "Delete now", to: Routes.team_user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>
+</div>

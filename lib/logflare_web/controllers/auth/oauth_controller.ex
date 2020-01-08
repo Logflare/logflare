@@ -7,11 +7,17 @@ defmodule LogflareWeb.Auth.OauthController do
   alias Logflare.Repo
   alias LogflareWeb.AuthController
 
-  def callback(%{assigns: %{ueberauth_auth: _auth}} = conn, %{"state" => ""} = params) do
+  def callback(
+        %{assigns: %{ueberauth_auth: _auth}} = conn,
+        %{"state" => "", "provider" => "slack"} = params
+      ) do
     callback(conn, Map.drop(params, ["state"]))
   end
 
-  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, %{"state" => state} = _params)
+  def callback(
+        %{assigns: %{ueberauth_auth: auth}} = conn,
+        %{"state" => state, "provider" => "slack"} = _params
+      )
       when is_binary(state) do
     state = Jason.decode!(state)
 
@@ -52,8 +58,15 @@ defmodule LogflareWeb.Auth.OauthController do
       provider_uid: generate_provider_uid(auth, auth.provider)
     }
 
-    conn
-    |> AuthController.signin(auth_params)
+    case get_session(conn, :invite_token) do
+      nil ->
+        conn
+        |> AuthController.signin(auth_params)
+
+      invite_token ->
+        conn
+        |> AuthController.invited_signin(auth_params, invite_token)
+    end
   end
 
   def callback(%{assigns: %{ueberauth_failure: _auth}} = conn, _params) do

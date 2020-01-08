@@ -1,0 +1,14 @@
+<ul id="team-members" class="list-unstyled">
+  <li>
+    <img class="rounded-circle" width=35 height=35 src="<%= @user.image %>" alt="<%= @user.name || @user.email %>">
+    <%= link(@user.name || @user.email, to: "mailto:#{@user.email}") %>
+    <small><%= if assigns[:team_user], do: "owner", else: "owner, you" %></small>
+  </li>
+<%= for member <- @team.team_users do %>
+  <li>
+    <img class="rounded-circle" width=35 height=35 src="<%= member.image %>" alt="<%= member.name || member.email %>">
+    <%= link(member.name || member.email, to: "mailto:#{member.email}")%>
+    <small><%= if assigns[:team_user], do: if member.provider_uid == @team_user.provider_uid, do: "you" %></small>
+  </li>
+<% end %>
+</ul>

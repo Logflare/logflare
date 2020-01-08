@@ -63,7 +63,10 @@
               <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
             </li>
             <li class="nav-item">
-              <%= link "Preferences", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
+              <%= link "Profile", to: Routes.team_user_path(@conn, :edit), class: "nav-link" %>
+            </li>
+            <li class="nav-item">
+              <%= link "Account", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
             </li>
             <li class="nav-item">
               <%= link "Sign out", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>
