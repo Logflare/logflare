@@ -1,4 +1,4 @@
-defmodule Logflare.Lql.Parser.V2 do
+defmodule Logflare.Lql.Parser do
   @moduledoc false
   import NimbleParsec
   import Logflare.Logs.Search.Parser.Helpers
@@ -20,10 +20,8 @@ defmodule Logflare.Lql.Parser.V2 do
       ])
     )
     |> ignore(choice([ascii_string([?\s, ?\n], min: 1), eos()]))
-    # |> wrap
     |> reduce(:maybe_apply_negation_modifier)
-    # |> map({List, :flatten, []})
-    |> times(min: 1, max: 50)
+    |> times(min: 1, max: 100)
   )
 
   def parse(querystring, schema) do
@@ -44,21 +42,6 @@ defmodule Logflare.Lql.Parser.V2 do
           %ChartRule{path: path} = rule ->
             %{rule | value_type: typemap[path]}
         end)
-
-      search_rules =
-        rules
-        |> Enum.filter(&match?(%FilterRule{}, &1))
-        |> Enum.sort()
-
-      chart_rules =
-        rules
-        |> Enum.filter(&match?(%ChartRule{}, &1))
-        |> Enum.sort()
-
-      rules = %{
-        search: search_rules,
-        chart: chart_rules
-      }
 
       {:ok, rules}
     else

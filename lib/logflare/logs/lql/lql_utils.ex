@@ -1,7 +1,7 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
   alias Logflare.Logs.Validators.BigQuerySchemaChange
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.{FilterRule, ChartRule}
 
   def bq_schema_to_typemap(schema) do
     schema
@@ -21,5 +21,17 @@ defmodule Logflare.Lql.Utils do
       value: regex,
       modifiers: []
     }
+  end
+
+  def get_filter_rules(rules) do
+    rules
+    |> Enum.filter(&match?(%FilterRule{}, &1))
+    |> Enum.sort()
+  end
+
+  def get_chart_rules(rules) do
+    rules
+    |> Enum.filter(&match?(%ChartRule{}, &1))
+    |> Enum.sort()
   end
 end

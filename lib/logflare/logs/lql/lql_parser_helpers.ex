@@ -186,7 +186,8 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
 
     case period do
       :seconds ->
-        {:range_operator, [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
+        {:range_operator,
+         [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
 
       :minutes ->
         {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}

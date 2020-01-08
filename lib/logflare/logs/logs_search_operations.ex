@@ -2,7 +2,7 @@ defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.{Source, Sources, EctoQueryBQ}
-  alias Logflare.Logs.Search.Parser
+  alias Logflare.Lql.Parser
   alias Logflare.Logs.Search.Utils
   import Ecto.Query
   import Logflare.Logs.SearchOperations.Utils
