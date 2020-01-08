@@ -3,7 +3,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
   Assigns team user if browser session is present in conn
   """
   import Plug.Conn
-  import Phoenix.Controller
+
   alias Logflare.TeamUsers
 
   def init(_), do: nil
