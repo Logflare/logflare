@@ -73,7 +73,7 @@
   <p>Invite more members!</p>
   <div>
     <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %></code>
-    <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@user.id)) %>">Copy path</button>
+    <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %>">Copy path</button>
   </div>
 
   <h5 id="big-query-preferences" class="header-margin">BigQuery Backend</h5>

@@ -29,6 +29,18 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
+  def check_invite_token_and_signin(conn, auth_params) do
+    case get_session(conn, :invite_token) do
+      nil ->
+        conn
+        |> signin(auth_params)
+
+      invite_token ->
+        conn
+        |> invited_signin(auth_params, invite_token)
+    end
+  end
+
   def invited_signin(conn, auth_params, invite_token) do
     {:ok, invited_by_team_id} = Auth.verify_token(invite_token)
     team = Teams.get_team!(invited_by_team_id) |> Teams.preload_user()

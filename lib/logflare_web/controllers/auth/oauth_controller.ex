@@ -58,15 +58,7 @@ defmodule LogflareWeb.Auth.OauthController do
       provider_uid: generate_provider_uid(auth, auth.provider)
     }
 
-    case get_session(conn, :invite_token) do
-      nil ->
-        conn
-        |> AuthController.signin(auth_params)
-
-      invite_token ->
-        conn
-        |> AuthController.invited_signin(auth_params, invite_token)
-    end
+    AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 
   def callback(%{assigns: %{ueberauth_failure: _auth}} = conn, _params) do

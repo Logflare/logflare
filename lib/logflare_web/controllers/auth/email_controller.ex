@@ -37,8 +37,7 @@ defmodule LogflareWeb.Auth.EmailController do
           image: Auth.gravatar_link(email)
         }
 
-        conn
-        |> AuthController.signin(auth_params)
+        AuthController.check_invite_token_and_signin(conn, auth_params)
 
       {:error, :expired} ->
         conn
