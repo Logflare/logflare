@@ -20,7 +20,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @default_chart_period :minute
 
   def render(assigns) do
-    Phoenix.View.render(SearchView, "logs_search.html", assigns)
+    SearchView.render("logs_search.html", assigns)
   end
 
   def mount(%{user_id: user_id} = session, socket) do

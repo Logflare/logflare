@@ -12,14 +12,14 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
 
     case assigns.active_modal do
       "searchHelpModal" ->
-        SearchView.render("logs_search_modal.html",
+        SearchView.render("modal.html",
           id: "searchHelpModal",
           title: "Logflare Query Language",
-          body: SearchView.render("logs_search_help.html")
+          body: SearchView.render("lql_help.html")
         )
 
       "sourceSchemaModal" ->
-        SearchView.render("logs_search_modal.html",
+        SearchView.render("modal.html",
           id: "sourceSchemaModal",
           title: "Source Schema",
           body: SearchView.format_bq_schema(assigns.source)
@@ -37,12 +37,12 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
           |> SourceView.encode_metadata()
 
         body =
-          SearchView.render("logs_search_metadata_modal_body.html",
+          SearchView.render("metadata_modal_body.html",
             log_event: log_event,
             fmt_metadata: fmt_metadata
           )
 
-        SearchView.search_view("logs_search_modal.html",
+        SearchView.search_view("modal.html",
           id: "metadataModal",
           title: "Metadata",
           body: body
@@ -55,7 +55,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
 
         ~L"""
         <div class="source-logs-search-modals" phx-hook="<%= hook %>">
-          <%= SearchView.render "logs_search_modal.html",
+          <%= SearchView.render "modal.html",
             id: modal,
             title: "Query Debugging",
             body: "No query or query is still in progress..." %>

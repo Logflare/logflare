@@ -7,7 +7,7 @@ defmodule LogflareWeb.Source.SearchLV.DebugLVC do
   import LogflareWeb.LiveComponentUtils
 
   def render(assigns) do
-    Phoenix.View.render(SearchView, "debug.html", assigns)
+    SearchView.render("debug.html", assigns)
   end
 
   def update(assigns, socket) do

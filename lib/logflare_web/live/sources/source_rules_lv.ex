@@ -14,7 +14,7 @@ defmodule LogflareWeb.Sources.RulesLV do
   @lql_string ""
 
   def render(assigns) do
-    Phoenix.View.render(RuleView, "index.html", assigns)
+    RuleView.render("index.html", assigns)
   end
 
   def mount(session, socket) do

@@ -7,7 +7,7 @@ defmodule LogflareWeb.ClusterLV do
   alias Phoenix.LiveView.Socket
 
   def render(assigns) do
-    Phoenix.View.render(ClusterView, "index.html", assigns)
+    ClusterView.render("index.html", assigns)
   end
 
   def mount(_session, socket) do

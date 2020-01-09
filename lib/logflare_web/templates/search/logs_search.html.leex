@@ -34,7 +34,7 @@
   </div>
 </div>
 <div class="container source-logs-search-container console-text">
-  <%= render("logs_search_list.html",
+  <%= render("logs_list.html",
      log_events: @log_events,
      last_query_completed_at: @last_query_completed_at,
      user_local_timezone: @user_local_timezone,
@@ -125,11 +125,13 @@
 <%= live_component @socket, LogflareWeb.Source.SearchLV.DebugLVC, element_id: "search-query-debug-aggregates", search_op: @search_op_log_aggregates %>
 <%= live_component @socket, LogflareWeb.Source.SearchLV.DebugLVC, element_id: "search-query-debug-events", search_op: @search_op_log_events %>
 <%= if @search_op_error do %>
-  <%= render "logs_search_query_debug.html", user: @user, search_op: @search_op_error, element_id: "search-query-debug-error" %>
+  <%= render "query_debug.html", user: @user, search_op: @search_op_error, element_id: "search-query-debug-error" %>
 <% end %>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <div>
   <%= if @active_modal do %>
     <%= live_component @socket, LogflareWeb.Source.SearchLV.ModalLVC,  active_modal: @active_modal, source: @source, log_events: @log_events %>
   <% end %>
+</div>
+d %>
 </div>

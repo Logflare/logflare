@@ -6,7 +6,7 @@ defmodule LogflareWeb.Lql.LqlFormLVC do
   import LogflareWeb.LiveComponentUtils
 
   def render(assigns) do
-    Phoenix.View.render(LqlView, "lql_form.html", assigns)
+    LqlView.render("lql_form.html", assigns)
   end
 
   def update(assigns, socket) do

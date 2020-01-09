@@ -90,7 +90,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
-      live "/rules", Sources.RulesLql, session: [:user_id]
+      live "/rules", Sources.RulesLV, session: [:user_id]
       delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
