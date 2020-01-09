@@ -48,9 +48,23 @@ defmodule Logflare.TeamUsers do
   """
   def get_team_user_by(kv), do: Repo.get_by(TeamUser, kv)
 
-  def get_team_user_by_team_provider_uid(team_id, provider_uid) do
-    from(u in TeamUser, where: u.team_id == ^team_id and u.provider_uid == ^provider_uid)
-    |> Repo.one()
+  def insert_or_update_team_user(team_id, auth_params) do
+    cond do
+      team_user =
+          from(u in TeamUser,
+            where: u.team_id == ^team_id and u.provider_uid == ^auth_params.provider_uid
+          )
+          |> Repo.one() ->
+        update_team_user(team_user, auth_params)
+
+      team_user =
+          from(u in TeamUser, where: u.team_id == ^team_id and u.email == ^auth_params.email)
+          |> Repo.one() ->
+        update_team_user(team_user, auth_params)
+
+      true ->
+        create_team_user(team_id, auth_params)
+    end
   end
 
   def get_team_user!(id), do: Repo.get!(TeamUser, id)

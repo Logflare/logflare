@@ -29,7 +29,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
     if is_nil(switch_to_team_user) do
       reject(conn, opts)
     else
-      verify(team_user.provider_uid, switch_to_team_user.provider_uid, conn, opts)
+      verify(team_user.email, switch_to_team_user.email, conn, opts)
     end
   end
 
@@ -49,7 +49,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
     if is_nil(switch_to_user) do
       reject(conn, opts)
     else
-      verify(team_user.provider_uid, switch_to_user.provider_uid, conn, opts)
+      verify(team_user.email, switch_to_user.email, conn, opts)
     end
   end
 
@@ -69,7 +69,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
     if is_nil(team_user) do
       reject(conn, opts)
     else
-      verify(user.provider_uid, team_user.provider_uid, conn, opts)
+      verify(user.email, team_user.email, conn, opts)
     end
   end
 

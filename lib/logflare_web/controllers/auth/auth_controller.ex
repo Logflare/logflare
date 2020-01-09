@@ -61,27 +61,23 @@ defmodule LogflareWeb.AuthController do
     {:ok, invited_by_team_id} = Auth.verify_token(invite_token)
     invited_by_user_id = Teams.get_team!(invited_by_team_id).user_id
 
-    case TeamUsers.get_team_user_by_team_provider_uid(
-           invited_by_team_id,
-           auth_params.provider_uid
-         ) do
-      nil ->
-        {:ok, team_user} = TeamUsers.create_team_user(invited_by_team_id, auth_params)
-
+    case TeamUsers.insert_or_update_team_user(invited_by_team_id, auth_params) do
+      {:ok, team_user} ->
         conn
-        |> put_flash(:error, "Thanks for joining this Logflare team!")
+        |> put_flash(:info, "Welcome to Logflare!")
         |> put_session(:user_id, invited_by_user_id)
         |> put_session(:team_user_id, team_user.id)
         |> put_session(:invite_token, nil)
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
-      team_user ->
+      {:error, _changeset} ->
         conn
-        |> put_flash(:info, "Welcome back!")
-        |> put_session(:user_id, invited_by_user_id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_flash(
+          :error,
+          "There was an issue siging into this team. If this continues please contact support."
+        )
         |> put_session(:invite_token, nil)
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 

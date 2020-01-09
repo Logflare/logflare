@@ -41,7 +41,7 @@ defmodule Logflare.Teams do
   def get_team_by(keyword), do: Repo.get_by(Team, keyword)
 
   def get_home_team!(team_user) do
-    case Users.get_by(provider_uid: team_user.provider_uid) |> Users.preload_team() do
+    case Users.get_by(email: team_user.email) |> Users.preload_team() do
       nil ->
         nil
 

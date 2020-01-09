@@ -54,8 +54,7 @@ defmodule LogflareWeb.SourceController do
 
     home_team = team
 
-    team_users_with_teams =
-      TeamUsers.list_team_users_by_and_preload(provider_uid: user.provider_uid)
+    team_users_with_teams = TeamUsers.list_team_users_by_and_preload(email: user.email)
 
     render(conn, "dashboard.html",
       sources: sources,

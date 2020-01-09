@@ -17,6 +17,8 @@ defmodule LogflareWeb.Auth.EmailController do
   end
 
   def send_link(conn, %{"email" => email}) do
+    email = email |> String.downcase() |> String.trim()
+
     Auth.Email.auth_email(email)
     |> Mailer.deliver()
 
