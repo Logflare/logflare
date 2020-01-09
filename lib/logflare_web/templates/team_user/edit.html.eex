@@ -43,7 +43,7 @@
     <%= link "Visit Google", to: "https://myaccount.google.com/permissions?authuser=#{@team_user.email}", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <h5 class="header-margin">Delete Your Profile</h5>
-  <p>This will immediately delete everything associated with your profile. There is no undo.</p>
-  <%= link "Delete now", to: Routes.team_user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>
+  <h5 class="header-margin">Leave Team</h5>
+  <p>Leave this team now. There is no undo.</p>
+  <%= link "Leave now", to: Routes.team_user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>
 </div>

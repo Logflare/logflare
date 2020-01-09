@@ -30,19 +30,15 @@
         <% end %>
       </ul>
 
-      <h5 class="header-margin">Home Team</h5>
-      <ul class="list-unstyled">
-      <%= if @home_team do %>
-      <%= if @team.id == @home_team.id do %>
-        <li><strong><%= @home_team.name %> </strong><small>home</small></li>
-      <% else %>
-        <li><%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small> home</small></li>
-      <% end %>
-      <% end %>
-    </ul>
-
       <h5 class="header-margin">Teams</h5>
       <ul class="list-unstyled">
+        <%= if @home_team do %>
+        <%= if @team.id == @home_team.id do %>
+          <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+        <% else %>
+          <li><%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small> home team</small></li>
+        <% end %>
+        <% end %>
 
         <%= if @team_users == [], do: "Other teams you are a member of will be listed here." %>
         <%= for team_user <- @team_users do %>
