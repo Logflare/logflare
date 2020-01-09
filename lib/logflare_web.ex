@@ -38,7 +38,14 @@ defmodule LogflareWeb do
       import Phoenix.Controller, only: [get_flash: 2, view_module: 1]
 
       import Phoenix.LiveView,
-        only: [live_render: 2, live_render: 3, live_link: 2, live_redirect: 2]
+        only: [
+          live_render: 2,
+          live_render: 3,
+          live_link: 2,
+          live_redirect: 2,
+          live_component: 4,
+          live_component: 3
+        ]
 
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML

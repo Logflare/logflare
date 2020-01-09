@@ -1,0 +1,5 @@
+<div class="form-group">
+  <%= label @f, :lql_string, "Use LQL to configure routing", class: "control-label" %>
+  <%= text_input @f, :lql_string, value: @lql_string, class: "form-control", readonly: (if @loading, do: "true") %>
+  <%= error_tag @f, :lql_string %>
+</div>

@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Sources.RulesLql do
+defmodule LogflareWeb.Sources.RulesLV do
   @moduledoc """
   Source Rule LV form edit
   """
@@ -9,9 +9,12 @@ defmodule LogflareWeb.Sources.RulesLql do
   alias Logflare.{Sources, Users}
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
+  use LogflareWeb.LiveViewUtils
+  @lql_dialect :routing
+  @lql_string ""
 
   def render(assigns) do
-    Phoenix.View.render(RuleView, "index_lql.html", assigns)
+    Phoenix.View.render(RuleView, "index.html", assigns)
   end
 
   def mount(session, socket) do
@@ -20,6 +23,7 @@ defmodule LogflareWeb.Sources.RulesLql do
     socket =
       socket
       |> assign(:sources, user.sources)
+      |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
 
     {:ok, socket}
@@ -45,13 +49,13 @@ defmodule LogflareWeb.Sources.RulesLql do
 
   def handle_event("fsubmit", %{"rule" => rule_params}, socket) do
     schema = Sources.Cache.get_bq_schema(socket.assigns.source)
+    lqls = rule_params["lql_string"]
 
     socket =
-      with {:ok, lql_filters} <-
-             rule_params
-             |> Map.get("lql_string")
-             |> Lql.Parser.parse(schema) do
-        rule_params = Map.put(rule_params, "lql_filters", lql_filters)
+      with {:ok, lql_rules} <- Lql.Parser.parse(lqls, schema),
+           {:warnings, nil} <-
+             {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do
+        rule_params = Map.put(rule_params, "lql_filters", lql_rules)
 
         case Rules.create_rule(socket.assigns.source, rule_params) do
           {:ok, rule} ->
@@ -63,6 +67,9 @@ defmodule LogflareWeb.Sources.RulesLql do
         end
       else
         {:error, error} ->
+          assign(socket, :error_message, error)
+
+        {:warnings, error} ->
           assign(socket, :error_message, error)
       end
 

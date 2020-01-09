@@ -5,7 +5,7 @@ defmodule LogflareWeb.Source.SearchLV do
   use Phoenix.LiveView
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  alias LogflareWeb.SourceView
+  alias LogflareWeb.SearchView
 
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SavedSearches
@@ -20,7 +20,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @default_chart_period :minute
 
   def render(assigns) do
-    Phoenix.View.render(SourceView, "logs_search.html", assigns)
+    Phoenix.View.render(SearchView, "logs_search.html", assigns)
   end
 
   def mount(%{user_id: user_id} = session, socket) do
@@ -341,7 +341,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           "timestamp",
-          &SourceView.format_timestamp(&1, socket.assigns.user_local_timezone)
+          &SearchView.format_timestamp(&1, socket.assigns.user_local_timezone)
         )
       end)
 

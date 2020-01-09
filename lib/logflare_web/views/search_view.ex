@@ -8,67 +8,6 @@ defmodule LogflareWeb.SearchView do
   import Phoenix.LiveView
   import PhoenixLiveReact, only: [live_react_component: 2]
 
-  def render_modal("searchHelpModal", _source, _log_events) do
-    render("logs_search_modal.html",
-      id: "searchHelpModal",
-      title: "Logflare Query Language",
-      body: render("logs_search_help.html")
-    )
-  end
-
-  def render_modal("sourceSchemaModal", source, _log_events) do
-    render("logs_search_modal.html",
-      id: "sourceSchemaModal",
-      title: "Source Schema",
-      body: format_bq_schema(source)
-    )
-  end
-
-  def render_modal("metadataModal:" <> id, _source, log_events) do
-    log_event =
-      Enum.find(log_events, &(&1.id === id)) ||
-        Enum.find(log_events, &("#{&1.body.timestamp}" === id))
-
-    fmt_metadata =
-      log_event
-      |> Map.get(:body)
-      |> Map.get(:metadata)
-      |> encode_metadata
-
-    body =
-      render("logs_search_metadata_modal_body.html",
-        log_event: log_event,
-        fmt_metadata: fmt_metadata
-      )
-
-    render("logs_search_modal.html",
-      id: "metadataModal",
-      title: "Metadata",
-      body: body
-    )
-  end
-
-  def render_modal(id, _source, _log_events)
-      when id in ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal) do
-    {first, rest} = String.split_at(id, 1)
-    hook = "Source" <> String.capitalize(first) <> rest
-
-    ~E"""
-    <div class="source-logs-search-modals" phx-hook="<%= hook %>">
-      <%= render "logs_search_modal.html",
-        id: id,
-        title: "Query Debugging",
-        body: "No query or query is still in progress..." %>
-    </div>
-    """
-  end
-
-  def render_modal(_, _source) do
-    ~E"""
-    <div class="source-logs-search-modals"> </div>
-    """
-  end
-
   def format_sql({sql, params}) do
     Enum.reduce(params, sql, fn param, sql ->
       type = param.parameterType.type

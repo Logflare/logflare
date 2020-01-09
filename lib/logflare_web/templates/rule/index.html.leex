@@ -8,6 +8,9 @@
   <p>Route logs with rules. Rules will match against a log entry and copy it to the specified sink (another source).
     Save special entries with rules. Create a rule for signups, or bots or IP addresses using regular expressions.</p>
   <ul class="list-group">
+    <%= if @rules == [] do %>
+      <div> No rules yet... </div>
+    <% end %>
     <%= for rule <- @rules do %>
       <li class="list-group-item">
         <a href="#" phx-click="delete_rule" phx-value-rule_id="<%= rule.id %>" >
@@ -17,25 +20,23 @@
       </li>
     <% end %>
   </ul>
-  <%= f = form_for :rule, "#", phx_submit: :fsubmit, class: "form-group" %>
+  <%= f = form_for :rule, "#", phx_submit: "fsubmit", phx_update: "fupdate" %>
+  <%= live_component @socket, LogflareWeb.Lql.LqlFormLVC, id: :lql_form, f: f, lql_string: @lql_string %>
   <div class="form-group">
-    <span class="rules">
-      <%= label f, :lql_string, "LQL string", class: "control-label" %>
-      <%= text_input f, :lql_string, placeholder: "", class: "form-control" %>
-      <%= error_tag f, :lql_string %>
-    </span>
-    <span class="rules">
-      <%= label f, :sink, "Sink source", class: "control-label" %>
-      <% sink_form_options =  for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
-      <%= select f, :sink, sink_form_options, prompt: "Choose a sink", class: "form-control rules-input" %>
-      <%= error_tag f, :sink %>
-    </span>
+    <%= label f, :sink, "Sink source", class: "control-label" %>
+    <% sink_form_options =  for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
+    <%= select f, :sink, sink_form_options, prompt: "Choose a sink", class: "form-control rules-input" %>
+    <%= error_tag f, :sink %>
+  </div>
+  <div class="form-group">
+    <%= submit id: :rule, class: "btn btn-primary btn-sm" do %>
+      Add Rule
+    <% end %>
   </div>
   <div>
     <%= if @error_message do %>
       <%= @error_message %>
     <% end %>
   </div>
-  <%= submit "Add rule", class: "btn btn-primary" %>
 </form>
 </div>
