@@ -27,7 +27,7 @@
   "etso": {:hex, :etso, "0.1.1", "bfc5e30483d397774a64981fc93511d3ed0dcb9d19bc3cba03df7b9555a68636", [:mix], [{:ecto, "~> 3.0", [hex: :ecto, repo: "hexpm", optional: false]}], "hexpm"},
   "ex2ms": {:hex, :ex2ms, "1.6.0", "f39bbd9ff1b0f27b3f707bab2d167066dd8965e7df1149b962d94c74615d0e09", [:mix], [], "hexpm"},
   "ex_machina": {:hex, :ex_machina, "2.3.0", "92a5ad0a8b10ea6314b876a99c8c9e3f25f4dde71a2a835845b136b9adaf199a", [:mix], [{:ecto, "~> 2.2 or ~> 3.0", [hex: :ecto, repo: "hexpm", optional: true]}, {:ecto_sql, "~> 3.0", [hex: :ecto_sql, repo: "hexpm", optional: true]}], "hexpm"},
-  "ex_oauth2_provider": {:git, "https://github.com/danschultzer/ex_oauth2_provider.git", "0407e266f6c33a792f209ba8fc1e3f026aabbb7e", []},
+  "ex_oauth2_provider": {:git, "https://github.com/danschultzer/ex_oauth2_provider.git", "4c2b953ed364b635197a80494e080848395cb71d", []},
   "ex_twilio": {:hex, :ex_twilio, "0.8.1", "9b980a6213c01d8ac89f41a1b0401c5da74b1c18c4b3777a6c0c8ad36e9bf26b", [:mix], [{:httpoison, ">= 0.9.0", [hex: :httpoison, repo: "hexpm", optional: false]}, {:inflex, "~> 2.0", [hex: :inflex, repo: "hexpm", optional: false]}, {:joken, "~> 2.0", [hex: :joken, repo: "hexpm", optional: false]}, {:poison, ">= 3.0.0", [hex: :poison, repo: "hexpm", optional: false]}], "hexpm"},
   "excoveralls": {:hex, :excoveralls, "0.12.1", "a553c59f6850d0aff3770e4729515762ba7c8e41eedde03208182a8dc9d0ce07", [:mix], [{:hackney, "~> 1.0", [hex: :hackney, repo: "hexpm", optional: false]}, {:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm"},
   "faker": {:hex, :faker, "0.13.0", "8abcb996f010ccd6c85588c89fc047f11134e04da019b70252f95431d721a3dc", [:mix], [], "hexpm"},
