@@ -44,6 +44,7 @@ defmodule Logflare.Source do
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
+    field :bq_table_schema, :any, virtual: true
 
     timestamps()
   end

@@ -34,4 +34,14 @@ defmodule Logflare.Lql.Utils do
     |> Enum.filter(&match?(%ChartRule{}, &1))
     |> Enum.sort()
   end
+
+  def get_lql_parser_warnings(lql_rules, dialect: :routing) when is_list(lql_rules) do
+    cond do
+      Enum.find(lql_rules, &(&1.path == "timestamp")) ->
+        "Timestamp LQL clauses are ignored for event routing"
+
+      true ->
+        nil
+    end
+  end
 end
