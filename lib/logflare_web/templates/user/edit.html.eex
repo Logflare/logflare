@@ -73,7 +73,7 @@
   <h5 class="header-margin">Invite Team Members</h5>
 
   <div class="form-group">
-    <p>Use this link to invite team members. This link will expire 30 minutes from now.</p>
+    <p>Use this link to invite team members. This link will expire 24 hours from now.</p>
     <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %></code>
 
   </div>
