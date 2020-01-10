@@ -45,5 +45,5 @@
 
   <h5 class="header-margin">Leave Team</h5>
   <p>Leave this team now. There is no undo.</p>
-  <%= link "Leave now", to: Routes.team_user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>
+  <%= link "Leave now", to: Routes.team_user_path(@conn, :delete_self), class: "btn btn-danger form-button", method: :delete %>
 </div>

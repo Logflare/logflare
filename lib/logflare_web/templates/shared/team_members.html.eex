@@ -8,7 +8,20 @@
   <li>
     <img class="rounded-circle" width=35 height=35 src="<%= member.image || Logflare.Auth.gravatar_link(member.email) %>" alt="<%= member.name || member.email %>">
     <%= link(member.name || member.email, to: "mailto:#{member.email}")%>
-    <small><%= if assigns[:team_user], do: if member.provider_uid == @team_user.provider_uid, do: "you" %></small>
+    <%= if assigns[:team_user] do %>
+      <%= if member.provider_uid == @team_user.provider_uid do %>
+        <small>you</small>
+      <% else %>
+      <%= link to: Routes.team_user_path(@conn, :delete, member.id), class: "dashboard-links", method: :delete do %>
+        <i class="fa fa-trash"></i>
+        <% end %>
+      <% end %>
+    <% else %>
+      <%= link to: Routes.team_user_path(@conn, :delete, member.id), class: "dashboard-links", method: :delete do %>
+        <i class="fa fa-trash"></i>
+        
+    <% end %>
+    <% end %>
   </li>
 <% end %>
 </ul>

@@ -46,7 +46,7 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :check_owner do
-    plug LogflareWeb.Plugs.CheckOwner
+    plug LogflareWeb.Plugs.AuthMustBeOwner
   end
 
   pipeline :check_team_user do
@@ -126,6 +126,11 @@ defmodule LogflareWeb.Router do
 
     get "/edit", TeamUserController, :edit
     put "/edit", TeamUserController, :update
+    delete "/", TeamUserController, :delete_self
+  end
+
+  scope "/profile/:id", LogflareWeb do
+    pipe_through [:browser, :require_auth]
     delete "/", TeamUserController, :delete
   end
 

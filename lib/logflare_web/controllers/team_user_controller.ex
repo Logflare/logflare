@@ -2,6 +2,8 @@ defmodule LogflareWeb.TeamUserController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
+  plug LogflareWeb.Plugs.AuthMustBeOwner when action in [:delete]
+
   alias Logflare.TeamUsers
 
   def edit(%{assigns: %{team_user: team_user}} = conn, _params) do
@@ -24,13 +26,29 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def delete(%{assigns: %{team_user: team_user}} = conn, _params) do
+  def delete(%{assigns: %{user: _user}} = conn, %{"id" => team_user_id} = params) do
+    team_user = TeamUsers.get_team_user!(team_user_id)
+
+    case TeamUsers.delete_team_user(team_user) do
+      {:ok, _team_user} ->
+        conn
+        |> put_flash(:info, "Member profile deleted!")
+        |> redirect(to: Routes.user_path(conn, :edit))
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: Routes.user_path(conn, :edit))
+    end
+  end
+
+  def delete_self(%{assigns: %{team_user: team_user}} = conn, _params) do
     case TeamUsers.delete_team_user(team_user) do
       {:ok, _team_user} ->
         conn
         |> configure_session(drop: true)
-        |> redirect(to: Routes.auth_path(conn, :login))
         |> put_flash(:info, "Profile deleted!")
+        |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, changeset} ->
         conn
