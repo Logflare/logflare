@@ -186,7 +186,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def edit(%{assigns: %{source: source}} = conn, _params) do
-    changeset = Source.update_by_user_changeset(source, %{}) |> IO.inspect()
+    changeset = Source.update_by_user_changeset(source, %{})
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -256,8 +256,8 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def update(conn, %{"source" => source_params}) do
-    %{source: old_source, user: user} = conn.assigns
+  def update(%{assigns: %{source: old_source, user: user}} = conn, %{"source" => source_params}) do
+    IO.inspect(source_params)
     # FIXME: Restricted params are filtered without notice
     changeset = Source.update_by_user_changeset(old_source, source_params)
 

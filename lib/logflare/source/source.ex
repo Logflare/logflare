@@ -69,7 +69,7 @@ defmodule Logflare.Source do
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
-    embeds_one :notifications, Notifications, on_replace: :delete
+    embeds_one :notifications, Notifications, on_replace: :update
 
     timestamps()
   end

@@ -19,7 +19,7 @@
       <%= text_input a, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin" %>
       <%= error_tag a, :name %>
     </div>
-    <%= submit "Save source", class: "btn btn-primary form-button" %>
+    <%= submit "Update name", class: "btn btn-primary form-button" %>
   <% end %>
 
   <h5 class="header-margin">Email Alerts</h5>
@@ -45,10 +45,18 @@
         </div>
 
         <%= label bn, :team_user_ids_for_email, "Select some team members to alert", class: "label-padding" %>
-        <%= multiple_select bn, :team_user_ids_for_email, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin" %>
+        <%= multiple_select bn, :team_user_ids_for_email, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end) |> IO.inspect, selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin" %>
       <% end %>
     </div>
     <%= submit "Update email preferences", class: "btn btn-primary form-button" %>
+  <% end %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn clear_b -> %>
+    <%= inputs_for clear_b, :notifications, fn bn -> %>
+      <%= hidden_input(bn, :user_email_notifications, value: "false") %>
+      <%= hidden_input(bn, :team_user_ids_for_email, value: []) %>
+      <%= hidden_input(bn, :other_email_notifications, value: "") %>
+    <% end %>
+    <%= submit "Reset SMS preferences", class: "btn btn-sm btn-secondary form-button" %>
   <% end %>
 
   <h5 class="header-margin">SMS Alerts</h5>
@@ -68,11 +76,19 @@
       </div>
 
       <%= label cn, :team_user_ids_for_sms, "Select some team members to alert (team members without phone numbers are not listed)", class: "label-padding" %>
-      <%= multiple_select cn, :team_user_ids_for_sms, Enum.map(@team.team_users, fn x -> if x.phone, do: {"#{x.name || x.email} (#{x.phone})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin" %>
+      <%= multiple_select cn, :team_user_ids_for_sms, Enum.map(@team.team_users, fn x -> if x.phone, do: {"#{x.name || x.email} (#{x.phone})", x.id} end), selected: @source.notifications.team_user_ids_for_sms, class: "form-control form-control-margin" %>
       <% end %>
     </div>
     <%= submit "Update SMS preferences", class: "btn btn-primary form-button" %>
+    <% end %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn clear_c -> %>
+    <%= inputs_for clear_c, :notifications, fn cn -> %>
+      <%= hidden_input(cn, :user_text_notifications, value: "false") %>
+      <%= hidden_input(cn, :team_user_ids_for_sms, value: []) %>
+    <% end %>
+    <%= submit "Reset SMS preferences", class: "btn btn-sm btn-secondary form-button" %>
   <% end %>
+
 
   <h5 class="header-margin">Slack Alerts</h5>
   <p>Get Logflare notifications in your Slack channels! Separate from signing in with Slack. You can send alerts to any Slack channel from any Logflare source.</p>
@@ -81,7 +97,7 @@
     </div>
     <%= if @source.slack_hook_url do %>
       <%= link "Test Slack webhook", to: Routes.source_path(@conn, :test_slack_hook, @source), class: "btn btn-primary form-button", role: "button" %>
-      <%= link "Delete Slack webhook", to: Routes.source_path(@conn, :delete_slack_hook, @source), class: "btn btn-danger form-button", role: "button" %>
+      <%= link "Delete Slack webhook", to: Routes.source_path(@conn, :delete_slack_hook, @source), class: "btn btn-sm btn-danger form-button", role: "button" %>
     <% end %>
 
 

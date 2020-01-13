@@ -26,7 +26,7 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def delete(%{assigns: %{user: _user}} = conn, %{"id" => team_user_id} = params) do
+  def delete(%{assigns: %{user: _user}} = conn, %{"id" => team_user_id} = _params) do
     team_user = TeamUsers.get_team_user!(team_user_id)
 
     case TeamUsers.delete_team_user(team_user) do
