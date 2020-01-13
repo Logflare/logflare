@@ -56,7 +56,7 @@
       <%= hidden_input(bn, :team_user_ids_for_email, value: []) %>
       <%= hidden_input(bn, :other_email_notifications, value: "") %>
     <% end %>
-    <%= submit "Reset SMS preferences", class: "btn btn-sm btn-secondary form-button" %>
+    <%= submit "Reset email preferences", class: "btn btn-sm btn-secondary form-button" %>
   <% end %>
 
   <h5 class="header-margin">SMS Alerts</h5>
