@@ -26,19 +26,27 @@
   <p>Send emails when this source gets new events. Add email addresses below. Sometimes sources can get a lot of events quickly. At most you will get one email per minute.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn b -> %>
     <div class="form-group">
-      <%= text_input b, :other_email_notifications, placeholder: "her@friend.com, him@company.com", class: "form-control form-control-margin" %>
-      <%= error_tag b, :other_email_notifications %>
-      <small class="form-text text-muted">
-        Comma separated list of emails please.
-      </small>
-      <%= label b, :user_email_notifications, "Also send alerts to my preferred email ", class: "label-padding" %>
-      <%= if is_nil(@conn.assigns.user.email_preferred) do %>
-      <%= link to: Routes.user_path(@conn, :edit) do "(add a preferred email)" end %>
-      <% else %>
-      <%= link to: Routes.user_path(@conn, :edit) do "(#{@conn.assigns.user.email_preferred})" end %>
+      <%= inputs_for b, :notifications, fn bn -> %>
+        <%= text_input bn, :other_email_notifications, placeholder: "her@friend.com, him@company.com", class: "form-control form-control-margin" %>
+        <%= error_tag bn, :other_email_notifications %>
+        <small class="form-text text-muted">
+          Comma separated list of emails please.
+        </small>
+
+        <div class="form-control-margin">
+          <%= label bn, :user_email_notifications, "Send email alerts to the account owner ", class: "" %>
+          <%= if is_nil(@user.email_preferred) do %>
+            <%= link " (add a preferred email)", to: Routes.user_path(@conn, :edit), class: "label-padding"%>
+          <% else %>
+            <%= link " (#{@user.email_preferred})", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
+          <% end %>
+          <%= checkbox bn, :user_email_notifications %>
+          <%= error_tag bn, :user_email_notifications %>
+        </div>
+
+        <%= label bn, :team_user_ids_for_email, "Select some team members to alert", class: "label-padding" %>
+        <%= multiple_select bn, :team_user_ids_for_email, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin" %>
       <% end %>
-      <%= checkbox b, :user_email_notifications %>
-      <%= error_tag b, :user_email_notifications %>
     </div>
     <%= submit "Update email preferences", class: "btn btn-primary form-button" %>
   <% end %>
@@ -47,14 +55,21 @@
   <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one text message per minute.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
     <div class="form-group">
-      <%= label c, :user_text_notifications, "Send SMS alerts to my phone number ", class: "label-padding" %>
-      <%= if is_nil(@conn.assigns.user.phone) do %>
-      <%= link to: Routes.user_path(@conn, :edit) do "(add a phone number)" end %>
-      <% else %>
-      <%= link to: Routes.user_path(@conn, :edit) do "(#{@conn.assigns.user.phone})" end %>
+      <div class="form-control-margin">
+        <%= inputs_for c, :notifications, fn cn -> %>
+          <%= label cn, :user_text_notifications, "Send SMS alerts to the account owner", class: "" %>
+          <%= if is_nil(@user.phone) do %>
+            <%= link " (add a phone number)", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
+          <% else %>
+            <%= link " (#{@user.phone})", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
+          <% end %>
+          <%= checkbox cn, :user_text_notifications %>
+          <%= error_tag cn, :user_text_notifications %>
+      </div>
+
+      <%= label cn, :team_user_ids_for_sms, "Select some team members to alert (team members without phone numbers are not listed)", class: "label-padding" %>
+      <%= multiple_select cn, :team_user_ids_for_sms, Enum.map(@team.team_users, fn x -> if x.phone, do: {"#{x.name || x.email} (#{x.phone})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin" %>
       <% end %>
-      <%= checkbox c, :user_text_notifications %>
-      <%= error_tag c, :user_text_notifications %>
     </div>
     <%= submit "Update SMS preferences", class: "btn btn-primary form-button" %>
   <% end %>

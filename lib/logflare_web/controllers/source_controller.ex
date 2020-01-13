@@ -186,7 +186,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def edit(%{assigns: %{source: source}} = conn, _params) do
-    changeset = Source.update_by_user_changeset(source, %{})
+    changeset = Source.update_by_user_changeset(source, %{}) |> IO.inspect()
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -261,10 +261,6 @@ defmodule LogflareWeb.SourceController do
     # FIXME: Restricted params are filtered without notice
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
-    sources =
-      user.sources
-      |> Enum.map(&Map.put(&1, :disabled, old_source.token === &1.token))
-
     case Repo.update(changeset) do
       {:ok, source} ->
         ttl = source_params["bigquery_table_ttl"]
@@ -289,8 +285,7 @@ defmodule LogflareWeb.SourceController do
         |> render(
           "edit.html",
           changeset: changeset,
-          source: old_source,
-          sources: sources
+          source: old_source
         )
     end
   end
