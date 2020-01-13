@@ -190,8 +190,7 @@ defmodule LogflareWeb.SourceController do
 
     render(conn, "edit.html",
       changeset: changeset,
-      source: source,
-      sources: conn.assigns.user.sources
+      source: source
     )
   end
 
@@ -257,8 +256,6 @@ defmodule LogflareWeb.SourceController do
   end
 
   def update(%{assigns: %{source: old_source, user: user}} = conn, %{"source" => source_params}) do
-    IO.inspect(source_params)
-    # FIXME: Restricted params are filtered without notice
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
     case Repo.update(changeset) do
