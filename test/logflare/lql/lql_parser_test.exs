@@ -786,17 +786,98 @@ defmodule Logflare.LqlParserTest do
               ]} == Parser.parse("timestamp:last@1y", @schema)
     end
 
+    @schema SchemaBuilder.build_table_schema(
+              %{
+                "level" => "info"
+              },
+              @default_schema
+            )
     test "level ranges" do
       str = ~S|
-         metadata.level:debug..warn
          metadata.level:info..error
+       |
+
+      {:ok, result} = Parser.parse(str, @schema)
+
+      assert result == [
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "error"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "info"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "warning"
+               }
+             ]
+
+      str = ~S|
+         metadata.level:debug..warning
+       |
+
+      {:ok, result} = Parser.parse(str, @schema)
+
+      assert result == [
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "debug"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "info"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "warning"
+               }
+             ]
+
+      str = ~S|
          metadata.level:debug..error
        |
 
       {:ok, result} = Parser.parse(str, @schema)
 
       assert result == [
-               %FilterRule{path: "metadata.level", operator: :=, value: "debug", modifiers: []}
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "debug"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "error"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "info"
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :=,
+                 path: "metadata.level",
+                 value: "warning"
+               }
              ]
     end
 

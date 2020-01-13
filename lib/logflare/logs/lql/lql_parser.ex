@@ -14,6 +14,7 @@ defmodule Logflare.Lql.Parser do
       choice([
         chart_clause(),
         timestamp_clause(),
+        metadata_level_clause(),
         metadata_clause(),
         quoted_string(:event_message),
         word()

@@ -331,6 +331,37 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
 
   def maybe_apply_negation_modifier(rule), do: rule
 
+  def level_strings() do
+    choice([
+      string("debug") |> replace(0),
+      string("info") |> replace(1),
+      string("warning") |> replace(2),
+      string("error") |> replace(3)
+    ])
+  end
+
+  def metadata_level_clause() do
+    string("metadata.level")
+    |> ignore(string(":"))
+    |> concat(range_operator(level_strings()))
+    |> tag(:metadata_level_clause)
+    |> reduce(:to_rule)
+  end
+
+  @level_orders %{0 => "debug", 1 => "info", 2 => "warning", 3 => "error"}
+  def to_rule(metadata_level_clause: ["metadata.level", {:range_operator, [left, right]}]) do
+    left..right
+    |> Enum.map(&Map.get(@level_orders, &1))
+    |> Enum.map(fn level ->
+      %FilterRule{
+        path: "metadata.level",
+        operator: :=,
+        value: level,
+        modifiers: []
+      }
+    end)
+  end
+
   def to_rule(chart_clause: chart_clause) do
     %ChartRule{
       path: chart_clause[:path],
