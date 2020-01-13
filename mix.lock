@@ -34,7 +34,7 @@
   "file_system": {:hex, :file_system, "0.2.7", "e6f7f155970975789f26e77b8b8d8ab084c59844d8ecfaf58cbda31c494d14aa", [:mix], [], "hexpm"},
   "floki": {:hex, :floki, "0.23.1", "e100306ce7d8841d70a559748e5091542e2cfc67ffb3ade92b89a8435034dab1", [:mix], [{:html_entities, "~> 0.5.0", [hex: :html_entities, repo: "hexpm", optional: false]}], "hexpm"},
   "gen_stage": {:hex, :gen_stage, "0.14.3", "d0c66f1c87faa301c1a85a809a3ee9097a4264b2edf7644bf5c123237ef732bf", [:mix], [], "hexpm"},
-  "gettext": {:hex, :gettext, "0.17.1", "8baab33482df4907b3eae22f719da492cee3981a26e649b9c2be1c0192616962", [:mix], [], "hexpm"},
+  "gettext": {:hex, :gettext, "0.17.2", "c593ddfac45af1f7f4cd334151ab46fb426979e914a00361fe191903b0064c56", [:mix], [], "hexpm"},
   "google_api_big_query": {:hex, :google_api_big_query, "0.31.0", "bf0a5765861c1563344ce78fb4d97756718709d562360aa34448c1b3da730a1a", [:mix], [{:google_gax, "~> 0.2", [hex: :google_gax, repo: "hexpm", optional: false]}], "hexpm"},
   "google_api_cloud_resource_manager": {:hex, :google_api_cloud_resource_manager, "0.20.0", "0de54cd40070d371f239325a30af4bce0c2f4db6808c90005a2d1b73d82a488f", [:mix], [{:google_gax, "~> 0.2", [hex: :google_gax, repo: "hexpm", optional: false]}], "hexpm"},
   "google_gax": {:hex, :google_gax, "0.3.1", "c8841dfbbaf26f8aaeac0ae86246d7094e1a276db198b974cd14c30691d765b4", [:mix], [{:poison, ">= 3.0.0 and < 5.0.0", [hex: :poison, repo: "hexpm", optional: false]}, {:tesla, "~> 1.2", [hex: :tesla, repo: "hexpm", optional: false]}], "hexpm"},
