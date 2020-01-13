@@ -100,6 +100,25 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
     |> label("valid filter value")
   end
 
+  def datetime_abbreviations_choice() do
+    choice([
+      string("week") |> replace(:weeks),
+      string("month") |> replace(:months),
+      string("day") |> replace(:days),
+      string("year") |> replace(:years),
+      string("hour") |> replace(:hours),
+      string("minute") |> replace(:minutes),
+      string("second") |> replace(:seconds),
+      string("mm") |> replace(:months),
+      string("s") |> replace(:seconds),
+      string("m") |> replace(:minutes),
+      string("h") |> replace(:hours),
+      string("d") |> replace(:days),
+      string("w") |> replace(:weeks),
+      string("y") |> replace(:years)
+    ])
+  end
+
   def timestamp_shorthand_value do
     choice([
       string("now"),
@@ -107,41 +126,11 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
       string("yesterday"),
       string("this")
       |> ignore(string("@"))
-      |> choice([
-        string("week") |> replace(:weeks),
-        string("month") |> replace(:months),
-        string("day") |> replace(:days),
-        string("year") |> replace(:years),
-        string("hour") |> replace(:hours),
-        string("minute") |> replace(:minutes),
-        string("second") |> replace(:seconds),
-        string("mm") |> replace(:months),
-        string("s") |> replace(:seconds),
-        string("m") |> replace(:minutes),
-        string("h") |> replace(:hours),
-        string("d") |> replace(:days),
-        string("w") |> replace(:weeks),
-        string("y") |> replace(:years)
-      ]),
+      |> concat(datetime_abbreviations_choice()),
       string("last")
       |> ignore(string("@"))
       |> optional(integer(min: 1, max: 3))
-      |> choice([
-        string("week") |> replace(:weeks),
-        string("month") |> replace(:months),
-        string("day") |> replace(:days),
-        string("year") |> replace(:years),
-        string("hour") |> replace(:hours),
-        string("minute") |> replace(:minutes),
-        string("second") |> replace(:seconds),
-        string("mm") |> replace(:months),
-        string("s") |> replace(:seconds),
-        string("m") |> replace(:minutes),
-        string("h") |> replace(:hours),
-        string("d") |> replace(:days),
-        string("w") |> replace(:weeks),
-        string("y") |> replace(:years)
-      ])
+      |> concat(datetime_abbreviations_choice())
     ])
     |> reduce(:timestamp_shorthand_to_value)
   end
@@ -321,12 +310,12 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
           %FilterRule{
             path: rule.path,
             value: lvalue,
-            operator: ">="
+            operator: :>=
           },
           %FilterRule{
             path: rule.path,
             value: rvalue,
-            operator: "<="
+            operator: :<=
           }
         ]
 

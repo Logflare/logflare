@@ -42,6 +42,7 @@ defmodule Logflare.Lql.Parser do
           %ChartRule{path: path} = rule ->
             %{rule | value_type: typemap[path]}
         end)
+        |> Enum.sort()
 
       {:ok, rules}
     else

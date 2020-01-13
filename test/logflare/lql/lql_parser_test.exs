@@ -1,7 +1,8 @@
 defmodule Logflare.LqlParserTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Lql.Parser.V2, as: Parser
+  alias Logflare.Lql.Parser, as: Parser
+  alias Logflare.Lql.Utils
   import Parser
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Lql.ChartRule
@@ -10,13 +11,13 @@ defmodule Logflare.LqlParserTest do
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   @default_schema Logflare.BigQuery.TableSchema.SchemaBuilderHelpers.schemas().initial
 
-  describe "search query parser for" do
+  describe "LQL parsing for" do
     test "simple message search string" do
       schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
       str = ~S|user sign up|
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result.search == [
+      assert Utils.get_filter_rules(result) == [
                %FilterRule{operator: :"~", path: "event_message", value: "sign", modifiers: []},
                %FilterRule{operator: :"~", path: "event_message", value: "up", modifiers: []},
                %FilterRule{operator: :"~", path: "event_message", value: "user", modifiers: []}
@@ -28,7 +29,7 @@ defmodule Logflare.LqlParserTest do
       str = ~S|new "user sign up" server|
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result.search ==
+      assert Utils.get_filter_rules(result) ==
                [
                  %FilterRule{operator: :"~", path: "event_message", value: "new", modifiers: []},
                  %FilterRule{
@@ -70,7 +71,7 @@ defmodule Logflare.LqlParserTest do
        |
       {:ok, result} = Parser.parse(str, @schema)
 
-      assert result.search ==
+      assert Utils.get_filter_rules(result) ==
                [
                  %FilterRule{
                    modifiers: [],
@@ -109,65 +110,65 @@ defmodule Logflare.LqlParserTest do
        |
       {:ok, result} = Parser.parse(str, @schema)
 
-      assert result.search ==
+      assert Utils.get_filter_rules(result) ==
                [
                  %FilterRule{
                    modifiers: [],
-                   operator: "<=",
+                   operator: :<=,
                    path: "metadata.context.error_count",
                    value: 0.9
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: "<=",
+                   operator: :<=,
                    path: "metadata.context.error_count",
                    value: 200.0
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: "<=",
+                   operator: :<=,
                    path: "metadata.context.error_count",
                    value: 300.0
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: "<=",
+                   operator: :<=,
                    path: "metadata.context.error_count",
                    value: 400.0
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: "<=",
+                   operator: :<=,
                    path: "metadata.users.source_count",
                    value: 200
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: ">=",
+                   operator: :>=,
                    path: "metadata.context.error_count",
                    value: 0.1
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: ">=",
+                   operator: :>=,
                    path: "metadata.context.error_count",
                    value: 20.0
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: ">=",
+                   operator: :>=,
                    path: "metadata.context.error_count",
                    value: 30.0
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: ">=",
+                   operator: :>=,
                    path: "metadata.context.error_count",
                    value: 40.0
                  },
                  %FilterRule{
                    modifiers: [],
-                   operator: ">=",
+                   operator: :>=,
                    path: "metadata.users.source_count",
                    value: 50
                  }
@@ -204,7 +205,7 @@ defmodule Logflare.LqlParserTest do
 
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result.search == [
+      assert Utils.get_filter_rules(result) == [
                %Logflare.Lql.FilterRule{
                  modifiers: [],
                  operator: :<,
@@ -216,6 +217,18 @@ defmodule Logflare.LqlParserTest do
                  operator: :<=,
                  path: "metadata.user.views",
                  value: 1
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :<=,
+                 path: "timestamp",
+                 value: ~D[2019-02-01]
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :<=,
+                 path: "timestamp",
+                 value: ~U[2019-02-01 00:23:34Z]
                },
                %Logflare.Lql.FilterRule{
                  modifiers: [],
@@ -237,33 +250,21 @@ defmodule Logflare.LqlParserTest do
                },
                %Logflare.Lql.FilterRule{
                  modifiers: [],
-                 operator: :"~",
-                 path: "metadata.user.about",
-                 value: "referrall"
-               },
-               %Logflare.Lql.FilterRule{
-                 modifiers: [],
-                 operator: "<=",
                  path: "timestamp",
-                 value: ~D[2019-02-01]
-               },
-               %Logflare.Lql.FilterRule{
-                 modifiers: [],
-                 path: "timestamp",
-                 operator: "<=",
-                 value: ~U[2019-02-01 00:23:34Z]
-               },
-               %Logflare.Lql.FilterRule{
-                 modifiers: [],
-                 path: "timestamp",
-                 operator: ">=",
+                 operator: :>=,
                  value: ~D[2019-01-01]
                },
                %Logflare.Lql.FilterRule{
                  modifiers: [],
-                 operator: ">=",
+                 operator: :>=,
                  path: "timestamp",
                  value: ~U[2019-01-01 00:13:37Z]
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: [],
+                 operator: :"~",
+                 path: "metadata.user.about",
+                 value: "referrall"
                }
              ]
     end
@@ -305,7 +306,7 @@ defmodule Logflare.LqlParserTest do
 
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result.search ==
+      assert Utils.get_filter_rules(result) ==
                [
                  %FilterRule{
                    modifiers: [],
@@ -376,7 +377,7 @@ defmodule Logflare.LqlParserTest do
                  }
                ]
 
-      assert result.chart == [
+      assert Utils.get_chart_rules(result) == [
                %ChartRule{
                  path: "metadata.log.metric4",
                  value_type: :integer
@@ -424,422 +425,379 @@ defmodule Logflare.LqlParserTest do
 
       {:ok, result} = Parser.parse(str, @schema)
 
-      expected = [
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :<,
-          path: "metadata.log.metric1",
-          value: 10
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :<,
-          path: "timestamp",
-          value: ~U[2020-01-01 03:14:15Z]
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :<=,
-          path: "timestamp",
-          value: ~D[2019-04-20]
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :=,
-          path: "metadata.context.file",
-          value: "some module.ex"
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :=,
-          path: "metadata.context.line_number",
-          value: 100
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :=,
-          path: "metadata.user.group_id",
-          value: 5
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :>,
-          path: "timestamp",
-          value: ~D[2019-01-01]
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          path: "timestamp",
-          operator: :>=,
-          value: ~U[2019-01-01 03:14:15Z]
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :"~",
-          path: "event_message",
-          value: "by logflare pinger"
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :"~",
-          path: "event_message",
-          value: "log"
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :"~",
-          path: "event_message",
-          value: "was generated"
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: :"~",
-          path: "metadata.context.address",
-          value: "\\d\\d\\d ST"
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: "<=",
-          path: "metadata.user.cluster_id",
-          value: 300
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [],
-          operator: ">=",
-          path: "metadata.user.cluster_id",
-          value: 200
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [:negate],
-          operator: :<,
-          path: "metadata.log.metric4",
-          value: 10
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [:negate],
-          operator: :<=,
-          path: "timestamp",
-          value: ~D[2010-04-20]
-        },
-        %Logflare.Lql.FilterRule{
-          modifiers: [:negate],
-          operator: :"~",
-          path: "event_message",
-          value: "error"
-        }
-      ]
+      expected =
+        [
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :<,
+            path: "metadata.log.metric1",
+            value: 10
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :<,
+            path: "timestamp",
+            value: ~U[2020-01-01 03:14:15Z]
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :<=,
+            path: "timestamp",
+            value: ~D[2019-04-20]
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :=,
+            path: "metadata.context.file",
+            value: "some module.ex"
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :=,
+            path: "metadata.context.line_number",
+            value: 100
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :=,
+            path: "metadata.user.group_id",
+            value: 5
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :>,
+            path: "timestamp",
+            value: ~D[2019-01-01]
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            path: "timestamp",
+            operator: :>=,
+            value: ~U[2019-01-01 03:14:15Z]
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :"~",
+            path: "event_message",
+            value: "by logflare pinger"
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :"~",
+            path: "event_message",
+            value: "log"
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :"~",
+            path: "event_message",
+            value: "was generated"
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :"~",
+            path: "metadata.context.address",
+            value: "\\d\\d\\d ST"
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :<=,
+            path: "metadata.user.cluster_id",
+            value: 300
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [],
+            operator: :>=,
+            path: "metadata.user.cluster_id",
+            value: 200
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [:negate],
+            operator: :<,
+            path: "metadata.log.metric4",
+            value: 10
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [:negate],
+            operator: :<=,
+            path: "timestamp",
+            value: ~D[2010-04-20]
+          },
+          %Logflare.Lql.FilterRule{
+            modifiers: [:negate],
+            operator: :"~",
+            path: "event_message",
+            value: "error"
+          }
+        ]
+        |> Enum.sort()
 
-      result.search
+      result
+      |> Utils.get_filter_rules()
       |> Enum.with_index()
       |> Enum.each(fn {pathvalop, i} ->
         assert pathvalop == Enum.at(expected, i)
       end)
 
-      assert length(result.search) == length(expected)
-      assert result.search == expected
+      assert length(Utils.get_filter_rules(result)) == length(expected)
+      assert Utils.get_filter_rules(result) == expected
     end
 
-    @tag :run
     test "timestamp shorthands" do
       now_ndt = %{Timex.now() | microsecond: {0, 0}}
       now_udt_zero_sec = %{now_ndt | second: 0}
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: :=,
-                    path: "timestamp",
-                    value: now_ndt
-                  }
-                ]
-              }} == Parser.parse("timestamp:now", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :=,
+                  path: "timestamp",
+                  value: now_ndt
+                }
+              ]} == Parser.parse("timestamp:now", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: :=,
-                    path: "timestamp",
-                    value: Timex.today()
-                  }
-                ]
-              }} == Parser.parse("timestamp:today", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :=,
+                  path: "timestamp",
+                  value: Timex.today()
+                }
+              ]} == Parser.parse("timestamp:today", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: :=,
-                    path: "timestamp",
-                    value: Timex.today() |> Timex.shift(days: -1)
-                  }
-                ]
-              }} == Parser.parse("timestamp:yesterday", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :=,
+                  path: "timestamp",
+                  value: Timex.today() |> Timex.shift(days: -1)
+                }
+              ]} == Parser.parse("timestamp:yesterday", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  }
-                ]
-              }} == Parser.parse("timestamp:this@minute", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                }
+              ]} == Parser.parse("timestamp:this@minute", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: %{now_udt_zero_sec | minute: 0}
-                  }
-                ]
-              }} == Parser.parse("timestamp:this@hour", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: %{now_udt_zero_sec | minute: 0}
+                }
+              ]} == Parser.parse("timestamp:this@hour", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: %{now_udt_zero_sec | minute: 0, hour: 0}
-                  }
-                ]
-              }} == Parser.parse("timestamp:this@day", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: %{now_udt_zero_sec | minute: 0, hour: 0}
+                }
+              ]} == Parser.parse("timestamp:this@day", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.beginning_of_week(%{now_udt_zero_sec | minute: 0, hour: 0})
-                  }
-                ]
-              }} == Parser.parse("timestamp:this@week", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.beginning_of_week(%{now_udt_zero_sec | minute: 0, hour: 0})
+                }
+              ]} == Parser.parse("timestamp:this@week", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.beginning_of_month(%{now_udt_zero_sec | minute: 0, hour: 0})
-                  }
-                ]
-              }} == Parser.parse("timestamp:this@month", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.beginning_of_month(%{now_udt_zero_sec | minute: 0, hour: 0})
+                }
+              ]} == Parser.parse("timestamp:this@month", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.beginning_of_year(%{now_udt_zero_sec | minute: 0, hour: 0})
-                  }
-                ]
-              }} == Parser.parse("timestamp:this@year", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.beginning_of_year(%{now_udt_zero_sec | minute: 0, hour: 0})
+                }
+              ]} == Parser.parse("timestamp:this@year", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_ndt
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(now_ndt, seconds: -50)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@50s", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_ndt
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(now_ndt, seconds: -50)
+                }
+              ]} == Parser.parse("timestamp:last@50s", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(now_udt_zero_sec, minutes: -43)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@43m", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(now_udt_zero_sec, minutes: -43)
+                }
+              ]} == Parser.parse("timestamp:last@43m", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(%{now_udt_zero_sec | minute: 0}, hours: -100)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@100h", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(%{now_udt_zero_sec | minute: 0}, hours: -100)
+                }
+              ]} == Parser.parse("timestamp:last@100h", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, days: -7)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@7d", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, days: -7)
+                }
+              ]} == Parser.parse("timestamp:last@7d", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, weeks: -2)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@2w", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, weeks: -2)
+                }
+              ]} == Parser.parse("timestamp:last@2w", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0, day: 1}, months: -1)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@1mm", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0, day: 1}, months: -1)
+                }
+              ]} == Parser.parse("timestamp:last@1mm", @schema)
 
       assert {:ok,
-              %{
-                chart: [],
-                search: [
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: "<=",
-                    path: "timestamp",
-                    value: now_udt_zero_sec
-                  },
-                  %Logflare.Lql.FilterRule{
-                    modifiers: [],
-                    operator: ">=",
-                    path: "timestamp",
-                    value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, years: -1)
-                  }
-                ]
-              }} == Parser.parse("timestamp:last@1y", @schema)
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :<=,
+                  path: "timestamp",
+                  value: now_udt_zero_sec
+                },
+                %Logflare.Lql.FilterRule{
+                  modifiers: [],
+                  operator: :>=,
+                  path: "timestamp",
+                  value: Timex.shift(%{now_udt_zero_sec | minute: 0, hour: 0}, years: -1)
+                }
+              ]} == Parser.parse("timestamp:last@1y", @schema)
     end
 
-    @tag :run
     test "level ranges" do
       str = ~S|
-         level:debug..warn
-         level:info..error
-         level:debug..error
+         metadata.level:debug..warn
+         metadata.level:info..error
+         metadata.level:debug..error
        |
 
       {:ok, result} = Parser.parse(str, @schema)
+
+      assert result == [
+               %FilterRule{path: "metadata.level", operator: :=, value: "debug", modifiers: []}
+             ]
     end
 
     test "lt, lte, gte, gt for float values" do
@@ -864,7 +822,7 @@ defmodule Logflare.LqlParserTest do
 
       {:ok, result} = Parser.parse(str, schema)
 
-      assert result.search == [
+      assert Utils.get_filter_rules(result) == [
                %FilterRule{
                  modifiers: [],
                  operator: :<,
@@ -873,13 +831,13 @@ defmodule Logflare.LqlParserTest do
                },
                %FilterRule{
                  modifiers: [],
-                 operator: "<=",
+                 operator: :<=,
                  path: "metadata.user.cluster_group",
                  value: 300.1337
                },
                %FilterRule{
                  modifiers: [],
-                 operator: ">=",
+                 operator: :>=,
                  path: "metadata.user.cluster_group",
                  value: 200.042
                }
