@@ -1,10 +1,10 @@
-defmodule Logflare.Logs.Search.Query do
+defmodule Logflare.Logs.SearchQueries do
   @moduledoc false
   import Ecto.Query
+  @chart_periods ~w(day hour minute second)a
 
-  def limit_aggregate_chart_period(query, search_chart_period)
-      when search_chart_period in ~w(day hour minute second)a do
-    case search_chart_period do
+  def limit_aggregate_chart_period(query, period) when period in @chart_periods do
+    case period do
       :day -> limit(query, 30)
       :hour -> limit(query, 168)
       :minute -> limit(query, 120)
@@ -12,8 +12,8 @@ defmodule Logflare.Logs.Search.Query do
     end
   end
 
-  def timestamp_truncator(search_chart_period) do
-    case search_chart_period do
+  def timestamp_truncator(period) when period in @chart_periods do
+    case period do
       :day -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp))
       :hour -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp))
       :minute -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp))
@@ -25,19 +25,21 @@ defmodule Logflare.Logs.Search.Query do
     where(query, [t, ...], t.timestamp >= ^min and t.timestamp <= ^max)
   end
 
-  def where_partitiondate(query, min, max) do
+  def where_streaming_buffer(query) do
+    where(query, [l], fragment("_PARTITIONTIME IS NULL"))
+  end
+
+  def where_default_tailing_events_partition(query) do
     where(
       query,
-      [t, ...],
+      [log],
       fragment(
-        "_PARTITIONDATE BETWEEN DATE_TRUNC(?, DAY) AND DATE_TRUNC(?, DAY) OR _PARTITIONDATE IS NULL",
-        ^Timex.to_date(min),
-        ^Timex.to_date(max)
+        "_PARTITIONDATE > DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
       )
     )
   end
 
-  def where_tailing_partitiondate(query, search_chart_period) do
+  def where_default_tailing_charts_partition(query, search_chart_period) do
     case search_chart_period do
       :day ->
         query
@@ -75,6 +77,18 @@ defmodule Logflare.Logs.Search.Query do
           )
         )
     end
+  end
+
+  def where_partitiondate_between(query, min, max) do
+    where(
+      query,
+      [t, ...],
+      fragment(
+        "_PARTITIONDATE BETWEEN DATE_TRUNC(?, DAY) AND DATE_TRUNC(?, DAY) OR _PARTITIONDATE IS NULL",
+        ^Timex.to_date(min),
+        ^Timex.to_date(max)
+      )
+    )
   end
 
   def select_agg_value(query, search_chart_aggregate, last_chart_field) do

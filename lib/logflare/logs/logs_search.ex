@@ -69,7 +69,7 @@ defmodule Logflare.Logs.Search do
     |> parse_querystring()
     |> verify_path_in_schema()
     |> apply_local_timestamp_correction()
-    |> partition_or_streaming()
+    |> events_partition_or_streaming()
     |> apply_wheres()
     |> order_by_default()
     |> apply_limit_to_query()

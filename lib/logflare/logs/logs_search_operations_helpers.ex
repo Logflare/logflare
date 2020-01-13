@@ -1,5 +1,21 @@
-defmodule Logflare.Logs.SearchOperations.Utils do
+defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
+
+  def default_min_max_timestamps_for_chart_period(search_chart_period) do
+    case search_chart_period do
+      :day ->
+        {Timex.shift(Timex.now(), days: -30), Timex.now()}
+
+      :hour ->
+        {Timex.shift(Timex.now(), hours: -168), Timex.now()}
+
+      :minute ->
+        {Timex.shift(Timex.now(), minutes: -120), Timex.now()}
+
+      :second ->
+        {Timex.shift(Timex.now(), seconds: -180), Timex.now()}
+    end
+  end
 
   def min_max_timestamps(timestamps) do
     Enum.min_max_by(timestamps, &Timex.to_unix/1)
@@ -13,8 +29,8 @@ defmodule Logflare.Logs.SearchOperations.Utils do
     [Timex.now() |> Timex.shift(days: -30), ts]
   end
 
-  def override_min_max_for_open_intervals(pathvalops) do
-    Enum.map(pathvalops, & &1.value)
+  def override_min_max_for_open_intervals(filter_rules) do
+    Enum.map(filter_rules, & &1.value)
   end
 
   def convert_timestamp_timezone(row, user_timezone) do
