@@ -28,10 +28,11 @@ defmodule Logflare.Source do
     @moduledoc false
     use Ecto.Schema
     @primary_key false
+    @derive Jason.Encoder
 
     embedded_schema do
-      field :team_user_ids_for_email, {:array, :string}
-      field :team_user_ids_for_sms, {:array, :string}
+      field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
       field :other_email_notifications, :string
       field :user_email_notifications, :boolean, default: false
       field :user_text_notifications, :boolean, default: false
