@@ -45,7 +45,7 @@
         </div>
 
         <%= label bn, :team_user_ids_for_email, "Select some team members to alert", class: "label-padding" %>
-        <%= multiple_select bn, :team_user_ids_for_email, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin" %>
+        <%= multiple_select bn, :team_user_ids_for_email, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin selectpicker" %>
       <% end %>
     </div>
     <%= submit "Update email preferences", class: "btn btn-primary form-button" %>
