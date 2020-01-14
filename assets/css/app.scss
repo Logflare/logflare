@@ -40,10 +40,6 @@ main.app {
   } */
 }
 
-#login .list-group a {
-  color: white;
-}
-
 .pre-metadata {
   padding: 20px;
   font-size: 0.75em;
@@ -225,6 +221,15 @@ a {
 
 a:hover {
   color: white;
+  text-decoration: underline;
+}
+
+#login .list-group a {
+  color: white;
+}
+
+a:focus {
+  text-shadow: 0 0 3px $brand-light-gray;
 }
 
 .text-primary {
