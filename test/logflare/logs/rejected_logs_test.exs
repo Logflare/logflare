@@ -11,6 +11,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     s2 = build(:source)
     sources = [s1, s2]
     u1 = insert(:user, sources: sources)
+    u1 = Users.preload_defaults(u1)
 
     allow(Source.Data.get_rate()) |> exec(fn _ -> 0 end)
     allow(Source.Data.get_latest_date()) |> exec(fn _ -> 0 end)
@@ -54,7 +55,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
       source1 = Sources.get_by(token: s1.token)
       source2 = Sources.get_by(token: s2.token)
-      user = Users.get_by(id: u1.id)
+      user = Users.get_by_and_preload(id: u1.id)
 
       validator = Logflare.Logs.Validators.EqDeepFieldTypes
       timestamp = System.system_time(:microsecond)
