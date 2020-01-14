@@ -103,7 +103,7 @@ defmodule Logflare.Mixfile do
       {:scrivener_ecto, "~> 2.2.0"},
       {:scrivener_list, "~> 2.0.1"},
       {:scrivener_html, "~> 1.8.1"},
-      {:libcluster, "~> 3.1.1"},
+      {:libcluster, "~> 3.2.0"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
       {:ueberauth_slack, "~> 0.6"},
