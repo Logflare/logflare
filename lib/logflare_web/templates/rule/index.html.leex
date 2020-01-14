@@ -20,7 +20,7 @@
       </li>
     <% end %>
   </ul>
-  <%= f = form_for :rule, "#", phx_submit: "fsubmit", phx_update: "fupdate" %>
+  <%= f = form_for :rule, "#", phx_submit: "fsubmit", phx_change: "fupdate" %>
   <%= live_component @socket, LogflareWeb.Lql.LqlFormLVC, id: :lql_form, f: f, lql_string: @lql_string %>
   <div class="form-group">
     <%= label f, :sink, "Sink source", class: "control-label" %>

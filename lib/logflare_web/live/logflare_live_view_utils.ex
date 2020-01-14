@@ -3,7 +3,7 @@ defmodule LogflareWeb.LiveViewUtils do
   Utilites for LiveViews
   """
 
-  defmacro __using__(context) do
+  defmacro __using__(_context) do
     quote do
       def handle_info({:lvc_assigns, key, value}, socket) do
         socket = assign(socket, key, value)

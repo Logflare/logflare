@@ -1,9 +1,6 @@
 defmodule LogflareWeb.Lql.LqlFormLVC do
   use Phoenix.LiveComponent
-  alias Logflare.Lql
-  alias Logflare.Sources
   alias LogflareWeb.LqlView
-  import LogflareWeb.LiveComponentUtils
 
   def render(assigns) do
     LqlView.render("lql_form.html", assigns)
