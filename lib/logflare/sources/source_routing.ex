@@ -8,7 +8,7 @@ defmodule Logflare.Logs.SourceRouting do
   require Logger
 
   @spec route_to_sinks_and_ingest(LE.t()) :: term | :noop
-  def route_to_sinks_and_ingest(%LE{via_rule: %Rule{} = rule} = le) when not is_nil(rule) do
+  def route_to_sinks_and_ingest(%LE{via_rule: %Rule{} = rule} = le) do
     Logger.error(
       "LogEvent #{le.id} has already been routed using the rule #{rule.id}, can't proceed!"
     )
@@ -16,11 +16,10 @@ defmodule Logflare.Logs.SourceRouting do
     :noop
   end
 
-  def route_to_sinks_and_ingest(
-        %LE{body: %{message: message}, via_rule: nil} = le,
-        %Source{rules: rules} = source
-      ) do
-    for rule <- source.rules do
+  def route_to_sinks_and_ingest(%LE{body: %{message: message}, via_rule: nil} = le) do
+    %Source{rules: rules} = le.source
+
+    for rule <- rules do
       cond do
         rule.lql_filters ->
           route_with_lql_rules(le, rules)

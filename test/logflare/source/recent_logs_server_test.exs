@@ -34,7 +34,7 @@ defmodule Logflare.Source.RecentLogsServerTest do
                              "Initialized. Waiting for new events. 1 available to explore & search."
                          }
                        },
-                       1_000
+                       2_000
     end
   end
 end

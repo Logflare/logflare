@@ -27,16 +27,11 @@ defmodule Logflare.Source.BigQuery.BufferTest do
       assert Buffer.get_count(sid) == 2
       assert le == Buffer.pop(sid)
       assert Buffer.get_count(sid) == 1
-      assert le == Buffer.ack(sid, le.id)
+      assert {:ok, le} == Buffer.ack(sid, le.id)
       assert Buffer.get_count(sid) == 1
       event = "dashboard:#{sid}:buffer"
       sid = "#{sid}"
       assert_broadcast ^event, %{source_token: ^sid, buffer: 1}, 1_100
-    end
-
-    test "init", %{args: rls} do
-      Buffer.init(rls)
-      assert_receive :check_buffer, 1_100
     end
   end
 end

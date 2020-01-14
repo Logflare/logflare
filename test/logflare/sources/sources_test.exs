@@ -37,34 +37,51 @@ defmodule Logflare.SourcesTest do
 
       schema = %TS{
         fields: [
-          %TFS{
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
             description: nil,
             fields: nil,
-            mode: "REQUIRED",
-            name: "timestamp",
-            type: "TIMESTAMP"
-          },
-          %TFS{
-            description: nil,
-            fields: nil,
+            policyTags: nil,
             mode: "NULLABLE",
             name: "event_message",
             type: "STRING"
           },
-          %TFS{
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
             description: nil,
+            fields: nil,
+            mode: "NULLABLE",
+            policyTags: nil,
+            type: "STRING",
+            name: "id"
+          },
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
+            description: nil,
+            mode: "NULLABLE",
+            policyTags: nil,
             fields: [
-              %TFS{
+              %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+                categories: nil,
                 description: nil,
+                fields: nil,
                 mode: "NULLABLE",
                 name: "string1",
-                type: "STRING",
-                fields: nil
+                policyTags: nil,
+                type: "STRING"
               }
             ],
-            mode: "NULLABLE",
             name: "metadata",
             type: "RECORD"
+          },
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
+            description: nil,
+            policyTags: nil,
+            fields: nil,
+            mode: "REQUIRED",
+            name: "timestamp",
+            type: "TIMESTAMP"
           }
         ]
       }

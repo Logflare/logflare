@@ -195,7 +195,7 @@ defmodule Logflare.Source.RateCounterServer do
   @spec get_data_from_ets(atom) :: map
   def get_data_from_ets(source_id) do
     if ets_table_is_undefined?(source_id) do
-      Logger.error("ETS table #{name(source_id)} is undefined")
+      Logger.error("RateCounterServer: ETS table #{name(source_id)} is undefined")
       data = [{source_id, RCS.new(source_id)}]
       data[source_id]
     else

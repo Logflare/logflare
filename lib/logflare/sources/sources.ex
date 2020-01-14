@@ -3,6 +3,7 @@ defmodule Logflare.Sources do
   Sources-related context
   """
   alias Logflare.{Repo, Source, Tracker, Cluster}
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Rule
   require Logger
 
@@ -59,7 +60,8 @@ defmodule Logflare.Sources do
 
   def get_bq_schema(%Source{} = source) do
     {:ok, table} = Logflare.Google.BigQuery.get_table(source.token)
-    {:ok, table.schema}
+    schema = SchemaUtils.deep_sort_by_fields_name(table.schema)
+    {:ok, schema}
   end
 
   def preload_defaults(source) do

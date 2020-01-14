@@ -45,13 +45,13 @@ defmodule Logflare.Sources.Counters do
   end
 
   @spec decriment(atom) :: success_tuple
-  def decriment(table) do
+  def decriment(table) when is_atom(table) do
     :ets.update_counter(@ets_table_name, table, {3, 1}, {table, 0, 0, 0})
     {:ok, table}
   end
 
   @spec delete(atom) :: success_tuple
-  def delete(table) do
+  def delete(table) when is_atom(table) do
     :ets.delete(@ets_table_name, table)
     {:ok, table}
   end
