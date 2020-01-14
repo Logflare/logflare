@@ -1,17 +1,17 @@
 <%= if is_nil(@user.bigquery_project_id) == false do %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
     <div class="form-group">
-      <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control", readonly: true %>
+      <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control form-control-margin", readonly: true %>
       <%= error_tag e, :bigquery_project_id %>
       <small class="form-text text-muted">
         Your Google Cloud Platform project ID.
       </small>
-      <%= text_input e, :bigquery_dataset_id, placeholder: "wobbly_wombat", class: "form-control", readonly: true %>
+      <%= text_input e, :bigquery_dataset_id, placeholder: "wobbly_wombat", class: "form-control form-control-margin", readonly: true %>
       <%= error_tag e, :bigquery_dataset_id %>
       <small class="form-text text-muted">
         Optional. Your dataset name. Alphanumberic string, and underscores are valid. Creates a new dataset if it doesn't exist.
       </small>
-      <%= text_input e, :bigquery_dataset_location, placeholder: "US", class: "form-control", readonly: true %>
+      <%= text_input e, :bigquery_dataset_location, placeholder: "US", class: "form-control form-control-margin", readonly: true %>
       <%= error_tag e, :bigquery_dataset_location %>
       <small class="form-text text-muted">
         Optional. Defaults to `US`. Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.
@@ -19,25 +19,25 @@
     </div>
   <% end %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-    <%= hidden_input e, :bigquery_project_id, value: nil, class: "form-control" %>
-    <%= hidden_input e, :bigquery_dataset_id, value: nil, class: "form-control" %>
-    <%= hidden_input e, :bigquery_dataset_location, value: nil, class: "form-control" %>
+    <%= hidden_input e, :bigquery_project_id, value: nil, class: "form-control form-control-margin" %>
+    <%= hidden_input e, :bigquery_dataset_id, value: nil, class: "form-control form-control-margin" %>
+    <%= hidden_input e, :bigquery_dataset_location, value: nil, class: "form-control form-control-margin" %>
     <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
   <% end %>
 <% else %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
     <div class="form-group">
-      <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control" %>
+      <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control form-control-margin" %>
       <%= error_tag e, :bigquery_project_id %>
       <small class="form-text text-muted">
         Your Google Cloud Platform project ID.
       </small>
-      <%= text_input e, :bigquery_dataset_id, placeholder: "wobbly_wombat", class: "form-control" %>
+      <%= text_input e, :bigquery_dataset_id, placeholder: "wobbly_wombat", class: "form-control form-control-margin" %>
       <%= error_tag e, :bigquery_dataset_id %>
       <small class="form-text text-muted">
         Optional. Your dataset name. Alphanumberic string, and underscores are valid. Creates a new dataset if it doesn't exist.
       </small>
-      <%= text_input e, :bigquery_dataset_location, placeholder: "US", class: "form-control" %>
+      <%= text_input e, :bigquery_dataset_location, placeholder: "US", class: "form-control form-control-margin" %>
       <%= error_tag e, :bigquery_dataset_location %>
       <small class="form-text text-muted">
         Optional. Defaults to `US`. Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.

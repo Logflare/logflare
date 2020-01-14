@@ -6,7 +6,7 @@ defmodule Logflare.AccountEmail do
   alias Logflare.Auth
 
   def welcome(user) do
-    account_edit_link = build_host() <> Routes.user_path(Endpoint, :edit)
+    account_edit_link = Routes.user_url(Endpoint, :edit)
 
     new()
     |> to(user.email)
@@ -21,12 +21,8 @@ defmodule Logflare.AccountEmail do
 
   def source_notification(user, rate, source) do
     signature = Auth.gen_token(user.email_preferred)
-
-    source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
-
-    unsubscribe_link =
-      build_host() <>
-        Routes.unsubscribe_path(Endpoint, :unsubscribe, source.id, signature)
+    source_link = Routes.source_url(Endpoint, :show, source.id)
+    unsubscribe_link = Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature)
 
     new()
     |> to(user.email_preferred)
@@ -41,14 +37,12 @@ defmodule Logflare.AccountEmail do
 
   def source_notification_for_others(email, rate, source) do
     signature = Auth.gen_token(email)
-
-    source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
+    source_link = Routes.source_url(Endpoint, :show, source.id)
 
     unsubscribe_link =
-      build_host() <>
-        Routes.unsubscribe_path(Endpoint, :unsubscribe_stranger, source.id, signature)
+      Routes.unsubscribe_url(Endpoint, :unsubscribe_stranger, source.id, signature)
 
-    signup_link = build_host() <> Routes.auth_path(Endpoint, :login)
+    signup_link = Routes.auth_url(Endpoint, :login)
 
     new()
     |> to(email)
@@ -59,10 +53,5 @@ defmodule Logflare.AccountEmail do
         signup_link
       }\n\nUnsubscribe: #{unsubscribe_link}"
     )
-  end
-
-  defp build_host() do
-    host_info = LogflareWeb.Endpoint.struct_url()
-    host_info.scheme <> "://" <> host_info.host
   end
 end

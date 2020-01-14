@@ -7,6 +7,7 @@ defmodule Logflare.User do
   @default_user_api_quota 150
 
   alias Logflare.Source
+  alias Logflare.Teams.Team
   alias Logflare.Google.BigQuery
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -25,6 +26,7 @@ defmodule Logflare.User do
     field :email_me_product, :boolean, default: true
     field :admin, :boolean, default: false
     has_many :sources, Source
+    has_one :team, Team
     field :phone, :string
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
@@ -32,6 +34,7 @@ defmodule Logflare.User do
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
+    field :company, :string
 
     timestamps()
   end
@@ -49,38 +52,18 @@ defmodule Logflare.User do
       :name,
       :image,
       :email_me_product,
-      :admin,
+      # Don't cast this so people can't hack into admin mode
+      # :admin,
       :phone,
       :bigquery_project_id,
       :api_quota,
       :bigquery_dataset_location,
       :bigquery_dataset_id,
       :valid_google_account,
-      :provider_uid
+      :provider_uid,
+      :company
     ])
-    |> validate_required([:email, :provider, :token, :provider_uid])
-    |> default_validations(user)
-  end
-
-  def update_by_user_changeset(user, attrs) do
-    user
-    |> cast(attrs, [
-      :email,
-      :provider,
-      :email_preferred,
-      :name,
-      :image,
-      :email_me_product,
-      :phone,
-      :bigquery_project_id,
-      :bigquery_dataset_id,
-      :bigquery_dataset_location,
-      :valid_google_account,
-      :provider_uid
-    ])
-    # |> update_change(:bigquery_dataset_location, &String.trim/1)
-    # |> update_change(:bigquery_dataset_id, &String.trim/1)
-    # |> update_change(:bigquery_project_id, &String.trim/1)
+    |> cast_assoc(:team)
     |> default_validations(user)
   end
 

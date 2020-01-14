@@ -24,6 +24,32 @@ defmodule Logflare.Source do
     end
   end
 
+  defmodule Notifications do
+    @moduledoc false
+    use Ecto.Schema
+    @primary_key false
+    @derive Jason.Encoder
+
+    embedded_schema do
+      field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
+      field :other_email_notifications, :string
+      field :user_email_notifications, :boolean, default: false
+      field :user_text_notifications, :boolean, default: false
+    end
+
+    def changeset(notifications, attrs) do
+      notifications
+      |> cast(attrs, [
+        :team_user_ids_for_email,
+        :team_user_ids_for_sms,
+        :other_email_notifications,
+        :user_email_notifications,
+        :user_text_notifications
+      ])
+    end
+  end
+
   schema "sources" do
     field :name, :string
     field :token, Ecto.UUID.Atom
@@ -44,6 +70,7 @@ defmodule Logflare.Source do
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
+    embeds_one :notifications, Notifications, on_replace: :update
 
     timestamps()
   end
@@ -60,10 +87,12 @@ defmodule Logflare.Source do
       :other_email_notifications,
       :user_text_notifications,
       :bigquery_table_ttl,
+      # users can't update thier API quota currently
       :api_quota,
       :webhook_notification_url,
       :slack_hook_url
     ])
+    |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
   end
 
@@ -81,6 +110,7 @@ defmodule Logflare.Source do
       :webhook_notification_url,
       :slack_hook_url
     ])
+    |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
   end
 

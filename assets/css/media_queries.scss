@@ -3,6 +3,10 @@
     margin-right: 15%;
     margin-left: 15%;
   }
+
+  #source-list {
+    margin-left: 25%;
+  }
 }
 @media screen and (max-width: 992px) {
   .hide-on-mobile {
@@ -16,5 +20,6 @@
   #saved-searches {
     float: none;
     width: 100%;
+    margin-bottom: 2em;
   }
 }

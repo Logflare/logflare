@@ -14,13 +14,14 @@
         </iframe>
         <h5 class="header-margin">With Elixir Logger</h5>
         <p>Using Elixir? Use our Logger backend to send your structured logs.</p>
-        <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare-logger", class: "btn btn-primary form-button" %>
+        <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-primary form-button" %>
         <h5 class="header-margin">With the Elixir Agent</h5>
         <p>Watch log files on a server with our Elixir agent.</p>
         <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button" %>
         <h5 class="header-margin">With an API Request</h5>
         <p>Send logs via an HTTP request.</p>
         <pre class="pre-scrollable">
+
           <code>
     curl -X "POST" "https://api.logflare.app/logs" \
     -H 'Content-Type: application/json' \
@@ -56,38 +57,92 @@
         <p>Customize the Cloudflare worker using the template below.</p>
         <pre class="pre-scrollable">
           <code>
+    const makeid = length => {
+        let text = ""
+        const possible = "ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789"
+        for (let i = 0; i < length; i += 1) {
+            text += possible.charAt(Math.floor(Math.random() * possible.length))
+        }
+        return text
+    }
+
+    const buildMetadataFromHeaders = headers => {
+        const responseMetadata = {}
+        Array.from(headers).forEach(([key, value]) => {
+            responseMetadata[key.replace(/-/g, "_")] = value
+        })
+        return responseMetadata
+    }
+
+    const WORKER_ID = makeid(6)
+
     async function handleRequest(event) {
-      const {request} = event;
-      const rMeth = request.method
-      const rUrl = request.url
-      const uAgent = request.headers.get("user-agent")
-      const rHost = request.headers.get("host")
-      const cfRay = request.headers.get("cf-ray")
-      const cIP= request.headers.get("cf-connecting-ip")
+        const {
+            request
+        } = event;
+        const rMeth = request.method
+        const rUrl = request.url
+        const uAgent = request.headers.get("user-agent")
+        const rHost = request.headers.get("host")
+        const cfRay = request.headers.get("cf-ray")
+        const cIP = request.headers.get("cf-connecting-ip")
+        const rCf = request.cf
 
-      const sourceKey = "<%= @source.token %>"
-      const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
+        const requestMetadata = buildMetadataFromHeaders(request.headers)
 
-      const response = await fetch(request)
+        const sourceKey = "<%= @source.token %>"
+        const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
 
-      const statusCode = response.status
-      const contentLength = response.headers.get("content-legth")
+        const t1 = Date.now()
+        const response = await fetch(request)
+        const originTimeMs = Date.now() - t1
 
-      const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
+        const statusCode = response.status
 
-      const init = {
-        method: "POST",
-        headers: { "X-API-KEY": apiKey, "Content-Type": "application/json", "User-Agent": `Cloudflare Worker via ${rHost}` },
-        body: JSON.stringify({ source: sourceKey, log_entry: logEntry }),
-      }
+        const responseMetadata = buildMetadataFromHeaders(response.headers)
 
-      event.waitUntil(fetch("https://api.logflare.app/logs", init))
+        const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
 
-      return response
+        const logflareEventBody = {
+            source: sourceKey,
+            log_entry: logEntry,
+            metadata: {
+                response: {
+                    headers: responseMetadata,
+                    origin_time: originTimeMs,
+                    status_code: response.status,
+                },
+                request: {
+                    url: rUrl,
+                    method: rMeth,
+                    headers: requestMetadata,
+                    cf: rCf,
+                },
+                logflare_worker: {
+                    worker_id: WORKER_ID,
+                },
+            },
+        }
+
+        const init = {
+            method: "POST",
+            headers: {
+                "X-API-KEY": apiKey,
+                "Content-Type": "application/json",
+                "User-Agent": `Cloudflare Worker via ${rHost}`
+            },
+            body: JSON.stringify(logflareEventBody),
+        }
+
+        event.waitUntil(fetch("https://api.logflare.app/logs", init))
+
+        return response
     }
 
     addEventListener("fetch", event => {
-      event.respondWith(handleRequest(event))
+        event.passThroughOnException()
+
+        event.respondWith(handleRequest(event))
     })
           </code>
         </pre>
