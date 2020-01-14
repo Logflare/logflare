@@ -1,16 +1,13 @@
 defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   use Phoenix.LiveComponent
   alias LogflareWeb.SearchView
-  alias Logflare.Lql
-  alias Logflare.Sources
-  alias LogflareWeb.LqlView
-  import LogflareWeb.LiveComponentUtils
 
   def render(assigns) do
     log_events = assigns[:log_events]
     source = assigns[:source]
+    active_modal = assigns[:active_modal]
 
-    case assigns.active_modal do
+    case active_modal do
       "searchHelpModal" ->
         SearchView.render("modal.html",
           id: "searchHelpModal",
@@ -22,7 +19,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
         SearchView.render("modal.html",
           id: "sourceSchemaModal",
           title: "Source Schema",
-          body: SearchView.format_bq_schema(assigns.source)
+          body: SearchView.format_bq_schema(source)
         )
 
       "metadataModal:" <> id ->
@@ -34,7 +31,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
           log_event
           |> Map.get(:body)
           |> Map.get(:metadata)
-          |> SourceView.encode_metadata()
+          |> SearchView.encode_metadata()
 
         body =
           SearchView.render("metadata_modal_body.html",
@@ -42,7 +39,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
             fmt_metadata: fmt_metadata
           )
 
-        SearchView.search_view("modal.html",
+        SearchView.render("modal.html",
           id: "metadataModal",
           title: "Metadata",
           body: body

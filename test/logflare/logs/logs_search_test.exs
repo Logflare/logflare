@@ -52,7 +52,7 @@ defmodule Logflare.Logs.SearchTest do
         end
     end
 
-    BigQuery.delete_table(source.token)
+    assert :ok = BigQuery.delete_table(source.token)
     assert {:ok, table} = BigQuery.create_table(source.token, @test_dataset, project_id, 300_000)
     assert {:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
 

@@ -1,10 +1,6 @@
 defmodule LogflareWeb.Source.SearchLV.DebugLVC do
   use Phoenix.LiveComponent
   alias LogflareWeb.SearchView
-  alias Logflare.Lql
-  alias Logflare.Sources
-  alias LogflareWeb.LqlView
-  import LogflareWeb.LiveComponentUtils
 
   def render(assigns) do
     SearchView.render("debug.html", assigns)
