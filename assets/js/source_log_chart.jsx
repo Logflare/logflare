@@ -1,4 +1,3 @@
-import * as _ from "lodash"
 import React from "react"
 import { ResponsiveBar, Bar } from "@nivo/bar"
 
@@ -27,13 +26,9 @@ const renderTooltip = tooltipData => {
   const { value, color, indexValue } = tooltipData
   return (
     <div>
-      <strong style={{ color }}>
-        Timestamp: {indexValue}
-      </strong>
-      <br/>
-      <strong style={{ color }}>
-        Value: {value}
-      </strong>
+      <strong style={{ color }}>Timestamp: {indexValue}</strong>
+      <br />
+      <strong style={{ color }}>Value: {value}</strong>
     </div>
   )
 }
