@@ -4,6 +4,18 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   via https://stackoverflow.com/questions/53913182/decoding-googleapi-bigquery-object-elixir
   """
 
+  @spec deep_sort_by_fields_name(TFS.t()) :: TFS.t()
+  def deep_sort_by_fields_name(%{fields: nil} = schema), do: schema
+
+  def deep_sort_by_fields_name(%{fields: fields} = schema) when is_list(fields) do
+    sorted_fields =
+      fields
+      |> Enum.sort_by(& &1.name)
+      |> Enum.map(&deep_sort_by_fields_name/1)
+
+    %{schema | fields: sorted_fields}
+  end
+
   @empty [nil, %{}, []]
 
   def merge_rows_with_schema(nil, nil), do: []

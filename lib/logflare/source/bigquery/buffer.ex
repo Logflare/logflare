@@ -45,10 +45,12 @@ defmodule Logflare.Source.BigQuery.Buffer do
     GenServer.call(name(source_id), :pop)
   end
 
+  @spec ack(atom | binary, any) :: any
   def ack(source_id, log_event_id) do
     GenServer.call(name(source_id), {:ack, log_event_id})
   end
 
+  @spec get_count(atom | binary) :: integer
   def get_count(source_id) do
     GenServer.call(name(source_id), :get_count)
   end
@@ -61,42 +63,38 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_call(:pop, _from, state) do
-    case :queue.is_empty(state.buffer) do
-      true ->
-        Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
-        {:reply, :empty, state}
+    if :queue.is_empty(state.buffer) do
+      Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
+      {:reply, :empty, state}
+    else
+      {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
+      new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
 
-      false ->
-        {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
-        new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
+      new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
 
-        new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
-
-        Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
-        {:reply, log_event, new_state}
+      Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
+      {:reply, log_event, new_state}
     end
   end
 
   def handle_call({:ack, log_event_id}, _from, state) do
-    case state.read_receipts == %{} do
-      true ->
-        {:reply, {:error, :empty}, state}
+    if Enum.empty?(state.read_receipts) do
+      {:reply, {:error, :empty}, state}
+    else
+      case Map.pop(state.read_receipts, log_event_id) do
+        {nil, _read_receipts} ->
+          Logger.warn("Log event not found when acknowledged.",
+            source_id: state.source_id,
+            log_event_id: log_event_id
+          )
 
-      false ->
-        case Map.pop(state.read_receipts, log_event_id) do
-          {nil, _read_receipts} ->
-            Logger.warn("Log event not found when acknowledged.",
-              source_id: state.source_id,
-              log_event_id: log_event_id
-            )
+          {:reply, {:error, :not_found}, state}
 
-            {:reply, {:error, :not_found}, state}
+        {%LE{} = log_event, new_read_receipts} ->
+          new_state = %{state | read_receipts: new_read_receipts}
 
-          {%LE{} = log_event, new_read_receipts} ->
-            new_state = %{state | read_receipts: new_read_receipts}
-
-            {:reply, {:ok, log_event}, new_state}
-        end
+          {:reply, {:ok, log_event}, new_state}
+      end
     end
   end
 
@@ -136,7 +134,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
     Process.send_after(self(), :check_buffer, @broadcast_every)
   end
 
-  def name(source_id) do
+  @spec name(atom | String.t()) :: atom
+  def name(source_id) when is_atom(source_id) when is_binary(source_id) do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 end

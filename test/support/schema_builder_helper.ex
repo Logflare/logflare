@@ -1,7 +1,8 @@
 defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
-  alias Logflare.Source.BigQuery.SchemaBuilder, as: SchemaBuilder
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @doc """
   Utility function for removing everything except schemas names from TableFieldSchema structs
@@ -22,7 +23,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   """
   def schemas() do
     for id <- ~w(initial first second third list_of_maps)a, into: Map.new() do
-      sorted_schema = id |> get_schema() |> SchemaBuilder.deep_sort_by_fields_name()
+      sorted_schema = id |> get_schema() |> SchemaUtils.deep_sort_by_fields_name()
       {id, sorted_schema}
     end
   end
@@ -207,7 +208,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "REQUIRED",
+          mode: "NULLABLE",
           name: "id",
           type: "STRING"
         },
@@ -379,7 +380,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
   end
 
   def get_schema(:initial) do
-   SchemaBuilder.initial_table_schema()
+    SchemaBuilder.initial_table_schema()
   end
 
   def get_schema(:first) do
@@ -395,7 +396,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "REQUIRED",
+          mode: "NULLABLE",
           name: "id",
           type: "STRING"
         },
@@ -452,7 +453,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "REQUIRED",
+          mode: "NULLABLE",
           name: "id",
           type: "STRING"
         },
@@ -567,7 +568,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "REQUIRED",
+          mode: "NULLABLE",
           name: "id",
           type: "STRING"
         },
@@ -696,7 +697,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
         %TFS{
           description: nil,
           fields: nil,
-          mode: "REQUIRED",
+          mode: "NULLABLE",
           name: "id",
           type: "STRING"
         },

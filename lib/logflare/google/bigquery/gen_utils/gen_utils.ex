@@ -3,6 +3,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   Generic utils for BigQuery.
   """
   alias Logflare.{Sources, Users}
+  alias Logflare.{Source, User}
   alias GoogleApi.BigQuery.V2.Connection
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -13,23 +14,22 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
-    %Logflare.Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
-    %Logflare.User{bigquery_project_id: project_id} = Users.Cache.get_by(id: user_id)
+    %Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
+    %User{bigquery_project_id: project_id} = Users.Cache.get_by(id: user_id)
 
     project_id || @project_id
   end
 
   def get_bq_user_info(source_id) when is_atom(source_id) do
-    %Logflare.User{
+    %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.Cache.get_by_id(source_id)
+
+    %User{
       id: user_id,
-      sources: sources,
+      sources: _sources,
       bigquery_project_id: project_id,
       bigquery_dataset_location: dataset_location,
       bigquery_dataset_id: dataset_id
-    } = Users.get_by_source(source_id)
-
-    %Logflare.Source{bigquery_table_ttl: ttl} =
-      Enum.find(sources, fn x -> x.token == source_id end)
+    } = Users.Cache.get_by(id: user_id)
 
     new_ttl =
       cond do
