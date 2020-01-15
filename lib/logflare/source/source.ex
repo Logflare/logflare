@@ -55,9 +55,6 @@ defmodule Logflare.Source do
     field :token, Ecto.UUID.Atom
     field :public_token, :string
     field :favorite, :boolean, default: false
-    field :user_email_notifications, :boolean, default: false
-    field :other_email_notifications, :string
-    field :user_text_notifications, :boolean, default: false
     field :bigquery_table_ttl, :integer
     field :api_quota, :integer, default: @default_source_api_quota
     field :webhook_notification_url, :string
@@ -83,9 +80,6 @@ defmodule Logflare.Source do
       :token,
       :public_token,
       :favorite,
-      :user_email_notifications,
-      :other_email_notifications,
-      :user_text_notifications,
       :bigquery_table_ttl,
       # users can't update thier API quota currently
       :api_quota,
@@ -103,9 +97,6 @@ defmodule Logflare.Source do
       :token,
       :public_token,
       :favorite,
-      :user_email_notifications,
-      :other_email_notifications,
-      :user_text_notifications,
       :bigquery_table_ttl,
       :webhook_notification_url,
       :slack_hook_url
