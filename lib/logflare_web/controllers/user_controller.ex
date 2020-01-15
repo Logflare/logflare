@@ -22,8 +22,6 @@ defmodule LogflareWeb.UserController do
   end
 
   def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
-    IO.inspect(params)
-
     user
     |> User.changeset(params)
     |> Repo.update()
