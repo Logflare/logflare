@@ -13,6 +13,7 @@ defmodule Logflare.Google.BigQuery do
   alias GoogleApi.BigQuery.V2.Model
 
   alias Logflare.Google.BigQuery.GenUtils
+  import GenUtils, only: [maybe_parse_google_api_result: 1]
   alias Logflare.{Users}
   alias Logflare.Source.BigQuery.SchemaBuilder
 
@@ -93,8 +94,8 @@ defmodule Logflare.Google.BigQuery do
       expirationMs: table_ttl
     }
 
-    Api.Tables.bigquery_tables_insert(
-      conn,
+    conn
+    |> Api.Tables.bigquery_tables_insert(
       project_id,
       dataset_id,
       body: %Model.Table{
@@ -105,6 +106,7 @@ defmodule Logflare.Google.BigQuery do
         labels: %{"managed_by" => "logflare"}
       }
     )
+    |> maybe_parse_google_api_result()
   end
 
   @spec patch_table_ttl(atom, integer(), binary, binary) :: ok_err_tup
@@ -118,9 +120,11 @@ defmodule Logflare.Google.BigQuery do
       expirationMs: table_ttl
     }
 
-    Api.Tables.bigquery_tables_patch(conn, project_id, dataset_id, table_name,
+    conn
+    |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
       body: %Model.Table{timePartitioning: partitioning}
     )
+    |> maybe_parse_google_api_result()
   end
 
   @spec patch_table(atom, any, binary, binary) ::
@@ -130,9 +134,11 @@ defmodule Logflare.Google.BigQuery do
     table_name = GenUtils.format_table_name(source_id)
     dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
-    Api.Tables.bigquery_tables_patch(conn, project_id, dataset_id, table_name,
+    conn
+    |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
       body: %Model.Table{schema: schema}
     )
+    |> maybe_parse_google_api_result()
   end
 
   @spec get_table(atom) ::
@@ -148,12 +154,13 @@ defmodule Logflare.Google.BigQuery do
 
     dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
-    Api.Tables.bigquery_tables_get(
-      conn,
+    conn
+    |> Api.Tables.bigquery_tables_get(
       project_id,
       dataset_id,
       table_name
     )
+    |> maybe_parse_google_api_result()
   end
 
   @spec stream_batch!(atom, list(map)) :: ok_err_tup
@@ -173,13 +180,14 @@ defmodule Logflare.Google.BigQuery do
       rows: batch
     }
 
-    Api.Tabledata.bigquery_tabledata_insert_all(
-      conn,
+    conn
+    |> Api.Tabledata.bigquery_tabledata_insert_all(
       project_id,
       dataset_id,
       table_name,
       body: body
     )
+    |> maybe_parse_google_api_result()
   end
 
   @doc """
@@ -233,7 +241,9 @@ defmodule Logflare.Google.BigQuery do
       location: dataset_location
     }
 
-    Api.Datasets.bigquery_datasets_insert(conn, project_id, body: body)
+    conn
+    |> Api.Datasets.bigquery_datasets_insert(project_id, body: body)
+    |> maybe_parse_google_api_result()
   end
 
   @spec patch_dataset_access!(Integer) :: ok_err_tup
@@ -297,6 +307,8 @@ defmodule Logflare.Google.BigQuery do
     dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
     project_id = user.bigquery_project_id || @project_id
 
-    Api.Datasets.bigquery_datasets_delete(conn, project_id, dataset_id, deleteContents: true)
+    conn
+    |> Api.Datasets.bigquery_datasets_delete(project_id, dataset_id, deleteContents: true)
+    |> maybe_parse_google_api_result()
   end
 end
