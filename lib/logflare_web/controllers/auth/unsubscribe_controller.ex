@@ -9,7 +9,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
 
   def unsubscribe(conn, %{"id" => source_id, "token" => token}) do
     source = Repo.get(Source, source_id)
-    source_changes = %{user_email_notifications: false}
+    source_changes = %{notifications: %{user_email_notifications: false}}
     changeset = Source.update_by_user_changeset(source, source_changes)
 
     case Auth.verify_token(token, @max_age) do
@@ -44,7 +44,10 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
         source = Repo.get(Source, source_id)
 
         source_changes = %{
-          other_email_notifications: filter_email(email, source.other_email_notifications)
+          notifications: %{
+            other_email_notifications:
+              filter_email(email, source.notifications.other_email_notifications)
+          }
         }
 
         changeset = Source.update_by_user_changeset(source, source_changes)
