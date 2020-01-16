@@ -55,9 +55,9 @@ defmodule Logflare.Source do
     field :token, Ecto.UUID.Atom
     field :public_token, :string
     field :favorite, :boolean, default: false
-    field :user_email_notifications, :boolean, default: false
-    field :other_email_notifications, :string
-    field :user_text_notifications, :boolean, default: false
+    field :user_email_notifications, :boolean, default: false, virtual: true
+    field :other_email_notifications, :string, virtual: true
+    field :user_text_notifications, :boolean, default: false, virtual: true
     field :bigquery_table_ttl, :integer
     field :api_quota, :integer, default: @default_source_api_quota
     field :webhook_notification_url, :string
