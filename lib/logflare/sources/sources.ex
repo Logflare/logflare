@@ -9,7 +9,7 @@ defmodule Logflare.Sources do
 
   @default_bucket_width 60
 
-  def get(source_id) do
+  def get(source_id) when is_atom(source_id) do
     Source
     |> Repo.get(source_id)
   end
@@ -70,7 +70,9 @@ defmodule Logflare.Sources do
     |> Repo.preload(:rules)
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
-    |> Source.put_bq_table_id()
+    |> put_bq_table_id()
+    |> put_bq_table_schema()
+    |> put_bq_table_typemap()
   end
 
   def preload_saved_searches(source) do
@@ -164,5 +166,19 @@ defmodule Logflare.Sources do
     source
     |> Source.changeset(%{slack_hook_url: nil})
     |> Repo.update()
+  end
+
+  def put_bq_table_id(%Source{} = source) do
+    %{source | bq_table_id: Source.generate_bq_table_id(source)}
+  end
+
+  def put_bq_table_schema(%Source{} = source) do
+    {:ok, bq_table_schema} = get_bq_schema(source)
+    %{source | bq_table_schema: bq_table_schema}
+  end
+
+  def put_bq_table_typemap(%Source{} = source) do
+    bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
+    %{source | bq_table_typemap: bq_table_typemap}
   end
 end

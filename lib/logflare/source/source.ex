@@ -45,6 +45,7 @@ defmodule Logflare.Source do
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
     field :bq_table_schema, :any, virtual: true
+    field :bq_table_typemap, :any, virtual: true
 
     timestamps()
   end
@@ -90,10 +91,6 @@ defmodule Logflare.Source do
     |> validate_required([:name, :token])
     |> unique_constraint(:name)
     |> unique_constraint(:public_token)
-  end
-
-  def put_bq_table_id(%__MODULE__{} = source) do
-    %{source | bq_table_id: generate_bq_table_id(source)}
   end
 
   def generate_bq_table_id(%__MODULE__{} = source) do
