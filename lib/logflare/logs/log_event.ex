@@ -24,7 +24,7 @@ defmodule Logflare.LogEvent do
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     embeds_one :body, Body
-    field :source, :map
+    embeds_one :source, Source
     field :valid?, :boolean
     field :validation_error, {:array, :string}
     field :ingested_at, :utc_datetime_usec
@@ -89,23 +89,27 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:source, :valid?, :validation_error])
+      |> cast(mapper(params), [:valid?, :validation_error])
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> cast_embed(:body, with: &make_body/2)
       |> validate_required([:body])
 
     body = struct!(Body, changeset.changes.body.changes)
 
-    __MODULE__
-    |> struct!(changeset.changes)
-    |> Map.put(:body, body)
-    |> Map.put(:validation_error, changeset_error_to_string(changeset))
-    |> Map.put(:source, source)
-    |> Map.put(:origin_source_id, source.token)
-    |> Map.put(:valid?, changeset.valid?)
-    |> Map.put(:params, params)
-    |> Map.put(:ingested_at, NaiveDateTime.utc_now())
-    |> Map.put(:id, Ecto.UUID.generate())
-    |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+    le_map =
+      changeset.changes
+      |> Map.put(:body, body)
+      |> Map.put(:validation_error, changeset_error_to_string(changeset))
+      |> Map.put(:source, source)
+      |> Map.put(:origin_source_id, source.token)
+      |> Map.put(:valid?, changeset.valid?)
+      |> Map.put(:params, params)
+      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
+      |> Map.put(:id, Ecto.UUID.generate())
+      |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+
+    Logflare.LogEvent
+    |> struct!(le_map)
     |> validate()
   end
 

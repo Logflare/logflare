@@ -10,16 +10,16 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.SourceRouting
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
-  def ingest_logs(log_params_batch, %Source{} = source) do
+  def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
     log_params_batch
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
       if le.valid? do
-        SourceRouting.route_to_sinks_and_ingest(le)
-        ingest(le)
-        broadcast(le)
+        :ok = SourceRouting.route_to_sinks_and_ingest(le)
+        :ok = ingest(le)
+        :ok = broadcast(le)
       else
-        RejectedLogEvents.ingest(le)
+        :ok = RejectedLogEvents.ingest(le)
       end
 
       le
@@ -38,18 +38,21 @@ defmodule Logflare.Logs do
   end
 
   def ingest(%LE{source: %Source{} = source} = le) do
-    source_table_string = Atom.to_string(source.token)
     # indvididual source genservers
-    RecentLogsServer.push(source.token, le)
-    Buffer.push(source_table_string, le)
+    :ok = RecentLogsServer.push(le)
+    :ok = Buffer.push(le)
 
     # all sources genservers
-    Sources.Counters.incriment(source.token)
-    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+    {:ok, _} = Sources.Counters.incriment(source.token)
+    {:ok, :total_logs_logged} = SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+
+    :ok
   end
 
   def broadcast(%LE{} = le) do
     # broadcasters
-    Source.ChannelTopics.broadcast_new(le)
+    :ok = Source.ChannelTopics.broadcast_new(le)
+
+    :ok
   end
 end

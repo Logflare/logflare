@@ -136,4 +136,8 @@ defmodule Logflare.User do
   def valid_bq_dataset_locations do
     ~w(US EU us-west2 northamerica-northeast1 us-east4 southamerica-east1 europe-north1 europe-west2 europe-west6 asia-east2 asia-south1 asia-northeast2 asia-east1 asia-northeast1 asia-southeast1 australia-southeast1)
   end
+
+  def generate_bq_dataset_id(%__MODULE__{id: id} = user) do
+    "#{id}" <> @dataset_id_append
+  end
 end

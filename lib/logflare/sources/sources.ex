@@ -9,9 +9,13 @@ defmodule Logflare.Sources do
 
   @default_bucket_width 60
 
-  def get(source_id) when is_atom(source_id) do
+  def get(source_id) when is_integer(source_id) do
     Source
     |> Repo.get(source_id)
+  end
+
+  def get(source_id) when is_atom(source_id) do
+    get_by(token: source_id)
   end
 
   def get_by(kw) do
@@ -71,6 +75,10 @@ defmodule Logflare.Sources do
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
     |> put_bq_table_id()
+  end
+
+  def put_bq_table_data(source) do
+    source
     |> put_bq_table_schema()
     |> put_bq_table_typemap()
   end
@@ -88,7 +96,7 @@ defmodule Logflare.Sources do
     rules =
       for rule <- rules do
         case rule do
-          %Rule{lql_filters: lql_filters} when not is_nil(lql_filters) ->
+          %Rule{lql_filters: lql_filters} when length(lql_filters) >= 1 ->
             rule
 
           %Rule{regex_struct: rs} when not is_nil(rs) ->
@@ -168,15 +176,18 @@ defmodule Logflare.Sources do
     |> Repo.update()
   end
 
+  @spec put_bq_table_id(Source.t()) :: Source.t()
   def put_bq_table_id(%Source{} = source) do
     %{source | bq_table_id: Source.generate_bq_table_id(source)}
   end
 
+  @spec put_bq_table_schema(Source.t()) :: Source.t()
   def put_bq_table_schema(%Source{} = source) do
     {:ok, bq_table_schema} = get_bq_schema(source)
     %{source | bq_table_schema: bq_table_schema}
   end
 
+  @spec put_bq_table_typemap(Source.t()) :: Source.t()
   def put_bq_table_typemap(%Source{} = source) do
     bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
     %{source | bq_table_typemap: bq_table_typemap}
