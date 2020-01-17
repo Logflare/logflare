@@ -50,7 +50,8 @@ defmodule Logflare.Google.BigQuery.PipelineTest do
                  insertId: le.id,
                  json: %{
                    "event_message" => "valid",
-                   "timestamp" => datetime
+                   "timestamp" => datetime,
+                   "id" => le.id
                  }
                }
     end

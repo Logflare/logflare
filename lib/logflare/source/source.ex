@@ -50,6 +50,11 @@ defmodule Logflare.Source do
     timestamps()
   end
 
+  def no_casting_changeset(source) do
+    source
+    |> cast(%{}, [])
+  end
+
   @doc false
   def changeset(source, attrs) do
     source

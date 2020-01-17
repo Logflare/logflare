@@ -68,7 +68,15 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     "#{account_id}"
   end
 
-  @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: any
+  @spec maybe_parse_google_api_result({:ok, any()} | {:error, any()}) ::
+          {:ok, any()} | {:error, any()}
+  def maybe_parse_google_api_result({:error, %Tesla.Env{} = teslaenv}) do
+    {:error, get_tesla_error_message(teslaenv)}
+  end
+
+  def maybe_parse_google_api_result(x), do: x
+
+  @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
     case Jason.decode(message.body) do
       {:ok, message_body} ->

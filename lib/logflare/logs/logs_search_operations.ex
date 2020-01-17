@@ -217,7 +217,7 @@ defmodule Logflare.Logs.SearchOperations do
     flatmap =
       so.source
       |> Sources.Cache.get_bq_schema()
-      |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
+      |> SchemaUtils.to_typemap()
       |> Iteraptor.to_flatmap()
       |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
       |> Enum.map(fn {k, _} -> String.trim_trailing(k, ".t") end)
@@ -270,7 +270,7 @@ defmodule Logflare.Logs.SearchOperations do
     top_level_fields =
       so.source
       |> Sources.Cache.get_bq_schema()
-      |> Logflare.Logs.Validators.BigQuerySchemaChange.to_typemap()
+      |> SchemaUtils.to_typemap()
       |> Map.keys()
 
     %{so | query: select(so.query, ^top_level_fields)}

@@ -2,8 +2,9 @@ defmodule LogflareWeb.SearchView do
   use LogflareWeb, :view
   import LogflareWeb.Helpers.Flash
 
-  alias Logflare.{Sources, Logs}
+  alias Logflare.Sources
   alias Logflare.BigQuery.SchemaTypes
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   import Phoenix.LiveView
   import PhoenixLiveReact, only: [live_react_component: 2]
@@ -32,7 +33,7 @@ defmodule LogflareWeb.SearchView do
     if bq_schema do
       fields_and_types =
         bq_schema
-        |> Logs.Validators.BigQuerySchemaChange.to_typemap()
+        |> SchemaUtils.to_typemap()
         |> Iteraptor.to_flatmap()
         |> Enum.reject(fn {_, v} -> v == :map end)
         |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)

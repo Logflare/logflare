@@ -1,11 +1,11 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
-  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.{FilterRule, ChartRule}
 
   def bq_schema_to_typemap(schema) do
     schema
-    |> BigQuerySchemaChange.to_typemap()
+    |> SchemaUtils.to_typemap()
     |> Iteraptor.to_flatmap()
     |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
     |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
