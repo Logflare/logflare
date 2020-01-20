@@ -162,6 +162,10 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec parse_querystring(SO.t()) :: SO.t()
+  def parse_querystring(%SO{querystring: ""} = so) do
+    so
+  end
+
   def parse_querystring(%SO{} = so) do
     schema =
       so.source

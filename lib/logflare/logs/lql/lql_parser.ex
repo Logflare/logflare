@@ -25,6 +25,10 @@ defmodule Logflare.Lql.Parser do
     |> times(min: 1, max: 100)
   )
 
+  def parse("", _schema) do
+    {:ok, [%FilterRule{path: "event_message", operator: "~", value: ".+", modifiers: []}]}
+  end
+
   def parse(querystring, schema) do
     with {:ok, rules, "", _, {_, _}, _} <-
            querystring

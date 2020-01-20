@@ -23,7 +23,7 @@ defmodule LogflareWeb.Source.SearchLV do
     SearchView.render("logs_search.html", assigns)
   end
 
-  def mount(%{user_id: user_id} = session, socket) do
+  def mount(%{"user_id" => user_id} = session, socket) do
     user = Users.Cache.get_by_and_preload(id: user_id)
 
     Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
