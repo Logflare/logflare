@@ -99,6 +99,7 @@ defmodule LogflareWeb.Router do
     get "/public/:public_token", SourceController, :public
     get "/:id/unsubscribe/:token", Auth.UnsubscribeController, :unsubscribe
     get "/:id/unsubscribe/stranger/:token", Auth.UnsubscribeController, :unsubscribe_stranger
+    get "/:id/unsubscribe/team-member/:token", Auth.UnsubscribeController, :unsubscribe_team_user
   end
 
   scope "/sources", LogflareWeb do

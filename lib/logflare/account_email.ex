@@ -3,7 +3,7 @@ defmodule Logflare.AccountEmail do
 
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-  alias Logflare.Auth
+  alias Logflare.{Auth, User, TeamUsers.TeamUser}
 
   def welcome(user) do
     account_edit_link = Routes.user_url(Endpoint, :edit)
@@ -19,19 +19,33 @@ defmodule Logflare.AccountEmail do
     )
   end
 
-  def source_notification(user, rate, source) do
+  def source_notification(%User{} = user, rate, source) do
     signature = Auth.gen_token(user.email_preferred)
     source_link = Routes.source_url(Endpoint, :show, source.id)
     unsubscribe_link = Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature)
 
-    new()
-    |> to(user.email_preferred)
-    |> from({"Logflare", "support@logflare.app"})
-    |> subject("#{rate} New Logflare Event(s) for #{source.name}!")
-    |> text_body(
-      "Your source #{source.name} has #{rate} new event(s).\n\nSee them here: #{source_link}\n\nUnsubscribe: #{
-        unsubscribe_link
-      }"
+    unsubscribe_email(
+      user.email_preferred,
+      rate,
+      source.name,
+      source_link,
+      unsubscribe_link
+    )
+  end
+
+  def source_notification(%TeamUser{} = user, rate, source) do
+    signature = Auth.gen_token(user.email_preferred)
+    source_link = Routes.source_url(Endpoint, :show, source.id)
+
+    unsubscribe_link =
+      Routes.unsubscribe_url(Endpoint, :unsubscribe_team_user, source.id, signature)
+
+    unsubscribe_email(
+      user.email_preferred,
+      rate,
+      source.name,
+      source_link,
+      unsubscribe_link
     )
   end
 
@@ -42,16 +56,18 @@ defmodule Logflare.AccountEmail do
     unsubscribe_link =
       Routes.unsubscribe_url(Endpoint, :unsubscribe_stranger, source.id, signature)
 
-    signup_link = Routes.auth_url(Endpoint, :login)
+    unsubscribe_email(email, rate, source.name, source_link, unsubscribe_link)
+  end
 
+  defp unsubscribe_email(email, rate, source_name, source_link, unsubscribe_link) do
     new()
     |> to(email)
     |> from({"Logflare", "support@logflare.app"})
-    |> subject("#{rate} New Logflare Event(s) for #{source.name}!")
+    |> subject("#{rate} New Logflare Event(s) for #{source_name}!")
     |> text_body(
-      "Source #{source.name} has #{rate} new event(s).\n\nSee them here: #{source_link}\n\nSign up for Logflare: #{
-        signup_link
-      }\n\nUnsubscribe: #{unsubscribe_link}"
+      "Source #{source_name} has #{rate} new event(s).\n\nSee them here: #{source_link}\n\nUnsubscribe: #{
+        unsubscribe_link
+      }"
     )
   end
 end
