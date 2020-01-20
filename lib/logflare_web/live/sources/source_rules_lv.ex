@@ -17,8 +17,8 @@ defmodule LogflareWeb.Sources.RulesLV do
     RuleView.render("index.html", assigns)
   end
 
-  def mount(session, socket) do
-    user = Users.Cache.get_by_and_preload(id: session.user_id)
+  def mount(%{"user_id" => user_id}, socket) do
+    user = Users.Cache.get_by_and_preload(id: user_id)
 
     socket =
       socket

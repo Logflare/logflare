@@ -6,7 +6,6 @@ defmodule LogflareWeb.SearchView do
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Google.BigQuery.SchemaUtils
 
-  import Phoenix.LiveView
   import PhoenixLiveReact, only: [live_react_component: 2]
 
   def format_sql({sql, params}) do
