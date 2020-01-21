@@ -12,7 +12,7 @@ defmodule LogflareWeb.UserController do
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   def edit(%{assigns: %{user: user}} = conn, _params) do
-    changeset = User.changeset(user, %{})
+    changeset = User.user_allowed_changeset(user, %{})
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -23,7 +23,7 @@ defmodule LogflareWeb.UserController do
 
   def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
     user
-    |> User.changeset(params)
+    |> User.user_allowed_changeset(params)
     |> Repo.update()
     |> case do
       {:ok, updated_user} ->

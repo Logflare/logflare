@@ -39,30 +39,44 @@ defmodule Logflare.User do
     timestamps()
   end
 
+  @user_allowed_fields [
+    :email,
+    :provider,
+    :email_preferred,
+    :name,
+    :image,
+    :email_me_product,
+    :phone,
+    :bigquery_project_id,
+    :bigquery_dataset_location,
+    :bigquery_dataset_id,
+    :valid_google_account,
+    :provider_uid,
+    :company
+  ]
+
+  @fields @user_allowed_fields ++
+            [
+              :token,
+              :api_key,
+              :old_api_key,
+              :api_quota
+            ]
+
+  @doc """
+  Users are not allowed to modify :token, :admin, :api_quota, :api_key and others
+  """
+  def user_allowed_changeset(user, attrs) do
+    user
+    |> cast(attrs, @user_allowed_fields)
+    |> cast_assoc(:team)
+    |> default_validations(user)
+  end
+
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [
-      :email,
-      :provider,
-      :token,
-      :api_key,
-      :old_api_key,
-      :email_preferred,
-      :name,
-      :image,
-      :email_me_product,
-      # Don't cast this so people can't hack into admin mode
-      # :admin,
-      :phone,
-      :bigquery_project_id,
-      :api_quota,
-      :bigquery_dataset_location,
-      :bigquery_dataset_id,
-      :valid_google_account,
-      :provider_uid,
-      :company
-    ])
+    |> cast(attrs, @fields)
     |> cast_assoc(:team)
     |> default_validations(user)
   end
