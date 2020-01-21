@@ -4,7 +4,7 @@ defmodule Logflare.Source.TextNotificationServer do
 
   require Logger
 
-  alias Logflare.{Sources, Users}
+  alias Logflare.{Sources, Users, TeamUsers}
   alias Logflare.Sources.Counters
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
@@ -35,14 +35,23 @@ defmodule Logflare.Source.TextNotificationServer do
 
         source = Sources.Cache.get_by_id(rls.source_id)
         user = Users.Cache.get_by(id: source.user_id)
-        source_link = build_host() <> Routes.source_path(Endpoint, :show, source.id)
+        source_link = Routes.source_url(Endpoint, :show, source.id)
+        body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
-        {target_number, body} =
-          {user.phone, "#{source.name} has #{rate} new event(s). See: #{source_link} "}
-
-        if source.user_text_notifications == true do
+        if source.notifications.user_text_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-            ExTwilio.Message.create(to: target_number, from: @twilio_phone, body: body)
+            ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
+          end)
+        end
+
+        if source.notifications.team_user_ids_for_sms do
+          Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
+            team_user = TeamUsers.get_team_user!(x)
+            body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
+
+            Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+              ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
+            end)
           end)
         end
 
@@ -66,10 +75,5 @@ defmodule Logflare.Source.TextNotificationServer do
 
   defp name(source_id) do
     String.to_atom("#{source_id}" <> "-texter")
-  end
-
-  defp build_host() do
-    host_info = LogflareWeb.Endpoint.struct_url()
-    host_info.scheme <> "://" <> host_info.host
   end
 end

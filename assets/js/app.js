@@ -1,11 +1,6 @@
-import css from "../css/app.scss"
-import socket from "./socket"
+import "../css/app.scss"
 import { Socket } from "phoenix"
 import "@babel/polyfill"
-import * as _ from "lodash"
-import $ from "jquery"
-global.jQuery = $
-global.$ = $
 import "bootstrap"
 import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
@@ -29,7 +24,7 @@ window.Source = Source
 window.ClipboardJS = ClipboardJS
 
 document.addEventListener("DOMContentLoaded", e => {
-    initLiveReact()
+  initLiveReact()
 })
 
 const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)

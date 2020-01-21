@@ -1,0 +1,29 @@
+.pagination .page-item.active .page-link {
+  z-index: 1;
+  color: black;
+  background-color: $brand-green;
+  border-color: $brand-light-black;
+}
+
+.pagination .page-link {
+  color: $brand-gray;
+  background-color: $brand-light-black;
+  border: 1px solid $brand-black;
+}
+
+.dropdown-menu {
+  background-color: $brand-green !important;
+}
+
+.dropdown {
+  margin-bottom: 20px;
+}
+
+.dropdown-item {
+  color: $brand-black !important;
+  background-color: $brand-green !important;
+}
+
+.dropdown-item:hover {
+  background-color: $brand-brighter-green !important;
+}

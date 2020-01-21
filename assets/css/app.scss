@@ -14,6 +14,8 @@
 @import "marketing_responsive";
 @import "media_queries";
 @import "legal";
+@import "forms";
+@import "admin";
 
 body {
   background-color: #161616;
@@ -38,45 +40,6 @@ main.app {
   } */
 }
 
-#login .list-group a {
-  color: white;
-}
-
-.pagination .page-item.active .page-link {
-  z-index: 1;
-  color: black;
-  background-color: $brand-green;
-  border-color: $brand-light-black;
-}
-
-.pagination .page-link {
-  color: $brand-gray;
-  background-color: $brand-light-black;
-  border: 1px solid $brand-black;
-}
-
-.dropdown-menu {
-  background-color: $brand-green !important;
-}
-
-.dropdown {
-  margin-bottom: 20px;
-}
-
-.dropdown-item {
-  color: $brand-black !important;
-  background-color: $brand-green !important;
-}
-
-.dropdown-item:hover {
-  background-color: $brand-brighter-green !important;
-}
-
-.form-text {
-  margin-bottom: 1em;
-  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
-}
-
 .pre-metadata {
   padding: 20px;
   font-size: 0.75em;
@@ -89,12 +52,6 @@ main.app {
 
 .source-meta-data {
   margin-left: 2em;
-}
-
-.input_container input.form-control {
-  display: inline-block;
-  margin: 0 1em 1em 0;
-  width: 90%;
 }
 
 .blockquote {
@@ -134,10 +91,6 @@ main.app {
 .source-link {
   margin-left: 2em;
   width: 65%;
-}
-
-.form-button {
-  margin-bottom: 1em;
 }
 
 .rules-input {
@@ -268,6 +221,15 @@ a {
 
 a:hover {
   color: white;
+  text-decoration: underline;
+}
+
+#login .list-group a {
+  color: white;
+}
+
+a:focus {
+  text-shadow: 0 0 3px $brand-light-gray;
 }
 
 .text-primary {

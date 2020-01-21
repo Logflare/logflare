@@ -10,7 +10,7 @@
   </p>
   <%= form_for @conn, Routes.email_path(@conn, :login), fn f -> %>
     <div class="form-group">
-      <%= text_input f, :email, placeholder: "you@company.com", class: "form-control" %>
+      <%= text_input f, :email, placeholder: "you@company.com", class: "form-control form-control-margin" %>
       <small class="form-text text-muted">
         Emails are sent from <a href="mailto:support@logflare.app">support@logflare.app</a>.
       </small>

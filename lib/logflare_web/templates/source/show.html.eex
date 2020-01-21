@@ -53,7 +53,7 @@
   <div>
     <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
     <div class="form-group">
-      <%= text_input f, :querystring, placeholder: "404", class: "form-control" %>
+      <%= text_input f, :querystring, placeholder: "404", class: "form-control form-control-margin" %>
       <small class="form-text text-muted">
         random(tips): <%= @search_tip %>
       </small>

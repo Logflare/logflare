@@ -2,6 +2,8 @@ defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
+  plug LogflareWeb.Plugs.AuthMustBeOwner
+
   alias Logflare.{User, Repo}
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
@@ -10,7 +12,7 @@ defmodule LogflareWeb.UserController do
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   def edit(%{assigns: %{user: user}} = conn, _params) do
-    changeset = User.update_by_user_changeset(user, %{})
+    changeset = User.changeset(user, %{})
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -19,22 +21,17 @@ defmodule LogflareWeb.UserController do
     )
   end
 
-  def update(conn, %{"user" => params}) do
-    user = conn.assigns.user
-    prev_bigquery_project_id = user.bigquery_project_id
-
+  def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
     user
-    |> User.update_by_user_changeset(params)
+    |> User.changeset(params)
     |> Repo.update()
     |> case do
-      {:ok, user} ->
-        new_bq_project? = user.bigquery_project_id != prev_bigquery_project_id
-
-        if new_bq_project?, do: Supervisor.reset_all_user_sources(user)
+      {:ok, updated_user} ->
+        if updated_user.bigquery_project_id != user.bigquery_project_id,
+          do: Supervisor.reset_all_user_sources(user)
 
         conn
         |> put_flash(:info, "Account updated!")
-        |> put_flash(:new_bq_project, new_bq_project?)
         |> redirect(to: Routes.user_path(conn, :edit))
 
       {:error, changeset} ->

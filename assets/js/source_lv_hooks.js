@@ -7,9 +7,7 @@ let hooks = {}
 
 hooks.SourceSchemaModalTable = {
   mounted() {
-    activateClipboardForSelector(
-      `.${this.el.classList} .copy-metadata-field`,
-    )
+    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`)
   },
 }
 
@@ -20,9 +18,7 @@ const activateModal = (el, selector) => {
   // replace with formatted sql
   code.text(fmtSql)
 
-  $modal
-    .find(".modal-body")
-    .html($(selector).html())
+  $modal.find(".modal-body").html($(selector).html())
 }
 
 let sourceLogsSearchListLastUpdate
@@ -79,7 +75,9 @@ hooks.SourceLogsSearch = {
   },
 
   mounted() {
-    activateClipboardForSelector("#search-uri-query", { text: () => location.href })
+    activateClipboardForSelector("#search-uri-query", {
+      text: () => location.href,
+    })
 
     setTimezone()
 
@@ -89,13 +87,11 @@ hooks.SourceLogsSearch = {
       onIdle: () => {
         const $searchTailingButton = $("#search-tailing-button")
         const $searchTailingCheckbox = $(
-          "input#" + $.escapeSelector("search_tailing?"),
+          "input#" + $.escapeSelector("search_tailing?")
         )
 
         if ($searchTailingCheckbox.prop("value") === "true") {
-          console.log(
-            `User idle for ${idleInterval}, tail search paused`,
-          )
+          console.log(`User idle for ${idleInterval}, tail search paused`)
           $searchTailingButton.click()
           $("#user-idle").click()
         }
@@ -106,9 +102,7 @@ hooks.SourceLogsSearch = {
 
     setInterval(() => {
       const $lastQueryCompletedAt = $("#last-query-completed-at")
-      const lastQueryCompletedAt = $lastQueryCompletedAt.attr(
-        "data-timestamp",
-      )
+      const lastQueryCompletedAt = $lastQueryCompletedAt.attr("data-timestamp")
       if (lastQueryCompletedAt) {
         const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
         $("#last-query-completed-at span").text(elapsed.toFixed(1))

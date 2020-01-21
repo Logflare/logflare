@@ -14,7 +14,7 @@
 						<a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
 					</li>
 					<li>
-						<a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">Help</a>
+						<%= link "Contact Us", to: Routes.contact_path(@conn, :contact)%>
 					</li>
 					<li>
 						<%= link "Terms of Service", to: Routes.marketing_path(@conn, :terms)%>
@@ -25,6 +25,7 @@
 					<li>
 						<%= link "Cookie Policy", to: Routes.marketing_path(@conn, :cookies)%>
 					</li>
+
 				</ul>
 			</div>
 			<div class="col-md-2">

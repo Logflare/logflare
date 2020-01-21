@@ -4,7 +4,7 @@
       <ul>
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
-          <span>Your API key is
+          <span>Ingest API key is
             <code class="pointer-cursor" id="api-key" data-showing-api-key="false" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -29,8 +29,38 @@
           <% end %>
         <% end %>
       </ul>
+
+      <h5 class="header-margin">Teams</h5>
+      <ul class="list-unstyled">
+        <%= if @home_team do %>
+        <%= if @team.id == @home_team.id do %>
+          <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+        <% else %>
+          <li><%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small> home team</small></li>
+        <% end %>
+        <% end %>
+
+        <%= if @team_users == [], do: "Other teams you are a member of will be listed here." %>
+        <%= for team_user <- @team_users do %>
+          <%= if @team.id == team_user.team_id do %>
+          <li><strong><%= team_user.team.name %></strong></li>
+          <% else %>
+          <li><%= link team_user.team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}) %></li>
+          <% end %>
+        <% end %>
+      </ul>
+
+      <h5 class="header-margin">Members</h5>
+      <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
+      <%= link("Invite more team members!", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
     </div>
+    <div id="source-list">
     <ul class="list-group">
+      <%= if @sources == [] do %>
+        <li class="list-group-item">You don't have any sources!</li>
+        <li class="list-group-item">Sources are where your log events go.</li>
+        <li class="list-group-item">Create one now!</li>
+      <% end %>
       <%= for source <- @sources do %>
         <li class="list-group-item">
           <div class="favorite float-left">
@@ -66,7 +96,8 @@
         </li>
       <% end %>
     </ul>
-    <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary float-right" %>
+    <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
+  </div>
   </div>
   <div id="__phx-assigns__"
 data-user-api-key="<%= @user.api_key %>"

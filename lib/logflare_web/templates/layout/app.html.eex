@@ -28,10 +28,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="slack-app-id" content="AQEDJ7H7G">
+    <%= render("js_libs.html") %>
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
     <%= csrf_meta_tag() %>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.9/dist/css/bootstrap-select.min.css">
     <script>
       <%= if @user do %>
         window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
@@ -64,7 +65,10 @@
               <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
             </li>
             <li class="nav-item">
-              <%= link "Preferences", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
+              <%= link "Profile", to: Routes.team_user_path(@conn, :edit), class: "nav-link" %>
+            </li>
+            <li class="nav-item">
+              <%= link "Account", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
             </li>
             <li class="nav-item">
               <%= link "Sign out", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>

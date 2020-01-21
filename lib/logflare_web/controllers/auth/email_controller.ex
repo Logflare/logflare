@@ -17,6 +17,8 @@ defmodule LogflareWeb.Auth.EmailController do
   end
 
   def send_link(conn, %{"email" => email}) do
+    email = email |> String.downcase() |> String.trim()
+
     Auth.Email.auth_email(email)
     |> Mailer.deliver()
 
@@ -33,11 +35,11 @@ defmodule LogflareWeb.Auth.EmailController do
           email: email,
           email_preferred: email,
           provider: "email",
-          provider_uid: email
+          provider_uid: email,
+          image: Auth.gravatar_link(email)
         }
 
-        conn
-        |> AuthController.signin(auth_params)
+        AuthController.check_invite_token_and_signin(conn, auth_params)
 
       {:error, :expired} ->
         conn

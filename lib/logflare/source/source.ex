@@ -24,14 +24,37 @@ defmodule Logflare.Source do
     end
   end
 
-  typed_schema "sources" do
+  defmodule Notifications do
+    @moduledoc false
+    use Ecto.Schema
+    @primary_key false
+    @derive Jason.Encoder
+
+    embedded_schema do
+      field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
+      field :other_email_notifications, :string
+      field :user_email_notifications, :boolean, default: false
+      field :user_text_notifications, :boolean, default: false
+    end
+
+    def changeset(notifications, attrs) do
+      notifications
+      |> cast(attrs, [
+        :team_user_ids_for_email,
+        :team_user_ids_for_sms,
+        :other_email_notifications,
+        :user_email_notifications,
+        :user_text_notifications
+      ])
+    end
+  end
+
+  schema "sources" do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string
     field :favorite, :boolean, default: false
-    field :user_email_notifications, :boolean, default: false
-    field :other_email_notifications, :string
-    field :user_text_notifications, :boolean, default: false
     field :bigquery_table_ttl, :integer
     field :api_quota, :integer, default: @default_source_api_quota
     field :webhook_notification_url, :string
@@ -46,6 +69,7 @@ defmodule Logflare.Source do
     field :bq_table_id, :string, virtual: true
     field :bq_table_schema, :any, virtual: true
     field :bq_table_typemap, :any, virtual: true
+    embeds_one :notifications, Notifications, on_replace: :update
 
     timestamps()
   end
@@ -63,14 +87,13 @@ defmodule Logflare.Source do
       :token,
       :public_token,
       :favorite,
-      :user_email_notifications,
-      :other_email_notifications,
-      :user_text_notifications,
       :bigquery_table_ttl,
+      # users can't update thier API quota currently
       :api_quota,
       :webhook_notification_url,
       :slack_hook_url
     ])
+    |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
   end
 
@@ -81,13 +104,11 @@ defmodule Logflare.Source do
       :token,
       :public_token,
       :favorite,
-      :user_email_notifications,
-      :other_email_notifications,
-      :user_text_notifications,
       :bigquery_table_ttl,
       :webhook_notification_url,
       :slack_hook_url
     ])
+    |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
   end
 

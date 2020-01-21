@@ -3,7 +3,7 @@ defmodule Logflare.Source.EmailNotificationServer do
 
   require Logger
 
-  alias Logflare.{Sources, Users}
+  alias Logflare.{Sources, Users, TeamUsers}
   alias Logflare.Sources.Counters
   alias Logflare.AccountEmail
   alias Logflare.Mailer
@@ -33,15 +33,15 @@ defmodule Logflare.Source.EmailNotificationServer do
         source = Sources.Cache.get_by_id(rls.source_id)
         user = Users.Cache.get_by(id: source.user_id)
 
-        if source.user_email_notifications == true do
+        if source.notifications.user_email_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
             AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
           end)
         end
 
-        stranger_emails = source.other_email_notifications
+        stranger_emails = source.notifications.other_email_notifications
 
-        if is_nil(stranger_emails) == false do
+        if stranger_emails do
           other_emails = String.split(stranger_emails, ",")
 
           for email <- other_emails do
@@ -50,6 +50,16 @@ defmodule Logflare.Source.EmailNotificationServer do
               |> Mailer.deliver()
             end)
           end
+        end
+
+        if source.notifications.team_user_ids_for_email do
+          Enum.each(source.notifications.team_user_ids_for_email, fn x ->
+            team_user = TeamUsers.get_team_user!(x)
+
+            Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+              AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
+            end)
+          end)
         end
 
         {:noreply, %{rls | inserts_since_boot: current_inserts}}
