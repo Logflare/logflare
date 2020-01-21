@@ -74,8 +74,9 @@ defmodule Logflare.LogEvent do
 
     changes =
       %__MODULE__{}
-      |> cast(params, [:source, :valid?, :validation_error, :id])
+      |> cast(params, [:valid?, :validation_error, :id])
       |> cast_embed(:body, with: &make_body/2)
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> Map.get(:changes)
 
     body = struct!(Body, changes.body.changes)

@@ -69,6 +69,8 @@ defmodule Logflare.Logs.RejectedLogEvents do
       _ ->
         %{log_events: [le], count: 1}
     end)
+
+    :ok
   end
 
   @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}
