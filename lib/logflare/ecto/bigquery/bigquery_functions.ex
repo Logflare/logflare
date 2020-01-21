@@ -3,71 +3,83 @@ defmodule Logflare.EctoBigQueryFunctions do
   Custom Ecto functions for BigQuery
   """
 
+  defmacro partition_date do
+    quote do
+      fragment("_PARTITIONDATE")
+    end
+  end
+
   defmacro in_streaming_buffer do
     quote do
       fragment("_PARTITIONDATE IS NULL")
     end
   end
 
-  defmacro partitiondate_is_nil do
+  defmacro bq_current_date() do
     quote do
       fragment("_PARTITIONDATE IS NULL")
     end
   end
 
-  defmacro partitiondate_from_now(count, interval) do
-    case interval do
-      i when i in ~w(day DAY) ->
-        quote do
-          fragment(
-            "_PARTITIONDATE >= DATE_ADD(CURRENT_DATE(), INTERVAL ? DAY)",
-            unquote(count)
-          )
-        end
+  defmacro bq_timestamp_trunc(timestamp, interval) do
+    fragment_string = "TIMESTAMP_TRUNC(?, #{to_bq_interval_token(interval)})"
 
-      i when i in ~w(week WEEK) ->
-        quote do
-          fragment(
-            "_PARTITIONDATE >= DATE_ADD(CURRENT_DATE(), INTERVAL ? WEEK)",
-            unquote(count)
-          )
-        end
-
-      i when i in ~w(month MONTH) ->
-        quote do
-          fragment(
-            "_PARTITIONDATE >= DATE_ADD(CURRENT_DATE(), INTERVAL ? MONTH)",
-            unquote(count)
-          )
-        end
+    quote do
+      fragment(
+        unquote(fragment_string),
+        unquote(timestamp)
+      )
     end
   end
 
-  defmacro partitiondate_ago(count, interval) do
+  defmacro bq_ago(datetime, count, interval) do
+    fragment_string = "DATETIME_SUB(?, INTERVAL ? #{to_bq_interval_token(interval)})"
+
+    quote do
+      fragment(
+        unquote(fragment_string),
+        unquote(datetime),
+        unquote(count)
+      )
+    end
+  end
+
+  defmacro bq_from_now(datetime, count, interval) do
+    fragment_string = "DATETIME_ADD(?, INTERVAL ? #{to_bq_interval_token(interval)})"
+
+    quote do
+      fragment(
+        unquote(fragment_string),
+        unquote(datetime),
+        unquote(count)
+      )
+    end
+  end
+
+  defmacro bq_date_add(date, count, interval) do
+    fragment_string = "DATE_ADD(?, INTERVAL ? #{to_bq_interval_token(interval)})"
+
+    quote do
+      fragment(unquote(fragment_string), unquote(date), unquote(count))
+    end
+  end
+
+  defmacro bq_date_sub(date, count, interval) do
+    fragment_string = "DATE_SUB(?, INTERVAL ? #{to_bq_interval_token(interval)})"
+
+    quote do
+      fragment(unquote(fragment_string), unquote(date), unquote(count))
+    end
+  end
+
+  defp to_bq_interval_token(interval) do
     case interval do
-      i when i in ~w(day DAY) ->
-        quote do
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL ? DAY)",
-            unquote(count)
-          )
-        end
-
-      i when i in ~w(week WEEK) ->
-        quote do
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL ? WEEK)",
-            unquote(count)
-          )
-        end
-
-      i when i in ~w(month MONTH) ->
-        quote do
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL ? MONTH)",
-            unquote(count)
-          )
-        end
+      i when i in ~w(second SECOND) -> "SECOND"
+      i when i in ~w(minute MINUTE) -> "MINUTE"
+      i when i in ~w(hour HOUR) -> "HOUR"
+      i when i in ~w(day DAY) -> "DAY"
+      i when i in ~w(week WEEK) -> "WEEK"
+      i when i in ~w(month MONTH) -> "MONTH"
     end
   end
 end

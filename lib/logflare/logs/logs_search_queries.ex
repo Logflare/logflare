@@ -15,10 +15,10 @@ defmodule Logflare.Logs.SearchQueries do
 
   def timestamp_truncator(period) when period in @chart_periods do
     case period do
-      :day -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp))
-      :hour -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp))
-      :minute -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp))
-      :second -> dynamic([t], fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp))
+      :day -> dynamic([t], bq_timestamp_trunc(t.timestamp, "day"))
+      :hour -> dynamic([t], bq_timestamp_trunc(t.timestamp, "hour"))
+      :minute -> dynamic([t], bq_timestamp_trunc(t.timestamp, "minute"))
+      :second -> dynamic([t], bq_timestamp_trunc(t.timestamp, "second"))
     end
   end
 
@@ -34,40 +34,26 @@ defmodule Logflare.Logs.SearchQueries do
     where(
       query,
       [log],
-      partitiondate_ago(1, "day") or in_streaming_buffer()
+      partition_date() >= bq_date_sub(^Date.utc_today(), 1, "day") or in_streaming_buffer()
     )
   end
 
   def where_default_tailing_charts_partition(query, search_chart_period) do
-    case search_chart_period do
-      :day ->
-        query
-        |> where(
-          [t, ...],
-          partitiondate_ago(31, "day") or in_streaming_buffer()
-        )
+    utc_today = Date.utc_today()
 
-      :hour ->
-        query
-        |> where(
-          [t, ...],
-          partitiondate_ago(7, "day") or in_streaming_buffer()
-        )
+    days =
+      case search_chart_period do
+        :day -> 31
+        :hour -> 7
+        :minute -> 1
+        :second -> 1
+      end
 
-      :minute ->
-        query
-        |> where(
-          [t, ...],
-          partitiondate_ago(1, "day") or in_streaming_buffer()
-        )
-
-      :second ->
-        query
-        |> where(
-          [t, ...],
-          partitiondate_ago(1, "day") or in_streaming_buffer()
-        )
-    end
+    query
+    |> where(
+      [t, ...],
+      partition_date() >= bq_date_sub(^utc_today, ^days, "day") or in_streaming_buffer()
+    )
   end
 
   def where_partitiondate_between(query, min, max) do
@@ -78,7 +64,7 @@ defmodule Logflare.Logs.SearchQueries do
         "_PARTITIONDATE BETWEEN DATE_TRUNC(?, DAY) AND DATE_TRUNC(?, DAY)",
         ^Timex.to_date(min),
         ^Timex.to_date(max)
-      ) or partitiondate_is_nil()
+      ) or in_streaming_buffer()
     )
   end
 
@@ -94,22 +80,22 @@ defmodule Logflare.Logs.SearchQueries do
     case search_chart_period do
       :day ->
         select(query, [t, ...], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, DAY)", t.timestamp)
+          timestamp: bq_timestamp_trunc(t.timestamp, "day")
         })
 
       :hour ->
         select(query, [t, ...], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, HOUR)", t.timestamp)
+          timestamp: bq_timestamp_trunc(t.timestamp, "hour")
         })
 
       :minute ->
         select(query, [t, ...], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, MINUTE)", t.timestamp)
+          timestamp: bq_timestamp_trunc(t.timestamp, "minute")
         })
 
       :second ->
         select(query, [t, ...], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, SECOND)", t.timestamp)
+          timestamp: bq_timestamp_trunc(t.timestamp, "second")
         })
     end
   end
