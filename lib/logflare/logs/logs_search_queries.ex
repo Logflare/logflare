@@ -1,6 +1,7 @@
 defmodule Logflare.Logs.SearchQueries do
   @moduledoc false
   import Ecto.Query
+  import Logflare.EctoBigQueryFunctions
   @chart_periods ~w(day hour minute second)a
 
   def limit_aggregate_chart_period(query, period) when period in @chart_periods do
@@ -26,16 +27,14 @@ defmodule Logflare.Logs.SearchQueries do
   end
 
   def where_streaming_buffer(query) do
-    where(query, [l], fragment("_PARTITIONTIME IS NULL"))
+    where(query, [l], in_streaming_buffer())
   end
 
   def where_default_tailing_events_partition(query) do
     where(
       query,
       [log],
-      fragment(
-        "_PARTITIONDATE > DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
-      )
+      partitiondate_ago(1, "day") or in_streaming_buffer()
     )
   end
 
@@ -45,36 +44,28 @@ defmodule Logflare.Logs.SearchQueries do
         query
         |> where(
           [t, ...],
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) OR _PARTITIONDATE IS NULL"
-          )
+          partitiondate_ago(31, "day") or in_streaming_buffer()
         )
 
       :hour ->
         query
         |> where(
           [t, ...],
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) OR _PARTITIONDATE IS NULL"
-          )
+          partitiondate_ago(7, "day") or in_streaming_buffer()
         )
 
       :minute ->
         query
         |> where(
           [t, ...],
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
-          )
+          partitiondate_ago(1, "day") or in_streaming_buffer()
         )
 
       :second ->
         query
         |> where(
           [t, ...],
-          fragment(
-            "_PARTITIONDATE >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) OR _PARTITIONDATE IS NULL"
-          )
+          partitiondate_ago(1, "day") or in_streaming_buffer()
         )
     end
   end
@@ -84,10 +75,10 @@ defmodule Logflare.Logs.SearchQueries do
       query,
       [t, ...],
       fragment(
-        "_PARTITIONDATE BETWEEN DATE_TRUNC(?, DAY) AND DATE_TRUNC(?, DAY) OR _PARTITIONDATE IS NULL",
+        "_PARTITIONDATE BETWEEN DATE_TRUNC(?, DAY) AND DATE_TRUNC(?, DAY)",
         ^Timex.to_date(min),
         ^Timex.to_date(max)
-      )
+      ) or partitiondate_is_nil()
     )
   end
 
