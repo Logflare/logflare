@@ -22,8 +22,8 @@ defmodule Logflare.Source.BigQuery.BufferTest do
       {:ok, _pid} = Buffer.start_link(rls)
       le = LE.make(%{"message" => "test"}, %{source: s1})
       le2 = LE.make(%{"message" => "test2"}, %{source: s1})
-      Buffer.push(sid, le)
-      Buffer.push(sid, le2)
+      Buffer.push(le)
+      Buffer.push(le2)
       assert Buffer.get_count(sid) == 2
       assert le == Buffer.pop(sid)
       assert Buffer.get_count(sid) == 1

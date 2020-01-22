@@ -37,10 +37,12 @@ defmodule Logflare.Source.BigQuery.Buffer do
     {:noreply, state}
   end
 
-  def push(source_id, %LE{} = log_event) do
-    GenServer.cast(name(source_id), {:push, log_event})
+  @spec push(LE.t()) :: :ok
+  def push(%LE{source: %Source{token: source_id}} = le) do
+    GenServer.cast(name(source_id), {:push, le})
   end
 
+  @spec pop(atom | binary) :: any
   def pop(source_id) do
     GenServer.call(name(source_id), :pop)
   end
@@ -50,10 +52,13 @@ defmodule Logflare.Source.BigQuery.Buffer do
     GenServer.call(name(source_id), {:ack, log_event_id})
   end
 
-  @spec get_count(atom | binary) :: integer
-  def get_count(source_id) do
-    GenServer.call(name(source_id), :get_count)
-  end
+  @spec get_count(atom | binary | Source.t()) :: integer
+  def get_count(%Source{token: source_id}), do: get_count(source_id)
+  def get_count(source_id), do: GenServer.call(name(source_id), :get_count)
+
+  @spec get_log_events(atom | binary | Source.t()) :: [LE.t()]
+  def get_log_events(%Source{token: source_id}), do: get_count(source_id)
+  def get_log_events(source_id), do: GenServer.call(name(source_id), :get_log_events)
 
   def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
@@ -101,6 +106,14 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_call(:get_count, _from, state) do
     count = :queue.len(state.buffer)
     {:reply, count, state}
+  end
+
+  def handle_call(:get_log_events, _from, state) do
+    les =
+      state.buffer
+      |> Enum.to_list()
+
+    {:reply, les, state}
   end
 
   def handle_info(:check_buffer, state) do

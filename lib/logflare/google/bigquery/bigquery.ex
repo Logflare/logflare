@@ -58,8 +58,7 @@ defmodule Logflare.Google.BigQuery do
     end
   end
 
-  @spec delete_table(atom) ::
-          {:error, Tesla.Env.t()} | {:ok, term}
+  @spec delete_table(atom) :: {:error, Tesla.Env.t()} | {:ok, term}
   def delete_table(source_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
@@ -67,16 +66,17 @@ defmodule Logflare.Google.BigQuery do
     %{user_id: user_id, bigquery_project_id: project_id, bigquery_dataset_id: dataset_id} =
       GenUtils.get_bq_user_info(source_id)
 
-    Api.Tables.bigquery_tables_delete(
-      conn,
+    conn
+    |> Api.Tables.bigquery_tables_delete(
       project_id,
       dataset_id || Integer.to_string(user_id) <> @dataset_id_append,
       table_name
     )
+    |> maybe_parse_google_api_result()
   end
 
   @spec create_table(atom, binary, binary, any) ::
-          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
+          {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
   def create_table(source, dataset_id, project_id, table_ttl) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
@@ -127,8 +127,7 @@ defmodule Logflare.Google.BigQuery do
     |> maybe_parse_google_api_result()
   end
 
-  @spec patch_table(atom, any, binary, binary) ::
-          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Table.t()}
+  @spec patch_table(atom, any, binary, binary) :: {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
   def patch_table(source_id, schema, dataset_id, project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
@@ -141,8 +140,7 @@ defmodule Logflare.Google.BigQuery do
     |> maybe_parse_google_api_result()
   end
 
-  @spec get_table(atom) ::
-          {:error, Tesla.Env.t()} | {:ok, term}
+  @spec get_table(atom) :: {:error, Tesla.Env.t()} | {:ok, term}
   def get_table(source_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
@@ -194,7 +192,7 @@ defmodule Logflare.Google.BigQuery do
   Creates dataset, accepts user_id, dataset_id, dataset_location, project_id
   """
   @spec create_dataset(integer, binary, binary, binary) ::
-          {:error, Tesla.Env.t()} | {:ok, GoogleApi.BigQuery.V2.Model.Dataset.t()}
+          {:error, Tesla.Env.t()} | {:ok, Model.Dataset.t()}
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
 
@@ -208,23 +206,23 @@ defmodule Logflare.Google.BigQuery do
     access =
       if provider == "google" do
         [
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+          %Model.DatasetAccess{
             role: "READER",
             userByEmail: email
           },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+          %Model.DatasetAccess{
             role: "WRITER",
             specialGroup: "projectWriters"
           },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+          %Model.DatasetAccess{
             role: "OWNER",
             specialGroup: "projectOwners"
           },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+          %Model.DatasetAccess{
             role: "OWNER",
             userByEmail: @service_account
           },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+          %Model.DatasetAccess{
             role: "READER",
             specialGroup: "projectReaders"
           }
@@ -246,7 +244,7 @@ defmodule Logflare.Google.BigQuery do
     |> maybe_parse_google_api_result()
   end
 
-  @spec patch_dataset_access!(Integer) :: ok_err_tup
+  @spec patch_dataset_access!(non_neg_integer()) :: ok_err_tup
   def patch_dataset_access!(user_id) do
     conn = GenUtils.get_conn()
 
