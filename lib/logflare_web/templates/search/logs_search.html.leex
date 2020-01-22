@@ -36,7 +36,10 @@
      last_query_completed_at: @last_query_completed_at,
      user_local_timezone: @user_local_timezone,
      use_local_time: @use_local_time) %>
-  <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
+  <div>
+    <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
+    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
+  </div>
   <div class="search-control console-text">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group">
