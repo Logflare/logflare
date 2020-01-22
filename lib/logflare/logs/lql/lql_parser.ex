@@ -34,7 +34,7 @@ defmodule Logflare.Lql.Parser do
            querystring
            |> String.trim()
            |> do_parse() do
-      typemap = Utils.bq_schema_to_typemap(schema)
+      typemap = Lql.Utils.bq_schema_to_flat_typemap(schema)
 
       rules =
         rules

@@ -2,9 +2,11 @@ defmodule LogflareWeb.SearchView do
   use LogflareWeb, :view
   import LogflareWeb.Helpers.Flash
 
+  alias LogflareWeb.Source
+  alias LogflareWeb.SearchView
   alias Logflare.Sources
   alias Logflare.BigQuery.SchemaTypes
-  alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Lql
 
   import PhoenixLiveReact, only: [live_react_component: 2]
 
@@ -32,38 +34,11 @@ defmodule LogflareWeb.SearchView do
     if bq_schema do
       fields_and_types =
         bq_schema
-        |> SchemaUtils.to_typemap()
-        |> Iteraptor.to_flatmap()
-        |> Enum.reject(fn {_, v} -> v == :map end)
-        |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
-        |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
+        |> Lql.Utils.bq_schema_to_flat_typemap()
         |> Enum.map(fn {k, v} -> {k, SchemaTypes.to_schema_type(v)} end)
         |> Enum.sort_by(fn {k, _v} -> k end)
 
-      ~E"""
-      <div class="table-responsive" phx-hook="SourceSchemaModalTable">
-        <table class="table table-dark show-source-schema">
-          <thead>
-            <td>Field path</td>
-            <td>BigQuery SQL type</td>
-          </thead>
-          <tbody>
-            <%= for {field, type} <- fields_and_types do %>
-            <tr>
-              <td class="metadata-field">
-              <a href="#">
-              <span class="copy-metadata-field"
-              data-clipboard-text="<%= field %>">
-              <i style="color:green;" class="fas fa-copy"></i>
-              </span></a>
-              <span class="metadata-field-value"> <%= field %> </span> </td>
-              <td><%= type %></td>
-            </tr>
-            <% end %>
-          </tbody>
-        </table>
-      </div>
-      """
+      SearchView.render("bq_schema.html", fields_and_types: fields_and_types)
     else
       ""
     end
@@ -95,5 +70,11 @@ defmodule LogflareWeb.SearchView do
       yield: :all
     )
     |> Jason.encode!(pretty: true)
+  end
+
+  def modal_link(modal_id, icon_classes, text) do
+    ~E"""
+    <li><a href="#" phx-click="activate_modal" phx-value-modal_id="<%= modal_id %>"><span><i class="<%= icon_classes %>"></i></span> <span class="hide-on-mobile"><%= text %></span></a></li>
+    """
   end
 end

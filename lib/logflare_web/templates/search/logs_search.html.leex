@@ -3,8 +3,8 @@
     <div class="log-settings float-right">
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="searchHelpModal"><span><i class="fas fa-code"></i></span> <span class="hide-on-mobile">LQL</span></a></li>
-        <li><a href="#" phx-click="activate_modal" phx-value-modal_id="sourceSchemaModal"><span><i class="fas fa-database"></i></span> <span class="hide-on-mobile">schema</span></a></li>
+        <%= modal_link("searchHelpModal", "fas fa-code","LQL") %>
+        <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %>
         <li>
           <a href="#" phx-click="set_local_time"
             id="set_local_time"
@@ -12,21 +12,18 @@
             phx-value-user_local_timezone="<%= @user_local_timezone %>"
             >
             <span>
-              <%= if @use_local_time do %>
-                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
-              <% else %>
-                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
-              <% end %>
+              <% use_local_time_class = "fa-toggle-" <> if @use_local_time, do: "on", else: "off" %>
+              <i class="fa <%= use_local_time_class %> pointer-cursor" aria-hidden="true"></i>
             </span>
             <span class="hide-on-mobile">local time</span>
           </a>
         </li>
         <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
         <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
-          <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugErrorModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">debug error</span></a></li>
+          <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %>
         <% else %>
-          <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugEventsModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">events query</span></a></li>
-          <li><a href="#" phx-click="activate_modal" phx-value-modal_id="queryDebugAggregatesModal"><span><i class="fas fa-bug"></i></span> <span class="hide-on-mobile">aggregate query</span></a></li>
+          <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %>
+          <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %>
         <% end %>
       </ul>
     </div>
@@ -56,14 +53,8 @@
     </div>
     <div class="form-row align-items-center">
       <div class="col-auto mt-2">
-        <%= if @loading do %>
-          <%= submit disabled: true, id: "search", class: "btn btn-primary btn-sm" do %>
-            <i class="fas fa-search v-align-icon-button"></i> Search
-          <% end %>
-        <% else %>
-          <%= submit disabled: false, id: "search", class: "btn btn-primary btn-sm" do %>
-            <i class="fas fa-search v-align-icon-button"></i> Search
-          <% end %>
+        <%= submit disabled: @loading, id: "search", class: "btn btn-primary btn-sm" do %>
+          <i class="fas fa-search v-align-icon-button"></i> Search
         <% end %>
       </div>
       <div class="col-auto mt-2">

@@ -221,10 +221,7 @@ defmodule Logflare.Logs.SearchOperations do
     flatmap =
       so.source
       |> Sources.Cache.get_bq_schema()
-      |> SchemaUtils.to_typemap()
-      |> Iteraptor.to_flatmap()
-      |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
-      |> Enum.map(fn {k, _} -> String.trim_trailing(k, ".t") end)
+      |> Lql.Utils.bq_schema_to_flat_typemap()
 
     result =
       Enum.reduce_while(so.filter_rules, :ok, fn %{path: path}, _ ->

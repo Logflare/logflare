@@ -2,8 +2,10 @@ defmodule Logflare.Lql.Utils do
   @moduledoc false
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.{FilterRule, ChartRule}
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
 
-  def bq_schema_to_typemap(schema) do
+  @spec bq_schema_to_flat_typemap(TS.t()) :: map
+  def bq_schema_to_flat_typemap(%TS{} = schema) do
     schema
     |> SchemaUtils.to_typemap()
     |> Iteraptor.to_flatmap()
@@ -13,6 +15,7 @@ defmodule Logflare.Lql.Utils do
     |> Enum.reject(fn {_k, v} -> v === :map end)
     |> Map.new()
   end
+
 
   def build_message_filter_rule_from_regex(regex) when is_binary(regex) do
     %FilterRule{
