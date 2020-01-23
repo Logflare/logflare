@@ -1,18 +1,47 @@
-defmodule LogflareWeb.Source.SearchLV.SearchParams do
+defmodule LogflareWeb.Source.SearchLV.SearchOpts do
   @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
 
+  @primary_key false
   typed_embedded_schema do
-    field :tailing?, :boolean
-    field :querystring, :string
-    field :search_chart_aggregate, Ecto.Atom
-    field :search_chart_period, Ecto.Atom
+    field :tailing?, :boolean, default: nil
+    field :querystring, :string, default: "", nil: false
+    field :chart_aggregate, Ecto.Atom, default: nil
+    field :chart_period, Ecto.Atom, default: nil
   end
 
-  def new(params) do
-    %__MODULE__{}
-    |> cast(params, __schema__(:fields))
-    |> Map.get(:changes)
+  def new(search_opts \\ %{}, params) do
+    %{data: data, changes: changes, valid?: valid?, errors: errors} =
+      __MODULE__
+      |> struct(search_opts)
+      |> cast(prepare(params), __schema__(:fields))
+      |> validate_inclusion(:chart_period, ~w(day hour minute second)a)
+      |> validate_inclusion(:chart_aggregate, ~w(sum count avg)a)
+
+    if valid? do
+      {:ok, Map.merge(data, changes)}
+    else
+      {:error, errors}
+    end
+  end
+
+  def prepare(params) do
+    params
+    |> case do
+      %{"querystring" => _} = p -> p
+      %{"q" => q} = p -> Map.put(p, "querystring", q)
+      p -> p
+    end
+    |> update_if_exists("chart_aggregate", &String.to_existing_atom/1)
+    |> update_if_exists("chart_period", &String.to_existing_atom/1)
+  end
+
+  def update_if_exists(map, key, fun) do
+    if map[key] do
+      Map.update!(map, key, fun)
+    else
+      map
+    end
   end
 end

@@ -1,8 +1,8 @@
 defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
 
-  def default_min_max_timestamps_for_chart_period(search_chart_period) do
-    case search_chart_period do
+  def default_min_max_timestamps_for_chart_period(chart_period) do
+    case chart_period do
       :day ->
         {Timex.shift(Timex.now(), days: -30), Timex.now()}
 

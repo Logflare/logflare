@@ -38,11 +38,11 @@ defmodule Logflare.Logs.SearchQueries do
     )
   end
 
-  def where_default_tailing_charts_partition(query, search_chart_period) do
+  def where_default_tailing_charts_partition(query, chart_period) do
     utc_today = Date.utc_today()
 
     days =
-      case search_chart_period do
+      case chart_period do
         :day -> 31
         :hour -> 7
         :minute -> 1
@@ -68,16 +68,16 @@ defmodule Logflare.Logs.SearchQueries do
     )
   end
 
-  def select_agg_value(query, search_chart_aggregate, last_chart_field) do
-    case search_chart_aggregate do
+  def select_agg_value(query, chart_aggregate, last_chart_field) do
+    case chart_aggregate do
       :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
       :avg -> select_merge(query, [..., l], %{value: avg(field(l, ^last_chart_field))})
       :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
     end
   end
 
-  def select_timestamp(query, search_chart_period) do
-    case search_chart_period do
+  def select_timestamp(query, chart_period) do
+    case chart_period do
       :day ->
         select(query, [t, ...], %{
           timestamp: bq_timestamp_trunc(t.timestamp, "day")
@@ -100,8 +100,8 @@ defmodule Logflare.Logs.SearchQueries do
     end
   end
 
-  def join_missing_range_timestamps(q, min, max, search_chart_period) do
-    case search_chart_period do
+  def join_missing_range_timestamps(q, min, max, chart_period) do
+    case chart_period do
       :day ->
         join(
           subquery(q),

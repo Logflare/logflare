@@ -43,8 +43,8 @@ defmodule Logflare.Logs.SearchOperations do
       field :stats, :map
       field :use_local_time, boolean
       field :user_local_timezone, String.t()
-      field :search_chart_period, atom()
-      field :search_chart_aggregate, atom(), default: :avg
+      field :chart_period, atom()
+      field :chart_aggregate, atom(), default: :avg
       field :timestamp_truncator, term()
     end
   end
@@ -280,7 +280,7 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_group_by_timestamp_period(SO.t()) :: SO.t()
   def apply_group_by_timestamp_period(%SO{} = so) do
     group_by = [
-      timestamp_truncator(so.search_chart_period)
+      timestamp_truncator(so.chart_period)
     ]
 
     query = group_by(so.query, 1)
@@ -315,7 +315,7 @@ defmodule Logflare.Logs.SearchOperations do
 
     {min, max} =
       if so.tailing? or Enum.empty?(timestamp_filter_rules) do
-        default_min_max_timestamps_for_chart_period(so.search_chart_period)
+        default_min_max_timestamps_for_chart_period(so.chart_period)
       else
         timestamp_filter_rules
         |> override_min_max_for_open_intervals()
@@ -325,7 +325,7 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       if so.tailing? do
         query
-        |> where_default_tailing_charts_partition(so.search_chart_period)
+        |> where_default_tailing_charts_partition(so.chart_period)
         |> where_timestamp_tailing(min, max)
       else
         query
@@ -334,12 +334,12 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       query
-      |> select_timestamp(so.search_chart_period)
+      |> select_timestamp(so.chart_period)
       |> Lql.EctoHelpers.apply_filter_rules_to_query(chart)
-      |> limit_aggregate_chart_period(so.search_chart_period)
-      |> select_agg_value(so.search_chart_aggregate, last_chart_field)
+      |> limit_aggregate_chart_period(so.chart_period)
+      |> select_agg_value(so.chart_aggregate, last_chart_field)
       |> order_by([t, ...], desc: 1)
-      |> join_missing_range_timestamps(min, max, so.search_chart_period)
+      |> join_missing_range_timestamps(min, max, so.chart_period)
       |> select([t, ts], %{
         timestamp: coalesce(t.timestamp, ts.timestamp),
         value: coalesce(t.value, ts.value)
@@ -355,7 +355,7 @@ defmodule Logflare.Logs.SearchOperations do
 
     {min, max} =
       if so.tailing? or Enum.empty?(timestamp_filter_rules) do
-        default_min_max_timestamps_for_chart_period(so.search_chart_period)
+        default_min_max_timestamps_for_chart_period(so.chart_period)
       else
         timestamp_filter_rules
         |> override_min_max_for_open_intervals()
@@ -365,7 +365,7 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       if so.tailing? do
         query
-        |> where_default_tailing_charts_partition(so.search_chart_period)
+        |> where_default_tailing_charts_partition(so.chart_period)
         |> where_timestamp_tailing(min, max)
       else
         query
@@ -374,13 +374,13 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       query
-      |> select_timestamp(so.search_chart_period)
+      |> select_timestamp(so.chart_period)
       |> select_merge([c, ...], %{
         value: count(c.timestamp)
       })
       |> order_by([t, ...], desc: 1)
-      |> limit_aggregate_chart_period(so.search_chart_period)
-      |> join_missing_range_timestamps(min, max, so.search_chart_period)
+      |> limit_aggregate_chart_period(so.chart_period)
+      |> join_missing_range_timestamps(min, max, so.chart_period)
       |> select([t, ts], %{
         timestamp: coalesce(t.timestamp, ts.timestamp),
         value: coalesce(t.value, ts.value)

@@ -2,7 +2,8 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><a href="javascript:Source.scrollOverflowBottom();"><span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li><a href="javascript:Source.scrollOverflowBottom();">
+            <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <%= modal_link("searchHelpModal", "fas fa-code","LQL") %>
         <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %>
         <li>
@@ -70,7 +71,7 @@
             <% end %>
             Live
           <% end %>
-          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none" %>
+          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
         </div>
       </div>
@@ -83,17 +84,17 @@
         Chart period:
       </div>
       <div class="col-auto mt-2">
-        <%= select f, :search_chart_period, ["day", "hour", "minute", "second"], selected: @search_chart_period, class: "form-control form-control-sm" %>
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: @chart_period, class: "form-control form-control-sm" %>
       </div>
       <div class="col-auto mt-2 hide-on-mobile">
         Aggregate:
       </div>
       <div class="col-auto mt-2">
-        <%= if @search_chart_aggregate_enabled? do %>
+        <%= if @chart_aggregate_enabled? do %>
           <%= select f,
-         :search_chart_aggregate,
+         :chart_aggregate,
           ["sum", "avg", "count"],
-          selected: @search_chart_aggregate,
+          selected: @chart_aggregate,
           class: "form-control form-control-sm"
            %>
         <% else %>
@@ -104,7 +105,7 @@
           delay="100"
           >
             <%= select f,
-            :search_chart_aggregate,
+            :chart_aggregate,
               ["N/A"],
               class: "form-control form-control-sm",
               style: "pointer-events: none;",
