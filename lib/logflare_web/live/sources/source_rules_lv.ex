@@ -17,26 +17,16 @@ defmodule LogflareWeb.Sources.RulesLV do
     RuleView.render("index.html", assigns)
   end
 
-  def mount(%{"user_id" => user_id}, socket) do
+  def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
     user = Users.Cache.get_by_and_preload(id: user_id)
 
-    socket =
-      socket
-      |> assign(:sources, user.sources)
-      |> assign(:lql_string, @lql_string)
-      |> assign(:error_message, nil)
-
-    {:ok, socket}
-  end
-
-  def handle_params(%{"source_id" => source_id}, _uri, socket) do
     source =
       source_id
       |> String.to_integer()
       |> Sources.Cache.get_by_id_and_preload()
 
     sources =
-      for s <- socket.assigns.sources do
+      for s <- user.sources do
         if s.token == source.token do
           Map.put(s, :disabled, true)
         else
@@ -44,7 +34,15 @@ defmodule LogflareWeb.Sources.RulesLV do
         end
       end
 
-    {:noreply, assign(socket, source: source, rules: source.rules, sources: sources)}
+    socket =
+      socket
+      |> assign(:source, source)
+      |> assign(:rules, source.rules)
+      |> assign(:sources, sources)
+      |> assign(:lql_string, @lql_string)
+      |> assign(:error_message, nil)
+
+    {:ok, socket}
   end
 
   def handle_event("fsubmit", %{"rule" => rule_params}, socket) do

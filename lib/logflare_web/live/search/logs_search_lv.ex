@@ -23,7 +23,18 @@ defmodule LogflareWeb.Source.SearchLV do
     SearchView.render("logs_search.html", assigns)
   end
 
-  def mount(%{"user_id" => user_id} = session, socket) do
+  def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
+    source =
+      source_id
+      |> String.to_integer()
+      |> Sources.Cache.get_by_id_and_preload()
+
+    Logger.info(
+      "#{pid_source_to_string(self(), source)} received params after mount... Connected: #{
+        connected?(socket)
+      }"
+    )
+
     user = Users.Cache.get_by_and_preload(id: user_id)
 
     Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
@@ -31,7 +42,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       assign(
         socket,
-        source: nil,
+        source: source,
         log_events: [],
         log_aggregates: [],
         loading: false,
@@ -61,22 +72,6 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(params, _uri, socket) do
-    socket =
-      if !socket.assigns.source do
-        source_id = params["source_id"] |> String.to_integer()
-        source = Sources.Cache.get_by_id_and_preload(source_id)
-
-        Logger.info(
-          "#{pid_source_to_string(self(), source)} received params after mount... Connected: #{
-            connected?(socket)
-          }"
-        )
-
-        assign(socket, :source, source)
-      else
-        socket
-      end
-
     log_lv_received_event("handle params", socket.assigns.source)
 
     querystring = params["querystring"] || params["q"] || socket.assigns.querystring
