@@ -8,15 +8,15 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
   def new() do
     middleware =
       [
-        {Tesla.Middleware.Retry,
-         delay: 500,
-         max_retries: 10,
-         max_delay: 4_000,
-         should_retry: fn
-           {:ok, %{status: status}} when status in 400..599 -> true
-           {:ok, _} -> false
-           {:error, _} -> true
-         end}
+        #  {Tesla.Middleware.Retry,
+        #   delay: 500,
+        #   max_retries: 10,
+        #   max_delay: 4_000,
+        #   should_retry: fn
+        #     {:ok, %{status: status}} when status in 400..599 -> true
+        #     {:ok, _} -> false
+        #     {:error, _} -> true
+        #   end}
       ] ++ @middleware
 
     adapter = {@adapter, pool: __MODULE__, recv_timeout: 60_000}
