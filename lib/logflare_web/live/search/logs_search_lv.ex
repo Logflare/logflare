@@ -72,6 +72,42 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(params, _uri, socket) do
+
+  def handle_event("pause_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
+    log_lv_received_event(ev, prev_assigns.source)
+
+    maybe_cancel_tailing_timer(socket)
+    maybe_cancel_query(prev_assigns)
+
+    socket =
+      if prev_assigns.tailing? do
+        socket
+        |> assign(:tailing?, false)
+        |> assign(:tailing_paused?, true)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("resume_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
+    log_lv_received_event(ev, prev_assigns.source)
+
+    socket =
+      if prev_assigns.tailing_paused? do
+        socket =
+          socket
+          |> assign(:tailing_paused?, nil)
+          |> assign(:tailing?, true)
+
+        maybe_execute_query(socket.assigns)
+
+        socket
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
