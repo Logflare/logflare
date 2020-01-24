@@ -181,44 +181,14 @@ defmodule LogflareWeb.Source.SearchLV do
     log_lv_received_event(ev, socket.assigns.source)
     modal_id = metadata["modal_id"]
 
-    maybe_cancel_tailing_timer(socket)
-    maybe_cancel_query(socket.assigns)
-
-    socket = assign(socket, :active_modal, modal_id)
-
-    socket =
-      if socket.assigns.tailing? do
-        socket
-        |> assign(:tailing?, false)
-        |> assign(:tailing_paused?, true)
-      else
-        socket
-      end
-
-    {:noreply, socket}
+    {:noreply, assign(socket, :active_modal, modal_id)}
   end
 
   def handle_event("deactivate_modal" = ev, metadata, socket) do
     if metadata["key"] == "Escape" or is_nil(metadata["code"]) do
       log_lv_received_event(ev, socket.assigns.source)
 
-      socket = assign(socket, :active_modal, nil)
-
-      socket =
-        if socket.assigns.tailing_paused? do
-          socket =
-            socket
-            |> assign(:tailing_paused?, nil)
-            |> assign(:tailing?, true)
-
-          maybe_execute_query(socket.assigns)
-
-          socket
-        else
-          socket
-        end
-
-      {:noreply, socket}
+      {:noreply, assign(socket, :active_modal, nil)}
     else
       {:noreply, socket}
     end
