@@ -30,6 +30,18 @@ module.exports = {
         },
       },
       {
+        // Delete this rule when @nivo PR is merged https://github.com/plouc/nivo/pull/841
+        test: /\.js$/,
+        include: /node_modules\/@nivo\/bar/,
+        use: {
+          loader: 'string-replace-loader',
+          options: {
+            search: 'scaleBand().rangeRound(',
+            replace: 'scaleBand().range(',
+          }
+        },
+      },
+      {
         test: /\.(css|sass|scss)$/,
         use: [
           MiniCssExtractPlugin.loader,
