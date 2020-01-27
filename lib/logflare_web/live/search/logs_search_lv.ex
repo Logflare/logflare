@@ -11,6 +11,9 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.SavedSearches
   alias __MODULE__.SearchOpts
   import Logflare.Logs.Search.Utils
+  import LogflareWeb.SearchLV.Utils
+  use LogflareWeb.LiveViewUtils
+  use LogflareWeb.ModalHelpersLV
   require Logger
   alias Logflare.{Sources, Users}
   @tail_search_interval 500
@@ -213,30 +216,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("activate_modal" = ev, metadata, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-    modal_id = metadata["modal_id"]
-
-    {:noreply, assign(socket, :active_modal, modal_id)}
-  end
-
-  def handle_event("deactivate_modal" = ev, metadata, socket) do
-    if metadata["key"] == "Escape" or is_nil(metadata["code"]) do
-      log_lv_received_event(ev, socket.assigns.source)
-
-      {:noreply, assign(socket, :active_modal, nil)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("remove_flash" = ev, metadata, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-    key = String.to_existing_atom(metadata["flash_key"])
-    socket = assign_flash(socket, key, nil)
-    {:noreply, socket}
-  end
-
   def handle_event("user_idle" = ev, _, socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
@@ -330,33 +309,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp assign_flash(socket, key, message) do
-    flash = socket.assigns.flash
-    assign(socket, flash: put_in(flash, [key], message))
-  end
-
-  defp maybe_cancel_query(assigns) do
-    assigns.source.token
-    |> SearchQueryExecutor.name()
-    |> Process.whereis()
-    |> if do
-      :ok = SearchQueryExecutor.cancel_query(assigns)
-    else
-      Logger.error("Cancel query failed: SearchQueryExecutor process for not alive")
-    end
-  end
-
-  defp maybe_execute_query(assigns) do
-    assigns.source.token
-    |> SearchQueryExecutor.name()
-    |> Process.whereis()
-    |> if do
-      :ok = SearchQueryExecutor.query(assigns)
-    else
-      Logger.error("Query failed: SearchQueryExecutor process for not alive")
-    end
-  end
-
   defp warning_message(assigns, search_op) do
     tailing? = assigns.tailing?
     querystring = assigns.querystring
@@ -375,9 +327,5 @@ defmodule LogflareWeb.Source.SearchLV do
       true ->
         nil
     end
-  end
-
-  def maybe_cancel_tailing_timer(socket) do
-    if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
   end
 end

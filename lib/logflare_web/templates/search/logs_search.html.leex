@@ -4,8 +4,8 @@
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();">
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
-        <%= modal_link("searchHelpModal", "fas fa-code","LQL") %>
-        <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %>
+        <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
+        <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
         <li>
           <a href="#" phx-click="set_local_time"
             id="set_local_time"
@@ -21,10 +21,10 @@
         </li>
         <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
         <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
-          <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %>
+          <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
         <% else %>
-          <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %>
-          <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %>
+          <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
+          <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
         <% end %>
       </ul>
     </div>
