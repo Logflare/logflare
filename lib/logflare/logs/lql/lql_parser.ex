@@ -41,11 +41,12 @@ defmodule Logflare.Lql.Parser do
         |> List.flatten()
         |> Enum.map(fn
           %FilterRule{path: path} = rule ->
-            type = typemap[path]
+            type = get_path_type(typemap, path)
             maybe_cast_value(rule, type)
 
           %ChartRule{path: path} = rule ->
-            %{rule | value_type: typemap[path]}
+            type = get_path_type(typemap, path)
+            %{rule | value_type: type}
         end)
         |> Enum.sort()
 
@@ -61,6 +62,16 @@ defmodule Logflare.Lql.Parser do
   catch
     e ->
       {:error, e}
+  end
+
+  defp get_path_type(typemap, path) do
+    type = Map.get(typemap, path)
+
+    if type do
+      type
+    else
+      throw("LQL Parser error: path #{path} not present in source schema.")
+    end
   end
 
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
