@@ -10,6 +10,8 @@ defmodule LogflareWeb.Sources.RulesLV do
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
   use LogflareWeb.LiveViewUtils
+  use LogflareWeb.ModalHelpersLV
+
   @lql_dialect :routing
   @lql_string ""
 
@@ -36,9 +38,11 @@ defmodule LogflareWeb.Sources.RulesLV do
 
     socket =
       socket
+      |> assign(:flash, %{})
       |> assign(:source, source)
       |> assign(:rules, source.rules)
       |> assign(:sources, sources)
+      |> assign(:active_modal, nil)
       |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
 
@@ -61,14 +65,14 @@ defmodule LogflareWeb.Sources.RulesLV do
 
           {:error, changeset} ->
             error_message = Rule.changeset_error_to_string(changeset)
-            assign(socket, :error_message, error_message)
+            assign_flash(socket, :error, error_message)
         end
       else
         {:error, error} ->
-          assign(socket, :error_message, error)
+          assign_flash(socket, :error, error)
 
-        {:warnings, error} ->
-          assign(socket, :error_message, error)
+        {:warnings, warning} ->
+          assign_flash(socket, :warning, warning)
       end
 
     {:noreply, socket}
