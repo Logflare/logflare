@@ -1,4 +1,5 @@
 defmodule LogflareWeb.UtcTimeLive do
+  @moduledoc false
   use Phoenix.LiveView
 
   def render(assigns) do
@@ -7,7 +8,7 @@ defmodule LogflareWeb.UtcTimeLive do
     """
   end
 
-  def mount(_session, socket) do
+  def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(1000, self(), :tick)
 
     {:ok, put_date(socket)}

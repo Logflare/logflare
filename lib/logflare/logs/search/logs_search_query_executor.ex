@@ -2,7 +2,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   use GenServer
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
-  import Logflare.Logs.Search.Utils
+  import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
   alias Logflare.Source.RecentLogsServer, as: RLS
   require Logger

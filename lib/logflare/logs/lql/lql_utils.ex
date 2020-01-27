@@ -16,7 +16,6 @@ defmodule Logflare.Lql.Utils do
     |> Map.new()
   end
 
-
   def build_message_filter_rule_from_regex(regex) when is_binary(regex) do
     %FilterRule{
       operator: "~",
@@ -40,6 +39,9 @@ defmodule Logflare.Lql.Utils do
 
   def get_lql_parser_warnings(lql_rules, dialect: :routing) when is_list(lql_rules) do
     cond do
+      Enum.find(lql_rules, &(&1.path == "timestamp")) ->
+        "Timestamp LQL clauses are ignored for event routing"
+
       Enum.find(lql_rules, &(&1.path == "timestamp")) ->
         "Timestamp LQL clauses are ignored for event routing"
 

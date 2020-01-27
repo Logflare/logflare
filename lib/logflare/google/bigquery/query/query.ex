@@ -3,6 +3,7 @@ defmodule Logflare.Google.BigQuery.Query do
   require Logger
 
   alias GoogleApi.BigQuery.V2.{Api, Model}
+
   #
   #  @spec get_events_for_ets(atom, atom) :: []
   #  def get_events_for_ets(

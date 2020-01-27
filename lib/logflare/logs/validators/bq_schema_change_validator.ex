@@ -2,8 +2,6 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
   alias Logflare.LogEvent, as: LE
   alias Logflare.{Source, Sources}
-  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
 
   def validate(%LE{body: body, source: %Source{} = source}) do

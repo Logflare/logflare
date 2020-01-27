@@ -1,10 +1,10 @@
 defmodule Logflare.Source.BigQuery.Schema do
+  @moduledoc false
   use GenServer
 
   require Logger
 
   alias Logflare.Google.BigQuery
-  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources

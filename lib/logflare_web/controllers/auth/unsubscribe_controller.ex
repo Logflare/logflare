@@ -103,7 +103,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     end
   end
 
-  defp filter_email(email, other_emails) when is_nil(other_emails), do: nil
+  defp filter_email(_email, other_emails) when is_nil(other_emails), do: nil
 
   defp filter_email(email, other_emails) when is_binary(other_emails) do
     String.split(other_emails, ",")

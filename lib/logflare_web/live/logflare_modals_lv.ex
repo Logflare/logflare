@@ -3,7 +3,7 @@ defmodule LogflareWeb.ModalHelpersLV do
   Modal helpers to be imported where modals may be called
   """
   import LogflareWeb.SearchLV.Utils
-  import Phoenix.LiveView, only: [assign: 2, assign: 3]
+  import Phoenix.LiveView, only: [assign: 3]
 
   defmacro __using__(_context) do
     quote do

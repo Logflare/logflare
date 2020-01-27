@@ -55,7 +55,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
   @doc """
   Expected to be called only in Logs context
   """
-  @spec ingest(LE.t()) :: %{log_events: [LE.t()], count: integer}
+  @spec ingest(LE.t()) :: :ok
   def ingest(%LE{source: %Source{token: token}, valid?: false} = le) do
     Cachex.get_and_update!(@cache, token, fn
       %{log_events: les, count: c} ->

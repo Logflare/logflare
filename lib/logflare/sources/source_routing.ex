@@ -81,6 +81,8 @@ defmodule Logflare.Logs.SourceRouting do
       :ok = ingest(routed_le)
       :ok = broadcast(routed_le)
     end
+
+    lql_rules_match?
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do

@@ -109,7 +109,7 @@ hooks.SourceLogsSearch = {
       onIdle: () => {
         const $searchTailingButton = $("#search-tailing-button")
         const $searchTailingCheckbox = $(
-          "input#" + $.escapeSelector("search_tailing?")
+          "input#" + $.escapeSelector("search_tailing?"),
         )
 
         if ($searchTailingCheckbox.prop("value") === "true") {
@@ -134,5 +134,6 @@ hooks.SourceLogsSearch = {
     $("button#search").click()
   },
 }
+
 
 export default hooks

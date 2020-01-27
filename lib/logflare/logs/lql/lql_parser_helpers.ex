@@ -1,4 +1,7 @@
-defmodule Logflare.Logs.Search.Parser.Helpers do
+defmodule Logflare.Lql.Parser.Helpers do
+  @moduledoc """
+  Includes parsers and combinators for Lql parser
+  """
   import NimbleParsec
   alias Logflare.Lql.FilterRule
   alias Logflare.Lql.ChartRule
@@ -386,7 +389,7 @@ defmodule Logflare.Logs.Search.Parser.Helpers do
   end
 
   def check_for_no_invalid_metadata_field_values(
-        %{path: p, value: {:invalid_metadata_field_value, v}},
+        %{path: _p, value: {:invalid_metadata_field_value, v}},
         :timestamp
       ) do
     throw(

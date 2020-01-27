@@ -1,4 +1,5 @@
 defmodule Logflare.Source.SlackHookServer do
+  @moduledoc false
   use GenServer
 
   require Logger
@@ -52,7 +53,7 @@ defmodule Logflare.Source.SlackHookServer do
     end
   end
 
-  def handle_info({:EXIT, pid, :normal}, rls) do
+  def handle_info({:EXIT, _pid, :normal}, rls) do
     :noop
 
     {:noreply, rls}

@@ -29,7 +29,8 @@ defmodule Logflare.Rule do
   end
 
   def parse_lql_string(changeset, source_id) do
-    source = Sources.get_by_and_preload(id: source_id)
+    source =
+      Sources.get_by_and_preload(id: source_id)
       |> Sources.put_bq_table_data()
 
     lql_string = get_change(changeset, :lql_string)
@@ -47,7 +48,7 @@ defmodule Logflare.Rule do
       rule
       |> cast(
         %{lql_filters: [Lql.Utils.build_message_filter_rule_from_regex(rule.regex)]},
-        [ :lql_filters ]
+        [:lql_filters]
       )
     else
       cast(rule, %{}, [])

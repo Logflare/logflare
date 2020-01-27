@@ -1,9 +1,8 @@
 defmodule Logflare.Lql.Parser do
   @moduledoc false
   import NimbleParsec
-  import Logflare.Logs.Search.Parser.Helpers
+  import __MODULE__.Helpers
   alias Logflare.Lql
-  alias Logflare.Lql.{FilterRule, ChartRule, Utils}
   alias Logflare.Lql.{FilterRule, ChartRule, Utils}
   require Logger
 

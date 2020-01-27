@@ -3,7 +3,6 @@ defmodule Logflare.Logs.Search.Utils do
   Utilities for Logs search and Logs live view modules
   """
   require Logger
-  import LogflareWeb.SearchLV.Utils
 
   def format_error(%Tesla.Env{body: body}) do
     body

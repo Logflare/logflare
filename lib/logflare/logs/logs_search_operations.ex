@@ -279,10 +279,6 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_group_by_timestamp_period(SO.t()) :: SO.t()
   def apply_group_by_timestamp_period(%SO{} = so) do
-    group_by = [
-      timestamp_truncator(so.chart_period)
-    ]
-
     query = group_by(so.query, 1)
     %{so | query: query}
   end
@@ -302,7 +298,6 @@ defmodule Logflare.Logs.SearchOperations do
     Utils.put_result_in(result, so)
   end
 
-  @spec apply_numeric_aggs(SO.t()) :: SO.t()
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart = [%{value: chart_value}]} = so)
       when chart_value in ~w[integer float]a do
     timestamp_filter_rules = Enum.filter(so.filter_rules, &(&1.path === "timestamp"))

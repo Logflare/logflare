@@ -1,4 +1,7 @@
 defmodule LogflareWeb.Source.SearchLV.ModalLVC do
+  @moduledoc """
+  LiveView Component to render components
+  """
   use Phoenix.LiveComponent
   alias LogflareWeb.SearchView
 

@@ -2,7 +2,7 @@ defmodule Logflare.Lql.EctoHelpers do
   @moduledoc false
   import Ecto.Query
 
-  def apply_filter_rules_to_query(query, rules, opts \\ [adapter: :bigquery]) do
+  def apply_filter_rules_to_query(query, rules, _opts \\ [adapter: :bigquery]) do
     rules
     |> Enum.sort()
     |> Enum.reduce(query, fn rule, qacc ->

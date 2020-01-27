@@ -1,4 +1,7 @@
 defmodule LogflareWeb.Lql.LqlFormLVC do
+  @moduledoc """
+  LiveView component for LQL form
+  """
   use Phoenix.LiveComponent
   alias LogflareWeb.LqlView
 
