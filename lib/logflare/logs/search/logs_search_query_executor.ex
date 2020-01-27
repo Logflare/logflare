@@ -25,12 +25,34 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     }
   end
 
+  def maybe_cancel_query(source_token) when is_atom(source_token) do
+    source_token
+    |> name()
+    |> Process.whereis()
+    |> if do
+      :ok = cancel_query(source_token)
+    else
+      Logger.error("Cancel query failed: SearchQueryExecutor process for not alive")
+    end
+  end
+
+  def maybe_execute_query(source_token, params) when is_atom(source_token) do
+    source_token
+    |> name()
+    |> Process.whereis()
+    |> if do
+      :ok = query(params)
+    else
+      Logger.error("Query failed: SearchQueryExecutor process for not alive")
+    end
+  end
+
   def query(params) do
     do_query(params)
   end
 
-  def cancel_query(params) do
-    GenServer.call(name(params.source.token), :cancel_query, @query_timeout)
+  def cancel_query(source_token) when is_atom(source_token) do
+    GenServer.call(name(source_token), :cancel_query, @query_timeout)
   end
 
   def name(source_id) do
@@ -147,7 +169,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info(msg, state) do
     Logger.error("SearchQueryExecutor received unknown message: #{inspect(msg)}")
-    throw("Unknown message received")
     {:noreply, state}
   end
 

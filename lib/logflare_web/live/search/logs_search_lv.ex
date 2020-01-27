@@ -49,7 +49,7 @@ defmodule LogflareWeb.Source.SearchLV do
         log_events: [],
         log_aggregates: [],
         loading: false,
-        tailing?: true,
+        tailing?: @default_tailing?,
         tailing_paused?: nil,
         tailing_timer: nil,
         user: user,
@@ -74,13 +74,16 @@ defmodule LogflareWeb.Source.SearchLV do
     {:ok, socket}
   end
 
-  def handle_params(params, _uri, socket) do
+  def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
 
   def handle_event("pause_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
-    log_lv_received_event(ev, prev_assigns.source)
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
 
     maybe_cancel_tailing_timer(socket)
-    maybe_cancel_query(prev_assigns)
+    SearchQueryExecutor.maybe_cancel_query(stoken)
 
     socket =
       if prev_assigns.tailing? do
@@ -95,7 +98,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("resume_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
-    log_lv_received_event(ev, prev_assigns.source)
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
 
     socket =
       if prev_assigns.tailing_paused? do
@@ -104,7 +108,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:tailing_paused?, nil)
           |> assign(:tailing?, true)
 
-        maybe_execute_query(socket.assigns)
+        SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
 
         socket
       else
@@ -115,7 +119,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("form_update" = ev, %{"search" => search}, %{assigns: assigns} = socket) do
-    log_lv_received_event(ev, assigns.source)
+    source = assigns.source
+    log_lv_received_event(ev, source)
 
     {:ok, search_opts} = SearchOpts.new(assigns, search)
 
@@ -128,7 +133,7 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-    %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = socket.assigns
+    %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = assigns
 
     socket =
       socket
@@ -154,7 +159,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:log_aggregates, [])
           |> assign(:loading, true)
 
-        maybe_execute_query(socket.assigns)
+        :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
 
         live_redirect(socket,
           to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
@@ -167,8 +172,9 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("start_search" = ev, metadata, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+  def handle_event("start_search" = ev, metadata, %{assigns: assigns} = socket) do
+    %{id: sid, token: stoken} = assigns.source
+    log_lv_received_event(ev, assigns.source)
 
     params =
       socket.assigns
@@ -186,11 +192,11 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign_flash(:warning, nil)
       |> assign_flash(:error, nil)
       |> live_redirect(
-        to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
+        to: Routes.live_path(socket, __MODULE__, sid, params),
         replace: true
       )
 
-    maybe_execute_query(socket.assigns)
+    SearchQueryExecutor.maybe_execute_query(stoken, assigns)
 
     {:noreply, socket}
   end
@@ -217,10 +223,11 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("user_idle" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+    %{token: stoken} = source = socket.assigns.source
+    log_lv_received_event(ev, source)
 
     maybe_cancel_tailing_timer(socket)
-    maybe_cancel_query(socket.assigns)
+    SearchQueryExecutor.maybe_cancel_query(stoken)
 
     socket = assign_flash(socket, :warning, "Live search paused due to user inactivity.")
 
@@ -228,10 +235,11 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("save_search" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+    %{source: source, querystring: qs} = socket.assigns
+    log_lv_received_event(ev, source)
 
-    case SavedSearches.insert(socket.assigns.querystring, socket.assigns.source) do
-      {:ok, saved_search} ->
+    case SavedSearches.insert(qs, source) do
+      {:ok, _saved_search} ->
         socket = assign_flash(socket, :warning, "Search saved!")
         {:noreply, socket}
 
@@ -285,8 +293,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_error = msg, search_op}, socket) do
-    log_lv_received_info(msg, socket.assigns.source)
+  def handle_info({:search_error = msg, search_op}, %{assigns: %{source: source}} = socket) do
+    log_lv_received_info(msg, source)
 
     socket =
       socket
@@ -300,10 +308,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info(:schedule_tail_search = msg, socket) do
+  def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, socket.assigns.source)
-      maybe_execute_query(socket.assigns)
+      log_lv_received_info(msg, assigns.source)
+      SearchQueryExecutor.maybe_execute_query(assigns.source.token, assigns)
     end
 
     {:noreply, socket}
