@@ -130,7 +130,13 @@ defmodule Logflare.Mixfile do
 
       # Statistics
       {:statistex, "~> 1.0.0"},
-      {:floki, "~> 0.23.1"},
+
+      # HTML
+      {:floki, "~> 0.25.0"},
+      {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
+
+      #
+      {:rustler, "~> 0.21.0", only: [:test], override: true},
 
       # Frontend
       {:phoenix_live_react, "~> 0.2"},
