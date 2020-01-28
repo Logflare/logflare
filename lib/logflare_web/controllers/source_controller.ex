@@ -88,14 +88,10 @@ defmodule LogflareWeb.SourceController do
   end
 
   def create(%{assigns: %{user: user}} = conn, %{"source" => source}) do
-    user
-    |> Ecto.build_assoc(:sources)
-    |> Source.update_by_user_changeset(source)
-    |> Repo.insert()
+    source
+    |> Sources.create_source(user)
     |> case do
       {:ok, source} ->
-        Supervisor.new_source(source.token)
-
         if get_session(conn, :oauth_params) do
           conn
           |> put_flash(:info, "Source created!")

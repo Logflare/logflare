@@ -2,7 +2,6 @@ defmodule Logflare.Rule do
   @moduledoc false
   use TypedEctoSchema
   alias Logflare.Source
-  alias Logflare.Sources
   alias Logflare.Lql
   import Ecto.Changeset
 
@@ -22,47 +21,34 @@ defmodule Logflare.Rule do
   @doc false
   def changeset(rule, attrs \\ %{}) do
     rule
-    |> cast(attrs, [:sink, :lql_string])
-    |> parse_lql_string(rule.source_id)
+    |> cast(attrs, [:sink, :lql_string, :lql_filters])
     |> validate_required([:sink, :lql_filters, :lql_string])
-    |> validate_regex_is_read_only()
   end
 
-  def parse_lql_string(changeset, source_id) do
-    source =
-      Sources.get_by_and_preload(id: source_id)
-      |> Sources.put_bq_table_data()
-
-    lql_string = get_change(changeset, :lql_string)
-
-    if lql_string do
-      {:ok, lql_filters} = Lql.Parser.parse(lql_string, source.bq_table_schema)
-      put_change(changeset, :lql_filters, lql_filters)
-    else
-      changeset
-    end
+  def regex_changeset(rule, attrs \\ %{}) do
+    rule
+    |> cast(attrs, [:sink, :regex, :regex_struct])
+    |> validate_required([:sink, :regex, :regex_struct])
   end
 
+  @deprecated "Delete when all source rules are upgraded to LQL"
+  @spec regex_to_lql_upgrade_changeset(Rule.t()) :: Ecto.Changeset.t()
   def regex_to_lql_upgrade_changeset(rule) do
     if rule.regex do
+      lql_string = ~s|"#{rule.regex}"|
+      {:ok, lql_filters} = Lql.Utils.build_message_filter_rule_from_regex(lql_string)
+
       rule
       |> cast(
-        %{lql_filters: [Lql.Utils.build_message_filter_rule_from_regex(rule.regex)]},
-        [:lql_filters]
+        %{
+          lql_filters: lql_filters,
+          lql_string: lql_string
+        },
+        [:lql_filters, :lql_string]
       )
     else
       cast(rule, %{}, [])
     end
-  end
-
-  def validate_regex_is_read_only(changeset) do
-    validate_change(changeset, :regex, fn _field, regex ->
-      if is_nil(regex) do
-        []
-      else
-        [{"Regex source sink rules are read-only due to upgrade to LQL rules"}]
-      end
-    end)
   end
 
   def changeset_error_to_string(changeset) do

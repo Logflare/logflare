@@ -16,16 +16,14 @@ defmodule LogflareWeb.Sources.RulesLV do
   @lql_string ""
 
   def render(assigns) do
-    RuleView.render("index.html", assigns)
+    RuleView.render("source_rules.html", assigns)
   end
 
   def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
     user = Users.Cache.get_by_and_preload(id: user_id)
 
-    source =
-      source_id
-      |> String.to_integer()
-      |> Sources.Cache.get_by_id_and_preload()
+    source_id = String.to_integer(source_id)
+    source = Sources.get_by_and_preload(id: source_id)
 
     sources =
       for s <- user.sources do
@@ -50,18 +48,21 @@ defmodule LogflareWeb.Sources.RulesLV do
   end
 
   def handle_event("fsubmit", %{"rule" => rule_params}, socket) do
-    schema = Sources.Cache.get_bq_schema(socket.assigns.source)
-    lqls = rule_params["lql_string"]
+    %{source: source, rules: rules} = socket.assigns
+    {:ok, schema} = Sources.get_bq_schema(source)
+    lqlstring = rule_params["lql_string"]
 
     socket =
-      with {:ok, lql_rules} <- Lql.Parser.parse(lqls, schema),
+      with {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
            {:warnings, nil} <-
              {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do
         rule_params = Map.put(rule_params, "lql_filters", lql_rules)
 
-        case Rules.create_rule(socket.assigns.source, rule_params) do
+        case Rules.create_rule(rule_params, source) do
           {:ok, rule} ->
-            assign(socket, :rules, [rule | socket.assigns.rules])
+            socket
+            |> assign(:has_regex_rules, Rules.has_regex_rules?(source.rules))
+            |> assign(:rules, [rule | rules])
 
           {:error, changeset} ->
             error_message = Rule.changeset_error_to_string(changeset)
@@ -81,7 +82,9 @@ defmodule LogflareWeb.Sources.RulesLV do
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
     source = socket.assigns.source
 
-    Rules.delete_rule!(String.to_integer(rule_id))
+    rule_id
+    |> String.to_integer()
+    |> Rules.delete_rule!()
 
     source = Sources.get_by_and_preload(token: source.token)
 
@@ -89,6 +92,26 @@ defmodule LogflareWeb.Sources.RulesLV do
       socket
       |> assign(:source, source)
       |> assign(:rules, source.rules)
+
+    {:noreply, socket}
+  end
+
+  @deprecated "Delete when all source rules are upgraded to LQL"
+  def handle_event("upgrade_rules", _metadata, %{assigns: as} = socket) do
+    socket =
+      case Rules.upgrade_rules_to_lql(as.rules) do
+        :ok ->
+          source = Sources.get_by_and_preload(token: as.source.token)
+
+          socket
+          |> assign(:source, source)
+          |> assign(:rules, source.rules)
+          |> assign_flash(:info, "Upgrade successfull!")
+
+        {:error, changeset} ->
+          error_message = Rule.changeset_error_to_string(changeset)
+          assign_flash(socket, :error, error_message)
+      end
 
     {:noreply, socket}
   end

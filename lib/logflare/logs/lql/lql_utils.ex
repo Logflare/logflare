@@ -1,8 +1,10 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Lql
   alias Logflare.Lql.{FilterRule, ChartRule}
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
   @spec bq_schema_to_flat_typemap(TS.t()) :: map
   def bq_schema_to_flat_typemap(%TS{} = schema) do
@@ -16,13 +18,9 @@ defmodule Logflare.Lql.Utils do
     |> Map.new()
   end
 
+  @deprecated "Delete when all source rules are migrated to LQL"
   def build_message_filter_rule_from_regex(regex) when is_binary(regex) do
-    %FilterRule{
-      operator: "~",
-      path: "event_message",
-      value: regex,
-      modifiers: []
-    }
+    Lql.Parser.parse(regex, SchemaBuilder.initial_table_schema())
   end
 
   def get_filter_rules(rules) do

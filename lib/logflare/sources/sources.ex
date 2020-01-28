@@ -9,6 +9,22 @@ defmodule Logflare.Sources do
 
   @default_bucket_width 60
 
+  def create_source(source_params, user) do
+    user
+    |> Ecto.build_assoc(:sources)
+    |> Source.update_by_user_changeset(source_params)
+    |> Repo.insert()
+    |> case do
+      {:ok, source} ->
+        Source.Supervisor.new_source(source.token) |> IO.inspect()
+
+        {:ok, source}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
   def get(source_id) when is_integer(source_id) do
     Source
     |> Repo.get(source_id)
@@ -67,9 +83,12 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    {:ok, table} = Logflare.Google.BigQuery.get_table(source.token)
-    schema = SchemaUtils.deep_sort_by_fields_name(table.schema)
-    {:ok, schema}
+    with {:ok, table} <- Logflare.Google.BigQuery.get_table(source.token) do
+      schema = SchemaUtils.deep_sort_by_fields_name(table.schema)
+      {:ok, schema}
+    else
+      errtup -> errtup
+    end
   end
 
   def preload_defaults(source) do

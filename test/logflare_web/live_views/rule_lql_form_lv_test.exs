@@ -3,71 +3,198 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   use LogflareWeb.ConnCase
   import Phoenix.LiveViewTest
   alias Logflare.Sources
+  alias Logflare.Repo
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Rule
   alias Logflare.Users
   @endpoint LogflareWeb.Endpoint
   import Logflare.Factory
   use Placebo
 
   setup do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    source = Sources.get(source.id)
-    sink = insert(:source, user: user, name: "Sink Source 1")
-    sink = Sources.get(sink.id)
+    user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     user = Users.get(user.id)
-    schema = SchemaBuilder.initial_table_schema()
-    {:ok, true} = Sources.Cache.put_bq_schema(source.token, schema)
+
+    source = params_for(:source)
+    {:ok, source} = Sources.create_source(source, user)
+
+    {:ok, sink} =
+      :source
+      |> params_for(name: "Sink Source 1")
+      |> Sources.create_source(user)
+
+    {:ok, _} = Sources.Counters.start_link()
+    {:ok, _pid} = RLS.start_link(%RLS{source_id: source.token})
+    Process.sleep(2000)
     %{sources: [source, sink], user: [user]}
   end
 
-  test "mount", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
-    conn =
-      conn
-      |> assign(:user, u)
-      |> get("/sources/#{s.id}/rules")
+  describe "LQL rules" do
+    test "mount", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
+      conn =
+        conn
+        |> assign(:user, u)
+        |> get("/sources/#{s.id}/rules")
 
-    assert {:ok, view, html} = live(conn)
-    assert html =~ ~S|id="lql-rules-container"|
+      assert {:ok, view, html} = live(conn)
+      assert html =~ ~S|id="lql-rules-container"|
 
-    assert render_submit(view, :fsubmit, %{
-             "rule" => %{"lql_string" => "123errorstring", "sink" => sink.token}
-           }) =~ "Sink Source 1"
+      assert render_submit(view, :fsubmit, %{
+               "rule" => %{"lql_string" => "123errorstring", "sink" => sink.token}
+             }) =~ "Sink Source 1"
 
-    html =
-      render_submit(view, :fsubmit, %{
-        "rule" => %{"lql_string" => "123infostring", "sink" => sink.token}
-      })
+      html =
+        render_submit(view, :fsubmit, %{
+          "rule" => %{"lql_string" => "123infostring", "sink" => sink.token}
+        })
 
-    assert html =~ "123infostring"
-    assert html =~ "123errorstring"
+      assert html =~ "123infostring"
+      assert html =~ "123errorstring"
+    end
+
+    test "add and delete rules", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
+      {:ok, view, _html} =
+        conn
+        |> assign(:user, u)
+        |> get("/sources/#{s.id}/rules")
+        |> live()
+
+      assert render_submit(view, :fsubmit, %{
+               "rule" => %{"lql_string" => "123errorstring", "sink" => sink.token}
+             }) =~ "Sink Source 1"
+
+      html =
+        render_submit(view, :fsubmit, %{
+          "rule" => %{"lql_string" => "123infostring", "sink" => sink.token}
+        })
+
+      assert html =~ "123infostring"
+      assert html =~ "123errorstring"
+
+      source = Sources.get_by_and_preload(token: s.token)
+      assert length(source.rules) == 2
+      html = render_click(view, "delete_rule", %{"rule_id" => to_string(hd(source.rules).id)})
+
+      refute html =~ "123infostring"
+      source = Sources.get_by_and_preload(token: s.token)
+      assert length(source.rules) == 1
+    end
   end
 
-  test "add and delete rules", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
-    {:ok, view, html} =
-      conn
-      |> assign(:user, u)
-      |> get("/sources/#{s.id}/rules")
-      |> live()
+  describe "Rule regex to LQL upgrade" do
+    # @describetag :run
+    setup do
+      user = insert(:user)
+      user = Users.get(user.id)
 
-    assert render_submit(view, :fsubmit, %{
-             "rule" => %{"lql_string" => "123errorstring", "sink" => sink.token}
-           }) =~ "Sink Source 1"
+      source = params_for(:source)
 
-    html =
-      render_submit(view, :fsubmit, %{
-        "rule" => %{"lql_string" => "123infostring", "sink" => sink.token}
+      {:ok, source} = Sources.create_source(source, user)
+
+      {:ok, sink} =
+        :source
+        |> params_for(name: "Sink Source 1")
+        |> Sources.create_source(user)
+
+      Repo.insert(%Rule{
+        regex: "100",
+        regex_struct: Regex.compile!("100"),
+        source_id: source.id,
+        sink: sink.token
       })
 
-    assert html =~ "123infostring"
-    assert html =~ "123errorstring"
+      Repo.insert(%Rule{
+        regex: "message",
+        regex_struct: Regex.compile!("message"),
+        source_id: 759,
+        sink: :"c9eaee21-24ff-4df7-a4a4-f3f8b3513e9e"
+      })
 
-    source = Sources.get_by_and_preload(token: s.token)
-    assert length(source.rules) == 2
-    html = render_click(view, "delete_rule", %{"rule_id" => to_string(hd(source.rules).id)})
+      {:ok, sink2} =
+        :source
+        |> params_for(name: "Sink Source 2")
+        |> Sources.create_source(user)
 
-    refute html =~ "123infostring"
-    source = Sources.get_by_and_preload(token: s.token)
-    assert length(source.rules) == 1
+      Repo.insert(%Rule{
+        regex: ~S"\d\d",
+        regex_struct: Regex.compile!(~S"\d\d"),
+        source_id: source.id,
+        sink: sink2.token
+      })
+
+      {:ok, sink3} =
+        :source
+        |> params_for(name: "Sink Source 3")
+        |> Sources.create_source(user)
+
+      Repo.insert(%Rule{
+        regex: ~S"\w+",
+        regex_struct: Regex.compile!(~S"\w+"),
+        source_id: source.id,
+        sink: sink3.token
+      })
+
+      %{sources: [source, sink, sink2, sink3], user: [user]}
+    end
+
+    test "is successfull", %{sources: [source, sink1, sink2, sink3], user: [user]} do
+      conn =
+        conn
+        |> assign(:user, user)
+        |> get("/sources/#{source.id}/rules")
+
+      assert {:ok, view, html} = live(conn)
+
+      assert html =~ ~S|id="lql-rules-container"|
+
+      assert html =~ "#has_regex_rules"
+
+      html = render_click(view, "upgrade_rules", %{})
+
+      assert [
+               %Logflare.Rule{
+                 lql_filters: [
+                   %Logflare.Lql.FilterRule{
+                     modifiers: [],
+                     operator: :"~",
+                     path: "event_message",
+                     value: "\w+"
+                   }
+                 ],
+                 lql_string: ~S|"\w+"|,
+                 regex: ~S"\w+",
+                 regex_struct: ~r/\w+/
+               },
+               %Logflare.Rule{
+                 lql_filters: [
+                   %Logflare.Lql.FilterRule{
+                     modifiers: [],
+                     operator: :"~",
+                     path: "event_message",
+                     value: "\d\d"
+                   }
+                 ],
+                 lql_string: ~S|"\d\d"|,
+                 regex: ~S"\d\d",
+                 regex_struct: ~r/\d\d/
+               },
+               %Logflare.Rule{
+                 lql_filters: [
+                   %Logflare.Lql.FilterRule{
+                     modifiers: [],
+                     operator: :"~",
+                     path: "event_message",
+                     value: "100"
+                   }
+                 ],
+                 lql_string: ~s|"100"|,
+                 regex: "100",
+                 regex_struct: ~r/100/
+               }
+             ] = Sources.get_by_and_preload(id: source.id).rules
+
+      refute html =~ "#has_regex_rules"
+    end
   end
 end

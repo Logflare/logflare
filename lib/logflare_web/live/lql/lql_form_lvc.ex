@@ -10,15 +10,16 @@ defmodule LogflareWeb.Lql.LqlFormLVC do
   end
 
   def update(assigns, socket) do
-    socket =
-      socket
-      |> assign(assigns)
-      |> assign(:loading, false)
+    socket = assign(socket, assigns)
 
     {:ok, socket}
   end
 
   def mount(socket) do
+    socket =
+      socket
+      |> assign(:loading, false)
+
     {:ok, socket}
   end
 end
