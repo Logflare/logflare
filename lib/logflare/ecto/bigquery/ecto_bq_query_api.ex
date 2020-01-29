@@ -1,4 +1,4 @@
-defmodule Logflare.EctoBigQueryFunctions do
+defmodule Logflare.Ecto.BQQueryAPI do
   @moduledoc """
   Custom Ecto functions for BigQuery
   """
@@ -9,13 +9,13 @@ defmodule Logflare.EctoBigQueryFunctions do
     end
   end
 
-  defmacro in_streaming_buffer do
+  defmacro partition_time do
     quote do
-      fragment("_PARTITIONDATE IS NULL")
+      fragment("_PARTITIONTIME")
     end
   end
 
-  defmacro bq_current_date() do
+  defmacro in_streaming_buffer do
     quote do
       fragment("_PARTITIONDATE IS NULL")
     end
@@ -64,6 +64,27 @@ defmodule Logflare.EctoBigQueryFunctions do
     end
   end
 
+  defmacro bq_datetime_add(date, count, interval) do
+    fragment_string = "DATETIME_ADD(?, INTERVAL ? #{to_bq_interval_token(interval)})"
+
+    quote do
+      fragment(unquote(fragment_string), unquote(date), unquote(count))
+    end
+  end
+
+  defmacro bq_datetime_sub(date, count, interval) do
+    fragment_string = "DATETIME_SUB(?, ?, ?)"
+
+    quote do
+      fragment(
+        unquote(fragment_string),
+        unquote(date),
+        unquote(count),
+        unquote(interval)
+      )
+    end
+  end
+
   defmacro bq_date_sub(date, count, interval) do
     fragment_string = "DATE_SUB(?, INTERVAL ? #{to_bq_interval_token(interval)})"
 
@@ -72,14 +93,14 @@ defmodule Logflare.EctoBigQueryFunctions do
     end
   end
 
-  defp to_bq_interval_token(interval) do
+  def to_bq_interval_token(interval) do
     case interval do
-      i when i in ~w(second SECOND) -> "SECOND"
-      i when i in ~w(minute MINUTE) -> "MINUTE"
-      i when i in ~w(hour HOUR) -> "HOUR"
-      i when i in ~w(day DAY) -> "DAY"
-      i when i in ~w(week WEEK) -> "WEEK"
-      i when i in ~w(month MONTH) -> "MONTH"
+      i when i in ~w(second SECOND) when i in ~w(seconds second)a -> "SECOND"
+      i when i in ~w(minute MINUTE) when i in ~w(minutes minute)a -> "MINUTE"
+      i when i in ~w(hour HOUR) when i in ~w(hours hour)a -> "HOUR"
+      i when i in ~w(day DAY) when i in ~w(days day)a -> "DAY"
+      i when i in ~w(week WEEK) when i in ~w(weeks week)a -> "WEEK"
+      i when i in ~w(month MONTH) when i in ~w(months month)a -> "MONTH"
     end
   end
 end

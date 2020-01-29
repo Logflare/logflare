@@ -3,7 +3,7 @@ defmodule Logflare.EctoQueryBQ.SQL do
   alias Logflare.Repo
   alias Logflare.Logs.BigQuery.SearchParamTypes
 
-  def to_sql(query) do
+  def to_sql_params(query) do
     {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, query)
 
     sql = pg_sql_to_bq_sql(sql)
@@ -37,6 +37,24 @@ defmodule Logflare.EctoQueryBQ.SQL do
         %Date{} -> to_string(param)
         param -> param
       end
+
+  def sql_params_to_sql({sql, params}) do
+    Enum.reduce(params, sql, fn param, sql ->
+      type = param.parameterType.type
+      value = param.parameterValue.value
+
+      case type do
+        "STRING" ->
+          String.replace(sql, "?", "'#{value}'", global: false)
+
+        num when num in ~w(INTEGER FLOAT) ->
+          String.replace(sql, "?", inspect(value), global: false)
+
+        _ ->
+          String.replace(sql, "?", inspect(value), global: false)
+      end
+    end)
+  end
 
     %Param{
       parameterType: %Type{type: SearchParamTypes.to_schema_type(param)},
