@@ -311,4 +311,35 @@ defmodule Logflare.Google.BigQuery do
     |> Api.Datasets.bigquery_datasets_delete(project_id, dataset_id, deleteContents: true)
     |> maybe_parse_google_api_result()
   end
+
+  def query(%Model.QueryRequest{} = body, opts \\ []) do
+    project_id = opts[:project_id] || @project_id
+    use_query_cache = opts[:use_query_cache]
+    conn = GenUtils.get_conn()
+
+    conn
+    |> Api.Jobs.bigquery_jobs_query(
+      project_id,
+      body: body
+    )
+    |> maybe_parse_google_api_result()
+  end
+
+  def sql_query_with_cache(sql, params \\ [], opts \\ []) when is_binary(sql) do
+    project_id = opts[:project_id] || @project_id
+    conn = GenUtils.get_conn()
+
+    conn
+    |> Api.Jobs.bigquery_jobs_query(
+      project_id,
+      body: %Model.QueryRequest{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: true,
+        parameterMode: "NAMED",
+        queryParameters: params
+      }
+    )
+    |> maybe_parse_google_api_result()
+  end
 end

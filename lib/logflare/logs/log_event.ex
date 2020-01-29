@@ -35,9 +35,12 @@ defmodule Logflare.LogEvent do
   end
 
   def mapper(params) do
-    message = params["log_entry"] || params["message"] || params["event_message"]
-    metadata = params["metadata"]
-    id = params["id"]
+    message =
+      params["log_entry"] || params["message"] || params["event_message"] ||
+        params[:event_message]
+
+    metadata = params["metadata"] || params[:metadata]
+    id = params["id"] || params[:id]
 
     timestamp =
       case params["timestamp"] do
@@ -67,7 +70,7 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: _source}) do
     params =
       params
-      |> Map.update("metadata", %{}, fn metadata ->
+      |> Map.update(:metadata, %{}, fn metadata ->
         if metadata == [], do: %{}, else: hd(metadata)
       end)
       |> mapper()

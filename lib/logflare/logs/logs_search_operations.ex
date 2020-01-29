@@ -12,6 +12,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
 
+  alias Logflare.Ecto.BQQueryAPI
   use Logflare.GenDecorators
   @decorate_all pass_through_on_error_field()
 
@@ -30,11 +31,12 @@ defmodule Logflare.Logs.SearchOperations do
 
     typedstruct do
       field :source, Source.t()
-      field :querystring, String.t()
+      field :querystring, String.t(), enforce: true
       field :query, Ecto.Query.t()
       field :query_result, term()
       field :sql_params, {term(), term()}
-      field :tailing?, boolean
+      field :sql_string, String.t()
+      field :tailing?, boolean, enforce: true
       field :tailing_initial?, boolean
       field :rows, [map()], default: []
       field :filter_rules, [map()], default: []
@@ -43,9 +45,10 @@ defmodule Logflare.Logs.SearchOperations do
       field :stats, :map
       field :use_local_time, boolean
       field :user_local_timezone, String.t()
-      field :chart_period, atom()
-      field :chart_aggregate, atom(), default: :avg
+      field :chart_period, atom(), default: :minute, enforce: true
+      field :chart_aggregate, atom(), default: :count, enforce: true
       field :timestamp_truncator, term()
+      field :type, :events | :aggregates
     end
   end
 
@@ -53,10 +56,6 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
-    %SO{source: %Source{token: source_id}} = so
-    project_id = GenUtils.get_project_id(source_id)
-    conn = GenUtils.get_conn()
-
     {sql, params} = so.sql_params
 
     query_request = %QueryRequest{
@@ -71,34 +70,27 @@ defmodule Logflare.Logs.SearchOperations do
 
     dry_run = %{query_request | dryRun: true}
 
-    result =
-      Api.Jobs.bigquery_jobs_query(
-        conn,
-        project_id,
-        body: dry_run
-      )
-
-    with {:ok, response} <- result,
+    with {:ok, response} <- BigQuery.query(dry_run),
          is_within_limit? =
            String.to_integer(response.totalBytesProcessed) <= @default_processed_bytes_limit,
-         {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?} do
-      Api.Jobs.bigquery_jobs_query(
-        conn,
-        project_id,
-        body: query_request
-      )
+         {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
+         {:ok, result} = BigQuery.query(query_request) do
+      result
+      |> Map.update(:totalBytesProcessed, 0, &Utils.maybe_string_to_integer/1)
+      |> Map.update(:totalRows, 0, &Utils.maybe_string_to_integer/1)
+      |> AtomicMap.convert(%{safe: false})
+      |> Utils.put_result_in(so, :query_result)
     else
       {:total_bytes_processed, false} ->
         {:error,
          "Query halted: total bytes processed for this query is expected to be larger than #{
            div(@default_processed_bytes_limit, 1_000_000_000)
          } GB"}
+        |> Utils.put_result_in(so, :query_result)
 
       errtup ->
-        errtup
+        Utils.put_result_in(errtup, so, :query_result)
     end
-    |> Utils.put_result_in(so, :query_result)
-    |> prepare_query_result()
   end
 
   @spec prepare_query_result(SO.t()) :: SO.t()
@@ -141,7 +133,11 @@ defmodule Logflare.Logs.SearchOperations do
   @spec process_query_result(SO.t()) :: SO.t()
   def process_query_result(%SO{} = so) do
     %{schema: schema, rows: rows} = so.query_result
-    rows = SchemaUtils.merge_rows_with_schema(schema, rows)
+
+    rows =
+      schema
+      |> SchemaUtils.merge_rows_with_schema(rows)
+      |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
 
     %{so | rows: rows}
   end
