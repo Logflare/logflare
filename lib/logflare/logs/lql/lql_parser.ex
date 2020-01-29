@@ -69,10 +69,23 @@ defmodule Logflare.Lql.Parser do
     if type do
       type
     else
-      throw("LQL Parser error: path #{path} not present in source schema.")
+      maybe_this = get_most_similar_path(typemap, path)
+
+      throw(
+        "LQL Parser error: path '#{path}' not present in source schema. Did you mean '#{
+          maybe_this
+        }'?"
+      )
     end
   end
 
+  defp get_most_similar_path(paths, user_path) do
+    paths
+    |> Enum.map(fn {k, _} -> k end)
+    |> Enum.max_by(&String.jaro_distance(&1, user_path))
+  end
+
+  defp maybe_cast_value(%{value: :NULL} = c, _), do: c
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}
 

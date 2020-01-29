@@ -15,12 +15,12 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def quoted_string(path \\ :ignore) when path in [:event_message, :ignore] do
-    ignore(ascii_char([?"]))
+    ignore(string("\""))
     |> repeat_while(
       utf8_char([]),
       {:not_quote, []}
     )
-    |> ignore(ascii_char([?"]))
+    |> ignore(string("\""))
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(:quoted_string)
     |> label("quoted string filter")
@@ -28,7 +28,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def timestamp_clause() do
-    string("timestamp")
+    choice([string("timestamp"), string("t")])
     |> replace({:path, "timestamp"})
     |> concat(operator())
     |> concat(timestamp_value())
@@ -58,7 +58,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def metadata_field do
-    string("metadata")
+    choice([string("metadata"), string("m") |> replace("metadata")])
     |> string(".")
     |> ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
     |> reduce({List, :to_string, []})
@@ -95,6 +95,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     choice([
       range_operator(number()),
       number(),
+      null(),
       quoted_string(),
       ascii_string([?a..?z, ?A..?Z, ?_], min: 1),
       invalid_match_all_value()
@@ -103,8 +104,19 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> label("valid filter value")
   end
 
-  def datetime_abbreviations_choice() do
+  def null() do
+    string("NULL") |> replace(:NULL)
+  end
+
+  def datetime_abbreviations() do
     choice([
+      string("weeks") |> replace(:weeks),
+      string("months") |> replace(:months),
+      string("days") |> replace(:days),
+      string("years") |> replace(:years),
+      string("hours") |> replace(:hours),
+      string("minutes") |> replace(:minutes),
+      string("seconds") |> replace(:seconds),
       string("week") |> replace(:weeks),
       string("month") |> replace(:months),
       string("day") |> replace(:days),
@@ -129,52 +141,59 @@ defmodule Logflare.Lql.Parser.Helpers do
       string("yesterday"),
       string("this")
       |> ignore(string("@"))
-      |> concat(datetime_abbreviations_choice()),
+      |> concat(datetime_abbreviations()),
       string("last")
       |> ignore(string("@"))
-      |> optional(integer(min: 1, max: 3))
-      |> concat(datetime_abbreviations_choice())
+      |> choice([integer(min: 1, max: 4), empty() |> replace(1)])
+      |> concat(datetime_abbreviations())
     ])
     |> reduce(:timestamp_shorthand_to_value)
   end
 
   def timestamp_shorthand_to_value(["now"]), do: %{Timex.now() | microsecond: {0, 0}}
-  def timestamp_shorthand_to_value(["today"]), do: Timex.today()
-  def timestamp_shorthand_to_value(["yesterday"]), do: Timex.today() |> Timex.shift(days: -1)
+
+  def timestamp_shorthand_to_value(["today"]) do
+    dt = Timex.today() |> Timex.to_datetime()
+    {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+  end
+
+  def timestamp_shorthand_to_value(["yesterday"]) do
+    dt = Timex.today() |> Timex.shift(days: -1) |> Timex.to_datetime()
+    {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+  end
 
   def timestamp_shorthand_to_value(["this", period]) do
     now_ndt = %{Timex.now() | microsecond: {0, 0}, second: 0}
+    now_ndt_no_m = %{now_ndt | minute: 0}
+    now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
     case period do
       :minutes ->
         {:range_operator, [now_ndt, now_ndt]}
 
       :hours ->
-        {:range_operator, [%{now_ndt | minute: 0}, now_ndt]}
+        {:range_operator, [now_ndt_no_m, now_ndt]}
 
       :days ->
-        {:range_operator, [%{now_ndt | hour: 0, minute: 0}, now_ndt]}
+        {:range_operator, [now_ndt_no_h, now_ndt]}
 
       :weeks ->
-        {:range_operator,
-         [
-           Timex.beginning_of_week(%{now_ndt | hour: 0, minute: 0}),
-           now_ndt
-         ]}
+        {:range_operator, [Timex.beginning_of_week(now_ndt_no_h), now_ndt]}
 
       :months ->
-        {:range_operator, [Timex.beginning_of_month(%{now_ndt | hour: 0, minute: 0}), now_ndt]}
+        {:range_operator, [Timex.beginning_of_month(now_ndt_no_h), now_ndt]}
 
       :years ->
-        {:range_operator, [Timex.beginning_of_year(%{now_ndt | hour: 0, minute: 0}), now_ndt]}
+        {:range_operator, [Timex.beginning_of_year(now_ndt_no_h), now_ndt]}
     end
   end
 
   def timestamp_shorthand_to_value(["last", amount, period]) do
     amount = -amount
     now_ndt_with_seconds = %{Timex.now() | microsecond: {0, 0}}
-
     now_ndt = %{Timex.now() | microsecond: {0, 0}, second: 0}
+    now_ndt_no_m = %{now_ndt | minute: 0}
+    now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
     case period do
       :seconds ->
@@ -185,32 +204,23 @@ defmodule Logflare.Lql.Parser.Helpers do
         {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
 
       :hours ->
-        {:range_operator, [Timex.shift(%{now_ndt | minute: 0}, [{period, amount}]), now_ndt]}
+        {:range_operator, [Timex.shift(now_ndt_no_m, [{period, amount}]), now_ndt]}
 
       :days ->
-        {:range_operator,
-         [Timex.shift(%{now_ndt | hour: 0, minute: 0}, [{period, amount}]), now_ndt]}
+        {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
 
       :weeks ->
-        {:range_operator,
-         [Timex.shift(%{now_ndt | hour: 0, minute: 0}, [{:days, amount * 7}]), now_ndt]}
+        {:range_operator, [Timex.shift(now_ndt_no_h, [{:days, amount * 7}]), now_ndt]}
 
       :months ->
         {:range_operator,
          [
-           Timex.shift(%{now_ndt | hour: 0, minute: 0, day: 1}, [{period, amount}]),
+           Timex.shift(%{now_ndt_no_h | day: 1}, [{period, amount}]),
            now_ndt
          ]}
 
       :years ->
-        {:range_operator,
-         [
-           Timex.shift(
-             %{now_ndt | hour: 0, minute: 0},
-             [{period, amount}]
-           ),
-           now_ndt
-         ]}
+        {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
     end
   end
 
