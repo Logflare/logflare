@@ -4,6 +4,6 @@
       Use <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> and source <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> to configure log event routing to sinks.
     </div>
   <% end %>
-  <%= text_input @f, :lql_string, value: @lql_string, class: "form-control", disabled: IO.inspect(@loading) %>
+  <%= text_input @f, :lql_string, value: @lql_string, class: "form-control", disabled: @loading %>
   <%= error_tag @f, :lql_string %>
 </div>

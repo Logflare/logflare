@@ -10,24 +10,6 @@ defmodule LogflareWeb.SearchView do
 
   import PhoenixLiveReact, only: [live_react_component: 2]
 
-  def format_sql({sql, params}) do
-    Enum.reduce(params, sql, fn param, sql ->
-      type = param.parameterType.type
-      value = param.parameterValue.value
-
-      case type do
-        "STRING" ->
-          String.replace(sql, "?", "'#{value}'", global: false)
-
-        num when num in ~w(INTEGER FLOAT) ->
-          String.replace(sql, "?", inspect(value), global: false)
-
-        _ ->
-          String.replace(sql, "?", inspect(value), global: false)
-      end
-    end)
-  end
-
   def format_bq_schema(source) do
     bq_schema = Sources.Cache.get_bq_schema(source)
 

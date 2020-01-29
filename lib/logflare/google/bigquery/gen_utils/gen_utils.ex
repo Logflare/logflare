@@ -20,6 +20,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     project_id || @project_id
   end
 
+  @spec get_bq_user_info(atom) :: map
   def get_bq_user_info(source_id) when is_atom(source_id) do
     %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.Cache.get_by_id(source_id)
 

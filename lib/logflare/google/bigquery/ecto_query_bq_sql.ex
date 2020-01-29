@@ -25,6 +25,8 @@ defmodule Logflare.EctoQueryBQ.SQL do
   end
 
   def pg_param_to_bq_param(_pg_sql_param = param) do
+
+  def pg_param_to_bq_param(param) do
     alias GoogleApi.BigQuery.V2.Model
     alias Model.QueryParameter, as: Param
     alias Model.QueryParameterType, as: Type
@@ -37,6 +39,12 @@ defmodule Logflare.EctoQueryBQ.SQL do
         %Date{} -> to_string(param)
         param -> param
       end
+
+    %Param{
+      parameterType: %Type{type: SearchParamTypes.to_schema_type(param)},
+      parameterValue: %Value{value: param}
+    }
+  end
 
   def sql_params_to_sql({sql, params}) do
     Enum.reduce(params, sql, fn param, sql ->
@@ -54,11 +62,5 @@ defmodule Logflare.EctoQueryBQ.SQL do
           String.replace(sql, "?", inspect(value), global: false)
       end
     end)
-  end
-
-    %Param{
-      parameterType: %Type{type: SearchParamTypes.to_schema_type(param)},
-      parameterValue: %Value{value: param}
-    }
   end
 end
