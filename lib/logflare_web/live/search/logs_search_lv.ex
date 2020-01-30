@@ -82,11 +82,11 @@ defmodule LogflareWeb.Source.SearchLV do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
 
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
-
     socket =
-      if prev_assigns.tailing? do
+      if prev_assigns.tailing? and !prev_assigns.tailing_paused? do
+        maybe_cancel_tailing_timer(socket)
+        SearchQueryExecutor.maybe_cancel_query(stoken)
+
         socket
         |> assign(:tailing?, false)
         |> assign(:tailing_paused?, true)
