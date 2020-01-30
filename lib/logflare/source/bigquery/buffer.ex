@@ -47,7 +47,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
     GenServer.call(name(source_id), :pop)
   end
 
-  @spec ack(atom | binary, any) :: any
+  @spec ack(atom(), String.t()) :: {:ok, LE.t()}
   def ack(source_id, log_event_id) do
     GenServer.call(name(source_id), {:ack, log_event_id})
   end

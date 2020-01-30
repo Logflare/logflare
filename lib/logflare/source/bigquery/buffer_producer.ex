@@ -58,9 +58,8 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     end)
 
     Enum.each(unsuccessful, fn %{data: %LE{}} = message ->
-      table
-      |> Buffer.ack(message.data.id)
-      |> Buffer.push()
+      {:ok, le} = Buffer.ack(table, message.data.id)
+      Buffer.push(le)
     end)
   end
 
