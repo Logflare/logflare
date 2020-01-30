@@ -4,22 +4,25 @@ defmodule Logflare.Logs.SearchQueries do
   import Logflare.EctoBigQueryFunctions
   @chart_periods ~w(day hour minute second)a
 
-  def limit_aggregate_chart_period(query, period) when period in @chart_periods do
-    case period do
-      :day -> limit(query, 30)
-      :hour -> limit(query, 168)
-      :minute -> limit(query, 120)
-      :second -> limit(query, 180)
-    end
+  def select_aggregates(q) do
+    q
+    |> select([t, ts], %{
+      timestamp: fragment("? as timestamp", coalesce(t.timestamp, ts.timestamp)),
+      datetime: fragment("DATETIME(?) AS datetime", coalesce(t.timestamp, ts.timestamp)),
+      value: fragment("? as value", coalesce(t.value, ts.value))
+    })
   end
 
-  def timestamp_truncator(period) when period in @chart_periods do
-    case period do
-      :day -> dynamic([t], bq_timestamp_trunc(t.timestamp, "day"))
-      :hour -> dynamic([t], bq_timestamp_trunc(t.timestamp, "hour"))
-      :minute -> dynamic([t], bq_timestamp_trunc(t.timestamp, "minute"))
-      :second -> dynamic([t], bq_timestamp_trunc(t.timestamp, "second"))
-    end
+  def limit_aggregate_chart_period(query, period) when period in @chart_periods do
+    number =
+      case period do
+        :day -> 30
+        :hour -> 168
+        :minute -> 120
+        :second -> 180
+      end
+
+    limit(query, ^number)
   end
 
   def where_timestamp_tailing(query, min, max) do
