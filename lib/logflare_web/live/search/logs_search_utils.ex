@@ -33,6 +33,7 @@ defmodule Logflare.Logs.Search.Utils do
   def put_result_in(:ok, so, _), do: so
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
+  def put_result_in(value, so, path), do: %{so | path => value}
 
   def maybe_string_to_integer(nil), do: 0
   def maybe_string_to_integer(s) when is_binary(s), do: String.to_integer(s)

@@ -271,7 +271,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Enum.map(fn la ->
         Map.update!(
           la,
-          "timestamp",
+          :timestamp,
           &SearchView.format_timestamp(&1, socket.assigns.user_local_timezone)
         )
       end)

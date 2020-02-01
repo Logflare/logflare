@@ -4,7 +4,7 @@
     <%= if @search_op.sql_params do %>
       <ul class="list-group">
         <li class="list-group-item">
-          <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
+          <pre><code><%= @search_op.sql_string %></code></pre>
         </li>
       </ul>
     <% end %>

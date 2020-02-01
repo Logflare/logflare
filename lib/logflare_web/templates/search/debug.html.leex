@@ -4,7 +4,7 @@
       <% stats = @search_op.stats %>
       <ul class="list-group">
         <li class="list-group-item">
-          <pre><code><%= format_sql(@search_op.sql_params) %></code></pre>
+          <pre><code><%= @search_op.sql_string %></code></pre>
         </li>
       </ul>
       <ul class="list-group list-group-horizontal">

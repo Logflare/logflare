@@ -1,20 +1,23 @@
 defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
+  alias Logflare.Google.BigQuery
   alias Logflare.{Source, Sources, EctoQueryBQ}
   alias Logflare.Lql.Parser
   alias Logflare.Lql
   alias Logflare.Logs.Search.Utils
+  alias Logflare.Lql.{ChartRule, FilterRule}
   import Ecto.Query
   import Logflare.Logs.SearchOperations.Helpers
   import Logflare.Logs.SearchQueries
 
-  alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
 
   alias Logflare.Ecto.BQQueryAPI
+  import BQQueryAPI.UDF
+  import BQQueryAPI
+
   use Logflare.GenDecorators
-  @decorate_all pass_through_on_error_field()
 
   @default_limit 100
   @default_processed_bytes_limit 10_000_000_000
@@ -93,17 +96,6 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  @spec prepare_query_result(SO.t()) :: SO.t()
-  def prepare_query_result(%SO{} = so) do
-    query_result =
-      so.query_result
-      |> Map.update(:totalBytesProcessed, 0, &Utils.maybe_string_to_integer/1)
-      |> Map.update(:totalRows, 0, &Utils.maybe_string_to_integer/1)
-      |> AtomicMap.convert(%{safe: false})
-
-    %{so | query_result: query_result}
-  end
-
   @spec order_by_default(SO.t()) :: SO.t()
   def order_by_default(%SO{} = so) do
     %{so | query: order_by(so.query, desc: :timestamp)}
@@ -142,25 +134,134 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | rows: rows}
   end
 
-  @spec default_from(SO.t()) :: SO.t()
-  def default_from(%SO{} = so) do
-    %{so | query: from(so.source.bq_table_id)}
+  def apply_timestamp_filter_rules(%SO{tailing?: t?, tailing_initial?: ti?, type: :events} = so) do
+    so = %{so | query: from(so.source.bq_table_id)}
+    query = so.query
+
+    utc_today = Date.utc_today()
+    {ts_filters, filters} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+    so = %{so | filter_rules: filters}
+
+    cond do
+      (t? and ti?) || Enum.empty?(ts_filters) ->
+        q =
+          query
+          |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+          |> where(
+            [t, ...],
+            partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
+          )
+
+        %{so | query: q}
+
+      t? and !ti? ->
+        q =
+          query
+          |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+          |> where([t, ...], in_streaming_buffer())
+
+        %{so | query: q}
+
+      not Enum.empty?(ts_filters) ->
+        {min, max} = get_min_max_filter_timestamps(ts_filters)
+
+        q =
+          query
+          |> where([t], partition_time() >= ^min and partition_time() <= ^max)
+          |> or_where([t], in_streaming_buffer())
+          |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+
+        %{so | query: q}
+    end
+  end
+
+  @spec apply_timestamp_filter_rules(SO.t()) :: SO.t()
+  def apply_timestamp_filter_rules(%SO{tailing?: t?, type: :aggregates} = so) do
+    so = %{so | query: from(so.source.bq_table_id)}
+    query = so.query
+
+    {ts_filters, filters} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+    so = %{so | filter_rules: filters}
+
+    [{period, number}] =
+      case so.chart_period do
+        :day -> [days: 31 - 1]
+        :hour -> [hours: 168 - 1]
+        :minute -> [minutes: 120 - 1]
+        :second -> [seconds: 180 - 1]
+      end
+
+    utc_today = Date.utc_today()
+
+    partition_days =
+      case so.chart_period do
+        :day -> 31
+        :hour -> 7
+        :minute -> 1
+        :second -> 1
+      end
+
+    cond do
+      t? ->
+        q =
+          query
+          |> where(
+            [t, ...],
+            t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period)
+          )
+          |> where(
+            [t, ...],
+            partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
+              in_streaming_buffer()
+          )
+
+        %{so | query: q}
+
+      not t? && Enum.empty?(ts_filters) ->
+        q =
+          query
+          |> where(
+            [t, ...],
+            t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period)
+          )
+          |> where(
+            [t, ...],
+            partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
+              in_streaming_buffer()
+          )
+
+        %{so | query: q}
+
+      not Enum.empty?(ts_filters) ->
+        {min, max} = get_min_max_filter_timestamps(ts_filters)
+
+        q =
+          query
+          |> where([t], partition_time() >= ^min and partition_time() <= ^max)
+          |> or_where([t], in_streaming_buffer())
+          |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+
+        %{so | query: q}
+    end
+  end
+
+  def apply_filters(%SO{type: :events, query: q} = so) do
+    q = Lql.EctoHelpers.apply_filter_rules_to_query(q, so.filter_rules)
+
+    %{so | query: q}
   end
 
   @spec apply_to_sql(SO.t()) :: SO.t()
   def apply_to_sql(%SO{} = so) do
-    %{so | sql_params: EctoQueryBQ.SQL.to_sql(so.query)}
-  end
-
-  @spec apply_wheres(SO.t()) :: SO.t()
-  def apply_wheres(%SO{} = so) do
-    %{so | query: Lql.EctoHelpers.apply_filter_rules_to_query(so.query, so.filter_rules)}
+    %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(so.source.token)
+    {sql, params} = EctoQueryBQ.SQL.to_sql_params(so.query)
+    sql_and_params = {EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id), params}
+    sql_with_params_string = EctoQueryBQ.SQL.sql_params_to_sql(sql_and_params)
+    %{so | sql_params: sql_and_params, sql_string: sql_with_params_string}
   end
 
   @spec parse_querystring(SO.t()) :: SO.t()
-  def parse_querystring(%SO{querystring: ""} = so) do
-    so
-  end
+  def parse_querystring(%SO{querystring: ""} = so), do: so
 
   def parse_querystring(%SO{} = so) do
     schema =
@@ -172,71 +273,7 @@ defmodule Logflare.Logs.SearchOperations do
       chart_rules = Lql.Utils.get_chart_rules(lql_rules)
       %{so | filter_rules: filter_rules, chart_rules: chart_rules}
     else
-      err ->
-        Utils.put_result_in(err, so, :filter_rules)
-    end
-  end
-
-  @spec events_partition_or_streaming(SO.t()) :: SO.t()
-  def events_partition_or_streaming(%SO{tailing?: true, tailing_initial?: true} = so) do
-    so
-    |> Map.update!(:query, &where_default_tailing_events_partition/1)
-    |> drop_timestamp_filter_rules
-  end
-
-  def events_partition_or_streaming(%SO{tailing?: true} = so) do
-    so
-    |> Map.update!(:query, &where_streaming_buffer/1)
-    |> drop_timestamp_filter_rules
-  end
-
-  def events_partition_or_streaming(%SO{} = so) do
-    partition_filter_rules =
-      for %{path: "timestamp", operator: op, value: v} <- so.filter_rules do
-        op =
-          case op do
-            :> -> :>=
-            :< -> :<=
-            :<= -> :<=
-            :>= -> :>=
-          end
-
-        %{path: "_PARTITIONDATE", operator: op, value: Timex.to_date(v)}
-      end
-
-    %{so | filter_rules: so.filter_rules ++ partition_filter_rules}
-  end
-
-  @spec drop_timestamp_filter_rules(SO.t()) :: SO.t()
-  def drop_timestamp_filter_rules(%SO{} = so) do
-    %{so | filter_rules: Enum.reject(so.filter_rules, &(&1.path === "timestamp"))}
-  end
-
-  @spec verify_path_in_schema(SO.t()) :: SO.t()
-  def verify_path_in_schema(%SO{} = so) do
-    flatmap =
-      so.source
-      |> Sources.Cache.get_bq_schema()
-      |> Lql.Utils.bq_schema_to_flat_typemap()
-
-    result =
-      Enum.reduce_while(so.filter_rules, :ok, fn %{path: path}, _ ->
-        if path in flatmap do
-          {:cont, :ok}
-        else
-          {:halt, {:error, "#{path} not present in source schema"}}
-        end
-      end)
-
-    so = Utils.put_result_in(result, so)
-
-    if not Enum.empty?(so.chart_rules) && hd(so.chart_rules).path not in flatmap do
-      Utils.put_result_in(
-        {:error, "chart field #{so.chart.path} not present in source schema"},
-        so
-      )
-    else
-      so
+      err -> Utils.put_result_in(err, so, :filter_rules)
     end
   end
 
@@ -273,125 +310,54 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: select(so.query, ^top_level_fields)}
   end
 
-  @spec apply_group_by_timestamp_period(SO.t()) :: SO.t()
-  def apply_group_by_timestamp_period(%SO{} = so) do
-    query = group_by(so.query, 1)
-    %{so | query: query}
-  end
-
-  @spec exclude_limit(SO.t()) :: SO.t()
-  def exclude_limit(%SO{} = so) do
-    %{so | query: Ecto.Query.exclude(so.query, :limit)}
-  end
-
   @spec apply_numeric_aggs(SO.t()) :: SO.t()
-  def apply_numeric_aggs(%SO{chart_rules: [%{value: chart_value}]} = so)
-      when chart_value not in ~w[integer float]a do
-    result =
-      {:error,
-       "Error: can't aggregate on a non-numeric field type '#{chart_value}'. Check the schema for the field used with chart operator."}
+  def apply_numeric_aggs(%SO{chart_rules: [%ChartRule{value_type: vt, path: p}]} = so)
+      when vt not in ~w[integer float]a do
+    msg =
+      "Error: can't aggregate on a non-numeric field type '#{vt}' for path #{p}. Check the source schema for the field used with chart operator."
 
-    Utils.put_result_in(result, so)
+    Utils.put_result_in({:error, msg}, so)
   end
 
-  def apply_numeric_aggs(%SO{query: query, chart_rules: chart = [%{value: chart_value}]} = so)
-      when chart_value in ~w[integer float]a do
-    timestamp_filter_rules = Enum.filter(so.filter_rules, &(&1.path === "timestamp"))
-
-    last_chart_field =
-      so.chart.path
-      |> String.split(".")
-      |> List.last()
-      |> String.to_existing_atom()
-
-    {min, max} =
-      if so.tailing? or Enum.empty?(timestamp_filter_rules) do
-        default_min_max_timestamps_for_chart_period(so.chart_period)
-      else
-        timestamp_filter_rules
-        |> override_min_max_for_open_intervals()
-        |> min_max_timestamps()
-      end
-
-    query =
-      if so.tailing? do
-        query
-        |> where_default_tailing_charts_partition(so.chart_period)
-        |> where_timestamp_tailing(min, max)
-      else
-        query
-        |> where_partitiondate_between(min, max)
-      end
+  def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
+    timestamp_filter_rules = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
+    {min, max} = get_min_max_filter_timestamps(timestamp_filter_rules, so.chart_period)
 
     query =
       query
       |> select_timestamp(so.chart_period)
-      |> Lql.EctoHelpers.apply_filter_rules_to_query(chart)
-      |> limit_aggregate_chart_period(so.chart_period)
-      |> select_agg_value(so.chart_aggregate, last_chart_field)
-      |> order_by([t, ...], desc: 1)
-      |> join_missing_range_timestamps(min, max, so.chart_period)
-      |> select([t, ts], %{
-        timestamp: coalesce(t.timestamp, ts.timestamp),
-        value: coalesce(t.value, ts.value)
-      })
-      |> order_by([t], desc: 1)
-
-    %{so | query: query}
-  end
-
-  def apply_numeric_aggs(%SO{chart_rules: []} = so) do
-    query = so.query
-    timestamp_filter_rules = Enum.filter(so.filter_rules, &(&1.path === "timestamp"))
-
-    {min, max} =
-      if so.tailing? or Enum.empty?(timestamp_filter_rules) do
-        default_min_max_timestamps_for_chart_period(so.chart_period)
-      else
-        timestamp_filter_rules
-        |> override_min_max_for_open_intervals()
-        |> min_max_timestamps()
-      end
+      |> group_by(1)
+      |> Lql.EctoHelpers.apply_filter_rules_to_query(so.filter_rules)
 
     query =
-      if so.tailing? do
-        query
-        |> where_default_tailing_charts_partition(so.chart_period)
-        |> where_timestamp_tailing(min, max)
-      else
-        query
-        |> where_partitiondate_between(min, max)
+      case chart_rules do
+        [%{value_type: chart_value, path: chart_path}] when chart_value in [:integer, :float] ->
+          last_chart_field =
+            chart_path
+            |> String.split(".")
+            |> List.last()
+            |> String.to_existing_atom()
+
+          query
+          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, chart_path)
+          |> select_agg_value(so.chart_aggregate, last_chart_field)
+
+        [] ->
+          query
+          |> select_merge([c, ...], %{
+            value: count(c.timestamp)
+          })
+          |> order_by([t, ...], desc: 1)
       end
 
     query =
       query
-      |> select_timestamp(so.chart_period)
-      |> select_merge([c, ...], %{
-        value: count(c.timestamp)
-      })
-      |> order_by([t, ...], desc: 1)
       |> limit_aggregate_chart_period(so.chart_period)
       |> join_missing_range_timestamps(min, max, so.chart_period)
-      |> select([t, ts], %{
-        timestamp: coalesce(t.timestamp, ts.timestamp),
-        value: coalesce(t.value, ts.value)
-      })
-      |> order_by([t], desc: 1)
+      |> select_aggregates
+      |> order_by([t, ...], desc: 1)
 
     %{so | query: query}
-  end
-
-  @spec process_agg_query_result(SO.t()) :: SO.t()
-  def process_agg_query_result(%SO{} = so) do
-    %{schema: schema, rows: rows} = so.query_result
-    rows = SchemaUtils.merge_rows_with_schema(schema, rows)
-
-    rows =
-      rows
-      |> format_agg_row_keys()
-      |> format_agg_row_values()
-
-    %{so | rows: rows}
   end
 
   @spec put_time_stats(SO.t()) :: SO.t()

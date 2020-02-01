@@ -2,7 +2,6 @@ defmodule Logflare.Logs.Search do
   @moduledoc false
 
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
-
   import Logflare.Logs.SearchOperations
 
   def search_and_aggs(%SO{} = so) do
@@ -36,54 +35,40 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_result_aggregates(%SO{} = so) do
-    so
-    |> put_time_stats()
-    |> default_from
-    |> parse_querystring()
-    |> verify_path_in_schema()
-    |> apply_local_timestamp_correction()
-    |> apply_wheres()
-    |> exclude_limit()
-    |> apply_group_by_timestamp_period()
-    |> apply_numeric_aggs()
-    |> apply_to_sql()
-    |> do_query()
-    |> process_agg_query_result()
-    |> put_stats()
-    |> case do
-      %{error: nil} = so ->
-        {:ok, so}
+    so = %{so | type: :aggregates} |> put_time_stats()
 
-      %{error: e} = so when not is_nil(e) ->
-        {:error, so}
+    with %{error: nil} = so <- parse_querystring(so),
+         %{error: nil} = so <- apply_timestamp_filter_rules(so),
+         %{error: nil} = so <- apply_local_timestamp_correction(so),
+         %{error: nil} = so <- apply_numeric_aggs(so),
+         %{error: nil} = so <- apply_to_sql(so),
+         %{error: nil} = so <- do_query(so),
+         %{error: nil} = so <- process_query_result(so),
+         %{error: nil} = so <- put_stats(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
     end
   end
 
-  @spec search_events(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_events(%SO{} = so) do
-    so
-    |> put_time_stats()
-    |> default_from
-    |> parse_querystring()
-    |> verify_path_in_schema()
-    |> apply_local_timestamp_correction()
-    |> events_partition_or_streaming()
-    |> apply_wheres()
-    |> order_by_default()
-    |> apply_limit_to_query()
-    |> apply_select_all_schema()
-    |> apply_to_sql()
-    |> do_query()
-    |> process_query_result()
-    |> put_stats()
-    |> case do
-      %{error: nil} = so ->
-        {:ok, so}
+    so = %{so | type: :events} |> put_time_stats()
 
-      %{error: e} = so when not is_nil(e) ->
-        {:error, so}
+    with %{error: nil} = so <- parse_querystring(so),
+         %{error: nil} = so <- apply_timestamp_filter_rules(so),
+         %{error: nil} = so <- apply_filters(so),
+         %{error: nil} = so <- apply_local_timestamp_correction(so),
+         %{error: nil} = so <- order_by_default(so),
+         %{error: nil} = so <- apply_limit_to_query(so),
+         %{error: nil} = so <- apply_select_all_schema(so),
+         %{error: nil} = so <- apply_to_sql(so),
+         %{error: nil} = so <- do_query(so),
+         %{error: nil} = so <- process_query_result(so),
+         %{error: nil} = so <- put_stats(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
     end
   end
 end
