@@ -5,11 +5,14 @@ defmodule Logflare.Source.BigQuery.Schema do
   require Logger
 
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Source.BigQuery.{SchemaBuilder, UDF}
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Cluster
+  alias Logflare.Google.BigQuery.GenUtils
+  alias GoogleApi.BigQuery.V2.Model
+  alias GoogleApi.BigQuery.V2.Api
 
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
@@ -45,6 +48,8 @@ defmodule Logflare.Source.BigQuery.Schema do
         field_count = count_fields(type_map)
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
+
+        UDF.create_default_udfs_for_user!(state)
 
         {:noreply,
          %{

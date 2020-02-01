@@ -24,7 +24,10 @@ defmodule Logflare.EctoQueryBQ.SQL do
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
 
-  def pg_param_to_bq_param(_pg_sql_param = param) do
+  def substitute_dataset(sql, dataset_id) when is_binary(dataset_id) do
+    sql
+    |> String.replace("$$__DEFAULT_DATASET__$$", "#{dataset_id}")
+  end
 
   def pg_param_to_bq_param(param) do
     alias GoogleApi.BigQuery.V2.Model
