@@ -49,7 +49,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
 
-        UDF.create_default_udfs_for_user!(state)
+        UDF.create_default_udfs_for_user(state)
 
         {:noreply,
          %{
