@@ -7,16 +7,12 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Tracker
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
-  use Placebo
+  alias Logflare.SystemMetricsSup
 
   setup do
     import Logflare.Factory
 
-    allow AllLogsLogged.log_count(any()), return: {:ok, 0}
-    allow AllLogsLogged.incriment(any()), return: :ok
-
-    u1 = insert(:user)
-    u2 = insert(:user)
+    [u1, u2] = insert_list(2, :user)
 
     u1 = Users.preload_defaults(u1)
     u2 = Users.preload_defaults(u2)
@@ -26,11 +22,16 @@ defmodule LogflareWeb.LogControllerTest do
     s = Sources.get_by_and_preload(id: s.id)
 
     Tracker.SourceNodeRates.start_link()
+
+    SystemMetricsSup.start_link()
     Sources.Counters.start_link()
     Sources.RateCounters.start_link()
+
     # {:ok, _} = RLS.start_link(%RLS{source_id: s.token})
+
     Source.RateCounterServer.start_link(%RLS{source_id: s.token})
     SourceBuffer.start_link(%RLS{source_id: s.token})
+
     # Process.sleep(1000)
     # Tracker.Cache.cache_cluster_rates()
 
@@ -104,8 +105,6 @@ defmodule LogflareWeb.LogControllerTest do
           )
 
         assert json_response(conn, 406) == err_message
-        refute_called AllLogsLogged.incriment(any()), once()
-        refute_called AllLogsLogged.log_count(any()), once()
       end
     end
 
@@ -136,8 +135,6 @@ defmodule LogflareWeb.LogControllerTest do
         )
 
       assert json_response(conn, 406) == err_message
-      refute_called AllLogsLogged.incriment(any()), once()
-      refute_called AllLogsLogged.log_count(any()), once()
     end
 
     test "with invalid field types", %{conn: conn, users: [u | _], sources: [s | _]} do
@@ -169,8 +166,6 @@ defmodule LogflareWeb.LogControllerTest do
         )
 
       assert json_response(conn, 406) == err_message
-      refute_called AllLogsLogged.incriment(any()), once()
-      refute_called AllLogsLogged.log_count(any()), once()
     end
 
     test "fails for unauthorized user", %{conn: conn, users: [_u1, u2], sources: [s]} do
@@ -191,8 +186,6 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "/logs/cloudflare POST request succeeds" do
-    setup [:allow_mocks]
-
     test "succeeds with source_name", %{conn: conn, users: [u | _], sources: [s]} do
       conn =
         conn
@@ -229,8 +222,6 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "/logs/elixir/logger POST request succeeds" do
-    setup [:allow_mocks]
-
     test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
       log_params = build_log_params()
 
@@ -245,10 +236,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert SourceBuffer.get_count("#{s.token}") == 3
-
-      # assert_called Sources.Counters.incriment(s.token), times(3)
-      # assert_called Sources.Counters.get_inserts(s.token), times(3)
-      assert_called AllLogsLogged.incriment(any()), times(3)
     end
 
     test "with nil and empty map metadata", %{conn: conn, users: [u | _], sources: [s | _]} do
@@ -267,21 +254,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
-  end
-
-  defp assert_called_modules_from_logs_context(token) do
-    assert_called Sources.Counters.incriment(token), once()
-    assert_called Sources.Counters.get_inserts(token), once()
-    # assert_called SourceBuffer.push("#{token}", any()), once()
-    assert_called AllLogsLogged.incriment(any()), once()
-  end
-
-  defp allow_mocks(_context) do
-    allow Sources.Counters.incriment(any()), return: :ok
-    # allow SourceBuffer.push(any(), any()), return: :ok
-    allow Sources.Counters.get_inserts(any()), return: {:ok, 1}
-    allow AllLogsLogged.incriment(any()), return: :ok
-    :ok
   end
 
   def metadata() do

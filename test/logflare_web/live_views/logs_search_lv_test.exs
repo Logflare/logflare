@@ -47,6 +47,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_search_form_value(html, "#search_chart_period option[selected]") == "second"
       assert find_search_form_value(html, "#search_chart_aggregate option") == "N/A"
       assert find_search_form_value(html, "#search_querystring") == "error crash"
+
       # FIXME?
       # assert find_search_form_value(html, ".tailing_checkbox") == "false"
 

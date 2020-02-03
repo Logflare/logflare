@@ -1,4 +1,5 @@
 defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
+  @moduledoc false
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.Source.BigQuery.SchemaBuilder

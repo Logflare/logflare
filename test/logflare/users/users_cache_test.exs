@@ -12,6 +12,7 @@ defmodule Logflare.Users.CacheTest do
   end
 
   describe "users cache" do
+    @tag :skip
     test "get_by_id/1", %{user: user} do
       u =
         get_by(id: user.id)

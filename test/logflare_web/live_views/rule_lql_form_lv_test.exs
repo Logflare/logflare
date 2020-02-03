@@ -12,25 +12,26 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   import Logflare.Factory
   use Placebo
 
-  setup do
-    user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-    user = Users.get(user.id)
-
-    source = params_for(:source)
-    {:ok, source} = Sources.create_source(source, user)
-
-    {:ok, sink} =
-      :source
-      |> params_for(name: "Sink Source 1")
-      |> Sources.create_source(user)
-
-    {:ok, _} = Sources.Counters.start_link()
-    {:ok, _pid} = RLS.start_link(%RLS{source_id: source.token})
-    Process.sleep(2000)
-    %{sources: [source, sink], user: [user]}
-  end
-
   describe "LQL rules" do
+    setup do
+      user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+      user = Users.get(user.id)
+
+      source = params_for(:source)
+      {:ok, source} = Sources.create_source(source, user)
+
+      {:ok, sink} =
+        :source
+        |> params_for(name: "Sink Source 1")
+        |> Sources.create_source(user)
+
+      {:ok, _} = Sources.Counters.start_link()
+      {:ok, _pid} = RLS.start_link(%RLS{source_id: source.token})
+
+      Process.sleep(2000)
+      %{sources: [source, sink], user: [user]}
+    end
+
     test "mount", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
       conn =
         conn
@@ -83,10 +84,8 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   end
 
   describe "Rule regex to LQL upgrade" do
-    # @describetag :run
     setup do
-      user = insert(:user)
-      user = Users.get(user.id)
+      user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
       source = params_for(:source)
 
@@ -102,13 +101,6 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         regex_struct: Regex.compile!("100"),
         source_id: source.id,
         sink: sink.token
-      })
-
-      Repo.insert(%Rule{
-        regex: "message",
-        regex_struct: Regex.compile!("message"),
-        source_id: 759,
-        sink: :"c9eaee21-24ff-4df7-a4a4-f3f8b3513e9e"
       })
 
       {:ok, sink2} =
@@ -138,7 +130,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
       %{sources: [source, sink, sink2, sink3], user: [user]}
     end
 
-    test "is successfull", %{sources: [source, sink1, sink2, sink3], user: [user]} do
+    test "is successfull", %{sources: [source | _], user: [user]} do
       conn =
         conn
         |> assign(:user, user)
@@ -159,7 +151,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                      modifiers: [],
                      operator: :"~",
                      path: "event_message",
-                     value: "\w+"
+                     value: ~S"\w+"
                    }
                  ],
                  lql_string: ~S|"\w+"|,
@@ -172,7 +164,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                      modifiers: [],
                      operator: :"~",
                      path: "event_message",
-                     value: "\d\d"
+                     value: ~S"\d\d"
                    }
                  ],
                  lql_string: ~S|"\d\d"|,
@@ -188,7 +180,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                      value: "100"
                    }
                  ],
-                 lql_string: ~s|"100"|,
+                 lql_string: ~S|"100"|,
                  regex: "100",
                  regex_struct: ~r/100/
                }

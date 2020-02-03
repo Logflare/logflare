@@ -1,6 +1,7 @@
 defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
   @moduledoc false
   alias Logflare.Sources
+  alias Logflare.Users
   alias Logflare.Lql
   alias Logflare.EctoQueryBQ
   use Logflare.DataCase
@@ -9,7 +10,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
   import Logflare.Factory
 
   setup do
-    u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, user_id: u.id)
     s = Sources.get_by(id: s.id)
     {:ok, sources: [s], users: [u]}
@@ -33,7 +34,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
         |> select([:timestamp, :metadata])
         |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql(q)
+      {sql, params} = EctoQueryBQ.SQL.to_sql_params(q)
 
       assert sql ==
                ~s|
@@ -63,27 +64,29 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
     test "2 and 3 level deep" do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
 
-      filter_rules = [
-        %FilterRule{
-          path: "metadata.user.id",
-          operator: :=,
-          value: 5,
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.datacenter",
-          value: "ne-1",
-          operator: :=,
-          modifiers: []
-        }
-      ]
+      filter_rules =
+        [
+          %FilterRule{
+            path: "metadata.user.id",
+            operator: :=,
+            value: 5,
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.datacenter",
+            value: "ne-1",
+            operator: :=,
+            modifiers: []
+          }
+        ]
+        |> Enum.sort()
 
       q =
         from(bq_table_id)
         |> select([:timestamp, :metadata])
         |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql(q)
+      {sql, params} = EctoQueryBQ.SQL.to_sql_params(q)
 
       assert sql ==
                ~s|
@@ -140,7 +143,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
         |> select([:timestamp, :metadata])
         |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql(q)
+      {sql, params} = EctoQueryBQ.SQL.to_sql_params(q)
 
       assert sql ==
                ~s|
@@ -174,68 +177,70 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
     test "multiple paths with various depth levels" do
       bq_table_id = System.get_env("LOGFLARE_DEV_BQ_TABLE_ID_FOR_TESTING")
 
-      filter_rules = [
-        %FilterRule{
-          path: "metadata.user.address.country",
-          operator: :=,
-          value: "AQ",
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.user.address.city",
-          operator: :=,
-          value: "Aboa",
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.user.rating",
-          operator: :>,
-          value: 100,
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.context.pid",
-          operator: :=,
-          value: "<0.255.0>",
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.user.exceptions",
-          operator: :>=,
-          value: 0,
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.user.variables",
-          operator: :<=,
-          value: 2,
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.user.name",
-          operator: :"~",
-          value: "Neo",
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.datacenter",
-          operator: :=,
-          value: "AWS",
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.user.source_count",
-          operator: :<,
-          value: 10,
-          modifiers: []
-        },
-        %FilterRule{
-          path: "metadata.context.file",
-          operator: :=,
-          value: "lib/bigquery.ex",
-          modifiers: []
-        }
-      ]
+      filter_rules =
+        [
+          %FilterRule{
+            path: "metadata.user.address.country",
+            operator: :=,
+            value: "AQ",
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.user.address.city",
+            operator: :=,
+            value: "Aboa",
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.user.rating",
+            operator: :>,
+            value: 100,
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.context.pid",
+            operator: :=,
+            value: "<0.255.0>",
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.user.exceptions",
+            operator: :>=,
+            value: 0,
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.user.variables",
+            operator: :<=,
+            value: 2,
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.user.name",
+            operator: :"~",
+            value: "Neo",
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.datacenter",
+            operator: :=,
+            value: "AWS",
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.user.source_count",
+            operator: :<,
+            value: 10,
+            modifiers: []
+          },
+          %FilterRule{
+            path: "metadata.context.file",
+            operator: :=,
+            value: "lib/bigquery.ex",
+            modifiers: []
+          }
+        ]
+        |> Enum.sort()
 
       ensure_path_atoms_exist(filter_rules)
 
@@ -244,7 +249,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
         |> select([:timestamp, :metadata])
         |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
 
-      {sql, params} = Logflare.EctoQueryBQ.SQL.to_sql(q)
+      {sql, params} = Logflare.EctoQueryBQ.SQL.to_sql_params(q)
 
       sql ==
         ~s|

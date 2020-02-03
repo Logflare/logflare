@@ -17,6 +17,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
   end
 
   describe "GenServer" do
+    @tag :skip
     test "start_link, push, pop, ack, broadcast", %{sources: [s1 | _], args: rls} do
       sid = s1.token
       {:ok, _pid} = Buffer.start_link(rls)

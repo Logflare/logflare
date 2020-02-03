@@ -5,6 +5,7 @@ defmodule Logflare.Source do
   import Ecto.Changeset
   @default_source_api_quota 50
   @derive {Jason.Encoder, only: [:name, :token, :id]}
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false

@@ -1,6 +1,7 @@
 defmodule Logflare.SourceTest do
   @moduledoc false
   alias Logflare.{Source, Sources}
+  alias Logflare.Google.GCPConfig
   use Logflare.DataCase
 
   describe "Source" do
@@ -12,8 +13,10 @@ defmodule Logflare.SourceTest do
         Sources.get_by(id: s.id)
         |> Sources.preload_defaults()
 
+      dataset_id_append = GCPConfig.dataset_id_append()
+
       assert Source.generate_bq_table_id(s) ==
-               "`logflare-dev-238720`.#{s.user_id}_test.44a6851a_9a6f_49ee_822f_12c6f17bedee"
+               "`logflare-dev-238720`.#{s.user_id}#{dataset_id_append}.44a6851a_9a6f_49ee_822f_12c6f17bedee"
     end
 
     test "generate_bq_table_id/1 with custom bigquery_dataset_id" do
