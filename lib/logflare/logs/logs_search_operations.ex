@@ -319,7 +319,7 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.filter_rules)
-      |> group_by(:timestamp)
+      |> group_by(1)
 
     query =
       case chart_rules do
