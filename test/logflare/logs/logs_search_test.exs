@@ -1,71 +1,200 @@
 defmodule Logflare.Logs.SearchTest do
   @moduledoc false
   alias Logflare.Sources
+  alias Logflare.Users
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Pipeline
-  use Logflare.DataCase
+  alias Logflare.Source.BigQuery.UDF
+  alias Logflare.Google.BigQuery.GenUtils
+  use Logflare.DataCase, async: true
   import Logflare.Factory
   alias Logflare.Source.RecentLogsServer, as: RLS
-  @test_dataset "test_dataset_01"
-  @test_dataset_location "us-east4"
+  @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
-  setup do
-    {:ok, _} = Logflare.Sources.Counters.start_link()
+  setup_all do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(Repo, :auto)
 
-    user =
-      insert(:user,
-        email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"),
-        bigquery_dataset_location: @test_dataset_location,
-        bigquery_dataset_id: @test_dataset
-      )
+    source = Sources.get_by_and_preload(token: @test_token)
+    user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+    Sources.Cache.put_bq_schema(@test_token, table_schema())
 
-    s = insert(:source, user_id: user.id)
-    source = Sources.get_by(id: s.id)
-
-    {:ok, _} = RLS.start_link(%RLS{source_id: source.token})
-
-    les =
-      for x <- 1..5, y <- 100..101 do
-        build(:log_event, message: "x#{x} y#{y}", source: source)
-      end
-
-    bq_rows = Enum.map(les, &Pipeline.le_to_bq_row/1)
-    project_id = GenUtils.get_project_id(source.token)
-
-    case BigQuery.create_dataset(
-           "#{user.id}",
-           @test_dataset,
-           @test_dataset_location,
-           project_id
-         ) do
-      {:ok, _} ->
-        :noop
-
-      {:error, tesla_env} ->
-        if tesla_env.body =~ "Already Exists: Dataset" do
-          :noop
-        else
-          throw(tesla_env)
-        end
-    end
-
-    BigQuery.delete_table(source.token)
-    assert {:ok, table} = BigQuery.create_table(source.token, @test_dataset, project_id, 300_000)
-    assert {:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
+    :ok =
+      source.token
+      |> GenUtils.get_bq_user_info()
+      |> UDF.create_default_udfs_for_user()
 
     {:ok, sources: [source], users: [user]}
   end
 
-  describe "Search" do
-    test "search for source and regex", %{sources: [source | _], users: [_user | _]} do
-      Process.sleep(1_000)
-      search_op = %SO{source: source, querystring: ~S|x[123] \d\d1|}
-      {:ok, %{rows: rows}} = Search.search(search_op)
+  describe "search events" do
+    test "search for source and regex events", %{sources: [source | _], users: [_user | _]} do
+      search_op = %SO{
+        source: source,
+        querystring: ~S|"x[123] \d\d1"|,
+        chart_aggregate: :count,
+        chart_period: :minute,
+        tailing?: false,
+        tailing_initial?: false
+      }
 
-      assert length(rows) == 3
+      {_, %{rows: rows} = so} = Search.search_events(search_op)
+
+      assert so.error == nil
+      assert length(rows) == 0
     end
+  end
+
+  describe "search aggregates" do
+    setup context do
+      [source | _] = context.sources
+
+      so0 = %SO{
+        source: source,
+        querystring: ~S|"x[123] \d\d1"|,
+        chart_aggregate: :count,
+        chart_period: :minute,
+        tailing?: true
+      }
+
+      {:ok, Map.merge(context, %{so: so0})}
+    end
+
+    test "returns correct response shapes", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | chart_period: :second}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert %{timestamp: _, value: _, datetime: _} = hd(rows)
+    end
+
+    test "with default second chart period ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | chart_period: :second}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 180
+    end
+
+    test "with default minute chart period ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = so0
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 120
+
+      # assert length(rows) == [%{}]
+    end
+
+    test "with default hour chart period ", %{sources: [source | _], users: [_user | _], so: so0} do
+      so = %{so0 | chart_period: :hour}
+
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 168
+    end
+
+    test "with default day chart period ", %{sources: [source | _], users: [_user | _], so: so0} do
+      so = %{so0 | chart_period: :day}
+
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+      assert so.error == nil
+
+      assert length(rows) == 31
+      # assert length(rows) == [%{}]
+    end
+
+    test "search aggregates with chart operator", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      # assert length(rows) == [%{}]
+
+      so = %{so0 | chart_period: :minute, querystring: "chart:metadata.int_field_1"}
+
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 120
+    end
+  end
+
+  def table_schema() do
+    %GoogleApi.BigQuery.V2.Model.TableSchema{
+      fields: [
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          categories: nil,
+          description: nil,
+          fields: nil,
+          mode: "NULLABLE",
+          name: "event_message",
+          policyTags: nil,
+          type: "STRING"
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          categories: nil,
+          description: nil,
+          fields: nil,
+          mode: "NULLABLE",
+          name: "id",
+          policyTags: nil,
+          type: "STRING"
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          categories: nil,
+          description: nil,
+          fields: [
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              categories: nil,
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "float_field_1",
+              policyTags: nil,
+              type: "FLOAT"
+            },
+            %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+              categories: nil,
+              description: nil,
+              fields: nil,
+              mode: "NULLABLE",
+              name: "int_field_1",
+              policyTags: nil,
+              type: "INTEGER"
+            }
+          ],
+          mode: "REPEATED",
+          name: "metadata",
+          policyTags: nil,
+          type: "RECORD"
+        },
+        %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+          categories: nil,
+          description: nil,
+          fields: nil,
+          mode: "REQUIRED",
+          name: "timestamp",
+          policyTags: nil,
+          type: "TIMESTAMP"
+        }
+      ]
+    }
   end
 end

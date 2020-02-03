@@ -1,5 +1,6 @@
 import { activateClipboardForSelector } from "./utils"
 import sqlFormatter from "sql-formatter"
+import $ from "jquery"
 
 import idle from "./vendor/idle"
 
@@ -20,6 +21,25 @@ const activateModal = (el, selector) => {
 
   $modal.find(".modal-body").html($(selector).html())
 }
+
+
+const initSearchInViewObserver = (hook) => {
+  const observer = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      let searchInView = entry.isIntersecting
+      if (searchInView) {
+        hook.pushEvent("resume_live_search", {})
+      }
+      else {
+        hook.pushEvent("pause_live_search", {})
+      }
+    })
+  })
+
+  const target = document.querySelector("#search")
+  observer.observe(target)
+}
+
 
 let sourceLogsSearchListLastUpdate
 hooks.SourceLogsSearchList = {
@@ -75,6 +95,8 @@ hooks.SourceLogsSearch = {
   },
 
   mounted() {
+    initSearchInViewObserver(this)
+
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
@@ -87,7 +109,7 @@ hooks.SourceLogsSearch = {
       onIdle: () => {
         const $searchTailingButton = $("#search-tailing-button")
         const $searchTailingCheckbox = $(
-          "input#" + $.escapeSelector("search_tailing?")
+          "input#" + $.escapeSelector("search_tailing?"),
         )
 
         if ($searchTailingCheckbox.prop("value") === "true") {
@@ -112,5 +134,6 @@ hooks.SourceLogsSearch = {
     $("button#search").click()
   },
 }
+
 
 export default hooks

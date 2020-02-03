@@ -1,9 +1,11 @@
 defmodule LogflareWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :logflare
+  @session_options [store: :cookie, key: "_logflare_key", signing_salt: "INPMyhPE"]
 
   socket "/socket", LogflareWeb.UserSocket, websocket: true
 
-  socket "/live", LogflareWeb.LiveView.Socket
+  socket "/live", LogflareWeb.LiveView.Socket,
+    websocket: [connect_info: [session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -37,10 +39,7 @@ defmodule LogflareWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
-  plug Plug.Session,
-    store: :cookie,
-    key: "_logflare_key",
-    signing_salt: "INPMyhPE"
+  plug Plug.Session, @session_options
 
   plug LogflareWeb.Router
 

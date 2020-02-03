@@ -1,9 +1,9 @@
 defmodule Logflare.Contact do
-  use Ecto.Schema
+  use TypedEctoSchema
 
   import Ecto.Changeset
 
-  schema "contact" do
+  typed_schema "contact" do
     field :name, :string
     field :email, :string
     field :subject, :string

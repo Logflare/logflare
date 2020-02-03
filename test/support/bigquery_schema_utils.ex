@@ -6,7 +6,6 @@ defmodule Logflare.Google.BigQuery.TestUtils do
   Utility function for removing everything except schemas names from TableFieldSchema structs
   for easier debugging of errors when not all fields schemas are present in the result
   """
-
   def deep_schema_to_field_names(fields) when is_list(fields) do
     Enum.map(fields, &deep_schema_to_field_names/1)
   end

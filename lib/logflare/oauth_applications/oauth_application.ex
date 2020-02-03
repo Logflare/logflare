@@ -1,8 +1,8 @@
 defmodule Logflare.OauthApplications.OauthApplication do
-  use Ecto.Schema
+  use TypedEctoSchema
   use ExOauth2Provider.Applications.Application, otp_app: :logflare
 
-  schema "oauth_applications" do
+  typed_schema "oauth_applications" do
     application_fields()
 
     timestamps()

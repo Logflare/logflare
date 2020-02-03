@@ -2,7 +2,7 @@ defmodule Logflare.User do
   @moduledoc """
   User schema and changeset
   """
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   @default_user_api_quota 150
 
@@ -13,8 +13,26 @@ defmodule Logflare.User do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
   @default_dataset_location "US"
+  @valid_bq_dataset_locations [
+    "US",
+    "EU",
+    "us-west2",
+    "northamerica-northeast1",
+    "us-east4",
+    "southamerica-east1",
+    "europe-north1",
+    "europe-west2",
+    "europe-west6",
+    "asia-east2",
+    "asia-south1",
+    "asia-northeast2",
+    "asia-east1",
+    "asia-northeast1",
+    "asia-southeast1",
+    "australia-southeast1"
+  ]
 
-  schema "users" do
+  typed_schema "users" do
     field :email, :string
     field :provider, :string
     field :token, :string
@@ -39,30 +57,44 @@ defmodule Logflare.User do
     timestamps()
   end
 
+  @user_allowed_fields [
+    :email,
+    :provider,
+    :email_preferred,
+    :name,
+    :image,
+    :email_me_product,
+    :phone,
+    :bigquery_project_id,
+    :bigquery_dataset_location,
+    :bigquery_dataset_id,
+    :valid_google_account,
+    :provider_uid,
+    :company
+  ]
+
+  @fields @user_allowed_fields ++
+            [
+              :token,
+              :api_key,
+              :old_api_key,
+              :api_quota
+            ]
+
+  @doc """
+  Users are not allowed to modify :token, :admin, :api_quota, :api_key and others
+  """
+  def user_allowed_changeset(user, attrs) do
+    user
+    |> cast(attrs, @user_allowed_fields)
+    |> cast_assoc(:team)
+    |> default_validations(user)
+  end
+
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [
-      :email,
-      :provider,
-      :token,
-      :api_key,
-      :old_api_key,
-      :email_preferred,
-      :name,
-      :image,
-      :email_me_product,
-      # Don't cast this so people can't hack into admin mode
-      # :admin,
-      :phone,
-      :bigquery_project_id,
-      :api_quota,
-      :bigquery_dataset_location,
-      :bigquery_dataset_id,
-      :valid_google_account,
-      :provider_uid,
-      :company
-    ])
+    |> cast(attrs, @fields)
     |> cast_assoc(:team)
     |> default_validations(user)
   end
@@ -117,6 +149,10 @@ defmodule Logflare.User do
   end
 
   def valid_bq_dataset_locations do
-    ~w(US EU us-west2 northamerica-northeast1 us-east4 southamerica-east1 europe-north1 europe-west2 europe-west6 asia-east2 asia-south1 asia-northeast2 asia-east1 asia-northeast1 asia-southeast1 australia-southeast1)
+    @valid_bq_dataset_locations
+  end
+
+  def generate_bq_dataset_id(%__MODULE__{id: id} = _user) do
+    "#{id}" <> @dataset_id_append
   end
 end

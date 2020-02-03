@@ -1,6 +1,8 @@
 defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   @moduledoc false
   use GenServer
+  alias Logflare.Repo
+  alias Logflare.SystemMetric
 
   require Logger
 
@@ -24,7 +26,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   end
 
   def total_logs_logged_cluster() do
-    Logflare.Repo.all(Logflare.SystemMetric)
+    SystemMetric
+    |> Repo.all()
     |> Enum.map(fn x -> x.all_logs_logged end)
     |> Enum.sum()
   end

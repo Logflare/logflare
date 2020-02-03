@@ -1,14 +1,48 @@
 defmodule Logflare.TeamUsersTest do
   use Logflare.DataCase
+  @moduletag :skip
 
   alias Logflare.TeamUsers
 
   describe "team_users" do
     alias Logflare.TeamUsers.TeamUser
 
-    @valid_attrs %{email: "some email", email_me_product: true, email_preferred: "some email_preferred", image: "some image", name: "some name", phone: "some phone", provider: "some provider", provider_uid: "some provider_uid", token: "some token", valid_google_account: true}
-    @update_attrs %{email: "some updated email", email_me_product: false, email_preferred: "some updated email_preferred", image: "some updated image", name: "some updated name", phone: "some updated phone", provider: "some updated provider", provider_uid: "some updated provider_uid", token: "some updated token", valid_google_account: false}
-    @invalid_attrs %{email: nil, email_me_product: nil, email_preferred: nil, image: nil, name: nil, phone: nil, provider: nil, provider_uid: nil, token: nil, valid_google_account: nil}
+    @valid_attrs %{
+      email: "some email",
+      email_me_product: true,
+      email_preferred: "some email_preferred",
+      image: "some image",
+      name: "some name",
+      phone: "some phone",
+      provider: "some provider",
+      provider_uid: "some provider_uid",
+      token: "some token",
+      valid_google_account: true
+    }
+    @update_attrs %{
+      email: "some updated email",
+      email_me_product: false,
+      email_preferred: "some updated email_preferred",
+      image: "some updated image",
+      name: "some updated name",
+      phone: "some updated phone",
+      provider: "some updated provider",
+      provider_uid: "some updated provider_uid",
+      token: "some updated token",
+      valid_google_account: false
+    }
+    @invalid_attrs %{
+      email: nil,
+      email_me_product: nil,
+      email_preferred: nil,
+      image: nil,
+      name: nil,
+      phone: nil,
+      provider: nil,
+      provider_uid: nil,
+      token: nil,
+      valid_google_account: nil
+    }
 
     def team_user_fixture(attrs \\ %{}) do
       {:ok, team_user} =

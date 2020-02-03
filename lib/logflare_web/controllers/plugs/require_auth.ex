@@ -9,7 +9,11 @@ defmodule LogflareWeb.Plugs.RequireAuth do
   def call(conn, _opts) do
     cond do
       conn.assigns[:user] ->
-        conn
+        if is_nil(get_session(conn)[:user_id]) do
+          put_session(conn, :user_id, conn.assigns.user.id)
+        else
+          conn
+        end
 
       conn.request_path == "/oauth/authorize" ->
         conn

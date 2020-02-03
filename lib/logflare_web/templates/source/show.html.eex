@@ -11,7 +11,7 @@
         <li><%= link to: Routes.source_path(@conn, :explore, @source), target: "_blank" do %><i class="fas fa-chart-bar"></i><span class="hide-on-mobile"> explore</span><% end %></li>
         <li><a href="javascript:Source.switchDateFormat();"><span id="swap-date">
               <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i></span> <span class="hide-on-mobile">local time</span></a></li>
-        <li><%= link to: Routes.source_rule_path(@conn, :index, @source) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
+        <li><%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLV, @source.id) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
         <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i><span class="hide-on-mobile"> send more logs</a></span></li>
         <li><%= link to: Routes.source_path(@conn, :clear_logs, @source) do %><i class="fas fa-broom"></i><span class="hide-on-mobile"> clear cache</span><% end %></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>

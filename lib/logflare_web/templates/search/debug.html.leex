@@ -1,0 +1,23 @@
+<%= if @search_op && @search_op.sql_params do %>
+  <div class="d-none" id="<%= @element_id %>">
+    <div>
+      <% stats = @search_op.stats %>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <pre><code><%= @search_op.sql_string %></code></pre>
+        </li>
+      </ul>
+      <ul class="list-group list-group-horizontal">
+        <li class="list-group-item flex-fill">
+          Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
+        </li>
+        <li class="list-group-item flex-fill">
+          Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+<% end %>

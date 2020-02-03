@@ -1,8 +1,8 @@
 defmodule Logflare.SystemMetric do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
-  schema "system_metrics" do
+  typed_schema "system_metrics" do
     field :all_logs_logged, :integer
     field :node, :string
 

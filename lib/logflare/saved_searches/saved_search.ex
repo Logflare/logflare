@@ -1,9 +1,9 @@
 defmodule Logflare.SavedSearch do
-  use Ecto.Schema
+  use TypedEctoSchema
   alias Logflare.Source
   import Ecto.Changeset
 
-  schema "saved_searches" do
+  typed_schema "saved_searches" do
     field :querystring, :string
     belongs_to :source, Source
 

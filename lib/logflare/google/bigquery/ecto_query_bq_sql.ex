@@ -3,7 +3,7 @@ defmodule Logflare.EctoQueryBQ.SQL do
   alias Logflare.Repo
   alias Logflare.Logs.BigQuery.SearchParamTypes
 
-  def to_sql(query) do
+  def to_sql_params(query) do
     {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, query)
 
     sql = pg_sql_to_bq_sql(sql)
@@ -24,7 +24,12 @@ defmodule Logflare.EctoQueryBQ.SQL do
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
 
-  def pg_param_to_bq_param(_pg_sql_param = param) do
+  def substitute_dataset(sql, dataset_id) when is_binary(dataset_id) do
+    sql
+    |> String.replace("$$__DEFAULT_DATASET__$$", "#{dataset_id}")
+  end
+
+  def pg_param_to_bq_param(param) do
     alias GoogleApi.BigQuery.V2.Model
     alias Model.QueryParameter, as: Param
     alias Model.QueryParameterType, as: Type
@@ -42,5 +47,23 @@ defmodule Logflare.EctoQueryBQ.SQL do
       parameterType: %Type{type: SearchParamTypes.to_schema_type(param)},
       parameterValue: %Value{value: param}
     }
+  end
+
+  def sql_params_to_sql({sql, params}) do
+    Enum.reduce(params, sql, fn param, sql ->
+      type = param.parameterType.type
+      value = param.parameterValue.value
+
+      case type do
+        "STRING" ->
+          String.replace(sql, "?", "'#{value}'", global: false)
+
+        num when num in ~w(INTEGER FLOAT) ->
+          String.replace(sql, "?", inspect(value), global: false)
+
+        _ ->
+          String.replace(sql, "?", inspect(value), global: false)
+      end
+    end)
   end
 end

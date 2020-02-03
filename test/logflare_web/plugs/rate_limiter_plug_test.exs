@@ -5,6 +5,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Tracker.SourceNodeRates
   import Logflare.Factory
   use Placebo
 
@@ -16,13 +17,16 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
     s1 = insert(:source, user_id: u1.id)
     s2 = insert(:source, user_id: u2.id)
 
-    u1 = Users.default_preloads(u1)
-    u2 = Users.default_preloads(u2)
+    u1 = Users.preload_defaults(u1)
+    u2 = Users.preload_defaults(u2)
 
     s1 = Sources.get_by(id: s1.id)
     s2 = Sources.get_by(id: s2.id)
+
+    {:ok, _} = SourceNodeRates.start_link()
     {:ok, _} = RateCounterServer.start_link(%RLS{source_id: s1.token})
     {:ok, _} = RateCounterServer.start_link(%RLS{source_id: s2.token})
+    Process.sleep(5_000)
 
     {:ok, users: [u1, u2], sources: [s1, s2]}
   end

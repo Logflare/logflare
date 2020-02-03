@@ -4,6 +4,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   use Placebo
 
   import Logflare.Logs.Validators.BigQuerySchemaChange
+  import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.BigQuery.SchemaBuilder
