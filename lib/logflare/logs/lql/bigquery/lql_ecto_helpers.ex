@@ -1,7 +1,7 @@
 defmodule Logflare.Lql.EctoHelpers do
   @moduledoc false
   import Ecto.Query
-  @top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp)
+  @top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
 
   def apply_filter_rules_to_query(query, rules, _opts \\ [adapter: :bigquery]) do
     {top_level_filters, other_filters} = Enum.split_with(rules, &(&1.path in @top_level))
