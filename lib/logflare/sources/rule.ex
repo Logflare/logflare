@@ -23,12 +23,15 @@ defmodule Logflare.Rule do
     rule
     |> cast(attrs, [:sink, :lql_string, :lql_filters])
     |> validate_required([:sink, :lql_filters, :lql_string])
+    |> validate_length(:lql_filters, min: 1)
+    |> foreign_key_constraint(:source_id)
   end
 
   def regex_changeset(rule, attrs \\ %{}) do
     rule
     |> cast(attrs, [:sink, :regex, :regex_struct])
     |> validate_required([:sink, :regex, :regex_struct])
+    |> foreign_key_constraint(:source_id)
   end
 
   @deprecated "Delete when all source rules are upgraded to LQL"

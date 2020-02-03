@@ -1,23 +1,26 @@
 defmodule Logflare.Rules do
   @moduledoc false
   alias Logflare.Repo
+  alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Rule
+  alias Logflare.Lql
   import Ecto.Query
   require Logger
 
-  def create_rule(params, source) do
-    changeset =
-      source
-      |> Repo.preload([:rules], force: true)
-      |> Ecto.build_assoc(:rules)
-      |> Rule.changeset(params)
+  def create_rule(params, %Source{} = source) do
+    {:ok, bq_schema} = Sources.get_bq_schema(source)
 
-    case Repo.insert(changeset) do
-      {:ok, rule} ->
-        {:ok, rule}
-
+    with {:ok, lql_filters} <- Lql.Parser.parse(params["lql_string"], bq_schema),
+         params = Map.put(params, "lql_filters", lql_filters),
+         {:ok, rule} <- Rule.changeset(%Rule{source_id: source.id}, params) |> Repo.insert() do
+      {:ok, rule}
+    else
       {:error, %Ecto.Changeset{} = changeset} ->
         {:error, changeset}
+
+      errtup ->
+        errtup
     end
   end
 
