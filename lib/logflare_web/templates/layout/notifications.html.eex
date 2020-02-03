@@ -1,5 +1,5 @@
 <%= if @flash.info do %>
-  <div class="message" phx-window-keyup="remove_flash">
+  <div class="message" >
     <div class="inner-message alert alert-info" role="alert">
       <span><%= @flash.info %></span>
       <a href="#" phx-click="remove_flash" phx-value-flash_key="warning">
@@ -15,7 +15,7 @@
   </div>
 <% end %>
 <%= if @flash.error do %>
-  <div class="message" phx-window-keyup="remove_flash">
+  <div class="message" >
     <div class="inner-message alert alert-warning" role="alert">
       <span><%= @flash.error %></span>
       <a href="#" phx-click="remove_flash"
