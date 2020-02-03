@@ -86,12 +86,6 @@ module.exports = {
     new CopyWebpackPlugin([{ from: "static/", to: "../" }]),
     new Webpack.ProvidePlugin({}),
   ],
-  resolve: {
-    alias: {
-      react: path.resolve(__dirname, "./node_modules/react"),
-      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
-    },
-  },
   externals: {
     jquery: "jQuery",
     lodash: "_",
