@@ -216,7 +216,7 @@ defmodule LogflareWeb.Source.SearchLV do
       if use_local_time do
         assign(socket, :user_local_timezone, metadata["user_local_timezone"])
       else
-        assign(socket, :user_local_timezone, "Etc/UTC")
+        socket
       end
 
     {:noreply, socket}
@@ -265,6 +265,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
     log_events = search_result.events.rows
 
+    timezone =
+      if socket.assigns.use_local_time do
+        socket.assigns.user_local_timezone
+      else
+        "Etc/UTC"
+      end
+
     log_aggregates =
       search_result.aggregates.rows
       |> Enum.reverse()
@@ -272,7 +279,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           :timestamp,
-          &SearchView.format_timestamp(&1, socket.assigns.user_local_timezone)
+          &SearchView.format_timestamp(&1, timezone)
         )
       end)
 
