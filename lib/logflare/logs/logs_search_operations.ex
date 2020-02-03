@@ -166,7 +166,9 @@ defmodule Logflare.Logs.SearchOperations do
 
         q =
           query
-          |> where(partition_time() >= ^min and partition_time() <= ^max)
+          |> where(
+            partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
+          )
           |> or_where(in_streaming_buffer())
           |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
 
@@ -228,7 +230,9 @@ defmodule Logflare.Logs.SearchOperations do
 
         q =
           query
-          |> where(partition_time() >= ^min and partition_time() <= ^max)
+          |> where(
+            partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
+          )
           |> or_where(in_streaming_buffer())
           |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
 
