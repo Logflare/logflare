@@ -5,10 +5,10 @@ defmodule LogflareWeb.Source.SearchLV.SearchOpts do
 
   @primary_key false
   typed_embedded_schema do
-    field :tailing?, :boolean, default: nil
+    field :tailing?, :boolean, default: true
     field :querystring, :string, default: "", nil: false
-    field :chart_aggregate, Ecto.Atom, default: nil
-    field :chart_period, Ecto.Atom, default: nil
+    field :chart_aggregate, Ecto.Atom, default: :count
+    field :chart_period, Ecto.Atom, default: :minute
   end
 
   def new(search_opts \\ %{}, params) do

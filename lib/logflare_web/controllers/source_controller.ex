@@ -87,8 +87,8 @@ defmodule LogflareWeb.SourceController do
     render(conn, "new.html", changeset: changeset)
   end
 
-  def create(%{assigns: %{user: user}} = conn, %{"source" => source}) do
-    source
+  def create(%{assigns: %{user: user}} = conn, %{"source" => source_params}) do
+    source_params
     |> Sources.create_source(user)
     |> case do
       {:ok, source} ->

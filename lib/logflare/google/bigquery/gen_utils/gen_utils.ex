@@ -71,8 +71,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec maybe_parse_google_api_result({:ok, any()} | {:error, any()}) ::
           {:ok, any()} | {:error, any()}
+
   def maybe_parse_google_api_result({:error, %Tesla.Env{} = teslaenv}) do
-    {:error, get_tesla_error_message(teslaenv)}
+    {:error, teslaenv}
   end
 
   def maybe_parse_google_api_result(x), do: x

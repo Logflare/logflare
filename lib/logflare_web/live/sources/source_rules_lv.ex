@@ -49,11 +49,12 @@ defmodule LogflareWeb.Sources.RulesLV do
 
   def handle_event("fsubmit", %{"rule" => rule_params}, socket) do
     %{source: source, rules: rules} = socket.assigns
-    {:ok, schema} = Sources.get_bq_schema(source)
+
     lqlstring = rule_params["lql_string"]
 
     socket =
-      with {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
+      with {:ok, schema} <- Sources.get_bq_schema(source),
+           {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
            {:warnings, nil} <-
              {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do
         rule_params = Map.put(rule_params, "lql_filters", lql_rules)

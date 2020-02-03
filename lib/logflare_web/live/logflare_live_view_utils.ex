@@ -14,10 +14,11 @@ defmodule LogflareWeb.LiveViewUtils do
       end
 
       def handle_event("remove_flash" = ev, metadata, socket) do
-        key = String.to_existing_atom(metadata["flash_key"])
+        key = metadata["flash_key"]
 
         socket =
-          if metadata["key"] == "Escape" or is_nil(metadata["code"]) do
+          if key do
+            key = String.to_existing_atom(key)
             socket = assign_flash(socket, key, nil)
           else
             socket

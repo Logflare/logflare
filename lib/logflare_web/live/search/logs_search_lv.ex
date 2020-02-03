@@ -18,29 +18,23 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.{Sources, Users}
   @tail_search_interval 500
   @user_idle_interval 300_000
-  @default_tailing? true
-  @default_chart_aggregate :count
-  @default_chart_period :minute
 
   def render(assigns) do
     SearchView.render("logs_search.html", assigns)
   end
 
-  def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
+  def mount(%{"source_id" => source_id} = params, %{"user_id" => user_id}, socket) do
     source =
       source_id
       |> String.to_integer()
       |> Sources.Cache.get_by_id_and_preload()
 
-    Logger.info(
-      "#{pid_source_to_string(self(), source)} received params after mount... Connected: #{
-        connected?(socket)
-      }"
-    )
-
     user = Users.Cache.get_by_and_preload(id: user_id)
 
     Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
+
+    {:ok, search_opts} = SearchOpts.new(params)
+    chart_aggregate_enabled? = search_opts.querystring =~ ~r/chart:\w+/
 
     socket =
       assign(
@@ -49,26 +43,27 @@ defmodule LogflareWeb.Source.SearchLV do
         log_events: [],
         log_aggregates: [],
         loading: false,
-        tailing?: @default_tailing?,
+        tailing?: search_opts.tailing?,
         tailing_paused?: nil,
         tailing_timer: nil,
         user: user,
         flash: %{},
-        querystring: "",
+        querystring: search_opts.querystring,
         search_op: nil,
         search_op_error: nil,
         search_op_log_events: nil,
         search_op_log_aggregates: nil,
-        chart_period: @default_chart_period,
-        chart_aggregate: @default_chart_aggregate,
+        chart_period: search_opts.chart_period,
+        chart_aggregate: search_opts.chart_aggregate,
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
         active_modal: nil,
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
         use_local_time: true,
-        chart_aggregate_enabled?: false,
-        last_query_completed_at: nil
+        chart_aggregate_enabled?: chart_aggregate_enabled?,
+        last_query_completed_at: nil,
+        chart_bar_data_shape_id: nil
       )
 
     {:ok, socket}

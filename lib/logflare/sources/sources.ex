@@ -16,7 +16,7 @@ defmodule Logflare.Sources do
     |> Repo.insert()
     |> case do
       {:ok, source} ->
-        Source.Supervisor.new_source(source.token) |> IO.inspect()
+        Source.Supervisor.new_source(source.token)
 
         {:ok, source}
 
@@ -177,7 +177,7 @@ defmodule Logflare.Sources do
     %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
   end
 
-  def put_schema_field_count(source) do
+  def put_schema_field_count(%Source{} = source) do
     new_metrics = %{source.metrics | fields: Source.Data.get_schema_field_count(source)}
 
     %{source | metrics: new_metrics}
@@ -186,8 +186,7 @@ defmodule Logflare.Sources do
   def valid_source_token_param?(string) when is_binary(string) do
     case String.length(string) === 36 && Ecto.UUID.cast(string) do
       {:ok, _} -> true
-      false -> false
-      :error -> false
+      _ -> false
     end
   end
 
@@ -206,7 +205,13 @@ defmodule Logflare.Sources do
 
   @spec put_bq_table_schema(Source.t()) :: Source.t()
   def put_bq_table_schema(%Source{} = source) do
-    {:ok, bq_table_schema} = get_bq_schema(source)
+    bq_table_schema =
+      with {:ok, bq_table_schema} <- get_bq_schema(source) do
+        bq_table_schema
+      else
+        {:error, error} -> raise(error)
+      end
+
     %{source | bq_table_schema: bq_table_schema}
   end
 

@@ -124,10 +124,9 @@ defmodule Logflare.Source do
 
     bq_project_id = source.user.bigquery_project_id || default_project_id
 
-    env = Application.get_env(:logflare, :env)
     table = GenUtils.format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}_#{env}"
+    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> @dataset_id_append
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
   end

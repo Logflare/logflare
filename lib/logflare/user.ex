@@ -13,6 +13,24 @@ defmodule Logflare.User do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
   @default_dataset_location "US"
+  @valid_bq_dataset_locations [
+    "US",
+    "EU",
+    "us-west2",
+    "northamerica-northeast1",
+    "us-east4",
+    "southamerica-east1",
+    "europe-north1",
+    "europe-west2",
+    "europe-west6",
+    "asia-east2",
+    "asia-south1",
+    "asia-northeast2",
+    "asia-east1",
+    "asia-northeast1",
+    "asia-southeast1",
+    "australia-southeast1"
+  ]
 
   typed_schema "users" do
     field :email, :string
@@ -131,10 +149,10 @@ defmodule Logflare.User do
   end
 
   def valid_bq_dataset_locations do
-    ~w(US EU us-west2 northamerica-northeast1 us-east4 southamerica-east1 europe-north1 europe-west2 europe-west6 asia-east2 asia-south1 asia-northeast2 asia-east1 asia-northeast1 asia-southeast1 australia-southeast1)
+    @valid_bq_dataset_locations
   end
 
-  def generate_bq_dataset_id(%__MODULE__{id: id} = user) do
+  def generate_bq_dataset_id(%__MODULE__{id: id} = _user) do
     "#{id}" <> @dataset_id_append
   end
 end

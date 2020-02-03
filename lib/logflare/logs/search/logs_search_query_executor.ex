@@ -68,7 +68,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # Callbacks
 
   @impl true
-  def init(args) do
+  def init(%{source_id: source_id} = args) do
+    Logger.debug("SearchQueryExecutor #{name(source_id)} is being initialized...")
     {:ok, Map.merge(args, %{query_tasks: %{}})}
   end
 
