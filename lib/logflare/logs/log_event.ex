@@ -43,7 +43,7 @@ defmodule Logflare.LogEvent do
     id = params["id"] || params[:id]
 
     timestamp =
-      case params["timestamp"] do
+      case params["timestamp"] || params[:timestamp] do
         x when is_binary(x) ->
           {:ok, udt, 0} = DateTime.from_iso8601(x)
           DateTime.to_unix(udt, :microsecond)
@@ -70,8 +70,9 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: _source}) do
     params =
       params
-      |> Map.update(:metadata, %{}, fn metadata ->
-        if metadata == [], do: %{}, else: hd(metadata)
+      |> Map.update(:metadata, %{}, fn
+        [] -> %{}
+        [metadata] -> metadata
       end)
       |> mapper()
 

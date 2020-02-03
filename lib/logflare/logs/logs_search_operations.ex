@@ -148,7 +148,6 @@ defmodule Logflare.Logs.SearchOperations do
           query
           |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
           |> where(
-            [t, ...],
             partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
           )
 
@@ -167,8 +166,8 @@ defmodule Logflare.Logs.SearchOperations do
 
         q =
           query
-          |> where([t], partition_time() >= ^min and partition_time() <= ^max)
-          |> or_where([t], in_streaming_buffer())
+          |> where(partition_time() >= ^min and partition_time() <= ^max)
+          |> or_where(in_streaming_buffer())
           |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
 
         %{so | query: q}
@@ -205,12 +204,8 @@ defmodule Logflare.Logs.SearchOperations do
       t? ->
         q =
           query
+          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period))
           |> where(
-            [t, ...],
-            t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period)
-          )
-          |> where(
-            [t, ...],
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
           )
@@ -220,12 +215,8 @@ defmodule Logflare.Logs.SearchOperations do
       not t? && Enum.empty?(ts_filters) ->
         q =
           query
+          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period))
           |> where(
-            [t, ...],
-            t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period)
-          )
-          |> where(
-            [t, ...],
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
           )
@@ -237,8 +228,8 @@ defmodule Logflare.Logs.SearchOperations do
 
         q =
           query
-          |> where([t], partition_time() >= ^min and partition_time() <= ^max)
-          |> or_where([t], in_streaming_buffer())
+          |> where(partition_time() >= ^min and partition_time() <= ^max)
+          |> or_where(in_streaming_buffer())
           |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
 
         %{so | query: q}
@@ -323,10 +314,10 @@ defmodule Logflare.Logs.SearchOperations do
     timestamp_filter_rules = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
     {min, max} = get_min_max_filter_timestamps(timestamp_filter_rules, so.chart_period)
 
+    query = select_timestamp_trunc(query, so.chart_period)
+
     query =
       query
-      |> select_timestamp(so.chart_period)
-      |> group_by(1)
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.filter_rules)
 
     query =
@@ -344,9 +335,7 @@ defmodule Logflare.Logs.SearchOperations do
 
         [] ->
           query
-          |> select_merge([c, ...], %{
-            value: count(c.timestamp)
-          })
+          |> select_log_count()
           |> order_by([t, ...], desc: 1)
       end
 

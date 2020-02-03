@@ -3,6 +3,7 @@ defmodule Logflare.Logs.SearchQueries do
   import Ecto.Query
   @chart_periods ~w(day hour minute second)a
   alias Logflare.Ecto.BQQueryAPI
+  alias Logflare.Lql
   import BQQueryAPI.UDF
   import BQQueryAPI
 
@@ -32,7 +33,7 @@ defmodule Logflare.Logs.SearchQueries do
   end
 
   def where_streaming_buffer(query) do
-    where(query, [l], in_streaming_buffer())
+    where(query, in_streaming_buffer())
   end
 
   def where_partitiondate_between(query, min, max) do
@@ -47,6 +48,7 @@ defmodule Logflare.Logs.SearchQueries do
     )
   end
 
+  @spec select_agg_value(any, :avg | :count | :sum, any) :: Ecto.Query.t()
   def select_agg_value(query, chart_aggregate, last_chart_field) do
     case chart_aggregate do
       :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
@@ -55,7 +57,12 @@ defmodule Logflare.Logs.SearchQueries do
     end
   end
 
-  def select_timestamp(query, chart_period) do
+  def select_log_count(query) do
+    query
+    |> select_merge([l, ...], %{value: count(l.timestamp)})
+  end
+
+  def select_timestamp_trunc(query, chart_period) do
     select(query, [t, ...], %{
       timestamp: lf_timestamp_trunc(t.timestamp, ^chart_period)
     })
