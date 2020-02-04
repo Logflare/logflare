@@ -39,7 +39,7 @@ defmodule Logflare.LogEvent do
       params["log_entry"] || params["message"] || params["event_message"] ||
         params[:event_message]
 
-    metadata = params["metadata"] || params[:metadata]
+    metadata = params["metadata"] || params[:metadata] || params
     id = params["id"] || params[:id]
 
     timestamp =
@@ -48,9 +48,15 @@ defmodule Logflare.LogEvent do
           {:ok, udt, 0} = DateTime.from_iso8601(x)
           DateTime.to_unix(udt, :microsecond)
 
-        # FIXME: validate that integer is in appropriate range
+        # FIXME: validate that integer is in appropriate range (and length?)
         x when is_integer(x) ->
-          x
+          case Integer.digits(x) |> Enum.count() do
+            16 -> x
+            13 -> x * 1_000
+            10 -> x * 1_000_000
+            7 -> x * 1_000_000_000
+            _ -> x
+          end
 
         nil ->
           System.system_time(:microsecond)

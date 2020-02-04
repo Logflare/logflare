@@ -36,7 +36,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
     api_key =
       conn.req_headers
       |> Enum.into(%{})
-      |> Map.get("x-api-key")
+      |> Map.get("x-api-key") || conn.params["api_key"]
 
     case api_key && Users.Cache.get_by_and_preload(api_key: api_key) do
       %User{} = user ->

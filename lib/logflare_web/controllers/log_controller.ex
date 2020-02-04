@@ -20,6 +20,12 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, conn.assigns.source)
   end
 
+  def zeit_ingest(conn, %{"_json" => batch}) do
+    batch = Logs.Zeit.handle_batch(batch)
+
+    ingest_and_render(conn, batch, conn.assigns.source)
+  end
+
   def ingest_and_render(conn, log_params_batch, source) do
     case Logs.ingest_logs(log_params_batch, source) do
       :ok ->
