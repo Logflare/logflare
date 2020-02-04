@@ -197,6 +197,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:api, :require_api_auth]
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
+    post "/zeit", LogController, :zeit_ingest
     post "/elixir/logger", LogController, :elixir_logger
   end
 end
