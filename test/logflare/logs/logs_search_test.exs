@@ -48,7 +48,7 @@ defmodule Logflare.Logs.SearchTest do
     end
   end
 
-  describe "search aggregates" do
+  describe "search aggregates tailing" do
     setup context do
       [source | _] = context.sources
 
@@ -133,6 +133,58 @@ defmodule Logflare.Logs.SearchTest do
 
       assert so.error == nil
       assert length(rows) == 120
+    end
+  end
+
+  describe "search aggregates tailing false" do
+    setup context do
+      [source | _] = context.sources
+
+      so0 = %SO{
+        source: source,
+        querystring: ~S|"x[123] \d\d1"|,
+        chart_aggregate: :count,
+        chart_period: :minute,
+        tailing?: false
+      }
+
+      {:ok, Map.merge(context, %{so: so0})}
+    end
+
+    test "returns correct response shapes", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | chart_period: :second}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert %{timestamp: _, value: _, datetime: _} = hd(rows)
+    end
+
+    test "with default minute chart period", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:2020-01-01..2020-01-02"}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 60 * 24 * 2
+    end
+
+    test "with default minute chart period 2", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:2020-01-01T00:00:00Z..2020-01-01T15:00:00Z"}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 15 * 60 + 1
     end
   end
 

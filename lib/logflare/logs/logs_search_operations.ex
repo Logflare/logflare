@@ -42,15 +42,14 @@ defmodule Logflare.Logs.SearchOperations do
       field :tailing?, boolean, enforce: true
       field :tailing_initial?, boolean
       field :rows, [map()], default: []
-      field :filter_rules, [map()], default: []
-      field :chart_rules, [map()], default: []
+      field :filter_rules, [FilterRule.t()], default: []
+      field :chart_rules, [ChartRule.t()], default: []
       field :error, term()
       field :stats, :map
       field :use_local_time, boolean
       field :user_local_timezone, String.t()
       field :chart_period, atom(), default: :minute, enforce: true
       field :chart_aggregate, atom(), default: :count, enforce: true
-      field :timestamp_truncator, term()
       field :type, :events | :aggregates
     end
   end
@@ -139,41 +138,34 @@ defmodule Logflare.Logs.SearchOperations do
     query = so.query
 
     utc_today = Date.utc_today()
-    {ts_filters, filters} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
-    so = %{so | filter_rules: filters}
+    ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
 
-    cond do
-      (t? and ti?) || Enum.empty?(ts_filters) ->
-        q =
+    q =
+      cond do
+        (t? and ti?) || Enum.empty?(ts_filters) ->
           query
           |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
           |> where(
             partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
           )
 
-        %{so | query: q}
-
-      t? and !ti? ->
-        q =
+        t? and !ti? ->
           query
           |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
           |> where([t, ...], in_streaming_buffer())
 
-        %{so | query: q}
+        not Enum.empty?(ts_filters) ->
+          {min, max} = get_min_max_filter_timestamps(ts_filters)
 
-      not Enum.empty?(ts_filters) ->
-        {min, max} = get_min_max_filter_timestamps(ts_filters)
-
-        q =
           query
           |> where(
             partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
           )
           |> or_where(in_streaming_buffer())
           |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+      end
 
-        %{so | query: q}
-    end
+    %{so | query: q}
   end
 
   @spec apply_timestamp_filter_rules(SO.t()) :: SO.t()
@@ -181,8 +173,7 @@ defmodule Logflare.Logs.SearchOperations do
     so = %{so | query: from(so.source.bq_table_id)}
     query = so.query
 
-    {ts_filters, filters} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
-    so = %{so | filter_rules: filters}
+    ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
 
     [{period, number}] =
       case so.chart_period do
@@ -202,9 +193,9 @@ defmodule Logflare.Logs.SearchOperations do
         :second -> 1
       end
 
-    cond do
-      t? ->
-        q =
+    q =
+      cond do
+        t? ->
           query
           |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period))
           |> where(
@@ -212,10 +203,7 @@ defmodule Logflare.Logs.SearchOperations do
               in_streaming_buffer()
           )
 
-        %{so | query: q}
-
-      not t? && Enum.empty?(ts_filters) ->
-        q =
+        not t? && Enum.empty?(ts_filters) ->
           query
           |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period))
           |> where(
@@ -223,21 +211,18 @@ defmodule Logflare.Logs.SearchOperations do
               in_streaming_buffer()
           )
 
-        %{so | query: q}
+        not Enum.empty?(ts_filters) ->
+          {min, max} = get_min_max_filter_timestamps(ts_filters)
 
-      not Enum.empty?(ts_filters) ->
-        {min, max} = get_min_max_filter_timestamps(ts_filters)
-
-        q =
           query
           |> where(
             partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
           )
           |> or_where(in_streaming_buffer())
           |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+      end
 
-        %{so | query: q}
-    end
+    %{so | query: q}
   end
 
   def apply_filters(%SO{type: :events, query: q} = so) do
@@ -275,9 +260,9 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
   def apply_local_timestamp_correction(%SO{} = so) do
     filter_rules =
-      Enum.map(so.filter_rules, fn
-        %{path: "timestamp", value: value} = pvo ->
-          if so.user_local_timezone do
+      if so.user_local_timezone do
+        Enum.map(so.filter_rules, fn
+          %{path: "timestamp", value: value} = pvo ->
             value =
               value
               |> Timex.to_datetime(so.user_local_timezone)
@@ -285,11 +270,13 @@ defmodule Logflare.Logs.SearchOperations do
               |> Timex.to_naive_datetime()
 
             %{pvo | value: value}
-          end
 
-        pvo ->
-          pvo
-      end)
+          pvo ->
+            pvo
+        end)
+      else
+        so.filter_rules
+      end
 
     %{so | filter_rules: filter_rules}
   end
@@ -315,14 +302,15 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
-    timestamp_filter_rules = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
-    {min, max} = get_min_max_filter_timestamps(timestamp_filter_rules, so.chart_period)
+    {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+
+    {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
 
     query = select_timestamp_trunc(query, so.chart_period)
 
     query =
       query
-      |> Lql.EctoHelpers.apply_filter_rules_to_query(so.filter_rules)
+      |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
       |> group_by(1)
 
     query =
@@ -346,7 +334,6 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       query
-      |> limit_aggregate_chart_period(so.chart_period)
       |> join_missing_range_timestamps(min, max, so.chart_period)
       |> select_aggregates
       |> order_by([t, ...], desc: 1)
