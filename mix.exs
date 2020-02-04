@@ -119,6 +119,7 @@ defmodule Logflare.Mixfile do
       {:google_api_big_query, "~> 0.32.0"},
 
       # Ecto
+      {:ecto, "~> 3.3", override: true},
       {:ecto_sql, "~> 3.2"},
       {:typed_ecto_schema, "~> 0.1.0"},
 
