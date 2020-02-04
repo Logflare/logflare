@@ -1,0 +1,38 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+       <li></li>
+      </ul>
+    </div>
+    <h5>~/account/billing/edit</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h4 class="header-margin">Billing Account</h4>
+  <p>Setup your billing account.</p>
+
+  <div class="sub-form">
+    <h5 class="header-margin">Pick Your Plan</h5>
+
+    <%= button "This plan", to: "", onclick: "checkout()", class: "btn btn-primary form-button" %>
+  </div>
+</div>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+  function checkout(session_id) {
+
+      var stripe = Stripe('<%= @stripe_key %>');
+
+      stripe.redirectToCheckout({
+          sessionId: '<%= @stripe_session.id %>'
+      }).then(function (result) {
+          // If `redirectToCheckout` fails due to a browser or network
+          // error, display the localized error message to your customer
+          // using `result.error.message`.
+      });
+
+      }
+</script>

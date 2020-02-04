@@ -135,7 +135,10 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_react, "~> 0.2"},
 
       # Dev
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
+
+      # Billing
+      {:stripity_stripe, "~> 2.7.1"}
     ]
   end
 
