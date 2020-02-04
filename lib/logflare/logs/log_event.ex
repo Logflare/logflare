@@ -1,5 +1,5 @@
 defmodule Logflare.LogEvent do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Source
@@ -10,28 +10,21 @@ defmodule Logflare.LogEvent do
 
   defmodule Body do
     @moduledoc false
-    use Ecto.Schema
+    use TypedEctoSchema
 
     @primary_key false
-    embedded_schema do
+    typed_embedded_schema do
       field :metadata, :map, default: %{}
       field :message, :string
       field :timestamp, :integer
       field :created_at, :utc_datetime_usec
     end
-
-    @type t() :: %__MODULE__{
-            metadata: map(),
-            message: String.t(),
-            timestamp: non_neg_integer(),
-            created_at: DateTime.t()
-          }
   end
 
   @primary_key {:id, :binary_id, []}
-  embedded_schema do
+  typed_embedded_schema do
     embeds_one :body, Body
-    field :source, :map
+    embeds_one :source, Source
     field :valid?, :boolean
     field :validation_error, {:array, :string}
     field :ingested_at, :utc_datetime_usec
@@ -41,22 +34,16 @@ defmodule Logflare.LogEvent do
     field :via_rule, :map
   end
 
-  @type t() :: %__MODULE__{
-          valid?: boolean(),
-          validation_error: [String.t()],
-          ingested_at: DateTime.t(),
-          sys_uint: integer(),
-          params: map(),
-          body: Body.t()
-        }
-
   def mapper(params) do
-    message = params["log_entry"] || params["message"] || params["event_message"]
-    metadata = params["metadata"] || params
-    id = params["id"]
+    message =
+      params["log_entry"] || params["message"] || params["event_message"] ||
+        params[:event_message]
+
+    metadata = params["metadata"] || params[:metadata] || params
+    id = params["id"] || params[:id]
 
     timestamp =
-      case params["timestamp"] do
+      case params["timestamp"] || params[:timestamp] do
         x when is_binary(x) ->
           {:ok, udt, 0} = DateTime.from_iso8601(x)
           DateTime.to_unix(udt, :microsecond)
@@ -89,15 +76,17 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: _source}) do
     params =
       params
-      |> Map.update("metadata", %{}, fn metadata ->
-        if metadata == [], do: %{}, else: hd(metadata)
+      |> Map.update(:metadata, %{}, fn
+        [] -> %{}
+        [metadata] -> metadata
       end)
       |> mapper()
 
     changes =
       %__MODULE__{}
-      |> cast(params, [:source, :valid?, :validation_error, :id])
+      |> cast(params, [:valid?, :validation_error, :id])
       |> cast_embed(:body, with: &make_body/2)
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> Map.get(:changes)
 
     body = struct!(Body, changes.body.changes)
@@ -111,23 +100,27 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:source, :valid?, :validation_error])
+      |> cast(mapper(params), [:valid?, :validation_error])
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> cast_embed(:body, with: &make_body/2)
       |> validate_required([:body])
 
     body = struct!(Body, changeset.changes.body.changes)
 
-    __MODULE__
-    |> struct!(changeset.changes)
-    |> Map.put(:body, body)
-    |> Map.put(:validation_error, changeset_error_to_string(changeset))
-    |> Map.put(:source, source)
-    |> Map.put(:origin_source_id, source.token)
-    |> Map.put(:valid?, changeset.valid?)
-    |> Map.put(:params, params)
-    |> Map.put(:ingested_at, NaiveDateTime.utc_now())
-    |> Map.put(:id, Ecto.UUID.generate())
-    |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+    le_map =
+      changeset.changes
+      |> Map.put(:body, body)
+      |> Map.put(:validation_error, changeset_error_to_string(changeset))
+      |> Map.put(:source, source)
+      |> Map.put(:origin_source_id, source.token)
+      |> Map.put(:valid?, changeset.valid?)
+      |> Map.put(:params, params)
+      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
+      |> Map.put(:id, Ecto.UUID.generate())
+      |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+
+    Logflare.LogEvent
+    |> struct!(le_map)
     |> validate()
   end
 

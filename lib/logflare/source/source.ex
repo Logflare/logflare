@@ -1,16 +1,17 @@
 defmodule Logflare.Source do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
   @derive {Jason.Encoder, only: [:name, :token, :id]}
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
-    use Ecto.Schema
+    use TypedEctoSchema
 
-    embedded_schema do
+    typed_embedded_schema do
       field :rate, :integer
       field :latest, :integer
       field :avg, :integer
@@ -67,9 +68,16 @@ defmodule Logflare.Source do
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
+    field :bq_table_schema, :any, virtual: true
+    field :bq_table_typemap, :any, virtual: true
     embeds_one :notifications, Notifications, on_replace: :update
 
     timestamps()
+  end
+
+  def no_casting_changeset(source) do
+    source
+    |> cast(%{}, [])
   end
 
   @doc false
@@ -112,19 +120,14 @@ defmodule Logflare.Source do
     |> unique_constraint(:public_token)
   end
 
-  def put_bq_table_id(%__MODULE__{} = source) do
-    %{source | bq_table_id: generate_bq_table_id(source)}
-  end
-
   def generate_bq_table_id(%__MODULE__{} = source) do
     default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
 
     bq_project_id = source.user.bigquery_project_id || default_project_id
 
-    env = Application.get_env(:logflare, :env)
     table = GenUtils.format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}_#{env}"
+    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> @dataset_id_append
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
   end

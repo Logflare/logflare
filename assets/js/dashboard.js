@@ -39,7 +39,7 @@ function joinSourceChannel(sourceToken, currentNode) {
     .receive("ok", resp => {
       console.log(
         `Dashboard channel for source ${sourceToken} joined successfully on node ${currentNode}`,
-        resp
+        resp,
       )
     })
     .receive("error", resp => {
@@ -50,10 +50,10 @@ function joinSourceChannel(sourceToken, currentNode) {
 
   channel.on(`log_count`, event => {
     $(`${sourceSelector}-latest`).html(
-      timestampNsToAgo(new Date().getTime() * 1000)
+      timestampNsToAgo(new Date().getTime() * 1000),
     )
     $(sourceSelector).html(
-      `<small class="my-badge my-badge-info fade-in">${event.log_count}</small>`
+      `<small class="my-badge my-badge-info fade-in">${event.log_count}</small>`,
     )
   })
 

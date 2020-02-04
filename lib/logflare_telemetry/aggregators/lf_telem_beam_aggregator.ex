@@ -4,10 +4,7 @@ defmodule LogflareTelemetry.Aggregators.V0.BEAM do
   """
   use GenServer
   alias LogflareTelemetry.MetricsCache
-  alias LogflareTelemetry.BQBackend
-  alias Telemetry.Metrics.{Counter, LastValue, Sum}
   alias LogflareTelemetry, as: LT
-  alias LT.LogflareMetrics, as: LM
   alias LT.Aggregators.GenAggregator
   alias LT.Config
 

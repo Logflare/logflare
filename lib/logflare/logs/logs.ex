@@ -7,18 +7,19 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
-  alias Logflare.Rule
+  alias Logflare.Logs.SourceRouting
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
-  def ingest_logs(log_params_batch, %Source{} = source) do
+  def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
     log_params_batch
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
       if le.valid? do
-        ingest_by_source_rules(le)
-        ingest_and_broadcast(le)
+        :ok = SourceRouting.route_to_sinks_and_ingest(le)
+        :ok = ingest(le)
+        :ok = broadcast(le)
       else
-        RejectedLogEvents.ingest(le)
+        :ok = RejectedLogEvents.ingest(le)
       end
 
       le
@@ -36,43 +37,22 @@ defmodule Logflare.Logs do
     end
   end
 
-  @spec ingest_by_source_rules(LE.t()) :: term | :noop
-  defp ingest_by_source_rules(%LE{via_rule: %Rule{} = rule} = le) when not is_nil(rule) do
-    Logger.error(
-      "LogEvent #{le.id} has already been routed using the rule #{rule.id}, can't proceed!"
-    )
-
-    :noop
-  end
-
-  defp ingest_by_source_rules(%LE{source: %Source{} = source, via_rule: nil} = le) do
-    for rule <- source.rules, rule_match?(rule, le.body.message) do
-      sink_source = Sources.Cache.get_by(token: rule.sink)
-
-      if sink_source do
-        ingest_and_broadcast(%{le | source: sink_source, via_rule: rule})
-      else
-        Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
-      end
-    end
-  end
-
-  def rule_match?(%{regex_struct: nil}, _), do: false
-
-  def rule_match?(rule, message), do: Regex.match?(rule.regex_struct, message)
-
-  defp ingest_and_broadcast(%LE{source: %Source{} = source} = le) do
-    source_table_string = Atom.to_string(source.token)
-
+  def ingest(%LE{source: %Source{} = source} = le) do
     # indvididual source genservers
-    RecentLogsServer.push(source.token, le)
-    Buffer.push(source_table_string, le)
+    :ok = RecentLogsServer.push(le)
+    :ok = Buffer.push(le)
 
     # all sources genservers
-    Sources.Counters.incriment(source.token)
-    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+    {:ok, _} = Sources.Counters.incriment(source.token)
+    {:ok, :total_logs_logged} = SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
+    :ok
+  end
+
+  def broadcast(%LE{} = le) do
     # broadcasters
-    Source.ChannelTopics.broadcast_new(le)
+    :ok = Source.ChannelTopics.broadcast_new(le)
+
+    :ok
   end
 end

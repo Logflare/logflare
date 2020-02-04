@@ -44,5 +44,6 @@ gcloud_staging.json
 /.elixir_ls/
 /.idea/
 /assets/.idea
+
 # Project exclude paths
 /cover/

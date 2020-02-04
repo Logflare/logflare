@@ -56,6 +56,11 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, rls, {:continue, :boot}}
   end
 
+  @spec push(atom | String.t() | LE.t()) :: :ok
+  def push(%LE{source: %Source{token: source_id}} = log_event) do
+    GenServer.cast(source_id, {:push, source_id, log_event})
+  end
+
   def push(source_id, %LE{} = log_event) do
     GenServer.cast(source_id, {:push, source_id, log_event})
   end
@@ -118,8 +123,8 @@ defmodule Logflare.Source.RecentLogsServer do
     {:stop, reason, state}
   end
 
-  def handle_info(:broadcast, state) do
-    if Source.Data.get_ets_count(state.source_id) > 0 do
+  def handle_info(:broadcast, %{source_id: source_id} = state) do
+    if Source.Data.get_ets_count(source_id) > 0 do
       {:ok, total_cluster_inserts} = broadcast_count(state)
       broadcast()
       {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
@@ -132,22 +137,19 @@ defmodule Logflare.Source.RecentLogsServer do
   def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
     count = Data.get_ets_count(source_id)
 
-    case count > 100 do
-      true ->
-        for _log <- 101..count do
-          log = :ets.first(source_id)
+    if count > 100 do
+      for _log <- 101..count do
+        log = :ets.first(source_id)
 
-          if :ets.delete(source_id, log) == true do
-            Counters.decriment(source_id)
-          end
-        end
+        :ets.delete(source_id, log)
+        Counters.decriment(source_id)
+      end
 
-        prune()
-        {:noreply, state}
-
-      false ->
-        prune()
-        {:noreply, state}
+      prune()
+      {:noreply, state}
+    else
+      prune()
+      {:noreply, state}
     end
   end
 

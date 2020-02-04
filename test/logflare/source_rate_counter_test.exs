@@ -18,6 +18,7 @@ defmodule Logflare.Source.RateCounterServerTest do
   end
 
   describe "RateCounterServer GenServer" do
+    @tag :skip
     test "broadcast state", %{sources: [s1 | _]} do
       @endpoint.subscribe("dashboard:#{s1.token}")
 
@@ -29,6 +30,7 @@ defmodule Logflare.Source.RateCounterServerTest do
                        1_100
     end
 
+    @tag :skip
     test "handle_info(:put_rate, state)/2", %{sources: [s1 | _]} do
       Sources.Counters.incriment_ets_count(s1.token, 10)
       s1_id = s1.token

@@ -1,6 +1,7 @@
 defmodule Logflare.SourcesCacheTest do
   @moduledoc false
   import Logflare.Sources.Cache
+  alias Logflare.Sources
   use Logflare.DataCase
   import Logflare.Factory
 
@@ -17,7 +18,10 @@ defmodule Logflare.SourcesCacheTest do
 
   describe "source cache" do
     test "get_by_id/1", %{source: source} do
-      left_source = get_by(token: source.token)
+      left_source =
+        get_by(token: source.token)
+        |> Repo.preload(:rules)
+
       assert left_source.id == source.id
       assert left_source.inserted_at == source.inserted_at
       assert is_list(left_source.rules)

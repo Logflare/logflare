@@ -1,0 +1,129 @@
+<div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><a href="javascript:Source.scrollOverflowBottom();">
+            <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
+        <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
+        <li>
+          <a href="#" phx-click="set_local_time"
+            id="set_local_time"
+            phx-value-use_local_time="<%= @use_local_time %>"
+            phx-value-user_local_timezone="<%= @user_local_timezone %>"
+            >
+            <span>
+              <% use_local_time_class = "fa-toggle-" <> if @use_local_time, do: "on", else: "off" %>
+              <i class="fa <%= use_local_time_class %> pointer-cursor" aria-hidden="true"></i>
+            </span>
+            <span class="hide-on-mobile">local time</span>
+          </a>
+        </li>
+        <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
+        <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
+          <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
+        <% else %>
+          <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
+          <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
+        <% end %>
+      </ul>
+    </div>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+  </div>
+</div>
+<div class="container source-logs-search-container console-text">
+  <%= render("logs_list.html",
+     log_events: @log_events,
+     last_query_completed_at: @last_query_completed_at,
+     user_local_timezone: @user_local_timezone,
+     use_local_time: @use_local_time) %>
+  <div>
+    <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
+    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
+  </div>
+  <div class="search-control console-text">
+    <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
+    <div class="form-group">
+      <%= text_input f, :querystring, value: @querystring, class: "form-control", readonly: (if @loading, do: "true"), phx_debounce: "blur" %>
+      <%= if @last_query_completed_at do %>
+        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
+          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0 </span> seconds
+        </small>
+      <% else %>
+        <small class="form-text text-muted">
+          random(tips): <%= @search_tip %>
+        </small>
+      <% end %>
+    </div>
+    <div class="form-row align-items-center">
+      <div class="col-auto mt-2">
+        <%= submit disabled: @loading, id: "search", class: "btn btn-primary btn-sm" do %>
+          <i class="fas fa-search v-align-icon-button"></i> Search
+        <% end %>
+      </div>
+      <div class="col-auto mt-2">
+        <div class="btn-group-toggle">
+          <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
+            <%= if @tailing? do %>
+              <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+            <% else %>
+              <i class="fas fa-play v-align-icon-button"></i>
+            <% end %>
+            Live
+          <% end %>
+          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
+          <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
+        </div>
+      </div>
+      <div class="col-auto mt-2">
+        <a href="#" phx-click="save_search" class="btn btn-primary btn-sm">
+          <i class="fas fa-save v-align-icon-button"></i> Save
+        </a>
+      </div>
+      <div class="col-auto mt-2 hide-on-mobile">
+        Chart period:
+      </div>
+      <div class="col-auto mt-2">
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: @chart_period, class: "form-control form-control-sm" %>
+      </div>
+      <div class="col-auto mt-2 hide-on-mobile">
+        Aggregate:
+      </div>
+      <div class="col-auto mt-2">
+        <%= if @chart_aggregate_enabled? do %>
+          <%= select f,
+         :chart_aggregate,
+          ["sum", "avg", "count"],
+          selected: @chart_aggregate,
+          class: "form-control form-control-sm"
+           %>
+        <% else %>
+          <span class="d-inline-block" tabindex="0"
+          data-toggle="tooltip"
+          title="Chart aggregate setting requires usage of chart: operator"
+          trigger="hover click"
+          delay="100"
+          >
+            <%= select f,
+            :chart_aggregate,
+              ["N/A"],
+              class: "form-control form-control-sm",
+              style: "pointer-events: none;",
+              disabled: true %>
+          </span>
+        <% end %>
+      </div>
+    </div>
+  </form>
+</div>
+<%= render_flash(@flash, in_live_view: true) %>
+<%= live_component @socket, Source.SearchLV.DebugLVC, element_id: "search-query-debug-aggregates", search_op: @search_op_log_aggregates %>
+<%= live_component @socket, Source.SearchLV.DebugLVC, element_id: "search-query-debug-events", search_op: @search_op_log_events %>
+<%= if @search_op_error do %>
+  <%= render "query_debug.html", user: @user, search_op: @search_op_error, element_id: "search-query-debug-error" %>
+<% end %>
+<div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
+<%= if @active_modal do %>
+  <%= live_component @socket, Source.SearchLV.ModalLVC,  active_modal: @active_modal, source: @source, log_events: @log_events %>
+<% end %>
+</div>

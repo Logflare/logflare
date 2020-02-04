@@ -8,6 +8,7 @@ defmodule Logflare.Logs.BigQuery.SearchParamTypes do
   def to_schema_type(value) when is_list(value), do: "ARRAY"
   def to_schema_type(value) when is_float(value), do: "FLOAT"
 
+  def to_schema_type(:NULL), do: "NULL"
   def to_schema_type(:map), do: "RECORD"
   def to_schema_type(:integer), do: "INTEGER"
   def to_schema_type(:string), do: "STRING"

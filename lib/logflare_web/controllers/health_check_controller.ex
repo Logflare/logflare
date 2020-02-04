@@ -3,7 +3,7 @@ defmodule LogflareWeb.HealthCheckController do
 
   alias Logflare.Cluster
 
-  def check(conn, params) do
+  def check(conn, _params) do
     nodes = Cluster.Utils.node_list_all()
     proc_count = Process.list() |> Enum.count()
 

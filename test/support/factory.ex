@@ -8,7 +8,7 @@ defmodule Logflare.Factory do
   def user_factory do
     %User{
       name: "JaneJohn Jones",
-      email: sequence(:email, &"email-#{&1}@example.com"),
+      email: Faker.Internet.email(),
       provider: "google",
       token: Faker.String.base64(64),
       api_key: Faker.String.base64(10),

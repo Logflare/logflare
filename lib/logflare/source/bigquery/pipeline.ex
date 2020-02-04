@@ -37,7 +37,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
-  @spec handle_batch(:bq, list(Broadway.Message.t()), any, RLS.t()) :: any
+  @spec handle_batch(:bq, list(Broadway.Message.t()), any, RLS.t()) :: [Broadway.Message.t()]
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
     stream_batch(context.source_id, messages)
   end
@@ -131,7 +131,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       try do
         schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
-        if same_schemas?(old_schema, schema) == false do
+        if not same_schemas?(old_schema, schema) do
           case BigQuery.patch_table(
                  source_id,
                  schema,

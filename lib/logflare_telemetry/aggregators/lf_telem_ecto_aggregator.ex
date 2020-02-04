@@ -4,7 +4,7 @@ defmodule LogflareTelemetry.Aggregators.V0.Ecto do
   """
   use GenServer
   alias LogflareTelemetry.MetricsCache
-  alias Telemetry.Metrics.{Counter, LastValue, Sum, Summary}
+  alias Telemetry.Metrics.{Summary}
   alias LogflareTelemetry, as: LT
   alias LT.LogflareMetrics
   alias LT.Aggregators.GenAggregator

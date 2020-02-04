@@ -18,4 +18,6 @@ config :logflare, Logflare.Google,
 
 config :logflare, Logflare.Tracker, pool_size: 5
 
+config :floki, :html_parser, Floki.HTMLParser.Html5ever
+
 import_config "test.secret.exs"

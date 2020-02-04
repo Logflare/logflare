@@ -5,7 +5,6 @@ defmodule LogflareTelemetry.Reporters.V0.BEAM do
   use GenServer
   require Logger
   @env Application.get_env(:logflare, :env)
-  alias LogflareTelemetry.Reporters.Gen.V0, as: Reporter
   alias LogflareTelemetry.MetricsCache
   alias LogflareTelemetry, as: LT
   alias LT.ExtendedMetrics, as: ExtMetrics
