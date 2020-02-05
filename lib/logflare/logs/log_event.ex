@@ -39,7 +39,7 @@ defmodule Logflare.LogEvent do
       params["log_entry"] || params["message"] || params["event_message"] ||
         params[:event_message]
 
-    metadata = params["metadata"] || params[:metadata] || params
+    metadata = params["metadata"] || params[:metadata]
     id = params["id"] || params[:id]
 
     timestamp =
