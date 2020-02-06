@@ -49,6 +49,7 @@ defmodule Logflare.User do
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
+    field :bigquery_udfs_hash, :string, null: false
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -78,7 +79,8 @@ defmodule Logflare.User do
               :token,
               :api_key,
               :old_api_key,
-              :api_quota
+              :api_quota,
+              :bigquery_udfs_hash
             ]
 
   @doc """

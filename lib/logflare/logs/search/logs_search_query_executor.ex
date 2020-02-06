@@ -5,6 +5,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.User.BigQueryUDFs
+  alias Logflare.{Users, User}
   require Logger
   @query_timeout 60_000
 
@@ -78,6 +80,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     Logger.info(
       "Starting search query from #{pid_to_string(lv_pid)} for #{params.source.token} source..."
     )
+
+    BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(state.user)
 
     current_lv_task_params = state.query_tasks[lv_pid]
 

@@ -1,4 +1,4 @@
-defmodule Logflare.Source.BigQuery.UDF.SearchFns do
+defmodule Logflare.User.BigQueryUDFs.SearchFns do
   @moduledoc false
 
   def lf_timestamp_sub(bq_dataset_id) do
