@@ -22,6 +22,6 @@ RUN mix local.hex --force
 RUN mix deps.get
 RUN mix compile
 
-RUN cd /logflare/assets && yarn
+RUN cd /logflare/assets && yarn 
 
 WORKDIR /logflare
