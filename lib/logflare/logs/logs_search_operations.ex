@@ -144,6 +144,11 @@ defmodule Logflare.Logs.SearchOperations do
 
     q =
       cond do
+        t? and !ti? ->
+          query
+          |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+          |> where([t, ...], in_streaming_buffer())
+
         (t? and ti?) || Enum.empty?(ts_filters) ->
           query
           |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
