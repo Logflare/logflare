@@ -156,11 +156,6 @@ defmodule Logflare.Logs.SearchOperations do
             partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
           )
 
-        t? and !ti? ->
-          query
-          |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
-          |> where([t, ...], in_streaming_buffer())
-
         not Enum.empty?(ts_filters) ->
           {min, max} = get_min_max_filter_timestamps(ts_filters)
 
@@ -184,10 +179,10 @@ defmodule Logflare.Logs.SearchOperations do
 
     [{period, number}] =
       case so.chart_period do
-        :day -> [days: 31 - 1]
-        :hour -> [hours: 168 - 1]
-        :minute -> [minutes: 120 - 1]
-        :second -> [seconds: 180 - 1]
+        :day -> [days: 31]
+        :hour -> [hours: 168]
+        :minute -> [minutes: 120]
+        :second -> [seconds: 180]
       end
 
     utc_today = Date.utc_today()
