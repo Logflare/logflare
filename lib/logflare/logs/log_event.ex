@@ -45,7 +45,7 @@ defmodule Logflare.LogEvent do
     timestamp =
       case params["timestamp"] || params[:timestamp] do
         x when is_binary(x) ->
-          {:ok, udt, 0} = DateTime.from_iso8601(x)
+          {:ok, udt, _} = DateTime.from_iso8601(x)
           DateTime.to_unix(udt, :microsecond)
 
         # FIXME: validate that integer is in appropriate range (and length?)
