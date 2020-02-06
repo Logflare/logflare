@@ -138,6 +138,8 @@ defmodule Logflare.Logs.SearchOperations do
     query = so.query
 
     utc_today = Date.utc_today()
+    utc_now = DateTime.utc_now()
+
     ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
 
     q =
@@ -184,6 +186,7 @@ defmodule Logflare.Logs.SearchOperations do
       end
 
     utc_today = Date.utc_today()
+    utc_now = DateTime.utc_now()
 
     partition_days =
       case so.chart_period do
@@ -197,11 +200,12 @@ defmodule Logflare.Logs.SearchOperations do
       cond do
         t? ->
           query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period))
+          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^number, ^period))
           |> where(
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
           )
+          |> limit([t], ^number)
 
         not t? && Enum.empty?(ts_filters) ->
           query
@@ -210,6 +214,7 @@ defmodule Logflare.Logs.SearchOperations do
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
           )
+          |> limit([t], ^number)
 
         not Enum.empty?(ts_filters) ->
           {min, max} = get_min_max_filter_timestamps(ts_filters)
