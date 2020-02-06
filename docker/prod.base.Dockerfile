@@ -24,4 +24,7 @@ RUN mix compile
 
 RUN cd /logflare/assets && yarn
 
+RUN mix phx.digest
+RUN mix release --force --overwrite
+
 WORKDIR /logflare
