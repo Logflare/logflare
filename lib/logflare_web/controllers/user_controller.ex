@@ -58,8 +58,8 @@ defmodule LogflareWeb.UserController do
     end)
 
     conn
-    |> put_flash(:info, "Account deleted!")
-    |> redirect(to: Routes.marketing_path(conn, :index))
+    |> configure_session(drop: true)
+    |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
   end
 
   def new_api_key(conn, _params) do

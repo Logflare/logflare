@@ -48,7 +48,7 @@ defmodule LogflareWeb.TeamUserController do
         conn
         |> configure_session(drop: true)
         |> put_flash(:info, "Profile deleted!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        |> redirect(to: Routes.auth_path(conn, :login, team_user_deleted: true))
 
       {:error, changeset} ->
         conn
