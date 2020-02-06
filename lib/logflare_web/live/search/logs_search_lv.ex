@@ -113,11 +113,11 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("form_update" = ev, %{"search" => search}, %{assigns: assigns} = socket) do
-    source = assigns.source
+  def handle_event("form_update" = ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
+    source = prev_assigns.source
     log_lv_received_event(ev, source)
 
-    {:ok, search_opts} = SearchOpts.new(assigns, search)
+    {:ok, search_opts} = SearchOpts.new(prev_assigns, search)
 
     chart_aggregate_enabled? = search_opts.querystring =~ ~r/chart:\w+/
 
@@ -128,7 +128,7 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-    %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = assigns
+    %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = prev_assigns
 
     socket =
       socket
@@ -167,12 +167,12 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("start_search" = ev, metadata, %{assigns: assigns} = socket) do
-    %{id: sid, token: stoken} = assigns.source
-    log_lv_received_event(ev, assigns.source)
+  def handle_event("start_search" = ev, metadata, %{assigns: prev_assigns} = socket) do
+    %{id: sid, token: stoken} = prev_assigns.source
+    log_lv_received_event(ev, prev_assigns.source)
 
     params =
-      socket.assigns
+      prev_assigns
       |> Map.take([:chart_aggregate, :chart_period, :querystring, :tailing?])
 
     maybe_cancel_tailing_timer(socket)
@@ -191,7 +191,7 @@ defmodule LogflareWeb.Source.SearchLV do
         replace: true
       )
 
-    SearchQueryExecutor.maybe_execute_query(stoken, assigns)
+    SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
 
     {:noreply, socket}
   end
