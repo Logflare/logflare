@@ -46,7 +46,7 @@
     <%= error_tag f, :sink %>
   </div>
   <div class="form-group">
-    <%= submit id: :rule, class: "btn btn-primary btn-sm", disabled: has_regex_rules?(@rules) do %>
+    <%= submit id: :rule, class: "btn btn-primary", disabled: has_regex_rules?(@rules) do %>
       Add Rule
     <% end %>
   </div>
