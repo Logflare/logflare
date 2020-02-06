@@ -1,4 +1,4 @@
-FROM elixir:1.9.4
+FROM gcr.io/logflare-staging/logflare_base
 
 COPY ./ /logflare
 WORKDIR /logflare
