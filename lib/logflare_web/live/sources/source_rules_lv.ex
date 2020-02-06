@@ -64,6 +64,7 @@ defmodule LogflareWeb.Sources.RulesLV do
             socket
             |> assign(:has_regex_rules, Rules.has_regex_rules?(source.rules))
             |> assign(:rules, [rule | rules])
+            |> assign_flash(:info, "LQL source routing rule created successfully!")
 
           {:error, changeset} ->
             error_message = Rule.changeset_error_to_string(changeset)
