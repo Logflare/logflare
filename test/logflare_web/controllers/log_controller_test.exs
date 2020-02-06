@@ -256,6 +256,75 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "ZEIT log params ingest" do
+    @describetag :run
+    test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
+      log_param = %{
+        "buildId" => "identifier of build only on build logs",
+        "deploymentId" => "identifier of deployement",
+        "host" => "hostname",
+        "id" => "identifier",
+        "message" => "log message",
+        "path" => "path",
+        "projectId" => "identifier of project",
+        "proxy" => %{
+          "cacheId" => "original request id when request is served from cache",
+          "clientIp" => "client IP",
+          "host" => "hostname",
+          "method" => "method of request",
+          "path" => "path of proxy request",
+          "region" => "region request is processed",
+          "scheme" => "protocol of request",
+          "statusCode" => 200,
+          "timestamp" => 1_580_845_449_483,
+          "userAgent" => nil
+        },
+        "requestId" => "identifier of request only on runtime logs",
+        "source" => "source",
+        "statusCode" => 200,
+        "timestamp" => 1_580_845_449_483
+      }
+
+      build_zeit_log_params = fn log_param ->
+        log_params = %{
+          "_json" => [log_param],
+          "api_key" => "H-a2QUCFTAFR",
+          "source_id" => "9e885e3b-f9c0-4d2f-a30d-b78dfbf2d7ef"
+        }
+      end
+
+      user_agents = [
+        ["One User Agent"],
+        "Two User Agent",
+        ["One User Agent", "Two User Agent"],
+        []
+      ]
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> assign(:source, s)
+
+      for ua <- user_agents do
+        log_params =
+          log_param
+          |> put_in(["proxy", "userAgent"], ua)
+          |> build_zeit_log_params.()
+
+        conn =
+          conn
+          |> post(
+            log_path(conn, :zeit_ingest),
+            log_params
+          )
+
+        assert json_response(conn, 200) == %{"message" => "Logged!"}
+      end
+
+      assert SourceBuffer.get_count("#{s.token}") == 4
+    end
+  end
+
   def metadata() do
     %{
       "datacenter" => "aws",

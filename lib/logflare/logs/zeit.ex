@@ -36,8 +36,12 @@ defmodule Logflare.Logs.Zeit do
 
   defp user_agent_to_string(event) when is_map(event) do
     if event["proxy"]["userAgent"] do
-      [ua] = event["proxy"]["userAgent"]
-      Kernel.put_in(event["proxy"]["userAgent"], ua)
+      ua =
+        event["proxy"]["userAgent"]
+        |> List.wrap()
+        |> Enum.join(",")
+
+      put_in(event["proxy"]["userAgent"], ua)
     else
       event
     end
