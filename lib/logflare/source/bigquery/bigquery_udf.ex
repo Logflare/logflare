@@ -26,14 +26,14 @@ defmodule Logflare.User.BigQueryUDFs do
         })
 
       with {:ok, _} <- result,
-           {:ok, _} <- Users.update_user_all_fields(user, %{bigquery_udfs_hash: new_udfs_hash}) do
+           {:ok, user} <- Users.update_user_all_fields(user, %{bigquery_udfs_hash: new_udfs_hash}) do
         Logger.info(
           "Created BQ UDFs for dataset #{bq_dataset_id} for project #{bq_project_id} for user #{
             user.id
           }"
         )
 
-        :ok
+        {:ok, user}
       else
         {:error, message} ->
           Logger.error(
