@@ -71,9 +71,9 @@ defmodule Logflare.Logs.Zeit do
             |> String.replace(" ", "_")
 
           value =
-            case Integer.parse(v) do
-              {int, _rem} -> int
-              _ -> v
+            case Float.parse(v) do
+              {float, _rem} -> Kernel.round(float)
+              :error -> v
             end
 
           {key, value}
