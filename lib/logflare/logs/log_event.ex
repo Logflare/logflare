@@ -51,6 +51,7 @@ defmodule Logflare.LogEvent do
         # FIXME: validate that integer is in appropriate range (and length?)
         x when is_integer(x) ->
           case Integer.digits(x) |> Enum.count() do
+            19 -> Kernel.round(x / 1_000)
             16 -> x
             13 -> x * 1_000
             10 -> x * 1_000_000
