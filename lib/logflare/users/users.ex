@@ -63,7 +63,7 @@ defmodule Logflare.Users do
         auth_params = Map.put(auth_params, :api_key, api_key)
 
         changeset = User.changeset(%User{}, auth_params)
-        Repo.insert!(changeset)
+        Repo.insert(changeset)
     end
   end
 
