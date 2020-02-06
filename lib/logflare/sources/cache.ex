@@ -20,12 +20,15 @@ defmodule Logflare.Sources.Cache do
     }
   end
 
-  def get_bq_schema(%Source{token: token}) do
-    Cachex.get!(@cache, {{:put_bq_schema, 1}, token})
+  def get_bq_schema(%Source{token: token}), do: do_get_schema(token)
+  def get_bq_schema(source_token) when is_atom(source_token), do: do_get_schema(source_token)
+
+  defp do_get_schema(source_token) do
+    Cachex.get!(@cache, {{:source_bq_schema, 1}, source_token})
   end
 
   def put_bq_schema(source_token, schema) do
-    Cachex.put(@cache, {{:put_bq_schema, 1}, source_token}, schema, ttl: :timer.hours(24 * 365))
+    Cachex.put(@cache, {{:source_bq_schema, 1}, source_token}, schema, ttl: :timer.hours(24 * 365))
   end
 
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])

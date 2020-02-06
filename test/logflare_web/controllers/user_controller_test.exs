@@ -113,7 +113,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       refute conn.assigns[:changeset]
       assert redirected_to(conn, 302) =~ user_path(conn, :edit)
-      assert get_flash(conn, :new_bq_project)
+      # assert get_flash(conn, :new_bq_project)
     end
   end
 

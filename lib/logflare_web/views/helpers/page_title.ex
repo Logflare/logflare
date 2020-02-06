@@ -2,7 +2,7 @@ defmodule LogflareWeb.Helpers.PageTitle do
   alias LogflareWeb.{SourceView}
   # alias LogflareWeb.{SourceView, MarketingView}
 
-  @suffix "Logflare | tail -f cloudflare"
+  @suffix "Logflare | Clouflare, Zeit & Elixir Logging"
 
   def page_title(assigns), do: assigns |> get |> put_suffix
 

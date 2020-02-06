@@ -1,12 +1,13 @@
 defmodule Logflare.Google.BigQuery.PipelineTest do
   @moduledoc false
+  alias Logflare.Users
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.{Sources, LogEvent}
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   use Logflare.DataCase
 
   setup do
-    u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, user_id: u.id)
     s = Sources.get_by(id: s.id)
     {:ok, sources: [s], users: [u]}
@@ -30,7 +31,8 @@ defmodule Logflare.Google.BigQuery.PipelineTest do
                  insertId: le.id,
                  json: %{
                    "event_message" => "valid",
-                   "timestamp" => datetime
+                   "timestamp" => datetime,
+                   "id" => le.id
                  }
                }
 
@@ -49,7 +51,8 @@ defmodule Logflare.Google.BigQuery.PipelineTest do
                  insertId: le.id,
                  json: %{
                    "event_message" => "valid",
-                   "timestamp" => datetime
+                   "timestamp" => datetime,
+                   "id" => le.id
                  }
                }
     end

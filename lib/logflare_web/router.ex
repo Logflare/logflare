@@ -106,9 +106,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
-      post "/rules", RuleController, :create
-      get "/rules", RuleController, :index
-      delete "/rules/:id", RuleController, :delete
+      live "/rules", Sources.RulesLV
       delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
@@ -116,7 +114,7 @@ defmodule LogflareWeb.Router do
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
-    live "/:source_id/search", Source.SearchLV, session: [:user_id]
+    live "/:source_id/search", Source.SearchLV
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
@@ -197,6 +195,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:api, :require_api_auth]
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
+    post "/zeit", LogController, :zeit_ingest
     post "/elixir/logger", LogController, :elixir_logger
   end
 end

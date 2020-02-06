@@ -3,7 +3,7 @@ defmodule LogflareWeb.Helpers.Flash do
   def render_flash(flash, opts \\ [in_live_view: false]) do
     in_live_view = opts[:in_live_view]
 
-    Phoenix.View.render(LogflareWeb.LayoutView, "notifications.html",
+    LogflareWeb.LayoutView.render("notifications.html",
       flash: %{
         error: flash[:error],
         info: flash[:warning]

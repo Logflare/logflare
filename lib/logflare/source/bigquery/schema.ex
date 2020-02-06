@@ -1,15 +1,18 @@
 defmodule Logflare.Source.BigQuery.Schema do
+  @moduledoc false
   use GenServer
 
   require Logger
 
   alias Logflare.Google.BigQuery
-  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Logs
   alias Logflare.Cluster
+  alias Logflare.Google.BigQuery.GenUtils
+  alias GoogleApi.BigQuery.V2.Model
+  alias GoogleApi.BigQuery.V2.Api
 
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
@@ -40,8 +43,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     case BigQuery.get_table(state.source_token) do
       {:ok, table} ->
-        schema = SchemaBuilder.deep_sort_by_fields_name(table.schema)
-        type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(schema)
+        schema = SchemaUtils.deep_sort_by_fields_name(table.schema)
+        type_map = SchemaUtils.to_typemap(schema)
         field_count = count_fields(type_map)
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
@@ -93,8 +96,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_call({:update, schema}, _from, state) do
-    sorted = SchemaBuilder.deep_sort_by_fields_name(schema)
-    type_map = Logs.Validators.BigQuerySchemaChange.to_typemap(sorted)
+    sorted = SchemaUtils.deep_sort_by_fields_name(schema)
+    type_map = SchemaUtils.to_typemap(sorted)
     field_count = count_fields(type_map)
 
     Sources.Cache.put_bq_schema(state.source_token, sorted)

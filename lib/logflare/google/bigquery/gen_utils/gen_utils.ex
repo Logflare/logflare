@@ -3,6 +3,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   Generic utils for BigQuery.
   """
   alias Logflare.{Sources, Users}
+  alias Logflare.{Source, User}
   alias GoogleApi.BigQuery.V2.Connection
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -13,23 +14,23 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
-    %Logflare.Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
-    %Logflare.User{bigquery_project_id: project_id} = Users.Cache.get_by(id: user_id)
+    %Source{user_id: user_id} = Sources.Cache.get_by_id(source_id)
+    %User{bigquery_project_id: project_id} = Users.Cache.get_by(id: user_id)
 
     project_id || @project_id
   end
 
+  @spec get_bq_user_info(atom) :: map
   def get_bq_user_info(source_id) when is_atom(source_id) do
-    %Logflare.User{
+    %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.Cache.get_by_id(source_id)
+
+    %User{
       id: user_id,
-      sources: sources,
+      sources: _sources,
       bigquery_project_id: project_id,
       bigquery_dataset_location: dataset_location,
       bigquery_dataset_id: dataset_id
-    } = Users.get_by_source(source_id)
-
-    %Logflare.Source{bigquery_table_ttl: ttl} =
-      Enum.find(sources, fn x -> x.token == source_id end)
+    } = Users.Cache.get_by(id: user_id)
 
     new_ttl =
       cond do
@@ -68,7 +69,16 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     "#{account_id}"
   end
 
-  @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: any
+  @spec maybe_parse_google_api_result({:ok, any()} | {:error, any()}) ::
+          {:ok, any()} | {:error, any()}
+
+  def maybe_parse_google_api_result({:error, %Tesla.Env{} = teslaenv}) do
+    {:error, teslaenv}
+  end
+
+  def maybe_parse_google_api_result(x), do: x
+
+  @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
     case Jason.decode(message.body) do
       {:ok, message_body} ->

@@ -28,11 +28,26 @@ defmodule Logflare.Users do
   def preload_defaults(user) do
     user
     |> Repo.preload(:sources)
+    |> maybe_preload_bigquery_defaults()
+  end
+
+  def maybe_preload_bigquery_defaults(user) do
+    if is_nil(user.bigquery_dataset_id) do
+      %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}
+    else
+      user
+    end
   end
 
   def get_by_source(source_id) when is_atom(source_id) do
     %Logflare.Source{user_id: user_id} = Sources.get_by(token: source_id)
     Users.get_by_and_preload(id: user_id)
+  end
+
+  def update_user_all_fields(user, params) do
+    user
+    |> User.changeset(params)
+    |> Repo.update()
   end
 
   def insert_or_update_user(auth_params) do

@@ -9,7 +9,8 @@
     Sources are where logs go. You can name your source anything you want. We suggest
     you namespace your sources like <code>YourApp.all</code> which would take all logs.
     <code>YourApp.server-name</code> would take logs from a specific server. <code>YourApp.cloudflare</code>
-    would take all logs from Cloudflare.
+    would take all logs from <%= link "Cloudflare", to: "https://www.cloudflare.com/", target: "_blank" %>.
+    If you're hosted on <%= link "Zeit", to: "https://zeit.co", target: "_blank" %> maybe name it <code>YourApp.zeit</code>.
   </p>
   <%= form_for @changeset, Routes.source_path(@conn, :create), fn f -> %>
     <div class="form-group">
