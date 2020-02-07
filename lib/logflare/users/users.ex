@@ -17,7 +17,10 @@ defmodule Logflare.Users do
   def get_by_and_preload(keyword) do
     User
     |> Repo.get_by(keyword)
-    |> preload_defaults()
+    |> case do
+      %User{} = u -> preload_defaults(u)
+      nil -> nil
+    end
   end
 
   def preload_team(user) do
