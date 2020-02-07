@@ -1,4 +1,4 @@
-import { activateClipboardForSelector } from "./utils"
+import {activateClipboardForSelector} from "./utils"
 import sqlFormatter from "sql-formatter"
 import $ from "jquery"
 
@@ -12,18 +12,8 @@ hooks.SourceSchemaModalTable = {
   },
 }
 
-const activateModal = (el, selector) => {
-  const $modal = $(el)
-  const code = $(`${selector} code`)
-  const fmtSql = sqlFormatter.format(code.text())
-  // replace with formatted sql
-  code.text(fmtSql)
 
-  $modal.find(".modal-body").html($(selector).html())
-}
-
-
-const initSearchInViewObserver = (hook) => {
+const initSearchInViewObserver = hook => {
   const observer = new IntersectionObserver((entries, observer) => {
     entries.forEach(entry => {
       let searchInView = entry.isIntersecting
@@ -40,7 +30,6 @@ const initSearchInViewObserver = (hook) => {
   observer.observe(target)
 }
 
-
 let sourceLogsSearchListLastUpdate
 hooks.SourceLogsSearchList = {
   updated() {
@@ -51,36 +40,49 @@ hooks.SourceLogsSearchList = {
     }
   },
   mounted() {
-    $("html, body").animate({ scrollTop: document.body.scrollHeight })
+    $("html, body").animate({scrollTop: document.body.scrollHeight})
   },
 }
 
-hooks.SourceQueryDebugEventsModal = {
-  updated() {
-    activateModal(this.el, "#search-query-debug-events")
-  },
-  mounted() {
-    activateModal(this.el, "#search-query-debug-events")
-  },
+const formatQueryDebugModal = (el) => {
+  const $modal = $(el)
+  const $code = $modal.find(`code`)
+  const fmtSql = sqlFormatter.format($code.text())
+  // replace with formatted sql
+  $code.text(fmtSql)
+
 }
+const queryDebugModals = ["queryDebugEventsModal", "queryDebugErrorModal", "queryDebugAggregatesModal"]
 
-hooks.SourceQueryDebugAggregatesModal = {
+hooks.ModalHook = {
   updated() {
-    activateModal(this.el, "#search-query-debug-aggregates")
-  },
+    const $el = $(this.el)
 
-  mounted() {
-    activateModal(this.el, "#search-query-debug-aggregates")
-  },
-}
+    if (queryDebugModals.includes($el.attr("id"))) {
+      formatQueryDebugModal(this.el)
+    }
 
-hooks.SourceQueryDebugErrorModal = {
-  updated() {
-    activateModal(this.el, "#search-query-debug-error")
+    $el.find(".modal").modal("dispose")
+    $(".modal-backdrop").remove()
+    $el.find(".modal").modal("show")
   },
   mounted() {
-    activateModal(this.el, "#search-query-debug-error")
+    const $el = $(this.el)
+
+    $el.on("hide.bs.modal", () => {
+      this.pushEvent("deactivate_modal", {})
+    })
+
+    if (queryDebugModals.includes($el.attr("id"))) {
+      formatQueryDebugModal(this.el)
+    }
+
+    $el.find(".modal").modal("show")
   },
+  destroyed() {
+    this.el.find(".modal").modal("dispose")
+    $(".modal-backdrop").remove()
+  }
 }
 
 const setTimezone = () => {
@@ -109,7 +111,7 @@ hooks.SourceLogsSearch = {
       onIdle: () => {
         const $searchTailingButton = $("#search-tailing-button")
         const $searchTailingCheckbox = $(
-          "input#" + $.escapeSelector("search_tailing?"),
+          "input#" + $.escapeSelector("search_tailing?")
         )
 
         if ($searchTailingCheckbox.prop("value") === "true") {
@@ -134,6 +136,5 @@ hooks.SourceLogsSearch = {
     $("button#search").click()
   },
 }
-
 
 export default hooks

@@ -1,5 +1,5 @@
 <%= if @search_op && @search_op.sql_params do %>
-  <div class="d-none" id="<%= @element_id %>">
+  <div class="search-query-debug">
     <div>
       <% stats = @search_op.stats %>
       <ul class="list-group">

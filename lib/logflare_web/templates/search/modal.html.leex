@@ -1,10 +1,10 @@
-<div class="source-logs-search-modals" phx-update="ignore">
-  <div phx-window-keyup="deactivate_modal" class="modal fade show" id="<%= @id %>"" tabindex="-1" role="dialog" aria-labelledby="modal" aria-hidden="true" style="display: block;">
+<div class="source-logs-search-modals" id="<%= @id %>" phx-hook="ModalHook">
+  <div class="modal" tabindex="-1"  role="dialog" aria-labelledby="modal" aria-hidden="true" >
     <div class="modal-dialog modal-xl" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="<%= @id %>"> <%= @title %> </h5>
-          <button type="button" phx-click="deactivate_modal" class="close" aria-label="Close">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
             <span aria-hidden="true">&times;</span>
           </button>
         </div>

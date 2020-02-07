@@ -10,7 +10,7 @@ defmodule LogflareWeb.Sources.RulesLV do
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
   use LogflareWeb.LiveViewUtils
-  use LogflareWeb.ModalHelpersLV
+  use LogflareWeb.ModalsLVHelpers
 
   @lql_dialect :routing
   @lql_string ""

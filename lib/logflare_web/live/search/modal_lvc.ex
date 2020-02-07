@@ -4,6 +4,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   """
   use Phoenix.LiveComponent
   alias LogflareWeb.SearchView
+  alias LogflareWeb.Source
 
   def render(assigns) do
     log_events = assigns[:log_events]
@@ -50,17 +51,18 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
 
       modal
       when modal in ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal) ->
-        {first, rest} = String.split_at(modal, 1)
-        hook = "Source" <> String.capitalize(first) <> rest
+        search_op =
+          case modal do
+            "queryDebugEventsModal" -> assigns.search_op_log_events
+            "queryDebugAggregatesModal" -> assigns.search_op_log_aggregates
+            "queryDebugErrorModal" -> assigns.search_op_error
+          end
 
-        ~L"""
-        <div class="source-logs-search-modals" phx-hook="<%= hook %>">
-          <%= SearchView.render "modal.html",
-            id: modal,
-            title: "Query Debugging",
-            body: "No query or query is still in progress..." %>
-        </div>
-        """
+        SearchView.render("modal.html",
+          id: modal,
+          title: "Query Debugging",
+          body: ~L"<%= live_component(@socket, Source.SearchLV.DebugLVC, search_op: search_op) %>"
+        )
 
       _ ->
         ~L"""
