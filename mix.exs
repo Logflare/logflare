@@ -115,7 +115,7 @@ defmodule Logflare.Mixfile do
       {:observer_cli, "~> 1.5"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.23.0"},
+      {:google_api_cloud_resource_manager, "~> 0.24.0"},
       {:google_api_big_query, "~> 0.32.0"},
 
       # Ecto
