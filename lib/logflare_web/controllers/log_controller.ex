@@ -17,9 +17,16 @@ defmodule LogflareWeb.LogController do
   end
 
   def elixir_logger(conn, %{"batch" => batch}) when is_list(batch) do
-    batch = for log_params <- batch do
-      Map.update(log_params, "metadata", %{}, &Map.drop(&1, ["domain", "gl", "level", "mfa", "time", "report_cb", "error"]))
-    end
+    batch =
+      for log_params <- batch do
+        Map.update(
+          log_params,
+          "metadata",
+          %{},
+          &Map.drop(&1, ["domain", "gl", "mfa", "time", "report_cb", "error"])
+        )
+      end
+
     ingest_and_render(conn, batch, conn.assigns.source)
   end
 
