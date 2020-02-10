@@ -74,6 +74,7 @@ hooks.ModalHook = {
   destroyed() {
     $(".modal").modal("dispose")
     $("body").removeClass("modal-open")
+    $("body").removeAttr("style")
     $(".modal-backdrop").remove()
   },
 }
