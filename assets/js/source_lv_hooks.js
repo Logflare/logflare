@@ -46,7 +46,7 @@ hooks.SourceLogsSearchList = {
 
 const formatModal = $modal => {
   if ($modal.data("modal-type") === "search-op-debug-modal") {
-    const $code = $modal.find(`code`)
+    const $code = $modal.find(`code#search-op-sql-string`)
     const fmtSql = sqlFormatter.format($code.text())
     // replace with formatted sql
     $code.text(fmtSql)
