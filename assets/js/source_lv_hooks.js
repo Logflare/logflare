@@ -44,43 +44,33 @@ hooks.SourceLogsSearchList = {
   },
 }
 
-const formatQueryDebugModal = (el) => {
-  const $modal = $(el)
-  const $code = $modal.find(`code`)
-  const fmtSql = sqlFormatter.format($code.text())
-  // replace with formatted sql
-  $code.text(fmtSql)
-
+const formatModal = $modal => {
+  if ($modal.data("modal-type") === "search-op-debug-modal") {
+    const $code = $modal.find(`code`)
+    const fmtSql = sqlFormatter.format($code.text())
+    // replace with formatted sql
+    $code.text(fmtSql)
+  }
 }
-const queryDebugModals = ["queryDebugEventsModal", "queryDebugErrorModal", "queryDebugAggregatesModal"]
 
 hooks.ModalHook = {
   updated() {
-    const $el = $(this.el)
-
-    if (queryDebugModals.includes($el.attr("id"))) {
-      formatQueryDebugModal(this.el)
-    }
-
-    $el.find(".modal").modal("dispose")
-    $(".modal-backdrop").remove()
-    $el.find(".modal").modal("show")
+    const $modal = $(this.el)
+    formatModal($modal)
   },
   mounted() {
-    const $el = $(this.el)
+    const $modal = $(this.el)
 
-    $el.on("hide.bs.modal", () => {
+    $modal.on("hidePrevented.bs.modal", () => {
       this.pushEvent("deactivate_modal", {})
     })
 
-    if (queryDebugModals.includes($el.attr("id"))) {
-      formatQueryDebugModal(this.el)
-    }
+    formatModal($modal)
 
-    $el.find(".modal").modal("show")
+    $modal.modal({backdrop: "static"})
   },
   destroyed() {
-    this.el.find(".modal").modal("dispose")
+    $(".modal").modal("dispose")
     $(".modal-backdrop").remove()
   }
 }
