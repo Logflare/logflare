@@ -1,10 +1,10 @@
-<%= if @search_op && @search_op.sql_params do %>
+<%= if @search_op do %>
   <div class="search-query-debug">
     <div>
       <% stats = @search_op.stats %>
       <ul class="list-group">
         <li class="list-group-item">
-          <pre><code><%= @search_op.sql_string %></code></pre>
+          <pre><code class="sql" id="search-op-sql-string"><%= @search_op.sql_string %></code></pre>
         </li>
       </ul>
       <ul class="list-group list-group-horizontal">
@@ -19,5 +19,33 @@
         </li>
       </ul>
     </div>
+  </div>
+  <div>
+    <%= if @user.admin do %>
+      <ul class="list-group">
+        <h5> Search Operation Ecto Query </h5>
+        <li class="list-group-item flex-fill">
+          <div>
+            <pre>
+            <code class="elixir" id="search-op-query">
+              <%= inspect(@search_op.query, width: 60, pretty: true) %>
+            </code>
+            </pre>
+          </div>
+        </div>
+      </li>
+      <ul class="list-group">
+        <h5> Search Operation LQL Filters </h5>
+        <li class="list-group-item flex-fill">
+          <div>
+            <pre>
+              <code class="elixir" id="search-op-filter-rules">
+              <%= inspect(@search_op.filter_rules, width: 60, pretty: true) %>
+            </code>
+            </pre>
+          </div>
+        </div>
+      </li>
+    <% end %>
   </div>
 <% end %>
