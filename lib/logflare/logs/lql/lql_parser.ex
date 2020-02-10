@@ -57,6 +57,9 @@ defmodule Logflare.Lql.Parser do
 
       {:error, err} ->
         {:error, err}
+
+      {:error, err, _, _, _, _} ->
+        {:error, err}
     end
   catch
     e ->
