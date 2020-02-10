@@ -50,6 +50,9 @@ const formatModal = $modal => {
     const fmtSql = sqlFormatter.format($code.text())
     // replace with formatted sql
     $code.text(fmtSql)
+    $modal.find("pre code").each((i, block) => {
+      hljs.highlightBlock(block)
+    })
   }
 }
 
