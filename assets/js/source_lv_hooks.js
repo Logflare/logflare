@@ -12,7 +12,6 @@ hooks.SourceSchemaModalTable = {
   },
 }
 
-
 const initSearchInViewObserver = hook => {
   const observer = new IntersectionObserver((entries, observer) => {
     entries.forEach(entry => {
@@ -74,8 +73,9 @@ hooks.ModalHook = {
   },
   destroyed() {
     $(".modal").modal("dispose")
+    $("body").removeClass("modal-open")
     $(".modal-backdrop").remove()
-  }
+  },
 }
 
 const setTimezone = () => {
