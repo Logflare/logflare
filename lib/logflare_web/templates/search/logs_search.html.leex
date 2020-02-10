@@ -117,13 +117,6 @@
   </form>
 </div>
 <%= render_flash(@flash, in_live_view: true) %>
-<%= live_component @socket, Source.SearchLV.DebugLVC, element_id: "search-query-debug-aggregates", search_op: @search_op_log_aggregates %>
-<%= live_component @socket, Source.SearchLV.DebugLVC, element_id: "search-query-debug-events", search_op: @search_op_log_events %>
-<%= if @search_op_error do %>
-  <%= render "query_debug.html", user: @user, search_op: @search_op_error, element_id: "search-query-debug-error" %>
-<% end %>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
-<%= if @active_modal do %>
-  <%= live_component @socket, Source.SearchLV.ModalLVC,  active_modal: @active_modal, source: @source, log_events: @log_events %>
-<% end %>
+<%= live_component @socket, Source.SearchLV.ModalLVC, active_modal: @active_modal, source: @source, log_events: @log_events, user: @user, search_op_log_events: @search_op_log_events, search_op_log_aggregates: @search_op_log_aggregates, search_op_error: @search_op_error %>
 </div>
