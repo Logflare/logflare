@@ -36,6 +36,16 @@ defmodule Logflare.Source.SlackHookServer.Client do
       {:ok, %Tesla.Env{status: 200} = response} ->
         {:ok, response}
 
+      {:ok, %Tesla.Env{body: "invalid_blocks"} = response} ->
+        resp = prep_tesla_resp_for_log(response)
+
+        Logger.warn("Slack hook response: invalid_blocks",
+          slackhook_response: resp,
+          slackhook_request: %{body: inspect(body)}
+        )
+
+        {:error, response}
+
       {:ok, %Tesla.Env{body: "no_service"} = response} ->
         resp = prep_tesla_resp_for_log(response)
 
@@ -59,7 +69,9 @@ defmodule Logflare.Source.SlackHookServer.Client do
         {:error, response}
 
       {:error, response} ->
-        Logger.warn("Slack hook error!", slackhook_response: %{error: response})
+        resp = prep_tesla_resp_for_log(response)
+
+        Logger.warn("Slack hook error!", slackhook_response: resp)
         {:error, response}
     end
   end
