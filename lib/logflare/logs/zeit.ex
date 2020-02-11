@@ -10,7 +10,10 @@ defmodule Logflare.Logs.Zeit do
               parse_lambda_message(x["message"])
             rescue
               _e ->
-                Logger.error("Lambda parse error!", source_id: source.id)
+                Logger.error("Lambda parse error!",
+                  source_id: source.token,
+                  zeit_app: %{lambda_message: x["message"], parse_status: "error"}
+                )
 
                 %{"parse_status" => "error"}
             end
