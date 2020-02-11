@@ -32,26 +32,48 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypesTest do
     end
 
     test "diverging types in key0.[2,3].key2.[1,2].key_lvl3" do
-      payload = fn v1, v2 ->
+      assert valid?(key_lvl3_payload("string", "string"))
+      refute valid?(key_lvl3_payload(1, "string"))
+      refute valid?(key_lvl3_payload("string", true))
+      refute valid?(key_lvl3_payload(1, %{}))
+    end
+
+    test "diverging list types in key0.[2,3].key2.[1,2].key_lvl3" do
+      assert valid?(key_lvl3_payload(["string1", "string2"], ["string3", "string4", "string5"]))
+      assert valid?(key_lvl3_payload([], ["string3", "string4", "string5"]))
+      assert valid?(key_lvl3_payload([[1]], [[2, 3]]))
+      assert valid?(key_lvl3_payload([1], []))
+
+      refute valid?(key_lvl3_payload([1, []], []))
+      refute valid?(key_lvl3_payload([1], [1, "2"]))
+      refute valid?(key_lvl3_payload([[1]], [["2"]]))
+      refute valid?(key_lvl3_payload([["string1"]], ["string2"]))
+      refute valid?(key_lvl3_payload([1, 2, 3], ["string"]))
+      refute valid?(key_lvl3_payload("string", ["string"]))
+      refute valid?(key_lvl3_payload([1], ["1"]))
+    end
+
+  def key_lvl3_payload(v1, v2) do
+    %{
+      "key0" => [
+        %{"key1" => "string"},
+        %{"key1" => "string"},
+        %{"key2" => %{"keylvl3" => v1}},
         %{
-          "key0" => [
-            %{"key1" => "string"},
-            %{"key1" => "string"},
-            %{
-              "key2" => [
-                %{"keylvl3" => v1},
-                %{"keylvl3" => "string"}
-              ]
-            },
-            %{
-              "key2" => [
-                %{"keylvl3" => "string"},
-                %{"keylvl3" => v2}
-              ]
-            }
+          "key2" => [
+            %{"keylvl3" => v1},
+            %{"keylvl3.1" => "string"}
+          ]
+        },
+        %{
+          "key2" => [
+            %{"keylvl3.1" => "string"},
+            %{"keylvl3" => v2}
           ]
         }
-      end
+      ]
+    }
+  end
 
       assert valid?(payload.("string", "string"))
       refute valid?(payload.(1, "string"))

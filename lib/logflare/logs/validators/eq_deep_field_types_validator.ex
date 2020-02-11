@@ -49,11 +49,25 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   defp deep_merge_enums(maps) do
     resolver = fn
       _, original, override when is_list(original) and is_list(override) ->
-        deep_merge_enums(original ++ override)
+        merged = original ++ override
+
+        cond do
+          is_list_of_enums(merged) ->
+            deep_merge_enums(merged)
+
+          merged == [] ->
+            {:list, :empty}
+
+          is_homogenous_list(merged) ->
+            {:list, hd(merged)}
+
+          not is_homogenous_list(merged) ->
+            throw("typeerror")
+        end
 
       _, original, override when is_atom(original) or is_atom(override) ->
         if original != override do
-          raise("typeerror")
+          throw("typeerror")
         else
           original
         end
@@ -65,6 +79,31 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     Enum.reduce(maps, %{}, fn map, acc ->
       DeepMerge.deep_merge(acc, map, resolver)
     end)
+  end
+
+  @spec is_list_of_enums(list(any())) :: boolean()
+  defp is_list_of_enums(xs) when is_list(xs) do
+    Enum.reduce_while(xs, nil, fn
+      x, _acc when is_map(x) when is_list(x) -> {:cont, true}
+      _x, _acc -> {:halt, false}
+    end)
+  end
+
+  @spec is_homogenous_list(list(any())) :: boolean()
+  defp is_homogenous_list(xs) when is_list(xs) do
+    list_type = Enum.reduce_while(xs, true, fn x, acc ->
+      if acc == true or acc == x do
+        {:cont, x}
+      else
+        {:halt, false}
+      end
+    end)
+
+    if list_type do
+      true
+    else
+      false
+    end
   end
 
   defp type_of(arg) when is_binary(arg), do: :binary
