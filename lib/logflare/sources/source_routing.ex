@@ -22,7 +22,12 @@ defmodule Logflare.Logs.SourceRouting do
     for rule <- rules do
       cond do
         length(rule.lql_filters) >= 1 ->
-          route_with_lql_rules(le, rule)
+          if route_with_lql_rules?(le, rule) do
+            sink_source = Sources.Cache.get_by(token: rule.sink)
+            routed_le = %{le | source: sink_source, via_rule: rule}
+            :ok = ingest(routed_le)
+            :ok = broadcast(routed_le)
+          end
 
         rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
           route_with_regex(le, rule)
@@ -35,8 +40,8 @@ defmodule Logflare.Logs.SourceRouting do
     :ok
   end
 
-  @spec route_with_lql_rules(LE.t(), Rule.t()) :: boolean()
-  def route_with_lql_rules(%LE{} = le, %Rule{lql_filters: lql_filters} = rule)
+  @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
+  def route_with_lql_rules?(%LE{} = le, %Rule{lql_filters: lql_filters})
       when length(lql_filters) >= 1 do
     flat_le =
       le.body
@@ -74,13 +79,6 @@ defmodule Logflare.Logs.SourceRouting do
           {:halt, false}
         end
       end)
-
-    if lql_rules_match? do
-      sink_source = Sources.Cache.get_by(token: rule.sink)
-      routed_le = %{le | source: sink_source, via_rule: rule}
-      :ok = ingest(routed_le)
-      :ok = broadcast(routed_le)
-    end
 
     lql_rules_match?
   end
