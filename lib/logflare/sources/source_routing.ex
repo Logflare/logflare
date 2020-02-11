@@ -58,11 +58,11 @@ defmodule Logflare.Logs.SourceRouting do
 
         le_value = flat_le[path]
 
-        operator =
+        {operator, value} =
           case operator do
-            :"~" -> :=~
-            := -> :==
-            op -> op
+            :"~" -> {:=~, ~r/#{value}/u}
+            := -> {:==, value}
+            op -> {op, value}
           end
 
         lql_filter_matches? =
