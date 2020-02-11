@@ -1,4 +1,5 @@
 defmodule Logflare.Logs.Validators.EqDeepFieldTypesTest do
+  @moduledoc false
   use ExUnit.Case
   import Logflare.Logs.Validators.EqDeepFieldTypes
 
@@ -53,32 +54,42 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypesTest do
       refute valid?(key_lvl3_payload([1], ["1"]))
     end
 
-  def key_lvl3_payload(v1, v2) do
-    %{
-      "key0" => [
-        %{"key1" => "string"},
-        %{"key1" => "string"},
-        %{"key2" => %{"keylvl3" => v1}},
-        %{
-          "key2" => [
-            %{"keylvl3" => v1},
-            %{"keylvl3.1" => "string"}
-          ]
-        },
-        %{
-          "key2" => [
-            %{"keylvl3.1" => "string"},
-            %{"keylvl3" => v2}
-          ]
-        }
-      ]
-    }
+    def key_lvl3_payload(v1, v2) do
+      %{
+        "key0" => [
+          %{"key1" => "string"},
+          %{"key1" => "string"},
+          %{"key2" => %{"keylvl3" => v1}},
+          %{
+            "key2" => [
+              %{"keylvl3" => v1},
+              %{"keylvl3.1" => "string"}
+            ]
+          },
+          %{
+            "key2" => [
+              %{"keylvl3.1" => "string"},
+              %{"keylvl3" => v2}
+            ]
+          }
+        ]
+      }
+    end
+
+    test "diverging list types in single map key" do
+      assert valid?(single_path(["string1", "string2"], ["string3", "string4", "string5"]))
+      assert valid?(single_path([], ["string3", "string4", "string5"]))
+      assert valid?(single_path([[1]], [[2, 3]]))
+      assert valid?(single_path([1], []))
+
+      refute valid?(single_path(1, "1"))
+      refute valid?(single_path([1, []], []))
+      refute valid?(single_path([1], [1, "2"]))
+      refute valid?(single_path("string", ["string"]))
+    end
   end
 
-      assert valid?(payload.("string", "string"))
-      refute valid?(payload.(1, "string"))
-      refute valid?(payload.("string", true))
-      refute valid?(payload.(1, %{}))
-    end
+  def single_path(v1, v2) do
+    %{"key0" => "string1", "key1" => %{"key2" => [v1, v2]}}
   end
 end

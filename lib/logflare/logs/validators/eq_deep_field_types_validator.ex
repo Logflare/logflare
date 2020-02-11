@@ -20,15 +20,16 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
 
   @spec valid?(map()) :: boolean()
   def valid?(map) when is_map(map) do
-    try do
-      map
-      |> Iteraptor.map(fn {k, v} -> {k, type_of(v)} end)
-      |> deep_merge_enums()
-      |> is_map
-    rescue
-      _e in RuntimeError ->
-        false
-    end
+    map
+    |> Iteraptor.map(fn {k, v} ->
+      {k, type_of(v)}
+    end)
+    |> deep_merge_enums()
+    |> deep_validate_lists_are_homogenous()
+    |> is_map
+  catch
+    _e ->
+      false
   end
 
   def message do
@@ -36,6 +37,35 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   end
 
   # Private
+
+  def deep_validate_lists_are_homogenous(enum) do
+    enum
+    |> Enum.map(fn
+      {_k, v} -> v
+      v -> v
+    end)
+    |> Enum.each(fn
+      v when is_map(v) ->
+        deep_validate_lists_are_homogenous(v)
+
+      v when is_list(v) ->
+        cond do
+          is_list_of_enums(v) ->
+            deep_validate_lists_are_homogenous(v)
+
+          is_homogenous_list(v) ->
+            :noop
+
+          not is_homogenous_list(v) ->
+            throw("typeerror")
+        end
+
+      _ ->
+        :noop
+    end)
+
+    enum
+  end
 
   @spec deep_merge_enums(list(map) | map) :: map
   defp deep_merge_enums(map) when is_map(map) do
@@ -91,13 +121,14 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
 
   @spec is_homogenous_list(list(any())) :: boolean()
   defp is_homogenous_list(xs) when is_list(xs) do
-    list_type = Enum.reduce_while(xs, true, fn x, acc ->
-      if acc == true or acc == x do
-        {:cont, x}
-      else
-        {:halt, false}
-      end
-    end)
+    list_type =
+      Enum.reduce_while(xs, true, fn x, acc ->
+        if acc == true or acc == x do
+          {:cont, x}
+        else
+          {:halt, false}
+        end
+      end)
 
     if list_type do
       true
@@ -108,7 +139,6 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
 
   defp type_of(arg) when is_binary(arg), do: :binary
   defp type_of(arg) when is_map(arg), do: :map
-  defp type_of(arg) when is_list(arg), do: :list
   defp type_of(arg) when is_bitstring(arg), do: :bitstring
   defp type_of(arg) when is_float(arg), do: :float
   defp type_of(arg) when is_function(arg), do: :function
