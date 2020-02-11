@@ -3,23 +3,24 @@ defmodule Logflare.Logs.Zeit do
 
   def handle_batch(batch, source) when is_list(batch) do
     Enum.map(batch, fn x ->
-      case x["source"] do
-        "lambda" ->
-          lambda_message =
-            try do
-              parse_lambda_message(x["message"])
-            rescue
-              _e ->
-                Logger.error("Lambda parse error!", source_id: source.id)
+      if x["source"] == "lambda" and x["message"] do
+        lambda_message =
+          try do
+            parse_lambda_message(x["message"])
+          rescue
+            _e ->
+              Logger.error("Lambda parse error!",
+                source_id: source.token,
+                zeit_app: %{lambda_message: x["message"], parse_status: "error"}
+              )
 
-                %{"parse_status" => "error"}
-            end
+              %{"parse_status" => "error"}
+          end
 
-          Map.put(x, "parsedLambdaMessage", lambda_message)
-          |> handle_event()
-
-        _ ->
-          handle_event(x)
+        Map.put(x, "parsedLambdaMessage", lambda_message)
+        |> handle_event()
+      else
+        handle_event(x)
       end
     end)
   end

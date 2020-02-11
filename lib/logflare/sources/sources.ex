@@ -5,10 +5,12 @@ defmodule Logflare.Sources do
   alias Logflare.{Repo, Source, Tracker, Cluster}
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Rule
+  alias Logflare.User
   require Logger
 
   @default_bucket_width 60
 
+  @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def create_source(source_params, user) do
     user
     |> Ecto.build_assoc(:sources)

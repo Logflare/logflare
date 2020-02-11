@@ -1,4 +1,4 @@
-defmodule LogflareWeb.ModalHelpersLV do
+defmodule LogflareWeb.ModalsLVHelpers do
   @moduledoc """
   Modal helpers to be imported where modals may be called
   """
@@ -14,14 +14,10 @@ defmodule LogflareWeb.ModalHelpersLV do
         {:noreply, assign(socket, :active_modal, modal_id)}
       end
 
-      def handle_event("deactivate_modal" = ev, metadata, socket) do
-        if metadata["key"] == "Escape" or is_nil(metadata["code"]) do
-          log_lv_received_event(ev, socket.assigns.source)
+      def handle_event("deactivate_modal" = ev, _metadata, socket) do
+        log_lv_received_event(ev, socket.assigns.source)
 
-          {:noreply, assign(socket, :active_modal, nil)}
-        else
-          {:noreply, socket}
-        end
+        {:noreply, assign(socket, :active_modal, nil)}
       end
     end
   end

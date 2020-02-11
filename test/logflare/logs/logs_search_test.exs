@@ -7,7 +7,7 @@ defmodule Logflare.Logs.SearchTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.UDF
+  alias Logflare.User.BigQueryUDFs
   alias Logflare.Google.BigQuery.GenUtils
   use Logflare.DataCase, async: true
   import Logflare.Factory
@@ -22,10 +22,7 @@ defmodule Logflare.Logs.SearchTest do
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     Sources.Cache.put_bq_schema(@test_token, table_schema())
 
-    :ok =
-      source.token
-      |> GenUtils.get_bq_user_info()
-      |> UDF.create_default_udfs_for_user()
+    {:ok, user} = BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user)
 
     {:ok, sources: [source], users: [user]}
   end

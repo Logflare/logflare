@@ -1,5 +1,6 @@
 defmodule LogflareWeb.Helpers.PageTitle do
   alias LogflareWeb.{SourceView}
+
   # alias LogflareWeb.{SourceView, MarketingView}
 
   @suffix "Logflare | Clouflare, Zeit & Elixir Logging"

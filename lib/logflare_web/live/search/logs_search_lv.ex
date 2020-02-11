@@ -13,7 +13,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
   use LogflareWeb.LiveViewUtils
-  use LogflareWeb.ModalHelpersLV
+  use LogflareWeb.ModalsLVHelpers
   require Logger
   alias Logflare.{Sources, Users}
   @tail_search_interval 500

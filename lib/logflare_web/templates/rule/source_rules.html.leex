@@ -3,7 +3,7 @@
     <div class="log-settings float-right">
       <ul>
         <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
-    <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
+        <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
       </ul>
     </div>
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/rules</h5>
@@ -57,8 +57,6 @@
     <% end %>
   </div>
 </form>
-<%= if @active_modal do %>
-  <%= live_component @socket, LogflareWeb.Source.SearchLV.ModalLVC, active_modal: @active_modal, source: @source %>
-<% end %>
+<%= live_component @socket, LogflareWeb.Source.SearchLV.ModalLVC, active_modal: @active_modal, source: @source %>
 <%= render_flash(@flash, in_live_view: true) %>
 </div>
