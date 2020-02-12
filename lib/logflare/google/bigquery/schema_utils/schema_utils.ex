@@ -83,11 +83,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
               match?(%NaiveDateTime{}, v) ->
             %{t: :datetime}
 
-          is_list(v) ->
+          is_list(v) and is_map(hd(v)) ->
             %{
               t: :map,
               fields: Enum.reduce(v, %{}, &Map.merge(&2, to_typemap(&1)))
             }
+
+          is_list(v) and not is_map(hd(v)) ->
+            %{t: {:list, type_of(hd(v))}}
 
           is_map(v) ->
             %{t: :map, fields: to_typemap(v)}
@@ -115,10 +118,15 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     fields
     |> Enum.map(fn
-      %TFS{fields: fields, name: n, type: t} ->
+      %TFS{fields: fields, name: n, type: t, mode: mode} ->
         k = String.to_atom(n)
 
-        v = %{t: bq_type_to_ex(t)}
+        v =
+          cond do
+            mode == "REPEATED" and t == "RECORD" -> %{t: bq_type_to_ex(t)}
+            mode == "REPEATED" and t != "RECORD" -> %{t: {:list, bq_type_to_ex(t)}}
+            mode in ["NULLABLE", "REQUIRED"] -> %{t: bq_type_to_ex(t)}
+          end
 
         v =
           if fields do
@@ -129,7 +137,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
         {k, v}
     end)
-    |> Enum.into(Map.new())
+    |> Map.new()
   end
 
   def bq_type_to_ex("TIMESTAMP"), do: :datetime

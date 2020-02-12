@@ -4,6 +4,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   alias Logflare.{Source, Sources}
   import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
 
+  @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
     schema = Sources.Cache.get_bq_schema(source)
 
@@ -19,14 +20,6 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def valid?(m, _) when m === %{}, do: true
 
   def valid?(metadata, existing_schema) do
-    resolver = fn
-      _, original, override when is_atom(original) and is_atom(override) ->
-        if original != override, do: raise("type_error")
-
-      _, _original, _override ->
-        DeepMerge.continue_deep_merge()
-    end
-
     existing_typemap = to_typemap(existing_schema, from: :bigquery_schema)
 
     existing_metadata_typemap =
@@ -38,12 +31,21 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     new_metadata_typemap = to_typemap(metadata)
 
     try do
-      DeepMerge.deep_merge(new_metadata_typemap, existing_metadata_typemap, resolver)
+      DeepMerge.deep_merge(new_metadata_typemap, existing_metadata_typemap, &resolver/3)
     rescue
       _e -> false
     else
       _ -> true
     end
+  end
+
+  def resolver(_, original, override)
+      when (is_atom(original) or is_tuple(original)) and (is_atom(override) or is_tuple(override)) do
+    if original != override, do: raise("type_error")
+  end
+
+  def resolver(_, _original, _override) do
+    DeepMerge.continue_deep_merge()
   end
 
   def message() do
