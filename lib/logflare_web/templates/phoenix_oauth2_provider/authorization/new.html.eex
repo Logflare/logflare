@@ -4,7 +4,7 @@
   </div>
 </div>
 
-<div class="container mx-auto">
+<div id="authorize-container" class="container mx-auto">
 <h5>Authorize <strong><%= @client.name %></strong> to use your account?</h5>
 
 <div class="oauth-permissions">
@@ -35,5 +35,6 @@
     <input type="hidden" name="scope" value="<%= @params["scope"] %>" />
     <%= submit "Authorize", class: "btn btn-primary" %>
   <% end %>
+</div>
 </div>
 </div>

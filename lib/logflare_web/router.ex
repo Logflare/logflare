@@ -154,6 +154,12 @@ defmodule LogflareWeb.Router do
     get "/cluster", ClusterController, :index
   end
 
+  scope "/install", LogflareWeb do
+    pipe_through :browser
+
+    get "/zeit", Auth.ZeitAuth, :set_oauth_params
+  end
+
   scope "/auth", LogflareWeb do
     pipe_through :browser
 

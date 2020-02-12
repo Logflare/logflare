@@ -100,6 +100,10 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
 
 config :logflare, Logflare.Tracker, pool_size: 5
 
+config :logflare, LogflareWeb.Auth.ZeitAuth,
+  zeit_app_host: "https://zeit.logflare.app",
+  client_id: "4aaf19555a5113ca0ecbcb93b7368daf700d5e6df0cbd8a1772ab442417486b0"
+
 import_config "telemetry.exs"
 
 if File.exists?("config/prod.secret.exs") do
