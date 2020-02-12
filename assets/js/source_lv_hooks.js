@@ -63,8 +63,16 @@ hooks.ModalHook = {
   mounted() {
     const $modal = $(this.el)
 
+    if ($modal.data("modal-type") === "metadata-modal") {
+      this.pushEvent("pause_live_search", {})
+    }
+
     $modal.on("hidePrevented.bs.modal", () => {
       this.pushEvent("deactivate_modal", {})
+
+      if ($modal.data("modal-type") === "metadata-modal") {
+        this.pushEvent("resume_live_search", {})
+      }
     })
 
     formatModal($modal)
