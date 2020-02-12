@@ -70,7 +70,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   @spec deep_merge_enums(list(map) | map) :: map
   defp deep_merge_enums(map) when is_map(map) do
     for {k, v} <- map, into: Map.new() do
-      v = if is_list(v), do: deep_merge_enums(v), else: v
+      v = if is_list(v) and is_list_of_enums(v), do: deep_merge_enums(v), else: v
 
       {k, v}
     end
