@@ -185,6 +185,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
       |> assign_flash(:warning, nil)
+      |> assign_flash(:error, nil)
       |> push_patch(
         to: Routes.live_path(socket, __MODULE__, sid, params),
         replace: true
