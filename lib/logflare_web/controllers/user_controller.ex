@@ -11,6 +11,11 @@ defmodule LogflareWeb.UserController do
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
+  def api_show(%{assigns: %{user: user}} = conn, _params) do
+    conn
+    |> json(user)
+  end
+
   def edit(%{assigns: %{user: user}} = conn, _params) do
     changeset = User.user_allowed_changeset(user, %{})
 

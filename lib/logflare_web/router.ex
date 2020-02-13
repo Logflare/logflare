@@ -26,10 +26,14 @@ defmodule LogflareWeb.Router do
     plug :accepts, ["json", "bert"]
   end
 
-  pipeline :require_api_auth do
+  pipeline :require_ingest_api_auth do
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetVerifySource
     plug LogflareWeb.Plugs.RateLimiter
+  end
+
+  pipeline :require_mgmt_api_auth do
+    plug LogflareWeb.Plugs.SetVerifyUser
   end
 
   pipeline :require_auth do
@@ -174,12 +178,6 @@ defmodule LogflareWeb.Router do
     get "/:provider/callback", Auth.OauthController, :callback
   end
 
-  # deprecate
-  scope "/api", LogflareWeb do
-    pipe_through [:api, :require_api_auth]
-    post "/logs", LogController, :create
-  end
-
   scope "/webhooks", LogflareWeb do
     pipe_through :api
     post "/cloudflare/v1", CloudflareControllerV1, :event
@@ -190,8 +188,22 @@ defmodule LogflareWeb.Router do
     get "/", HealthCheckController, :check
   end
 
+  # Account management API.
+  scope "/api", LogflareWeb do
+    pipe_through [:api, :require_mgmt_api_auth]
+    get "/account", UserController, :api_show
+    get "/sources", SourceController, :api_index
+  end
+
+  # Old log ingest endpoint. Deprecate.
+  scope "/api/logs", LogflareWeb do
+    pipe_through [:api, :require_ingest_api_auth]
+    post "/", LogController, :create
+  end
+
+  # Log ingest goes through https://api.logflare.dev/logs
   scope "/logs", LogflareWeb do
-    pipe_through [:api, :require_api_auth]
+    pipe_through [:api, :require_ingest_api_auth]
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
     post "/zeit", LogController, :zeit_ingest

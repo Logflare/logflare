@@ -4,12 +4,42 @@ defmodule Logflare.Source do
   alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
-  @derive {Jason.Encoder, only: [:name, :token, :id]}
+  @derive {Jason.Encoder,
+           only: [
+             :name,
+             :token,
+             :id,
+             :favorite,
+             :webhook_notification_url,
+             :api_quota,
+             :slack_hook_url,
+             :bigquery_table_ttl,
+             :public_token,
+             :bq_table_id,
+             :bq_table_schema,
+             :has_rejected_events?,
+             :metrics,
+             :notifications
+           ]}
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
     use TypedEctoSchema
+
+    @derive {Jason.Encoder,
+             only: [
+               :rate,
+               :latest,
+               :avg,
+               :max,
+               :buffer,
+               :inserts,
+               :inserts_string,
+               :recent,
+               :rejected,
+               :fields
+             ]}
 
     typed_embedded_schema do
       field :rate, :integer
@@ -29,7 +59,14 @@ defmodule Logflare.Source do
     @moduledoc false
     use Ecto.Schema
     @primary_key false
-    @derive Jason.Encoder
+    @derive {Jason.Encoder,
+             only: [
+               :team_user_ids_for_email,
+               :team_user_ids_for_sms,
+               :other_email_notifications,
+               :user_email_notifications,
+               :user_text_notifications
+             ]}
 
     embedded_schema do
       field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
