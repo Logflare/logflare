@@ -67,11 +67,22 @@ defmodule Logflare.Logs.SourceRouting do
           case operator do
             :"~" -> {:=~, ~r/#{value}/u}
             := -> {:==, value}
+            :list_includes -> {:in, value}
             op -> {op, value}
           end
 
         lql_filter_matches? =
-          Map.has_key?(flat_le, path) && apply(Kernel, operator, [le_value, value])
+          case operator do
+            :in ->
+              matches_list_include?(flat_le, path, value)
+
+            _ ->
+              Map.has_key?(flat_le, path) &&
+                apply(Kernel, operator, [
+                  le_value,
+                  value
+                ])
+          end
 
         if lql_filter_matches? do
           {:cont, true}
@@ -81,6 +92,18 @@ defmodule Logflare.Logs.SourceRouting do
       end)
 
     lql_rules_match?
+  end
+
+  def matches_list_include?(flat_le, path, value) do
+    Enum.reduce_while(flat_le, nil, fn {k, v}, acc ->
+      flat_map_path_matches? = String.replace(k, ~r/(.+)\.\d+$/, "\\1") === path
+
+      if flat_map_path_matches? and v === value do
+        {:halt, true}
+      else
+        {:cont, false}
+      end
+    end)
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do
