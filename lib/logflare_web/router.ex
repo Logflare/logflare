@@ -176,13 +176,6 @@ defmodule LogflareWeb.Router do
 
   # deprecate
   scope "/api", LogflareWeb do
-    pipe_through :api
-    post "/cloudflare/event", CloudflareController, :event
-    post "/v1/cloudflare/event", CloudflareControllerV1, :event
-  end
-
-  # deprecate
-  scope "/api", LogflareWeb do
     pipe_through [:api, :require_api_auth]
     post "/logs", LogController, :create
   end
