@@ -156,7 +156,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
         :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
 
-        live_redirect(socket,
+        push_patch(socket,
           to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
           replace: true
         )
@@ -185,8 +185,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
       |> assign_flash(:warning, nil)
-      |> assign_flash(:error, nil)
-      |> live_redirect(
+      |> push_patch(
         to: Routes.live_path(socket, __MODULE__, sid, params),
         replace: true
       )
