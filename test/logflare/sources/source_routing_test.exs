@@ -129,6 +129,82 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = build_filter.(1, :<=)
       assert SourceRouting.route_with_lql_rules?(le, rule)
     end
+
+    test "multiple filters" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: 0,
+            operator: :=,
+            modifiers: [],
+            path: "metadata.field1"
+          },
+          %FR{
+            value: "string",
+            operator: :"~",
+            modifiers: [],
+            path: "metadata.field2"
+          }
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"field1" => 0, "field2" => "string"}
+        )
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"field1" => 1, "field2" => "string"}
+        )
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
+    test "multiple filters with negation" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: 0,
+            operator: :=,
+            modifiers: [:negate],
+            path: "metadata.field1"
+          },
+          %FR{
+            value: "string",
+            operator: :"~",
+            modifiers: [],
+            path: "metadata.field2"
+          }
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"field1" => 0, "field2" => "string"}
+        )
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"field1" => 1, "field2" => "string"}
+        )
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
   end
 
   describe "Source routing with regex routing" do
