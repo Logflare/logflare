@@ -201,7 +201,7 @@ defmodule LogflareWeb.Router do
     post "/", LogController, :create
   end
 
-  # Log ingest goes through https://api.logflare.dev/logs
+  # Log ingest goes through https://api.logflare.app/logs
   scope "/logs", LogflareWeb do
     pipe_through [:api, :require_ingest_api_auth]
     post "/", LogController, :create
