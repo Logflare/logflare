@@ -39,7 +39,9 @@ config :logflare, ExOauth2Provider,
   use_refresh_token: true,
   default_scopes: ~w(public),
   optional_scopes: ~w(read write),
-  revoke_refresh_token_on_use: true
+  revoke_refresh_token_on_use: true,
+  otp_app: :logflare,
+  access_token_expires_in: nil
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
