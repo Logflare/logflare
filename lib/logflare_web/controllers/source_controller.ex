@@ -23,13 +23,14 @@ defmodule LogflareWeb.SourceController do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
+  def api_index(%{assigns: %{user: user}} = conn, _params) do
+    sources = preload_sources_for_dashboard(user.sources)
+
+    conn |> json(sources)
+  end
+
   def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
-    sources =
-      user.sources
-      |> Enum.map(&Sources.preload_defaults/1)
-      |> Enum.map(&Sources.preload_saved_searches/1)
-      |> Enum.map(&Sources.put_schema_field_count/1)
-      |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
+    sources = preload_sources_for_dashboard(user.sources)
 
     home_team = Teams.get_home_team!(team_user)
 
@@ -45,12 +46,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
-    sources =
-      user.sources
-      |> Enum.map(&Sources.preload_defaults/1)
-      |> Enum.map(&Sources.preload_saved_searches/1)
-      |> Enum.map(&Sources.put_schema_field_count/1)
-      |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
+    sources = preload_sources_for_dashboard(user.sources)
 
     home_team = team
 
@@ -345,6 +341,14 @@ defmodule LogflareWeb.SourceController do
   def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => _id}) do
     rejected_logs = RejectedLogEvents.get_by_source(source)
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
+  end
+
+  defp preload_sources_for_dashboard(sources) do
+    sources
+    |> Enum.map(&Sources.preload_defaults/1)
+    |> Enum.map(&Sources.preload_saved_searches/1)
+    |> Enum.map(&Sources.put_schema_field_count/1)
+    |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
   end
 
   defp get_and_encode_logs(%Source{} = source) do

@@ -3,13 +3,31 @@ defmodule Logflare.User do
   User schema and changeset
   """
   use TypedEctoSchema
+
   import Ecto.Changeset
-  @default_user_api_quota 150
 
   alias Logflare.Source
   alias Logflare.Teams.Team
   alias Logflare.Google.BigQuery
 
+  @derive {Jason.Encoder,
+           only: [
+             :email,
+             :provider,
+             :api_key,
+             :email_preferred,
+             :name,
+             :image,
+             :email_me_product,
+             :phone,
+             :bigquery_project_id,
+             :bigquery_dataset_location,
+             :bigquery_dataset_id,
+             :api_quota,
+             :company
+           ]}
+
+  @default_user_api_quota 150
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
   @default_dataset_location "US"
