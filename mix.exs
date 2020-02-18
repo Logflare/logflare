@@ -77,7 +77,6 @@ defmodule Logflare.Mixfile do
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:goth, "~> 1.2.0"},
-      {:broadway, "~> 0.5.0"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:credo, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -103,6 +102,10 @@ defmodule Logflare.Mixfile do
       {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
+
+      # Concurrency and pipelines
+      {:broadway, "~> 0.5.0"},
+      {:flow, "~> 0.14"},
 
       # Test
       {:excoveralls, "~> 0.11", only: :test, runtime: false},
