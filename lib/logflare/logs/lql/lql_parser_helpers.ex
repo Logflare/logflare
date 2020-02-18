@@ -5,6 +5,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   import NimbleParsec
   alias Logflare.Lql.FilterRule
   alias Logflare.Lql.ChartRule
+  @isolated_string :isolated_string
 
   def word do
     [?a..?z, ?A..?Z, ?., ?_, ?0..?9]
@@ -22,9 +23,22 @@ defmodule Logflare.Lql.Parser.Helpers do
     )
     |> ignore(string("\""))
     |> reduce({List, :to_string, []})
-    |> unwrap_and_tag(:quoted_string)
+    |> unwrap_and_tag(@isolated_string)
     |> label("quoted string filter")
     |> reduce({:to_rule, [path]})
+  end
+
+  def parens_string() do
+    ignore(string("("))
+    |> repeat_while(
+      utf8_char([]),
+      {:not_right_paren, []}
+    )
+    |> ignore(string(")"))
+    |> reduce({List, :to_string, []})
+    |> unwrap_and_tag(@isolated_string)
+    |> label("parens string")
+    |> reduce({:to_rule, [:ignore]})
   end
 
   def timestamp_clause() do
@@ -66,6 +80,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> label("metadata BQ field")
   end
 
+  @list_includes_op :list_includes
   def operator() do
     choice([
       string(":>=") |> replace(:>=),
@@ -73,6 +88,8 @@ defmodule Logflare.Lql.Parser.Helpers do
       string(":>") |> replace(:>),
       string(":<") |> replace(:<),
       string(":~") |> replace(:"~"),
+      choice([string(":@>"), string(":_includes")]) |> replace(@list_includes_op),
+      # string(":") should always be the last choice
       string(":") |> replace(:=)
     ])
     |> unwrap_and_tag(:operator)
@@ -97,7 +114,8 @@ defmodule Logflare.Lql.Parser.Helpers do
       number(),
       null(),
       quoted_string(),
-      ascii_string([?a..?z, ?A..?Z, ?_], min: 1),
+      parens_string(),
+      ascii_string([?a..?z, ?A..?Z, ?_, ?0..?9], min: 1),
       invalid_match_all_value()
     ])
     |> unwrap_and_tag(:value)
@@ -382,10 +400,10 @@ defmodule Logflare.Lql.Parser.Helpers do
     }
   end
 
-  def to_rule(args, :ignore), do: args[:quoted_string]
+  def to_rule(args, :ignore), do: args[@isolated_string]
 
   def to_rule(args, :event_message) do
-    value = args[:quoted_string] || args[:word]
+    value = args[@isolated_string] || args[:word]
 
     %FilterRule{
       path: "event_message",
@@ -420,4 +438,7 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   def not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
   def not_quote(_, context, _, _), do: {:cont, context}
+
+  def not_right_paren(<<?), _::binary>>, context, _, _), do: {:halt, context}
+  def not_right_paren(_, context, _, _), do: {:cont, context}
 end
