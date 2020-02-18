@@ -97,16 +97,6 @@ defmodule Logflare.Mixfile do
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
-
-      # Test
-      {:excoveralls, "~> 0.11", only: :test, runtime: false},
-      {:placebo, "2.0.0-rc.2"},
-      {:mox, "~> 0.5", only: :test},
-
-      # Pagination
-      {:scrivener_ecto, "~> 2.2.0"},
-      {:scrivener_list, "~> 2.0.1"},
-      {:scrivener_html, "~> 1.8.1"},
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
@@ -114,9 +104,19 @@ defmodule Logflare.Mixfile do
       {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
 
+      # Test
+      {:excoveralls, "~> 0.11", only: :test, runtime: false},
+      {:placebo, "2.0.0-rc.2"},
+      {:mox, "~> 0.5", only: :test},
+
+      # Pagination
+      {:scrivener_ecto, "~> 2.2"},
+      {:scrivener_list, "~> 2.0"},
+      {:scrivener_html, "~> 1.8"},
+
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.24.0"},
-      {:google_api_big_query, "~> 0.32.0"},
+      {:google_api_cloud_resource_manager, "~> 0.26.0"},
+      {:google_api_big_query, "~> 0.33.0"},
 
       # Ecto
       {:ecto, "~> 3.3", override: true},
@@ -137,7 +137,7 @@ defmodule Logflare.Mixfile do
       {:statistex, "~> 1.0.0"},
 
       # HTML
-      {:floki, "~> 0.25.0"},
+      {:floki, "~> 0.26.0"},
       {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
 
       # Rustler
