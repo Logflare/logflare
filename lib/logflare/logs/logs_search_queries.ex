@@ -7,6 +7,18 @@ defmodule Logflare.Logs.SearchQueries do
   import BQQueryAPI.UDF
   import BQQueryAPI
 
+  def select_aggregates(q, chart_period) do
+    q
+    |> select([t], %{
+      timestamp:
+        fragment(
+          "(`$$__DEFAULT_DATASET__$$`.LF_TIMESTAMP_TRUNC(?, ?)) as timestamp",
+          t.timestamp,
+          ^String.upcase("#{chart_period}")
+        )
+    })
+  end
+
   def select_aggregates(q) do
     q
     |> select([t, ts], %{
@@ -14,6 +26,20 @@ defmodule Logflare.Logs.SearchQueries do
       datetime: fragment("DATETIME(?) AS datetime", coalesce(t.timestamp, ts.timestamp)),
       value: fragment("? as value", coalesce(t.value, ts.value))
     })
+  end
+
+  @spec select_merge_agg_value(any, :avg | :count | :sum, any) :: Ecto.Query.t()
+  def select_merge_agg_value(query, chart_aggregate, last_chart_field) do
+    case chart_aggregate do
+      :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
+      :avg -> select_merge(query, [..., l], %{value: avg(field(l, ^last_chart_field))})
+      :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
+    end
+  end
+
+  def select_merge_log_count(query) do
+    query
+    |> select_merge([l, ...], %{value: fragment("COUNT(?) as value", l.timestamp)})
   end
 
   def limit_aggregate_chart_period(query, period) when period in @chart_periods do
@@ -48,11 +74,11 @@ defmodule Logflare.Logs.SearchQueries do
     )
   end
 
-  @spec select_agg_value(any, :avg | :count | :sum, any) :: Ecto.Query.t()
-  def select_agg_value(query, chart_aggregate, last_chart_field) do
-    case chart_aggregate do
-      :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
-      :avg -> select_merge(query, [..., l], %{value: avg(field(l, ^last_chart_field))})
+  def select_timestamp_trunc(query, chart_period) do
+    select(query, [t, ...], %{
+      timestamp: lf_timestamp_trunc(t.timestamp, ^chart_period)
+    })
+  end
       :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
     end
   end

@@ -311,12 +311,18 @@ defmodule Logflare.Logs.SearchOperations do
 
     {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
 
-    query = select_timestamp_trunc(query, so.chart_period)
-
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
       |> group_by(1)
+
+    bq_schema = Sources.Cache.get_bq_schema(so.source)
+    flat_type_map = Lql.Utils.bq_schema_to_flat_typemap(bq_schema)
+
+    query =
+      query
+      |> select_aggregates(so.chart_period)
+      |> order_by([t, ...], desc: 1)
 
     query =
       case chart_rules do
@@ -329,21 +335,63 @@ defmodule Logflare.Logs.SearchOperations do
 
           query
           |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, chart_path)
-          |> select_agg_value(so.chart_aggregate, last_chart_field)
+          |> select_merge_agg_value(so.chart_aggregate, last_chart_field)
 
         [] ->
           query
-          |> select_log_count()
-          |> order_by([t, ...], desc: 1)
+          |> select_merge_log_count()
       end
 
-    query =
-      query
-      |> join_missing_range_timestamps(min, max, so.chart_period)
-      |> select_aggregates
-      |> order_by([t, ...], desc: 1)
-
     %{so | query: query}
+  end
+
+  def add_missing_agg_timestamps(%SO{} = so) do
+    {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+
+    {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
+    %{so | rows: intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)}
+  end
+
+  def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
+    use Timex
+
+    step_period =
+      case chart_period do
+        :day -> :days
+        :hour -> :hours
+        :minute -> :minutes
+        :second -> :seconds
+      end
+
+    dts =
+      Interval.new(
+        from: %{DateTime.truncate(min, :millisecond) | second: 0},
+        until: %{DateTime.truncate(max, :millisecond) | second: 0},
+        left_open: false,
+        right_open: false,
+        step: [{step_period, 1}]
+      )
+      |> Enum.to_list()
+
+    not_present =
+      for dt <- dts,
+          !Enum.find(
+            aggs,
+            false,
+            &(Timex.compare(DateTime.from_unix!(&1.timestamp, :microsecond), dt, chart_period) ==
+                0)
+          ) do
+        %{
+          timestamp: dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond),
+          value: 0,
+          datetime: dt
+        }
+      end
+
+    [not_present | aggs]
+    |> List.flatten()
+    |> Enum.sort_by(& &1.timestamp, :asc)
+    |> Enum.reverse()
   end
 
   @spec put_time_stats(SO.t()) :: SO.t()
