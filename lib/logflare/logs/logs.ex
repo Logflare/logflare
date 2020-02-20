@@ -12,8 +12,9 @@ defmodule Logflare.Logs do
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
     log_params_batch
-    |> Enum.map(&LE.make(&1, %{source: source}))
-    |> Enum.map(fn %LE{} = le ->
+    |> Flow.from_enumerable()
+    |> Flow.map(&LE.make(&1, %{source: source}))
+    |> Flow.map(fn %LE{} = le ->
       if le.valid? do
         :ok = SourceRouting.route_to_sinks_and_ingest(le)
         :ok = ingest(le)
@@ -24,13 +25,14 @@ defmodule Logflare.Logs do
 
       le
     end)
-    |> Enum.reduce([], fn log, acc ->
+    |> Flow.reduce(fn -> [] end, fn log, acc ->
       if log.valid? do
         acc
       else
         [log.validation_error | acc]
       end
     end)
+    |> Enum.to_list()
     |> case do
       [] -> :ok
       errors when is_list(errors) -> {:error, errors}

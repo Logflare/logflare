@@ -26,7 +26,7 @@ defmodule Logflare.Factory do
   end
 
   def rule_factory do
-    %Rule{regex: "."}
+    %Rule{}
   end
 
   def log_event_factory(attrs) do
@@ -34,7 +34,8 @@ defmodule Logflare.Factory do
 
     params = %{
       "message" => params["message"] || params[:message] || "test-msg",
-      "timestamp" => params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string
+      "timestamp" => params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string,
+      "metadata" => params["metadata"] || params[:metadata] || %{}
     }
 
     LogEvent.make(params, %{source: source})

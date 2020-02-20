@@ -942,6 +942,57 @@ defmodule Logflare.LqlParserTest do
              ]
     end
 
+    @schema SchemaBuilder.build_table_schema(
+              %{
+                "string_array" => ["string1", "string2"],
+                "integer_array" => [1, 2],
+                "float_array" => [1.0, 2.0]
+              },
+              @default_schema
+            )
+
+    test "list contains operator: string" do
+      filter = [
+        %Logflare.Lql.FilterRule{
+          modifiers: [],
+          operator: :list_includes,
+          path: "metadata.string_array",
+          value: "string"
+        }
+      ]
+
+      assert {:ok, filter} == Parser.parse("m.string_array:@>string", @schema)
+      assert {:ok, filter} == Parser.parse("m.string_array:_includes(string)", @schema)
+    end
+
+    test "list contains operator: integer" do
+      filter = [
+        %Logflare.Lql.FilterRule{
+          modifiers: [],
+          operator: :list_includes,
+          path: "metadata.integer_array",
+          value: 1
+        }
+      ]
+
+      assert {:ok, filter} == Parser.parse("m.integer_array:@>1", @schema)
+      assert {:ok, filter} == Parser.parse("m.integer_array:_includes(1)", @schema)
+    end
+
+    test "list contains operator: float" do
+      filter = [
+        %Logflare.Lql.FilterRule{
+          modifiers: [],
+          operator: :list_includes,
+          path: "metadata.float_array",
+          value: 1.0
+        }
+      ]
+
+      assert {:ok, filter} == Parser.parse("m.float_array:@>1.0", @schema)
+      assert {:ok, filter} == Parser.parse("m.float_array:_includes(1.0)", @schema)
+    end
+
     test "lt, lte, gte, gt for float values" do
       schema =
         SchemaBuilder.build_table_schema(

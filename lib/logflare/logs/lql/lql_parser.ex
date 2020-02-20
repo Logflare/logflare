@@ -88,6 +88,7 @@ defmodule Logflare.Lql.Parser do
     |> Enum.max_by(&String.jaro_distance(&1, user_path))
   end
 
+  defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)
   defp maybe_cast_value(%{value: :NULL} = c, _), do: c
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}

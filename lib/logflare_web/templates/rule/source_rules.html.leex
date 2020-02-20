@@ -44,7 +44,7 @@
     <% end %>
   </ul>
   <%= f = form_for :rule, "#", phx_submit: "fsubmit" %>
-  <%= live_component @socket, LogflareWeb.Lql.LqlFormLVC, f: f, lql_string: @lql_string, loading: has_regex_rules?(@rules) %>
+  <%= live_component @socket, Lql.LqlFormLVC, f: f, lql_string: @lql_string, loading: has_regex_rules?(@rules) %>
   <div class="form-group">
     <%= label f, :sink, "Sink source", class: "control-label" %>
     <% sink_form_options =  for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
@@ -57,6 +57,6 @@
     <% end %>
   </div>
 </form>
-<%= live_component @socket, LogflareWeb.Source.SearchLV.ModalLVC, active_modal: @active_modal, source: @source %>
+<%= live_component @socket, Source.SearchLV.ModalLVC, active_modal: @active_modal, source: @source %>
 <%= render_flash(@flash, in_live_view: true) %>
 </div>

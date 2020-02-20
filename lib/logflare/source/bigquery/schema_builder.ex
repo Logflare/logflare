@@ -5,6 +5,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   alias GoogleApi.BigQuery.V2.Model
   alias Model.TableFieldSchema, as: TFS
   import Logflare.Google.BigQuery.SchemaUtils, only: [deep_sort_by_fields_name: 1]
+  alias Logflare.BigQuery.SchemaTypes
 
   @doc """
   Builds table schema from event metadata and prev schema.
@@ -86,7 +87,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   end
 
   defp build_fields_schemas({params_key, params_value}) do
-    case Logflare.BigQuery.SchemaTypes.to_schema_type(params_value) do
+    case SchemaTypes.to_schema_type(params_value) do
       "ARRAY" ->
         case hd(params_value) do
           x when is_map(x) ->
@@ -97,11 +98,11 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
               fields: build_fields_schemas(params_value)
             }
 
-          x when is_binary(x) ->
+          x ->
             %TFS{
               name: params_key,
-              type: "STRING",
-              mode: "NULLABLE"
+              type: SchemaTypes.to_schema_type(x),
+              mode: "REPEATED"
             }
         end
 

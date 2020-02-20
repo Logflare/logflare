@@ -77,7 +77,6 @@ defmodule Logflare.Mixfile do
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:goth, "~> 1.2.0"},
-      {:broadway, "~> 0.5.0"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:credo, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -93,20 +92,10 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:logflare_logger_backend, "~> 0.6.3"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "~> 0.6.0"},
+      {:phoenix_live_view, "~> 0.7.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
-
-      # Test
-      {:excoveralls, "~> 0.11", only: :test, runtime: false},
-      {:placebo, "2.0.0-rc.2"},
-      {:mox, "~> 0.5", only: :test},
-
-      # Pagination
-      {:scrivener_ecto, "~> 2.2.0"},
-      {:scrivener_list, "~> 2.0.1"},
-      {:scrivener_html, "~> 1.8.1"},
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
@@ -114,9 +103,23 @@ defmodule Logflare.Mixfile do
       {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
 
+      # Concurrency and pipelines
+      {:broadway, "~> 0.5.0"},
+      {:flow, "~> 0.14"},
+
+      # Test
+      {:excoveralls, "~> 0.11", only: :test, runtime: false},
+      {:placebo, "2.0.0-rc.2"},
+      {:mox, "~> 0.5", only: :test},
+
+      # Pagination
+      {:scrivener_ecto, "~> 2.2"},
+      {:scrivener_list, "~> 2.0"},
+      {:scrivener_html, "~> 1.8"},
+
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.24.0"},
-      {:google_api_big_query, "~> 0.32.0"},
+      {:google_api_cloud_resource_manager, "~> 0.26.0"},
+      {:google_api_big_query, "~> 0.33.0"},
 
       # Ecto
       {:ecto, "~> 3.3", override: true},
@@ -137,7 +140,7 @@ defmodule Logflare.Mixfile do
       {:statistex, "~> 1.0.0"},
 
       # HTML
-      {:floki, "~> 0.25.0"},
+      {:floki, "~> 0.26.0"},
       {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
 
       # Rustler

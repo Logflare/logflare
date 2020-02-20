@@ -37,8 +37,10 @@
       <tr>
         <th scope="row">Timestamp</th>
         <td>match greater, less, equals</td>
-        <td><kbd>timestamp</kbd> <kbd>:</kbd> <kbd>>=, >, <=, < </kbd></td>
-            <td><kbd>error</kbd> <kbd>timestamp:>=2019-08-14T03:42:31Z</kbd> <kbd>timestamp:<=2019-08-14T03:42:35Z</kbd></td>
+        <td> <kbd>timestamp</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> </td>
+            <td>
+              <kbd>error</kbd> <kbd>timestamp:>=2019-08-14T03:42:31Z</kbd> <kbd>timestamp:<=2019-08-14T03:42:35Z</kbd>
+                </td>
               </tr>
               <tr>
                 <th scope="row">Metadata field</th>
@@ -49,7 +51,9 @@
               <tr>
                 <th scope="row">Metadata field</th>
                 <td>match float, integer or datetime values</td>
-                <td><kbd>path</kbd> <kbd>:</kbd> <kbd>>=, >, <=, <</kbd> <kbd>value</kbd></td>
+                <td>
+                  <kbd>path</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> <kbd>value</kbd>
+                    </td>
                     <td><kbd>metadata.response.status:>300</kbd> <kbd>metadata.response.status:<=400</kbd> <kbd>metadata.user.created_at:>2019-07-01T00:15:00</kbd></td>
                       </tr>
                       <tr>
@@ -57,6 +61,17 @@
                         <td>match regex</td>
                         <td><kbd>path</kbd> <kbd>:</kbd> <kbd>~</kbd> <kbd>regex</kbd></td>
                         <td><kbd>metadata.browser:~"Firefox 5\d"</kbd></td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Metadata field</th>
+                        <td>match array includes</td>
+                        <td>
+                          <kbd>path</kbd> <kbd>:</kbd> <kbd>_includes</kbd> <kbd>(value)</kbd>
+                          <kbd>path</kbd> <kbd>:</kbd> <kbd>@></kbd> <kbd>value</kbd>
+                        </td>
+                        <td><kbd>metadata.user.roles:_includes(subscriber)</kbd> <kbd>metadata.user.roles:_includes("new subscriber")</kbd> <kbd>metadata.user.roles:@>subscriber</kbd>
+                          <kbd>metadata.user.roles:@>"new subscriber"</kbd>
+                        </td>
                       </tr>
                     </tbody>
                   </table>
