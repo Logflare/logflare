@@ -39,7 +39,7 @@
      use_local_time: @use_local_time) %>
   <div>
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
-    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading}) %>
+    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading, chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
   </div>
   <div class="search-control console-text">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>

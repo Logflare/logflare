@@ -79,43 +79,48 @@ defmodule Logflare.Logs.SearchQueries do
       timestamp: lf_timestamp_trunc(t.timestamp, ^chart_period)
     })
   end
-      :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
-    end
-  end
 
-  def select_log_count(query) do
-    query
-    |> select_merge([l, ...], %{value: count(l.timestamp)})
-  end
-
-  def select_timestamp_trunc(query, chart_period) do
-    select(query, [t, ...], %{
-      timestamp: lf_timestamp_trunc(t.timestamp, ^chart_period)
+  def select_and_group_by_http_status_code(q) do
+    q
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.response.status_code")
+    |> select_merge([..., t], %{
+      other:
+        fragment(
+          "COUNTIF(? <= 99 OR ? >= 501 OR ? IS NULL) as other",
+          t.status_code,
+          t.status_code,
+          t.status_code
+        ),
+      status_1xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_1xx", t.status_code, 100, 200),
+      status_2xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_2xx", t.status_code, 200, 300),
+      status_3xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_3xx", t.status_code, 300, 400),
+      status_4xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_4xx", t.status_code, 400, 500),
+      status_5xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_5xx", t.status_code, 500, 600)
     })
+    |> group_by([l, ..., t], [l.timestamp, fragment("TRUNC(? / 101) * 100", t.status_code)])
   end
 
-  def join_missing_range_timestamps(q, min, max, chart_period) do
-    join(
-      subquery(q),
-      :full,
-      [t, ...],
-      ts in fragment(
-        "(SELECT timestamp, 0 as value
-            FROM UNNEST(`$$__DEFAULT_DATASET__$$`.LF_GENERATE_TIMESTAMP_ARRAY(
-              `$$__DEFAULT_DATASET__$$`.LF_TIMESTAMP_TRUNC(?, ?),
-              `$$__DEFAULT_DATASET__$$`.LF_TIMESTAMP_TRUNC(?, ?),
-              ?,
-              ?
-              ))
-             AS timestamp)",
-        ^min,
-        ^BQQueryAPI.to_bq_interval_token(chart_period),
-        ^max,
-        ^BQQueryAPI.to_bq_interval_token(chart_period),
-        1,
-        ^BQQueryAPI.to_bq_interval_token(chart_period)
-      ),
-      on: t.timestamp == ts.timestamp
-    )
+  def select_and_group_by_log_level(q) do
+    q
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.level")
+    |> select_merge([..., t], %{
+      other:
+        fragment(
+          "COUNTIF(? NOT IN UNNEST(?) OR ? IS NULL) as other",
+          t.level,
+          [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          t.level
+        ),
+      level_debug: fragment("COUNTIF(? = ?) as level_debug", t.level, "debug"),
+      level_info: fragment("COUNTIF(? = ?) as level_info", t.level, "info"),
+      level_warn: fragment("COUNTIF(? = ?) as level_warn", t.level, "warn"),
+      level_error: fragment("COUNTIF(? = ?) as level_error", t.level, "error")
+    })
+    |> group_by(1)
   end
 end

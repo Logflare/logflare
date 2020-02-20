@@ -50,6 +50,7 @@ defmodule Logflare.Logs.SearchOperations do
       field :user_local_timezone, String.t()
       field :chart_period, atom(), default: :minute, enforce: true
       field :chart_aggregate, atom(), default: :count, enforce: true
+      field :chart_data_shape_id, atom(), default: nil, enforce: true
       field :type, :events | :aggregates
     end
   end
@@ -103,6 +104,25 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_limit_to_query(SO.t()) :: SO.t()
   def apply_limit_to_query(%SO{} = so) do
     %{so | query: limit(so.query, @default_limit)}
+  end
+
+  def put_chart_data_shape_id(%SO{} = so) do
+    bq_schema = Sources.Cache.get_bq_schema(so.source)
+    flat_type_map = Lql.Utils.bq_schema_to_flat_typemap(bq_schema)
+
+    chart_data_shape_id =
+      cond do
+        Map.has_key?(flat_type_map, "metadata.level") ->
+          :elixir_logger_levels
+
+        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+          :cloudflare_status_codes
+
+        true ->
+          nil
+      end
+
+    Map.put(so, :chart_data_shape_id, chart_data_shape_id)
   end
 
   @spec put_stats(SO.t()) :: SO.t()
@@ -317,7 +337,6 @@ defmodule Logflare.Logs.SearchOperations do
       |> group_by(1)
 
     bq_schema = Sources.Cache.get_bq_schema(so.source)
-    flat_type_map = Lql.Utils.bq_schema_to_flat_typemap(bq_schema)
 
     query =
       query
@@ -340,6 +359,18 @@ defmodule Logflare.Logs.SearchOperations do
         [] ->
           query
           |> select_merge_log_count()
+      end
+
+    query =
+      case so.chart_data_shape_id do
+        :elixir_logger_levels ->
+          select_and_group_by_log_level(query)
+
+        :cloudflare_status_codes ->
+          select_and_group_by_http_status_code(query)
+
+        nil ->
+          group_by(query, :timestamp)
       end
 
     %{so | query: query}
