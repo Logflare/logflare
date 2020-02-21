@@ -61,14 +61,22 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.AuthSwitch
   end
 
+  # Oauth2 Provider Routes
   scope "/" do
     pipe_through [:api, :oauth_public]
     oauth_api_routes()
   end
 
+  # Oauth2 Provider Routes
   scope "/" do
     pipe_through [:browser, :require_auth]
     oauth_routes()
+  end
+
+  # Oauth2 Provider Routes for Zeit and Cloudflare
+  scope "/oauth/token", LogflareWeb do
+    post "/zeit", Auth.OauthProviderController, :zeit_grant
+    post "/cloudflare", Auth.OauthProviderController, :cloudflare_grant
   end
 
   scope "/", LogflareWeb do
