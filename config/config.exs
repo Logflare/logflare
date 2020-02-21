@@ -41,7 +41,7 @@ config :logflare, ExOauth2Provider,
   optional_scopes: ~w(read write),
   revoke_refresh_token_on_use: true,
   otp_app: :logflare,
-  access_token_expires_in: nil
+  access_token_expires_in: 7200
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
