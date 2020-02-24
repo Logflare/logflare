@@ -45,7 +45,7 @@ defmodule Logflare.Logs.Search do
          %{error: nil} = so <- apply_numeric_aggs(so),
          %{error: nil} = so <- apply_to_sql(so),
          %{error: nil} = so <- do_query(so),
-         %{error: nil} = so <- process_query_result(so),
+         %{error: nil} = so <- process_query_result(so, :aggs),
          %{error: nil} = so <- add_missing_agg_timestamps(so),
          %{error: nil} = so <- put_stats(so) do
       {:ok, so}

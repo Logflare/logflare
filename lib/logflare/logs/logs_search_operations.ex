@@ -153,6 +153,21 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | rows: rows}
   end
 
+  @spec process_query_result(SO.t()) :: SO.t()
+  def process_query_result(%SO{} = so, :aggs) do
+    %{schema: schema, rows: rows} = so.query_result
+
+    rows =
+      schema
+      |> SchemaUtils.merge_rows_with_schema(rows)
+      |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
+      |> Enum.map(fn agg ->
+        Map.put(agg, :datetime, Timex.from_unix(agg.timestamp, :microsecond))
+      end)
+
+    %{so | rows: rows}
+  end
+
   def apply_timestamp_filter_rules(%SO{tailing?: t?, tailing_initial?: ti?, type: :events} = so) do
     so = %{so | query: from(so.source.bq_table_id)}
     query = so.query
@@ -329,14 +344,10 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
     {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
 
-    {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
-
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
       |> group_by(1)
-
-    bq_schema = Sources.Cache.get_bq_schema(so.source)
 
     query =
       query
@@ -384,45 +395,47 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
+    min = DateTime.truncate(min, :second)
+    max = DateTime.truncate(max, :second)
     use Timex
 
-    step_period =
+    {step_period, from, until} =
       case chart_period do
-        :day -> :days
-        :hour -> :hours
-        :minute -> :minutes
-        :second -> :seconds
+        :day ->
+          {:days, %{min | second: 0, minute: 0, hour: 0}, %{max | second: 0, minute: 0, hour: 0}}
+
+        :hour ->
+          {:hours, %{min | second: 0, minute: 0}, %{max | second: 0, minute: 0}}
+
+        :minute ->
+          {:minutes, %{min | second: 0}, %{max | second: 0}}
+
+        :second ->
+          {:seconds, min, max}
       end
 
-    dts =
+    empty_aggs =
       Interval.new(
-        from: %{DateTime.truncate(min, :millisecond) | second: 0},
-        until: %{DateTime.truncate(max, :millisecond) | second: 0},
-        left_open: false,
+        from: from,
+        until: until,
+        left_open: true,
         right_open: false,
         step: [{step_period, 1}]
       )
       |> Enum.to_list()
+      |> Enum.map(fn dt ->
+        ts = dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
 
-    not_present =
-      for dt <- dts,
-          !Enum.find(
-            aggs,
-            false,
-            &(Timex.compare(DateTime.from_unix!(&1.timestamp, :microsecond), dt, chart_period) ==
-                0)
-          ) do
         %{
-          timestamp: dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond),
-          value: 0,
+          timestamp: ts,
           datetime: dt
         }
-      end
+      end)
 
-    [not_present | aggs]
+    [aggs | empty_aggs]
     |> List.flatten()
-    |> Enum.sort_by(& &1.timestamp, :asc)
-    |> Enum.reverse()
+    |> Enum.uniq_by(& &1.timestamp)
+    |> Enum.sort_by(& &1.timestamp, :desc)
   end
 
   @spec put_time_stats(SO.t()) :: SO.t()
