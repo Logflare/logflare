@@ -91,13 +91,13 @@ defmodule Logflare.Logs.SearchQueries do
           t.status_code,
           t.status_code
         ),
-      status_1xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_1xx", t.status_code, 100, 200),
-      status_2xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_2xx", t.status_code, 200, 300),
-      status_3xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_3xx", t.status_code, 300, 400),
-      status_4xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_4xx", t.status_code, 400, 500),
-      status_5xx: fragment("COUNTIF(? BETWEEN ? AND ?-1) as status_5xx", t.status_code, 500, 600)
+      status_1xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_1xx", t.status_code, 100, 199),
+      status_2xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_2xx", t.status_code, 200, 299),
+      status_3xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_3xx", t.status_code, 300, 399),
+      status_4xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_4xx", t.status_code, 400, 499),
+      status_5xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_5xx", t.status_code, 500, 599)
     })
-    |> group_by([l, ..., t], [l.timestamp, fragment("TRUNC(? / 101) * 100", t.status_code)])
+    |> group_by(1)
   end
 
   def select_and_group_by_log_level(q) do

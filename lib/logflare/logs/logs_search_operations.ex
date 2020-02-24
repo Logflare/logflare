@@ -347,7 +347,6 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
-      |> group_by(1)
 
     query =
       query
