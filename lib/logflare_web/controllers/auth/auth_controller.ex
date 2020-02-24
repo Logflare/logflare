@@ -16,19 +16,11 @@ defmodule LogflareWeb.AuthController do
     |> redirect(to: Routes.marketing_path(conn, :index))
   end
 
-  def login(conn, %{"invite_token" => invite_token} = _params) do
-    put_session(conn, :invite_token, invite_token)
-    |> put_flash(:info, "You've been invited to sign into Logflare!")
+  def login(conn, params) do
+    conn
+    |> maybe_flash_invite_message()
+    |> maybe_flash_account_deleted()
     |> render("login.html")
-  end
-
-  def login(conn, _params) do
-    if get_session(conn, :invite_token) do
-      put_flash(conn, :info, "You've been invited to sign into Logflare!")
-      |> render("login.html")
-    else
-      render(conn, "login.html")
-    end
   end
 
   def check_invite_token_and_signin(conn, auth_params) do
@@ -150,5 +142,34 @@ defmodule LogflareWeb.AuthController do
           scope: oauth_params["scope"]
         )
     )
+  end
+
+  defp maybe_flash_account_deleted(conn) do
+    cond do
+      conn.params["user_deleted"] ->
+        put_flash(conn, :info, "Your account has been deleted!")
+
+      conn.params["team_user_deleted"] ->
+        put_flash(conn, :info, "Your member profile has been deleted!")
+
+      true ->
+        conn
+    end
+  end
+
+  defp maybe_flash_invite_message(conn) do
+    cond do
+      invite_token = conn.params["invite_token"] ->
+        conn
+        |> put_session(:invite_token, invite_token)
+        |> put_flash(:info, "You've been invited to sign into Logflare!")
+
+      get_session(conn, :invite_token) ->
+        conn
+        |> put_flash(:info, "You've been invited to sign into Logflare!")
+
+      true ->
+        conn
+    end
   end
 end
