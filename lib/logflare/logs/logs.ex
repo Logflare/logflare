@@ -12,6 +12,7 @@ defmodule Logflare.Logs do
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
     log_params_batch
+    |> IO.inspect()
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
       if le.valid? do

@@ -1,146 +1,107 @@
 defmodule Logflare.Logs.Zeit.LambdaMessageParser do
-  import NimbleParsec
+  @moduledoc """
+  Message examples:
 
-  def parse(input) do
-    {:ok, [result], _, _, _, _} = do_parse(input)
-    {:ok, result}
-  end
+  message = "START RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167 Version: $LATEST\nEND RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167\nREPORT RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167\tDuration: 17.99 ms\tBilled Duration: 100 ms\tMemory Size: 1024 MB\tMax Memory Used: 78 MB\tInit Duration: 185.18 ms\t\n"
 
-  def test() do
-    {:ok,
-     %{
-       lines: [
-         %{
-           message: "Getting metadata",
-           severity: "INFO",
-           timestamp: "2020-02-19T17:32:52.353Z"
-         },
-         %{
-           message: "Getting projects",
-           severity: "INFO",
-           timestamp: "2020-02-19T17:32:52.364Z"
-         },
-         %{
-           message: "Getting Logflare sources\nOh see, it handles more than one line per message",
-           severity: "INFO",
-           timestamp: "2020-02-19T17:32:52.401Z"
-         }
-       ],
-       report: %{
-         "billed_duration_ms" => "174.83",
-         "duration_ms" => "200",
-         "max_memory_used_mb" => "1024",
-         "memory_size_mb" => "84"
-       },
-       request_id: "4d0ff57e-4022-4bfd-8689-a69e39f80f69"
-     }} == parse(test_input())
-  end
+  message1 = "START RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69 Version: $LATEST\n2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n2020-02-19T17:32:52.364Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting projects\n2020-02-19T17:32:52.401Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting Logflare sources\nOh see, it handles more than one line per message\nEND RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n"
 
-  def test_input() do
-    "START RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69 Version: $LATEST\n2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n2020-02-19T17:32:52.364Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting projects\n2020-02-19T17:32:52.401Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting Logflare sources\nOh see, it handles more than one line per message\nEND RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n"
-  end
+  message3 = "START RequestId: bd8b7963-66f1-40b9-adfd-15e761cd39e8 Version: $LATEST\nEND RequestId: bd8b7963-66f1-40b9-adfd-15e761cd39e8\nREPORT RequestId: bd8b7963-66f1-40b9-adfd-15e761cd39e8\tDuration: 22.48 ms\tBilled Duration: 100 ms\tMemory Size: 1024 MB\tMax Memory Used: 85 MB\t\n"
 
-  # Example: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
-  uuid = ascii_string([?0..?9, ?a..?z, ?-], min: 1)
+  message4 = "START RequestId: cb510178-1382-47e8-9865-1fb954a41325 Version: $LATEST\n2020-02-22T03:40:36.354Z\tcb510178-1382-47e8-9865-1fb954a41325\tINFO\tGetting drains\n2020-02-22T03:40:36.381Z\tcb510178-1382-47e8-9865-1fb954a41325\tINFO\tLogging map\n2020-02-22T03:40:36.381Z\tcb510178-1382-47e8-9865-1fb954a41325\tINFO\tMap {\n  'a string' => \"value associated with 'a string'\",\n  {} => 'value associated with keyObj',\n  [Function: keyFunc] => 'value associated with keyFunc'\n}\n2020-02-22T03:40:36.381Z\tcb510178-1382-47e8-9865-1fb954a41325\tINFO\tGetting metadata\nEND RequestId: cb510178-1382-47e8-9865-1fb954a41325\nREPORT RequestId: cb510178-1382-47e8-9865-1fb954a41325\tDuration: 293.60 ms\tBilled Duration: 300 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n"
+  """
 
-  # Example: 2020-02-19T17:32:52.353Z
-  timestamp = ascii_string([?0..?9, ?-, ?:, ?., ?T, ?Z], 24)
+  def parse(message) do
+    n_split_message = String.split(message, "\n")
+    [_, latest] = String.split(message, "LATEST\n")
 
-  # Example: START RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69 Version: $LATEST\n
-  start =
-    ignore(string("START RequestId: "))
-    |> concat(uuid)
-    |> ignore(string(" Version: $LATEST\n"))
+    case String.split(latest, "\nEND") do
+      [lines, _] ->
+        state(n_split_message, lines, message)
+        |> parse_lambda_report()
+        |> parse_request_id()
+        |> parse_lambda_lines()
+        |> Map.drop(["n_split_message", "lines_string", "og_message"])
 
-  # Example: END RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
-  end_ =
-    ignore(string("END RequestId: "))
-    |> concat(ignore(uuid))
-    |> ignore(string("\n"))
-
-  # Example: Getting metadata\n
-  message_line =
-    lookahead_not(choice([timestamp, end_]))
-    |> optional(utf8_string([{:not, ?\n}], min: 1))
-    |> ignore(string("\n"))
-
-  # Example: It also\nworks with\nseveral lines
-  message =
-    message_line
-    |> repeat()
-    |> reduce({Enum, :join, ["\n"]})
-
-  # Example: 2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n
-  logline =
-    timestamp
-    |> ignore(string("\t"))
-    |> concat(ignore(uuid))
-    |> ignore(string("\t"))
-    |> ascii_string([?A..?Z], min: 1)
-    |> ignore(string("\t"))
-    |> concat(message)
-    |> reduce({:to_logline, []})
-
-  defp to_logline([ts, severity, message]) do
-    %{
-      timestamp: ts,
-      severity: severity,
-      message: message
-    }
-  end
-
-  loglines =
-    logline
-    |> repeat()
-    |> reduce({:to_loglines, []})
-
-  defp to_loglines(loglines), do: loglines
-
-  # Example: \nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n
-  report =
-    ignore(string("REPORT RequestId: "))
-    |> concat(ignore(uuid))
-    |> ignore(string("\tDuration: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" ms\tBilled Duration: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" ms\tMemory Size: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" MB\tMax Memory Used: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" MB\t\n"))
-    |> reduce({:to_report, []})
-
-  defp to_report([duration, billed_duration, memory_size, max_memory_used]) do
-    %{
-      "billed_duration_ms" => float_to_int(duration),
-      "duration_ms" => float_to_int(billed_duration),
-      "max_memory_used_mb" => float_to_int(memory_size),
-      "memory_size_mb" => float_to_int(max_memory_used)
-    }
-  end
-
-  parser =
-    start
-    |> concat(loglines)
-    |> concat(end_)
-    |> concat(report)
-    |> reduce({:to_result, []})
-
-  defp to_result([uuid, lines, report]) do
-    %{
-      request_id: uuid,
-      lines: lines,
-      report: report
-    }
-  end
-
-  defp float_to_int(v) do
-    case Float.parse(v) do
-      {float, _rem} -> Kernel.round(float)
-      :error -> raise("Error parsing floats")
+      [_no_lines] ->
+        state(n_split_message, [], message)
+        |> parse_lambda_report()
+        |> parse_request_id()
+        |> Map.drop(["n_split_message", "lines_string", "og_message"])
     end
   end
 
-  defparsecp(:do_parse, parser)
+  def parse_lambda_lines(%{"lines_string" => lines_string} = state) do
+    regex =
+      ~r"((?:((?:16|17|18|19|20|21)\d\d)-(0[1-9]|10|11|12)-([0-3]\d))|(?:((?:16|17|18|19|20|21)\d\d)-([0-3]\d\d)))T(([01]\d|2[0-4])(?:\:([0-5]\d)(?::([0-5]\d|60)(\.\d{1,9})?)?)?)?Z"
+
+    lines =
+      Regex.split(regex, lines_string, include_captures: true, trim: true)
+      |> Enum.map(fn x -> String.split(x, "\t", trim: true) end)
+
+    lines =
+      Enum.chunk_every(lines, 2)
+      |> Enum.map(fn [[t], [_id, l, m]] = x ->
+        %{"timestamp" => t, "level" => l, "message" => String.trim(m, "\n")}
+      end)
+
+    Map.put(state, "lines", lines)
+  end
+
+  def parse_request_id(%{"n_split_message" => n_split_message} = state) do
+    request_id =
+      n_split_message
+      |> Enum.find(fn x -> String.contains?(x, "START") end)
+      |> String.split(" ")
+      |> Enum.at(2)
+
+    Map.put(state, "request_id", request_id)
+  end
+
+  def parse_lambda_report(%{"n_split_message" => n_split_message} = state) do
+    report =
+      n_split_message
+      |> Enum.find(fn x -> String.contains?(x, "REPORT") end)
+      |> String.split("\t")
+      |> Enum.drop_while(fn x -> String.contains?(x, "RequestId:") == true end)
+      |> Enum.map(fn x ->
+        case String.split(x, ":", trim: true) do
+          [k, v] ->
+            [v, kind] =
+              String.trim(v)
+              |> String.split(" ")
+
+            key =
+              "#{k}_#{kind}"
+              |> String.downcase()
+              |> String.replace(" ", "_")
+
+            value =
+              case Float.parse(v) do
+                {float, _rem} -> Kernel.round(float)
+                :error -> raise("Error parsing floats")
+              end
+
+            {key, value}
+
+          _ ->
+            {"key", "value"}
+        end
+      end)
+      |> Enum.into(%{})
+      |> Map.drop(["key"])
+
+    Map.put(state, "report", report)
+  end
+
+  defp state(n_split_message, lines, message) do
+    %{
+      "n_split_message" => n_split_message,
+      "lines_string" => lines,
+      "og_message" => message,
+      "request_id" => nil,
+      "report" => nil,
+      "lines" => nil
+    }
+  end
 end

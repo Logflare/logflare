@@ -9,7 +9,7 @@ defmodule Logflare.Logs.Zeit do
   def handle_batch(batch, source) when is_list(batch) do
     Enum.map(batch, fn x ->
       if x["source"] == "lambda" and x["message"] do
-        {:ok, lambda_message} =
+        lambda_message =
           try do
             LambdaMessageParser.parse(x["message"])
           rescue
