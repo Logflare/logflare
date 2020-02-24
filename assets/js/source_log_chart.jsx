@@ -1,5 +1,5 @@
 import React from "react"
-import {ResponsiveBar, Bar} from "@nivo/bar"
+import {ResponsiveBarCanvas} from "@nivo/bar"
 
 import {BarLoader} from "react-spinners"
 
@@ -98,7 +98,7 @@ const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId}) 
           />
         </div>
       ) : (
-        <ResponsiveBar
+        <ResponsiveBarCanvas
           data={data}
           margin={{top: 20, right: 0, bottom: 0, left: 0}}
           padding={0.3}
