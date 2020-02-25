@@ -10,30 +10,31 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   def test() do
     {:ok,
      %{
-       lines: [
+       "lines" => [
          %{
-           message: "Getting metadata",
-           level: "INFO",
-           timestamp: "2020-02-19T17:32:52.353Z"
+           "message" => "Getting metadata",
+           "level" => "INFO",
+           "timestamp" => "2020-02-19T17:32:52.353Z"
          },
          %{
-           message: "Getting projects",
-           level: "INFO",
-           timestamp: "2020-02-19T17:32:52.364Z"
+           "message" => "Getting projects",
+           "level" => "INFO",
+           "timestamp" => "2020-02-19T17:32:52.364Z"
          },
          %{
-           message: "Getting Logflare sources\nOh see, it handles more than one line per message",
-           level: "INFO",
-           timestamp: "2020-02-19T17:32:52.401Z"
+           "message" =>
+             "Getting Logflare sources\nOh see, it handles more than one line per message",
+           "level" => "INFO",
+           "timestamp" => "2020-02-19T17:32:52.401Z"
          }
        ],
-       report: %{
+       "report" => %{
          "billed_duration_ms" => 175,
          "duration_ms" => 200,
          "max_memory_used_mb" => 1024,
          "memory_size_mb" => 84
        },
-       request_id: "4d0ff57e-4022-4bfd-8689-a69e39f80f69"
+       "request_id" => "4d0ff57e-4022-4bfd-8689-a69e39f80f69"
      }} == parse(test_input())
   end
 
@@ -111,9 +112,9 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
 
   defp to_logline([ts, severity, message]) do
     %{
-      timestamp: ts,
-      level: severity,
-      message: message
+      "timestamp" => ts,
+      "level" => severity,
+      "message" => message
     }
   end
 
@@ -159,9 +160,9 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
 
   defp to_result([uuid, lines, report]) do
     %{
-      request_id: uuid,
-      lines: lines,
-      report: report
+      "request_id" => uuid,
+      "lines" => lines,
+      "report" => report
     }
   end
 
