@@ -434,7 +434,8 @@ defmodule Logflare.Logs.SearchOperations do
     [aggs | empty_aggs]
     |> List.flatten()
     |> Enum.uniq_by(& &1.timestamp)
-    |> Enum.sort_by(& &1.timestamp, :desc)
+    |> Enum.sort_by(& &1.timestamp)
+    |> Enum.reverse()
   end
 
   @spec put_time_stats(SO.t()) :: SO.t()
