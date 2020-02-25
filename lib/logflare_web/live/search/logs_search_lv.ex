@@ -62,8 +62,7 @@ defmodule LogflareWeb.Source.SearchLV do
         user_local_timezone: nil,
         use_local_time: true,
         chart_aggregate_enabled?: chart_aggregate_enabled?,
-        last_query_completed_at: nil,
-        chart_bar_data_shape_id: nil
+        last_query_completed_at: nil
       )
 
     {:ok, socket}
