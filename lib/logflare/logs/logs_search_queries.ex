@@ -86,7 +86,7 @@ defmodule Logflare.Logs.SearchQueries do
     |> select_merge([..., t], %{
       other:
         fragment(
-          "COUNTIF(? <= 99 OR ? >= 501 OR ? IS NULL) as other",
+          "COUNTIF(? <= 99 OR ? >= 601 OR ? IS NULL) as other",
           t.status_code,
           t.status_code,
           t.status_code
