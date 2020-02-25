@@ -28,8 +28,7 @@ const theme = {
   },
 }
 
-const renderTooltip = tooltipData => {
-  const {value, color, indexValue} = tooltipData
+const renderDefaultTooltip = ({value, color, indexValue}) => {
   return (
     <div>
       <strong style={{color}}>Timestamp: {indexValue}</strong>
@@ -37,6 +36,59 @@ const renderTooltip = tooltipData => {
       <strong style={{color}}>Value: {value}</strong>
     </div>
   )
+}
+
+const renderCfStatusCodeTooltip = ({data, color}) => {
+  return (
+    <div>
+      <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
+      <br/>
+      <strong style={{color: brandGray}}>Total: {data.value}</strong>
+      <br/>
+      <strong style={{color: errorColor}}>5xx: {data.status_5xx}</strong>
+      <br/>
+      <strong style={{color: warnColor}}>4xx: {data.status_4xx}</strong>
+      <br/>
+      <strong style={{color: secondInfoColor}}>3xx: {data.status_3xx}</strong>
+      <br/>
+      <strong style={{color: infoColor}}>2xx: {data.status_2xx}</strong>
+      <br/>
+      <strong style={{color: debugColor}}>1xx: {data.status_1xx}</strong>
+      <br/>
+      <strong style={{color: brandGray}}>Other: {data.other}</strong>
+    </div>
+  )
+}
+
+const renderElixirLoggerTooltip = ({data, color}) => {
+  return (
+    <div>
+      <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
+      <br/>
+      <strong style={{color: brandGray}}>Total: {data.value}</strong>
+      <br/>
+      <strong style={{color: errorColor}}>Error: {data.level_error}</strong>
+      <br/>
+      <strong style={{color: warnColor}}>Warn: {data.level_warn}</strong>
+      <br/>
+      <strong style={{color: infoColor}}>Info: {data.level_info}</strong>
+      <br/>
+      <strong style={{color: debugColor}}>Debug: {data.level_debug}</strong>
+      <br/>
+      <strong style={{color: brandGray}}>Other: {data.other}</strong>
+    </div>
+  )
+}
+
+const tooltipFactory = dataShape => {
+  switch (dataShape) {
+    case "elixir_logger_levels":
+      return renderElixirLoggerTooltip
+    case "cloudflare_status_codes":
+      return renderCfStatusCodeTooltip
+    default:
+      return renderDefaultTooltip
+  }
 }
 
 const chartSettings = (type) => {
@@ -48,9 +100,10 @@ const chartSettings = (type) => {
             level_info: infoColor,
             level_error: errorColor,
             level_warn: warnColor,
-            level_debug: debugColor
+            level_debug: debugColor,
+            other: brandGray
           }[id]
-          return color || "green"
+          return color || brandGray
         },
         keys: ["level_info", "level_debug", "level_error", "level_warn", "other"]
       }
@@ -64,18 +117,22 @@ const chartSettings = (type) => {
             status_3xx: secondInfoColor,
             status_2xx: infoColor,
             status_1xx: debugColor,
+            other: brandGray,
           }[id]
-          return color || "green"
+          return color || brandGray
         },
         keys: ["status_5xx", "status_4xx", "status_3xx", "status_2xx", "status_1xx", "other"]
       }
     default:
-      return {}
+      return {
+        keys: ["value"]
+      }
   }
 }
 
 
 const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId}) => {
+  const renderTooltip = tooltipFactory(chartDataShapeId)
   return (
     <div
       style={{
