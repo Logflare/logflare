@@ -394,14 +394,23 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
-    min = DateTime.truncate(min, :second)
-    max = DateTime.truncate(max, :second)
     use Timex
+
+    maybe_truncate_to_second = fn dt ->
+      if match?(%DateTime{}, dt) do
+        DateTime.truncate(dt, :second)
+      else
+        dt
+      end
+    end
+
+    min = maybe_truncate_to_second.(min)
+    max = maybe_truncate_to_second.(max)
 
     {step_period, from, until} =
       case chart_period do
         :day ->
-          {:days, %{min | second: 0, minute: 0, hour: 0}, %{max | second: 0, minute: 0, hour: 0}}
+          {:days, min, max}
 
         :hour ->
           {:hours, %{min | second: 0, minute: 0}, %{max | second: 0, minute: 0}}
@@ -417,7 +426,7 @@ defmodule Logflare.Logs.SearchOperations do
       Interval.new(
         from: from,
         until: until,
-        left_open: true,
+        left_open: false,
         right_open: false,
         step: [{step_period, 1}]
       )

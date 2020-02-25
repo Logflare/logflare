@@ -15,6 +15,7 @@ defmodule Logflare.LogsTest do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Lql
   @test_dataset_location "us-east4"
 
   describe "log event ingest" do
@@ -232,9 +233,29 @@ defmodule Logflare.LogsTest do
       sinks: [first_sink, last_sink | _]
     } do
       _first_sink_rule =
-        insert(:rule, sink: last_sink.token, lql_string: "test", source_id: first_sink.id)
+        insert(:rule,
+          sink: last_sink.token,
+          lql_string: "test",
+          lql_filters: [
+            %Lql.FilterRule{operator: :"~", value: "test", modifiers: [], path: "event_message"}
+          ],
+          source_id: first_sink.id
+        )
 
-      _s1rule1 = insert(:rule, sink: first_sink.token, lql_string: "test", source_id: s1.id)
+      _s1rule1 =
+        insert(:rule,
+          sink: first_sink.token,
+          lql_string: "test",
+          lql_filters: [
+            %Lql.FilterRule{
+              operator: :"~",
+              value: "test",
+              modifiers: [],
+              path: "event_message"
+            }
+          ],
+          source_id: s1.id
+        )
 
       log_params_batch = [
         %{"message" => "test"}

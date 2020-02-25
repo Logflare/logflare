@@ -41,7 +41,7 @@ defmodule LogflareWeb.LogControllerTest do
   describe "/logs/cloudflare POST request fails" do
     test "without an API token", %{conn: conn, users: _} do
       conn = post(conn, log_path(conn, :create), %{"log_entry" => "valid log entry"})
-      assert json_response(conn, 401) == %{"message" => "Error: please set API token"}
+      assert json_response(conn, 401) == %{"message" => "Error: please set ingest API key"}
     end
 
     test "without source or source_name", %{conn: conn, users: [u | _]} do

@@ -19,15 +19,6 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  def select_aggregates(q) do
-    q
-    |> select([t, ts], %{
-      timestamp: fragment("? as timestamp", coalesce(t.timestamp, ts.timestamp)),
-      datetime: fragment("DATETIME(?) AS datetime", coalesce(t.timestamp, ts.timestamp)),
-      value: fragment("? as value", coalesce(t.value, ts.value))
-    })
-  end
-
   @spec select_merge_agg_value(any, :avg | :count | :sum, any) :: Ecto.Query.t()
   def select_merge_agg_value(query, chart_aggregate, last_chart_field) do
     case chart_aggregate do

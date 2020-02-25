@@ -75,7 +75,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert %{timestamp: _, value: _, datetime: _} = hd(rows)
+      assert %{timestamp: _, datetime: _} = hd(rows)
     end
 
     test "with default second chart period ", %{
@@ -164,7 +164,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert %{timestamp: _, value: _, datetime: _} = hd(rows)
+      assert %{timestamp: _, datetime: _} = hd(rows)
     end
 
     test "with default minute chart period", %{
@@ -172,7 +172,7 @@ defmodule Logflare.Logs.SearchTest do
       users: [_user | _],
       so: so0
     } do
-      so = %{so0 | querystring: "t:2020-01-01..2020-01-02"}
+      so = %{so0 | querystring: "t:2020-01-01T00:00:00Z..2020-01-02T00:00:00Z"}
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
