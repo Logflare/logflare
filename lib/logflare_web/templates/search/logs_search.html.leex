@@ -41,10 +41,10 @@
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading, chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
   </div>
-  <div class="search-control console-text">
+  <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
-    <div class="form-group">
-      <%= text_input f, :querystring, value: @querystring, class: "form-control", readonly: (if @loading, do: "true"), phx_debounce: "blur" %>
+    <div class="form-group form-text">
+      <%= text_input f, :querystring, value: @querystring, class: "form-control form-control-margin", readonly: (if @loading, do: "true"), phx_debounce: "blur" %>
       <%= if @last_query_completed_at do %>
         <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
           Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0 </span> seconds
@@ -55,41 +55,40 @@
         </small>
       <% end %>
     </div>
-    <div class="form-row align-items-center">
-      <div class="col-auto mt-2">
-        <%= submit disabled: @loading, id: "search", class: "btn btn-primary btn-sm" do %>
-          <i class="fas fa-search v-align-icon-button"></i> Search
+    <div class="form-row align-items-center form-text">
+      <div class="col-auto">
+        <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
+          <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
         <% end %>
       </div>
-      <div class="col-auto mt-2">
+      <div class="col-auto">
         <div class="btn-group-toggle">
-          <%= label f, :tailing?, class: "btn btn-primary btn-sm", id: "search-tailing-button" do %>
+          <%= label f, :tailing?, class: "btn btn-primary", id: "search-tailing-button" do %>
             <%= if @tailing? do %>
-              <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+              <div class="spinner-border spinner-border-sm text-info" role="status"></div><span class="fas-in-button">Live</span>
             <% else %>
-              <i class="fas fa-play v-align-icon-button"></i>
+              <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
             <% end %>
-            Live
           <% end %>
           <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
         </div>
       </div>
-      <div class="col-auto mt-2">
-        <a href="#" phx-click="save_search" class="btn btn-primary btn-sm">
-          <i class="fas fa-save v-align-icon-button"></i> Save
+      <div class="col-auto">
+        <a href="#" phx-click="save_search" class="btn btn-primary">
+          <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
         </a>
       </div>
-      <div class="col-auto mt-2 hide-on-mobile">
+      <div class="col-auto  hide-on-mobile">
         Chart period:
       </div>
-      <div class="col-auto mt-2">
+      <div class="col-auto">
         <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: @chart_period, class: "form-control form-control-sm" %>
       </div>
-      <div class="col-auto mt-2 hide-on-mobile">
+      <div class="col-auto  hide-on-mobile">
         Aggregate:
       </div>
-      <div class="col-auto mt-2">
+      <div class="col-auto">
         <%= if @chart_aggregate_enabled? do %>
           <%= select f,
          :chart_aggregate,
