@@ -125,6 +125,7 @@ const chartSettings = (type) => {
       }
     default:
       return {
+        colors: (_) => infoColor,
         keys: ["value"]
       }
   }

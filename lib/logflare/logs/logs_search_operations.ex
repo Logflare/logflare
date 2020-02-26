@@ -112,6 +112,9 @@ defmodule Logflare.Logs.SearchOperations do
 
     chart_data_shape_id =
       cond do
+        not Enum.empty?(so.chart_rules) ->
+          nil
+
         Map.has_key?(flat_type_map, "metadata.level") ->
           :elixir_logger_levels
 
@@ -153,7 +156,7 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | rows: rows}
   end
 
-  @spec process_query_result(SO.t()) :: SO.t()
+  @spec process_query_result(SO.t(), :aggs | :events) :: SO.t()
   def process_query_result(%SO{} = so, :aggs) do
     %{schema: schema, rows: rows} = so.query_result
 
@@ -347,9 +350,6 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
-
-    query =
-      query
       |> select_aggregates(so.chart_period)
       |> order_by([t, ...], desc: 1)
 
@@ -367,21 +367,22 @@ defmodule Logflare.Logs.SearchOperations do
           |> select_merge_agg_value(so.chart_aggregate, last_chart_field)
 
         [] ->
-          query
-          |> select_merge_log_count()
+          case so.chart_data_shape_id do
+            :elixir_logger_levels ->
+              select_count_log_level(query)
+
+            :cloudflare_status_codes ->
+              select_count_http_status_code(query)
+
+            nil ->
+              query
+              |> select_merge_log_count()
+          end
       end
 
     query =
-      case so.chart_data_shape_id do
-        :elixir_logger_levels ->
-          select_and_group_by_log_level(query)
-
-        :cloudflare_status_codes ->
-          select_and_group_by_http_status_code(query)
-
-        nil ->
-          group_by(query, :timestamp)
-      end
+      query
+      |> group_by(1)
 
     %{so | query: query}
   end

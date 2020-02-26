@@ -22,9 +22,20 @@ defmodule Logflare.Logs.SearchQueries do
   @spec select_merge_agg_value(any, :avg | :count | :sum, any) :: Ecto.Query.t()
   def select_merge_agg_value(query, chart_aggregate, last_chart_field) do
     case chart_aggregate do
-      :sum -> select_merge(query, [..., l], %{value: sum(field(l, ^last_chart_field))})
-      :avg -> select_merge(query, [..., l], %{value: avg(field(l, ^last_chart_field))})
-      :count -> select_merge(query, [..., l], %{value: count(field(l, ^last_chart_field))})
+      :sum ->
+        select_merge(query, [..., l], %{
+          value: fragment("SUM(?) as value", field(l, ^last_chart_field))
+        })
+
+      :avg ->
+        select_merge(query, [..., l], %{
+          value: fragment("AVG(?) as value", field(l, ^last_chart_field))
+        })
+
+      :count ->
+        select_merge(query, [..., l], %{
+          value: fragment("COUNT(?) as value", field(l, ^last_chart_field))
+        })
     end
   end
 
@@ -71,7 +82,7 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  def select_and_group_by_http_status_code(q) do
+  def select_count_http_status_code(q) do
     q
     |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.response.status_code")
     |> select_merge([..., t], %{
@@ -88,10 +99,9 @@ defmodule Logflare.Logs.SearchQueries do
       status_4xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_4xx", t.status_code, 400, 499),
       status_5xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_5xx", t.status_code, 500, 599)
     })
-    |> group_by(1)
   end
 
-  def select_and_group_by_log_level(q) do
+  def select_count_log_level(q) do
     q
     |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.level")
     |> select_merge([..., t], %{
@@ -112,6 +122,5 @@ defmodule Logflare.Logs.SearchQueries do
       level_warn: fragment("COUNTIF(? = ?) as level_warn", t.level, "warn"),
       level_error: fragment("COUNTIF(? = ?) as level_error", t.level, "error")
     })
-    |> group_by(1)
   end
 end
