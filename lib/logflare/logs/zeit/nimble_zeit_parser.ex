@@ -1,47 +1,13 @@
 defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
+  @moduledoc """
+  Parser for incoming Zeit Lambda messages
+  """
   import NimbleParsec
 
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
 
     {:ok, result}
-  end
-
-  def test() do
-    {:ok,
-     %{
-       "lines" => [
-         %{
-           "message" => "Getting metadata",
-           "level" => "INFO",
-           "timestamp" => "2020-02-19T17:32:52.353Z"
-         },
-         %{
-           "message" => "Getting projects",
-           "level" => "INFO",
-           "timestamp" => "2020-02-19T17:32:52.364Z"
-         },
-         %{
-           "message" =>
-             "Getting Logflare sources\nOh see, it handles more than one line per message",
-           "level" => "INFO",
-           "timestamp" => "2020-02-19T17:32:52.401Z"
-         }
-       ],
-       "report" => %{
-         "billed_duration_ms" => 175,
-         "duration_ms" => 200,
-         "max_memory_used_mb" => 1024,
-         "memory_size_mb" => 84
-       },
-       "request_id" => "4d0ff57e-4022-4bfd-8689-a69e39f80f69"
-     }} == parse(test_input())
-  end
-
-  def test_input() do
-    "START RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69 Version: $LATEST\n2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n2020-02-19T17:32:52.364Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting projects\n2020-02-19T17:32:52.401Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting Logflare sources\nOh see, it handles more than one line per message\nEND RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n"
-
-    "START RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167 Version: $LATEST\nEND RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167\nREPORT RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167\tDuration: 17.99 ms\tBilled Duration: 100 ms\tMemory Size: 1024 MB\tMax Memory Used: 78 MB\tInit Duration: 185.18 ms\t\n"
   end
 
   # Example: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
@@ -77,9 +43,11 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   # Example: END RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
 
   end_ =
-    ignore(string("END RequestId: "))
-    |> concat(ignore(uuid))
-    |> ignore(string("\n"))
+    ignore(
+      string("END RequestId: ")
+      |> concat(uuid)
+      |> string("\n")
+    )
 
   # Example: Getting metadata\n
 
@@ -96,27 +64,20 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     |> reduce({Enum, :join, ["\n"]})
 
   # Example: INFO
-  severity = choice([string("INFO"), string("WARN")])
+  severity = choice([string("INFO") |> replace("info"), string("WARN") |> replace("warn")])
 
   # Example: 2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n
 
   logline =
     timestamp
+    |> unwrap_and_tag("timestamp")
     |> ignore(string("\t"))
-    |> concat(ignore(uuid))
+    |> ignore(uuid)
     |> ignore(string("\t"))
-    |> concat(severity)
+    |> concat(severity |> unwrap_and_tag("level"))
     |> ignore(string("\t"))
-    |> concat(message)
-    |> reduce({:to_logline, []})
-
-  defp to_logline([ts, severity, message]) do
-    %{
-      "timestamp" => ts,
-      "level" => severity,
-      "message" => message
-    }
-  end
+    |> concat(message |> unwrap_and_tag("message"))
+    |> reduce({Map, :new, []})
 
   loglines =
     logline
@@ -126,57 +87,58 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   defp to_loglines(loglines), do: loglines
 
   # Example: \nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n
+  def token_to_float([s]), do: String.to_float(s) |> round()
+
+  number_string =
+    choice([
+      integer(min: 1) |> lookahead_not(string(".")),
+      ascii_string([?0..?9, ?.], min: 1) |> reduce(:token_to_float)
+    ])
 
   report =
     ignore(string("REPORT RequestId: "))
-    |> concat(ignore(uuid))
-    |> ignore(string("\tDuration: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" ms\tBilled Duration: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" ms\tMemory Size: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" MB\tMax Memory Used: "))
-    |> ascii_string([?0..?9, ?.], min: 1)
-    |> ignore(string(" MB\t\n"))
-    |> reduce({:to_report, []})
-
-  defp to_report([duration, billed_duration, memory_size, max_memory_used]) do
-    %{
-      "billed_duration_ms" => duration,
-      "duration_ms" => billed_duration,
-      "max_memory_used_mb" => memory_size,
-      "memory_size_mb" => max_memory_used
-    }
-    |> float_to_int()
-  end
+    |> ignore(uuid)
+    |> ignore(string("\t"))
+    |> concat(
+      ignore(string("Duration: "))
+      |> concat(number_string)
+      |> ignore(string(" ms\t"))
+      |> unwrap_and_tag(:duration_ms)
+    )
+    |> concat(
+      ignore(string("Billed Duration: "))
+      |> concat(number_string)
+      |> ignore(string(" ms\t"))
+      |> unwrap_and_tag(:billed_duration_ms)
+    )
+    |> concat(
+      ignore(string("Memory Size: "))
+      |> concat(number_string)
+      |> ignore(string(" MB\t"))
+      |> unwrap_and_tag(:memory_size_mb)
+    )
+    |> concat(
+      ignore(string("Max Memory Used: "))
+      |> concat(number_string)
+      |> ignore(string(" MB\t"))
+      |> unwrap_and_tag(:max_memory_used_mb)
+    )
+    |> ignore(optional(ascii_char([?\n])))
+    |> optional(
+      ignore(string("Init Duration: "))
+      |> concat(number_string)
+      |> ignore(optional(string("\t\n")))
+      |> unwrap_and_tag(:init_duration_ms)
+    )
+    |> reduce({Map, :new, []})
 
   parser =
     start
-    |> concat(loglines)
+    |> unwrap_and_tag(:request_id)
+    |> optional(loglines |> unwrap_and_tag(:lines))
     |> concat(end_)
-    |> concat(report)
-    |> reduce({:to_result, []})
+    |> concat(report |> unwrap_and_tag(:report))
+    |> reduce({Map, :new, []})
 
-  defp to_result([uuid, lines, report]) do
-    %{
-      "request_id" => uuid,
-      "lines" => lines,
-      "report" => report
-    }
-  end
-
-  defp float_to_int(map) when is_map(map) do
-    Enum.map(map, fn {k, v} -> {k, float_to_int(v)} end)
-    |> Enum.into(%{})
-  end
-
-  defp float_to_int(v) when is_binary(v) do
-    case Float.parse(v) do
-      {float, _rem} -> Kernel.round(float)
-      :error -> raise("Error parsing floats")
-    end
-  end
-
-  defparsecp(:do_parse, parser)
+  defparsecp(:do_parse, parser, inline: true)
 end
