@@ -22,7 +22,11 @@ defmodule Logflare.Logs.SearchTest do
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     Sources.Cache.put_bq_schema(@test_token, table_schema())
 
-    {:ok, user} = BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user)
+    user =
+      case BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user) do
+        {:ok, user} -> user
+        :noop -> user
+      end
 
     {:ok, sources: [source], users: [user]}
   end
@@ -35,13 +39,14 @@ defmodule Logflare.Logs.SearchTest do
         chart_aggregate: :count,
         chart_period: :minute,
         tailing?: false,
-        tailing_initial?: false
+        tailing_initial?: false,
+        chart_data_shape_id: nil
       }
 
       {_, %{rows: rows} = so} = Search.search_events(search_op)
 
       assert so.error == nil
-      assert length(rows) == 0
+      assert Enum.empty?(rows)
     end
   end
 
@@ -54,7 +59,8 @@ defmodule Logflare.Logs.SearchTest do
         querystring: ~S|"x[123] \d\d1"|,
         chart_aggregate: :count,
         chart_period: :minute,
-        tailing?: true
+        tailing?: true,
+        chart_data_shape_id: nil
       }
 
       {:ok, Map.merge(context, %{so: so0})}
@@ -69,7 +75,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert %{timestamp: _, value: _, datetime: _} = hd(rows)
+      assert %{timestamp: _, datetime: _} = hd(rows)
     end
 
     test "with default second chart period ", %{
@@ -142,7 +148,8 @@ defmodule Logflare.Logs.SearchTest do
         querystring: ~S|"x[123] \d\d1"|,
         chart_aggregate: :count,
         chart_period: :minute,
-        tailing?: false
+        tailing?: false,
+        chart_data_shape_id: nil
       }
 
       {:ok, Map.merge(context, %{so: so0})}
@@ -157,7 +164,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert %{timestamp: _, value: _, datetime: _} = hd(rows)
+      assert %{timestamp: _, datetime: _} = hd(rows)
     end
 
     test "with default minute chart period", %{
@@ -165,7 +172,7 @@ defmodule Logflare.Logs.SearchTest do
       users: [_user | _],
       so: so0
     } do
-      so = %{so0 | querystring: "t:2020-01-01..2020-01-02"}
+      so = %{so0 | querystring: "t:2020-01-01T00:00:00Z..2020-01-02T00:00:00Z"}
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil

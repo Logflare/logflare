@@ -28,7 +28,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
         |> SetVerifyUser.call(%{})
 
       assert conn.halted == true
-      assert conn.assigns.message == "Error: please set API token"
+      assert conn.assigns.message == "Error: please set ingest API key"
     end
   end
 end

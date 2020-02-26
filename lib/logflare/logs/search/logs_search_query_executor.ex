@@ -41,7 +41,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     |> if do
       :ok = cancel_query(source_token)
     else
-      Logger.error("Cancel query failed: SearchQueryExecutor process for not alive")
+      Logger.error(
+        "Cancel query failed: SearchQueryExecutor process for #{source_token} not alive"
+      )
     end
   end
 
@@ -52,7 +54,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     |> if do
       :ok = query(params)
     else
-      Logger.error("Query failed: SearchQueryExecutor process for not alive")
+      Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
     end
   end
 

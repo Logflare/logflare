@@ -13,7 +13,7 @@ defmodule Logflare.User.BigQueryUDFs.SearchFns do
       WHEN 'SECOND' THEN TIMESTAMP_SUB(_timestamp, INTERVAL _interval SECOND)
       WHEN 'MINUTE' THEN TIMESTAMP_SUB(_timestamp, INTERVAL _interval MINUTE)
       WHEN 'HOUR' THEN TIMESTAMP_SUB(_timestamp, INTERVAL _interval HOUR)
-       WHEN 'DAY' THEN TIMESTAMP_SUB(_timestamp, INTERVAL _interval DAY)
+      WHEN 'DAY' THEN TIMESTAMP_SUB(_timestamp, INTERVAL _interval DAY)
   END
     );
   "
@@ -23,11 +23,11 @@ defmodule Logflare.User.BigQueryUDFs.SearchFns do
     "
     CREATE OR REPLACE FUNCTION
     `#{bq_dataset_id}`.LF_TIMESTAMP_TRUNC(_timestamp TIMESTAMP, _date_part STRING) AS (
-        CASE _date_part
+    CASE _date_part
         WHEN 'MICROSECOND' THEN TIMESTAMP_TRUNC(_timestamp, MICROSECOND)
         WHEN 'MILLISECOND' THEN TIMESTAMP_TRUNC(_timestamp, MILLISECOND)
         WHEN 'SECOND' THEN TIMESTAMP_TRUNC(_timestamp, SECOND)
-        WHEN 'MINUTE' THEN TIMESTAMP_TRUNC(_timestamp,  MINUTE)
+        WHEN 'MINUTE' THEN TIMESTAMP_TRUNC(_timestamp, MINUTE)
         WHEN 'HOUR' THEN TIMESTAMP_TRUNC(_timestamp, HOUR)
         WHEN 'DAY' THEN TIMESTAMP_TRUNC(_timestamp, DAY)
   END);

@@ -64,8 +64,8 @@ defmodule Logflare.Lql.EctoHelpers do
     where(q, ^dynamic_where_filter_rule(column, rule.operator, rule.value, rule.modifiers))
   end
 
-  @spec dynamic_where_filter_rule(atom(), :< | :<= | := | :> | :>= | :"~", any, [atom()]) ::
-          Ecto.Query.DynamicExpr.t()
+  @type operators :: :< | :<= | := | :> | :>= | :"~"
+  @spec dynamic_where_filter_rule(atom(), operators, any, [atom()]) :: Ecto.Query.DynamicExpr.t()
   def dynamic_where_filter_rule(c, op, v, modifiers) do
     clause =
       case op do

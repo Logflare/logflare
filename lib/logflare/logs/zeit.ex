@@ -1,21 +1,15 @@
 defmodule Logflare.Logs.Zeit do
+  @moduledoc """
+  See https://elixirforum.com/t/parse-this-string/29252 for a NimbleParsec example.
+  """
   require Logger
+
+  alias Logflare.Logs.Zeit.NimbleLambdaMessageParser
 
   def handle_batch(batch, source) when is_list(batch) do
     Enum.map(batch, fn x ->
       if x["source"] == "lambda" and x["message"] do
-        lambda_message =
-          try do
-            parse_lambda_message(x["message"])
-          rescue
-            _e ->
-              Logger.error("Lambda parse error!",
-                source_id: source.token,
-                zeit_app: %{lambda_message: x["message"], parse_status: "error"}
-              )
-
-              %{"parse_status" => "error"}
-          end
+        {_status, lambda_message} = try_lambda_parse(x["message"], source)
 
         Map.put(x, "parsedLambdaMessage", lambda_message)
         |> handle_event()
@@ -23,6 +17,20 @@ defmodule Logflare.Logs.Zeit do
         handle_event(x)
       end
     end)
+  end
+
+  defp try_lambda_parse(message, source) do
+    try do
+      NimbleLambdaMessageParser.parse(message)
+    rescue
+      _e ->
+        Logger.error("Lambda parse error!",
+          source_id: source.token,
+          zeit_app: %{lambda_message: message, parse_status: "error"}
+        )
+
+        {:error, %{"parse_status" => "error"}}
+    end
   end
 
   defp handle_event(event) when is_map(event) do
@@ -52,39 +60,5 @@ defmodule Logflare.Logs.Zeit do
     "#{event["proxy"]["statusCode"]} | #{event["proxy"]["host"]} | #{event["proxy"]["path"]} | #{
       event["proxy"]["clientIp"]
     } | #{event["proxy"]["userAgent"]}"
-  end
-
-  defp parse_lambda_message(message) do
-    String.split(message, "\n")
-    |> Enum.find(fn x -> String.contains?(x, "REPORT") end)
-    |> String.split("\t")
-    |> Enum.drop_while(fn x -> String.contains?(x, "RequestId:") == true end)
-    |> Enum.map(fn x ->
-      case String.split(x, ":", trim: true) do
-        [k, v] ->
-          [v, kind] =
-            String.trim(v)
-            |> String.split(" ")
-
-          key =
-            "#{k}_#{kind}"
-            |> String.downcase()
-            |> String.replace(" ", "_")
-
-          value =
-            case Float.parse(v) do
-              {float, _rem} -> Kernel.round(float)
-              :error -> v
-            end
-
-          {key, value}
-
-        _ ->
-          {"key", "value"}
-      end
-    end)
-    |> Enum.into(%{})
-    |> Map.drop(["key"])
-    |> Map.put("parse_status", "success")
   end
 end

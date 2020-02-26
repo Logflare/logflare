@@ -50,6 +50,7 @@ defmodule Logflare.Logs.SearchOperations do
       field :user_local_timezone, String.t()
       field :chart_period, atom(), default: :minute, enforce: true
       field :chart_aggregate, atom(), default: :count, enforce: true
+      field :chart_data_shape_id, atom(), default: nil, enforce: true
       field :type, :events | :aggregates
     end
   end
@@ -105,6 +106,28 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: limit(so.query, @default_limit)}
   end
 
+  def put_chart_data_shape_id(%SO{} = so) do
+    bq_schema = Sources.Cache.get_bq_schema(so.source)
+    flat_type_map = Lql.Utils.bq_schema_to_flat_typemap(bq_schema)
+
+    chart_data_shape_id =
+      cond do
+        not Enum.empty?(so.chart_rules) ->
+          nil
+
+        Map.has_key?(flat_type_map, "metadata.level") ->
+          :elixir_logger_levels
+
+        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+          :cloudflare_status_codes
+
+        true ->
+          nil
+      end
+
+    Map.put(so, :chart_data_shape_id, chart_data_shape_id)
+  end
+
   @spec put_stats(SO.t()) :: SO.t()
   def put_stats(%SO{} = so) do
     stats =
@@ -129,6 +152,21 @@ defmodule Logflare.Logs.SearchOperations do
       schema
       |> SchemaUtils.merge_rows_with_schema(rows)
       |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
+
+    %{so | rows: rows}
+  end
+
+  @spec process_query_result(SO.t(), :aggs | :events) :: SO.t()
+  def process_query_result(%SO{} = so, :aggs) do
+    %{schema: schema, rows: rows} = so.query_result
+
+    rows =
+      schema
+      |> SchemaUtils.merge_rows_with_schema(rows)
+      |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
+      |> Enum.map(fn agg ->
+        Map.put(agg, :datetime, Timex.from_unix(agg.timestamp, :microsecond))
+      end)
 
     %{so | rows: rows}
   end
@@ -309,14 +347,11 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
     {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
 
-    {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
-
-    query = select_timestamp_trunc(query, so.chart_period)
-
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
-      |> group_by(1)
+      |> select_aggregates(so.chart_period)
+      |> order_by([t, ...], desc: 1)
 
     query =
       case chart_rules do
@@ -329,21 +364,88 @@ defmodule Logflare.Logs.SearchOperations do
 
           query
           |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, chart_path)
-          |> select_agg_value(so.chart_aggregate, last_chart_field)
+          |> select_merge_agg_value(so.chart_aggregate, last_chart_field)
 
         [] ->
-          query
-          |> select_log_count()
-          |> order_by([t, ...], desc: 1)
+          case so.chart_data_shape_id do
+            :elixir_logger_levels ->
+              select_count_log_level(query)
+
+            :cloudflare_status_codes ->
+              select_count_http_status_code(query)
+
+            nil ->
+              query
+              |> select_merge_log_count()
+          end
       end
 
     query =
       query
-      |> join_missing_range_timestamps(min, max, so.chart_period)
-      |> select_aggregates
-      |> order_by([t, ...], desc: 1)
+      |> group_by(1)
 
     %{so | query: query}
+  end
+
+  def add_missing_agg_timestamps(%SO{} = so) do
+    {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+
+    {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
+    %{so | rows: intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)}
+  end
+
+  def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
+    use Timex
+
+    maybe_truncate_to_second = fn dt ->
+      if match?(%DateTime{}, dt) do
+        DateTime.truncate(dt, :second)
+      else
+        dt
+      end
+    end
+
+    min = maybe_truncate_to_second.(min)
+    max = maybe_truncate_to_second.(max)
+
+    {step_period, from, until} =
+      case chart_period do
+        :day ->
+          {:days, min, max}
+
+        :hour ->
+          {:hours, %{min | second: 0, minute: 0}, %{max | second: 0, minute: 0}}
+
+        :minute ->
+          {:minutes, %{min | second: 0}, %{max | second: 0}}
+
+        :second ->
+          {:seconds, min, max}
+      end
+
+    empty_aggs =
+      Interval.new(
+        from: from,
+        until: until,
+        left_open: false,
+        right_open: false,
+        step: [{step_period, 1}]
+      )
+      |> Enum.to_list()
+      |> Enum.map(fn dt ->
+        ts = dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+
+        %{
+          timestamp: ts,
+          datetime: dt
+        }
+      end)
+
+    [aggs | empty_aggs]
+    |> List.flatten()
+    |> Enum.uniq_by(& &1.timestamp)
+    |> Enum.sort_by(& &1.timestamp)
+    |> Enum.reverse()
   end
 
   @spec put_time_stats(SO.t()) :: SO.t()

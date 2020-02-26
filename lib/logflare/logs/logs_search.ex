@@ -39,12 +39,14 @@ defmodule Logflare.Logs.Search do
     so = %{so | type: :aggregates} |> put_time_stats()
 
     with %{error: nil} = so <- parse_querystring(so),
+         %{error: nil} = so <- put_chart_data_shape_id(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),
          %{error: nil} = so <- apply_numeric_aggs(so),
          %{error: nil} = so <- apply_to_sql(so),
          %{error: nil} = so <- do_query(so),
-         %{error: nil} = so <- process_query_result(so),
+         %{error: nil} = so <- process_query_result(so, :aggs),
+         %{error: nil} = so <- add_missing_agg_timestamps(so),
          %{error: nil} = so <- put_stats(so) do
       {:ok, so}
     else

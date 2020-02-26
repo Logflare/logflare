@@ -12,7 +12,8 @@ defmodule Logflare.Factory do
       provider: "google",
       token: Faker.String.base64(64),
       api_key: Faker.String.base64(10),
-      provider_uid: "provider_uid"
+      provider_uid: "provider_uid",
+      bigquery_udfs_hash: ""
     }
   end
 
