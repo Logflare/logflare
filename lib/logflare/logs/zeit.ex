@@ -4,23 +4,12 @@ defmodule Logflare.Logs.Zeit do
   """
   require Logger
 
-  alias Logflare.Logs.Zeit.LambdaMessageParser
+  alias Logflare.Logs.Zeit.NimbleLambdaMessageParser
 
   def handle_batch(batch, source) when is_list(batch) do
     Enum.map(batch, fn x ->
       if x["source"] == "lambda" and x["message"] do
-        lambda_message =
-          try do
-            LambdaMessageParser.parse(x["message"])
-          rescue
-            _e ->
-              Logger.error("Lambda parse error!",
-                source_id: source.token,
-                zeit_app: %{lambda_message: x["message"], parse_status: "error"}
-              )
-
-              %{"parse_status" => "error"}
-          end
+        {_status, lambda_message} = try_lambda_parse(x["message"], source)
 
         Map.put(x, "parsedLambdaMessage", lambda_message)
         |> handle_event()
@@ -28,6 +17,20 @@ defmodule Logflare.Logs.Zeit do
         handle_event(x)
       end
     end)
+  end
+
+  defp try_lambda_parse(message, source) do
+    try do
+      NimbleLambdaMessageParser.parse(message)
+    rescue
+      _e ->
+        Logger.error("Lambda parse error!",
+          source_id: source.token,
+          zeit_app: %{lambda_message: message, parse_status: "error"}
+        )
+
+        {:error, %{"parse_status" => "error"}}
+    end
   end
 
   defp handle_event(event) when is_map(event) do
