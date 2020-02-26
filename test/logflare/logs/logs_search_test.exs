@@ -190,6 +190,66 @@ defmodule Logflare.Logs.SearchTest do
       assert so.error == nil
       assert length(rows) == 15 * 60 + 1
     end
+
+    test "with timestamp:>= ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:>=2020-01-01T00:00:00Z", chart_period: :day}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 57
+    end
+
+    test "with timestamp:> ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:>2020-01-01T00:00:00Z", chart_period: :day}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 57
+    end
+
+    test "with timestamp:< ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:<2020-02-01T00:00:00Z", chart_period: :day}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 366
+    end
+
+    test "with timestamp:<= ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:<2020-02-01T00:00:00Z", chart_period: :day}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 366
+    end
+
+    test "with timestamp: ", %{
+      sources: [source | _],
+      users: [_user | _],
+      so: so0
+    } do
+      so = %{so0 | querystring: "t:2020-02-01T00:00:00Z", chart_period: :day}
+      {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
+
+      assert so.error == nil
+      assert length(rows) == 0
+    end
   end
 
   def table_schema() do
