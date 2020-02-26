@@ -43,9 +43,11 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   # Example: END RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
 
   end_ =
-    ignore(string("END RequestId: "))
-    |> concat(ignore(uuid))
-    |> ignore(string("\n"))
+    ignore(
+      string("END RequestId: ")
+      |> concat(uuid)
+      |> string("\n")
+    )
 
   # Example: Getting metadata\n
 
@@ -62,27 +64,20 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     |> reduce({Enum, :join, ["\n"]})
 
   # Example: INFO
-  severity = choice([string("INFO"), string("WARN")])
+  severity = choice([string("INFO") |> replace("info"), string("WARN") |> replace("warn")])
 
   # Example: 2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n
 
   logline =
     timestamp
+    |> unwrap_and_tag("timestamp")
     |> ignore(string("\t"))
-    |> concat(ignore(uuid))
+    |> ignore(uuid)
     |> ignore(string("\t"))
-    |> concat(severity)
+    |> concat(severity |> unwrap_and_tag("level"))
     |> ignore(string("\t"))
-    |> concat(message)
-    |> reduce({:to_logline, []})
-
-  defp to_logline([ts, severity, message]) do
-    %{
-      timestamp: ts,
-      level: severity,
-      message: message
-    }
-  end
+    |> concat(message |> unwrap_and_tag("message"))
+    |> reduce({Map, :new, []})
 
   loglines =
     logline
@@ -92,69 +87,58 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   defp to_loglines(loglines), do: loglines
 
   # Example: \nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n
+  def token_to_float([s]), do: String.to_float(s) |> round()
+
+  number_string =
+    choice([
+      integer(min: 1) |> lookahead_not(string(".")),
+      ascii_string([?0..?9, ?.], min: 1) |> reduce(:token_to_float)
+    ])
 
   report =
     ignore(string("REPORT RequestId: "))
-    |> concat(ignore(uuid))
+    |> ignore(uuid)
+    |> ignore(string("\t"))
     |> concat(
-      ignore(string("\tDuration: "))
-      |> ascii_string([?0..?9, ?.], min: 1)
+      ignore(string("Duration: "))
+      |> concat(number_string)
+      |> ignore(string(" ms\t"))
       |> unwrap_and_tag(:duration_ms)
     )
     |> concat(
-      ignore(string(" ms\tBilled Duration: "))
-      |> ascii_string([?0..?9, ?.], min: 1)
+      ignore(string("Billed Duration: "))
+      |> concat(number_string)
+      |> ignore(string(" ms\t"))
       |> unwrap_and_tag(:billed_duration_ms)
     )
     |> concat(
-      ignore(string(" ms\tMemory Size: "))
-      |> ascii_string([?0..?9, ?.], min: 1)
+      ignore(string("Memory Size: "))
+      |> concat(number_string)
+      |> ignore(string(" MB\t"))
       |> unwrap_and_tag(:memory_size_mb)
     )
     |> concat(
-      ignore(string(" MB\tMax Memory Used: "))
-      |> ascii_string([?0..?9, ?.], min: 1)
+      ignore(string("Max Memory Used: "))
+      |> concat(number_string)
+      |> ignore(string(" MB\t"))
       |> unwrap_and_tag(:max_memory_used_mb)
     )
-    |> ignore(choice([string(" MB\t\n"), string(" MB\t")]))
+    |> ignore(optional(ascii_char([?\n])))
     |> optional(
       ignore(string("Init Duration: "))
-      |> ascii_string([?0..?9, ?.], min: 1)
+      |> concat(number_string)
+      |> ignore(optional(string("\t\n")))
       |> unwrap_and_tag(:init_duration_ms)
     )
-    |> reduce({:to_report, []})
-
-  defp to_report(tokens) do
-    Map.new(tokens)
-    |> float_to_int
-  end
+    |> reduce({Map, :new, []})
 
   parser =
     start
-    |> concat(loglines)
+    |> unwrap_and_tag(:request_id)
+    |> optional(loglines |> unwrap_and_tag(:lines))
     |> concat(end_)
-    |> concat(report)
-    |> reduce({:to_result, []})
+    |> concat(report |> unwrap_and_tag(:report))
+    |> reduce({Map, :new, []})
 
-  defp to_result([uuid, lines, report]) do
-    %{
-      request_id: uuid,
-      lines: lines,
-      report: report
-    }
-  end
-
-  defp float_to_int(map) when is_map(map) do
-    Enum.map(map, fn {k, v} -> {k, float_to_int(v)} end)
-    |> Enum.into(%{})
-  end
-
-  defp float_to_int(v) when is_binary(v) do
-    case Float.parse(v) do
-      {float, _rem} -> Kernel.round(float)
-      :error -> raise("Error parsing floats")
-    end
-  end
-
-  defparsecp(:do_parse, parser)
+  defparsecp(:do_parse, parser, inline: true)
 end

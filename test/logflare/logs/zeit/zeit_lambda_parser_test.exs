@@ -43,20 +43,20 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
                %{
                  lines: [
                    %{
-                     level: "INFO",
-                     message: "Getting metadata",
-                     timestamp: "2020-02-19T17:32:52.353Z"
+                     "level" => "info",
+                     "message" => "Getting metadata",
+                     "timestamp" => "2020-02-19T17:32:52.353Z"
                    },
                    %{
-                     level: "INFO",
-                     message: "Getting projects",
-                     timestamp: "2020-02-19T17:32:52.364Z"
+                     "level" => "info",
+                     "message" => "Getting projects",
+                     "timestamp" => "2020-02-19T17:32:52.364Z"
                    },
                    %{
-                     level: "INFO",
-                     message:
+                     "level" => "info",
+                     "message" =>
                        "Getting Logflare sources\nOh see, it handles more than one line per message",
-                     timestamp: "2020-02-19T17:32:52.401Z"
+                     "timestamp" => "2020-02-19T17:32:52.401Z"
                    }
                  ],
                  report: %{
@@ -108,25 +108,25 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
                %{
                  lines: [
                    %{
-                     level: "INFO",
-                     message: "Getting drains",
-                     timestamp: "2020-02-22T03:40:36.354Z"
+                     "level" => "info",
+                     "message" => "Getting drains",
+                     "timestamp" => "2020-02-22T03:40:36.354Z"
                    },
                    %{
-                     level: "INFO",
-                     message: "Logging map",
-                     timestamp: "2020-02-22T03:40:36.381Z"
+                     "level" => "info",
+                     "message" => "Logging map",
+                     "timestamp" => "2020-02-22T03:40:36.381Z"
                    },
                    %{
-                     level: "INFO",
-                     message:
+                     "level" => "info",
+                     "message" =>
                        "Map {\n  'a string' => \"value associated with 'a string'\",\n  {} => 'value associated with keyObj',\n  [Function: keyFunc] => 'value associated with keyFunc'\n}",
-                     timestamp: "2020-02-22T03:40:36.381Z"
+                     "timestamp" => "2020-02-22T03:40:36.381Z"
                    },
                    %{
-                     level: "INFO",
-                     message: "Getting metadata",
-                     timestamp: "2020-02-22T03:40:36.381Z"
+                     "level" => "info",
+                     "message" => "Getting metadata",
+                     "timestamp" => "2020-02-22T03:40:36.381Z"
                    }
                  ],
                  report: %{
