@@ -14,15 +14,15 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
       assert {
                :ok,
                %{
-                 lines: [],
-                 report: %{
-                   billed_duration_ms: 100,
-                   duration_ms: 18,
-                   init_duration_ms: 185,
-                   max_memory_used_mb: 78,
-                   memory_size_mb: 1024
+                 "lines" => [],
+                 "report" => %{
+                   "billed_duration_ms" => 100,
+                   "duration_ms" => 18,
+                   "init_duration_ms" => 185,
+                   "max_memory_used_mb" => 78,
+                   "memory_size_mb" => 1024
                  },
-                 request_id: "026080a5-4157-4f7d-8256-0b61aa0fb167"
+                 "request_id" => "026080a5-4157-4f7d-8256-0b61aa0fb167"
                }
              } == parse(message)
     end
@@ -41,7 +41,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
       assert {
                :ok,
                %{
-                 lines: [
+                 "lines" => [
                    %{
                      "level" => "info",
                      "message" => "Getting metadata",
@@ -59,13 +59,13 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
                      "timestamp" => "2020-02-19T17:32:52.401Z"
                    }
                  ],
-                 report: %{
-                   billed_duration_ms: 200,
-                   duration_ms: 175,
-                   max_memory_used_mb: 84,
-                   memory_size_mb: 1024
+                 "report" => %{
+                   "billed_duration_ms" => 200,
+                   "duration_ms" => 175,
+                   "max_memory_used_mb" => 84,
+                   "memory_size_mb" => 1024
                  },
-                 request_id: "4d0ff57e-4022-4bfd-8689-a69e39f80f69"
+                 "request_id" => "4d0ff57e-4022-4bfd-8689-a69e39f80f69"
                }
              } == parse(message)
     end
@@ -80,14 +80,14 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
       assert {
                :ok,
                %{
-                 lines: [],
-                 report: %{
-                   billed_duration_ms: 100,
-                   duration_ms: 22,
-                   max_memory_used_mb: 85,
-                   memory_size_mb: 1024
+                 "lines" => [],
+                 "report" => %{
+                   "billed_duration_ms" => 100,
+                   "duration_ms" => 22,
+                   "max_memory_used_mb" => 85,
+                   "memory_size_mb" => 1024
                  },
-                 request_id: "bd8b7963-66f1-40b9-adfd-15e761cd39e8"
+                 "request_id" => "bd8b7963-66f1-40b9-adfd-15e761cd39e8"
                }
              } == parse(message)
     end
@@ -106,7 +106,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
       assert {
                :ok,
                %{
-                 lines: [
+                 "lines" => [
                    %{
                      "level" => "info",
                      "message" => "Getting drains",
@@ -129,13 +129,13 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
                      "timestamp" => "2020-02-22T03:40:36.381Z"
                    }
                  ],
-                 report: %{
-                   billed_duration_ms: 300,
-                   duration_ms: 294,
-                   max_memory_used_mb: 84,
-                   memory_size_mb: 1024
+                 "report" => %{
+                   "billed_duration_ms" => 300,
+                   "duration_ms" => 294,
+                   "max_memory_used_mb" => 84,
+                   "memory_size_mb" => 1024
                  },
-                 request_id: "cb510178-1382-47e8-9865-1fb954a41325"
+                 "request_id" => "cb510178-1382-47e8-9865-1fb954a41325"
                }
              } == parse(message)
     end
