@@ -3,6 +3,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   Parser for incoming Zeit Lambda messages
   """
   import NimbleParsec
+  alias Logflare.JSON
 
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
@@ -84,6 +85,13 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     |> repeat()
     |> reduce({:to_loglines, []})
 
+  json_payload =
+    lookahead(string("{"))
+    |> utf8_string([{:not, ?\n}], min: 2)
+    |> ignore(string("\n"))
+    |> reduce({:erlang, :iolist_to_binary, []})
+    |> reduce({JSON, :decode!, []})
+
   defp to_loglines(loglines), do: loglines
 
   # Example: \nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n
@@ -135,7 +143,12 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   parser =
     start
     |> unwrap_and_tag("request_id")
-    |> optional(loglines |> unwrap_and_tag("lines"))
+    |> optional(
+      choice([
+        json_payload |> unwrap_and_tag("data"),
+        loglines |> unwrap_and_tag("lines")
+      ])
+    )
     |> concat(end_)
     |> concat(report |> unwrap_and_tag("report"))
     |> reduce({Map, :new, []})

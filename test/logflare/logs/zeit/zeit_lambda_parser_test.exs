@@ -139,5 +139,46 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
                }
              } == parse(message)
     end
+
+    test "example message 5: JSON payload" do
+      message = """
+      START RequestId: 50b2f64b-0ce9-442c-a2e4-6e729b2efba0 Version: $LATEST
+      {\"level\":30,\"time\":1582754345208,\"pid\":7,\"hostname\":\"169.254.202.181\",\"eventMessage\":\"Getting user with ID 5af38f7a6ca2c9012231de7c\",\"eventType\":\"get_user\",\"httpRequest\":{\"path\":\"/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c\",\"method\":\"GET\",\"query\":{\"userId\":\"5af38f7a6ca2c9012231de7c\"}},\"httpResponse\":{\"statusCode\":200},\"user\":{\"email\":\"payables@vancityrv.com\",\"dealer\":{\"id\":13201,\"location\":2,\"name\":\"Wagon Trail RV\"}},\"v\":1}
+      END RequestId: 50b2f64b-0ce9-442c-a2e4-6e729b2efba0
+      REPORT RequestId: 50b2f64b-0ce9-442c-a2e4-6e729b2efba0\tDuration: 126.08 ms\tBilled Duration: 200 ms\tMemory Size: 3008 MB\tMax Memory Used: 125 MB\t\n
+      """
+
+      assert {
+               :ok,
+               %{
+                 "report" => %{
+                   "billed_duration_ms" => 200,
+                   "duration_ms" => 126,
+                   "max_memory_used_mb" => 125,
+                   "memory_size_mb" => 3008
+                 },
+                 "request_id" => "50b2f64b-0ce9-442c-a2e4-6e729b2efba0",
+                 "data" => %{
+                   "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                   "eventType" => "get_user",
+                   "hostname" => "169.254.202.181",
+                   "httpRequest" => %{
+                     "method" => "GET",
+                     "path" => "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                     "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                   },
+                   "httpResponse" => %{"statusCode" => 200},
+                   "level" => 30,
+                   "pid" => 7,
+                   "time" => 1_582_754_345_208,
+                   "user" => %{
+                     "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                     "email" => "payables@vancityrv.com"
+                   },
+                   "v" => 1
+                 }
+               }
+             } == parse(message)
+    end
   end
 end

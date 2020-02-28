@@ -195,7 +195,7 @@ defmodule Logflare.Logs.SearchOperations do
           )
 
         not Enum.empty?(ts_filters) ->
-          {min, max} = get_min_max_filter_timestamps(ts_filters)
+          {min, max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
 
           query
           |> where(
@@ -255,7 +255,7 @@ defmodule Logflare.Logs.SearchOperations do
           |> limit([t], ^number)
 
         not Enum.empty?(ts_filters) ->
-          {min, max} = get_min_max_filter_timestamps(ts_filters)
+          {min, max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
 
           query
           |> where(
@@ -388,10 +388,15 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def add_missing_agg_timestamps(%SO{} = so) do
-    {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+    {ts_filter_rules, _filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
 
     {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
-    %{so | rows: intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)}
+
+    if min == max do
+      so
+    else
+      %{so | rows: intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)}
+    end
   end
 
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
