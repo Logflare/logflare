@@ -7,14 +7,27 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
 
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
-    result = remove_empty(result)
 
     {:ok, result}
+  rescue
+    _e ->
+      %{
+        "parse_status" => "failed",
+        "lines_string" => input
+      }
   end
 
   # Example: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
 
   uuid = ascii_string([?0..?9, ?a..?f, ?-], 36) |> label("UUID")
+
+  tab = string("\t")
+
+  newline = string("\n")
+  not_newline_char = {:not, ?\n}
+
+  json_open = string("{")
+  json_open_char = ?\{
 
   # Example: 2020-02-19T17:32:52.353Z
 
@@ -50,7 +63,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
       string("END RequestId: ")
       |> label("end_token")
       |> concat(uuid)
-      |> optional(string("\n"))
+      |> optional(newline)
     )
 
   # Example: INFO
@@ -62,13 +75,11 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     ])
 
   # Example: 2020-02-19T17:32:52.353Z\t4d0ff57e-4022-4bfd-8689-a69e39f80f69\tINFO\tGetting metadata\n
-  json_open = string("{")
-  json_open_char = ?\{
 
   json_line =
     lookahead_not(choice([timestamp, end_]))
-    |> utf8_string([{:not, ?\n}], min: 1)
-    |> ignore(optional(string("\n")))
+    |> utf8_string([not_newline_char], min: 1)
+    |> ignore(optional(newline))
 
   json_lines =
     json_line
@@ -84,11 +95,11 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   message_line =
     lookahead_not(choice([timestamp, end_]))
     |> concat(
-      utf8_string([{:not, ?\n}, {:not, json_open_char}], min: 1)
+      utf8_string([not_newline_char, {:not, json_open_char}], min: 1)
       |> unwrap_and_tag(:message)
     )
     |> optional(json_payload)
-    |> ignore(optional(string("\n")))
+    |> ignore(optional(newline))
 
   # Example: It also\nworks with\nseveral lines
   message =
@@ -120,13 +131,13 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   logline =
     timestamp
     |> unwrap_and_tag("timestamp")
-    |> ignore(string("\t"))
+    |> ignore(tab)
     |> ignore(uuid)
-    |> ignore(string("\t"))
+    |> ignore(tab)
     |> concat(severity |> unwrap_and_tag("level"))
-    |> ignore(string("\t"))
+    |> ignore(tab)
     |> concat(message |> unwrap_and_tag("message_and_data"))
-    |> optional(ignore(string("\n")))
+    |> optional(ignore(newline))
     |> reduce({Map, :new, []})
 
   loglines =
@@ -148,7 +159,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     end
   end
 
-  any_utf8_string = utf8_string([{:not, ?\{}], min: 1) |> unwrap_and_tag(:message)
+  any_utf8_string = utf8_string([{:not, json_open_char}], min: 1) |> unwrap_and_tag(:message)
 
   utf8_string_with_json =
     lookahead_not(choice([timestamp, end_]))
@@ -211,7 +222,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
   report =
     ignore(string("REPORT RequestId: "))
     |> ignore(uuid)
-    |> ignore(string("\t"))
+    |> ignore(tab)
     |> concat(
       ignore(string("Duration: "))
       |> concat(number_string)
@@ -243,7 +254,7 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
       |> ignore(optional(string("\t\n")))
       |> unwrap_and_tag("init_duration_ms")
     )
-    |> ignore(optional(string("\n") |> times(max: 10)))
+    |> ignore(optional(newline |> times(max: 10)))
     |> reduce({Map, :new, []})
 
   parser =
@@ -258,14 +269,6 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     tokens
     |> List.flatten()
     |> Map.new()
-  end
-
-  def remove_empty(map) do
-    if Map.get(map, "lines_string") === "" do
-      Map.drop(map, ["lines_string"])
-    else
-      map
-    end
   end
 
   defparsecp :do_parse, parser, inline: true
