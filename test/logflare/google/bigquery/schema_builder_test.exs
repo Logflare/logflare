@@ -89,30 +89,55 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
 
       assert_equal_schemas(tfs, expected)
     end
-  end
 
-  test "build_fields_schema/1 @list(String) of depth 1" do
-    tfs =
-      build_fields_schemas([
-        %{"string1" => ["string", "string"]},
-        %{"string2" => ["string1", "string2"]}
-      ])
+    test "build_fields_schema/1 @list(String) of depth 1" do
+      tfs =
+        build_fields_schemas([
+          %{"string1" => ["string", "string"]},
+          %{"string2" => ["string1", "string2"]}
+        ])
 
-    assert tfs == [
-             %TFS{
-               description: nil,
-               fields: nil,
-               mode: "NULLABLE",
-               name: "string1",
-               type: "STRING"
-             },
-             %TFS{
-               description: nil,
-               fields: nil,
-               mode: "NULLABLE",
-               name: "string2",
-               type: "STRING"
-             }
-           ]
+      assert tfs == [
+               %TFS{
+                 description: nil,
+                 fields: nil,
+                 mode: "REPEATED",
+                 name: "string1",
+                 type: "STRING"
+               },
+               %TFS{
+                 description: nil,
+                 fields: nil,
+                 mode: "REPEATED",
+                 name: "string2",
+                 type: "STRING"
+               }
+             ]
+    end
+
+    test "build_fields_schema/1 @list(integer|float) of depth 1" do
+      tfs =
+        build_fields_schemas([
+          %{"field1" => [1, 2]},
+          %{"field2" => [1.0, 2.0]}
+        ])
+
+      assert tfs == [
+               %TFS{
+                 description: nil,
+                 fields: nil,
+                 name: "field1",
+                 mode: "REPEATED",
+                 type: "INTEGER"
+               },
+               %TFS{
+                 description: nil,
+                 fields: nil,
+                 name: "field2",
+                 mode: "REPEATED",
+                 type: "FLOAT"
+               }
+             ]
+    end
   end
 end
