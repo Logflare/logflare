@@ -1,4 +1,4 @@
-FROM elixir:1.9.4
+FROM elixir:1.10
 
 ENV MIX_ENV staging
 
