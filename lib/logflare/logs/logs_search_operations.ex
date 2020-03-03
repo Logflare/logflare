@@ -207,7 +207,6 @@ defmodule Logflare.Logs.SearchOperations do
     query = so.query
 
     utc_today = Date.utc_today()
-    utc_now = DateTime.utc_now()
 
     ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
 
@@ -226,7 +225,7 @@ defmodule Logflare.Logs.SearchOperations do
           )
 
         not Enum.empty?(ts_filters) ->
-          {min, max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
+          %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
 
           query
           |> where(
@@ -241,18 +240,12 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_timestamp_filter_rules(SO.t()) :: SO.t()
   def apply_timestamp_filter_rules(%SO{tailing?: t?, type: :aggregates} = so) do
-    so = %{so | query: from(so.source.bq_table_id)}
-    query = so.query
+    query = from(so.source.bq_table_id)
 
     ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
 
-    [{period, number}] =
-      case so.chart_period do
-        :day -> [days: 31]
-        :hour -> [hours: 168]
-        :minute -> [minutes: 120]
-        :second -> [seconds: 180]
-      end
+    period = to_timex_shift_key(so.chart_period)
+    tick_count = default_period_tick_count(so.chart_period)
 
     utc_today = Date.utc_today()
     utc_now = DateTime.utc_now()
@@ -269,24 +262,24 @@ defmodule Logflare.Logs.SearchOperations do
       cond do
         t? ->
           query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^number, ^period))
+          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
           |> where(
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
           )
-          |> limit([t], ^number)
+          |> limit([t], ^tick_count)
 
         not t? && Enum.empty?(ts_filters) ->
           query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^number, ^period))
+          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^tick_count, ^period))
           |> where(
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
           )
-          |> limit([t], ^number)
+          |> limit([t], ^tick_count)
 
         not Enum.empty?(ts_filters) ->
-          {min, max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
+          %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
 
           query
           |> where(
@@ -376,7 +369,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
-    {ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+    {_ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
 
     query =
       query
@@ -411,22 +404,22 @@ defmodule Logflare.Logs.SearchOperations do
           end
       end
 
-    query =
-      query
-      |> group_by(1)
+    query = group_by(query, 1)
 
     %{so | query: query}
   end
 
   def add_missing_agg_timestamps(%SO{} = so) do
-    {ts_filter_rules, _filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
+    {ts_filter_rules, _filter_rules} =
+      so.filter_rules |> Enum.split_with(&(&1.path == "timestamp"))
 
-    {min, max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
+    %{min: min, max: max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
 
     if min == max do
       so
     else
-      %{so | rows: intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)}
+      rows = intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)
+      %{so | rows: rows}
     end
   end
 
