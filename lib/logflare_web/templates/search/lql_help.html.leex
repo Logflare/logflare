@@ -66,11 +66,21 @@
                         <th scope="row">Metadata field</th>
                         <td>match array includes</td>
                         <td>
-                          <kbd>path</kbd> <kbd>:</kbd> <kbd>_includes</kbd> <kbd>(value)</kbd>
                           <kbd>path</kbd> <kbd>:</kbd> <kbd>@></kbd> <kbd>value</kbd>
                         </td>
-                        <td><kbd>metadata.user.roles:_includes(subscriber)</kbd> <kbd>metadata.user.roles:_includes("new subscriber")</kbd> <kbd>metadata.user.roles:@>subscriber</kbd>
+                        <td>
                           <kbd>metadata.user.roles:@>"new subscriber"</kbd>
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Metadata field</th>
+                        <td>match does NOT include</td>
+                        <td>
+                          <kbd>-</kbd>
+                          <kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd>
+                        </td>
+                        <td>
+                          <kbd>-metadata.user.company:"My Company"</kbd>
                         </td>
                       </tr>
                     </tbody>
