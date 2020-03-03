@@ -88,23 +88,20 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
 
   defp build_fields_schemas({params_key, params_value}) do
     case SchemaTypes.to_schema_type(params_value) do
-      "ARRAY" ->
-        case hd(params_value) do
-          x when is_map(x) ->
-            %TFS{
-              name: params_key,
-              type: "RECORD",
-              mode: "REPEATED",
-              fields: build_fields_schemas(params_value)
-            }
+      {"ARRAY", "RECORD"} ->
+        %TFS{
+          name: params_key,
+          type: "RECORD",
+          mode: "REPEATED",
+          fields: build_fields_schemas(params_value)
+        }
 
-          x ->
-            %TFS{
-              name: params_key,
-              type: SchemaTypes.to_schema_type(x),
-              mode: "REPEATED"
-            }
-        end
+      {"ARRAY", inner_type} ->
+        %TFS{
+          name: params_key,
+          type: inner_type,
+          mode: "REPEATED"
+        }
 
       type ->
         %TFS{
