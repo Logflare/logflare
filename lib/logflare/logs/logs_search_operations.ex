@@ -9,6 +9,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Lql.{ChartRule, FilterRule}
   import Ecto.Query
   import Logflare.Logs.SearchOperations.Helpers
+  import Logflare.Logs.Search.Utils
   import Logflare.Logs.SearchQueries
 
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
@@ -56,6 +57,7 @@ defmodule Logflare.Logs.SearchOperations do
       field :chart_aggregate, atom(), default: :count, enforce: true
       field :chart_data_shape_id, atom(), default: nil, enforce: true
       field :type, :events | :aggregates
+      field :status, {atom(), String.t() | [String.t()]}
     end
   end
 
@@ -120,6 +122,18 @@ defmodule Logflare.Logs.SearchOperations do
 
       true ->
         so
+    end
+  end
+
+  @spec apply_warning_conditions(SO.t()) :: SO.t()
+  def apply_warning_conditions(%SO{} = so) do
+    ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
+    %{message: message} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
+
+    if message do
+      put_status(so, {:warning, message})
+    else
+      so
     end
   end
 
