@@ -39,6 +39,7 @@ defmodule Logflare.Logs.Search do
     so = %{so | type: :aggregates} |> put_time_stats()
 
     with %{error: nil} = so <- parse_querystring(so),
+         %{error: nil} = so <- apply_halt_conditions(so),
          %{error: nil} = so <- put_chart_data_shape_id(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),
@@ -58,6 +59,7 @@ defmodule Logflare.Logs.Search do
     so = %{so | type: :events} |> put_time_stats()
 
     with %{error: nil} = so <- parse_querystring(so),
+         %{error: nil} = so <- apply_halt_conditions(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
          %{error: nil} = so <- apply_filters(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),

@@ -26,6 +26,10 @@ defmodule Logflare.Logs.SearchOperations do
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
   @query_request_timeout 60_000
 
+  # Halt reasons
+
+  @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
+
   defmodule SearchOperation do
     @moduledoc """
     Logs search options and result
@@ -104,6 +108,19 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_limit_to_query(SO.t()) :: SO.t()
   def apply_limit_to_query(%SO{} = so) do
     %{so | query: limit(so.query, @default_limit)}
+  end
+
+  @spec apply_halt_conditions(SO.t()) :: SO.t()
+  def apply_halt_conditions(%SO{} = so) do
+    cond do
+      so.tailing? and Enum.find(so.filter_rules, &(&1.path == "timestamp")) ->
+        so
+        |> Utils.put_result({:error, :halted})
+        |> Utils.put_status(:halted, @timestamp_filter_with_tailing)
+
+      true ->
+        so
+    end
   end
 
   def put_chart_data_shape_id(%SO{} = so) do
