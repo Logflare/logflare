@@ -1,4 +1,4 @@
-defmodule Logflare.Source.WebhookNotificationServer.Client do
+defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
   require Logger
 
   alias LogflareWeb.Router.Helpers, as: Routes
@@ -27,13 +27,13 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
     Tesla.client(middleware, adapter)
   end
 
-  def post_discord(client, source, rate, recent_events \\ []) do
-    prepped_recent_events = prep_recent_events_discord(recent_events)
+  def post(client, source, rate, recent_events \\ []) do
+    prepped_recent_events = prep_recent_events(recent_events)
 
     source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
 
     payload = %{
-      content: "New event(s) 🚨",
+      content: "#{rate} new event(s) 🚨",
       username: "Logflare",
       avatar_url: "https://logflare.app/images/logos/logflare-logo.png",
       embeds: [
@@ -49,21 +49,6 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
           fields: prepped_recent_events
         }
       ]
-    }
-
-    IO.inspect(payload)
-
-    send(client, source.webhook_notification_url, payload)
-  end
-
-  def post(client, source, rate, recent_events \\ []) do
-    prepped_recent_events = prep_recent_events(recent_events)
-
-    payload = %{
-      rate: rate,
-      source_name: source.name,
-      source: source.token,
-      recent_events: prepped_recent_events
     }
 
     send(client, source.webhook_notification_url, payload)
@@ -95,14 +80,13 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
   end
 
   defp prep_recent_events(recent_events) do
-    Enum.take(recent_events, -5)
-    |> Enum.map(fn x -> x.body.message end)
-  end
-
-  defp prep_recent_events_discord(recent_events) do
     IO.inspect(recent_events)
 
     Enum.take(recent_events, -5)
-    |> Enum.map(fn x -> %{name: Integer.to_string(x.body.timestamp), value: x.body.message} end)
+    |> Enum.map(fn x ->
+      timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
+
+      %{name: timestamp, value: x.body.message}
+    end)
   end
 end
