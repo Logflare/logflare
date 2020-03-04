@@ -15,8 +15,9 @@ defmodule Logflare.Source.WebhookNotificationServer do
 
   def test_post(source) do
     recent_events = Data.get_logs_across_cluster(source.token)
+    uri = source.webhook_notification_url
 
-    post(source, 0, recent_events)
+    post(uri, source, 0, recent_events)
   end
 
   def init(rls) do
@@ -31,21 +32,22 @@ defmodule Logflare.Source.WebhookNotificationServer do
   def handle_info(:check_rate, rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
+    source = Sources.Cache.get_by_id(rls.source_id)
 
     case rate > 0 do
       true ->
-        recent_events = Data.get_logs_across_cluster(rls.source_id)
+        if uri = source.webhook_notification_url do
+          recent_events = Data.get_logs_across_cluster(rls.source_id)
 
-        source = Sources.Cache.get_by_id(rls.source_id)
-
-        post(source, rate, recent_events)
+          post(uri, source, rate, recent_events)
+        end
 
         check_rate(rls.notifications_every)
-        {:noreply, %{rls | inserts_since_boot: current_inserts}}
+        {:noreply, %{rls | inserts_since_boot: current_inserts}, :hibernate}
 
       false ->
         check_rate(rls.notifications_every)
-        {:noreply, rls}
+        {:noreply, rls, :hibernate}
     end
   end
 
@@ -61,17 +63,15 @@ defmodule Logflare.Source.WebhookNotificationServer do
     reason
   end
 
-  defp post(source, rate, recent_events) do
-    if uri = source.webhook_notification_url do
-      case URI.parse(uri) do
-        %URI{host: "discordapp.com"} ->
-          WNS.DiscordClient.new()
-          |> WNS.DiscordClient.post(source, rate, recent_events)
+  defp post(uri, source, rate, recent_events) do
+    case URI.parse(uri) do
+      %URI{host: "discordapp.com"} ->
+        WNS.DiscordClient.new()
+        |> WNS.DiscordClient.post(source, rate, recent_events)
 
-        %URI{} ->
-          WNS.Client.new()
-          |> WNS.Client.post(source, rate, recent_events)
-      end
+      %URI{} ->
+        WNS.Client.new()
+        |> WNS.Client.post(source, rate, recent_events)
     end
   end
 
