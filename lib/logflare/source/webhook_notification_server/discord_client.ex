@@ -84,7 +84,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
     |> Enum.map(fn x ->
       timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
 
-      %{name: timestamp, value: x.body.message}
+      %{name: timestamp, value: "```#{x.body.message}```"}
     end)
   end
 end
