@@ -210,8 +210,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_timestamp_filter_rules(SO.t()) :: SO.t()
   def apply_timestamp_filter_rules(%SO{tailing?: t?, type: :aggregates} = so) do
-    so = %{so | query: from(so.source.bq_table_id)}
-    query = so.query
+    query = from(so.source.bq_table_id)
 
     ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
 
@@ -331,8 +330,21 @@ defmodule Logflare.Logs.SearchOperations do
       |> Sources.Cache.get_bq_schema()
       |> SchemaUtils.to_typemap()
       |> Map.keys()
+      |> List.delete(:metadata)
 
     %{so | query: select(so.query, ^top_level_fields)}
+  end
+
+  def log_event_query(source, id, timestamp) do
+    from(source.bq_table_id)
+    |> where([t], t.id == ^id)
+    |> or_where([t], t.timestamp == ^timestamp)
+    |> select([t], %{
+      metadata: t.metadata,
+      id: t.id,
+      timestamp: t.timestamp,
+      message: t.event_message
+    })
   end
 
   @spec apply_numeric_aggs(SO.t()) :: SO.t()
