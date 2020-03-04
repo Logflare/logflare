@@ -27,35 +27,6 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
     Tesla.client(middleware, adapter)
   end
 
-  def post_discord(client, source, rate, recent_events \\ []) do
-    prepped_recent_events = prep_recent_events_discord(recent_events)
-
-    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
-
-    payload = %{
-      content: "New event(s) 🚨",
-      username: "Logflare",
-      avatar_url: "https://logflare.app/images/logos/logflare-logo.png",
-      embeds: [
-        %{
-          author: %{
-            name: source.name,
-            url: source_link,
-            icon_url: "https://logflare.app/images/logos/logflare-logo.png"
-          },
-          title: "Recent Event(s)",
-          description: "Visit your Logflare account to stream, search and chart.",
-          footer: %{text: "Thanks for using Logflare 🙏"},
-          fields: prepped_recent_events
-        }
-      ]
-    }
-
-    IO.inspect(payload)
-
-    send(client, source.webhook_notification_url, payload)
-  end
-
   def post(client, source, rate, recent_events \\ []) do
     prepped_recent_events = prep_recent_events(recent_events)
 
@@ -97,12 +68,5 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
   defp prep_recent_events(recent_events) do
     Enum.take(recent_events, -5)
     |> Enum.map(fn x -> x.body.message end)
-  end
-
-  defp prep_recent_events_discord(recent_events) do
-    IO.inspect(recent_events)
-
-    Enum.take(recent_events, -5)
-    |> Enum.map(fn x -> %{name: Integer.to_string(x.body.timestamp), value: x.body.message} end)
   end
 end
