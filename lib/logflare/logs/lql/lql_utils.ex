@@ -35,6 +35,14 @@ defmodule Logflare.Lql.Utils do
     |> Enum.sort()
   end
 
+  def get_ts_filters(rules) do
+    Enum.filter(rules, &(&1.path == "timestamp"))
+  end
+
+  def get_meta_and_msg_filters(rules) do
+    Enum.filter(rules, &(&1.path != "timestamp"))
+  end
+
   def get_lql_parser_warnings(lql_rules, dialect: :routing) when is_list(lql_rules) do
     cond do
       Enum.find(lql_rules, &(&1.path == "timestamp")) ->

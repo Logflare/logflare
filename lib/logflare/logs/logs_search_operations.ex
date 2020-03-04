@@ -47,7 +47,8 @@ defmodule Logflare.Logs.SearchOperations do
       field :tailing?, boolean, enforce: true
       field :tailing_initial?, boolean
       field :rows, [map()], default: []
-      field :filter_rules, [FilterRule.t()], default: []
+      field :lql_meta_and_msg_filters, [FilterRule.t()], default: []
+      field :lql_ts_filters, [FilterRule.t()], default: []
       field :chart_rules, [ChartRule.t()], default: []
       field :error, term()
       field :stats, :map
@@ -115,7 +116,7 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_halt_conditions(SO.t()) :: SO.t()
   def apply_halt_conditions(%SO{} = so) do
     cond do
-      so.tailing? and Enum.find(so.filter_rules, &(&1.path == "timestamp")) ->
+      so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
         so
         |> Utils.put_result({:error, :halted})
         |> Utils.put_status(:halted, @timestamp_filter_with_tailing)
@@ -127,8 +128,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_warning_conditions(SO.t()) :: SO.t()
   def apply_warning_conditions(%SO{} = so) do
-    ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
-    %{message: message} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
+    %{message: message} = get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
 
     if message do
       put_status(so, {:warning, message})
@@ -208,7 +208,7 @@ defmodule Logflare.Logs.SearchOperations do
 
     utc_today = Date.utc_today()
 
-    ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
+    ts_filters = so.lql_ts_filters
 
     q =
       cond do
@@ -242,7 +242,7 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_timestamp_filter_rules(%SO{tailing?: t?, type: :aggregates} = so) do
     query = from(so.source.bq_table_id)
 
-    ts_filters = Enum.filter(so.filter_rules, &(&1.path == "timestamp"))
+    ts_filters = so.lql_ts_filters
 
     period = to_timex_shift_key(so.chart_period)
     tick_count = default_period_tick_count(so.chart_period)
@@ -293,7 +293,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_filters(%SO{type: :events, query: q} = so) do
-    q = Lql.EctoHelpers.apply_filter_rules_to_query(q, so.filter_rules)
+    q = Lql.EctoHelpers.apply_filter_rules_to_query(q, so.lql_meta_and_msg_filters)
 
     %{so | query: q}
   end
@@ -302,7 +302,8 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_to_sql(%SO{} = so) do
     %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(so.source.token)
     {sql, params} = EctoQueryBQ.SQL.to_sql_params(so.query)
-    sql_and_params = {EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id), params}
+    sql = EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id)
+    sql_and_params = {sql, params}
     sql_with_params_string = EctoQueryBQ.SQL.sql_params_to_sql(sql_and_params)
     %{so | sql_params: sql_and_params, sql_string: sql_with_params_string}
   end
@@ -318,17 +319,29 @@ defmodule Logflare.Logs.SearchOperations do
     with {:ok, lql_rules} <- Parser.parse(so.querystring, schema) do
       filter_rules = Lql.Utils.get_filter_rules(lql_rules)
       chart_rules = Lql.Utils.get_chart_rules(lql_rules)
-      %{so | filter_rules: filter_rules, chart_rules: chart_rules}
+
+      ts_filters = Lql.Utils.get_ts_filters(filter_rules)
+      lql_meta_and_msg_filters = Lql.Utils.get_meta_and_msg_filters(filter_rules)
+
+      %{
+        so
+        | lql_meta_and_msg_filters: lql_meta_and_msg_filters,
+          chart_rules: chart_rules,
+          lql_ts_filters: ts_filters
+      }
     else
-      err -> Utils.put_result_in(err, so, :filter_rules)
+      err ->
+        so
+        |> Utils.put_result({:error, :halted})
+        |> Utils.put_status(err)
     end
   end
 
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
   def apply_local_timestamp_correction(%SO{} = so) do
-    filter_rules =
+    lql_ts_filters =
       if so.user_local_timezone do
-        Enum.map(so.filter_rules, fn
+        Enum.map(so.lql_ts_filters, fn
           %{path: "timestamp", value: value} = pvo ->
             value =
               value
@@ -337,15 +350,12 @@ defmodule Logflare.Logs.SearchOperations do
               |> Timex.to_naive_datetime()
 
             %{pvo | value: value}
-
-          pvo ->
-            pvo
         end)
       else
-        so.filter_rules
+        so.lql_ts_filters
       end
 
-    %{so | filter_rules: filter_rules}
+    %{so | lql_ts_filters: lql_ts_filters}
   end
 
   @spec apply_select_all_schema(SO.t()) :: SO.t()
@@ -365,15 +375,13 @@ defmodule Logflare.Logs.SearchOperations do
     msg =
       "Error: can't aggregate on a non-numeric field type '#{vt}' for path #{p}. Check the source schema for the field used with chart operator."
 
-    Utils.put_result_in({:error, msg}, so)
+    Utils.put_result(so, {:error, msg})
   end
 
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
-    {_ts_filter_rules, filter_rules} = Enum.split_with(so.filter_rules, &(&1.path == "timestamp"))
-
     query =
       query
-      |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+      |> Lql.EctoHelpers.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
       |> select_aggregates(so.chart_period)
       |> order_by([t, ...], desc: 1)
 
@@ -410,10 +418,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def add_missing_agg_timestamps(%SO{} = so) do
-    {ts_filter_rules, _filter_rules} =
-      so.filter_rules |> Enum.split_with(&(&1.path == "timestamp"))
-
-    %{min: min, max: max} = get_min_max_filter_timestamps(ts_filter_rules, so.chart_period)
+    %{min: min, max: max} = get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
 
     if min == max do
       so
