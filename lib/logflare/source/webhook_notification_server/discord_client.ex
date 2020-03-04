@@ -80,8 +80,6 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
   end
 
   defp prep_recent_events(recent_events) do
-    IO.inspect(recent_events)
-
     Enum.take(recent_events, -5)
     |> Enum.map(fn x ->
       timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
