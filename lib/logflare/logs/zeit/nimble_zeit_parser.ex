@@ -11,10 +11,11 @@ defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
     {:ok, result}
   rescue
     _e ->
-      %{
-        "parse_status" => "failed",
-        "lines_string" => input
-      }
+      {:error,
+       %{
+         "parse_status" => "failed",
+         "lines_string" => input
+       }}
   end
 
   # Example: 4d0ff57e-4022-4bfd-8689-a69e39f80f69

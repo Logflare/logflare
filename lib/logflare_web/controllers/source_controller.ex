@@ -204,6 +204,14 @@ defmodule LogflareWeb.SourceController do
         conn
         |> put_flash(:error, "Webhook test failed! Error response: #{response}")
         |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      _else ->
+        conn
+        |> put_flash(
+          :error,
+          "Webhook test failed! Unknown error. Please contact support if this continues."
+        )
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
   end
 

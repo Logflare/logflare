@@ -33,7 +33,6 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
     source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
 
     payload = %{
-      content: "#{rate} new event(s) 🚨",
       username: "Logflare",
       avatar_url: "https://logflare.app/images/logos/logflare-logo.png",
       embeds: [
@@ -43,8 +42,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
             url: source_link,
             icon_url: "https://logflare.app/images/logos/logflare-logo.png"
           },
-          title: "Recent Event(s)",
-          description: "Visit [#{source.name}](#{source_link}) to stream, search and chart.",
+          title: "#{rate} new event(s)",
           footer: %{text: "Thanks for using Logflare 🙏"},
           fields: prepped_recent_events
         }
@@ -77,6 +75,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
   defp prep_tesla_resp_for_log(response) do
     Map.from_struct(response)
     |> Map.drop([:__client__, :__module__, :headers, :opts, :query])
+    |> Map.put(:body, inspect(response.body))
   end
 
   defp prep_recent_events(recent_events, rate) do
