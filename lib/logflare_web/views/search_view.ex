@@ -1,37 +1,34 @@
 defmodule LogflareWeb.SearchView do
   use LogflareWeb, :view
   import LogflareWeb.Helpers.Flash
+  import LogflareWeb.Helpers.Modals
 
   alias LogflareWeb.Source
   alias LogflareWeb.SearchView
-  alias Logflare.Sources
   alias Logflare.BigQuery.SchemaTypes
-  alias Logflare.Lql
+  alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.JSON
 
   import PhoenixLiveReact, only: [live_react_component: 2]
 
-  def format_bq_schema(source) do
-    bq_schema = Sources.Cache.get_bq_schema(source)
+  def format_bq_schema(nil), do: ""
 
-    if bq_schema do
-      fields_and_types =
-        bq_schema
-        |> Lql.Utils.bq_schema_to_flat_typemap()
-        |> Enum.map(fn {k, v} ->
-          v =
-            case SchemaTypes.to_schema_type(v) do
-              {type, inner_type} -> "#{type}<#{inner_type}>"
-              type -> type
-            end
+  def format_bq_schema(bq_schema) do
+    fields_and_types =
+      bq_schema
+      |> SchemaUtils.bq_schema_to_flat_typemap()
+      |> Enum.map(fn {k, v} ->
+        v =
+          case SchemaTypes.to_schema_type(v) do
+            {type, inner_type} -> "#{type}<#{inner_type}>"
+            type -> type
+          end
 
-          {k, v}
-        end)
-        |> Enum.sort_by(fn {k, _v} -> k end)
+        {k, v}
+      end)
+      |> Enum.sort_by(fn {k, _v} -> k end)
 
-      SearchView.render("bq_schema.html", fields_and_types: fields_and_types)
-    else
-      ""
-    end
+    SearchView.render("bq_schema.html", fields_and_types: fields_and_types)
   end
 
   def format_timestamp(timestamp) do
@@ -59,12 +56,6 @@ defmodule LogflareWeb.SearchView do
       end,
       yield: :all
     )
-    |> Jason.encode!(pretty: true)
-  end
-
-  def modal_link(modal_id, icon_classes, text) do
-    ~E"""
-    <a class="modal-link" href="#" phx-click="activate_modal" phx-value-modal_id="<%= modal_id %>"><span><i class="<%= icon_classes %>"></i></span> <span class="hide-on-mobile"><%= text %></span></a>
-    """
+    |> JSON.encode!(pretty: true)
   end
 end

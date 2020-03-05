@@ -140,4 +140,16 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     end)
     |> Map.new()
   end
+
+  @spec bq_schema_to_flat_typemap(TS.t()) :: map
+  def bq_schema_to_flat_typemap(%TS{} = schema) do
+    schema
+    |> to_typemap()
+    |> Iteraptor.to_flatmap()
+    |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
+    |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
+    |> Enum.uniq()
+    |> Enum.reject(fn {_k, v} -> v === :map end)
+    |> Map.new()
+  end
 end
