@@ -69,6 +69,9 @@ defmodule Logflare.Source.WebhookNotificationServer do
         WNS.DiscordClient.new()
         |> WNS.DiscordClient.post(source, rate, recent_events)
 
+      %URI{host: nil} ->
+        {:error, :bad_uri}
+
       %URI{} ->
         WNS.Client.new()
         |> WNS.Client.post(source, rate, recent_events)
