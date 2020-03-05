@@ -15,7 +15,7 @@ defmodule Logflare.Source.SlackHookServer do
   end
 
   def test_post(source) do
-    recent_events = Data.get_logs_across_cluster(source.token)
+    recent_events = Data.get_logs(source.token)
 
     SHS.Client.new()
     |> SHS.Client.post(source, source.metrics.rate, recent_events)

@@ -14,7 +14,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
   end
 
   def test_post(source) do
-    recent_events = Data.get_logs_across_cluster(source.token)
+    recent_events = Data.get_logs(source.token)
     uri = source.webhook_notification_url
 
     post(uri, source, 0, recent_events)

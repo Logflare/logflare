@@ -28,7 +28,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
   end
 
   def post(client, source, rate, recent_events \\ []) do
-    prepped_recent_events = prep_recent_events(recent_events)
+    prepped_recent_events = prep_recent_events(recent_events, rate)
 
     source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
 
@@ -44,7 +44,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
             icon_url: "https://logflare.app/images/logos/logflare-logo.png"
           },
           title: "Recent Event(s)",
-          description: "Visit your Logflare account to stream, search and chart.",
+          description: "Visit [#{source.name}](#{source_link}) to stream, search and chart.",
           footer: %{text: "Thanks for using Logflare 🙏"},
           fields: prepped_recent_events
         }
@@ -79,12 +79,28 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
     |> Map.drop([:__client__, :__module__, :headers, :opts, :query])
   end
 
-  defp prep_recent_events(recent_events) do
-    Enum.take(recent_events, -5)
-    |> Enum.map(fn x ->
-      timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
+  defp prep_recent_events(recent_events, rate) do
+    cond do
+      0 == rate ->
+        [%{name: "[timestamp]", value: "```[log event message]```"}]
 
-      %{name: timestamp, value: "```#{x.body.message}```"}
-    end)
+      rate in 1..3 ->
+        Enum.take(recent_events, -rate)
+        |> Enum.map(fn x ->
+          discord_event_message(x)
+        end)
+
+      true ->
+        Enum.take(recent_events, -3)
+        |> Enum.map(fn x ->
+          discord_event_message(x)
+        end)
+    end
+  end
+
+  defp discord_event_message(x) do
+    timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
+
+    %{name: timestamp, value: "```#{x.body.message}```"}
   end
 end
