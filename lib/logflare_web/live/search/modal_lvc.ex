@@ -3,24 +3,28 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   LiveView Component to render components
   """
   use Phoenix.LiveComponent
-  alias LogflareWeb.SearchView
+  alias LogflareWeb.Helpers.BqSchema
+  alias LogflareWeb.SharedView
   alias LogflareWeb.Source.SearchLV
-  alias Logflare.Logs
+  alias Logflare.Sources
+  alias Logflare.Logs.LogEvents
 
   @query_debug_modals ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal)
 
   def render(%{active_modal: "searchHelpModal"} = _assigns) do
-    SearchView.render("modal.html",
+    SharedView.render("modal.html",
       title: "Logflare Query Language",
-      body: SearchView.render("lql_help.html"),
+      body: SharedView.render("lql_help.html"),
       type: "lql-help-modal"
     )
   end
 
   def render(%{active_modal: "sourceSchemaModal"} = assigns) do
-    SearchView.render("modal.html",
+    bq_schema = Sources.Cache.get_bq_schema(assigns.source)
+
+    SharedView.render("modal.html",
       title: "Source Schema",
-      body: SearchView.format_bq_schema(assigns.source),
+      body: BqSchema.format_bq_schema(bq_schema),
       type: "source-schema-modal"
     )
   end
@@ -28,25 +32,24 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
     [id, timestamp] = String.split(id_and_timestamp, "|")
 
-    log_events = assigns.log_events
-    timestamp = String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond)
+    timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
 
     log_event =
-      Logs.Search.get_event_by_id_and_timestamp( assigns.source, id: id, timestamp: timestamp)
+      LogEvents.get_event_by_id_and_timestamp(assigns.source, id: id, timestamp: timestamp)
 
     fmt_metadata =
       log_event
       |> Map.get(:body)
       |> Map.get(:metadata)
-      |> SearchView.encode_metadata()
+      |> BqSchema.encode_metadata()
 
     body =
-      SearchView.render("metadata_modal_body.html",
+      SharedView.render("metadata_modal_body.html",
         log_event: log_event,
         fmt_metadata: fmt_metadata
       )
 
-    SearchView.render("modal.html",
+    SharedView.render("modal.html",
       title: "Metadata",
       body: body,
       type: "metadata-modal"
@@ -61,7 +64,8 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
         "queryDebugErrorModal" -> assigns.search_op_error
       end
 
-    SearchView.render("modal.html",
+    SharedView.render(
+      "modal.html",
       title: "Query Debugging",
       body:
         ~L"<%= live_component(@socket, SearchLV.DebugLVC, search_op: search_op, user: @user) %>",
