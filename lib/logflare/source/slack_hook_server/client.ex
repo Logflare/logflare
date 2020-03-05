@@ -141,7 +141,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
           elements: [
             %{
               type: "mrkdwn",
-              text: "Ideas for the Logflare Slack app? Contact support@logflare.app!"
+              text: "Thanks for using Logflare 🙏"
             }
           ]
         }
