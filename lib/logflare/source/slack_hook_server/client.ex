@@ -38,10 +38,11 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
       {:ok, %Tesla.Env{body: "invalid_blocks"} = response} ->
         resp = prep_tesla_resp_for_log(response)
+        req = prep_tesla_resp_for_log(request)
 
         Logger.warn("Slack hook response: invalid_blocks",
           slackhook_response: resp,
-          slackhook_request: %{body: inspect(body)}
+          slackhook_request: req
         )
 
         {:error, response}
@@ -76,9 +77,10 @@ defmodule Logflare.Source.SlackHookServer.Client do
     end
   end
 
-  defp prep_tesla_resp_for_log(response) do
-    Map.from_struct(response)
+  defp prep_tesla_resp_for_log(req_or_resp) do
+    Map.from_struct(req_or_resp)
     |> Map.drop([:__client__, :__module__, :headers, :opts, :query])
+    |> Map.put(:body, inspect(req_or_resp.body))
   end
 
   defp prep_recent_events(recent_events, rate) do
