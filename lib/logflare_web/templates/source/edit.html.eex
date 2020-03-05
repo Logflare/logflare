@@ -111,7 +111,7 @@
   <p><i class="fab fa-discord"></i> Payloads are automagically compatible with Discord webhook urls!</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
     <div class="form-group">
-      <%= text_input f, :webhook_notification_url, placeholder: "https://mydomain.com/webhooks/logflare", class: "form-control form-control-margin" %>
+      <%= url_input f, :webhook_notification_url, placeholder: "https://mydomain.com/webhooks/logflare", class: "form-control form-control-margin" %>
       <small class="form-text text-muted">
         This endpoint should accept POST requests with a JSON body.
       </small>
