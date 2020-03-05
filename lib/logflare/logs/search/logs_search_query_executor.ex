@@ -2,7 +2,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   use GenServer
   alias __MODULE__, as: State
   alias Logflare.Logs.Search
-  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
+  alias Logflare.Logs.SearchOperation, as: SO
   import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
   alias Logflare.Source.RecentLogsServer, as: RLS

@@ -2,23 +2,26 @@ defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.Google.BigQuery
-  alias Logflare.{Source, Sources, EctoQueryBQ}
+  alias Logflare.{Sources, EctoQueryBQ}
   alias Logflare.Lql.Parser
   alias Logflare.Lql
   alias Logflare.Logs.Search.Utils
   alias Logflare.Lql.{ChartRule, FilterRule}
+  alias Logflare.BqRepo
+
   import Ecto.Query
-  import Logflare.Logs.SearchOperations.Helpers
-  import Logflare.Logs.Search.Utils
-  import Logflare.Logs.SearchQueries
 
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
 
   alias Logflare.Ecto.BQQueryAPI
+
+  import Logflare.Logs.SearchOperations.Helpers
+  import Logflare.Logs.Search.Utils
+  import Logflare.Logs.SearchQueries
   import BQQueryAPI.UDF
   import BQQueryAPI
 
-  use Logflare.GenDecorators
+  alias Logflare.Logs.SearchOperation, as: SO
 
   @default_limit 100
   @default_processed_bytes_limit 10_000_000_000
@@ -31,64 +34,19 @@ defmodule Logflare.Logs.SearchOperations do
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
 
-  defmodule SearchOperation do
-    @moduledoc """
-    Logs search options and result
-    """
-    use TypedStruct
-
-    typedstruct do
-      field :source, Source.t()
-      field :querystring, String.t(), enforce: true
-      field :query, Ecto.Query.t()
-      field :query_result, term()
-      field :sql_params, {term(), term()}
-      field :sql_string, String.t()
-      field :tailing?, boolean, enforce: true
-      field :tailing_initial?, boolean
-      field :rows, [map()], default: []
-      field :lql_meta_and_msg_filters, [FilterRule.t()], default: []
-      field :lql_ts_filters, [FilterRule.t()], default: []
-      field :chart_rules, [ChartRule.t()], default: []
-      field :error, term()
-      field :stats, :map
-      field :use_local_time, boolean
-      field :user_local_timezone, String.t()
-      field :chart_period, atom(), default: :minute, enforce: true
-      field :chart_aggregate, atom(), default: :count, enforce: true
-      field :chart_data_shape_id, atom(), default: nil, enforce: true
-      field :type, :events | :aggregates
-      field :status, {atom(), String.t() | [String.t()]}
-    end
-  end
-
-  alias SearchOperation, as: SO
-
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
+    bq_project_id = so.assigns.source.bq_project_id
     {sql, params} = so.sql_params
 
-    query_request = %QueryRequest{
-      query: sql,
-      useLegacySql: false,
-      useQueryCache: true,
-      parameterMode: "POSITIONAL",
-      queryParameters: params,
-      dryRun: false,
-      timeoutMs: @query_request_timeout
-    }
-
-    dry_run = %{query_request | dryRun: true}
-
-    with {:ok, response} <- BigQuery.query(dry_run),
+    with {:ok, response} <- BqRepo.query(bq_project_id, sql, params, dryRun: true),
          is_within_limit? =
            String.to_integer(response.totalBytesProcessed) <= @default_processed_bytes_limit,
          {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
-         {:ok, result} = BigQuery.query(query_request) do
-      result
+         {:ok, response} <- BqRepo.query(bq_project_id, sql, params) do
+      response
       |> Map.update(:totalBytesProcessed, 0, &Utils.maybe_string_to_integer/1)
       |> Map.update(:totalRows, 0, &Utils.maybe_string_to_integer/1)
-      |> AtomicMap.convert(%{safe: false})
       |> Utils.put_result_in(so, :query_result)
     else
       {:total_bytes_processed, false} ->
@@ -139,7 +97,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   def put_chart_data_shape_id(%SO{} = so) do
     bq_schema = Sources.Cache.get_bq_schema(so.source)
-    flat_type_map = Lql.Utils.bq_schema_to_flat_typemap(bq_schema)
+    flat_type_map = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
 
     chart_data_shape_id =
       cond do

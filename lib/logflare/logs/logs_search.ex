@@ -1,11 +1,8 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
-  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
-  alias Logflare.LogEvent
-  alias Logflare.Logs.SearchOperations
+  alias Logflare.Logs.SearchOperation, as: SO
   import Logflare.Logs.SearchOperations
-  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
 
   def search_and_aggs(%SO{} = so) do
     tasks = [
