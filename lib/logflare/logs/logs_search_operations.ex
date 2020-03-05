@@ -365,8 +365,21 @@ defmodule Logflare.Logs.SearchOperations do
       |> Sources.Cache.get_bq_schema()
       |> SchemaUtils.to_typemap()
       |> Map.keys()
+      |> List.delete(:metadata)
 
     %{so | query: select(so.query, ^top_level_fields)}
+  end
+
+  def log_event_query(source, id, timestamp) do
+    from(source.bq_table_id)
+    |> where([t], t.id == ^id)
+    |> or_where([t], t.timestamp == ^timestamp)
+    |> select([t], %{
+      metadata: t.metadata,
+      id: t.id,
+      timestamp: t.timestamp,
+      message: t.event_message
+    })
   end
 
   @spec apply_numeric_aggs(SO.t()) :: SO.t()

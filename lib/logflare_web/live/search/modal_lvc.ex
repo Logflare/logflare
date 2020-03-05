@@ -5,6 +5,8 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   use Phoenix.LiveComponent
   alias LogflareWeb.SearchView
   alias LogflareWeb.Source.SearchLV
+  alias Logflare.Logs
+
   @query_debug_modals ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal)
 
   def render(%{active_modal: "searchHelpModal"} = _assigns) do
@@ -23,12 +25,14 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     )
   end
 
-  def render(%{active_modal: "metadataModal:" <> id} = assigns) do
+  def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
+    [id, timestamp] = String.split(id_and_timestamp, "|")
+
     log_events = assigns.log_events
+    timestamp = String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond)
 
     log_event =
-      Enum.find(log_events, &(&1.id === id)) ||
-        Enum.find(log_events, &("#{&1.body.timestamp}" === id))
+      Logs.Search.get_event_by_id_and_timestamp( assigns.source, id: id, timestamp: timestamp)
 
     fmt_metadata =
       log_event

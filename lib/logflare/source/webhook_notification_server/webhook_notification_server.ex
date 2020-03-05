@@ -14,10 +14,10 @@ defmodule Logflare.Source.WebhookNotificationServer do
   end
 
   def test_post(source) do
-    recent_events = Data.get_logs_across_cluster(source.token)
+    recent_events = Data.get_logs(source.token)
+    uri = source.webhook_notification_url
 
-    WNS.Client.new()
-    |> WNS.Client.post(source, source.metrics.rate, recent_events)
+    post(uri, source, 0, recent_events)
   end
 
   def init(rls) do
@@ -36,19 +36,18 @@ defmodule Logflare.Source.WebhookNotificationServer do
 
     case rate > 0 do
       true ->
-        if source.webhook_notification_url do
+        if uri = source.webhook_notification_url do
           recent_events = Data.get_logs_across_cluster(rls.source_id)
 
-          WNS.Client.new()
-          |> WNS.Client.post(source, rate, recent_events)
+          post(uri, source, rate, recent_events)
         end
 
         check_rate(rls.notifications_every)
-        {:noreply, %{rls | inserts_since_boot: current_inserts}}
+        {:noreply, %{rls | inserts_since_boot: current_inserts}, :hibernate}
 
       false ->
         check_rate(rls.notifications_every)
-        {:noreply, rls}
+        {:noreply, rls, :hibernate}
     end
   end
 
@@ -62,6 +61,18 @@ defmodule Logflare.Source.WebhookNotificationServer do
     # Do Shutdown Stuff
     Logger.info("Going Down: #{__MODULE__}")
     reason
+  end
+
+  defp post(uri, source, rate, recent_events) do
+    case URI.parse(uri) do
+      %URI{host: "discordapp.com"} ->
+        WNS.DiscordClient.new()
+        |> WNS.DiscordClient.post(source, rate, recent_events)
+
+      %URI{} ->
+        WNS.Client.new()
+        |> WNS.Client.post(source, rate, recent_events)
+    end
   end
 
   defp check_rate(notifications_every) do

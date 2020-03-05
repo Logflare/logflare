@@ -108,6 +108,7 @@
 
   <h5 class="header-margin">Webhook Alerts</h5>
   <p>We recommend setting up <%= link "RequestBin", to: "https://requestbin.com/", target: "_blank" %> to see what our payloads look like. Once a webhook url is saved here you can send a test request to it.</p>
+  <p><i class="fab fa-discord"></i> Payloads are automagically compatible with Discord webhook urls!</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
     <div class="form-group">
       <%= text_input f, :webhook_notification_url, placeholder: "https://mydomain.com/webhooks/logflare", class: "form-control form-control-margin" %>

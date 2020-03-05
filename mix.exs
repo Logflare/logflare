@@ -90,7 +90,7 @@ defmodule Logflare.Mixfile do
       {:ex_machina, "~> 2.3"},
       {:iteraptor, "~> 1.10"},
       {:bertex, ">= 0.0.0"},
-      {:logflare_logger_backend, "~> 0.6.3"},
+      {:logflare_logger_backend, "~> 0.7.0"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
       {:phoenix_live_view, "~> 0.7.0"},
       {:decorator, "~> 1.3"},

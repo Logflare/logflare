@@ -17,7 +17,15 @@ defmodule LogflareWeb.SearchView do
       fields_and_types =
         bq_schema
         |> Lql.Utils.bq_schema_to_flat_typemap()
-        |> Enum.map(fn {k, v} -> {k, SchemaTypes.to_schema_type(v)} end)
+        |> Enum.map(fn {k, v} ->
+          v =
+            case SchemaTypes.to_schema_type(v) do
+              {type, inner_type} -> "#{type}<#{inner_type}>"
+              type -> type
+            end
+
+          {k, v}
+        end)
         |> Enum.sort_by(fn {k, _v} -> k end)
 
       SearchView.render("bq_schema.html", fields_and_types: fields_and_types)

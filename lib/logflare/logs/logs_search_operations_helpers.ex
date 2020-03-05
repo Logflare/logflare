@@ -1,8 +1,16 @@
 defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
-  @default_open_interval_length 250
-  alias Logflare.Lql.FilterRule, as: FR
+  alias Logflare.Lql.FilterRule
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.EctoQueryBQ
+  alias Logflare.Source
+  alias GoogleApi.BigQuery.V2.Model.QueryRequest
+  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
+  alias Logflare.Google.BigQuery
+  alias Logflare.{Source, Sources, EctoQueryBQ}
+  @query_request_timeout 60_000
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
+  @default_open_interval_length 250
 
   @spec get_min_max_filter_timestamps([FR.t()], atom()) :: minmax()
   def get_min_max_filter_timestamps([], chart_period) do
@@ -88,6 +96,32 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
 
   def convert_timestamp_timezone(row, user_timezone) do
     Map.update!(row, "timestamp", &Timex.Timezone.convert(&1, user_timezone))
+  end
+
+  def ecto_query_to_sql(%Ecto.Query{} = query, %Source{} = source) do
+    %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(source.token)
+    {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+    sql_and_params = {EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id), params}
+    sql_string = EctoQueryBQ.SQL.sql_params_to_sql(sql_and_params)
+    %{sql_with_params: sql, params: params, sql_string: sql_string}
+  end
+
+  def execute_query(sql, params) when is_binary(sql) and is_list(params) do
+    query_request = %QueryRequest{
+      query: sql,
+      useLegacySql: false,
+      useQueryCache: true,
+      parameterMode: "POSITIONAL",
+      queryParameters: params,
+      dryRun: false,
+      timeoutMs: @query_request_timeout
+    }
+
+    with {:ok, response} <- BigQuery.query(query_request) do
+      AtomicMap.convert(response, %{safe: false})
+    else
+      errtup -> errtup
+    end
   end
 
   def generate_message(period) do

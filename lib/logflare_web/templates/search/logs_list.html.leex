@@ -10,14 +10,12 @@
             <% else %>
               <%= format_timestamp(timestamp) <> " UTC"%><% end %></mark>
           <%= message %>
-          <%= if map_size(metadata) > 0 do %>
-            <a class="metadata-link"
+          <a class="metadata-link"
                 phx-click="activate_modal"
-                phx-value-modal_id="metadataModal:<%= log.id || log.body.timestamp %>"
+                phx-value-modal_id="metadataModal:<%= to_string(log.id) <> "|" <> to_string(log.body.timestamp) %>"
                 href="#" aria-expanded="false">
-              metadata
-            </a>
-          <% end %>
+            metadata
+          </a>
         </li>
       <% end %>
     </div>
