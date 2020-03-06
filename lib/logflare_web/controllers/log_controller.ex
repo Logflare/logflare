@@ -3,27 +3,49 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs
   @message "Logged!"
 
-  def create(conn, %{"batch" => batch}) when is_list(batch) do
-    ingest_and_render(conn, batch, conn.assigns.source)
+  def create(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
+    ingest_and_render(conn, batch, source)
   end
 
-  def create(conn, log_params) do
+  def create(%{assigns: %{source: source}} = conn, log_params) do
     batch =
       log_params
       |> Map.take(~w[log_entry metadata timestamp])
       |> List.wrap()
 
-    ingest_and_render(conn, batch, conn.assigns.source)
+    ingest_and_render(conn, batch, source)
   end
 
-  def elixir_logger(conn, %{"batch" => batch}) when is_list(batch) do
-    ingest_and_render(conn, batch, conn.assigns.source)
+  def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+      when is_list(batch) do
+    batch =
+      batch
+      |> Logs.BrowserReports.handle_batch()
+
+    ingest_and_render(conn, batch, source)
   end
 
-  def zeit_ingest(conn, %{"_json" => batch}) do
-    batch = Logs.Zeit.handle_batch(batch, conn.assigns.source)
+  def browser_reports(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+    batch =
+      event
+      |> List.wrap()
+      |> Logs.BrowserReports.handle_batch()
 
-    ingest_and_render(conn, batch, conn.assigns.source)
+    ingest_and_render(conn, batch, source)
+  end
+
+  def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
+      when is_list(batch) do
+    ingest_and_render(conn, batch, source)
+  end
+
+  def zeit_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+      when is_list(batch) do
+    batch =
+      batch
+      |> Logs.Zeit.handle_batch(source)
+
+    ingest_and_render(conn, batch, source)
   end
 
   def ingest_and_render(conn, log_params_batch, source) do
