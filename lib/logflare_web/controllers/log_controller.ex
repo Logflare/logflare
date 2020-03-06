@@ -1,7 +1,20 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
 
-  plug CORSPlug when action in [:browser_reports]
+  plug CORSPlug,
+       [
+         origin: "*",
+         max_age: 1_728_000,
+         headers: [
+           "Authorization",
+           "Content-Type",
+           "Content-Length",
+           "X-Requested-With"
+         ],
+         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         send_preflight_response?: true
+       ]
+       when action in [:browser_reports]
 
   alias Logflare.Logs
 
