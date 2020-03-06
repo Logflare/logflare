@@ -29,6 +29,18 @@ defmodule Logflare.Logs.Search.Utils do
     Enum.random(tips)
   end
 
+  def put_result(so, {:error, _} = err) do
+    %{so | error: err}
+  end
+
+  def put_status(so, status) do
+    %{so | status: status}
+  end
+
+  def put_status(so, key, status) do
+    %{so | status: {key, status}}
+  end
+
   def put_result_in(_, so, path \\ nil)
   def put_result_in(:ok, so, _), do: so
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}

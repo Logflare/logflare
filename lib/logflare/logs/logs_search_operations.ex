@@ -1,7 +1,6 @@
 defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
-  alias Logflare.Google.BigQuery
   alias Logflare.{Sources, EctoQueryBQ}
   alias Logflare.Lql.Parser
   alias Logflare.Lql
@@ -10,8 +9,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.BqRepo
 
   import Ecto.Query
-
-  alias GoogleApi.BigQuery.V2.Model.QueryRequest
 
   alias Logflare.Ecto.BQQueryAPI
 
@@ -28,7 +25,6 @@ defmodule Logflare.Logs.SearchOperations do
 
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
-  @query_request_timeout 60_000
 
   # Halt reasons
 
@@ -36,7 +32,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
-    bq_project_id = so.assigns.source.bq_project_id
+    bq_project_id = so.source.user.bigquery_project_id
     {sql, params} = so.sql_params
 
     with {:ok, response} <- BqRepo.query(bq_project_id, sql, params, dryRun: true),

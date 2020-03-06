@@ -77,22 +77,4 @@ defmodule Logflare.Logs.Search do
       so -> {:error, so}
     end
   end
-
-  def get_event_by_id_and_timestamp(source, kw) do
-    id = kw[:id]
-    timestamp = kw[:timestamp]
-    query = log_event_query(source, id, timestamp)
-
-    %{sql_with_params: sql_with_params, params: params} =
-      SearchOperations.Helpers.ecto_query_to_sql(query, source)
-
-    query_result = SearchOperations.Helpers.execute_query(sql_with_params, params)
-    %{schema: schema, rows: rows} = query_result
-
-    schema
-    |> SchemaUtils.merge_rows_with_schema(rows)
-    |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
-    |> hd
-    |> LogEvent.make_from_db(%{source: source})
-  end
 end

@@ -1,6 +1,5 @@
 defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
-  alias Logflare.Lql.FilterRule
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.EctoQueryBQ
   alias Logflare.Source
