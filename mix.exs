@@ -102,6 +102,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
+      {:cors_plug, "~> 2.0"},
 
       # Concurrency and pipelines
       {:broadway, "~> 0.5.0"},
