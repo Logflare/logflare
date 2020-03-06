@@ -1,6 +1,10 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
+
+  plug CORSPlug when action in [:browser_reports]
+
   alias Logflare.Logs
+
   @message "Logged!"
 
   def create(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do

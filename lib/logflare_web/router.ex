@@ -217,5 +217,6 @@ defmodule LogflareWeb.Router do
     post "/zeit", LogController, :zeit_ingest
     post "/elixir/logger", LogController, :elixir_logger
     post "/browser/reports", LogController, :browser_reports
+    options "/browser/reports", LogController, :browser_reports
   end
 end
