@@ -1,4 +1,4 @@
-defmodule Logflare.Logs.BrowserReports do
+defmodule Logflare.Logs.GenericJson do
   require Logger
 
   def handle_batch(batch) when is_list(batch) do
@@ -13,14 +13,6 @@ defmodule Logflare.Logs.BrowserReports do
       "metadata" => report
     }
   end
-
-  # def message(%{"csp_report" => csp_report}) do
-  #   disposition = csp_report["disposition"]
-  #   document_uri = csp_report["document_uri"]
-  #   blocked_uri = csp_report["blocked_uri"]
-
-  #   "csp | #{disposition} | #{document_uri} | #{blocked_uri}"
-  # end
 
   def message(report) do
     inspect(report)

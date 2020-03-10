@@ -11,7 +11,7 @@ defmodule LogflareWeb.LogController do
            "Content-Length",
            "X-Requested-With"
          ],
-         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         methods: ["POST", "OPTIONS"],
          send_preflight_response?: true
        ]
        when action in [:browser_reports]
@@ -33,22 +33,26 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
-  def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+  def generic_json(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch =
       batch
-      |> Logs.BrowserReports.handle_batch()
+      |> Logs.GenericJson.handle_batch()
 
     ingest_and_render(conn, batch, source)
   end
 
-  def browser_reports(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+  def generic_json(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
     batch =
       event
       |> List.wrap()
-      |> Logs.BrowserReports.handle_batch()
+      |> Logs.GenericJson.handle_batch()
 
     ingest_and_render(conn, batch, source)
+  end
+
+  def browser_reports(conn, params) do
+    generic_json(conn, params)
   end
 
   def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
