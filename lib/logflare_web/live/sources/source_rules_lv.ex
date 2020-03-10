@@ -21,9 +21,15 @@ defmodule LogflareWeb.Sources.RulesLV do
 
   def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
     user = Users.Cache.get_by_and_preload(id: user_id)
+    source = Sources.get_by_and_preload(id: source_id)
+
+    user = if user.admin do
+      Users.Cache.get_by_and_preload(id: source.user_id)
+    else
+      user
+    end
 
     source_id = String.to_integer(source_id)
-    source = Sources.get_by_and_preload(id: source_id)
 
     sources =
       for s <- user.sources do

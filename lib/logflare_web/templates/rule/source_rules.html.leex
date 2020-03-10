@@ -32,13 +32,14 @@
     <% end %>
     <%= for rule <- @rules do %>
       <li class="list-group-item">
+        <% source = Enum.find(@sources, & &1.token === rule.sink) %>
         <%= if not has_regex_rules?(@rules) do %>
           <a href="#" phx-click="delete_rule" phx-value-rule_id="<%= rule.id %>" >
             <i class="fa fa-trash"></i>
           </a>
-          Matching LQL <code><%= rule.lql_string %></code> routing to <code><%= Enum.find(@sources, & &1.token === rule.sink).name %></code>
+          Matching LQL <code><%= rule.lql_string %></code> routing to <code><%= source.name %></code>
         <% else %>
-          Matching regex <code><%= rule.regex %></code> routing to <code><%= Enum.find(@sources, & &1.token === rule.sink).name %></code>
+          Matching regex <code><%= rule.regex %></code> routing to <code><%= source.name %></code>
         <% end %>
       </li>
     <% end %>
