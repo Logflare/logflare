@@ -19,6 +19,8 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :api do
+    plug LogflareWeb.Plugs.MaybeContentTypeToJson
+
     plug Plug.Parsers,
       parsers: [:json, :bert],
       json_decoder: Jason
