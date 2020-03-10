@@ -3,6 +3,8 @@ defmodule Logflare.BqRepo do
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.BigQuery.SchemaUtils
+  import Logflare.TypeCasts
 
   @query_request_timeout 60_000
   @use_query_cache true
@@ -36,7 +38,14 @@ defmodule Logflare.BqRepo do
       |> GenUtils.maybe_parse_google_api_result()
 
     with {:ok, response} <- result do
-      AtomicMap.convert(response, %{safe: false})
+      response =
+        response
+        |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
+        |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer_or_zero/1)
+        |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
+        |> AtomicMap.convert(%{safe: false})
+
+      {:ok, response}
     else
       errtup -> errtup
     end

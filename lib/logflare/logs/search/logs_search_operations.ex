@@ -7,6 +7,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.Search.Utils
   alias Logflare.Lql.{ChartRule, FilterRule}
   alias Logflare.BqRepo
+  alias Logflare.Google.BigQuery.GCPConfig
 
   import Ecto.Query
 
@@ -29,51 +30,47 @@ defmodule Logflare.Logs.SearchOperations do
   # Halt reasons
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
+  @query_total_bytes_halt "Query halted: total bytes processed for this query is expected to be larger than #{
+                            div(@default_processed_bytes_limit, 1_000_000_000)
+                          } GB"
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
-    bq_project_id = so.source.user.bigquery_project_id
+    bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
     {sql, params} = so.sql_params
 
     with {:ok, response} <- BqRepo.query(bq_project_id, sql, params, dryRun: true),
-         is_within_limit? =
-           String.to_integer(response.totalBytesProcessed) <= @default_processed_bytes_limit,
+         is_within_limit? = response.total_bytes_processed <= @default_processed_bytes_limit,
          {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
          {:ok, response} <- BqRepo.query(bq_project_id, sql, params) do
-      response
-      |> Map.update(:totalBytesProcessed, 0, &Utils.maybe_string_to_integer/1)
-      |> Map.update(:totalRows, 0, &Utils.maybe_string_to_integer/1)
-      |> Utils.put_result_in(so, :query_result)
+      so
+      |> Utils.put_result(:query_result, response)
+      |> Utils.put_result(:rows, response.rows)
     else
       {:total_bytes_processed, false} ->
-        {:error,
-         "Query halted: total bytes processed for this query is expected to be larger than #{
-           div(@default_processed_bytes_limit, 1_000_000_000)
-         } GB"}
-        |> Utils.put_result_in(so, :query_result)
+        Utils.halt(so, @query_total_bytes_halt)
 
-      errtup ->
-        Utils.put_result_in(errtup, so, :query_result)
+      {:error, err} ->
+        Utils.put_result(so, :error, err)
     end
   end
 
-  @spec order_by_default(SO.t()) :: SO.t()
-  def order_by_default(%SO{} = so) do
-    %{so | query: order_by(so.query, desc: :timestamp)}
-  end
+  @spec apply_query_defaults(SO.t()) :: SO.t()
+  def apply_query_defaults(%SO{type: :events} = so) do
+    query =
+      from(so.source.bq_table_id)
+      |> select_default_fields(:events)
+      |> order_by(desc: :timestamp)
+      |> limit(@default_limit)
 
-  @spec apply_limit_to_query(SO.t()) :: SO.t()
-  def apply_limit_to_query(%SO{} = so) do
-    %{so | query: limit(so.query, @default_limit)}
+    %{so | query: query}
   end
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
   def apply_halt_conditions(%SO{} = so) do
     cond do
       so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
-        so
-        |> Utils.put_result({:error, :halted})
-        |> Utils.put_status(:halted, @timestamp_filter_with_tailing)
+        Utils.halt(so, @timestamp_filter_with_tailing)
 
       true ->
         so
@@ -85,15 +82,17 @@ defmodule Logflare.Logs.SearchOperations do
     %{message: message} = get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
 
     if message do
-      put_status(so, {:warning, message})
+      put_status(so, :warning, message)
     else
       so
     end
   end
 
   def put_chart_data_shape_id(%SO{} = so) do
-    bq_schema = Sources.Cache.get_bq_schema(so.source)
-    flat_type_map = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+    flat_type_map =
+      so.source
+      |> Sources.Cache.get_bq_schema()
+      |> SchemaUtils.bq_schema_to_flat_typemap()
 
     chart_data_shape_id =
       cond do
@@ -113,52 +112,33 @@ defmodule Logflare.Logs.SearchOperations do
     Map.put(so, :chart_data_shape_id, chart_data_shape_id)
   end
 
-  @spec put_stats(SO.t()) :: SO.t()
-  def put_stats(%SO{} = so) do
+  def put_stats(%SO{stats: stats} = so) do
     stats =
-      so.stats
+      stats
       |> Map.merge(%{
         total_rows: so.query_result.total_rows,
         total_bytes_processed: so.query_result.total_bytes_processed
       })
       |> Map.put(
         :total_duration,
-        System.monotonic_time(:millisecond) - so.stats.start_monotonic_time
+        System.monotonic_time(:millisecond) - stats.start_monotonic_time
       )
 
     %{so | stats: stats}
   end
 
   @spec process_query_result(SO.t()) :: SO.t()
-  def process_query_result(%SO{} = so) do
-    %{schema: schema, rows: rows} = so.query_result
-
+  def process_query_result(%SO{query_result: %{rows: rows}, type: :aggregates} = so) do
     rows =
-      schema
-      |> SchemaUtils.merge_rows_with_schema(rows)
-      |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
-
-    %{so | rows: rows}
-  end
-
-  @spec process_query_result(SO.t(), :aggs | :events) :: SO.t()
-  def process_query_result(%SO{} = so, :aggs) do
-    %{schema: schema, rows: rows} = so.query_result
-
-    rows =
-      schema
-      |> SchemaUtils.merge_rows_with_schema(rows)
-      |> Enum.map(&MapKeys.to_atoms_unsafe!/1)
-      |> Enum.map(fn agg ->
+      Enum.map(rows, fn agg ->
         Map.put(agg, :datetime, Timex.from_unix(agg.timestamp, :microsecond))
       end)
 
     %{so | rows: rows}
   end
 
-  def apply_timestamp_filter_rules(%SO{tailing?: t?, tailing_initial?: ti?, type: :events} = so) do
-    so = %{so | query: from(so.source.bq_table_id)}
-    query = so.query
+  def apply_timestamp_filter_rules(%SO{type: :events} = so) do
+    %SO{tailing?: t?, tailing_initial?: ti?, query: query} = so
 
     utc_today = Date.utc_today()
 
@@ -214,18 +194,9 @@ defmodule Logflare.Logs.SearchOperations do
 
     q =
       cond do
-        t? ->
+        t? or Enum.empty?(ts_filters) ->
           query
           |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
-          |> where(
-            partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
-              in_streaming_buffer()
-          )
-          |> limit([t], ^tick_count)
-
-        not t? && Enum.empty?(ts_filters) ->
-          query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_today, ^tick_count, ^period))
           |> where(
             partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
               in_streaming_buffer()
@@ -310,30 +281,6 @@ defmodule Logflare.Logs.SearchOperations do
       end
 
     %{so | lql_ts_filters: lql_ts_filters}
-  end
-
-  @spec apply_select_all_schema(SO.t()) :: SO.t()
-  def apply_select_all_schema(%SO{} = so) do
-    top_level_fields =
-      so.source
-      |> Sources.Cache.get_bq_schema()
-      |> SchemaUtils.to_typemap()
-      |> Map.keys()
-      |> List.delete(:metadata)
-
-    %{so | query: select(so.query, ^top_level_fields)}
-  end
-
-  def log_event_query(source, id, timestamp) do
-    from(source.bq_table_id)
-    |> where([t], t.id == ^id)
-    |> or_where([t], t.timestamp == ^timestamp)
-    |> select([t], %{
-      metadata: t.metadata,
-      id: t.id,
-      timestamp: t.timestamp,
-      message: t.event_message
-    })
   end
 
   @spec apply_numeric_aggs(SO.t()) :: SO.t()
@@ -449,15 +396,13 @@ defmodule Logflare.Logs.SearchOperations do
     |> Enum.reverse()
   end
 
-  @spec put_time_stats(SO.t()) :: SO.t()
   def put_time_stats(%SO{} = so) do
-    so
-    |> Map.put(
-      :stats,
-      %{
-        start_monotonic_time: System.monotonic_time(:millisecond),
-        total_duration: nil
-      }
-    )
+    %{
+      so
+      | stats: %{
+          start_monotonic_time: System.monotonic_time(:millisecond),
+          total_duration: nil
+        }
+    }
   end
 end

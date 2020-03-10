@@ -54,17 +54,17 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def convert(_mode, "RECORD", schema, field),
     do: merge_rows_with_schema_(schema.fields, field["v"]["f"])
 
-  def convert(_mode, _type, schema, field), do: convert_primtive(schema.type, field["v"])
+  def convert(_mode, _type, schema, field), do: convert_primitive(schema.type, field["v"])
 
-  def convert_primtive(_type, value) when value in @empty, do: nil
-  def convert_primtive("STRING", value), do: value
-  def convert_primtive("BOOLEAN", value), do: value == "true"
-  def convert_primtive("BOOL", value), do: value == "true"
-  def convert_primtive("FLOAT", value), do: String.to_float(value)
-  def convert_primtive("INTEGER", value), do: String.to_integer(value)
-  def convert_primtive("DATETIME", value), do: value
+  def convert_primitive(_type, value) when value in @empty, do: nil
+  def convert_primitive("STRING", value), do: value
+  def convert_primitive("BOOLEAN", value), do: value == "true"
+  def convert_primitive("BOOL", value), do: value == "true"
+  def convert_primitive("FLOAT", value), do: String.to_float(value)
+  def convert_primitive("INTEGER", value), do: String.to_integer(value)
+  def convert_primitive("DATETIME", value), do: value
 
-  def convert_primtive("TIMESTAMP", value) do
+  def convert_primitive("TIMESTAMP", value) do
     (String.to_float(value) * 1_000_000)
     |> trunc
   end

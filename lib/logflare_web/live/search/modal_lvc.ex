@@ -34,14 +34,10 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
 
     timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
 
-    log_event =
-      LogEvents.get_event_by_id_and_timestamp(assigns.source, id: id, timestamp: timestamp)
+    {:ok, log_event} =
+      LogEvents.fetch_event_by_id_and_timestamp(assigns.source, id: id, timestamp: timestamp)
 
-    fmt_metadata =
-      log_event
-      |> Map.get(:body)
-      |> Map.get(:metadata)
-      |> BqSchema.encode_metadata()
+    fmt_metadata = BqSchema.encode_metadata(log_event.body.metadata)
 
     body =
       SharedView.render("metadata_modal_body.html",

@@ -149,10 +149,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     {%{params: params}, new_query_tasks} = Map.pop(state.query_tasks, lv_pid)
 
-    rows =
-      events_so
-      |> Map.get(:rows)
-      |> Enum.map(&LogEvent.make_from_db(&1, %{source: params.source}))
+    rows = Enum.map(events_so.rows, &LogEvent.make_from_db(&1, %{source: params.source}))
 
     # prevents removal of log events loaded
     # during initial tailing query
