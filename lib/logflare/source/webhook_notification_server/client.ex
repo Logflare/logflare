@@ -51,7 +51,11 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
       {:ok, %Tesla.Env{} = response} ->
         resp = prep_tesla_resp_for_log(response)
 
-        Logger.warn("Webhook error!", webhook_response: resp)
+        Logger.warn("Webhook error!",
+          webhook_request: %{url: url, body: inspect(payload)},
+          webhook_response: resp
+        )
+
         {:error, response}
 
       {:error, response} ->

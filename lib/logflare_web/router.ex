@@ -19,6 +19,8 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :api do
+    plug LogflareWeb.Plugs.MaybeContentTypeToJson
+
     plug Plug.Parsers,
       parsers: [:json, :bert],
       json_decoder: Jason
@@ -218,5 +220,6 @@ defmodule LogflareWeb.Router do
     post "/elixir/logger", LogController, :elixir_logger
     post "/browser/reports", LogController, :browser_reports
     options "/browser/reports", LogController, :browser_reports
+    post "/json", LogController, :browser_reports
   end
 end
