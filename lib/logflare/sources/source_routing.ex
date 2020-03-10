@@ -21,11 +21,11 @@ defmodule Logflare.Logs.SourceRouting do
 
     for rule <- rules do
       cond do
-        length(rule.lql_filters) >= 1 &&  route_with_lql_rules?(le, rule)  ->
-            sink_source = Sources.Cache.get_by(token: rule.sink)
-            routed_le = %{le | source: sink_source, via_rule: rule}
-            :ok = ingest(routed_le)
-            :ok = broadcast(routed_le)
+        length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
+          sink_source = Sources.Cache.get_by(token: rule.sink)
+          routed_le = %{le | source: sink_source, via_rule: rule}
+          :ok = ingest(routed_le)
+          :ok = broadcast(routed_le)
 
         rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
           route_with_regex(le, rule)
@@ -39,46 +39,95 @@ defmodule Logflare.Logs.SourceRouting do
   end
 
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
-  def route_with_lql_rules?(%LE{} = le, %Rule{lql_filters: lql_filters}) when length(lql_filters) >= 1 do
+  def route_with_lql_rules?(%LE{} = le, %Rule{lql_filters: lql_filters})
+      when length(lql_filters) >= 1 do
     le = Map.put(le.params, "event_message", le.params["message"])
 
     lql_rules_match? =
       Enum.reduce_while(lql_filters, true, fn lql_filter, acc ->
-        %Lql.FilterRule{ path: path, value: value, operator: operator, modifiers: mds } = lql_filter
+        %Lql.FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter
 
-        le_value = get_by_path(le, path)
+        le_values = collect_by_path(le, path)
 
-        lql_filter_matches? = cond do
-          is_nil(le_value) -> false
-          operator == :list_includes -> value in le_value
-          operator == := ->
-            apply(Kernel, :==, [le_value, value])
-          operator == :"~" ->
-            apply(Kernel, :=~, [le_value, ~r/#{value}/u])
-          operator in [:<=, :<, :>=, :>] ->
-            apply(Kernel, operator, [le_value, value])
-        end
+        lql_filter_matches_any_of_nested_values? =
+          Enum.reduce_while(le_values, false, fn le_value, _acc ->
+            lql_filter_matches? =
+              cond do
+                is_nil(le_value) ->
+                  false
 
-        lql_filter_matches? = if :negate in mds do
-          not lql_filter_matches?
+                operator == :list_includes ->
+                  apply(Kernel, :==, [le_value, value])
+
+                operator == := ->
+                  apply(Kernel, :==, [le_value, value])
+
+                operator == :"~" ->
+                  apply(Kernel, :=~, [le_value, ~r/#{value}/u])
+
+                operator in [:<=, :<, :>=, :>] ->
+                  apply(Kernel, operator, [le_value, value])
+              end
+
+            lql_filter_matches? =
+              if :negate in mds do
+                not lql_filter_matches?
+              else
+                lql_filter_matches?
+              end
+
+            if lql_filter_matches? do
+              {:halt, lql_filter_matches?}
+            else
+              {:cont, false}
+            end
+          end)
+
+        if lql_filter_matches_any_of_nested_values? do
+          {:cont, true}
         else
-          lql_filter_matches?
-        end
-
-        if lql_filter_matches? do
-          {:cont, acc and true}
-        else
-          {:halt, acc and false}
+          {:halt, false}
         end
       end)
 
     lql_rules_match?
   end
 
-  defp get_by_path(le, path) do
-    get_in(le, path |> String.split("."))
-  rescue
-    e in FunctionClauseError -> nil
+  defp collect_by_path(params, path) when is_binary(path) do
+    collect_by_path(params, String.split(path, "."))
+  end
+
+  defp collect_by_path(params, [field]) do
+    params
+    |> Map.get(field)
+    |> List.wrap()
+  end
+
+  defp collect_by_path(params, [field | rest]) do
+    values =
+      case Map.get(params, field) do
+        [x | _] = xs when is_map(x) ->
+          xs
+          |> Enum.map(fn
+            x when is_map(x) -> collect_by_path(x, rest)
+            _ -> []
+          end)
+          |> List.flatten()
+
+        [_ | _] = xs ->
+          xs
+
+        [] ->
+          []
+
+        x when is_map(x) ->
+          collect_by_path(x, rest)
+
+        x ->
+          x
+      end
+
+    List.wrap(values)
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do
