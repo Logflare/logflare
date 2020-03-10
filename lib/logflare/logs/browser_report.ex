@@ -1,4 +1,4 @@
-defmodule Logflare.Logs.GenericJson do
+defmodule Logflare.Logs.BrowserReport do
   require Logger
 
   def handle_batch(batch) when is_list(batch) do
@@ -19,7 +19,9 @@ defmodule Logflare.Logs.GenericJson do
   end
 
   def handle_json(json) when is_map(json) do
-    # Maybe handle a timestamp here and put in with message and metadata.
+    for {key, val} <- json,
+        into: %{},
+        do: {String.replace(key, "-", "_"), handle_json(val)}
   end
 
   def handle_json(value), do: value

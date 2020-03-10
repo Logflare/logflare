@@ -51,8 +51,22 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
-  def browser_reports(conn, params) do
-    generic_json(conn, params)
+  def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+      when is_list(batch) do
+    batch =
+      batch
+      |> Logs.BrowserReport.handle_batch()
+
+    ingest_and_render(conn, batch, source)
+  end
+
+  def browser_reports(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+    batch =
+      event
+      |> List.wrap()
+      |> Logs.BrowserReport.handle_batch()
+
+    ingest_and_render(conn, batch, source)
   end
 
   def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
