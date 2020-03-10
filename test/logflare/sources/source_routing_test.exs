@@ -205,6 +205,236 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
       assert SourceRouting.route_with_lql_rules?(le, rule)
     end
+
+    test "nested lists with maps lvl4" do
+      metadata = %{
+        "lines" => [
+          %{
+            "data" => %{
+              "field1" => [
+                %{
+                  "field2" => [
+                    %{
+                      "field3" => "value"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          %{
+            "data" => %{
+              "field1" => [
+                %{
+                  "field2" => [
+                    %{
+                      "field3" => "other"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: "value",
+            operator: :=,
+            modifiers: [],
+            path: ~s|metadata.lines.data.field1.field2.field3|
+          }
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: metadata
+        )
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
+    test "nested lists with maps lvl1" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      metadata = %{
+        "lines" => [
+          %{"data" => "other_value"},
+          %{"data" => "value"}
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: metadata
+        )
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: "value",
+            operator: :=,
+            modifiers: [],
+            path: ~s|metadata.lines.data|
+          }
+        ]
+      }
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+  end
+
+  describe "Source Routing LQL with nested lists" do
+    test "list_includes operator" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      build_filter = fn value ->
+        %Rule{
+          lql_string: "",
+          lql_filters: [
+            %FR{
+              value: value,
+              operator: :list_includes,
+              modifiers: [],
+              path: "metadata.level1.level2.list_of_ints"
+            }
+          ]
+        }
+      end
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{
+            "level1" => [
+              %{
+                "level2" => [%{"list_of_ints" => [400, 300]}, %{"list_of_ints" => [100, 200, 2]}]
+              },
+              %{
+                "level2" => [
+                  %{"list_of_ints" => [2]},
+                  %{"list_of_ints" => []},
+                  %{"list_of_ints" => [4]}
+                ]
+              }
+            ]
+          }
+        )
+
+      rule = build_filter.(2)
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.(4)
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.(400)
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.(350)
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.(nil)
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.("200")
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
+    test "eq operator with nested maps lvl4" do
+      metadata = %{
+        "lines" => [
+          %{
+            "data" => %{
+              "field1" => [
+                %{
+                  "field2" => [
+                    %{
+                      "field3" => "value"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          %{
+            "data" => %{
+              "field1" => [
+                %{
+                  "field2" => [
+                    %{
+                      "field3" => "other"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: "value",
+            operator: :=,
+            modifiers: [],
+            path: ~s|metadata.lines.data.field1.field2.field3|
+          }
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: metadata
+        )
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
+    test "eq operator with nested maps lvl1" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      metadata = %{
+        "lines" => [
+          %{"data" => "other_value"},
+          %{"data" => "value"}
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: metadata
+        )
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: "value",
+            operator: :=,
+            modifiers: [],
+            path: ~s|metadata.lines.data|
+          }
+        ]
+      }
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
   end
 
   describe "Source routing with regex routing" do
