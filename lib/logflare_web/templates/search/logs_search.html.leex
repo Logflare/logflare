@@ -116,7 +116,7 @@
     </div>
   </form>
 </div>
-<%= render_flash(@flash, in_live_view: true) %>
+<%= render_notifications(@notifications) %>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <%= live_component @socket, ModalLVC, active_modal: @active_modal, source: @source, log_events: @log_events, user: @user, search_op_log_events: @search_op_log_events, search_op_log_aggregates: @search_op_log_aggregates, search_op_error: @search_op_error %>
 </div>

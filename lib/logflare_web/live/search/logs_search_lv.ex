@@ -47,7 +47,7 @@ defmodule LogflareWeb.Source.SearchLV do
         tailing_paused?: nil,
         tailing_timer: nil,
         user: user,
-        flash: %{},
+        notifications: %{},
         querystring: search_opts.querystring,
         search_op: nil,
         search_op_error: nil,
@@ -183,8 +183,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
-      |> assign_flash(:warning, nil)
-      |> assign_flash(:error, nil)
+      |> assign_notifications(:warning, nil)
+      |> assign_notifications(:error, nil)
       |> push_patch(
         to: Routes.live_path(socket, __MODULE__, sid, params),
         replace: true
@@ -223,7 +223,7 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(stoken)
 
-    socket = assign_flash(socket, :warning, "Live search paused due to user inactivity.")
+    socket = assign_notifications(socket, :warning, "Live search paused due to user inactivity.")
 
     {:noreply, socket}
   end
@@ -234,12 +234,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
     case SavedSearches.insert(qs, source) do
       {:ok, _saved_search} ->
-        socket = assign_flash(socket, :warning, "Search saved!")
+        socket = assign_notifications(socket, :warning, "Search saved!")
         {:noreply, socket}
 
       {:error, changeset} ->
         {message, _} = changeset.errors[:querystring]
-        socket = assign_flash(socket, :warning, "Save search error: #{message}")
+        socket = assign_notifications(socket, :warning, "Save search error: #{message}")
         {:noreply, socket}
     end
   end
@@ -289,7 +289,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
       |> assign(:last_query_completed_at, Timex.now())
-      |> assign_flash(:warning, warning)
+      |> assign_notifications(:warning, warning)
 
     {:noreply, socket}
   end
@@ -302,7 +302,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_op_error, search_op)
       |> assign(:search_op_log_events, nil)
       |> assign(:search_op_log_aggregates, nil)
-      |> assign_flash(:error, format_error(search_op.error))
+      |> assign_notifications(:error, error_notificaton)
       |> assign(:tailing?, false)
       |> assign(:loading, false)
 

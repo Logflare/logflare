@@ -70,18 +70,18 @@ defmodule LogflareWeb.Sources.RulesLV do
             socket
             |> assign(:has_regex_rules, Rules.has_regex_rules?(source.rules))
             |> assign(:rules, [rule | rules])
-            |> assign_flash(:warning, "LQL source routing rule created successfully!")
+            |> assign_notifications(:warning, "LQL source routing rule created successfully!")
 
           {:error, changeset} ->
             error_message = Rule.changeset_error_to_string(changeset)
-            assign_flash(socket, :error, error_message)
+            assign_notifications(socket, :error, error_message)
         end
       else
         {:error, error} ->
-          assign_flash(socket, :error, error)
+          assign_notifications(socket, :error, error)
 
         {:warnings, warning} ->
-          assign_flash(socket, :warning, warning)
+          assign_notifications(socket, :warning, warning)
       end
 
     {:noreply, socket}
@@ -114,11 +114,11 @@ defmodule LogflareWeb.Sources.RulesLV do
           socket
           |> assign(:source, source)
           |> assign(:rules, source.rules)
-          |> assign_flash(:warning, "Upgrade successfull!")
+          |> assign_notifications(:warning, "Upgrade successfull!")
 
         {:error, changeset} ->
           error_message = Rule.changeset_error_to_string(changeset)
-          assign_flash(socket, :error, error_message)
+          assign_notifications(socket, :error, error_message)
       end
 
     {:noreply, socket}
