@@ -124,6 +124,18 @@
       <%= link "Test webhook", to: Routes.source_path(@conn, :test_alerts, @source), class: "btn btn-primary form-button", role: "button" %>
   <% end %>
 
+    <h5 class="header-margin">Custom Event Message</h5>
+    <p>Comma separated list of metadata keys to customize the event message.</p>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
+      <div class="form-group">
+        <%= text_input aa, :custom_event_message_keys, placeholder: "metadata.field.key, metadata.field.another_key", class: "form-control form-control-margin" %>
+        <%= error_tag aa, :custom_event_message_keys %>
+        <small class="form-text text-muted">
+          Key values will be concatenated with a pipe ( | ).
+        </small>
+      </div>
+      <%= submit "Update keys", class: "btn btn-primary form-button" %>
+    <% end %>
 
   <h5 class="header-margin">Public Access</h5>
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
