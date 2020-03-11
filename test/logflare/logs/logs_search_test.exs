@@ -31,6 +31,33 @@ defmodule Logflare.Logs.SearchTest do
     {:ok, sources: [source], users: [user]}
   end
 
+  describe "search errors as expected on " do
+    test "timestamp filter present with tailing search enabled", %{
+      sources: [source | _],
+      users: [_user | _]
+    } do
+      search_op = %SO{
+        source: source,
+        querystring: ~S|t:>2020-01-01|,
+        chart_aggregate: :count,
+        chart_period: :minute,
+        tailing?: true,
+        tailing_initial?: false,
+        chart_data_shape_id: nil
+      }
+
+      {_, %{rows: rows} = so} = Search.search_events(search_op)
+
+      assert so.error == {:error, :halted}
+      assert so.status == {:halted, "Timestamp filters can't be used if live tail search is active"}
+
+      {_, %{rows: rows} = so} = Search.search_events(search_op)
+
+      assert so.error == {:error, :halted}
+      assert so.status == {:halted, "Timestamp filters can't be used if live tail search is active"}
+    end
+  end
+
   describe "search events" do
     test "search for source and regex events", %{sources: [source | _], users: [_user | _]} do
       search_op = %SO{

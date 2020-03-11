@@ -4,7 +4,6 @@ defmodule LogflareWeb.RuleView do
 
   import Logflare.Rules, only: [has_regex_rules?: 1]
 
-  import LogflareWeb.SearchView, only: [modal_link: 3]
-
   import LogflareWeb.Helpers.Flash
+  import LogflareWeb.Helpers.Modals
 end

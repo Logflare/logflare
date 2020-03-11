@@ -1,7 +1,7 @@
 defmodule Logflare.EctoQueryBQ.SQL do
   @moduledoc false
   alias Logflare.Repo
-  alias Logflare.Logs.BigQuery.SearchParamTypes
+  alias Logflare.BigQuery.SchemaTypes
 
   def to_sql_params(query) do
     {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Repo, query)
@@ -18,7 +18,7 @@ defmodule Logflare.EctoQueryBQ.SQL do
     |> String.replace(~r/\$\d+/, "?")
     # removes double quotes around the names after the dot
     |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
-    # removes double quotes around the qualified BQ table id
+    # removes double quotes around the fully qualified BQ table id
     |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
     # removes double quotes around the alias
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
@@ -44,7 +44,7 @@ defmodule Logflare.EctoQueryBQ.SQL do
       end
 
     %Param{
-      parameterType: %Type{type: SearchParamTypes.to_schema_type(param)},
+      parameterType: %Type{type: SchemaTypes.to_schema_type(param)},
       parameterValue: %Value{value: param}
     }
   end

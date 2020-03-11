@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
-  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
+  alias Logflare.Logs.SearchOperation, as: SO
   import Logflare.Logs.SearchOperations
 
   def search_and_aggs(%SO{} = so) do
@@ -35,18 +35,18 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  def search_result_aggregates(%SO{} = so) do
-    so = %{so | type: :aggregates} |> put_time_stats()
+  def search_events(%SO{} = so) do
+    so = %{so | type: :events} |> put_time_stats()
 
     with %{error: nil} = so <- parse_querystring(so),
-         %{error: nil} = so <- put_chart_data_shape_id(so),
+         %{error: nil} = so <- apply_query_defaults(so),
+         %{error: nil} = so <- apply_halt_conditions(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
+         %{error: nil} = so <- apply_filters(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),
-         %{error: nil} = so <- apply_numeric_aggs(so),
          %{error: nil} = so <- apply_to_sql(so),
          %{error: nil} = so <- do_query(so),
-         %{error: nil} = so <- process_query_result(so, :aggs),
-         %{error: nil} = so <- add_missing_agg_timestamps(so),
+         %{error: nil} = so <- apply_warning_conditions(so),
          %{error: nil} = so <- put_stats(so) do
       {:ok, so}
     else
@@ -54,19 +54,20 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  def search_events(%SO{} = so) do
-    so = %{so | type: :events} |> put_time_stats()
+  def search_result_aggregates(%SO{} = so) do
+    so = %{so | type: :aggregates} |> put_time_stats()
 
     with %{error: nil} = so <- parse_querystring(so),
+         %{error: nil} = so <- apply_halt_conditions(so),
+         %{error: nil} = so <- put_chart_data_shape_id(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
-         %{error: nil} = so <- apply_filters(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),
-         %{error: nil} = so <- order_by_default(so),
-         %{error: nil} = so <- apply_limit_to_query(so),
-         %{error: nil} = so <- apply_select_all_schema(so),
+         %{error: nil} = so <- apply_numeric_aggs(so),
          %{error: nil} = so <- apply_to_sql(so),
          %{error: nil} = so <- do_query(so),
          %{error: nil} = so <- process_query_result(so),
+         %{error: nil} = so <- add_missing_agg_timestamps(so),
+         %{error: nil} = so <- apply_warning_conditions(so),
          %{error: nil} = so <- put_stats(so) do
       {:ok, so}
     else

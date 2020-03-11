@@ -13,8 +13,7 @@ defmodule Logflare.Google.BigQuery do
   alias GoogleApi.BigQuery.V2.Model
 
   alias Logflare.Google.BigQuery.GenUtils
-  import GenUtils, only: [maybe_parse_google_api_result: 1]
-  alias Logflare.{Users}
+  alias Logflare.Users
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
@@ -74,7 +73,7 @@ defmodule Logflare.Google.BigQuery do
       dataset_id || Integer.to_string(user_id) <> @dataset_id_append,
       table_name
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec create_table(atom, binary, binary, any) ::
@@ -108,7 +107,7 @@ defmodule Logflare.Google.BigQuery do
         labels: %{"managed_by" => "logflare"}
       }
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec patch_table_ttl(atom, integer(), binary, binary) :: ok_err_tup
@@ -126,7 +125,7 @@ defmodule Logflare.Google.BigQuery do
     |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
       body: %Model.Table{timePartitioning: partitioning}
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec patch_table(atom, any, binary, binary) :: {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
@@ -139,7 +138,7 @@ defmodule Logflare.Google.BigQuery do
     |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
       body: %Model.Table{schema: schema}
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec get_table(atom) :: {:error, Tesla.Env.t()} | {:ok, term}
@@ -160,7 +159,7 @@ defmodule Logflare.Google.BigQuery do
       dataset_id,
       table_name
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec stream_batch!(atom, list(map)) :: ok_err_tup
@@ -187,7 +186,7 @@ defmodule Logflare.Google.BigQuery do
       table_name,
       body: body
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @doc """
@@ -243,7 +242,7 @@ defmodule Logflare.Google.BigQuery do
 
     conn
     |> Api.Datasets.bigquery_datasets_insert(project_id, body: body)
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec patch_dataset_access!(non_neg_integer()) :: ok_err_tup
@@ -309,9 +308,10 @@ defmodule Logflare.Google.BigQuery do
 
     conn
     |> Api.Datasets.bigquery_datasets_delete(project_id, dataset_id, deleteContents: true)
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
+  @deprecated "Use Logflare.BqRepo"
   def query(%Model.QueryRequest{} = body, opts \\ []) do
     project_id = opts[:project_id] || @project_id
     use_query_cache = opts[:use_query_cache]
@@ -322,7 +322,7 @@ defmodule Logflare.Google.BigQuery do
       project_id,
       body: body
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   def sql_query_with_cache(sql, params \\ [], opts \\ []) when is_binary(sql) do
@@ -340,6 +340,6 @@ defmodule Logflare.Google.BigQuery do
         queryParameters: params
       }
     )
-    |> maybe_parse_google_api_result()
+    |> GenUtils.maybe_parse_google_api_result()
   end
 end

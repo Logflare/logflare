@@ -123,4 +123,20 @@ defmodule Logflare.Logs.SearchQueries do
       level_error: fragment("COUNTIF(? = ?) as level_error", t.level, "error")
     })
   end
+
+  def log_event_query(source, id, timestamp) do
+    from(source.bq_table_id)
+    |> where([t], t.id == ^id)
+    |> or_where([t], t.timestamp == ^timestamp)
+    |> select([t], %{
+      metadata: t.metadata,
+      id: t.id,
+      timestamp: t.timestamp,
+      message: t.event_message
+    })
+  end
+
+  def select_default_fields(query, :events) do
+    select(query, [:timestamp, :id, :event_message])
+  end
 end
