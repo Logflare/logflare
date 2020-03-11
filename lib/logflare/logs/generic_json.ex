@@ -18,9 +18,8 @@ defmodule Logflare.Logs.GenericJson do
     inspect(report)
   end
 
-  def handle_json(json) when is_map(json) do
-    # Maybe handle a timestamp here and put in with message and metadata.
-  end
+  # Maybe handle a timestamp here and put in with message and metadata.
+  def handle_json(json) when is_map(json), do: json
 
   def handle_json(value), do: value
 end

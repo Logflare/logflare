@@ -7,10 +7,10 @@ defmodule LogflareWeb.Plugs.MaybeContentTypeToJson do
   import Plug.Conn
 
   def call(conn, _params) do
-    [content_type] = conn |> get_req_header("content-type")
+    content_type = conn |> get_req_header("content-type")
 
     case content_type do
-      "application/csp-report" ->
+      ["application/csp-report"] ->
         conn
         |> put_req_header("content-type", "application/json")
 
