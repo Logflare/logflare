@@ -19,7 +19,8 @@ defmodule Logflare.Source do
              :bq_table_schema,
              :has_rejected_events?,
              :metrics,
-             :notifications
+             :notifications,
+             :custom_event_message_keys
            ]}
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
@@ -108,6 +109,7 @@ defmodule Logflare.Source do
     field :bq_table_schema, :any, virtual: true
     field :bq_table_typemap, :any, virtual: true
     embeds_one :notifications, Notifications, on_replace: :update
+    field :custom_event_message_keys, :string
 
     timestamps()
   end
@@ -129,7 +131,8 @@ defmodule Logflare.Source do
       # users can't update thier API quota currently
       :api_quota,
       :webhook_notification_url,
-      :slack_hook_url
+      :slack_hook_url,
+      :custom_event_message_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
@@ -144,7 +147,8 @@ defmodule Logflare.Source do
       :favorite,
       :bigquery_table_ttl,
       :webhook_notification_url,
-      :slack_hook_url
+      :slack_hook_url,
+      :custom_event_message_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()

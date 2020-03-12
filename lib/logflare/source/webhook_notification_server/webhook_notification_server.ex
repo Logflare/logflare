@@ -51,6 +51,13 @@ defmodule Logflare.Source.WebhookNotificationServer do
     end
   end
 
+  def handle_info({:ssl_closed, _details}, rls) do
+    # See https://github.com/benoitc/hackney/issues/464
+    :noop
+
+    {:noreply, rls}
+  end
+
   def handle_info({:EXIT, _pid, :normal}, rls) do
     :noop
 
