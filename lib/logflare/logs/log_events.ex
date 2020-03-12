@@ -25,12 +25,17 @@ defmodule Logflare.Logs.LogEvents do
 
     with {:ok, result} <- query_result do
       case result do
+        %{rows: []} ->
+          {:error, :not_found}
+
         %{rows: [row]} ->
           le = LogEvent.make_from_db(row, %{source: source})
           {:ok, le}
 
-        %{rows: []} ->
-          {:error, :not_found}
+        %{rows: rows} when length(rows) >= 1 ->
+          row = Enum.find(rows, &(&1.id == id))
+          le = LogEvent.make_from_db(row, %{source: source})
+          {:ok, le}
       end
     else
       errtup -> errtup
