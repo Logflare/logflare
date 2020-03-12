@@ -19,6 +19,7 @@ defmodule Logflare.Application do
       Users.Cache,
       Sources.Cache,
       Tracker.Cache,
+      Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
       supervisor(Phoenix.PubSub.PG2, [
         [
@@ -74,6 +75,7 @@ defmodule Logflare.Application do
       Users.Cache,
       Sources.Cache,
       Tracker.Cache,
+      Logs.LogEvents.Cache,
       Sources.Buffers,
       Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
