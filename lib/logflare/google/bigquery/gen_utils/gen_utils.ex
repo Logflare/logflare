@@ -59,8 +59,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   def get_conn() do
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
-    Connection.new(token.token)
+    {:ok, goth} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
+    Connection.new(goth.token)
   end
 
   @spec get_account_id(atom) :: String.t()

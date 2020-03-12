@@ -137,7 +137,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{source: [source], user: [user]}
     end
 
-    test "mount", %{conn: conn, source: [s | _], user: [u | _]} do
+    test "successfull for source owner", %{conn: conn, source: [s | _], user: [u | _]} do
       conn =
         conn
         |> assign(:user, u)
@@ -148,7 +148,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert {:ok, view, html} = live(conn)
     end
 
-    test "redirected mount", %{conn: conn, source: [s | _], user: [u | _]} do
+    test "redirected for non-owner user", %{conn: conn, source: [s | _], user: [u | _]} do
+      u = %{u | id: u.id - 1}
+      assert {:error, %{redirect: %{to: "/"}}} = live(conn, "/sources/1/search")
+    end
+
+    test "redirected for anonymous user", %{conn: conn, source: [s | _], user: [u | _]} do
       assert {:error, %{redirect: %{to: "/"}}} = live(conn, "/sources/1/search")
     end
   end
@@ -190,7 +195,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert render_click(view, "user_idle", %{}) =~
                "Live search paused due to user inactivity."
 
-      refute render_click(view, "remove_flash", %{"flash_key" => "warning"}) =~
+      refute render_click(view, "remove_notifications", %{"notifications_key" => "warning"}) =~
                "Live search paused due to user inactivity."
     end
 

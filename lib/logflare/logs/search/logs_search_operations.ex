@@ -39,10 +39,11 @@ defmodule Logflare.Logs.SearchOperations do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
     {sql, params} = so.sql_params
 
-    with {:ok, response} <- BqRepo.query(bq_project_id, sql, params, dryRun: true),
+    with {:ok, response} <-
+           BqRepo.query_with_sql_and_params(bq_project_id, sql, params, dryRun: true),
          is_within_limit? = response.total_bytes_processed <= @default_processed_bytes_limit,
          {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
-         {:ok, response} <- BqRepo.query(bq_project_id, sql, params) do
+         {:ok, response} <- BqRepo.query_with_sql_and_params(bq_project_id, sql, params) do
       so
       |> Utils.put_result(:query_result, response)
       |> Utils.put_result(:rows, response.rows)
@@ -255,10 +256,8 @@ defmodule Logflare.Logs.SearchOperations do
           lql_ts_filters: ts_filters
       }
     else
-      err ->
-        so
-        |> Utils.put_result({:error, :halted})
-        |> Utils.put_status(err)
+      {:error, err} ->
+        halt(so, err)
     end
   end
 

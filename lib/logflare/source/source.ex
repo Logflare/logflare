@@ -1,7 +1,6 @@
 defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
-  alias Logflare.Google.BigQuery.GenUtils
   import Ecto.Changeset
   @default_source_api_quota 50
   @derive {Jason.Encoder,
@@ -166,10 +165,17 @@ defmodule Logflare.Source do
 
     bq_project_id = source.user.bigquery_project_id || default_project_id
 
-    table = GenUtils.format_table_name(source.token)
+    table = format_table_name(source.token)
 
     dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> @dataset_id_append
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source_token) when is_atom(source_token) do
+    source_token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
   end
 end

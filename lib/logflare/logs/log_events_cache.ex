@@ -16,7 +16,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
         :start_link,
         [
           @cache,
-          [expiration: expiration(default: @ttl)]
+          [expiration: expiration(default: @ttl), limit: limit(size: 1000)]
         ]
       }
     }

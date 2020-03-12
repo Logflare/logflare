@@ -3,15 +3,12 @@ defmodule Logflare.Logs.SearchTest do
   alias Logflare.Sources
   alias Logflare.Users
   alias Logflare.Logs.Search
-  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
+  alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.User.BigQueryUDFs
   alias Logflare.Google.BigQuery.GenUtils
   use Logflare.DataCase, async: true
-  import Logflare.Factory
-  alias Logflare.Source.RecentLogsServer, as: RLS
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
   setup_all do
@@ -48,13 +45,17 @@ defmodule Logflare.Logs.SearchTest do
 
       {_, %{rows: rows} = so} = Search.search_events(search_op)
 
-      assert so.error == {:error, :halted}
-      assert so.status == {:halted, "Timestamp filters can't be used if live tail search is active"}
+      assert so.error == :halted
+
+      assert so.status ==
+               {:halted, "Timestamp filters can't be used if live tail search is active"}
 
       {_, %{rows: rows} = so} = Search.search_events(search_op)
 
-      assert so.error == {:error, :halted}
-      assert so.status == {:halted, "Timestamp filters can't be used if live tail search is active"}
+      assert so.error == :halted
+
+      assert so.status ==
+               {:halted, "Timestamp filters can't be used if live tail search is active"}
     end
   end
 
@@ -227,7 +228,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 57
+      assert length(rows) == 72
     end
 
     test "with timestamp:> ", %{
@@ -239,7 +240,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 57
+      assert length(rows) == 72
     end
 
     test "with timestamp:< ", %{
@@ -251,7 +252,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 366
+      assert length(rows) == 251
     end
 
     test "with timestamp:<= ", %{
@@ -262,10 +263,16 @@ defmodule Logflare.Logs.SearchTest do
       so = %{so0 | querystring: "t:<2020-02-01T00:00:00Z", chart_period: :day}
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
+      assert so.status == {
+               :warning,
+               "Your timestamp filter is an unbounded interval. Max number of chart ticks is limited to 250 days."
+             }
+
       assert so.error == nil
-      assert length(rows) == 366
+      assert length(rows) == 251
     end
 
+    @tag :run
     test "with timestamp: ", %{
       sources: [source | _],
       users: [_user | _],
@@ -275,7 +282,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 0
+      assert Enum.empty?(rows)
     end
   end
 

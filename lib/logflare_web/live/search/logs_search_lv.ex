@@ -120,13 +120,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     chart_aggregate_enabled? = search_opts.querystring =~ ~r/chart:\w+/
 
-    warning =
-      if search_opts.tailing? and search_opts.querystring =~ "timestamp" do
-        "Timestamp field is ignored if live tail search is active"
-      else
-        nil
-      end
-
     %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = prev_assigns
 
     socket =
@@ -134,11 +127,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:chart_aggregate_enabled?, chart_aggregate_enabled?)
       |> assign(:querystring, search_opts.querystring)
       |> assign(:tailing?, search_opts.tailing?)
-      |> assign_flash(:warning, warning)
 
     socket =
-      if {search_opts.chart_aggregate, search_opts.chart_period} !=
-           {prev_chart_aggregate, prev_chart_period} do
+      if search_opts.chart_aggregate != prev_chart_aggregate or
+           search_opts.chart_period != prev_chart_period do
         params = %{
           chart_aggregate: "#{search_opts.chart_aggregate}",
           chart_period: "#{search_opts.chart_period}",
@@ -255,7 +247,19 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-    warning = warning_message(socket.assigns, search_result)
+    warning =
+      cond do
+        match?({:warning, _}, search_result.aggregates.status) ->
+          {:warning, message} = search_result.aggregates.status
+          message
+
+        match?({:warning, _}, search_result.events.status) ->
+          {:warning, message} = search_result.aggregates.status
+          message
+
+        true ->
+          warning_message(socket.assigns, search_result)
+      end
 
     log_events = search_result.events.rows
 
@@ -273,7 +277,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           :timestamp,
-          &SearchView.format_timestamp(&1, timezone)
+          &LogflareWeb.Helpers.BqSchema.format_timestamp(&1, timezone)
         )
       end)
 
@@ -296,6 +300,16 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info({:search_error = msg, search_op}, %{assigns: %{source: source}} = socket) do
     log_lv_received_info(msg, source)
+
+    error_notificaton =
+      case search_op.error do
+        :halted ->
+          {:halted, halted_message} = search_op.status
+          "Search halted: " <> halted_message
+
+        err ->
+          format_error(err)
+      end
 
     socket =
       socket

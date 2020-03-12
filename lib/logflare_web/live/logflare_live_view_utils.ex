@@ -8,13 +8,13 @@ defmodule LogflareWeb.LiveViewUtils do
     quote do
       import LogflareWeb.LiveViewUtils, only: [assign_notifications: 3]
 
-      def handle_info({:lvc_assigns, key, value}, socket) do
-        socket = assign(socket, key, value)
-        {:noreply, socket}
-      end
+      # def handle_info({:lvc_assigns, key, value}, socket) do
+      #   socket = assign(socket, key, value)
+      #   {:noreply, socket}
+      # end
 
-      def handle_event("remove_notification" = ev, metadata, socket) do
-        key = metadata["notification_key"]
+      def handle_event("remove_notifications" = ev, metadata, socket) do
+        key = metadata["notifications_key"]
 
         socket =
           if key do

@@ -23,13 +23,12 @@ defmodule LogflareWeb.Sources.RulesLV do
     user = Users.Cache.get_by_and_preload(id: user_id)
     source = Sources.get_by_and_preload(id: source_id)
 
-    user = if user.admin do
-      Users.Cache.get_by_and_preload(id: source.user_id)
-    else
-      user
-    end
-
-    source_id = String.to_integer(source_id)
+    user =
+      if user.admin do
+        Users.Cache.get_by_and_preload(id: source.user_id)
+      else
+        user
+      end
 
     sources =
       for s <- user.sources do
@@ -42,7 +41,6 @@ defmodule LogflareWeb.Sources.RulesLV do
 
     socket =
       socket
-      |> assign(:flash, %{})
       |> assign(:source, source)
       |> assign(:rules, source.rules)
       |> assign(:sources, sources)

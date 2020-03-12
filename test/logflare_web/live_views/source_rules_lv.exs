@@ -56,7 +56,16 @@ defmodule LogflareWeb.Source.RulesLqlTest do
     end
 
     test "mount with admin owner", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
-      rule = insert(:rule, sink: sink.token, source_id: s.id, lql_filters: [%FilterRule{operator: "~", path: "message", modifiers: [], value: "info"}, lql_string: "message:info"])
+      rule =
+        insert(:rule,
+          sink: sink.token,
+          source_id: s.id,
+          lql_filters: [
+            %FilterRule{operator: "~", path: "message", modifiers: [], value: "info"},
+            lql_string: "message:info"
+          ]
+        )
+
       user = insert(:user, email: "example@example.org", admin: true)
       user = Users.get(user.id)
 

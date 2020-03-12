@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Source.SearchLV.DebugLVC do
+  @moduledoc false
   use Phoenix.LiveComponent
   alias LogflareWeb.SearchView
 
@@ -7,9 +8,7 @@ defmodule LogflareWeb.Source.SearchLV.DebugLVC do
   end
 
   def update(assigns, socket) do
-    socket =
-      socket
-      |> assign(assigns)
+    socket = assign(socket, assigns)
 
     {:ok, socket}
   end
