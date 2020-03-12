@@ -125,9 +125,15 @@ defmodule Logflare.Logs.SearchQueries do
   end
 
   def log_event_query(source, id, timestamp) do
+    le_date =
+      timestamp
+      |> DateTime.from_unix!(:microsecond)
+      |> Timex.to_date()
+
     from(source.bq_table_id)
     |> where([t], t.id == ^id)
     |> or_where([t], t.timestamp == ^timestamp)
+    |> where(partition_date() == ^le_date)
     |> select([t], %{
       metadata: t.metadata,
       id: t.id,
