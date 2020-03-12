@@ -3,6 +3,11 @@ defmodule Logflare.Logs.Search do
 
   alias Logflare.Logs.SearchOperation, as: SO
   import Logflare.Logs.SearchOperations
+  alias Logflare.Logs.SearchQueries
+  alias Logflare.Source
+  alias Logflare.BqRepo
+  alias Logflare.Google.BigQuery.GCPConfig
+  import Ecto.Query
 
   def search_and_aggs(%SO{} = so) do
     tasks = [
@@ -73,5 +78,16 @@ defmodule Logflare.Logs.Search do
     else
       so -> {:error, so}
     end
+  end
+
+  def query_source_streaming_buffer(%Source{} = source) do
+    q =
+      source.bq_table_id
+      |> SearchQueries.source_table_streaming_buffer()
+      |> order_by(desc: :timestamp)
+      |> limit(100)
+
+    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
+    BqRepo.query(bq_project_id, q)
   end
 end

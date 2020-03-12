@@ -4,16 +4,18 @@ defmodule Logflare.BqRepo do
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.EctoQueryBQ
   import Logflare.TypeCasts
 
   @query_request_timeout 60_000
   @use_query_cache true
-
-  @spec query(String.t(), String.t(), [term()], Keyword.t()) ::
+  @type query_result ::
           {:ok,
            %{:rows => nil | [term()], :num_rows => non_neg_integer(), optional(atom()) => any()}}
           | {:error, term()}
-  def query(project_id, sql, params, opts \\ [])
+
+  @spec query_with_sql_and_params(String.t(), String.t(), [term()], Keyword.t()) :: query_result
+  def query_with_sql_and_params(project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
 
@@ -49,5 +51,12 @@ defmodule Logflare.BqRepo do
     else
       errtup -> errtup
     end
+  end
+
+  @spec query(String.t(), Ecto.Query.t(), keyword) :: query_result
+  def query(project_id, %Ecto.Query{} = query, opts \\ [])
+      when not is_nil(project_id) and is_list(opts) and is_map(query) do
+    {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+    query_with_sql_and_params(project_id, sql, params, opts)
   end
 end

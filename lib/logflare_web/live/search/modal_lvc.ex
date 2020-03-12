@@ -35,7 +35,10 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
 
     {:ok, log_event} =
-      LogEvents.Cache.fetch_event_by_id_and_timestamp(assigns.source, id: id, timestamp: timestamp)
+      LogEvents.Cache.fetch_event_by_id_and_timestamp(assigns.source.token,
+        id: id,
+        timestamp: timestamp
+      )
 
     fmt_metadata = BqSchema.encode_metadata(log_event.body.metadata)
 

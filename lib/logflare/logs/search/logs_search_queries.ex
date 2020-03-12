@@ -124,16 +124,13 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  def log_event_query(source, id, timestamp) do
-    le_date =
-      timestamp
-      |> DateTime.from_unix!(:microsecond)
-      |> Timex.to_date()
+  def source_log_event_query(bq_table_id, id, timestamp) when is_binary(id) do
+    le_date = Timex.to_date(timestamp)
 
-    from(source.bq_table_id)
+    from(bq_table_id)
     |> where([t], t.id == ^id)
     |> or_where([t], t.timestamp == ^timestamp)
-    |> where(partition_date() == ^le_date)
+    |> where(partition_date() == ^le_date or in_streaming_buffer())
     |> select([t], %{
       metadata: t.metadata,
       id: t.id,
@@ -144,5 +141,11 @@ defmodule Logflare.Logs.SearchQueries do
 
   def select_default_fields(query, :events) do
     select(query, [:timestamp, :id, :event_message])
+  end
+
+  def source_table_streaming_buffer(bq_table_id) do
+    from(bq_table_id)
+    |> select([:id, :metadata, :timestamp, :event_message])
+    |> where(in_streaming_buffer())
   end
 end

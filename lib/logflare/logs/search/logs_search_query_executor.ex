@@ -8,6 +8,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.User.BigQueryUDFs
   alias Logflare.{Users, User}
+  alias Logflare.Logs
   use TypedStruct
   require Logger
   @query_timeout 60_000
@@ -203,9 +204,37 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def start_task(lv_pid, params) do
+    so = struct(SO, params)
+
+    if so.tailing? do
+      Task.start_link(fn ->
+        so.source
+        |> Search.query_source_streaming_buffer()
+        |> case do
+          {:ok, query_result} ->
+            %{rows: rows} = query_result
+            source = so.source
+
+            for row <- rows do
+              le = LogEvent.make_from_db(row, %{source: source})
+
+              Logs.LogEvents.Cache.put_event_with_id_and_timestamp(
+                source.token,
+                [id: le.id, timestamp: DateTime.from_unix!(le.body.timestamp, :microsecond)],
+                le
+              )
+            end
+
+            :noop
+
+          {:error, _result} ->
+            Logger.error("Streaming buffer query for source #{so.source.token} failed!")
+        end
+      end)
+    end
+
     Task.async(fn ->
-      SO
-      |> struct(params)
+      so
       |> Search.search_and_aggs()
       |> case do
         {:ok, result} ->
