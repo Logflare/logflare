@@ -44,7 +44,7 @@ defmodule LogflareWeb.Source.SearchLV do
         log_aggregates: [],
         loading: false,
         tailing?: search_opts.tailing?,
-        tailing_paused?: true,
+        tailing_paused?: nil,
         tailing_timer: nil,
         user: user,
         notifications: %{},
@@ -69,6 +69,41 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("stop_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
+
+    socket =
+      if prev_assigns.tailing? do
+        maybe_cancel_tailing_timer(socket)
+        SearchQueryExecutor.maybe_cancel_query(stoken)
+
+        assign(socket, :tailing?, false)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("start_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
+
+    socket =
+      if not prev_assigns.tailing? do
+        socket = assign(socket, :tailing?, true)
+
+        SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
+
+        socket
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 

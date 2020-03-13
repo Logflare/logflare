@@ -64,12 +64,12 @@
       <div class="col-auto">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
-            <span class="btn btn-primary" phx-click="pause_live_search">
-              <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+            <span class="btn btn-primary" phx-click="stop_live_search">
+              <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
               <span class="fas-in-button" id="search-tailing-button">Live</span>
             </span>
           <% else %>
-            <span class="btn btn-primary" phx-click="resume_live_search">
+            <span class="btn btn-primary" phx-click="start_live_search">
               <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
             </span>
           <% end %>
