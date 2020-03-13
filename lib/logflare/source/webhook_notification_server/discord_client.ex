@@ -106,6 +106,6 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
     timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
     {message, _} = String.split_at(x.body.message, 1018)
 
-    %{name: "#{timestamp} | #{x.id}", value: "```#{message}```"}
+    %{name: timestamp, value: "```#{message}```"}
   end
 end
