@@ -125,18 +125,30 @@ defmodule Logflare.Logs.SearchQueries do
   end
 
   def source_log_event_query(bq_table_id, id, timestamp) when is_binary(id) do
+    q =
+      from(bq_table_id)
+      |> where([t], t.id == ^id)
+      |> or_where([t], t.timestamp == ^timestamp)
+      |> select([t], %{
+        metadata: t.metadata,
+        id: t.id,
+        timestamp: t.timestamp,
+        message: t.event_message
+      })
+
     le_date = Timex.to_date(timestamp)
 
-    from(bq_table_id)
-    |> where([t], t.id == ^id)
-    |> or_where([t], t.timestamp == ^timestamp)
-    |> where(partition_date() == ^le_date or in_streaming_buffer())
-    |> select([t], %{
-      metadata: t.metadata,
-      id: t.id,
-      timestamp: t.timestamp,
-      message: t.event_message
-    })
+    if timestamp.hour >= 22 do
+      le_date_plus_1 = Timex.shift(le_date, days: 1)
+
+      where(
+        q,
+        partition_date() == ^le_date or partition_date() == ^le_date_plus_1 or
+          in_streaming_buffer()
+      )
+    else
+      where(q, partition_date() == ^le_date or in_streaming_buffer())
+    end
   end
 
   def select_default_fields(query, :events) do
