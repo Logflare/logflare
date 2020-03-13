@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Sources
   alias Logflare.Logs.LogEvents
+  require Logger
 
   @query_debug_modals ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal)
 
@@ -29,28 +30,55 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     )
   end
 
-  def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
-    [id, timestamp] = String.split(id_and_timestamp, "|")
-
-    timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
-
-    {:ok, log_event} =
-      LogEvents.Cache.fetch_event_by_id_and_timestamp(assigns.source.token,
-        id: id,
-        timestamp: timestamp
-      )
-
-    fmt_metadata = BqSchema.encode_metadata(log_event.body.metadata)
+  def render(%{active_modal: "metadataModal:" <> _, metadata_modal_log_event: le}) do
+    fmt_metadata = BqSchema.encode_metadata(le.body.metadata)
 
     body =
       SharedView.render("metadata_modal_body.html",
-        log_event: log_event,
+        log_event: le,
         fmt_metadata: fmt_metadata
       )
 
     SharedView.render("modal.html",
       title: "Metadata",
       body: body,
+      type: "metadata-modal"
+    )
+  end
+
+  def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
+    [id, timestamp] = String.split(id_and_timestamp, "|")
+
+    timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
+
+    pid = self()
+
+    Task.start(fn ->
+      with {:ok, log_event} <-
+             LogEvents.Cache.fetch_event_by_id_and_timestamp(assigns.source.token,
+               id: id,
+               timestamp: timestamp
+             ) do
+        send(
+          pid,
+          {:phoenix, :send_update,
+           {__MODULE__, :active_modal, %{metadata_modal_log_event: log_event}}}
+        )
+      else
+        {:error, error} ->
+          case error do
+            :not_found ->
+              Logger.error("Log event not found for id #{id} and timestamp #{timestamp}")
+
+            e ->
+              Logger.error("Error: #{inspect(e)}")
+          end
+      end
+    end)
+
+    SharedView.render("modal.html",
+      title: "Metadata",
+      body: SharedView.render("loader.html"),
       type: "metadata-modal"
     )
   end
