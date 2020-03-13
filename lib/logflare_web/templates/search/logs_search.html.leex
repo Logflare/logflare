@@ -63,13 +63,15 @@
       </div>
       <div class="col-auto">
         <div class="btn-group-toggle">
-          <%= label f, :tailing?, class: "btn btn-primary", id: "search-tailing-button" do %>
-            <%= if @tailing? do %>
+          <%= if @tailing? do %>
+            <span class="btn btn-primary" phx-click="pause_live_search">
               <div class="spinner-border spinner-border-sm text-info" role="status"></div>
-              <span class="fas-in-button">Live</span>
-            <% else %>
+              <span class="fas-in-button" id="search-tailing-button">Live</span>
+            </span>
+          <% else %>
+            <span class="btn btn-primary" phx-click="resume_live_search">
               <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
-            <% end %>
+            </span>
           <% end %>
           <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>

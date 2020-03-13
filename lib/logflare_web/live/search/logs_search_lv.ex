@@ -44,7 +44,7 @@ defmodule LogflareWeb.Source.SearchLV do
         log_aggregates: [],
         loading: false,
         tailing?: search_opts.tailing?,
-        tailing_paused?: nil,
+        tailing_paused?: true,
         tailing_timer: nil,
         user: user,
         notifications: %{},
