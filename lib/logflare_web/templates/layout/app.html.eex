@@ -40,10 +40,7 @@
     </script>
   </head>
   <body>
-    <%= render_flash(%{
-      error: get_flash(@conn, :error),
-      warning: get_flash(@conn, :info),
-    }) %>
+    <%= render("flash.html", flash: %{info: get_flash(@conn, :info), error: get_flash(@conn, :error)}) %>
     <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @user do %>
         <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>

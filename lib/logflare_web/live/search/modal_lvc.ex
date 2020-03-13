@@ -3,48 +3,82 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   LiveView Component to render components
   """
   use Phoenix.LiveComponent
-  alias LogflareWeb.SearchView
+  alias LogflareWeb.Helpers.BqSchema
+  alias LogflareWeb.SharedView
   alias LogflareWeb.Source.SearchLV
+  alias Logflare.Sources
+  alias Logflare.Logs.LogEvents
+  require Logger
+
   @query_debug_modals ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal)
 
   def render(%{active_modal: "searchHelpModal"} = _assigns) do
-    SearchView.render("modal.html",
+    SharedView.render("modal.html",
       title: "Logflare Query Language",
-      body: SearchView.render("lql_help.html"),
+      body: SharedView.render("lql_help.html"),
       type: "lql-help-modal"
     )
   end
 
   def render(%{active_modal: "sourceSchemaModal"} = assigns) do
-    SearchView.render("modal.html",
+    bq_schema = Sources.Cache.get_bq_schema(assigns.source)
+
+    SharedView.render("modal.html",
       title: "Source Schema",
-      body: SearchView.format_bq_schema(assigns.source),
+      body: BqSchema.format_bq_schema(bq_schema),
       type: "source-schema-modal"
     )
   end
 
-  def render(%{active_modal: "metadataModal:" <> id} = assigns) do
-    log_events = assigns.log_events
-
-    log_event =
-      Enum.find(log_events, &(&1.id === id)) ||
-        Enum.find(log_events, &("#{&1.body.timestamp}" === id))
-
-    fmt_metadata =
-      log_event
-      |> Map.get(:body)
-      |> Map.get(:metadata)
-      |> SearchView.encode_metadata()
+  def render(%{active_modal: "metadataModal:" <> _, metadata_modal_log_event: le}) do
+    fmt_metadata = BqSchema.encode_metadata(le.body.metadata)
 
     body =
-      SearchView.render("metadata_modal_body.html",
-        log_event: log_event,
+      SharedView.render("metadata_modal_body.html",
+        log_event: le,
         fmt_metadata: fmt_metadata
       )
 
-    SearchView.render("modal.html",
+    SharedView.render("modal.html",
       title: "Metadata",
       body: body,
+      type: "metadata-modal"
+    )
+  end
+
+  def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
+    [id, timestamp] = String.split(id_and_timestamp, "|")
+
+    timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
+
+    pid = self()
+
+    Task.start(fn ->
+      with {:ok, log_event} <-
+             LogEvents.Cache.fetch_event_by_id_and_timestamp(assigns.source.token,
+               id: id,
+               timestamp: timestamp
+             ) do
+        send(
+          pid,
+          {:phoenix, :send_update,
+           {__MODULE__, :active_modal, %{metadata_modal_log_event: log_event}}}
+        )
+      else
+        {:error, error} ->
+          case error do
+            :not_found ->
+              Logger.error("Log event not found for id #{id} and timestamp #{timestamp}")
+
+            e ->
+              Logger.error("Error: #{inspect(e)}")
+          end
+      end
+    end)
+
+    SharedView.render("modal.html",
+      title: "Metadata",
+      body: SharedView.render("loader.html"),
       type: "metadata-modal"
     )
   end
@@ -57,7 +91,8 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
         "queryDebugErrorModal" -> assigns.search_op_error
       end
 
-    SearchView.render("modal.html",
+    SharedView.render(
+      "modal.html",
       title: "Query Debugging",
       body:
         ~L"<%= live_component(@socket, SearchLV.DebugLVC, search_op: search_op, user: @user) %>",

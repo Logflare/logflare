@@ -37,7 +37,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
     case rate > 0 do
       true ->
         if uri = source.webhook_notification_url do
-          recent_events = Data.get_logs_across_cluster(rls.source_id)
+          recent_events = Data.get_logs(rls.source_id)
 
           post(uri, source, rate, recent_events)
         end

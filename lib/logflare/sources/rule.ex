@@ -39,7 +39,7 @@ defmodule Logflare.Rule do
   def regex_to_lql_upgrade_changeset(rule) do
     if rule.regex do
       lql_string = ~s|"#{rule.regex}"|
-      {:ok, lql_filters} = Lql.Utils.build_message_filter_rule_from_regex(lql_string)
+      {:ok, lql_filters} = Lql.build_message_filter_from_regex(lql_string)
 
       rule
       |> cast(

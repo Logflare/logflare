@@ -434,7 +434,6 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
       assert SourceRouting.route_with_lql_rules?(le, rule)
     end
-
   end
 
   describe "Source routing with regex routing" do

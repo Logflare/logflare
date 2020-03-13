@@ -7,6 +7,7 @@ import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
 import { LogEventsChart } from "./source_log_chart.jsx"
+import Loader from "./loader.jsx"
 import LiveSocket from "phoenix_live_view"
 import LiveReact, { initLiveReact } from "phoenix_live_react"
 
@@ -18,12 +19,11 @@ let csrfToken = document
 
 const liveReactHooks = { LiveReact }
 
-window.Components = { LogEventsChart }
+window.Components = { LogEventsChart, Loader }
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
 window.ClipboardJS = ClipboardJS
-
 
 const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)
 
@@ -39,4 +39,3 @@ window.initLiveReact = initLiveReact
 document.addEventListener("DOMContentLoaded", e => {
   initLiveReact()
 })
-

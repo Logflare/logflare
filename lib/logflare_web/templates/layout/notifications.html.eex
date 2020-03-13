@@ -1,12 +1,11 @@
-<%= if @flash.info do %>
+<%= if @notifications.info do %>
   <div class="message" >
     <div class="inner-message alert alert-info" role="alert">
-      <span><%= @flash.info %></span>
-      <a href="#" phx-click="remove_flash" phx-value-flash_key="warning">
+      <span><%= @notifications.info %></span>
+      <a href="#" phx-click="remove_notifications" phx-value-notifications_key="warning">
         <button
       type="button"
       class="close"
-      <%= if not @in_live_view, do: "data-dismiss=alert" %>
       >
           &times;
         </button>
@@ -14,16 +13,15 @@
     </div>
   </div>
 <% end %>
-<%= if @flash.error do %>
+<%= if @notifications.error do %>
   <div class="message" >
     <div class="inner-message alert alert-warning" role="alert">
-      <span><%= @flash.error %></span>
-      <a href="#" phx-click="remove_flash"
-      phx-value-flash_key="error">
+      <span><%= @notifications.error %></span>
+      <a href="#" phx-click="remove_notifications"
+      phx-value-notifications_key="error">
         <button
       type="button"
       class="close"
-      <%= if not @in_live_view, do: "data-dismiss=alert" %>
       >
           &times;</button>
       </a>

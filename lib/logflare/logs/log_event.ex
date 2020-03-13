@@ -75,6 +75,7 @@ defmodule Logflare.LogEvent do
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
+  @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()
   def make_from_db(params, %{source: _source}) do
     params =
       params

@@ -38,13 +38,24 @@
         </div>
       </li>
       <ul class="list-group">
-        <h5 class="header-margin">LQL Filters</h5>
+        <h5 class="header-margin">LQL Timestamp Filters</h5>
         <p>Viewable by Logflare admin only.</p>
         <li class="list-group-item flex-fill">
           <div>
             <pre>
               <code class="elixir" id="search-op-filter-rules">
-              <%= inspect(@search_op.filter_rules, width: 60, pretty: true) %>
+              <%= inspect(@search_op.lql_ts_filters, width: 60, pretty: true) %>
+            </code>
+            </pre>
+          </div>
+        </div>
+        <h5 class="header-margin">Metadata and Message Filters</h5>
+        <p>Viewable by Logflare admin only.</p>
+        <li class="list-group-item flex-fill">
+          <div>
+            <pre>
+              <code class="elixir" id="search-op-filter-rules">
+              <%= inspect(@search_op.lql_meta_and_msg_filters, width: 60, pretty: true) %>
             </code>
             </pre>
           </div>

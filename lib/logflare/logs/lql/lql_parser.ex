@@ -4,6 +4,8 @@ defmodule Logflare.Lql.Parser do
   import __MODULE__.Helpers
   alias Logflare.Lql
   alias Logflare.Lql.{FilterRule, ChartRule, Utils}
+  alias Logflare.Google.BigQuery.SchemaUtils
+
   require Logger
 
   defparsec(
@@ -33,7 +35,7 @@ defmodule Logflare.Lql.Parser do
            querystring
            |> String.trim()
            |> do_parse() do
-      typemap = Lql.Utils.bq_schema_to_flat_typemap(schema)
+      typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
       rules =
         rules

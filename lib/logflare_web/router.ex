@@ -1,5 +1,7 @@
 defmodule LogflareWeb.Router do
+  @moduledoc false
   use LogflareWeb, :router
+  alias LogflareWeb.LayoutView
   use PhoenixOauth2Provider.Router, otp_app: :logflare
   import Phoenix.LiveView.Router
 
@@ -9,7 +11,8 @@ defmodule LogflareWeb.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_flash
-    plug Phoenix.LiveView.Flash
+    plug :fetch_live_flash
+    plug :put_live_layout, {LayoutView, "app.html"}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser

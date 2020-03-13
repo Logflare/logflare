@@ -16,6 +16,8 @@ defmodule Logflare.BigQuery.SchemaTypes do
   def to_schema_type({:list, :float}), do: {"ARRAY", "FLOAT"}
   def to_schema_type({:list, :datetime}), do: {"ARRAY", "DATETIME"}
 
+  def to_schema_type(:NULL), do: "NULL"
+
   def to_schema_type(:map), do: "RECORD"
   def to_schema_type(:integer), do: "INTEGER"
   def to_schema_type(:string), do: "STRING"

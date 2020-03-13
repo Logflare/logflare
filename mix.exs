@@ -92,7 +92,7 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:logflare_logger_backend, "~> 0.7.0"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "~> 0.7.0"},
+      {:phoenix_live_view, "~> 0.9.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
@@ -119,8 +119,8 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.27.0"},
-      {:google_api_big_query, "~> 0.33.0"},
+      {:google_api_cloud_resource_manager, "~> 0.28.0"},
+      {:google_api_big_query, "~> 0.34.0"},
 
       # Ecto
       {:ecto, "~> 3.3", override: true},

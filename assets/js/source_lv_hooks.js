@@ -97,7 +97,9 @@ hooks.SourceLogsSearch = {
   updated() {
     setTimezone()
   },
-
+  reconnected() {
+    setTimezone()
+  },
   mounted() {
     initSearchInViewObserver(this)
 
@@ -111,16 +113,10 @@ hooks.SourceLogsSearch = {
     const idleInterval = $("#user-idle").data("user-idle-interval")
     idle({
       onIdle: () => {
-        const $searchTailingButton = $("#search-tailing-button")
-        const $searchTailingCheckbox = $(
-          "input#" + $.escapeSelector("search_tailing?")
+        hook.pushEvent("stop_live_search", {})
+        console.log(
+          `User idle for ${idleInterval}, live tail search stopped...`
         )
-
-        if ($searchTailingCheckbox.prop("value") === "true") {
-          console.log(`User idle for ${idleInterval}, tail search paused`)
-          $searchTailingButton.click()
-          $("#user-idle").click()
-        }
       },
       keepTracking: true,
       idle: idleInterval,

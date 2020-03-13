@@ -23,13 +23,12 @@ defmodule LogflareWeb.Sources.RulesLV do
     user = Users.Cache.get_by_and_preload(id: user_id)
     source = Sources.get_by_and_preload(id: source_id)
 
-    user = if user.admin do
-      Users.Cache.get_by_and_preload(id: source.user_id)
-    else
-      user
-    end
-
-    source_id = String.to_integer(source_id)
+    user =
+      if user.admin do
+        Users.Cache.get_by_and_preload(id: source.user_id)
+      else
+        user
+      end
 
     sources =
       for s <- user.sources do
@@ -42,7 +41,6 @@ defmodule LogflareWeb.Sources.RulesLV do
 
     socket =
       socket
-      |> assign(:flash, %{})
       |> assign(:source, source)
       |> assign(:rules, source.rules)
       |> assign(:sources, sources)
@@ -70,18 +68,18 @@ defmodule LogflareWeb.Sources.RulesLV do
             socket
             |> assign(:has_regex_rules, Rules.has_regex_rules?(source.rules))
             |> assign(:rules, [rule | rules])
-            |> assign_flash(:warning, "LQL source routing rule created successfully!")
+            |> assign_notifications(:warning, "LQL source routing rule created successfully!")
 
           {:error, changeset} ->
             error_message = Rule.changeset_error_to_string(changeset)
-            assign_flash(socket, :error, error_message)
+            assign_notifications(socket, :error, error_message)
         end
       else
         {:error, error} ->
-          assign_flash(socket, :error, error)
+          assign_notifications(socket, :error, error)
 
         {:warnings, warning} ->
-          assign_flash(socket, :warning, warning)
+          assign_notifications(socket, :warning, warning)
       end
 
     {:noreply, socket}
@@ -114,11 +112,11 @@ defmodule LogflareWeb.Sources.RulesLV do
           socket
           |> assign(:source, source)
           |> assign(:rules, source.rules)
-          |> assign_flash(:warning, "Upgrade successfull!")
+          |> assign_notifications(:warning, "Upgrade successfull!")
 
         {:error, changeset} ->
           error_message = Rule.changeset_error_to_string(changeset)
-          assign_flash(socket, :error, error_message)
+          assign_notifications(socket, :error, error_message)
       end
 
     {:noreply, socket}

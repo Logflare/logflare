@@ -47,7 +47,7 @@ defmodule LogflareWeb.Source.SearchLV do
         tailing_paused?: nil,
         tailing_timer: nil,
         user: user,
-        flash: %{},
+        notifications: %{},
         querystring: search_opts.querystring,
         search_op: nil,
         search_op_error: nil,
@@ -69,6 +69,41 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("stop_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
+
+    socket =
+      if prev_assigns.tailing? do
+        maybe_cancel_tailing_timer(socket)
+        SearchQueryExecutor.maybe_cancel_query(stoken)
+
+        assign(socket, :tailing?, false)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("start_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
+
+    socket =
+      if not prev_assigns.tailing? do
+        socket = assign(socket, :tailing?, true)
+
+        SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
+
+        socket
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
@@ -120,13 +155,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     chart_aggregate_enabled? = search_opts.querystring =~ ~r/chart:\w+/
 
-    warning =
-      if search_opts.tailing? and search_opts.querystring =~ "timestamp" do
-        "Timestamp field is ignored if live tail search is active"
-      else
-        nil
-      end
-
     %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = prev_assigns
 
     socket =
@@ -134,11 +162,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:chart_aggregate_enabled?, chart_aggregate_enabled?)
       |> assign(:querystring, search_opts.querystring)
       |> assign(:tailing?, search_opts.tailing?)
-      |> assign_flash(:warning, warning)
 
     socket =
-      if {search_opts.chart_aggregate, search_opts.chart_period} !=
-           {prev_chart_aggregate, prev_chart_period} do
+      if search_opts.chart_aggregate != prev_chart_aggregate or
+           search_opts.chart_period != prev_chart_period do
         params = %{
           chart_aggregate: "#{search_opts.chart_aggregate}",
           chart_period: "#{search_opts.chart_period}",
@@ -183,8 +210,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
       |> assign(:user_local_timezone, user_local_tz)
-      |> assign_flash(:warning, nil)
-      |> assign_flash(:error, nil)
+      |> assign_notifications(:warning, nil)
+      |> assign_notifications(:error, nil)
       |> push_patch(
         to: Routes.live_path(socket, __MODULE__, sid, params),
         replace: true
@@ -223,7 +250,7 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(stoken)
 
-    socket = assign_flash(socket, :warning, "Live search paused due to user inactivity.")
+    socket = assign_notifications(socket, :warning, "Live search paused due to user inactivity.")
 
     {:noreply, socket}
   end
@@ -234,12 +261,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
     case SavedSearches.insert(qs, source) do
       {:ok, _saved_search} ->
-        socket = assign_flash(socket, :warning, "Search saved!")
+        socket = assign_notifications(socket, :warning, "Search saved!")
         {:noreply, socket}
 
       {:error, changeset} ->
         {message, _} = changeset.errors[:querystring]
-        socket = assign_flash(socket, :warning, "Save search error: #{message}")
+        socket = assign_notifications(socket, :warning, "Save search error: #{message}")
         {:noreply, socket}
     end
   end
@@ -255,7 +282,19 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-    warning = warning_message(socket.assigns, search_result)
+    warning =
+      cond do
+        match?({:warning, _}, search_result.aggregates.status) ->
+          {:warning, message} = search_result.aggregates.status
+          message
+
+        match?({:warning, _}, search_result.events.status) ->
+          {:warning, message} = search_result.aggregates.status
+          message
+
+        true ->
+          warning_message(socket.assigns, search_result)
+      end
 
     log_events = search_result.events.rows
 
@@ -273,7 +312,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           :timestamp,
-          &SearchView.format_timestamp(&1, timezone)
+          &LogflareWeb.Helpers.BqSchema.format_timestamp(&1, timezone)
         )
       end)
 
@@ -289,7 +328,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
       |> assign(:last_query_completed_at, Timex.now())
-      |> assign_flash(:warning, warning)
+      |> assign_notifications(:warning, warning)
 
     {:noreply, socket}
   end
@@ -297,12 +336,22 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:search_error = msg, search_op}, %{assigns: %{source: source}} = socket) do
     log_lv_received_info(msg, source)
 
+    error_notificaton =
+      case search_op.error do
+        :halted ->
+          {:halted, halted_message} = search_op.status
+          "Search halted: " <> halted_message
+
+        err ->
+          format_error(err)
+      end
+
     socket =
       socket
       |> assign(:search_op_error, search_op)
       |> assign(:search_op_log_events, nil)
       |> assign(:search_op_log_aggregates, nil)
-      |> assign_flash(:error, format_error(search_op.error))
+      |> assign_notifications(:error, error_notificaton)
       |> assign(:tailing?, false)
       |> assign(:loading, false)
 
