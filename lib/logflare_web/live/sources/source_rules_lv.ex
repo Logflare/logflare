@@ -47,6 +47,7 @@ defmodule LogflareWeb.Sources.RulesLV do
       |> assign(:active_modal, nil)
       |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
+      |> assign_notifications(:warning, nil)
 
     {:ok, socket}
   end

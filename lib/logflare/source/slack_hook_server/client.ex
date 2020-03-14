@@ -30,7 +30,8 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
   def post(client, source, rate, recent_events \\ []) do
     body = slack_post_body(source, rate, recent_events)
-    request = Tesla.post(client, source.slack_hook_url, body)
+    url = source.slack_hook_url
+    request = Tesla.post(client, url, body)
 
     case request do
       {:ok, %Tesla.Env{status: 200} = response} ->
@@ -38,11 +39,10 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
       {:ok, %Tesla.Env{body: "invalid_blocks"} = response} ->
         resp = prep_tesla_resp_for_log(response)
-        req = prep_tesla_resp_for_log(request)
 
         Logger.warn("Slack hook response: invalid_blocks",
           slackhook_response: resp,
-          slackhook_request: req
+          slackhook_request: %{url: url, body: inspect(body)}
         )
 
         {:error, response}
