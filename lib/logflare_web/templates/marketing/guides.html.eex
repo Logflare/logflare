@@ -26,7 +26,7 @@
         <%= link to: Routes.marketing_path(@conn, :big_query_setup), class: "miniboxguid fr1" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr1bgimg.png" alt="">
 					<h2>Setup a BigQuery Backend</h2>
-					<p>The easiest ETL pipeline ever.</p>
+					<p>The easiest ETL pipeline ever</p>
 					<div class="miniimgbox">
 						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
 					</div>
@@ -35,34 +35,45 @@
 			<div class="col-lg-4">
 				<%= link to: Routes.marketing_path(@conn, :data_studio_setup), class: "miniboxguid fr2" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr4bgimg.png" alt="">
-					<h2>Using Logflare with Google Data Studio</h2>
-					<p>Make dashboards and get insights out of your event data.</p>
+					<h2>Logflare & Data Studio</h2>
+					<p>Make dashboards and get insights out of your event data</p>
 					<div class="miniimgbox">
 						<img src="/images/marketing/guides/dataStudioLogo2.png" alt="">
 					</div>
 				<% end %>
 			</div>
 			<div class="col-lg-4">
-				<%= link to: Routes.marketing_path(@conn, :event_analytics_demo), class: "miniboxguid fr3" do %>
+				<%= link to: Routes.marketing_path(@conn, :zeit_setup), class: "miniboxguid fr3" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
-					<h2>Using Logflare in your Event Analytics Pipeline</h2>
-					<p>Make dashboards and get insights out of your event data.</p>
+					<h2>Setup the Zeit Integration</h2>
+					<p>Monitor your Zeit deployment with structured logging</p>
 					<div class="miniimgbox">
-						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
+						<img id="zeit-logo" src="/images/marketing/guides/zeit-logo.png" alt="">
 					</div>
 				<% end %>
 			</div>
+
 		</div>
 		<div class="row">
 			<div class="col-lg-4">
         <%= link to: Routes.marketing_path(@conn, :slack_app_setup), class: "miniboxguid fr3" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
 					<h2>Setup the Logflare Slack App</h2>
-					<p>Get Loflare alerts in your Slack channels.</p>
+					<p>Get Loflare alerts in your Slack channels</p>
 					<div class="miniimgbox">
 						<img src="/images/marketing/guides/slackLogo.png" alt="">
 					</div>
         <% end %>
+			</div>
+			<div class="col-lg-4">
+				<%= link to: Routes.marketing_path(@conn, :event_analytics_demo), class: "miniboxguid fr3" do %>
+					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
+					<h2>Logflare & your Analytics Pipeline</h2>
+					<p>Make dashboards and get insights out of your event data</p>
+					<div class="miniimgbox">
+						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
+					</div>
+				<% end %>
 			</div>
 		</div>
     <!-- <div class="row">

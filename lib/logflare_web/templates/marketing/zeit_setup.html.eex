@@ -1,0 +1,126 @@
+<div class="container-fluid heroguidepage no-subhead">
+	<div class="container">
+		<div class="row">
+			<div class="col-md-12">
+				<h1>Setting up the Zeit Integration</h1>
+				<p>Monitoring your Zeit Deployment with Consolidated Structured Logging</p>
+			</div>
+		</div>
+	</div>
+	<div class="miniimgbox">
+		<img id="zeit-logo" src="/images/marketing/guides/zeit-logo.png" alt="">
+	</div>
+</div>
+
+
+<div class="container-fluid contentguidepage">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-3 hide-on-mobile">
+				<div class="forfixed">
+					<div class="contentmenu">
+            <h2>Content</h2>
+            <%= link "Structured Logging with Zeit", to: "#overview", class: "scrollmenu menu1 activecon" %>
+            <%= link "Install the Integration", to: "#install-integration", class: "scrollmenu menu2" %>
+						<%= link "Setup a Log Drain", to: "#log-drain", class: "scrollmenu menu3" %>
+						<%= link "Build vs Static vs Lambda Logs", to: "#log-type", class: "scrollmenu menu4" %>
+						<%= link "Example Searches", to: "#example-searches", class: "scrollmenu menu5" %>
+						<%= link "Example Dashboard", to: "#example-dashboard", class: "scrollmenu menu6" %>
+						<%= link "Custom JSON Object", to: "#json-log", class: "scrollmenu menu7" %>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-9">
+        <div class="cont">
+          <h1 class="menu1cont" id="overview">Structured Logging with Zeit</h1>
+          <p>Zeit's log drains provide a robust and scalable way to send application logs from your Zeit app to any consolidated logging system. We've developed the Logflare Zeit integration on top of log drains to make it
+					easy for you to get logs from Zeit into your Logflare account. Once setup it's super easy to stream, search, alert on and dashboard your structured logs from Zeit.</p>
+					<p>Not only that, but you can <%= link "log a structured event from your Zeit app", to: "#json-log" %> as a stringified JSON object and we'll automatically parse that into a JSON object on our end which enables
+						all the powerful streaming, searching, alerting and dashboaring features for each individual field of that object.</p>
+
+          <h2 id="install-integration">Install the Integration</h2>
+          <p>Visit the Logflare integration page and click `add`. This will walk you through the Logflare sign up process. You will create a Logflare source during that process. A `source` is where your Zeit logs will go.</p>
+					<%= link "Install the Logflare Zeit integration", to: "https://zeit.co/integrations/logflare", class: "btn btn-primary", role: "button", target: "_blank" %>
+
+					<h2 id="log-drain">Setup a Log Drain</h2>
+					<p>After installing the integation you'll navigate to the installed integration configuration page in your Zeit account. Now you need to add a log drain. This is what tells Zeit to send all your logs to Logflare.</p>
+					<div class="minimg">
+	          <div class="purplebox">
+	          </div>
+	          <img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/create-zeit-log-drain.png">
+	        </div>
+					<p>Selecting a project: you can choose to filter the logs sent to Logflare by project. You will eventually want to have each project be a `source` in your Logflare account. This lets you do that. You can, however, choose to send
+						Logflare all logs for all projects, and use Logflare's routing to send logs do different sources. This would be useful if you don't want to setup a new log drain for each new project.</p>
+					<p>Once you've successfully added your log drain you should be able to immediately see logs start streaming into your Logflare account. Try visiting your Zeit deployment url then check your Logflare dashboard!</p>
+
+					<%= link "Visit your Logflare dashboard", to: Routes.source_path(@conn, :dashboard), class: "btn btn-primary", role: "button", target: "_blank" %>
+
+					<h2 id="log-type">Build vs Static vs Lambda Logs</h2>
+					<p>Zeit gives us three main kinds of logs: <code>build</code>, <code>static</code> and <code>labda</code>.</p>
+					<p>You'll likely want to route all your build logs to a different source. This doesn't exclude them from the original source, it effectively copies them to another source.</p>
+					<p>To set this up add a build source and create a rule on your main Zeit source to send logs to this new build source.</p>
+					<div class="minimg">
+	          <div class="purplebox">
+	          </div>
+	          <img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/zeit-build-rule.png">
+	        </div>
+					<p>So now when you deploy you should see something like this:</p>
+					<div class="minimg">
+	          <div class="purplebox">
+	          </div>
+	          <img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/zeit-build-logs.gif">
+	        </div>
+					<p>Zeit also gives us some <code>static</code> and <code>labda</code> logs depending on if the event came from their CDN or their serverless infrastructure. You can setup different rules for these as well but you probably will want these in the
+						same source so you can have them on the same dashboard later.</p>
+
+					<h2 id="example-searches">Example Searches</h2>
+					<p>Here are some searches you might find useful with your Zeit deployment. It doesn't take long for your events to be searchable by Logflare.</p>
+					<p>This is a search for <code>metadata.source:"static"</code> which lets you see all the logs generated from the Zeit CDN.<p>
+						<div class="minimg">
+		          <div class="purplebox">
+		          </div>
+		          <img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/example-zeit-search.gif">
+		        </div>
+					<p>All 5xx status codes:
+						<code>metadata.proxy.statusCode:>499 metadata.proxy.statusCode:<600</code>
+					</p>
+					<p>All user agents with `bot` in the user agent string:
+						<code>metadata.proxy.userAgent:~"bot"</code>
+					</p>
+					<p>When Zeit sends lambda logs over we parse data out of that message over for you automatically into the <code>metadata.parsedLambdaMessage</code> object.</p>
+					<p>To see all labda requests with a response time greater than 1,000 ms:
+						 <code>metadata.parsedLambdaMessage.report.duration_ms:>1000</code>
+					 </p>
+
+					<h2 id="example-dashboard">Example Dashboard</h2>
+					<p># TODO: An example Data Studio dashboard to copy</p>
+
+					<h2 id="json-log">Logging a Custom JSON Object</h2>
+					<p>To enable even more insights from your Zeit deployment you can log any JSON object and we'll parse that accordingly.<p>
+					<p>For example, in a Next.js project you can use <%= link "Pino", to: "http://getpino.io/", target: "_blank" %> to log an object.</p>
+					<pre class="scrollable">
+					<code>
+  const logger = require('pino')()
+  logger.info({user: {name: "Joe Schmo", email: "joe@dunder.dev", company: "Dunder Dev", id: 38}, event: {type: "request", tag: "api"}})</code>
+					</pre>
+				 <p>Which then would give you an object in Logflare like this:</p>
+					<div class="minimg">
+						<div class="purplebox">
+						</div>
+						<img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/custom-data-object.png">
+					</div>
+					<p>So you can do a search for <code>metadata.parsedLambdaMessage.lines.data.event.tag:"api"</code> like this:</p>
+					<div class="minimg">
+						<div class="purplebox">
+						</div>
+						<img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/custom-object-search.png">
+					</div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>
