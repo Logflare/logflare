@@ -35,20 +35,44 @@ defmodule Logflare.Lql.Parser do
            querystring
            |> String.trim()
            |> do_parse() do
-      typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
-
-      rules =
+      {chart_rule_tokens, other_rules} =
         rules
         |> List.flatten()
-        |> Enum.map(fn
+        |> Enum.split_with(fn
+          {:chart, _} -> true
+          _ -> false
+        end)
+
+      typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
+
+      chart_rule =
+        if not Enum.empty?(chart_rule_tokens) do
+          chart_rule =
+            chart_rule_tokens
+            |> Enum.reduce(%{}, fn
+              {:chart, {:path = k, v}}, acc ->
+                acc
+                |> Map.put(k, v)
+                |> Map.put(:value_type, get_path_type(typemap, v))
+
+              {:chart, {k, v}}, acc ->
+                Map.put(acc, k, v)
+            end)
+
+          struct!(ChartRule, chart_rule)
+        end
+
+      rules =
+        Enum.map(other_rules, fn
           %FilterRule{path: path} = rule ->
             type = get_path_type(typemap, path)
             maybe_cast_value(rule, type)
-
-          %ChartRule{path: path} = rule ->
-            type = get_path_type(typemap, path)
-            %{rule | value_type: type}
         end)
+
+      rules =
+        [chart_rule | rules]
+        |> List.flatten()
+        |> Enum.reject(&is_nil/1)
         |> Enum.sort()
 
       {:ok, rules}

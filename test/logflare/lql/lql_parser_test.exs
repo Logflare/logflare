@@ -1037,6 +1037,57 @@ defmodule Logflare.LqlParserTest do
              ]
     end
 
+    @tag :run
+    test "chart period, chart aggregate" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            log: %{
+              metric5: 10.0
+            },
+            user: %{
+              cluster_group: 1.0
+            }
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
+      str = ~S|
+         c:m.log.metric5
+         c:period@minute
+         c:aggregate@sum
+       |
+
+      {:ok, result} = Parser.parse(str, schema)
+
+      assert result == [
+               %Logflare.Lql.ChartRule{
+                 path: "metadata.log.metric5",
+                 aggregate: :sum,
+                 period: :minute,
+                 value_type: :float
+               }
+             ]
+
+      str = ~S|
+         chart:m.log.metric5
+         chart:period@minute
+         chart:aggregate@sum
+       |
+
+      {:ok, result} = Parser.parse(str, schema)
+
+      assert result == [
+               %Logflare.Lql.ChartRule{
+                 path: "metadata.log.metric5",
+                 aggregate: :sum,
+                 period: :minute,
+                 value_type: :float
+               }
+             ]
+    end
+
     test "returns error on malformed timestamp filter" do
       schema =
         SchemaBuilder.build_table_schema(

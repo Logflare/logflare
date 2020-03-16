@@ -63,12 +63,44 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def chart_clause() do
-    string("chart")
+    ignore(choice([string("chart"), string("c")]))
     |> ignore(ascii_char([?:]))
-    |> concat(metadata_field())
-    |> tag(:chart_clause)
-    |> label("chart clause")
-    |> reduce({:to_rule, []})
+    |> choice([
+      chart_aggregate()
+      |> label("chart_aggregate"),
+      chart_period()
+      |> label("chart_period"),
+      metadata_field()
+      |> label("chart field")
+    ])
+    |> unwrap_and_tag(:chart)
+  end
+
+  def chart_period() do
+    ignore(string("period"))
+    |> ignore(string("@"))
+    |> choice([
+      string("second") |> replace(:second),
+      string("s") |> replace(:second),
+      string("minute") |> replace(:minute),
+      string("m") |> replace(:minute),
+      string("h") |> replace(:hour),
+      string("hour") |> replace(:hour),
+      string("d") |> replace(:day),
+      string("day") |> replace(:day)
+    ])
+    |> unwrap_and_tag(:period)
+  end
+
+  def chart_aggregate() do
+    ignore(string("aggregate"))
+    |> ignore(string("@"))
+    |> choice([
+      string("sum") |> replace(:sum),
+      string("avg") |> replace(:avg),
+      string("count") |> replace(:count)
+    ])
+    |> unwrap_and_tag(:aggregate)
   end
 
   def metadata_field do
@@ -393,12 +425,23 @@ defmodule Logflare.Lql.Parser.Helpers do
     end)
   end
 
-  def to_rule(chart_clause: chart_clause) do
-    %ChartRule{
-      path: chart_clause[:path],
-      value_type: nil
-    }
-  end
+  # def to_rule(["chart", {:chart_period, ["period", period]}]) do
+  #   %{period: period}
+  # end
+
+  # def to_rule(["chart", {:chart_field, [path: path]}]) do
+  #   %{
+  #     path: path,
+  #     value_type: nil
+  #   }
+  # end
+
+  # def to_rule(["chart", {:chart_aggregate, ["aggregate", aggregate]}]) do
+  #   %{
+  #     path: aggregate,
+  #     value_type: nil
+  #   }
+  # end
 
   def to_rule(args, :ignore), do: args[@isolated_string]
 
