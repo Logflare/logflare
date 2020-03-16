@@ -15,6 +15,10 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "overview.html")
   end
 
+  def zeit_setup(conn, _params) do
+    render(conn, "zeit_setup.html")
+  end
+
   def big_query_setup(conn, _params) do
     render(conn, "bigquery_setup.html")
   end
