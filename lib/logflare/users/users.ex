@@ -2,6 +2,7 @@ defmodule Logflare.Users do
   alias Logflare.{User, Repo, Sources, Users}
   alias Logflare.Repo
   alias Logflare.Sources
+  alias Logflare.Google.BigQuery
   @moduledoc false
 
   def get(user_id) do
@@ -35,8 +36,15 @@ defmodule Logflare.Users do
   end
 
   def maybe_preload_bigquery_defaults(user) do
-    if is_nil(user.bigquery_dataset_id) do
-      %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}
+    user =
+      if is_nil(user.bigquery_dataset_id) do
+        %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}
+      else
+        user
+      end
+
+    if is_nil(user.bigquery_project_id) do
+      %{user | bigquery_project_id: BigQuery.GCPConfig.default_project_id()}
     else
       user
     end

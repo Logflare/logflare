@@ -14,7 +14,9 @@ defmodule Logflare.User.BigQueryUDFs do
           bigquery_udfs_hash: bq_udfs_hash
         } = user
       ) do
-    sql = full_udf_sql_for_dataset(bq_dataset_id)
+    # Ensure that hash changes if SQL changes or dataset_id changes or bq_project_id changes
+    sql = full_udf_sql_for_dataset(bq_project_id, bq_dataset_id)
+
     new_udfs_hash = to_md5_hash(sql)
 
     if bq_udfs_hash != new_udfs_hash do
@@ -53,13 +55,14 @@ defmodule Logflare.User.BigQueryUDFs do
     :crypto.hash(:md5, string) |> Base.encode16(case: :lower)
   end
 
-  def full_udf_sql_for_dataset(bq_dataset_id)
+  def full_udf_sql_for_dataset(bq_project_id, bq_dataset_id)
 
-  def full_udf_sql_for_dataset(bdi) when is_binary(bdi) and bdi != "" do
+  def full_udf_sql_for_dataset(bqid, bdid)
+      when is_binary(bdid) and bdid != "" and is_binary(bqid) and bqid != "" do
     "
-    #{SFns.lf_timestamp_sub(bdi)}
-    #{SFns.lf_timestamp_trunc(bdi)}
-    #{SFns.lf_generate_timestamp_array(bdi)}
+    #{SFns.lf_timestamp_sub(bqid, bdid)}
+    #{SFns.lf_timestamp_trunc(bqid, bdid)}
+    #{SFns.lf_generate_timestamp_array(bqid, bdid)}
     "
   end
 end
