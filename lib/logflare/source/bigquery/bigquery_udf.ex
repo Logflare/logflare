@@ -14,8 +14,16 @@ defmodule Logflare.User.BigQueryUDFs do
           bigquery_udfs_hash: bq_udfs_hash
         } = user
       ) do
+
+    # Ensure that hash changes if SQL changes or dataset_id changes or bq_project_id changes
     sql = full_udf_sql_for_dataset(bq_dataset_id)
-    new_udfs_hash = to_md5_hash(sql)
+
+    string_to_hash = """
+    #{sql}
+    #{bq_project_id}
+    """
+
+    new_udfs_hash = to_md5_hash(string_to_hash)
 
     if bq_udfs_hash != new_udfs_hash do
       result =
