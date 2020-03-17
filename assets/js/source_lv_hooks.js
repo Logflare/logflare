@@ -101,6 +101,49 @@ hooks.SourceLogsSearch = {
     setTimezone()
   },
   mounted() {
+    const hook = this
+    $("#daterangepicker").daterangepicker({
+      "showDropdowns": true,
+      "timePicker": true,
+      "timePicker24Hour": true,
+      ranges: {
+        "Today": [],
+        "Yesterday": [],
+        "Last 7 Days": [],
+        "Last 30 Days": [],
+        "This Month": [],
+        "Last Month": []
+      },
+      "startDate": "03/12/2020",
+      "endDate": "03/18/2020"
+    }, (start, end, label) => {
+      let timestampFilter
+      switch (label) {
+        case "Today":
+          timestampFilter = ["t:today"]
+          break
+        case "Yesterday":
+          timestampFilter = ["t:yesteray"]
+          break
+        case "Last 15 Minutes":
+          timestampFilter = ["t:last@15m"]
+          break
+        case "Last 7 Days":
+          timestampFilter = ["t:last@7d"]
+          break
+        case "This Month":
+          timestampFilter = ["t:this@month"]
+          break
+        default:
+          const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ssZ")
+          timestampFilter = [`t:${formatWithISO8601(start)}..${formatWithISO8601(end)}`]
+          break
+      }
+      const $qsInput = $("#search_querystring")
+      $qsInput.val($qsInput.val() + " " + timestampFilter.join(" "))
+    })
+
+
     initSearchInViewObserver(this)
 
     activateClipboardForSelector("#search-uri-query", {
