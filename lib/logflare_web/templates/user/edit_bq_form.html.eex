@@ -1,4 +1,4 @@
-<%= if is_nil(@user.bigquery_project_id) == false do %>
+<%= if not is_nil(@changeset.data.bigquery_project_id) do %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
     <div class="form-group">
       <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control form-control-margin", readonly: true %>

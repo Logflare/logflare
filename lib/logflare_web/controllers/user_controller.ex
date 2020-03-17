@@ -41,7 +41,7 @@ defmodule LogflareWeb.UserController do
 
       {:error, changeset} ->
         conn
-        |> put_flash(:error, "Something went wrong!")
+        |> put_flash(:error, "Something went wrong! See below for errors.")
         |> put_status(406)
         |> render("edit.html",
           changeset: changeset,

@@ -106,6 +106,13 @@ defmodule Logflare.User do
   """
   def user_allowed_changeset(user, attrs) do
     user
+    |> case do
+      %{bigquery_project_id: @project_id} = u ->
+        %{u | bigquery_project_id: nil, bigquery_dataset_id: nil, bigquery_dataset_location: nil}
+
+      u ->
+        u
+    end
     |> cast(attrs, @user_allowed_fields)
     |> cast_assoc(:team)
     |> default_validations(user)
