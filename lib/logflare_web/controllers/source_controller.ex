@@ -302,30 +302,49 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def delete(%{assigns: %{source: source}} = conn, _conn) do
-    token = source.token
+  def delete(%{assigns: %{source: source}} = conn, params) do
+    case :ets.first(source.token) do
+      :"$end_of_table" ->
+        del_source_and_redirect(conn, params)
 
-    cond do
-      :ets.info(token) == :undefined ->
-        del_source_and_redirect_with_info(conn, source)
-
-      :ets.first(token) == :"$end_of_table" ->
-        {:ok, _table} = Supervisor.delete_source(source.token)
-        del_source_and_redirect_with_info(conn, source)
-
-      {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
+      {timestamp, _unique_int, _monotime} ->
         now = System.os_time(:microsecond)
 
         if now - timestamp > 3_600_000_000 do
-          {:ok, _table} = Supervisor.delete_source(source.token)
-          del_source_and_redirect_with_info(conn, source)
+          del_source_and_redirect(conn, params)
         else
-          put_flash_and_redirect_to_dashboard(
-            conn,
-            :error,
-            "Failed! Recent events found. Latest event must be greater than 24 hours old."
-          )
+          message = [
+            "Failed! Recent events are less than 24 hours old. ",
+            Phoenix.HTML.Link.link("Force delete",
+              to: "#{Routes.source_path(conn, :del_source_and_redirect, source.id)}",
+              method: :delete
+            ),
+            " this source."
+          ]
+
+          put_flash_and_redirect_to_dashboard(conn, :error, message)
         end
+    end
+  end
+
+  def del_source_and_redirect(conn, %{"id" => source_id}) do
+    source = Sources.get(source_id)
+
+    # TODO: Delete sources across the cluster
+    if :ets.info(source.token) != :undefined do
+      Supervisor.delete_source(source.token)
+    end
+
+    case Repo.delete(source) do
+      {:ok, _response} ->
+        put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
+
+      {:error, _response} ->
+        put_flash_and_redirect_to_dashboard(
+          conn,
+          :error,
+          "Something went wrong! Please try again later."
+        )
     end
   end
 
@@ -390,20 +409,6 @@ defmodule LogflareWeb.SourceController do
       else
         le
       end
-    end
-  end
-
-  defp del_source_and_redirect_with_info(conn, source) do
-    case Repo.delete(source) do
-      {:ok, _response} ->
-        put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
-
-      {:error, _response} ->
-        put_flash_and_redirect_to_dashboard(
-          conn,
-          :error,
-          "Something went wrong! Please try again later."
-        )
     end
   end
 

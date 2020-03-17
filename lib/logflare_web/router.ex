@@ -128,6 +128,7 @@ defmodule LogflareWeb.Router do
       delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
+    delete "/:id/force-delete", SourceController, :del_source_and_redirect
     get "/:id/test-alerts", SourceController, :test_alerts
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
