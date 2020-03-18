@@ -129,8 +129,21 @@ defmodule Logflare.User do
   def default_validations(changeset, user) do
     changeset
     |> validate_required([:email, :provider, :token, :provider_uid])
+    |> update_change(:email, &String.downcase/1)
+    |> update_change(:email_preferred, &String.downcase/1)
+    |> downcase_email_provider_uid(user)
+    |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
+  end
+
+  def downcase_email_provider_uid(changeset, user) do
+    if user.provider == "email" do
+      changeset
+      |> update_change(:provider_uid, &String.downcase/1)
+    else
+      changeset
+    end
   end
 
   def validate_gcp_project(changeset, field, options \\ []) do
