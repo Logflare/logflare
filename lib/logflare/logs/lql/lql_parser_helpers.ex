@@ -15,7 +15,8 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce({:to_rule, [:event_message]})
   end
 
-  def quoted_string(path \\ :ignore) when path in [:event_message, :ignore] do
+  def quoted_string(location \\ :quoted_field_value)
+      when location in [:quoted_event_message, :quoted_field_value] do
     ignore(string("\""))
     |> repeat_while(
       utf8_char([]),
@@ -25,7 +26,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(@isolated_string)
     |> label("quoted string filter")
-    |> reduce({:to_rule, [path]})
+    |> reduce({:to_rule, [location]})
   end
 
   def parens_string() do
@@ -38,7 +39,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(@isolated_string)
     |> label("parens string")
-    |> reduce({:to_rule, [:ignore]})
+    |> reduce({:to_rule, [:quoted_field_value]})
   end
 
   def timestamp_clause() do
@@ -425,38 +426,40 @@ defmodule Logflare.Lql.Parser.Helpers do
     end)
   end
 
-  # def to_rule(["chart", {:chart_period, ["period", period]}]) do
-  #   %{period: period}
-  # end
+  def to_rule(args, :quoted_field_value) do
+    {:quoted, args[@isolated_string]}
+  end
 
-  # def to_rule(["chart", {:chart_field, [path: path]}]) do
-  #   %{
-  #     path: path,
-  #     value_type: nil
-  #   }
-  # end
-
-  # def to_rule(["chart", {:chart_aggregate, ["aggregate", aggregate]}]) do
-  #   %{
-  #     path: aggregate,
-  #     value_type: nil
-  #   }
-  # end
-
-  def to_rule(args, :ignore), do: args[@isolated_string]
-
-  def to_rule(args, :event_message) do
-    value = args[@isolated_string] || args[:word]
-
+  def to_rule(args, :quoted_event_message) do
     %FilterRule{
       path: "event_message",
-      value: value,
+      value: args[@isolated_string],
+      operator: :"~",
+      modifiers: [:quoted_string]
+    }
+  end
+
+  def to_rule(args, :event_message) do
+    %FilterRule{
+      path: "event_message",
+      value: args[:word],
       operator: :"~"
     }
   end
 
   def to_rule(args, :filter) when is_list(args) do
-    struct!(FilterRule, Map.new(args))
+    filter = struct!(FilterRule, Map.new(args))
+
+    args =
+      if match?({:quoted, _}, filter.value) do
+        {:quoted, value} = filter.value
+
+        filter
+        |> Map.update!(:modifiers, &[:quoted_string | &1])
+        |> Map.put(:value, value)
+      else
+        filter
+      end
   end
 
   def check_for_no_invalid_metadata_field_values(
@@ -484,4 +487,17 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   def not_right_paren(<<?), _::binary>>, context, _, _), do: {:halt, context}
   def not_right_paren(_, context, _, _), do: {:cont, context}
+
+  def get_level_order(level) do
+    @level_orders
+    |> Enum.map(fn {k,v} ->
+      {v, k}
+    end)
+    |> Map.new
+  |> Map.get(level)
+  end
+
+  def get_level_by_order(level) do
+    @level_orders[level]
+  end
 end

@@ -17,7 +17,7 @@ defmodule Logflare.Lql.Parser do
         timestamp_clause(),
         metadata_level_clause(),
         metadata_clause(),
-        quoted_string(:event_message),
+        quoted_string(:quoted_event_message),
         word()
       ])
     )
@@ -73,7 +73,6 @@ defmodule Logflare.Lql.Parser do
         [chart_rule | rules]
         |> List.flatten()
         |> Enum.reject(&is_nil/1)
-        |> Enum.sort()
 
       {:ok, rules}
     else
