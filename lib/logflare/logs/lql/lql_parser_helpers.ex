@@ -388,9 +388,12 @@ defmodule Logflare.Lql.Parser.Helpers do
     end
   end
 
+  def maybe_apply_negation_modifier([:negate, rules]) when is_list(rules) do
+    Enum.map(rules, &maybe_apply_negation_modifier([:negate, &1]))
+  end
+
   def maybe_apply_negation_modifier([:negate, rule]) do
-    modifiers = [:negate | rule.modifiers]
-    %{rule | modifiers: modifiers}
+    update_in(rule.modifiers, &Map.put(&1, :negate, true))
   end
 
   def maybe_apply_negation_modifier(rule), do: rule

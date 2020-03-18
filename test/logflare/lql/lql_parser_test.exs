@@ -406,6 +406,94 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
     end
 
+    test "negated filter" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            user: %{
+              type: "string",
+              id: 1,
+              views: 1,
+              about: "string"
+            },
+            users: %{source_count: 100},
+            context: %{error_count: 100}
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
+      str = ~S|
+        -metadata.context.error_count:>=100
+        -metadata.user.about:~referrall
+        -metadata.user.type:paid
+        -timestamp:2019-01-01T00:13:37Z..2019-02-01T00:23:34Z
+      |
+
+      {:ok, result} = Parser.parse(str, schema)
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{negate: true},
+          operator: :>=,
+          path: "metadata.context.error_count",
+          value: 100
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{negate: true},
+          operator: :"~",
+          path: "metadata.user.about",
+          value: "referrall"
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{negate: true},
+          operator: :=,
+          path: "metadata.user.type",
+          value: "paid"
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{negate: true},
+          operator: :>=,
+          path: "timestamp",
+          value: ~U[2019-01-01 00:13:37Z]
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{negate: true},
+          operator: :<=,
+          path: "timestamp",
+          value: ~U[2019-02-01 00:23:34Z]
+        }
+      ]
+
+      assert lql_rules == Utils.get_filter_rules(result)
+      assert clean_and_trim_lql_string(str) == Lql.encode!(lql_rules)
+
+      str = ~S|
+        timestamp:2019-01-01..2019-02-01
+      |
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :>=,
+          path: "timestamp",
+          value: ~D[2019-01-01]
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :<=,
+          path: "timestamp",
+          value: ~D[2019-02-01]
+        }
+      ]
+
+      {:ok, result} = Parser.parse(str, schema)
+
+      assert Utils.get_filter_rules(result) == lql_rules
+
+      assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
+    end
+
     @schema SchemaBuilder.build_table_schema(
               %{
                 context: %{
