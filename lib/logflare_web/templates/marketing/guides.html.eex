@@ -45,8 +45,8 @@
 			<div class="col-lg-4">
 				<%= link to: Routes.marketing_path(@conn, :zeit_setup), class: "miniboxguid fr3" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
-					<h2>Setup the Zeit Integration</h2>
-					<p>Monitor your Zeit deployment with structured logging</p>
+					<h2>Setup the ZEIT Integration</h2>
+					<p>Monitor your ZEIT deployment with structured logging</p>
 					<div class="miniimgbox">
 						<img id="zeit-logo" src="/images/marketing/guides/zeit-logo.png" alt="">
 					</div>
