@@ -68,6 +68,7 @@ defmodule Logflare.User do
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
     field :bigquery_udfs_hash, :string, null: false
+    field :bigquery_processed_bytes_limit, :integer, null: false
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -87,6 +88,7 @@ defmodule Logflare.User do
     :bigquery_project_id,
     :bigquery_dataset_location,
     :bigquery_dataset_id,
+    :bigquery_processed_bytes_limit,
     :valid_google_account,
     :provider_uid,
     :company
@@ -106,13 +108,7 @@ defmodule Logflare.User do
   """
   def user_allowed_changeset(user, attrs) do
     user
-    |> case do
-      %{bigquery_project_id: @project_id} = u ->
-        %{u | bigquery_project_id: nil, bigquery_dataset_id: nil, bigquery_dataset_location: nil}
-
-      u ->
-        u
-    end
+    |> hide_bigquery_defaults()
     |> cast(attrs, @user_allowed_fields)
     |> cast_assoc(:team)
     |> default_validations(user)
@@ -135,6 +131,22 @@ defmodule Logflare.User do
     |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
+  end
+
+  def hide_bigquery_defaults(user) do
+    case user do
+      %{bigquery_project_id: @project_id} = u ->
+        %{
+          u
+          | bigquery_project_id: nil,
+            bigquery_dataset_id: nil,
+            bigquery_dataset_location: nil,
+            bigquery_processed_bytes_limit: nil
+        }
+
+      u ->
+        u
+    end
   end
 
   def downcase_email_provider_uid(changeset, user) do
