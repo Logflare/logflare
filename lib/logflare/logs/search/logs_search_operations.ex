@@ -22,7 +22,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchOperation, as: SO
 
   @default_limit 100
-  @default_processed_bytes_limit 10_000_000_000
 
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
@@ -30,18 +29,21 @@ defmodule Logflare.Logs.SearchOperations do
   # Halt reasons
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
-  @query_total_bytes_halt "Query halted: total bytes processed for this query is expected to be larger than #{
-                            div(@default_processed_bytes_limit, 1_000_000_000)
-                          } GB"
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
     {sql, params} = so.sql_params
+    bytes_limit = so.source.user.bigquery_processed_bytes_limit
+
+    query_total_bytes_halt =
+      "Query halted: total bytes processed for this query is expected to be larger than #{
+        div(bytes_limit, 1_000_000_000)
+      } GB"
 
     with {:ok, response} <-
            BqRepo.query_with_sql_and_params(bq_project_id, sql, params, dryRun: true),
-         is_within_limit? = response.total_bytes_processed <= @default_processed_bytes_limit,
+         is_within_limit? = response.total_bytes_processed <= bytes_limit,
          {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
          {:ok, response} <- BqRepo.query_with_sql_and_params(bq_project_id, sql, params) do
       so
@@ -49,7 +51,7 @@ defmodule Logflare.Logs.SearchOperations do
       |> Utils.put_result(:rows, response.rows)
     else
       {:total_bytes_processed, false} ->
-        Utils.halt(so, @query_total_bytes_halt)
+        Utils.halt(so, query_total_bytes_halt)
 
       {:error, err} ->
         Utils.put_result(so, :error, err)

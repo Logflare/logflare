@@ -94,7 +94,9 @@
 					 </p>
 
 					<h2 id="example-dashboard">Example Dashboard</h2>
-					<p># TODO: An example Data Studio dashboard to copy</p>
+          <p>
+					   <iframe width="600" height="450" src="https://datastudio.google.com/embed/reporting/1NBEAsKFph8DP3OXapa1ZXRR7fTwZKHEY/page/5O0IB" frameborder="0" style="border:0" allowfullscreen></iframe>
+          </p>
 
 					<h2 id="json-log">Logging a Custom JSON Object</h2>
 					<p>To enable even more insights from your ZEIT deployment you can log any JSON object and we'll parse that accordingly.<p>
