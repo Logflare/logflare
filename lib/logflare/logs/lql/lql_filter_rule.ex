@@ -8,7 +8,7 @@ defmodule Logflare.Lql.FilterRule do
     field :path, :string, virtual: true
     field :operator, Ecto.Atom, virtual: true
     field :value, :any, virtual: true
-    field :modifiers, {:array, Ecto.Atom}, virtual: true, default: []
+    field :modifiers, {:map, Ecto.Atom}, virtual: true, default: %{}
   end
 
   def changeset(_, %__MODULE__{} = rule) do

@@ -73,6 +73,21 @@ defmodule Logflare.Logs.SearchOperations do
       so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
         Utils.halt(so, @timestamp_filter_with_tailing)
 
+      length(so.chart_rules) > 1 ->
+        Utils.halt(so, "Only one chart rule can be used in a query")
+
+      match?([_], so.chart_rules) and
+        hd(so.chart_rules).value_type in ~w[integer float]a and
+          hd(so.chart_rules).path != "timestamp" ->
+        chart_rule = hd(so.chart_rules)
+
+        msg =
+          "Error: can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{
+            chart_rule.path
+          }. Check the source schema for the field used with chart operator."
+
+        Utils.halt(so, msg)
+
       true ->
         so
     end
@@ -282,15 +297,6 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | lql_ts_filters: lql_ts_filters}
   end
 
-  @spec apply_numeric_aggs(SO.t()) :: SO.t()
-  def apply_numeric_aggs(%SO{chart_rules: [%ChartRule{value_type: vt, path: p}]} = so)
-      when vt not in ~w[integer float]a do
-    msg =
-      "Error: can't aggregate on a non-numeric field type '#{vt}' for path #{p}. Check the source schema for the field used with chart operator."
-
-    Utils.put_result(so, {:error, msg})
-  end
-
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
     query =
       query
@@ -300,16 +306,18 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       case chart_rules do
-        [%{value_type: chart_value, path: chart_path}] when chart_value in [:integer, :float] ->
+        [%{value_type: v, path: p, aggregate: agg}]
+        when v in [:integer, :float]
+        when p == "timestamp" ->
           last_chart_field =
-            chart_path
+            p
             |> String.split(".")
             |> List.last()
             |> String.to_existing_atom()
 
           query
-          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, chart_path)
-          |> select_merge_agg_value(so.chart_aggregate, last_chart_field)
+          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, p)
+          |> select_merge_agg_value(agg, last_chart_field)
 
         [] ->
           case so.chart_data_shape_id do

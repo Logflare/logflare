@@ -85,10 +85,10 @@ defmodule Logflare.Lql.Parser.Helpers do
       string("s") |> replace(:second),
       string("minute") |> replace(:minute),
       string("m") |> replace(:minute),
-      string("h") |> replace(:hour),
       string("hour") |> replace(:hour),
-      string("d") |> replace(:day),
-      string("day") |> replace(:day)
+      string("h") |> replace(:hour),
+      string("day") |> replace(:day),
+      string("d") |> replace(:day)
     ])
     |> unwrap_and_tag(:period)
   end
@@ -424,7 +424,7 @@ defmodule Logflare.Lql.Parser.Helpers do
         path: "metadata.level",
         operator: :=,
         value: level,
-        modifiers: []
+        modifiers: %{}
       }
     end)
   end
@@ -438,7 +438,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       path: "event_message",
       value: args[@isolated_string],
       operator: :"~",
-      modifiers: [:quoted_string]
+      modifiers: %{quoted_string: true}
     }
   end
 
@@ -458,7 +458,7 @@ defmodule Logflare.Lql.Parser.Helpers do
         {:quoted, value} = filter.value
 
         filter
-        |> Map.update!(:modifiers, &[:quoted_string | &1])
+        |> Map.update!(:modifiers, &Map.put(&1, :quoted_string, true))
         |> Map.put(:value, value)
       else
         filter
@@ -493,11 +493,11 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   def get_level_order(level) do
     @level_orders
-    |> Enum.map(fn {k,v} ->
+    |> Enum.map(fn {k, v} ->
       {v, k}
     end)
-    |> Map.new
-  |> Map.get(level)
+    |> Map.new()
+    |> Map.get(level)
   end
 
   def get_level_by_order(level) do

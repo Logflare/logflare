@@ -80,9 +80,10 @@ hooks.ModalHook = {
     $modal.modal({backdrop: "static"})
   },
   destroyed() {
+    const $body = $("body")
     $(".modal").modal("dispose")
-    $("body").removeClass("modal-open")
-    $("body").removeAttr("style")
+    $body.removeClass("modal-open")
+    $body.removeAttr("style")
     $(".modal-backdrop").remove()
   },
 }
