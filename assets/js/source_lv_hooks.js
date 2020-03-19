@@ -93,56 +93,73 @@ const setTimezone = () => {
   $("#user-local-timezone").val(timeZone)
 }
 
+const datepickerConfig = {
+  "showDropdowns": true,
+  "timePicker": true,
+  "timePicker24Hour": true,
+  alwaysShowCalendars: true,
+  ranges: {
+    "Today": [],
+    "Yesterday": [],
+    "Last 15 Minutes": [],
+    "Last 7 Days": [],
+    "This Month": [],
+    "Last Month": []
+  },
+  "startDate": "03/12/2020",
+  "endDate": "03/18/2020"
+}
+const buildTsClause = (start, end, label) => {
+  let timestampFilter
+  const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ssZ")
+  switch (label) {
+    case "Today":
+      timestampFilter = ["t:today"]
+      break
+    case "Yesterday":
+      timestampFilter = ["t:yesterday"]
+      break
+    case "Last 15 Minutes":
+      timestampFilter = ["t:last@15m"]
+      break
+    case "Last 7 Days":
+      timestampFilter = ["t:last@7d"]
+      break
+    case "This Month":
+      timestampFilter = ["t:this@month"]
+      break
+    case "Last Month":
+      timestampFilter = ["t:last@month"]
+      break
+    default:
+      timestampFilter = [`t:${formatWithISO8601(start)}..${formatWithISO8601(end)}`]
+      break
+  }
+  return timestampFilter.join(" ")
+}
+
 hooks.SourceLogsSearch = {
   updated() {
     setTimezone()
+    const hook = this
+    $("#daterangepicker").daterangepicker(datepickerConfig)
+    $("#daterangepicker").on('apply.daterangepicker', (e, picker) => {
+      console.log(picker)
+      const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
+      hook.pushEvent("datepicker_update", {querystring: tsClause})
+    })
   },
   reconnected() {
     setTimezone()
   },
   mounted() {
     const hook = this
-    $("#daterangepicker").daterangepicker({
-      "showDropdowns": true,
-      "timePicker": true,
-      "timePicker24Hour": true,
-      ranges: {
-        "Today": [],
-        "Yesterday": [],
-        "Last 7 Days": [],
-        "Last 30 Days": [],
-        "This Month": [],
-        "Last Month": []
-      },
-      "startDate": "03/12/2020",
-      "endDate": "03/18/2020"
-    }, (start, end, label) => {
-      let timestampFilter
-      switch (label) {
-        case "Today":
-          timestampFilter = ["t:today"]
-          break
-        case "Yesterday":
-          timestampFilter = ["t:yesteray"]
-          break
-        case "Last 15 Minutes":
-          timestampFilter = ["t:last@15m"]
-          break
-        case "Last 7 Days":
-          timestampFilter = ["t:last@7d"]
-          break
-        case "This Month":
-          timestampFilter = ["t:this@month"]
-          break
-        default:
-          const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ssZ")
-          timestampFilter = [`t:${formatWithISO8601(start)}..${formatWithISO8601(end)}`]
-          break
-      }
-      const $qsInput = $("#search_querystring")
-      $qsInput.val($qsInput.val() + " " + timestampFilter.join(" "))
+    $("#daterangepicker").daterangepicker(datepickerConfig)
+    $("#daterangepicker").on('apply.daterangepicker', (e, picker) => {
+      console.log(picker)
+      const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
+      hook.pushEvent("datepicker_update", {querystring: tsClause})
     })
-
 
     initSearchInViewObserver(this)
 

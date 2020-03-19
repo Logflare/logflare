@@ -5,6 +5,7 @@ defmodule Logflare.Lql.Parser do
   alias Logflare.Lql
   alias Logflare.Lql.{FilterRule, ChartRule, Utils}
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
 
   require Logger
 
@@ -27,10 +28,10 @@ defmodule Logflare.Lql.Parser do
   )
 
   def parse("", _schema) do
-    {:ok, [%FilterRule{path: "event_message", operator: "~", value: ".+", modifiers: []}]}
+    {:ok, []}
   end
 
-  def parse(querystring, schema) do
+  def parse(querystring, %TS{} = schema) do
     with {:ok, rules, "", _, {_, _}, _} <-
            querystring
            |> String.trim()

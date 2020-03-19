@@ -26,12 +26,23 @@ defmodule LogflareWeb.Source.SearchLV.SearchOpts do
     end
   end
 
+  def update_chart_ops() do
+  end
+
   def prepare(params) do
     params
     |> case do
-      %{"querystring" => _} = p -> p
-      %{"q" => q} = p -> Map.put(p, "querystring", q)
-      p -> p
+      %{"querystring" => ""} = p ->
+        %{p | "querystring" => "chart:aggregate@count chart:period@minute"}
+
+      %{"querystring" => _} = p ->
+        p
+
+      %{"q" => q} = p ->
+        Map.put(p, "querystring", q)
+
+      p ->
+        p
     end
     |> update_if_exists("chart_aggregate", &String.to_existing_atom/1)
     |> update_if_exists("chart_period", &String.to_existing_atom/1)
