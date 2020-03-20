@@ -6,34 +6,35 @@ defmodule Logflare.Lql.Encoder do
 
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules
-    |> Enum.sort_by(fn r ->
-      case r do
-        %FilterRule{} -> 0
-        %ChartRule{} -> 1
-      end
+    |> Enum.sort_by(fn
+      %FilterRule{} -> 0
+      %ChartRule{} -> 1
     end)
     |> Enum.group_by(fn
       %ChartRule{} -> :chart
       %FilterRule{} = f -> f.path
     end)
     |> Enum.reduce("", fn
-      {:chart, chart_rules}, qs ->
-        chart_qs =
-          chart_rules
-          |> Enum.map(&to_fragment/1)
-          |> Enum.join(" ")
-          |> String.replace("chart:timestamp", "")
+      grouped_rules, qs ->
+        append =
+          case grouped_rules do
+            {:chart, chart_rules} ->
+              chart_rules
+              |> Enum.map(&to_fragment/1)
+              |> Enum.join(" ")
+              |> String.replace("chart:timestamp", "")
 
-        qs <> " " <> chart_qs
+            {"metadata.level", filter_rules} when length(filter_rules) >= 2 ->
+              {min_level, max_level} =
+                Enum.min_max_by(filter_rules, &Parser.Helpers.get_level_order(&1.value))
 
-      {"metadata.level", filter_rules}, qs when length(filter_rules) >= 2 ->
-        {min_level, max_level} =
-          Enum.min_max_by(filter_rules, &Parser.Helpers.get_level_order(&1.value))
+              "metadata.level:#{min_level.value}..#{max_level.value}"
 
-        qs <> " " <> "metadata.level:#{min_level.value}..#{max_level.value}"
+            {_path, filter_rules} ->
+              filter_rules |> Enum.map(&to_fragment/1) |> Enum.join(" ")
+          end
 
-      {path, filter_rules}, qs ->
-        qs <> " " <> (Enum.map(filter_rules, &to_fragment/1) |> Enum.join(" "))
+        qs <> " " <> append
     end)
     |> String.trim()
   end
@@ -50,7 +51,7 @@ defmodule Logflare.Lql.Encoder do
          path: "timestamp",
          operator: :range,
          values: [lv, rv],
-         modifiers: mods
+         modifiers: _mods
        }) do
     dtstring =
       if match?(%Date{}, lv) do
@@ -62,7 +63,7 @@ defmodule Logflare.Lql.Encoder do
     "timestamp:#{dtstring}"
   end
 
-  defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v, modifiers: mods}) do
+  defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v}) do
     dtstring =
       if match?(%Date{}, v) do
         "#{v}"
@@ -73,7 +74,7 @@ defmodule Logflare.Lql.Encoder do
     "timestamp:#{op}#{dtstring}"
   end
 
-  defp to_fragment(%FilterRule{path: "event_message", operator: op, value: v, modifiers: mods}) do
+  defp to_fragment(%FilterRule{path: "event_message", value: v, modifiers: mods}) do
     if mods[:quoted_string] do
       ~s|"#{v}"|
     else
@@ -108,14 +109,15 @@ defmodule Logflare.Lql.Encoder do
     fr = "chart:#{c.path}"
 
     fr =
-      if c.aggregate do
+      c.aggregate
+      |> if do
         fr <> " chart:aggregate@#{c.aggregate}"
       else
         fr
       end
 
     fr =
-      if c.aggregate do
+      if c.period do
         fr <> " chart:period@#{c.period}"
       else
         fr

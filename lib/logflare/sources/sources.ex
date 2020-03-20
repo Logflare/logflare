@@ -104,8 +104,10 @@ defmodule Logflare.Sources do
 
   def put_bq_table_data(source) do
     source
+    |> put_bq_table_id()
     |> put_bq_table_schema()
     |> put_bq_table_typemap()
+    |> put_bq_dataset_id()
   end
 
   def preload_saved_searches(source) do

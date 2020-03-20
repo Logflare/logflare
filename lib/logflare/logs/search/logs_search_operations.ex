@@ -40,13 +40,12 @@ defmodule Logflare.Logs.SearchOperations do
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
-    {sql, params} = so.sql_params
+    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
 
-    with {:ok, response} <-
-           BqRepo.query_with_sql_and_params(bq_project_id, sql, params, dryRun: true),
+    with {:ok, response} <- BqRepo.query(bq_project_id, so.query, dataset_id: dataset_id, dryRun: true),
          is_within_limit? = response.total_bytes_processed <= @default_processed_bytes_limit,
          {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
-         {:ok, response} <- BqRepo.query_with_sql_and_params(bq_project_id, sql, params) do
+         {:ok, response} <- BqRepo.query(bq_project_id, so.query, dataset_id: dataset_id) do
       so
       |> Utils.put_result(:query_result, response)
       |> Utils.put_result(:rows, response.rows)
@@ -96,9 +95,9 @@ defmodule Logflare.Logs.SearchOperations do
 
       get_number_of_chart_ticks(min_ts, max_ts, so.chart_period) > @default_max_n_chart_ticks ->
         msg =
-          "the interval length between min and max timestamp is higher than #{
+          "the interval length between min and max timestamp is larger than #{
             @default_max_n_chart_ticks
-          }, please select use another period."
+          }, please select use another chart aggregation period."
 
         Utils.halt(so, msg)
 
@@ -223,25 +222,23 @@ defmodule Logflare.Logs.SearchOperations do
       end
 
     q =
-      cond do
-        t? or Enum.empty?(ts_filters) ->
-          query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
-          |> where(
-            partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
-              in_streaming_buffer()
-          )
-          |> limit([t], ^tick_count)
+      if t? or Enum.empty?(ts_filters) do
+        query
+        |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
+        |> where(
+          partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
+            in_streaming_buffer()
+        )
+        |> limit([t], ^tick_count)
+      else
+        %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
 
-        not Enum.empty?(ts_filters) ->
-          %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
-
-          query
-          |> where(
-            partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
-          )
-          |> or_where(in_streaming_buffer())
-          |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+        query
+        |> where(
+          partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
+        )
+        |> or_where(in_streaming_buffer())
+        |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
       end
 
     %{so | query: q}
