@@ -128,6 +128,15 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     end
   end
 
+  @spec get_number_of_chart_ticks(
+          Date.t() | DateTime.t(),
+          Date.t() | DateTime.t(),
+          SO.chart_period()
+        ) :: pos_integer
+  def get_number_of_chart_ticks(min, max, period) do
+    Timex.diff(max, min, period)
+  end
+
   def generate_message(period) do
     "Your timestamp filter is an unbounded interval. Max number of chart ticks is limited to 250 #{
       to_timex_shift_key(period)

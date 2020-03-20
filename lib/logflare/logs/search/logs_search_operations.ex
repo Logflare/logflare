@@ -21,8 +21,11 @@ defmodule Logflare.Logs.SearchOperations do
 
   alias Logflare.Logs.SearchOperation, as: SO
 
+  @type chart_period :: :day | :hour | :minute | :second
+
   @default_limit 100
   @default_processed_bytes_limit 10_000_000_000
+  @default_max_n_chart_ticks 250
 
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
@@ -69,6 +72,9 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
   def apply_halt_conditions(%SO{} = so) do
+    %{min: min_ts, max: max_ts} =
+      get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
+
     cond do
       so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
         Utils.halt(so, @timestamp_filter_with_tailing)
@@ -85,6 +91,14 @@ defmodule Logflare.Logs.SearchOperations do
           "Error: can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{
             chart_rule.path
           }. Check the source schema for the field used with chart operator."
+
+        Utils.halt(so, msg)
+
+      get_number_of_chart_ticks(min_ts, max_ts, so.chart_period) > @default_max_n_chart_ticks ->
+        msg =
+          "the interval length between min and max timestamp is higher than #{
+            @default_max_n_chart_ticks
+          }, please select use another period."
 
         Utils.halt(so, msg)
 
@@ -353,11 +367,9 @@ defmodule Logflare.Logs.SearchOperations do
     use Timex
 
     maybe_truncate_to_second = fn dt ->
-      if match?(%DateTime{}, dt) do
-        DateTime.truncate(dt, :second)
-      else
-        dt
-      end
+      dt
+      |> Timex.to_datetime()
+      |> DateTime.truncate(:second)
     end
 
     min = maybe_truncate_to_second.(min)
@@ -399,8 +411,7 @@ defmodule Logflare.Logs.SearchOperations do
     [aggs | empty_aggs]
     |> List.flatten()
     |> Enum.uniq_by(& &1.timestamp)
-    |> Enum.sort_by(& &1.timestamp)
-    |> Enum.reverse()
+    |> Enum.sort_by(& &1.timestamp, :desc)
   end
 
   def put_time_stats(%SO{} = so) do
