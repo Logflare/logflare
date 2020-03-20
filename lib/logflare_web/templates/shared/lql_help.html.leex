@@ -41,48 +41,56 @@
             <td>
               <kbd>error</kbd> <kbd>timestamp:>=2019-08-14T03:42:31Z</kbd> <kbd>timestamp:<=2019-08-14T03:42:35Z</kbd>
                 </td>
-              </tr>
-              <tr>
-                <th scope="row">Metadata field</th>
-                <td>exact match</td>
-                <td><kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd></td>
-                <td><kbd>metadata.response.status:500</kbd></td>
-              </tr>
-              <tr>
-                <th scope="row">Metadata field</th>
-                <td>match float, integer or datetime values</td>
-                <td>
-                  <kbd>path</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> <kbd>value</kbd>
-                    </td>
-                    <td><kbd>metadata.response.status:>300</kbd> <kbd>metadata.response.status:<=400</kbd> <kbd>metadata.user.created_at:>2019-07-01T00:15:00</kbd></td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Metadata field</th>
-                        <td>match regex</td>
-                        <td><kbd>path</kbd> <kbd>:</kbd> <kbd>~</kbd> <kbd>regex</kbd></td>
-                        <td><kbd>metadata.browser:~"Firefox 5\d"</kbd></td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Metadata field</th>
-                        <td>match array includes</td>
-                        <td>
-                          <kbd>path</kbd> <kbd>:</kbd> <kbd>@></kbd> <kbd>value</kbd>
-                        </td>
-                        <td>
-                          <kbd>metadata.user.roles:@>"new subscriber"</kbd>
-                        </td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Metadata field</th>
-                        <td>match does NOT include</td>
-                        <td>
-                          <kbd>-</kbd>
-                          <kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd>
-                        </td>
-                        <td>
-                          <kbd>-metadata.user.company:"My Company"</kbd>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+      </tr>
+      <tr>
+        <th scope="row">Timestamp range</th>
+        <td>limit date range</td>
+        <td> <kbd>timestamp</kbd> <kbd>:</kbd> <kbd>date</kbd> <kbd>..</kbd> <kbd>date</kbd> </td>
+            <td>
+              <kbd>error</kbd> <kbd>timestamp:2020-01-14..2020-01-20</kbd>
+            </td>
+      </tr>
+      <tr>
+        <th scope="row">Metadata field</th>
+        <td>exact match</td>
+        <td><kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd></td>
+        <td><kbd>metadata.response.status:500</kbd></td>
+      </tr>
+      <tr>
+        <th scope="row">Metadata field</th>
+        <td>match float, integer or datetime values</td>
+        <td>
+          <kbd>path</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> <kbd>value</kbd>
+        </td>
+          <td><kbd>metadata.response.status:>300</kbd> <kbd>metadata.response.status:<=400</kbd> <kbd>metadata.user.created_at:>2019-07-01T00:15:00</kbd></td>
+      </tr>
+      <tr>
+        <th scope="row">Metadata field</th>
+        <td>match regex</td>
+        <td><kbd>path</kbd> <kbd>:</kbd> <kbd>~</kbd> <kbd>regex</kbd></td>
+        <td><kbd>metadata.browser:~"Firefox 5\d"</kbd></td>
+      </tr>
+      <tr>
+        <th scope="row">Metadata field</th>
+        <td>match array includes</td>
+        <td>
+          <kbd>path</kbd> <kbd>:</kbd> <kbd>@></kbd> <kbd>value</kbd>
+        </td>
+        <td>
+          <kbd>metadata.user.roles:@>"new subscriber"</kbd>
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Metadata field</th>
+        <td>match does NOT include</td>
+        <td>
+          <kbd>-</kbd>
+          <kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd>
+        </td>
+        <td>
+          <kbd>-metadata.user.company:"My Company"</kbd>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
