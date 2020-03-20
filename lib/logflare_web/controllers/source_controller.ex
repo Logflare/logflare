@@ -303,11 +303,16 @@ defmodule LogflareWeb.SourceController do
   end
 
   def delete(%{assigns: %{source: source}} = conn, params) do
-    case :ets.first(source.token) do
-      :"$end_of_table" ->
+    token = source.token
+
+    cond do
+      :ets.info(token) == :undefined ->
+        del_source_and_redirect(conn, source)
+
+      :ets.first(token) == :"$end_of_table" ->
         del_source_and_redirect(conn, params)
 
-      {timestamp, _unique_int, _monotime} ->
+      {timestamp, _unique_int, _monotime} = :ets.first(token) ->
         now = System.os_time(:microsecond)
 
         if now - timestamp > 3_600_000_000 do
