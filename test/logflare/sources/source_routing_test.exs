@@ -24,7 +24,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
             %FR{
               value: value,
               operator: :list_includes,
-              modifiers: [],
+              modifiers: %{},
               path: "metadata.list_of_ints"
             }
           ]
@@ -64,7 +64,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
             %FR{
               value: value,
               operator: :"~",
-              modifiers: [],
+              modifiers: %{},
               path: "metadata.regex_string"
             }
           ]
@@ -99,7 +99,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
             %FR{
               value: value,
               operator: operator,
-              modifiers: [],
+              modifiers: %{},
               path: "metadata.number"
             }
           ]
@@ -139,13 +139,13 @@ defmodule Logflare.Logs.SourceRoutingTest do
           %FR{
             value: 0,
             operator: :=,
-            modifiers: [],
+            modifiers: %{},
             path: "metadata.field1"
           },
           %FR{
             value: "string",
             operator: :"~",
-            modifiers: [],
+            modifiers: %{},
             path: "metadata.field2"
           }
         ]
@@ -177,13 +177,13 @@ defmodule Logflare.Logs.SourceRoutingTest do
           %FR{
             value: 0,
             operator: :=,
-            modifiers: [:negate],
+            modifiers: %{negate: true},
             path: "metadata.field1"
           },
           %FR{
             value: "string",
             operator: :"~",
-            modifiers: [],
+            modifiers: %{},
             path: "metadata.field2"
           }
         ]
@@ -246,7 +246,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
           %FR{
             value: "value",
             operator: :=,
-            modifiers: [],
+            modifiers: %{},
             path: ~s|metadata.lines.data.field1.field2.field3|
           }
         ]
@@ -283,12 +283,52 @@ defmodule Logflare.Logs.SourceRoutingTest do
           %FR{
             value: "value",
             operator: :=,
-            modifiers: [],
+            modifiers: %{},
             path: ~s|metadata.lines.data|
           }
         ]
       }
 
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
+    test "range operator" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      build_filter = fn lvalue, rvalue, modifiers  ->
+        %Rule{
+          lql_string: "",
+          lql_filters: [
+            %FR{
+              operator: :range,
+              values: [lvalue, rvalue],
+              modifiers: modifiers,
+              path: "metadata.range"
+            }
+          ]
+        }
+      end
+
+      build_le = fn value ->
+        build(:log_event,
+          source: source,
+          metadata: %{"range" => value}
+        )
+      end
+
+      le = build_le.(6)
+      rule = build_filter.(1, 10, %{})
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.(1, 10, %{negate: true})
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      le = build_le.(100)
+      rule = build_filter.(101, 500, %{})
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      rule = build_filter.(101, 500, %{negate: true})
       assert SourceRouting.route_with_lql_rules?(le, rule)
     end
   end
@@ -304,7 +344,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
             %FR{
               value: value,
               operator: :list_includes,
-              modifiers: [],
+              modifiers: %{},
               path: "metadata.level1.level2.list_of_ints"
             }
           ]
@@ -389,7 +429,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
           %FR{
             value: "value",
             operator: :=,
-            modifiers: [],
+            modifiers: %{},
             path: ~s|metadata.lines.data.field1.field2.field3|
           }
         ]
@@ -426,7 +466,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
           %FR{
             value: "value",
             operator: :=,
-            modifiers: [],
+            modifiers: %{},
             path: ~s|metadata.lines.data|
           }
         ]

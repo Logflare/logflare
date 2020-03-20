@@ -56,6 +56,10 @@ defmodule Logflare.Logs.SourceRouting do
                 is_nil(le_value) ->
                   false
 
+                operator == :range ->
+                  [lvalue, rvalue] = lql_filter.values
+                  le_value >= lvalue and le_value <= rvalue
+
                 operator == :list_includes ->
                   apply(Kernel, :==, [le_value, value])
 
@@ -70,7 +74,7 @@ defmodule Logflare.Logs.SourceRouting do
               end
 
             lql_filter_matches? =
-              if :negate in mds do
+              if mds[:negate] do
                 not lql_filter_matches?
               else
                 lql_filter_matches?
