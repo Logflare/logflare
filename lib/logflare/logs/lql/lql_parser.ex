@@ -115,6 +115,18 @@ defmodule Logflare.Lql.Parser do
   end
 
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)
+
+  defp maybe_cast_value(%{values: values, value: nil} = c, type) when length(values) >= 1 do
+    %{
+      c
+      | values:
+          values
+          |> Enum.map(&%{value: &1, path: c.path})
+          |> Enum.map(&maybe_cast_value(&1, type))
+          |> Enum.map(& &1.value)
+    }
+  end
+
   defp maybe_cast_value(%{value: :NULL} = c, _), do: c
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}

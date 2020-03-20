@@ -32,52 +32,34 @@ defmodule Logflare.Lql.Encoder do
 
         qs <> " " <> "metadata.level:#{min_level.value}..#{max_level.value}"
 
-      {path, filter_rules}, qs when length(filter_rules) == 2 ->
-        op_set =
-          filter_rules
-          |> Enum.map(& &1.operator)
-          |> MapSet.new()
-
-        range_operator_fragments? = MapSet.subset?(op_set, MapSet.new([:>=, :>, :<=, :<]))
-
-        if range_operator_fragments? do
-          left = Enum.find(filter_rules, &(&1.operator in [:>, :>=]))
-          right = Enum.find(filter_rules, &(&1.operator in [:<=, :<]))
-
-          left_value =
-            if match?(%DateTime{}, left.value) do
-              Timex.format!(left.value, "{ISO:Extended:Z}")
-            else
-              "#{left.value}"
-            end
-
-          right_value =
-            if match?(%DateTime{}, right.value) do
-              Timex.format!(right.value, "{ISO:Extended:Z}")
-            else
-              "#{right.value}"
-            end
-
-          maybe_negation_op =
-            if get_in(left.modifiers, [:negate]) && get_in(right.modifiers, [:negate]) do
-              "-"
-            else
-              ""
-            end
-
-          qs <> " " <> maybe_negation_op <> "#{path}:#{left_value}..#{right_value}"
-        else
-          qs <> " " <> (Enum.map(filter_rules, &to_fragment/1) |> Enum.join(" "))
-        end
-
       {path, filter_rules}, qs ->
         qs <> " " <> (Enum.map(filter_rules, &to_fragment/1) |> Enum.join(" "))
     end)
     |> String.trim()
   end
 
+  defp to_fragment(%FilterRule{shorthand: sh} = f) when not is_nil(sh) do
+    "#{f.path}:#{sh}" |> String.trim_trailing("s")
+  end
+
   defp to_fragment(%FilterRule{modifiers: %{negate: true} = mods} = f) do
     "-" <> to_fragment(%{f | modifiers: Map.delete(mods, :negate)})
+  end
+
+  defp to_fragment(%FilterRule{
+         path: "timestamp",
+         operator: :range,
+         values: [lv, rv],
+         modifiers: mods
+       }) do
+    dtstring =
+      if match?(%Date{}, lv) do
+        "#{lv}..#{rv}"
+      else
+        Timex.format!(lv, "{ISO:Extended:Z}") <> ".." <> Timex.format!(rv, "{ISO:Extended:Z}")
+      end
+
+    "timestamp:#{dtstring}"
   end
 
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v, modifiers: mods}) do
@@ -99,7 +81,7 @@ defmodule Logflare.Lql.Encoder do
     end
   end
 
-  defp to_fragment(%FilterRule{path: path, operator: op, value: v, modifiers: mods}) do
+  defp to_fragment(%FilterRule{path: path, operator: op, value: v, modifiers: mods} = fr) do
     v =
       if mods[:quoted_string] do
         ~s|"#{v}"|
@@ -108,9 +90,17 @@ defmodule Logflare.Lql.Encoder do
       end
 
     case op do
-      := -> "#{path}:#{v}"
-      :list_includes -> "#{path}:@>#{v}"
-      _ -> "#{path}:#{op}#{v}"
+      :range ->
+        "#{path}:#{Enum.join(fr.values, "..")}"
+
+      := ->
+        "#{path}:#{v}"
+
+      :list_includes ->
+        "#{path}:@>#{v}"
+
+      _ ->
+        "#{path}:#{op}#{v}"
     end
   end
 

@@ -47,7 +47,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> replace({:path, "timestamp"})
     |> concat(operator())
     |> concat(timestamp_value())
-    |> reduce({:to_rule, [:filter]})
+    |> reduce({:to_rule, [:filter_maybe_shorthand]})
     |> reduce(:apply_value_modifiers)
     |> map({:check_for_no_invalid_metadata_field_values, [:timestamp]})
     |> label("timestamp filter rule clause")
@@ -201,16 +201,22 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:timestamp_shorthand_to_value)
   end
 
-  def timestamp_shorthand_to_value(["now"]), do: %{Timex.now() | microsecond: {0, 0}}
+  def timestamp_shorthand_to_value(["now"]) do
+    %{value: %{Timex.now() | microsecond: {0, 0}}, shorthand: "now"}
+  end
 
   def timestamp_shorthand_to_value(["today"]) do
     dt = Timex.today() |> Timex.to_datetime()
-    {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+
+    %{value: value, shorthand: "today"}
   end
 
   def timestamp_shorthand_to_value(["yesterday"]) do
     dt = Timex.today() |> Timex.shift(days: -1) |> Timex.to_datetime()
-    {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+
+    %{value: value, shorthand: "yesterday"}
   end
 
   def timestamp_shorthand_to_value(["this", period]) do
@@ -218,25 +224,28 @@ defmodule Logflare.Lql.Parser.Helpers do
     now_ndt_no_m = %{now_ndt | minute: 0}
     now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
-    case period do
-      :minutes ->
-        {:range_operator, [now_ndt, now_ndt]}
+    value =
+      case period do
+        :minutes ->
+          {:range_operator, [now_ndt, now_ndt]}
 
-      :hours ->
-        {:range_operator, [now_ndt_no_m, now_ndt]}
+        :hours ->
+          {:range_operator, [now_ndt_no_m, now_ndt]}
 
-      :days ->
-        {:range_operator, [now_ndt_no_h, now_ndt]}
+        :days ->
+          {:range_operator, [now_ndt_no_h, now_ndt]}
 
-      :weeks ->
-        {:range_operator, [Timex.beginning_of_week(now_ndt_no_h), now_ndt]}
+        :weeks ->
+          {:range_operator, [Timex.beginning_of_week(now_ndt_no_h), now_ndt]}
 
-      :months ->
-        {:range_operator, [Timex.beginning_of_month(now_ndt_no_h), now_ndt]}
+        :months ->
+          {:range_operator, [Timex.beginning_of_month(now_ndt_no_h), now_ndt]}
 
-      :years ->
-        {:range_operator, [Timex.beginning_of_year(now_ndt_no_h), now_ndt]}
-    end
+        :years ->
+          {:range_operator, [Timex.beginning_of_year(now_ndt_no_h), now_ndt]}
+      end
+
+    %{value: value, shorthand: "this@#{period}"}
   end
 
   def timestamp_shorthand_to_value(["last", amount, period]) do
@@ -246,33 +255,36 @@ defmodule Logflare.Lql.Parser.Helpers do
     now_ndt_no_m = %{now_ndt | minute: 0}
     now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
-    case period do
-      :seconds ->
-        {:range_operator,
-         [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
+    value =
+      case period do
+        :seconds ->
+          {:range_operator,
+           [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
 
-      :minutes ->
-        {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
+        :minutes ->
+          {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
 
-      :hours ->
-        {:range_operator, [Timex.shift(now_ndt_no_m, [{period, amount}]), now_ndt]}
+        :hours ->
+          {:range_operator, [Timex.shift(now_ndt_no_m, [{period, amount}]), now_ndt]}
 
-      :days ->
-        {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+        :days ->
+          {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
 
-      :weeks ->
-        {:range_operator, [Timex.shift(now_ndt_no_h, [{:days, amount * 7}]), now_ndt]}
+        :weeks ->
+          {:range_operator, [Timex.shift(now_ndt_no_h, [{:days, amount * 7}]), now_ndt]}
 
-      :months ->
-        {:range_operator,
-         [
-           Timex.shift(%{now_ndt_no_h | day: 1}, [{period, amount}]),
-           now_ndt
-         ]}
+        :months ->
+          {:range_operator,
+           [
+             Timex.shift(%{now_ndt_no_h | day: 1}, [{period, amount}]),
+             now_ndt
+           ]}
 
-      :years ->
-        {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
-    end
+        :years ->
+          {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+      end
+
+    %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
   end
 
   def parse_date_or_datetime([{tag, result}]) do
@@ -367,21 +379,11 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> unwrap_and_tag(:invalid_metadata_field_value)
   end
 
+  @spec apply_value_modifiers([FilterRule.t()]) :: FilterRule.t()
   def apply_value_modifiers([rule]) do
     case rule.value do
       {:range_operator, [lvalue, rvalue]} ->
-        [
-          %FilterRule{
-            path: rule.path,
-            value: lvalue,
-            operator: :>=
-          },
-          %FilterRule{
-            path: rule.path,
-            value: rvalue,
-            operator: :<=
-          }
-        ]
+        %{rule | values: [lvalue, rvalue], operator: :range, value: nil}
 
       _ ->
         rule
@@ -450,19 +452,40 @@ defmodule Logflare.Lql.Parser.Helpers do
     }
   end
 
+  def to_rule(args, :filter_maybe_shorthand) do
+    args =
+      case args[:value] do
+        %{shorthand: sh, value: value} ->
+          sh =
+            case sh do
+              "this@" <> _ -> String.trim_trailing(sh, "s")
+              "last@" <> _ -> String.trim_trailing(sh, "s")
+              _ -> sh
+            end
+
+          args
+          |> Keyword.replace!(:value, value)
+          |> Keyword.put(:shorthand, sh)
+
+        _ ->
+          args
+      end
+
+    to_rule(args, :filter)
+  end
+
   def to_rule(args, :filter) when is_list(args) do
     filter = struct!(FilterRule, Map.new(args))
 
-    args =
-      if match?({:quoted, _}, filter.value) do
-        {:quoted, value} = filter.value
+    if match?({:quoted, _}, filter.value) do
+      {:quoted, value} = filter.value
 
-        filter
-        |> Map.update!(:modifiers, &Map.put(&1, :quoted_string, true))
-        |> Map.put(:value, value)
-      else
-        filter
-      end
+      filter
+      |> Map.update!(:modifiers, &Map.put(&1, :quoted_string, true))
+      |> Map.put(:value, value)
+    else
+      filter
+    end
   end
 
   def check_for_no_invalid_metadata_field_values(
