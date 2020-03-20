@@ -20,5 +20,4 @@ defmodule Logflare.Lql do
   def encode!(lql_rules) do
     Encoder.to_querystring(lql_rules)
   end
-
 end

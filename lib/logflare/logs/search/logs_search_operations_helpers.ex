@@ -17,6 +17,10 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     %{min: min, max: max, message: nil}
   end
 
+  def get_min_max_filter_timestamps([%{operator: :range, values: [lvalue, rvalue]}], _) do
+    %{min: lvalue, max: rvalue, message: nil}
+  end
+
   def get_min_max_filter_timestamps([_tsf] = ts_filters, chart_period) do
     {min, max} =
       ts_filters

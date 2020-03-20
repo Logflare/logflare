@@ -69,7 +69,12 @@ defmodule Logflare.Lql.EctoHelpers do
       |> List.last()
       |> String.to_atom()
 
-    where(q, ^dynamic_where_filter_rule(column, rule.operator, rule.value, rule.modifiers))
+    if not is_nil(rule.values) and rule.operator == :range do
+      [lvalue, rvalue] = rule.values
+      where(q, [..., n1], fragment("? BETWEEN ? AND ?", field(n1, ^column), ^lvalue, ^rvalue))
+    else
+      where(q, ^dynamic_where_filter_rule(column, rule.operator, rule.value, rule.modifiers))
+    end
   end
 
   @type operators :: :< | :<= | := | :> | :>= | :"~"
