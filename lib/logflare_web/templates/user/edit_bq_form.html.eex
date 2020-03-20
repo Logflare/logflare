@@ -24,9 +24,10 @@
     </div>
   <% end %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-    <%= hidden_input e, :bigquery_project_id, value: nil, class: "form-control form-control-margin" %>
-    <%= hidden_input e, :bigquery_dataset_id, value: nil, class: "form-control form-control-margin" %>
-    <%= hidden_input e, :bigquery_dataset_location, value: nil, class: "form-control form-control-margin" %>
+    <%= hidden_input e, :bigquery_project_id, value: nil %>
+    <%= hidden_input e, :bigquery_dataset_id, value: nil %>
+    <%= hidden_input e, :bigquery_dataset_location, value: nil %>
+    <%= hidden_input e, :bigquery_processed_bytes_limit, value: 10_000_000_000 %>
     <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
   <% end %>
 <% else %>
