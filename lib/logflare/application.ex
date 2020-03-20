@@ -49,6 +49,7 @@ defmodule Logflare.Application do
     topologies = Application.get_env(:libcluster, :topologies)
 
     dev_prod_children = [
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       supervisor(Phoenix.PubSub.PG2, [
@@ -79,7 +80,6 @@ defmodule Logflare.Application do
       Sources.Buffers,
       Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
       supervisor(Sources.Counters, []),
       supervisor(Sources.RateCounters, []),
       supervisor(Tracker.SourceNodeInserts, []),
