@@ -329,6 +329,9 @@ defmodule LogflareWeb.SourceController do
 
           put_flash_and_redirect_to_dashboard(conn, :error, message)
         end
+
+      true ->
+        del_source_and_redirect(conn, source)
     end
   end
 
