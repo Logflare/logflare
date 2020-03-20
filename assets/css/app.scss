@@ -231,7 +231,7 @@ a:hover {
 }
 
 a:focus {
-  text-shadow: 0 0 3px $brand-light-gray;
+  outline: 3px dashed $brand-fuscia;
 }
 
 .text-primary {
