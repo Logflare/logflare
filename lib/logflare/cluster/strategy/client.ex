@@ -1,4 +1,4 @@
-defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Client do
+defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
   require Logger
 
   use Tesla
