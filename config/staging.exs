@@ -50,14 +50,14 @@ config :logflare_telemetry,
 config :libcluster,
   topologies: [
     gce: [
-      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
+      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine.Staging,
       config: [
         release_name: :logflare
       ]
     ]
   ]
 
-config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
+config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine.Staging,
   regions: [{"us-central1", "logflare-cluster-group"}],
   zones: []
 
