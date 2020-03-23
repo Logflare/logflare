@@ -2,7 +2,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
-  use Phoenix.LiveView
+  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
   alias LogflareWeb.Router.Helpers, as: Routes
 
   alias LogflareWeb.SearchView
