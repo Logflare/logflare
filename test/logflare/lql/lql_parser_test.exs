@@ -11,9 +11,9 @@ defmodule Logflare.LqlParserTest do
   @default_schema Logflare.BigQuery.TableSchema.SchemaBuilderHelpers.schemas().initial
 
   describe "LQL parsing for" do
-    test "simple message search string" do
+    test "word string regexp" do
       schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
-      str = ~S|user sign up|
+      str = ~S|~user ~sign ~up|
       {:ok, result} = Parser.parse(str, schema)
 
       lql_rules = [
@@ -26,9 +26,9 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == str
     end
 
-    test "quoted message search string" do
+    test "quoted string regexp" do
       schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
-      str = ~S|new "user sign up" server|
+      str = ~S|~new ~"user sign up" ~server|
       {:ok, result} = Parser.parse(str, schema)
 
       lql_rules = [
@@ -41,6 +41,67 @@ defmodule Logflare.LqlParserTest do
         },
         %FilterRule{
           operator: :"~",
+          path: "event_message",
+          value: "server",
+          modifiers: %{}
+        }
+      ]
+
+      assert Utils.get_filter_rules(result) == lql_rules
+      assert Lql.encode!(lql_rules) == str
+    end
+
+    test "word contains" do
+      schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
+      str = ~S|user sign up|
+      {:ok, result} = Parser.parse(str, schema)
+
+      lql_rules = [
+        %FilterRule{
+          operator: :string_contains,
+          path: "event_message",
+          value: "user",
+          modifiers: %{}
+        },
+        %FilterRule{
+          operator: :string_contains,
+          path: "event_message",
+          value: "sign",
+          modifiers: %{}
+        },
+        %FilterRule{
+          operator: :string_contains,
+          path: "event_message",
+          value: "up",
+          modifiers: %{}
+        }
+      ]
+
+      assert Utils.get_filter_rules(result) == lql_rules
+      assert Lql.encode!(lql_rules) == str
+    end
+
+    @tag :only
+    test "quoted string contains" do
+      schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
+      str = ~S|new "user sign up" server|
+      {:ok, result} = Parser.parse(str, schema)
+
+      lql_rules = [
+        %FilterRule{
+          operator: :string_contains,
+          path: "event_message",
+          value: "new",
+          modifiers: %{}
+        },
+        %FilterRule{
+          operator: :string_contains,
+          path: "event_message",
+          value: "user sign up",
+          modifiers: %{quoted_string: true}
+        },
+        %FilterRule{
+          operator: :string_contains,
           path: "event_message",
           value: "server",
           modifiers: %{}
@@ -313,19 +374,19 @@ defmodule Logflare.LqlParserTest do
       filters = [
         %Logflare.Lql.FilterRule{
           modifiers: %{},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           value: "log"
         },
         %Logflare.Lql.FilterRule{
           modifiers: %{quoted_string: true},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           value: "was generated"
         },
         %Logflare.Lql.FilterRule{
           modifiers: %{quoted_string: true},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           value: "by logflare pinger"
         },
@@ -519,7 +580,7 @@ defmodule Logflare.LqlParserTest do
       expected = [
         %Logflare.Lql.FilterRule{
           modifiers: %{},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           shorthand: nil,
           value: "log",
@@ -527,7 +588,7 @@ defmodule Logflare.LqlParserTest do
         },
         %Logflare.Lql.FilterRule{
           modifiers: %{quoted_string: true},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           shorthand: nil,
           value: "was generated",
@@ -535,7 +596,7 @@ defmodule Logflare.LqlParserTest do
         },
         %Logflare.Lql.FilterRule{
           modifiers: %{quoted_string: true},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           shorthand: nil,
           value: "by logflare pinger",
@@ -543,7 +604,7 @@ defmodule Logflare.LqlParserTest do
         },
         %Logflare.Lql.FilterRule{
           modifiers: %{},
-          operator: :"~",
+          operator: :string_contains,
           path: "event_message",
           shorthand: nil,
           value: "error",

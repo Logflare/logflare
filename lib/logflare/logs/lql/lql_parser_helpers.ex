@@ -8,23 +8,38 @@ defmodule Logflare.Lql.Parser.Helpers do
   @isolated_string :isolated_string
 
   def word do
-    [?a..?z, ?A..?Z, ?., ?_, ?0..?9]
-    |> ascii_string(min: 1)
-    |> unwrap_and_tag(:word)
+    optional(
+      string("~")
+      |> replace(:"~")
+      |> unwrap_and_tag(:operator)
+    )
+    |> concat(
+      ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
+      |> unwrap_and_tag(:word)
+    )
+    # |> reduce({IO, :inspect, []})
     |> label("word filter")
     |> reduce({:to_rule, [:event_message]})
   end
 
   def quoted_string(location \\ :quoted_field_value)
       when location in [:quoted_event_message, :quoted_field_value] do
-    ignore(string("\""))
-    |> repeat_while(
-      utf8_char([]),
-      {:not_quote, []}
+    optional(
+      string("~")
+      |> replace(:"~")
+      |> unwrap_and_tag(:operator)
     )
-    |> ignore(string("\""))
-    |> reduce({List, :to_string, []})
-    |> unwrap_and_tag(@isolated_string)
+    |> concat(
+      ignore(string("\""))
+      |> repeat_while(
+        utf8_char([]),
+        {:not_quote, []}
+      )
+      |> ignore(string("\""))
+      |> reduce({List, :to_string, []})
+      |> unwrap_and_tag(@isolated_string)
+    )
+    # |> reduce({IO, :inspect, []})
     |> label("quoted string filter")
     |> reduce({:to_rule, [location]})
   end
@@ -439,7 +454,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     %FilterRule{
       path: "event_message",
       value: args[@isolated_string],
-      operator: :"~",
+      operator: args[:operator] || :string_contains,
       modifiers: %{quoted_string: true}
     }
   end
@@ -448,7 +463,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     %FilterRule{
       path: "event_message",
       value: args[:word],
-      operator: :"~"
+      operator: args[:operator] || :string_contains
     }
   end
 

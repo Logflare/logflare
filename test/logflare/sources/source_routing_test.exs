@@ -54,6 +54,46 @@ defmodule Logflare.Logs.SourceRoutingTest do
       refute SourceRouting.route_with_lql_rules?(le, rule)
     end
 
+    test "string_contains operator" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      build_filter = fn value ->
+        %Rule{
+          lql_string: "",
+          lql_filters: [
+            %FR{
+              value: value,
+              operator: :string_contains,
+              modifiers: %{},
+              path: "metadata.path"
+            }
+          ]
+        }
+      end
+
+      build_le = fn value ->
+        build(:log_event,
+          source: source,
+          metadata: %{"path" => value}
+        )
+      end
+
+      le = build_le.("log error string")
+      rule = build_filter.("error")
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      le = build_le.("log info string")
+      rule = build_filter.("error")
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      le = build_le.("stringstring")
+      rule = build_filter.("string")
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
     test "regex match operator" do
       source = build(:source, token: Faker.UUID.v4(), rules: [])
 
@@ -295,7 +335,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     test "range operator" do
       source = build(:source, token: Faker.UUID.v4(), rules: [])
 
-      build_filter = fn lvalue, rvalue, modifiers  ->
+      build_filter = fn lvalue, rvalue, modifiers ->
         %Rule{
           lql_string: "",
           lql_filters: [
@@ -509,7 +549,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
       {:ok, rule} =
         Rules.create_rule(
-          %{"lql_string" => ~S|"count: \d\d\d" m.request.url:~"sources$"|, "sink" => sink.token},
+          %{"lql_string" => ~S|~"count: \d\d\d" m.request.url:~"sources$"|, "sink" => sink.token},
           s1
         )
 

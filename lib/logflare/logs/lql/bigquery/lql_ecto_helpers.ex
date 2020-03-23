@@ -103,6 +103,9 @@ defmodule Logflare.Lql.EctoHelpers do
         :"~" ->
           dynamic([..., n1], fragment(~s|REGEXP_CONTAINS(?, ?)|, field(n1, ^c), ^v))
 
+        :string_contains ->
+          dynamic([..., n1], fragment(~s|STRPOS(?, ?) > 0|, field(n1, ^c), ^v))
+
         :list_includes ->
           dynamic([..., n1], fragment(~s|? IN UNNEST(?)|, ^v, field(n1, ^c)))
       end
