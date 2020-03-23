@@ -3,8 +3,6 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
 
   use Tesla
 
-  plug Tesla.Middleware.JSON
-
   plug Tesla.Middleware.Retry,
     delay: 500,
     max_retries: 10,
@@ -15,20 +13,19 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
       {:error, _} -> true
     end
 
-  plug Tesla.Middleware.Headers, [{"Content-Type", "application/json"}]
-
   plug Tesla.Middleware.BaseUrl, "http://metadata.google.internal/computeMetadata/v1"
+  plug Tesla.Middleware.JSON
 
   adapter(Tesla.Adapter.Hackney, pool: __MODULE__, recv_timeout: 60_000)
 
   def zone_nodes(zone, group_name, auth_token) do
-    post("/zones/" <> zone <> "/instanceGroups/" <> group_name <> "/listInstances",
+    post("/zones/" <> zone <> "/instanceGroups/" <> group_name <> "/listInstances", "",
       headers: [{"Authorization", auth_token}]
     )
   end
 
   def region_nodes(region, group_name, auth_token) do
-    post("/regions/" <> region <> "/instanceGroups/" <> group_name <> "listInstances",
+    post("/regions/" <> region <> "/instanceGroups/" <> group_name <> "listInstances", "",
       headers: [{"Authorization", auth_token}]
     )
   end

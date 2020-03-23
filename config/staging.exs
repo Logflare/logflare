@@ -48,6 +48,7 @@ config :logflare_telemetry,
   source_id: :"e5d18201-f0e0-459b-b6b3-2d3bc7d16fa4"
 
 config :libcluster,
+  debug: true,
   topologies: [
     gce: [
       strategy: Logflare.Cluster.Strategy.GoogleComputeEngine.Staging,
