@@ -199,7 +199,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
 
     case GCE.Client.metadata() do
       {:ok, response} ->
-        Cluster.Logger.debug(:gce, "Received body: #{response.body}")
+        Cluster.Logger.debug(:gce, "Received body: #{inspect(response.body)}")
         response.body
 
       {:error, error} ->
