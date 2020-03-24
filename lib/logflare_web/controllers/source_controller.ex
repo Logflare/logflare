@@ -307,7 +307,7 @@ defmodule LogflareWeb.SourceController do
 
     cond do
       :ets.info(token) == :undefined ->
-        del_source_and_redirect(conn, source)
+        del_source_and_redirect(conn, params)
 
       :ets.first(token) == :"$end_of_table" ->
         del_source_and_redirect(conn, params)
@@ -331,7 +331,7 @@ defmodule LogflareWeb.SourceController do
         end
 
       true ->
-        del_source_and_redirect(conn, source)
+        del_source_and_redirect(conn, params)
     end
   end
 

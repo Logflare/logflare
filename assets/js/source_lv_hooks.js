@@ -8,10 +8,9 @@ let hooks = {}
 
 hooks.SourceSchemaModalTable = {
   mounted() {
-    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`)
+    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`, {container: document.getElementById("logflare-modal")})
   },
 }
-
 const initSearchInViewObserver = hook => {
   const observer = new IntersectionObserver((entries, observer) => {
     entries.forEach(entry => {
