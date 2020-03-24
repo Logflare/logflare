@@ -80,19 +80,31 @@ defmodule Logflare.Lql.Parser.Helpers do
     ignore(choice([string("chart"), string("c")]))
     |> ignore(ascii_char([?:]))
     |> choice([
+      chart_aggregate_group_by(),
       chart_aggregate()
-      |> label("chart_aggregate"),
-      chart_period()
-      |> label("chart_period"),
-      metadata_field()
-      |> label("chart field")
     ])
-    |> unwrap_and_tag(:chart)
+    |> tag(:chart)
   end
 
-  def chart_period() do
-    ignore(string("period"))
-    |> ignore(string("@"))
+  def chart_aggregate() do
+    choice([
+      string("avg") |> replace(:avg),
+      string("count") |> replace(:count),
+      string("sum") |> replace(:sum)
+    ])
+    |> unwrap_and_tag(:aggregate)
+    |> ignore(string("("))
+    |> concat(
+      choice([string("*") |> replace("timestamp") |> unwrap_and_tag(:path), metadata_field()])
+    )
+    |> ignore(string(")"))
+  end
+
+  def chart_aggregate_group_by() do
+    ignore(string("group_by"))
+    |> ignore(string("("))
+    |> ignore(choice([string("timestamp"), string("t")]))
+    |> ignore(string("::"))
     |> choice([
       string("second") |> replace(:second),
       string("s") |> replace(:second),
@@ -104,17 +116,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       string("d") |> replace(:day)
     ])
     |> unwrap_and_tag(:period)
-  end
-
-  def chart_aggregate() do
-    ignore(string("aggregate"))
-    |> ignore(string("@"))
-    |> choice([
-      string("sum") |> replace(:sum),
-      string("avg") |> replace(:avg),
-      string("count") |> replace(:count)
-    ])
-    |> unwrap_and_tag(:aggregate)
+    |> ignore(string(")"))
   end
 
   def metadata_field do

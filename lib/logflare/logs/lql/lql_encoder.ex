@@ -75,15 +75,19 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: "event_message", value: v, modifiers: mods, operator: op}) do
-    op = case op do
-      :string_contains -> ""
-      :"~" -> "~"
-    end
-    v = if mods[:quoted_string] do
-      ~s|"#{v}"|
-    else
-      ~s|#{v}|
-    end
+    op =
+      case op do
+        :string_contains -> ""
+        :"~" -> "~"
+      end
+
+    v =
+      if mods[:quoted_string] do
+        ~s|"#{v}"|
+      else
+        ~s|#{v}|
+      end
+
     op <> v
   end
 
@@ -111,23 +115,12 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%ChartRule{} = c) do
-    fr = "chart:#{c.path}"
-
-    fr =
-      c.aggregate
-      |> if do
-        fr <> " chart:aggregate@#{c.aggregate}"
-      else
-        fr
+    path =
+      case c.path do
+        "timestamp" -> "*"
+        x -> x
       end
 
-    fr =
-      if c.period do
-        fr <> " chart:period@#{c.period}"
-      else
-        fr
-      end
-
-    fr
+    "chart:#{c.aggregate}(#{path}) chart:group_by(timestamp::#{c.period})"
   end
 end

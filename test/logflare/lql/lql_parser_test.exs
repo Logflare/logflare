@@ -354,9 +354,8 @@ defmodule Logflare.LqlParserTest do
         )
 
       str = ~S|
-         chart:metadata.log.metric4
-         chart:aggregate@count
-         chart:period@minute
+         chart:count(metadata.log.metric4)
+         chart:group_by(timestamp::minute)
          log "was generated" "by logflare pinger"
          metadata.context.file:"some module.ex"
          metadata.context.line_number:100
@@ -1335,9 +1334,8 @@ defmodule Logflare.LqlParserTest do
         )
 
       str = ~S|
-         c:m.log.metric5
-         c:period@minute
-         c:aggregate@sum
+         chart:sum(metadata.log.metric5)
+         chart:group_by(timestamp::minute)
        |
 
       {:ok, result} = Parser.parse(str, schema)
@@ -1352,9 +1350,8 @@ defmodule Logflare.LqlParserTest do
              ]
 
       str = ~S|
-         chart:metadata.log.metric5
-         chart:aggregate@sum
-         chart:period@minute
+         chart:sum(m.log.metric5)
+         chart:group_by(t::minute)
        |
 
       {:ok, result} = Parser.parse(str, schema)
@@ -1368,58 +1365,10 @@ defmodule Logflare.LqlParserTest do
                }
              ]
 
-      assert Lql.encode!(result) == clean_and_trim_lql_string(str)
-    end
-
-    @tag :skip
-    test "chart period, chart aggregate alternative syntax" do
-      schema =
-        SchemaBuilder.build_table_schema(
-          %{
-            log: %{
-              metric5: 10.0
-            },
-            user: %{
-              cluster_group: 1.0
-            }
-          }
-          |> MapKeys.to_strings(),
-          @default_schema
-        )
-
-      str = ~S|
-         c:m.log.metric5
-         chart.period:minute
-         chart.aggregate:sum
-       |
-
-      {:ok, result} = Parser.parse(str, schema)
-
-      assert result == [
-               %Logflare.Lql.ChartRule{
-                 path: "metadata.log.metric5",
-                 aggregate: :sum,
-                 period: :minute,
-                 value_type: :float
-               }
-             ]
-
-      str = ~S|
-         chart:m.log.metric5
-         chart:period@minute
-         chart:aggregate@sum
-       |
-
-      {:ok, result} = Parser.parse(str, schema)
-
-      assert result == [
-               %Logflare.Lql.ChartRule{
-                 path: "metadata.log.metric5",
-                 aggregate: :sum,
-                 period: :minute,
-                 value_type: :float
-               }
-             ]
+      assert Lql.encode!(result)
+             |> String.replace("metadata", "m")
+             |> String.replace("timestamp", "t") ==
+               clean_and_trim_lql_string(str)
     end
 
     test "returns error on malformed timestamp filter" do
