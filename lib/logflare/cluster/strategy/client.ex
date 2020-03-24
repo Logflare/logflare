@@ -20,18 +20,18 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
 
   def zone_nodes(zone, group_name, auth_token) do
     post("/zones/" <> zone <> "/instanceGroups/" <> group_name <> "/listInstances", "",
-      headers: [{"Authorization", auth_token}]
+      headers: [{"Authorization", "Bearer #{auth_token}"}]
     )
   end
 
   def region_nodes(region, group_name, auth_token) do
     post("/regions/" <> region <> "/instanceGroups/" <> group_name <> "listInstances", "",
-      headers: [{"Authorization", auth_token}]
+      headers: [{"Authorization", "Bearer #{auth_token}"}]
     )
   end
 
   def node_metadata(url, auth_token) do
-    get(url, headers: [{"Authorization", auth_token}])
+    get(url, headers: [{"Authorization", "Bearer #{auth_token}"}])
   end
 
   def metadata() do
