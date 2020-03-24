@@ -2,12 +2,10 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   use GenServer
   use Cluster.Strategy
 
+  alias __MODULE__, as: GCE
   alias Cluster.Strategy.State
 
-  @default_polling_interval 10_000
-  @metadata_base_url 'http://metadata.google.internal/computeMetadata/v1'
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  @google_api_base_url 'https://compute.googleapis.com/compute/v1/projects/#{@project_id}'
+  @default_polling_interval 3_000
   @default_release_name :node
   @regions Application.get_env(:logflare, __MODULE__)[:regions]
   @zones Application.get_env(:logflare, __MODULE__)[:zones]
@@ -52,157 +50,125 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   end
 
   def get_nodes(state) do
-    region_nodes =
-      Enum.map(@regions, fn {region, group_name} ->
-        get_region_nodes(state, region, group_name)
+    metadata = get_metadata()
+
+    if metadata != :error do
+      auth_token = Map.get(metadata, "access_token")
+
+      region_nodes =
+        Enum.map(@regions, fn {region, group_name} ->
+          get_region_nodes(state, region, group_name, auth_token)
+        end)
+        |> Enum.concat()
+
+      zone_nodes =
+        Enum.map(@zones, fn {zone, group_name} ->
+          get_zone_nodes(state, zone, group_name, auth_token)
+        end)
+        |> Enum.concat()
+
+      region_nodes ++ zone_nodes
+    else
+      []
+    end
+  end
+
+  defp get_zone_nodes(state, zone, group_name, auth_token) do
+    Cluster.Logger.debug(:gce, "Fetching zone nodes ... ")
+
+    case GCE.ComputeClient.zone_nodes(zone, group_name, auth_token) do
+      {:ok, %Tesla.Env{status: 200, body: body}} ->
+        get_node_name(state, body, auth_token)
+
+      {:ok, %Tesla.Env{status: status_code, body: body}} ->
+        Cluster.Logger.error(:gce, "Error getting zone nodes: #{status_code}: #{inspect(body)}")
+        []
+
+      {:error, message} ->
+        Cluster.Logger.error(:gce, "Error getting zone nodes: #{inspect(message)}")
+        []
+    end
+  end
+
+  defp get_region_nodes(state, region, group_name, auth_token) do
+    Cluster.Logger.debug(:gce, "Fetching region nodes ...")
+
+    case GCE.ComputeClient.region_nodes(region, group_name, auth_token) do
+      {:ok, %Tesla.Env{status: 200, body: body}} ->
+        get_node_name(state, body, auth_token)
+
+      {:ok, %Tesla.Env{status: status_code, body: body}} ->
+        Cluster.Logger.error(:gce, "Error getting region nodes: #{status_code}: #{inspect(body)}")
+        []
+
+      {:error, message} ->
+        Cluster.Logger.error(:gce, "Error getting region nodes: #{inspect(message)}")
+        []
+    end
+  end
+
+  defp get_node_name(state, body, auth_token) do
+    Cluster.Logger.debug(:gce, "Received body: #{inspect(body)}")
+
+    items = Map.get(body, "items")
+
+    if is_nil(items) do
+      []
+    else
+      Enum.filter(items, fn
+        %{"status" => "RUNNING"} -> true
+        _ -> false
       end)
-      |> Enum.concat()
-
-    zone_nodes =
-      Enum.map(@zones, fn {zone, group_name} -> get_zone_nodes(state, zone, group_name) end)
-      |> Enum.concat()
-
-    region_nodes ++ zone_nodes
-  end
-
-  defp get_zone_nodes(state, zone, group_name) do
-    Cluster.Logger.debug(:gce, "Loading nodes from GCE API...")
-
-    auth_token =
-      get_metadata('/instance/service-accounts/default/token')
-      |> Jason.decode!()
-      |> Map.get("access_token")
-
-    release_name = get_release_name(state)
-
-    headers = [{'Authorization', 'Bearer #{auth_token}'}]
-
-    url = @google_api_base_url ++ '/zones/#{zone}/instanceGroups/#{group_name}/listInstances'
-
-    Cluster.Logger.debug(:gce, "Fetching instances from #{inspect(url)}")
-
-    case :httpc.request(:post, {url, headers, 'application/json', ''}, [], []) do
-      {:ok, {{_, 200, _}, _headers, body}} ->
-        Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
-
-        items =
-          Jason.decode!(body)
-          |> Map.get("items")
-
-        if is_nil(items) do
-          []
-        else
-          Enum.filter(items, fn
-            %{"status" => "RUNNING"} -> true
-            _ -> false
-          end)
-          |> Enum.map(fn %{"instance" => url} ->
-            {:ok, {{_, 200, _}, _headers, body}} =
-              :httpc.request(:get, {to_charlist(url), headers}, [], [])
-
-            Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
+      |> Enum.map(fn %{"instance" => url} ->
+        case GCE.ComputeClient.node_metadata(url, auth_token) do
+          {:ok, %Tesla.Env{status: 200, body: body}} ->
+            Cluster.Logger.debug(:gce, "Received instance data: #{inspect(body)}")
 
             network_ip =
               body
-              |> Jason.decode!()
               |> Map.get("networkInterfaces")
               |> hd
               |> Map.get("networkIP")
 
-            Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
+            Cluster.Logger.debug(:gce, "Node network IP is: #{inspect(network_ip)}")
 
+            release_name = get_release_name(state)
             node_name = :"#{release_name}@#{network_ip}"
 
-            Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+            Cluster.Logger.debug(:gce, "Found node: #{inspect(node_name)}")
 
             node_name
-          end)
+
+          {:ok, %Tesla.Env{status: status_code, body: body}} ->
+            Cluster.Logger.error(
+              :gce,
+              "Error getting node metadata: #{status_code}: #{inspect(body)}"
+            )
+
+            :error
+
+          {:error, response} ->
+            :error
         end
-
-      {:ok, {{_, resp_code, _}, _headers, body}} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")
-        []
-
-      {:error, message} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{inspect(message)}")
-        []
+      end)
     end
   end
 
-  defp get_region_nodes(state, region, group_name) do
-    Cluster.Logger.debug(:gce, "Loading nodes from GCE API...")
+  defp get_metadata() do
+    Cluster.Logger.debug(:gce, "Fetching metadata ...")
 
-    auth_token =
-      get_metadata('/instance/service-accounts/default/token')
-      |> Jason.decode!()
-      |> Map.get("access_token")
-
-    release_name = get_release_name(state)
-
-    headers = [{'Authorization', 'Bearer #{auth_token}'}]
-
-    url = @google_api_base_url ++ '/regions/#{region}/instanceGroups/#{group_name}/listInstances'
-
-    Cluster.Logger.debug(:gce, "Fetching instances from #{inspect(url)}")
-
-    case :httpc.request(:post, {url, headers, 'application/json', ''}, [], []) do
-      {:ok, {{_, 200, _}, _headers, body}} ->
-        Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
-
-        items =
-          Jason.decode!(body)
-          |> Map.get("items")
-
-        if is_nil(items) do
-          []
-        else
-          Enum.filter(items, fn
-            %{"status" => "RUNNING"} -> true
-            _ -> false
-          end)
-          |> Enum.map(fn %{"instance" => url} ->
-            {:ok, {{_, 200, _}, _headers, body}} =
-              :httpc.request(:get, {to_charlist(url), headers}, [], [])
-
-            Cluster.Logger.debug(:gce, "    Received instance data: #{inspect(body)}")
-
-            network_ip =
-              body
-              |> Jason.decode!()
-              |> Map.get("networkInterfaces")
-              |> hd
-              |> Map.get("networkIP")
-
-            Cluster.Logger.debug(:gce, "    Node network IP is: #{inspect(network_ip)}")
-
-            node_name = :"#{release_name}@#{network_ip}"
-
-            Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
-
-            node_name
-          end)
-        end
-
-      {:ok, {{_, resp_code, _}, _headers, body}} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{resp_code}: #{inspect(body)}")
-        []
-
-      {:error, message} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{inspect(message)}")
-        []
-    end
-  end
-
-  defp get_metadata(path) do
-    headers = [{'Metadata-Flavor', 'Google'}]
-    url = @metadata_base_url ++ path
-
-    Cluster.Logger.debug(:gce, "Fetching Metadata from #{inspect(url)}...")
-
-    case :httpc.request(:get, {url, headers}, [], []) do
-      {:ok, {{_, 200, _}, _headers, body}} ->
-        Cluster.Logger.debug(:gce, "    Received body: #{inspect(body)}")
+    case GCE.AuthClient.metadata() do
+      {:ok, %Tesla.Env{status: 200, body: body}} ->
+        Cluster.Logger.debug(:gce, "Received access token: #{inspect(body)}")
         body
+
+      {:ok, %Tesla.Env{status: status_code, body: body}} ->
+        Cluster.Logger.error(:gce, "Error getting metadata: #{status_code}: #{inspect(body)}")
+        :error
+
+      {:error, error} ->
+        Cluster.Logger.error(:gce, "Error getting metadata: #{inspect(error)}")
+        :error
     end
   end
 

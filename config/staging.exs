@@ -51,14 +51,14 @@ config :libcluster,
   debug: true,
   topologies: [
     gce: [
-      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine.Staging,
+      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
       config: [
         release_name: :logflare
       ]
     ]
   ]
 
-config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine.Staging,
+config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions: [{"us-central1", "logflare-cluster-group"}],
   zones: [{"us-central1-a", "instance-group-1"}]
 
