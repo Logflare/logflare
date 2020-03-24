@@ -302,6 +302,37 @@ defmodule Logflare.Lql.Parser.Helpers do
     %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
   end
 
+  def parse_date_or_datetime_with_range(result) when is_list(result) do
+    maybe_with_range = result |> Map.new()
+
+    range = Enum.find(maybe_with_range, fn {_k, v} -> length(v) == 2 end)
+
+    if range do
+      {k, [lvalue, rvalue]} = range
+      [%{maybe_with_range | k => [lvalue]}, %{maybe_with_range | k => [rvalue]}]
+    else
+      [maybe_with_range]
+    end
+    |> Enum.map(fn dtmap ->
+      dtmap =
+        dtmap
+        |> Enum.map(fn {k, [v]} -> {k, v} end)
+        |> Map.new()
+
+      dtmap =
+        %{
+          calendar: Calendar.ISO,
+          std_offset: 0,
+          time_zone: "Etc/UTC",
+          utc_offset: 0,
+          zone_abbr: "UTC"
+        }
+        |> Map.merge(dtmap)
+
+      struct!(DateTime, dtmap)
+    end)
+  end
+
   def parse_date_or_datetime([{tag, result}]) do
     mod =
       case tag do
@@ -361,6 +392,60 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:parse_date_or_datetime)
   end
 
+  def integer_with_range(combinator \\ empty(), number) do
+    combinator
+    |> choice([
+      ignore(string("{"))
+      |> integer(number)
+      |> ignore(string(".."))
+      |> integer(number)
+      |> ignore(string("}")),
+      integer(number)
+    ])
+  end
+
+  def datetime_with_range() do
+    integer(4)
+    |> tag(:year)
+    |> ignore(string("-"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:month)
+    )
+    |> ignore(string("-"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:day)
+    )
+    |> ignore(string("T"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:hour)
+    )
+    |> ignore(string(":"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:minute)
+    )
+    |> ignore(string(":"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:second)
+    )
+    |> optional(
+      choice([
+        ignore(string("Z")),
+        string("+")
+        |> ascii_string([?0..?9], 2)
+        |> string(":")
+        |> ascii_string([?0..?9], 2)
+      ])
+    )
+    |> label("ISO8601 datetime with range")
+    |> reduce(:parse_date_or_datetime_with_range)
+    |> tag(:datetime_with_range)
+  end
+
   def date_or_datetime do
     [datetime(), date()]
     |> choice()
@@ -378,6 +463,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   def timestamp_value() do
     choice([
       range_operator(date_or_datetime()),
+      datetime_with_range(),
       date_or_datetime(),
       timestamp_shorthand_value(),
       invalid_match_all_value()
@@ -492,14 +578,27 @@ defmodule Logflare.Lql.Parser.Helpers do
   def to_rule(args, :filter) when is_list(args) do
     filter = struct!(FilterRule, Map.new(args))
 
-    if match?({:quoted, _}, filter.value) do
-      {:quoted, value} = filter.value
+    cond do
+      match?({:quoted, _}, filter.value) ->
+        {:quoted, value} = filter.value
 
-      filter
-      |> Map.update!(:modifiers, &Map.put(&1, :quoted_string, true))
-      |> Map.put(:value, value)
-    else
-      filter
+        filter
+        |> Map.update!(:modifiers, &Map.put(&1, :quoted_string, true))
+        |> Map.put(:value, value)
+
+      match?(%{value: {:datetime_with_range, _}}, filter) ->
+        {_, value} = filter.value
+
+        case value do
+          [[_, _] = v] ->
+            %{filter | value: nil, values: v, operator: :range}
+
+          [[v]] ->
+            %{filter | value: v}
+        end
+
+      true ->
+        filter
     end
   end
 

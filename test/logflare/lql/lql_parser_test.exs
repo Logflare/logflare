@@ -458,7 +458,6 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
     end
 
-    @tag :only
     test "negated filter" do
       schema =
         SchemaBuilder.build_table_schema(
@@ -715,7 +714,6 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(result) == clean_and_trim_lql_string(str)
     end
 
-    @tag :run
     test "timestamp shorthands" do
       assert {:ok,
               [
@@ -987,6 +985,65 @@ defmodule Logflare.LqlParserTest do
                  }
                ]
              } == Parser.parse("timestamp:last@1y", @schema)
+    end
+
+    test "timestamp range shorthand" do
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [~U[2020-01-01 00:00:00Z], ~U[2020-01-01 00:50:00Z]]
+                }
+              ]} == Parser.parse("timestamp:2020-01-01T00:{00..50}:00", @schema)
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~U[2020-01-01 00:00:35Z],
+                    ~U[2020-01-01 00:00:55Z]
+                  ]
+                }
+              ]} == Parser.parse("timestamp:2020-01-01T00:00:{35..55}", @schema)
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~U[2020-05-01 12:44:24Z],
+                    ~U[2020-06-01 12:44:24Z]
+                  ]
+                }
+              ]} == Parser.parse("timestamp:2020-{05..06}-01T12:44:24", @schema)
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~U[2020-05-01 12:00:05Z],
+                    ~U[2020-05-01 14:00:05Z]
+                  ]
+                }
+              ]} == Parser.parse("timestamp:2020-05-01T{12..14}:00:05", @schema)
     end
 
     test "m,t shorthands" do
