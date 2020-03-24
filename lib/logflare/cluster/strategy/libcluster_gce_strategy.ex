@@ -81,11 +81,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.error(:gce, "Error getting zone nodes: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "Error getting zone nodes: #{status_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.error(:gce, "Error getting zone nodes: #{inspect(message)}")
+        Cluster.Logger.debug(:gce, "Error getting zone nodes: #{inspect(message)}")
         []
     end
   end
@@ -98,11 +98,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.error(:gce, "Error getting region nodes: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "Error getting region nodes: #{status_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.error(:gce, "Error getting region nodes: #{inspect(message)}")
+        Cluster.Logger.debug(:gce, "Error getting region nodes: #{inspect(message)}")
         []
     end
   end
@@ -163,11 +163,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
         body
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.error(:gce, "Error getting metadata: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.error(:gce, "Error getting access token: #{status_code}: #{inspect(body)}")
         :error
 
       {:error, error} ->
-        Cluster.Logger.error(:gce, "Error getting metadata: #{inspect(error)}")
+        Cluster.Logger.error(:gce, "Error getting access token: #{inspect(error)}")
         :error
     end
   end
