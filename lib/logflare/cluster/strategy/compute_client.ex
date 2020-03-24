@@ -1,7 +1,9 @@
-defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
+defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.ComputeClient do
   require Logger
 
   use Tesla
+
+  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
 
   plug Tesla.Middleware.Retry,
     delay: 500,
@@ -13,7 +15,9 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
       {:error, _} -> true
     end
 
-  plug Tesla.Middleware.BaseUrl, "http://metadata.google.internal/computeMetadata/v1"
+  plug Tesla.Middleware.BaseUrl,
+       "https://compute.googleapis.com/compute/v1/projects/#{@project_id}"
+
   plug Tesla.Middleware.JSON
 
   adapter(Tesla.Adapter.Hackney, pool: __MODULE__, recv_timeout: 60_000)
@@ -32,9 +36,5 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging.Client do
 
   def node_metadata(url, auth_token) do
     get(url, headers: [{"Authorization", "Bearer #{auth_token}"}])
-  end
-
-  def metadata() do
-    get("/instance/service-accounts/default/token", headers: [{"Metadata-Flavor", "Google"}])
   end
 end

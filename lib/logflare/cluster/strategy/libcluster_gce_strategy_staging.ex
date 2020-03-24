@@ -6,9 +6,6 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   alias Cluster.Strategy.State
 
   @default_polling_interval 1_000
-  @metadata_base_url 'http://metadata.google.internal/computeMetadata/v1'
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  @google_api_base_url 'https://compute.googleapis.com/compute/v1/projects/#{@project_id}'
   @default_release_name :node
   @regions Application.get_env(:logflare, __MODULE__)[:regions]
   @zones Application.get_env(:logflare, __MODULE__)[:zones]
@@ -79,16 +76,16 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   defp get_zone_nodes(state, zone, group_name, auth_token) do
     Cluster.Logger.info(:gce, "Fetching zone nodes ... ")
 
-    case GCE.Client.zone_nodes(zone, group_name, auth_token) do
+    case GCE.ComputeClient.zone_nodes(zone, group_name, auth_token) do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.error(:gce, "Error getting zone nodes: #{status_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{inspect(message)}")
+        Cluster.Logger.error(:gce, "Error getting zone nodes: #{inspect(message)}")
         []
     end
   end
@@ -96,16 +93,16 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   defp get_region_nodes(state, region, group_name, auth_token) do
     Cluster.Logger.info(:gce, "Fetching region nodes ...")
 
-    case GCE.Client.region_nodes(region, group_name, auth_token) do
+    case GCE.ComputeClient.region_nodes(region, group_name, auth_token) do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.error(:gce, "Error getting region nodes: #{status_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{inspect(message)}")
+        Cluster.Logger.error(:gce, "Error getting region nodes: #{inspect(message)}")
         []
     end
   end
@@ -124,7 +121,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
       end)
       |> Enum.map(fn %{"instance" => url} ->
         # maybe to_charlist(url) here
-        case GCE.Client.node_metadata(url, auth_token) do
+        case GCE.ComputeClient.node_metadata(url, auth_token) do
           {:ok, %Tesla.Env{status: 200, body: body}} ->
             Cluster.Logger.info(:gce, "Received instance data: #{inspect(body)}")
 
@@ -144,7 +141,10 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
             node_name
 
           {:ok, %Tesla.Env{status: status_code, body: body}} ->
-            Cluster.Logger.error(:gce, "GCP API error: #{status_code}: #{inspect(body)}")
+            Cluster.Logger.error(
+              :gce,
+              "Error getting node metadata: #{status_code}: #{inspect(body)}"
+            )
 
             :error
 
@@ -158,13 +158,13 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   defp get_metadata() do
     Cluster.Logger.info(:gce, "Fetching metadata ...")
 
-    case GCE.Client.metadata() do
+    case GCE.AuthClient.metadata() do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
-        Cluster.Logger.info(:gce, "Received body: #{inspect(body)}")
+        Cluster.Logger.info(:gce, "Received access token: #{inspect(body)}")
         body
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.error(:gce, "GCP API error: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.error(:gce, "Error getting metadata: #{status_code}: #{inspect(body)}")
         :error
 
       {:error, error} ->
