@@ -77,8 +77,6 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   end
 
   defp get_zone_nodes(state, zone, group_name, auth_token) do
-    Cluster.Logger.info(:gce, "Loading nodes from GCE API ...")
-
     Cluster.Logger.info(:gce, "Fetching zone nodes ... ")
 
     case GCE.Client.zone_nodes(zone, group_name, auth_token) do
@@ -96,12 +94,6 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   end
 
   defp get_region_nodes(state, region, group_name, auth_token) do
-    Cluster.Logger.info(:gce, "Loading nodes from GCE API ...")
-
-    auth_token =
-      get_metadata()
-      |> Map.get("access_token")
-
     Cluster.Logger.info(:gce, "Fetching region nodes ...")
 
     case GCE.Client.region_nodes(region, group_name, auth_token) do
