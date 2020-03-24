@@ -5,7 +5,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
   alias __MODULE__, as: GCE
   alias Cluster.Strategy.State
 
-  @default_polling_interval 10_000
+  @default_polling_interval 1_000
   @metadata_base_url 'http://metadata.google.internal/computeMetadata/v1'
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @google_api_base_url 'https://compute.googleapis.com/compute/v1/projects/#{@project_id}'
@@ -97,7 +97,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.Staging do
     Cluster.Logger.info(:gce, "Fetching region nodes ...")
 
     case GCE.Client.region_nodes(region, group_name, auth_token) do
-      {:ok, %Tesla.Env{body: body}} ->
+      {:ok, %Tesla.Env{status: 200, body: body}} ->
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
