@@ -7,7 +7,6 @@ export function activateClipboardForSelector(selector, options) {
     alert("Copied: " + e.text)
     e.clearSelection()
   })
-
   clipboard.on("error", e => {
     e.clearSelection()
   })

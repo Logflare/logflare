@@ -17,7 +17,6 @@ defmodule Logflare.Lql.Parser.Helpers do
       ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
       |> unwrap_and_tag(:word)
     )
-    # |> reduce({IO, :inspect, []})
     |> label("word filter")
     |> reduce({:to_rule, [:event_message]})
   end
@@ -39,7 +38,6 @@ defmodule Logflare.Lql.Parser.Helpers do
       |> reduce({List, :to_string, []})
       |> unwrap_and_tag(@isolated_string)
     )
-    # |> reduce({IO, :inspect, []})
     |> label("quoted string filter")
     |> reduce({:to_rule, [location]})
   end

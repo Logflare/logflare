@@ -8,7 +8,7 @@ let hooks = {}
 
 hooks.SourceSchemaModalTable = {
   mounted() {
-    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`)
+    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`, {container: document.getElementById("logflare-modal")})
   },
 }
 
@@ -98,6 +98,7 @@ const datepickerConfig = {
   "showDropdowns": true,
   "timePicker": true,
   "timePicker24Hour": true,
+  drops: "up",
   alwaysShowCalendars: true,
   ranges: {
     "Today": [],
@@ -107,9 +108,8 @@ const datepickerConfig = {
     "This Month": [],
     "Last Month": []
   },
-  "startDate": "03/12/2020",
-  "endDate": "03/18/2020"
 }
+
 const buildTsClause = (start, end, label) => {
   let timestampFilter
   const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ssZ")
@@ -139,13 +139,13 @@ const buildTsClause = (start, end, label) => {
   return timestampFilter.join(" ")
 }
 
+
 hooks.SourceLogsSearch = {
   updated() {
     setTimezone()
     const hook = this
     $("#daterangepicker").daterangepicker(datepickerConfig)
-    $("#daterangepicker").on('apply.daterangepicker', (e, picker) => {
-      console.log(picker)
+    $("#daterangepicker").on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
     })
@@ -156,8 +156,7 @@ hooks.SourceLogsSearch = {
   mounted() {
     const hook = this
     $("#daterangepicker").daterangepicker(datepickerConfig)
-    $("#daterangepicker").on('apply.daterangepicker', (e, picker) => {
-      console.log(picker)
+    $("#daterangepicker").on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
     })

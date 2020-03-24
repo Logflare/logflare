@@ -14,7 +14,6 @@ defmodule Logflare.BqRepo do
            %{:rows => nil | [term()], :num_rows => non_neg_integer(), optional(atom()) => any()}}
           | {:error, term()}
 
-
   @spec query_with_sql_and_params(String.t(), String.t(), [term()], Keyword.t()) :: query_result
   def query_with_sql_and_params(project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
@@ -58,11 +57,14 @@ defmodule Logflare.BqRepo do
   def query(project_id, %Ecto.Query{} = query, opts \\ [])
       when not is_nil(project_id) and is_list(opts) do
     {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
-    sql = if opts[:dataset_id] do
-      EctoQueryBQ.SQL.substitute_dataset(sql, opts[:dataset_id])
-    else
-      sql
-    end
+
+    sql =
+      if opts[:dataset_id] do
+        EctoQueryBQ.SQL.substitute_dataset(sql, opts[:dataset_id])
+      else
+        sql
+      end
+
     query_with_sql_and_params(project_id, sql, params, opts)
   end
 end

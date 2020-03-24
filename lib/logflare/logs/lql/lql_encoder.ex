@@ -74,12 +74,17 @@ defmodule Logflare.Lql.Encoder do
     "timestamp:#{op}#{dtstring}"
   end
 
-  defp to_fragment(%FilterRule{path: "event_message", value: v, modifiers: mods}) do
-    if mods[:quoted_string] do
+  defp to_fragment(%FilterRule{path: "event_message", value: v, modifiers: mods, operator: op}) do
+    op = case op do
+      :string_contains -> ""
+      :"~" -> "~"
+    end
+    v = if mods[:quoted_string] do
       ~s|"#{v}"|
     else
       ~s|#{v}|
     end
+    op <> v
   end
 
   defp to_fragment(%FilterRule{path: path, operator: op, value: v, modifiers: mods} = fr) do

@@ -42,7 +42,8 @@ defmodule Logflare.Logs.SearchOperations do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
 
-    with {:ok, response} <- BqRepo.query(bq_project_id, so.query, dataset_id: dataset_id, dryRun: true),
+    with {:ok, response} <-
+           BqRepo.query(bq_project_id, so.query, dataset_id: dataset_id, dryRun: true),
          is_within_limit? = response.total_bytes_processed <= @default_processed_bytes_limit,
          {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
          {:ok, response} <- BqRepo.query(bq_project_id, so.query, dataset_id: dataset_id) do

@@ -109,6 +109,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     %{sql_with_params: sql, params: params, sql_string: sql_string}
   end
 
+  @deprecated "use BQRepo"
   def query_with_params(sql, params, opts \\ [])
       when is_binary(sql) and is_list(params) do
     query_request = %QueryRequest{
