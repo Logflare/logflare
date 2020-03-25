@@ -713,6 +713,19 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(result) == clean_and_trim_lql_string(str)
     end
 
+    test "timestamp with microseconds" do
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :>=,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: ~U[2020-01-01 00:00:00.345Z]
+                }
+              ]} == Parser.parse("timestamp:>=2020-01-01T00:00:00.345Z", @schema)
+    end
+
     test "timestamp shorthands" do
       assert {:ok,
               [
@@ -997,7 +1010,7 @@ defmodule Logflare.LqlParserTest do
                   value: nil,
                   values: [~U[2020-01-01 00:00:00Z], ~U[2020-01-01 00:50:00Z]]
                 }
-              ]} == Parser.parse("timestamp:2020-01-01T00:{00..50}:00", @schema)
+              ]} == Parser.parse("timestamp:2020-01-01T00:{00..50}:00Z", @schema)
 
       assert {:ok,
               [
@@ -1042,7 +1055,22 @@ defmodule Logflare.LqlParserTest do
                     ~U[2020-05-01 14:00:05Z]
                   ]
                 }
-              ]} == Parser.parse("timestamp:2020-05-01T{12..14}:00:05", @schema)
+              ]} == Parser.parse("timestamp:2020-05-01T{12..14}:00:05Z", @schema)
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~U[2020-05-01 14:00:05.000001Z],
+                    ~U[2020-05-01 14:00:05.460560Z]
+                  ]
+                }
+              ]} == Parser.parse("timestamp:2020-05-01T14:00:05.{000001..460560}Z", @schema)
     end
 
     test "m,t shorthands" do

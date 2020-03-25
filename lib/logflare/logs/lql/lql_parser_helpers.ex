@@ -329,6 +329,15 @@ defmodule Logflare.Lql.Parser.Helpers do
         }
         |> Map.merge(dtmap)
 
+      dtmap =
+        if dtmap[:microsecond] do
+          dtmap
+          |> Map.delete(:millisecond)
+          |> Map.put(:microsecond, {dtmap[:microsecond], 6})
+        else
+          dtmap
+        end
+
       struct!(DateTime, dtmap)
     end)
   end
@@ -378,14 +387,16 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> string(":")
     |> ascii_string([?0..?9], 2)
     |> optional(
-      choice([
-        string("Z"),
-        string("+")
-        |> ascii_string([?0..?9], 2)
-        |> string(":")
-        |> ascii_string([?0..?9], 2)
-      ])
+      string(".")
+      |> ascii_string([?0..?9], 6)
     )
+    |> choice([
+      string("Z"),
+      string("+")
+      |> ascii_string([?0..?9], 2)
+      |> string(":")
+      |> ascii_string([?0..?9], 2)
+    ])
     |> reduce({Enum, :join, [""]})
     |> unwrap_and_tag(:datetime)
     |> label("ISO8601 datetime")
@@ -432,6 +443,13 @@ defmodule Logflare.Lql.Parser.Helpers do
       integer_with_range(2)
       |> tag(:second)
     )
+    |> optional(ignore(string(".")))
+    |> concat(
+      optional(
+        integer_with_range(6)
+        |> tag(:microsecond)
+      )
+    )
     |> optional(
       choice([
         ignore(string("Z")),
@@ -447,7 +465,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def date_or_datetime do
-    [datetime(), date()]
+    [datetime(), datetime_with_range(), date()]
     |> choice()
     |> label("date or datetime value")
   end
@@ -463,7 +481,6 @@ defmodule Logflare.Lql.Parser.Helpers do
   def timestamp_value() do
     choice([
       range_operator(date_or_datetime()),
-      datetime_with_range(),
       date_or_datetime(),
       timestamp_shorthand_value(),
       invalid_match_all_value()
