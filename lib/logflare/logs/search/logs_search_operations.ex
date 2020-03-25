@@ -291,14 +291,24 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
   def apply_local_timestamp_correction(%SO{} = so) do
     lql_ts_filters =
-      if so.user_local_timezone do
-        Enum.map(so.lql_ts_filters, fn
+      if so.use_local_time do
+        so.lql_ts_filters
+        |> Enum.map(fn
+          %{path: "timestamp", values: values, operator: :range} = pvo ->
+            values =
+              for value <- values do
+                value
+                |> Timex.to_datetime(so.user_local_timezone)
+                |> Timex.Timezone.convert("Etc/UTC")
+              end
+
+            %{pvo | values: values}
+
           %{path: "timestamp", value: value} = pvo ->
             value =
               value
               |> Timex.to_datetime(so.user_local_timezone)
               |> Timex.Timezone.convert("Etc/UTC")
-              |> Timex.to_naive_datetime()
 
             %{pvo | value: value}
         end)

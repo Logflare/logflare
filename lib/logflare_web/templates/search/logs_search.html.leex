@@ -10,11 +10,13 @@
           <a href="#" phx-click="set_local_time"
             id="set_local_time"
             phx-value-use_local_time="<%= @use_local_time %>"
-            phx-value-user_local_timezone="<%= @user_local_timezone %>"
             >
             <span>
-              <% use_local_time_class = "fa-toggle-" <> if @use_local_time, do: "on", else: "off" %>
-              <i class="fa <%= use_local_time_class %> pointer-cursor" aria-hidden="true"></i>
+              <%= if @use_local_time do %>
+                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
+              <% else %>
+                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
+              <% end %>
             </span>
             <span class="hide-on-mobile">local time</span>
           </a>
@@ -117,7 +119,9 @@
       </div>
       <div class="col-auto" phx-update="ignore">
         <span class="btn btn-primary" id="daterangepicker">
-          Timestamp Range
+          <span class="fa fa-clock" >
+          </span>
+          DateTime selector
         </span>
       </div>
     </div>

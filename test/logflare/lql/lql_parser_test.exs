@@ -302,7 +302,7 @@ defmodule Logflare.LqlParserTest do
           path: "timestamp",
           shorthand: nil,
           value: nil,
-          values: [~U[2019-01-01 00:13:37Z], ~U[2019-02-01 00:23:34Z]]
+          values: [~N[2019-01-01 00:13:37Z], ~N[2019-02-01 00:23:34Z]]
         }
       ]
 
@@ -508,7 +508,7 @@ defmodule Logflare.LqlParserTest do
           path: "timestamp",
           shorthand: nil,
           value: nil,
-          values: [~U[2019-01-01 00:13:37Z], ~U[2019-02-01 00:23:34Z]]
+          values: [~N[2019-01-01 00:13:37Z], ~N[2019-02-01 00:23:34Z]]
         }
       ]
 
@@ -685,7 +685,7 @@ defmodule Logflare.LqlParserTest do
           operator: :<,
           path: "timestamp",
           shorthand: nil,
-          value: ~U[2020-01-01 03:14:15Z],
+          value: ~N[2020-01-01 03:14:15Z],
           values: nil
         },
         %Logflare.Lql.FilterRule{
@@ -693,7 +693,7 @@ defmodule Logflare.LqlParserTest do
           operator: :>=,
           path: "timestamp",
           shorthand: nil,
-          value: ~U[2019-01-01 03:14:15Z],
+          value: ~N[2019-01-01 03:14:15Z],
           values: nil
         },
         %Logflare.Lql.FilterRule{
@@ -721,9 +721,9 @@ defmodule Logflare.LqlParserTest do
                   operator: :>=,
                   path: "timestamp",
                   shorthand: nil,
-                  value: ~U[2020-01-01 00:00:00.345Z]
+                  value: ~N[2020-01-01 00:00:00.345000Z]
                 }
-              ]} == Parser.parse("timestamp:>=2020-01-01T00:00:00.345Z", @schema)
+              ]} == Parser.parse("timestamp:>=2020-01-01T00:00:00.345000", @schema)
     end
 
     test "timestamp shorthands" do
@@ -1008,7 +1008,7 @@ defmodule Logflare.LqlParserTest do
                   path: "timestamp",
                   shorthand: nil,
                   value: nil,
-                  values: [~U[2020-01-01 00:00:00Z], ~U[2020-01-01 00:50:00Z]]
+                  values: [~N[2020-01-01 00:00:00Z], ~N[2020-01-01 00:50:00Z]]
                 }
               ]} == Parser.parse("timestamp:2020-01-01T00:{00..50}:00Z", @schema)
 
@@ -1021,8 +1021,8 @@ defmodule Logflare.LqlParserTest do
                   shorthand: nil,
                   value: nil,
                   values: [
-                    ~U[2020-01-01 00:00:35Z],
-                    ~U[2020-01-01 00:00:55Z]
+                    ~N[2020-01-01 00:00:35Z],
+                    ~N[2020-01-01 00:00:55Z]
                   ]
                 }
               ]} == Parser.parse("timestamp:2020-01-01T00:00:{35..55}", @schema)
@@ -1036,8 +1036,8 @@ defmodule Logflare.LqlParserTest do
                   shorthand: nil,
                   value: nil,
                   values: [
-                    ~U[2020-05-01 12:44:24Z],
-                    ~U[2020-06-01 12:44:24Z]
+                    ~N[2020-05-01 12:44:24Z],
+                    ~N[2020-06-01 12:44:24Z]
                   ]
                 }
               ]} == Parser.parse("timestamp:2020-{05..06}-01T12:44:24", @schema)
@@ -1051,8 +1051,8 @@ defmodule Logflare.LqlParserTest do
                   shorthand: nil,
                   value: nil,
                   values: [
-                    ~U[2020-05-01 12:00:05Z],
-                    ~U[2020-05-01 14:00:05Z]
+                    ~N[2020-05-01 12:00:05Z],
+                    ~N[2020-05-01 14:00:05Z]
                   ]
                 }
               ]} == Parser.parse("timestamp:2020-05-01T{12..14}:00:05Z", @schema)
@@ -1066,8 +1066,8 @@ defmodule Logflare.LqlParserTest do
                   shorthand: nil,
                   value: nil,
                   values: [
-                    ~U[2020-05-01 14:00:05.000001Z],
-                    ~U[2020-05-01 14:00:05.460560Z]
+                    ~N[2020-05-01 14:00:05.000001Z],
+                    ~N[2020-05-01 14:00:05.460560Z]
                   ]
                 }
               ]} == Parser.parse("timestamp:2020-05-01T14:00:05.{000001..460560}Z", @schema)
@@ -1412,7 +1412,7 @@ defmodule Logflare.LqlParserTest do
        |
 
       assert {:error,
-              "Error while parsing timestamp filter value: expected ISO8601 string or range, got 20"} ==
+              "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got 20"} ==
                Parser.parse(str, schema)
     end
 

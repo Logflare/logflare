@@ -320,16 +320,6 @@ defmodule Logflare.Lql.Parser.Helpers do
         |> Map.new()
 
       dtmap =
-        %{
-          calendar: Calendar.ISO,
-          std_offset: 0,
-          time_zone: "Etc/UTC",
-          utc_offset: 0,
-          zone_abbr: "UTC"
-        }
-        |> Map.merge(dtmap)
-
-      dtmap =
         if dtmap[:microsecond] do
           dtmap
           |> Map.delete(:millisecond)
@@ -338,7 +328,7 @@ defmodule Logflare.Lql.Parser.Helpers do
           dtmap
         end
 
-      struct!(DateTime, dtmap)
+      struct!(NaiveDateTime, dtmap)
     end)
   end
 
@@ -346,7 +336,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     mod =
       case tag do
         :date -> Date
-        :datetime -> DateTime
+        :datetime -> NaiveDateTime
       end
 
     case mod.from_iso8601(result) do

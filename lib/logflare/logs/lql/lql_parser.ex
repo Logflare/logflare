@@ -73,8 +73,7 @@ defmodule Logflare.Lql.Parser do
 
       {:ok, rules}
     else
-      {:ok, rules, rest, _, {_, _}, _} ->
-        Logger.warn("LQL parser: #{inspect(rules)}")
+      {:ok, _rules, rest, _, {_, _}, _} ->
         {:error, "LQL parser doesn't know how to handle this part: #{rest}"}
 
       {:error, err} ->

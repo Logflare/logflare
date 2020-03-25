@@ -261,14 +261,12 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Map.take([:chart_aggregate, :chart_period, :querystring, :tailing?])
 
     maybe_cancel_tailing_timer(socket)
-    user_local_tz = metadata["search"]["user_local_timezone"]
 
     socket =
       socket
       |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
-      |> assign(:user_local_timezone, user_local_tz)
       |> assign_notifications(:warning, nil)
       |> assign_notifications(:error, nil)
       |> push_patch(
@@ -278,6 +276,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
     SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
 
+    {:noreply, socket}
+  end
+
+  def handle_event("set_user_local_timezone", metadata, socket) do
+    socket = assign(socket, :user_local_timezone, metadata["tz"])
     {:noreply, socket}
   end
 
@@ -291,13 +294,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Kernel.not()
 
     socket = assign(socket, :use_local_time, use_local_time)
-
-    socket =
-      if use_local_time do
-        assign(socket, :user_local_timezone, metadata["user_local_timezone"])
-      else
-        socket
-      end
 
     {:noreply, socket}
   end
