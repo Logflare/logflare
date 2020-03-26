@@ -112,7 +112,7 @@ const datepickerConfig = {
 
 const buildTsClause = (start, end, label) => {
   let timestampFilter
-  const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ssZ")
+  const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ss")
   switch (label) {
     case "Today":
       timestampFilter = ["t:today"]
@@ -142,10 +142,11 @@ const buildTsClause = (start, end, label) => {
 
 hooks.SourceLogsSearch = {
   updated() {
-    setTimezone()
+    setTimezone(this)
     const hook = this
-    $("#daterangepicker").daterangepicker(datepickerConfig)
-    $("#daterangepicker").on("apply.daterangepicker", (e, picker) => {
+    const $daterangepicker = $("#daterangepicker")
+    $daterangepicker.daterangepicker(datepickerConfig)
+    $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
     })
@@ -155,8 +156,9 @@ hooks.SourceLogsSearch = {
   },
   mounted() {
     const hook = this
-    $("#daterangepicker").daterangepicker(datepickerConfig)
-    $("#daterangepicker").on("apply.daterangepicker", (e, picker) => {
+    const $daterangepicker = $("#daterangepicker")
+    $daterangepicker.daterangepicker(datepickerConfig)
+    $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
     })
