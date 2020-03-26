@@ -24,6 +24,9 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
     handle_info(:load, state)
   end
 
+  # TODO: Call :load on all nodes when sigterm is received so they
+  # know to not include a shutting down node in the cluster
+
   def handle_info(:load, %State{} = state) do
     {:noreply, load(state)}
   end

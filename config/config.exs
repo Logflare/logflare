@@ -78,6 +78,6 @@ config :scrivener_html,
   view_style: :bootstrap_v4
 
 config :logflare,
-  sigterm_shutdown_grace_period_ms: 15_000
+  sigterm_shutdown_grace_period_ms: 1_000
 
 import_config "#{Mix.env()}.exs"

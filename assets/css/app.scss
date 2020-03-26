@@ -232,6 +232,7 @@ a:hover {
 
 a:focus {
   outline: 3px dashed $brand-fuscia;
+  outline-offset: 3px;
 }
 
 .text-primary {
