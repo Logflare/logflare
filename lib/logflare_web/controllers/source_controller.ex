@@ -338,7 +338,6 @@ defmodule LogflareWeb.SourceController do
   def del_source_and_redirect(conn, %{"id" => source_id}) do
     source = Sources.get(source_id)
 
-    # TODO: Delete sources across the cluster
     if :ets.info(source.token) != :undefined do
       Supervisor.delete_source(source.token)
     end
