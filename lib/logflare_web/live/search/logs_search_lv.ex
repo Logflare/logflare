@@ -252,7 +252,7 @@ defmodule LogflareWeb.Source.SearchLV do
      |> assign(:querystring, qs)}
   end
 
-  def handle_event("start_search" = ev, metadata, %{assigns: prev_assigns} = socket) do
+  def handle_event("start_search" = ev, _, %{assigns: prev_assigns} = socket) do
     %{id: sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
 

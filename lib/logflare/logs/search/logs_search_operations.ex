@@ -83,7 +83,7 @@ defmodule Logflare.Logs.SearchOperations do
         Utils.halt(so, "Only one chart rule can be used in a query")
 
       match?([_], so.chart_rules) and
-        hd(so.chart_rules).value_type in ~w[integer float]a and
+        hd(so.chart_rules).value_type not in ~w[integer float]a and
           hd(so.chart_rules).path != "timestamp" ->
         chart_rule = hd(so.chart_rules)
 
@@ -94,11 +94,17 @@ defmodule Logflare.Logs.SearchOperations do
 
         Utils.halt(so, msg)
 
+      Timex.diff(max_ts, min_ts, so.chart_period) == 0 ->
+        msg =
+          "Selected chart period #{so.chart_period} is larger than timestamp interval. Select a chart period with higher granularity."
+
+        Utils.halt(so, msg)
+
       get_number_of_chart_ticks(min_ts, max_ts, so.chart_period) > @default_max_n_chart_ticks ->
         msg =
           "the interval length between min and max timestamp is larger than #{
             @default_max_n_chart_ticks
-          }, please select use another chart aggregation period."
+          } units, please select use another chart aggregation period."
 
         Utils.halt(so, msg)
 

@@ -88,10 +88,10 @@ hooks.ModalHook = {
   },
 }
 
-const setTimezone = () => {
+const setTimezone = (hook) => {
   // Set user timezone
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  $("#user-local-timezone").val(timeZone)
+  hook.pushEvent("set_user_local_timezone", {tz: timeZone})
 }
 
 const datepickerConfig = {
@@ -151,7 +151,7 @@ hooks.SourceLogsSearch = {
     })
   },
   reconnected() {
-    setTimezone()
+    setTimezone(this)
   },
   mounted() {
     const hook = this
@@ -167,7 +167,7 @@ hooks.SourceLogsSearch = {
       text: () => location.href,
     })
 
-    setTimezone()
+    setTimezone(this)
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")

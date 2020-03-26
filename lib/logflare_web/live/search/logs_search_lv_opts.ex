@@ -33,7 +33,7 @@ defmodule LogflareWeb.Source.SearchLV.SearchOpts do
     params
     |> case do
       %{"querystring" => ""} = p ->
-        %{p | "querystring" => "chart:aggregate@count chart:period@minute"}
+        %{p | "querystring" => "c:count(*) c:group_by(t::minute)"}
 
       %{"querystring" => _} = p ->
         p
