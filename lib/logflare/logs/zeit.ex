@@ -35,12 +35,24 @@ defmodule Logflare.Logs.Zeit do
 
   defp handle_event(event) when is_map(event) do
     source = event["source"]
-    message = event["message"] || custom_message(event)
 
-    %{
-      "message" => "#{source} | " <> message,
-      "metadata" => user_agent_to_string(event)
-    }
+    case source do
+      "build" ->
+        message = event["message"]
+
+        %{
+          "message" => "#{source} | " <> message,
+          "metadata" => user_agent_to_string(event)
+        }
+
+      _else ->
+        message = custom_message(event)
+
+        %{
+          "message" => "#{source} | " <> message,
+          "metadata" => user_agent_to_string(event)
+        }
+    end
   end
 
   defp user_agent_to_string(event) when is_map(event) do
