@@ -17,7 +17,7 @@ defmodule LogflareWeb.SourceChannel do
       socket.assigns[:public_token] ->
         true
 
-      socket.assigns[:user][:admin] ->
+      socket.assigns[:user].admin ->
         true
 
       socket.assigns[:user] ->
