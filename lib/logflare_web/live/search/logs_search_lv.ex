@@ -252,7 +252,11 @@ defmodule LogflareWeb.Source.SearchLV do
      |> assign(:querystring, qs)}
   end
 
-  def handle_event("start_search" = ev, _, %{assigns: prev_assigns} = socket) do
+  def handle_event(
+        "start_search" = ev,
+        %{"search" => %{"querystring" => querystring}},
+        %{assigns: prev_assigns} = socket
+      ) do
     %{id: sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
 
@@ -260,10 +264,15 @@ defmodule LogflareWeb.Source.SearchLV do
       prev_assigns
       |> Map.take([:chart_aggregate, :chart_period, :querystring, :tailing?])
 
+    {:ok, lql_rules} = Lql.decode(querystring, prev_assigns.source.bq_table_schema)
+    qs = Lql.encode!(lql_rules)
+
     maybe_cancel_tailing_timer(socket)
 
     socket =
       socket
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, qs)
       |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)

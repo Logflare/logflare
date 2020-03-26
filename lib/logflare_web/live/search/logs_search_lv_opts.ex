@@ -26,9 +26,6 @@ defmodule LogflareWeb.Source.SearchLV.SearchOpts do
     end
   end
 
-  def update_chart_ops() do
-  end
-
   def prepare(params) do
     params
     |> case do
