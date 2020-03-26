@@ -6,12 +6,13 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
-    :ok =
-      :gen_event.swap_sup_handler(
-        :erl_signal_server,
-        {:erl_signal_handler, []},
-        {Logflare.SigtermHandler, []}
-      )
+    # TODO: Re-enable sig term handler when setting node status in GCP metadata
+    # :ok =
+    #   :gen_event.swap_sup_handler(
+    #     :erl_signal_server,
+    #     {:erl_signal_handler, []},
+    #     {Logflare.SigtermHandler, []}
+    #   )
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
