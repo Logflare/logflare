@@ -15,6 +15,8 @@ defmodule Logflare.Source.Supervisor do
 
   require Logger
 
+  # TODO: periodically check the database and locally create or delete any sources accordingly
+
   def start_link do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
@@ -56,30 +58,30 @@ defmodule Logflare.Source.Supervisor do
     {:noreply, source_ids}
   end
 
-  def handle_call({:create, source_id}, _from, state) do
+  def handle_cast({:create, source_id}, state) do
     case create_source(source_id) do
       {:ok, _pid} ->
         state = Enum.uniq([source_id | state])
-        {:reply, source_id, state}
+        {:noreply, state}
 
       {:error, _reason} ->
         Logger.error("Failed to start RecentLogsServer: #{source_id}")
 
-        {:reply, source_id, state}
+        {:noreply, state}
     end
   end
 
-  def handle_call({:delete, source_id}, _from, state) do
+  def handle_cast({:delete, source_id}, state) do
     case Process.whereis(source_id) do
       nil ->
-        {:reply, source_id, state}
+        {:noreply, state}
 
       _ ->
         send(source_id, {:stop_please, :shutdown})
         Counters.delete(source_id)
 
         state = List.delete(state, source_id)
-        {:reply, source_id, state}
+        {:noreply, state}
     end
   end
 
@@ -126,11 +128,14 @@ defmodule Logflare.Source.Supervisor do
   ## Public Functions
 
   def new_source(source_id) do
-    GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+    # Calling this server doing boot times out due to logs of sources getting created at once and handle_continue blocks
+    # GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+
+    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
   end
 
   def delete_source(source_id) do
-    GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:delete, source_id})
+    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:delete, source_id})
     BigQuery.delete_table(source_id)
 
     {:ok, source_id}
