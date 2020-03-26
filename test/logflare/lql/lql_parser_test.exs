@@ -1451,6 +1451,59 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
+  describe "LQL encoding" do
+    @describetag :this
+
+    test "to_datetime_with_range" do
+      lv = "2020-01-01T03:14:15"
+      rv = "2020-01-01T03:54:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{14..54}:15"
+    end
+
+    test "to_datetime_with_range 2" do
+      lv = "2020-01-01T03:40:15"
+      rv = "2020-01-01T03:45:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{40..45}:15"
+    end
+
+    test "to_datetime_with_range 3" do
+      lv = "2020-01-01T03:05:15"
+      rv = "2020-01-01T03:59:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{05..59}:15"
+    end
+
+    test "to_datetime_with_range 4" do
+      lv = "2020-01-01T17:00:15"
+      rv = "2020-01-01T23:00:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T{17..23}:00:15"
+    end
+
+    test "to_datetime_with_range 5" do
+      lv = "2020-01-01T17:00:15"
+      rv = "2020-01-15T17:00:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-{01..15}T17:00:15"
+    end
+
+    test "to_datetime_with_range 6" do
+      lv = "2020-12-01T17:00:15"
+      rv = "2020-21-01T17:00:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-{12..21}-01T17:00:15"
+    end
+
+    test "to_datetime_with_range 7" do
+      lv = "2020-12-01T17:00:15"
+      rv = "2020-12-01T17:50:15"
+
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-12-01T17:{00..50}:15"
+    end
+  end
+
   def now_ndt() do
     %{Timex.now() | microsecond: {0, 0}}
   end
