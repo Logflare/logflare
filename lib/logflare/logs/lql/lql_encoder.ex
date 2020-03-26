@@ -57,8 +57,18 @@ defmodule Logflare.Lql.Encoder do
       if match?(%Date{}, lv) do
         "#{lv}..#{rv}"
       else
-        lvstring = Timex.format!(lv, "{ISO:Extended}")
-        rvstring = Timex.format!(rv, "{ISO:Extended}")
+        lvstring =
+          lv
+          |> DateTime.from_naive!("Etc/UTC")
+          |> Timex.format!("{ISO:Extended:Z}")
+          |> String.trim_trailing("Z")
+
+        rvstring =
+          rv
+          |> DateTime.from_naive!("Etc/UTC")
+          |> Timex.format!("{ISO:Extended:Z}")
+          |> String.trim_trailing("Z")
+
         to_datetime_with_range(lvstring, rvstring)
       end
 
@@ -70,7 +80,10 @@ defmodule Logflare.Lql.Encoder do
       if match?(%Date{}, v) do
         "#{v}"
       else
-        Timex.format!(v, "{ISO:Extended:Z}")
+        v
+        |> DateTime.from_naive!("Etc/UTC")
+        |> Timex.format!("{ISO:Extended:Z}")
+        |> String.trim_trailing("Z")
       end
 
     "timestamp:#{op}#{dtstring}"

@@ -380,13 +380,15 @@ defmodule Logflare.Lql.Parser.Helpers do
       string(".")
       |> ascii_string([?0..?9], 6)
     )
-    |> choice([
-      string("Z"),
-      string("+")
-      |> ascii_string([?0..?9], 2)
-      |> string(":")
-      |> ascii_string([?0..?9], 2)
-    ])
+    |> optional(
+      choice([
+        string("Z"),
+        string("+")
+        |> ascii_string([?0..?9], 2)
+        |> string(":")
+        |> ascii_string([?0..?9], 2)
+      ])
+    )
     |> reduce({Enum, :join, [""]})
     |> unwrap_and_tag(:datetime)
     |> label("ISO8601 datetime")
@@ -433,6 +435,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       integer_with_range(2)
       |> tag(:second)
     )
+    |> lookahead_not(string(".."))
     |> optional(ignore(string(".")))
     |> concat(
       optional(
@@ -440,22 +443,27 @@ defmodule Logflare.Lql.Parser.Helpers do
         |> tag(:microsecond)
       )
     )
-    |> optional(
-      choice([
-        ignore(string("Z")),
-        string("+")
-        |> ascii_string([?0..?9], 2)
-        |> string(":")
-        |> ascii_string([?0..?9], 2)
-      ])
+    |> lookahead_not(string(".."))
+    |> concat(
+      optional(
+        choice([
+          ignore(string("Z")),
+          string("+")
+          |> ascii_string([?0..?9], 2)
+          |> string(":")
+          |> ascii_string([?0..?9], 2)
+        ])
+        # |> tag(:timezone)
+      )
     )
+    |> lookahead_not(string(".."))
     |> label("ISO8601 datetime with range")
     |> reduce(:parse_date_or_datetime_with_range)
     |> tag(:datetime_with_range)
   end
 
   def date_or_datetime do
-    [datetime(), datetime_with_range(), date()]
+    [datetime_with_range(), datetime(), date()]
     |> choice()
     |> label("date or datetime value")
   end
@@ -491,6 +499,18 @@ defmodule Logflare.Lql.Parser.Helpers do
   def apply_value_modifiers([rule]) do
     case rule.value do
       {:range_operator, [lvalue, rvalue]} ->
+        lvalue =
+          case lvalue do
+            {:datetime_with_range, [[x]]} -> x
+            x -> x
+          end
+
+        rvalue =
+          case rvalue do
+            {:datetime_with_range, [[x]]} -> x
+            x -> x
+          end
+
         %{rule | values: [lvalue, rvalue], operator: :range, value: nil}
 
       _ ->

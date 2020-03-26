@@ -254,7 +254,7 @@ defmodule Logflare.LqlParserTest do
         metadata.user.type:paid
         metadata.user.views:<=1
         metadata.users.source_count:>100
-        timestamp:2019-01-01T00:13:37Z..2019-02-01T00:23:34Z
+        timestamp:2019-01-01T00:13:37..2019-02-01T00:23:34
       |
 
       {:ok, result} = Parser.parse(str, schema)
@@ -478,7 +478,7 @@ defmodule Logflare.LqlParserTest do
         -metadata.context.error_count:>=100
         -metadata.user.about:~referrall
         -metadata.user.type:paid
-        -timestamp:2019-01-01T00:13:37Z..2019-02-01T00:23:34Z
+        -timestamp:2019-01-01T00:13:37..2019-02-01T00:23:34
       |
 
       {:ok, result} = Parser.parse(str, schema)
@@ -569,8 +569,8 @@ defmodule Logflare.LqlParserTest do
       metadata.user.group_id:5
       timestamp:>2019-01-01
       timestamp:<=2019-04-20
-      timestamp:<2020-01-01T03:14:15Z
-      timestamp:>=2019-01-01T03:14:15Z
+      timestamp:<2020-01-01T03:14:15
+      timestamp:>=2019-01-01T03:14:15
       timestamp:<=2010-04-20|
 
       {:ok, result} = Parser.parse(str, @schema)
