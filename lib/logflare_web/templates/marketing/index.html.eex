@@ -22,6 +22,7 @@
 						<p>Install the <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></p>
 						<p>Setup our <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
 						<p>Check out the <%= link "Logflare Zeit app", to: "https://zeit.co/integrations/logflare", target: "_blank" %></p>
+						<p>Javascript? Use our <%= link "Pino transport", to: "https://github.com/Logflare/pino-logflare", target: "_blank" %></p>
 					</div>
 				</div>
 			</div>

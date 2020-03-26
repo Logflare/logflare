@@ -13,7 +13,7 @@
   </div>
 </div>
 <div class="dashboard container mx-auto" hidden>
-  <div id="explore-dashboard"><center><%= link "Check out the new Zeit Logflare app!", to: "https://zeit.co/integrations/logflare", target: "_blank" %></center></div>
+  <div id="explore-dashboard"><center><%= link "🌲🎉 Send logs from your Javascript project with the official Pino transport!", to: "https://github.com/Logflare/pino-logflare", target: "_blank" %></center></div>
   <div id="saved-searches" class="">
     <h5 class="header-margin">Saved Searches</h5>
     <ul class="list-unstyled">
