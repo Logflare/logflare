@@ -261,33 +261,6 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | sql_params: sql_and_params, sql_string: sql_with_params_string}
   end
 
-  @spec parse_querystring(SO.t()) :: SO.t()
-  def parse_querystring(%SO{querystring: ""} = so), do: so
-
-  def parse_querystring(%SO{} = so) do
-    schema =
-      so.source
-      |> Sources.Cache.get_bq_schema()
-
-    with {:ok, lql_rules} <- Parser.parse(so.querystring, schema) do
-      filter_rules = Lql.Utils.get_filter_rules(lql_rules)
-      chart_rules = Lql.Utils.get_chart_rules(lql_rules)
-
-      ts_filters = Lql.Utils.get_ts_filters(filter_rules)
-      lql_meta_and_msg_filters = Lql.Utils.get_meta_and_msg_filters(filter_rules)
-
-      %{
-        so
-        | lql_meta_and_msg_filters: lql_meta_and_msg_filters,
-          chart_rules: chart_rules,
-          lql_ts_filters: ts_filters
-      }
-    else
-      {:error, err} ->
-        halt(so, err)
-    end
-  end
-
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
   def apply_local_timestamp_correction(%SO{} = so) do
     lql_ts_filters =
