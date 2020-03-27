@@ -5,6 +5,7 @@ defmodule Logflare.Lql.Parser do
   alias Logflare.Lql
   alias Logflare.Lql.{FilterRule, ChartRule, Utils}
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
 
   require Logger
 
@@ -17,7 +18,7 @@ defmodule Logflare.Lql.Parser do
         timestamp_clause(),
         metadata_level_clause(),
         metadata_clause(),
-        quoted_string(:event_message),
+        quoted_string(:quoted_event_message),
         word()
       ])
     )
@@ -27,34 +28,52 @@ defmodule Logflare.Lql.Parser do
   )
 
   def parse("", _schema) do
-    {:ok, [%FilterRule{path: "event_message", operator: "~", value: ".+", modifiers: []}]}
+    {:ok, []}
   end
 
-  def parse(querystring, schema) do
+  def parse(querystring, %TS{} = schema) do
     with {:ok, rules, "", _, {_, _}, _} <-
            querystring
            |> String.trim()
            |> do_parse() do
-      typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
-
-      rules =
+      {chart_rule_tokens, other_rules} =
         rules
         |> List.flatten()
-        |> Enum.map(fn
+        |> Enum.split_with(fn
+          {:chart, _} -> true
+          _ -> false
+        end)
+
+      typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
+
+      chart_rule =
+        if not Enum.empty?(chart_rule_tokens) do
+          chart_rule =
+            chart_rule_tokens
+            |> Enum.reduce(%{}, fn
+              {:chart, fields}, acc -> Map.merge(acc, Map.new(fields))
+            end)
+
+          chart_rule = Map.put(chart_rule, :value_type, get_path_type(typemap, chart_rule.path))
+
+          struct!(ChartRule, chart_rule)
+        end
+
+      rules =
+        Enum.map(other_rules, fn
           %FilterRule{path: path} = rule ->
             type = get_path_type(typemap, path)
             maybe_cast_value(rule, type)
-
-          %ChartRule{path: path} = rule ->
-            type = get_path_type(typemap, path)
-            %{rule | value_type: type}
         end)
-        |> Enum.sort()
+
+      rules =
+        [chart_rule | rules]
+        |> List.flatten()
+        |> Enum.reject(&is_nil/1)
 
       {:ok, rules}
     else
-      {:ok, rules, rest, _, {_, _}, _} ->
-        Logger.warn("LQL parser: #{inspect(rules)}")
+      {:ok, _rules, rest, _, {_, _}, _} ->
         {:error, "LQL parser doesn't know how to handle this part: #{rest}"}
 
       {:error, err} ->
@@ -91,6 +110,18 @@ defmodule Logflare.Lql.Parser do
   end
 
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)
+
+  defp maybe_cast_value(%{values: values, value: nil} = c, type) when length(values) >= 1 do
+    %{
+      c
+      | values:
+          values
+          |> Enum.map(&%{value: &1, path: c.path})
+          |> Enum.map(&maybe_cast_value(&1, type))
+          |> Enum.map(& &1.value)
+    }
+  end
+
   defp maybe_cast_value(%{value: :NULL} = c, _), do: c
   defp maybe_cast_value(%{value: "true"} = c, :boolean), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}

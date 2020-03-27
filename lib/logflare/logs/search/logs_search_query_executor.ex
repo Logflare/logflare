@@ -9,6 +9,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.User.BigQueryUDFs
   alias Logflare.{Users, User}
   alias Logflare.Logs
+  alias Logflare.Source
   use TypedStruct
   require Logger
   @query_timeout 60_000
@@ -204,35 +205,26 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def start_task(lv_pid, params) do
-    so = struct(SO, params)
+    so = SO.new(params)
 
     if so.tailing? do
-      Task.start_link(fn ->
-        so.source
-        |> Search.query_source_streaming_buffer()
-        |> case do
-          {:ok, query_result} ->
-            %{rows: rows} = query_result
-            source = so.source
-
-            for row <- rows do
-              le = LogEvent.make_from_db(row, %{source: source})
-
-              Logs.LogEvents.Cache.put_event_with_id_and_timestamp(
-                source.token,
-                [id: le.id, timestamp: DateTime.from_unix!(le.body.timestamp, :microsecond)],
-                le
-              )
-            end
-
-            :noop
-
-          {:error, _result} ->
-            Logger.error("Streaming buffer query for source #{so.source.token} failed!")
-        end
-      end)
+      start_cache_streaming_buffer_task(so.source)
     end
 
+    start_search_and_aggs_task(so, lv_pid)
+  end
+
+  def process_search_response(tup, lv_pid, type) when type in ~w(events aggregates)a do
+    case tup do
+      {:ok, search_op} ->
+        {:search_result, type, lv_pid, search_op}
+
+      {:error, err} ->
+        {:search_error, type, lv_pid, err}
+    end
+  end
+
+  def start_search_and_aggs_task(%SO{} = so, lv_pid) do
     Task.async(fn ->
       so
       |> Search.search_and_aggs()
@@ -246,13 +238,29 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     end)
   end
 
-  def process_search_response(tup, lv_pid, type) when type in ~w(events aggregates)a do
-    case tup do
-      {:ok, search_op} ->
-        {:search_result, type, lv_pid, search_op}
+  def start_cache_streaming_buffer_task(%Source{} = source) do
+    Task.start_link(fn ->
+      source
+      |> Search.query_source_streaming_buffer()
+      |> case do
+        {:ok, query_result} ->
+          %{rows: rows} = query_result
 
-      {:error, err} ->
-        {:search_error, type, lv_pid, err}
-    end
+          for row <- rows do
+            le = LogEvent.make_from_db(row, %{source: source})
+
+            Logs.LogEvents.Cache.put_event_with_id_and_timestamp(
+              source.token,
+              [id: le.id, timestamp: DateTime.from_unix!(le.body.timestamp, :microsecond)],
+              le
+            )
+          end
+
+          :ok
+
+        {:error, _result} ->
+          Logger.error("Streaming buffer query for source #{source.token} failed!")
+      end
+    end)
   end
 end

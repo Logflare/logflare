@@ -2,7 +2,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
-  use Phoenix.LiveView
+  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
   alias LogflareWeb.Router.Helpers, as: Routes
 
   alias LogflareWeb.SearchView
@@ -10,6 +10,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SavedSearches
   alias __MODULE__.SearchOpts
+  alias Logflare.Lql
+  alias Logflare.Lql.{ChartRule, FilterRule}
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
   use LogflareWeb.LiveViewUtils
@@ -20,21 +22,44 @@ defmodule LogflareWeb.Source.SearchLV do
   @user_idle_interval 300_000
 
   def render(assigns) do
+    assigns = %{
+      assigns
+      | chart_aggregate_enabled?: search_agg_controls_enabled?(assigns.lql_rules)
+    }
+
     SearchView.render("logs_search.html", assigns)
   end
 
   def mount(%{"source_id" => source_id} = params, %{"user_id" => user_id}, socket) do
+    Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
+
     source =
       source_id
       |> String.to_integer()
       |> Sources.Cache.get_by_id_and_preload()
+      |> Sources.put_bq_table_data()
 
     user = Users.Cache.get_by_and_preload(id: user_id)
 
-    Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
-
     {:ok, search_opts} = SearchOpts.new(params)
-    chart_aggregate_enabled? = search_opts.querystring =~ ~r/chart:\w+/
+    {:ok, lql_rules} = Lql.decode(search_opts.querystring, source.bq_table_schema)
+
+    lql_rules =
+      if Enum.find(lql_rules, &match?(%ChartRule{}, &1)) do
+        lql_rules
+      else
+        [
+          %ChartRule{
+            aggregate: :count,
+            path: "timestamp",
+            period: :minute,
+            value_type: nil
+          }
+          | lql_rules
+        ]
+      end
+
+    qs = Lql.encode!(lql_rules)
 
     socket =
       assign(
@@ -48,21 +73,22 @@ defmodule LogflareWeb.Source.SearchLV do
         tailing_timer: nil,
         user: user,
         notifications: %{},
-        querystring: search_opts.querystring,
+        querystring: qs,
         search_op: nil,
         search_op_error: nil,
         search_op_log_events: nil,
         search_op_log_aggregates: nil,
         chart_period: search_opts.chart_period,
         chart_aggregate: search_opts.chart_aggregate,
+        chart_aggregate_enabled?: nil,
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
         active_modal: nil,
         search_tip: gen_search_tip(),
         user_local_timezone: nil,
         use_local_time: true,
-        chart_aggregate_enabled?: chart_aggregate_enabled?,
-        last_query_completed_at: nil
+        last_query_completed_at: nil,
+        lql_rules: lql_rules
       )
 
     {:ok, socket}
@@ -153,19 +179,16 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:ok, search_opts} = SearchOpts.new(prev_assigns, search)
 
-    chart_aggregate_enabled? = search_opts.querystring =~ ~r/chart:\w+/
-
-    %{chart_aggregate: prev_chart_aggregate, chart_period: prev_chart_period} = prev_assigns
-
     socket =
       socket
-      |> assign(:chart_aggregate_enabled?, chart_aggregate_enabled?)
       |> assign(:querystring, search_opts.querystring)
       |> assign(:tailing?, search_opts.tailing?)
 
+    %{chart_aggregate: prev_agg_fn, chart_period: prev_agg_period} = prev_assigns
+
     socket =
-      if search_opts.chart_aggregate != prev_chart_aggregate or
-           search_opts.chart_period != prev_chart_period do
+      if search_opts.chart_aggregate != prev_agg_fn or
+           search_opts.chart_period != prev_agg_period do
         params = %{
           chart_aggregate: "#{search_opts.chart_aggregate}",
           chart_period: "#{search_opts.chart_period}",
@@ -173,10 +196,25 @@ defmodule LogflareWeb.Source.SearchLV do
           tailing?: search_opts.tailing?
         }
 
+        {:ok, lql_rules} = Lql.decode(search_opts.querystring, source.bq_table_schema)
+
+        qs =
+          lql_rules
+          |> Enum.map(fn
+            %ChartRule{} = lqlc ->
+              %{lqlc | aggregate: search_opts.chart_aggregate, period: search_opts.chart_period}
+
+            x ->
+              x
+          end)
+          |> Lql.encode!()
+
         socket =
           socket
           |> assign(:chart_aggregate, search_opts.chart_aggregate)
           |> assign(:chart_period, search_opts.chart_period)
+          |> assign(:querystring, qs)
+          |> assign(:lql_rules, lql_rules)
           |> assign(:log_aggregates, [])
           |> assign(:loading, true)
 
@@ -193,7 +231,32 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("start_search" = ev, metadata, %{assigns: prev_assigns} = socket) do
+  def handle_event(
+        "datepicker_update" = ev,
+        %{"querystring" => ts_qs},
+        %{assigns: assigns} = socket
+      ) do
+    log_lv_received_event(ev, socket.assigns.source)
+    {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
+
+    lql_rules =
+      assigns.lql_rules
+      |> Enum.reject(&(&1.path == "timestamp" and match?(%FilterRule{}, &1)))
+      |> Enum.concat(ts_rules)
+
+    qs = Lql.encode!(lql_rules)
+
+    {:noreply,
+     socket
+     |> assign(:lql_rules, lql_rules)
+     |> assign(:querystring, qs)}
+  end
+
+  def handle_event(
+        "start_search" = ev,
+        %{"search" => %{"querystring" => querystring}},
+        %{assigns: prev_assigns} = socket
+      ) do
     %{id: sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
 
@@ -201,15 +264,18 @@ defmodule LogflareWeb.Source.SearchLV do
       prev_assigns
       |> Map.take([:chart_aggregate, :chart_period, :querystring, :tailing?])
 
+    {:ok, lql_rules} = Lql.decode(querystring, prev_assigns.source.bq_table_schema)
+    qs = Lql.encode!(lql_rules)
+
     maybe_cancel_tailing_timer(socket)
-    user_local_tz = metadata["search"]["user_local_timezone"]
 
     socket =
       socket
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, qs)
       |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
-      |> assign(:user_local_timezone, user_local_tz)
       |> assign_notifications(:warning, nil)
       |> assign_notifications(:error, nil)
       |> push_patch(
@@ -219,6 +285,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
     SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
 
+    {:noreply, socket}
+  end
+
+  def handle_event("set_user_local_timezone", metadata, socket) do
+    socket = assign(socket, :user_local_timezone, metadata["tz"])
     {:noreply, socket}
   end
 
@@ -232,13 +303,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Kernel.not()
 
     socket = assign(socket, :use_local_time, use_local_time)
-
-    socket =
-      if use_local_time do
-        assign(socket, :user_local_timezone, metadata["user_local_timezone"])
-      else
-        socket
-      end
 
     {:noreply, socket}
   end
@@ -385,5 +449,12 @@ defmodule LogflareWeb.Source.SearchLV do
       true ->
         nil
     end
+  end
+
+  defp search_agg_controls_enabled?(lql_rules) do
+    lql_rules
+    |> Enum.find(%{}, &match?(%ChartRule{}, &1))
+    |> Map.get(:value_type)
+    |> Kernel.in([:integer, :float])
   end
 end

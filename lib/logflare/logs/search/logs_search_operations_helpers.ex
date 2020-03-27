@@ -17,6 +17,10 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     %{min: min, max: max, message: nil}
   end
 
+  def get_min_max_filter_timestamps([%{operator: :range, values: [lvalue, rvalue]}], _) do
+    %{min: lvalue, max: rvalue, message: nil}
+  end
+
   def get_min_max_filter_timestamps([_tsf] = ts_filters, chart_period) do
     {min, max} =
       ts_filters
@@ -105,6 +109,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     %{sql_with_params: sql, params: params, sql_string: sql_string}
   end
 
+  @deprecated "use BQRepo"
   def query_with_params(sql, params, opts \\ [])
       when is_binary(sql) and is_list(params) do
     query_request = %QueryRequest{
@@ -122,6 +127,15 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     else
       errtup -> errtup
     end
+  end
+
+  @spec get_number_of_chart_ticks(
+          Date.t() | DateTime.t(),
+          Date.t() | DateTime.t(),
+          SO.chart_period()
+        ) :: pos_integer
+  def get_number_of_chart_ticks(min, max, period) do
+    Timex.diff(max, min, period)
   end
 
   def generate_message(period) do

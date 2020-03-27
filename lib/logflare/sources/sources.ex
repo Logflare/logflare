@@ -3,6 +3,7 @@ defmodule Logflare.Sources do
   Sources-related context
   """
   alias Logflare.{Repo, Source, Tracker, Cluster}
+  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Rule
   alias Logflare.User
@@ -104,8 +105,10 @@ defmodule Logflare.Sources do
 
   def put_bq_table_data(source) do
     source
+    |> put_bq_table_id()
     |> put_bq_table_schema()
     |> put_bq_table_typemap()
+    |> put_bq_dataset_id()
   end
 
   def preload_saved_searches(source) do
@@ -221,5 +224,10 @@ defmodule Logflare.Sources do
   def put_bq_table_typemap(%Source{} = source) do
     bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
     %{source | bq_table_typemap: bq_table_typemap}
+  end
+
+  def put_bq_dataset_id(%Source{} = source) do
+    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
+    %{source | bq_dataset_id: dataset_id}
   end
 end

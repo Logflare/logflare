@@ -8,24 +8,38 @@ defmodule Logflare.Lql.Parser.Helpers do
   @isolated_string :isolated_string
 
   def word do
-    [?a..?z, ?A..?Z, ?., ?_, ?0..?9]
-    |> ascii_string(min: 1)
-    |> unwrap_and_tag(:word)
+    optional(
+      string("~")
+      |> replace(:"~")
+      |> unwrap_and_tag(:operator)
+    )
+    |> concat(
+      ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
+      |> unwrap_and_tag(:word)
+    )
     |> label("word filter")
     |> reduce({:to_rule, [:event_message]})
   end
 
-  def quoted_string(path \\ :ignore) when path in [:event_message, :ignore] do
-    ignore(string("\""))
-    |> repeat_while(
-      utf8_char([]),
-      {:not_quote, []}
+  def quoted_string(location \\ :quoted_field_value)
+      when location in [:quoted_event_message, :quoted_field_value] do
+    optional(
+      string("~")
+      |> replace(:"~")
+      |> unwrap_and_tag(:operator)
     )
-    |> ignore(string("\""))
-    |> reduce({List, :to_string, []})
-    |> unwrap_and_tag(@isolated_string)
+    |> concat(
+      ignore(string("\""))
+      |> repeat_while(
+        utf8_char([]),
+        {:not_quote, []}
+      )
+      |> ignore(string("\""))
+      |> reduce({List, :to_string, []})
+      |> unwrap_and_tag(@isolated_string)
+    )
     |> label("quoted string filter")
-    |> reduce({:to_rule, [path]})
+    |> reduce({:to_rule, [location]})
   end
 
   def parens_string() do
@@ -38,7 +52,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(@isolated_string)
     |> label("parens string")
-    |> reduce({:to_rule, [:ignore]})
+    |> reduce({:to_rule, [:quoted_field_value]})
   end
 
   def timestamp_clause() do
@@ -46,7 +60,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> replace({:path, "timestamp"})
     |> concat(operator())
     |> concat(timestamp_value())
-    |> reduce({:to_rule, [:filter]})
+    |> reduce({:to_rule, [:filter_maybe_shorthand]})
     |> reduce(:apply_value_modifiers)
     |> map({:check_for_no_invalid_metadata_field_values, [:timestamp]})
     |> label("timestamp filter rule clause")
@@ -63,12 +77,46 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def chart_clause() do
-    string("chart")
+    ignore(choice([string("chart"), string("c")]))
     |> ignore(ascii_char([?:]))
-    |> concat(metadata_field())
-    |> tag(:chart_clause)
-    |> label("chart clause")
-    |> reduce({:to_rule, []})
+    |> choice([
+      chart_aggregate_group_by(),
+      chart_aggregate()
+    ])
+    |> tag(:chart)
+  end
+
+  def chart_aggregate() do
+    choice([
+      string("avg") |> replace(:avg),
+      string("count") |> replace(:count),
+      string("sum") |> replace(:sum)
+    ])
+    |> unwrap_and_tag(:aggregate)
+    |> ignore(string("("))
+    |> concat(
+      choice([string("*") |> replace("timestamp") |> unwrap_and_tag(:path), metadata_field()])
+    )
+    |> ignore(string(")"))
+  end
+
+  def chart_aggregate_group_by() do
+    ignore(string("group_by"))
+    |> ignore(string("("))
+    |> ignore(choice([string("timestamp"), string("t")]))
+    |> ignore(string("::"))
+    |> choice([
+      string("second") |> replace(:second),
+      string("s") |> replace(:second),
+      string("minute") |> replace(:minute),
+      string("m") |> replace(:minute),
+      string("hour") |> replace(:hour),
+      string("h") |> replace(:hour),
+      string("day") |> replace(:day),
+      string("d") |> replace(:day)
+    ])
+    |> unwrap_and_tag(:period)
+    |> ignore(string(")"))
   end
 
   def metadata_field do
@@ -168,16 +216,22 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:timestamp_shorthand_to_value)
   end
 
-  def timestamp_shorthand_to_value(["now"]), do: %{Timex.now() | microsecond: {0, 0}}
+  def timestamp_shorthand_to_value(["now"]) do
+    %{value: %{Timex.now() | microsecond: {0, 0}}, shorthand: "now"}
+  end
 
   def timestamp_shorthand_to_value(["today"]) do
     dt = Timex.today() |> Timex.to_datetime()
-    {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+
+    %{value: value, shorthand: "today"}
   end
 
   def timestamp_shorthand_to_value(["yesterday"]) do
     dt = Timex.today() |> Timex.shift(days: -1) |> Timex.to_datetime()
-    {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+
+    %{value: value, shorthand: "yesterday"}
   end
 
   def timestamp_shorthand_to_value(["this", period]) do
@@ -185,25 +239,28 @@ defmodule Logflare.Lql.Parser.Helpers do
     now_ndt_no_m = %{now_ndt | minute: 0}
     now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
-    case period do
-      :minutes ->
-        {:range_operator, [now_ndt, now_ndt]}
+    value =
+      case period do
+        :minutes ->
+          {:range_operator, [now_ndt, now_ndt]}
 
-      :hours ->
-        {:range_operator, [now_ndt_no_m, now_ndt]}
+        :hours ->
+          {:range_operator, [now_ndt_no_m, now_ndt]}
 
-      :days ->
-        {:range_operator, [now_ndt_no_h, now_ndt]}
+        :days ->
+          {:range_operator, [now_ndt_no_h, now_ndt]}
 
-      :weeks ->
-        {:range_operator, [Timex.beginning_of_week(now_ndt_no_h), now_ndt]}
+        :weeks ->
+          {:range_operator, [Timex.beginning_of_week(now_ndt_no_h), now_ndt]}
 
-      :months ->
-        {:range_operator, [Timex.beginning_of_month(now_ndt_no_h), now_ndt]}
+        :months ->
+          {:range_operator, [Timex.beginning_of_month(now_ndt_no_h), now_ndt]}
 
-      :years ->
-        {:range_operator, [Timex.beginning_of_year(now_ndt_no_h), now_ndt]}
-    end
+        :years ->
+          {:range_operator, [Timex.beginning_of_year(now_ndt_no_h), now_ndt]}
+      end
+
+    %{value: value, shorthand: "this@#{period}"}
   end
 
   def timestamp_shorthand_to_value(["last", amount, period]) do
@@ -213,40 +270,73 @@ defmodule Logflare.Lql.Parser.Helpers do
     now_ndt_no_m = %{now_ndt | minute: 0}
     now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
-    case period do
-      :seconds ->
-        {:range_operator,
-         [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
+    value =
+      case period do
+        :seconds ->
+          {:range_operator,
+           [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
 
-      :minutes ->
-        {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
+        :minutes ->
+          {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
 
-      :hours ->
-        {:range_operator, [Timex.shift(now_ndt_no_m, [{period, amount}]), now_ndt]}
+        :hours ->
+          {:range_operator, [Timex.shift(now_ndt_no_m, [{period, amount}]), now_ndt]}
 
-      :days ->
-        {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+        :days ->
+          {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
 
-      :weeks ->
-        {:range_operator, [Timex.shift(now_ndt_no_h, [{:days, amount * 7}]), now_ndt]}
+        :weeks ->
+          {:range_operator, [Timex.shift(now_ndt_no_h, [{:days, amount * 7}]), now_ndt]}
 
-      :months ->
-        {:range_operator,
-         [
-           Timex.shift(%{now_ndt_no_h | day: 1}, [{period, amount}]),
-           now_ndt
-         ]}
+        :months ->
+          {:range_operator,
+           [
+             Timex.shift(%{now_ndt_no_h | day: 1}, [{period, amount}]),
+             now_ndt
+           ]}
 
-      :years ->
-        {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+        :years ->
+          {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+      end
+
+    %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
+  end
+
+  def parse_date_or_datetime_with_range(result) when is_list(result) do
+    maybe_with_range = result |> Map.new()
+
+    range = Enum.find(maybe_with_range, fn {_k, v} -> length(v) == 2 end)
+
+    if range do
+      {k, [lvalue, rvalue]} = range
+      [%{maybe_with_range | k => [lvalue]}, %{maybe_with_range | k => [rvalue]}]
+    else
+      [maybe_with_range]
     end
+    |> Enum.map(fn dtmap ->
+      dtmap =
+        dtmap
+        |> Enum.map(fn {k, [v]} -> {k, v} end)
+        |> Map.new()
+
+      dtmap =
+        if dtmap[:microsecond] do
+          dtmap
+          |> Map.delete(:millisecond)
+          |> Map.put(:microsecond, {dtmap[:microsecond], 6})
+        else
+          dtmap
+        end
+
+      struct!(NaiveDateTime, dtmap)
+    end)
   end
 
   def parse_date_or_datetime([{tag, result}]) do
     mod =
       case tag do
         :date -> Date
-        :datetime -> DateTime
+        :datetime -> NaiveDateTime
       end
 
     case mod.from_iso8601(result) do
@@ -287,6 +377,10 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> string(":")
     |> ascii_string([?0..?9], 2)
     |> optional(
+      string(".")
+      |> ascii_string([?0..?9], 6)
+    )
+    |> optional(
       choice([
         string("Z"),
         string("+")
@@ -301,8 +395,75 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:parse_date_or_datetime)
   end
 
+  def integer_with_range(combinator \\ empty(), number) do
+    combinator
+    |> choice([
+      ignore(string("{"))
+      |> integer(number)
+      |> ignore(string(".."))
+      |> integer(number)
+      |> ignore(string("}")),
+      integer(number)
+    ])
+  end
+
+  def datetime_with_range() do
+    integer(4)
+    |> tag(:year)
+    |> ignore(string("-"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:month)
+    )
+    |> ignore(string("-"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:day)
+    )
+    |> ignore(string("T"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:hour)
+    )
+    |> ignore(string(":"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:minute)
+    )
+    |> ignore(string(":"))
+    |> concat(
+      integer_with_range(2)
+      |> tag(:second)
+    )
+    |> lookahead_not(string(".."))
+    |> optional(ignore(string(".")))
+    |> concat(
+      optional(
+        integer_with_range(6)
+        |> tag(:microsecond)
+      )
+    )
+    |> lookahead_not(string(".."))
+    |> concat(
+      optional(
+        choice([
+          ignore(string("Z")),
+          string("+")
+          |> ascii_string([?0..?9], 2)
+          |> string(":")
+          |> ascii_string([?0..?9], 2)
+        ])
+        # |> tag(:timezone)
+      )
+    )
+    |> lookahead_not(string(".."))
+    |> label("ISO8601 datetime with range")
+    |> reduce(:parse_date_or_datetime_with_range)
+    |> tag(:datetime_with_range)
+  end
+
   def date_or_datetime do
-    [datetime(), date()]
+    [datetime_with_range(), datetime(), date()]
     |> choice()
     |> label("date or datetime value")
   end
@@ -334,30 +495,35 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> unwrap_and_tag(:invalid_metadata_field_value)
   end
 
+  @spec apply_value_modifiers([FilterRule.t()]) :: FilterRule.t()
   def apply_value_modifiers([rule]) do
     case rule.value do
       {:range_operator, [lvalue, rvalue]} ->
-        [
-          %FilterRule{
-            path: rule.path,
-            value: lvalue,
-            operator: :>=
-          },
-          %FilterRule{
-            path: rule.path,
-            value: rvalue,
-            operator: :<=
-          }
-        ]
+        lvalue =
+          case lvalue do
+            {:datetime_with_range, [[x]]} -> x
+            x -> x
+          end
+
+        rvalue =
+          case rvalue do
+            {:datetime_with_range, [[x]]} -> x
+            x -> x
+          end
+
+        %{rule | values: [lvalue, rvalue], operator: :range, value: nil}
 
       _ ->
         rule
     end
   end
 
+  def maybe_apply_negation_modifier([:negate, rules]) when is_list(rules) do
+    Enum.map(rules, &maybe_apply_negation_modifier([:negate, &1]))
+  end
+
   def maybe_apply_negation_modifier([:negate, rule]) do
-    modifiers = [:negate | rule.modifiers]
-    %{rule | modifiers: modifiers}
+    update_in(rule.modifiers, &Map.put(&1, :negate, true))
   end
 
   def maybe_apply_negation_modifier(rule), do: rule
@@ -388,32 +554,79 @@ defmodule Logflare.Lql.Parser.Helpers do
         path: "metadata.level",
         operator: :=,
         value: level,
-        modifiers: []
+        modifiers: %{}
       }
     end)
   end
 
-  def to_rule(chart_clause: chart_clause) do
-    %ChartRule{
-      path: chart_clause[:path],
-      value_type: nil
+  def to_rule(args, :quoted_field_value) do
+    {:quoted, args[@isolated_string]}
+  end
+
+  def to_rule(args, :quoted_event_message) do
+    %FilterRule{
+      path: "event_message",
+      value: args[@isolated_string],
+      operator: args[:operator] || :string_contains,
+      modifiers: %{quoted_string: true}
     }
   end
 
-  def to_rule(args, :ignore), do: args[@isolated_string]
-
   def to_rule(args, :event_message) do
-    value = args[@isolated_string] || args[:word]
-
     %FilterRule{
       path: "event_message",
-      value: value,
-      operator: :"~"
+      value: args[:word],
+      operator: args[:operator] || :string_contains
     }
+  end
+
+  def to_rule(args, :filter_maybe_shorthand) do
+    args =
+      case args[:value] do
+        %{shorthand: sh, value: value} ->
+          sh =
+            case sh do
+              "this@" <> _ -> String.trim_trailing(sh, "s")
+              "last@" <> _ -> String.trim_trailing(sh, "s")
+              _ -> sh
+            end
+
+          args
+          |> Keyword.replace!(:value, value)
+          |> Keyword.put(:shorthand, sh)
+
+        _ ->
+          args
+      end
+
+    to_rule(args, :filter)
   end
 
   def to_rule(args, :filter) when is_list(args) do
-    struct!(FilterRule, Map.new(args))
+    filter = struct!(FilterRule, Map.new(args))
+
+    cond do
+      match?({:quoted, _}, filter.value) ->
+        {:quoted, value} = filter.value
+
+        filter
+        |> Map.update!(:modifiers, &Map.put(&1, :quoted_string, true))
+        |> Map.put(:value, value)
+
+      match?(%{value: {:datetime_with_range, _}}, filter) ->
+        {_, value} = filter.value
+
+        case value do
+          [[_, _] = v] ->
+            %{filter | value: nil, values: v, operator: :range}
+
+          [[v]] ->
+            %{filter | value: v}
+        end
+
+      true ->
+        filter
+    end
   end
 
   def check_for_no_invalid_metadata_field_values(
@@ -421,7 +634,9 @@ defmodule Logflare.Lql.Parser.Helpers do
         :timestamp
       ) do
     throw(
-      "Error while parsing timestamp filter value: expected ISO8601 string or range, got #{v}"
+      "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got #{
+        v
+      }"
     )
   end
 
@@ -441,4 +656,17 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   def not_right_paren(<<?), _::binary>>, context, _, _), do: {:halt, context}
   def not_right_paren(_, context, _, _), do: {:cont, context}
+
+  def get_level_order(level) do
+    @level_orders
+    |> Enum.map(fn {k, v} ->
+      {v, k}
+    end)
+    |> Map.new()
+    |> Map.get(level)
+  end
+
+  def get_level_by_order(level) do
+    @level_orders[level]
+  end
 end

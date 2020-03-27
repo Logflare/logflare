@@ -237,7 +237,7 @@ defmodule Logflare.LogsTest do
           sink: last_sink.token,
           lql_string: "test",
           lql_filters: [
-            %Lql.FilterRule{operator: :"~", value: "test", modifiers: [], path: "event_message"}
+            %Lql.FilterRule{operator: :"~", value: "test", modifiers: %{}, path: "event_message"}
           ],
           source_id: first_sink.id
         )
@@ -250,7 +250,7 @@ defmodule Logflare.LogsTest do
             %Lql.FilterRule{
               operator: :"~",
               value: "test",
-              modifiers: [],
+              modifiers: %{},
               path: "event_message"
             }
           ],

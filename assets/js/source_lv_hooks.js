@@ -79,34 +79,96 @@ hooks.ModalHook = {
     $modal.modal({backdrop: "static"})
   },
   destroyed() {
+    const $body = $("body")
     $(".modal").modal("dispose")
-    $("body").removeClass("modal-open")
-    $("body").removeAttr("style")
+    $body.removeClass("modal-open")
+    $body.removeAttr("style")
     $(".modal-backdrop").remove()
   },
 }
 
-const setTimezone = () => {
+const setTimezone = (hook) => {
   // Set user timezone
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  $("#user-local-timezone").val(timeZone)
+  hook.pushEvent("set_user_local_timezone", {tz: timeZone})
 }
+
+const datepickerConfig = {
+  "showDropdowns": true,
+  "timePicker": true,
+  "timePicker24Hour": true,
+  drops: "up",
+  alwaysShowCalendars: true,
+  ranges: {
+    "Today": [],
+    "Yesterday": [],
+    "Last 15 Minutes": [],
+    "Last 7 Days": [],
+    "This Month": [],
+    "Last Month": []
+  },
+}
+
+const buildTsClause = (start, end, label) => {
+  let timestampFilter
+  const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ss")
+  switch (label) {
+    case "Today":
+      timestampFilter = ["t:today"]
+      break
+    case "Yesterday":
+      timestampFilter = ["t:yesterday"]
+      break
+    case "Last 15 Minutes":
+      timestampFilter = ["t:last@15m"]
+      break
+    case "Last 7 Days":
+      timestampFilter = ["t:last@7d"]
+      break
+    case "This Month":
+      timestampFilter = ["t:this@month"]
+      break
+    case "Last Month":
+      timestampFilter = ["t:last@month"]
+      break
+    default:
+      timestampFilter = [`t:${formatWithISO8601(start)}..${formatWithISO8601(end)}`]
+      break
+  }
+  return timestampFilter.join(" ")
+}
+
 
 hooks.SourceLogsSearch = {
   updated() {
-    setTimezone()
+    setTimezone(this)
+    const hook = this
+    const $daterangepicker = $("#daterangepicker")
+    $daterangepicker.daterangepicker(datepickerConfig)
+    $daterangepicker.on("apply.daterangepicker", (e, picker) => {
+      const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
+      hook.pushEvent("datepicker_update", {querystring: tsClause})
+    })
   },
   reconnected() {
-    setTimezone()
+    setTimezone(this)
   },
   mounted() {
+    const hook = this
+    const $daterangepicker = $("#daterangepicker")
+    $daterangepicker.daterangepicker(datepickerConfig)
+    $daterangepicker.on("apply.daterangepicker", (e, picker) => {
+      const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
+      hook.pushEvent("datepicker_update", {querystring: tsClause})
+    })
+
     initSearchInViewObserver(this)
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
 
-    setTimezone()
+    setTimezone(this)
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")

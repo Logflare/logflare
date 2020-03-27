@@ -1,9 +1,17 @@
 defmodule Logflare.Lql.EctoHelpers do
   @moduledoc false
   import Ecto.Query
+  alias Logflare.Lql.FilterRule
   @top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
 
-  def apply_filter_rules_to_query(query, rules, _opts \\ [adapter: :bigquery]) do
+  @spec apply_filter_rules_to_query(Ecto.Query.t(), [FilterRule.t()], keyword) :: Ecto.Query.t()
+  def apply_filter_rules_to_query(query, filter_rules, opts \\ [adapter: :bigquery])
+
+  def apply_filter_rules_to_query(query, [], _opts) do
+    query
+  end
+
+  def apply_filter_rules_to_query(query, rules, _opts) do
     {top_level_filters, other_filters} = Enum.split_with(rules, &(&1.path in @top_level))
 
     query =
@@ -61,7 +69,12 @@ defmodule Logflare.Lql.EctoHelpers do
       |> List.last()
       |> String.to_atom()
 
-    where(q, ^dynamic_where_filter_rule(column, rule.operator, rule.value, rule.modifiers))
+    if not is_nil(rule.values) and rule.operator == :range do
+      [lvalue, rvalue] = rule.values
+      where(q, [..., n1], fragment("? BETWEEN ? AND ?", field(n1, ^column), ^lvalue, ^rvalue))
+    else
+      where(q, ^dynamic_where_filter_rule(column, rule.operator, rule.value, rule.modifiers))
+    end
   end
 
   @type operators :: :< | :<= | := | :> | :>= | :"~"
@@ -89,6 +102,9 @@ defmodule Logflare.Lql.EctoHelpers do
 
         :"~" ->
           dynamic([..., n1], fragment(~s|REGEXP_CONTAINS(?, ?)|, field(n1, ^c), ^v))
+
+        :string_contains ->
+          dynamic([..., n1], fragment(~s|STRPOS(?, ?) > 0|, field(n1, ^c), ^v))
 
         :list_includes ->
           dynamic([..., n1], fragment(~s|? IN UNNEST(?)|, ^v, field(n1, ^c)))
