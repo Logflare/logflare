@@ -29,7 +29,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.ComputeClient do
   end
 
   def region_nodes(region, group_name, auth_token) do
-    post("/regions/" <> region <> "/instanceGroups/" <> group_name <> "listInstances", "",
+    post("/regions/" <> region <> "/instanceGroups/" <> group_name <> "/listInstances", "",
       headers: [{"Authorization", "Bearer #{auth_token}"}]
     )
   end
