@@ -3,6 +3,7 @@ defmodule Logflare.Logs.SearchTest do
   alias Logflare.Sources
   alias Logflare.Users
   alias Logflare.Logs.Search
+  alias Logflare.Lql
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
@@ -18,6 +19,7 @@ defmodule Logflare.Logs.SearchTest do
     source = Sources.get_by_and_preload(token: @test_token)
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     Sources.Cache.put_bq_schema(@test_token, table_schema())
+    source = %{source | bq_table_schema: table_schema()}
 
     user =
       case BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user) do
@@ -33,15 +35,19 @@ defmodule Logflare.Logs.SearchTest do
       sources: [source | _],
       users: [_user | _]
     } do
-      search_op = %SO{
-        source: source,
-        querystring: ~S|t:>2020-01-01|,
-        chart_aggregate: :count,
-        chart_period: :minute,
-        tailing?: true,
-        tailing_initial?: false,
-        chart_data_shape_id: nil
-      }
+      qs = ~S|t:>2020-01-01|
+
+      search_op =
+        SO.new(%{
+          source: source,
+          querystring: qs,
+          lql_rules: Lql.decode!(qs, source.bq_table_schema),
+          chart_aggregate: :count,
+          chart_period: :minute,
+          tailing?: true,
+          tailing_initial?: false,
+          chart_data_shape_id: nil
+        })
 
       {_, %{rows: rows} = so} = Search.search_events(search_op)
 
@@ -204,7 +210,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 60 * 24 * 2
+      assert length(rows) == 120
     end
 
     test "with default minute chart period 2", %{
@@ -216,7 +222,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 15 * 60 + 1
+      assert length(rows) == 120
     end
 
     test "with timestamp:>= ", %{
@@ -228,7 +234,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 72
+      assert length(rows) == 31
     end
 
     test "with timestamp:> ", %{
@@ -240,7 +246,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 72
+      assert length(rows) == 31
     end
 
     test "with timestamp:< ", %{
@@ -252,7 +258,7 @@ defmodule Logflare.Logs.SearchTest do
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
-      assert length(rows) == 251
+      assert length(rows) == 31
     end
 
     test "with timestamp:<= ", %{
@@ -269,16 +275,15 @@ defmodule Logflare.Logs.SearchTest do
              }
 
       assert so.error == nil
-      assert length(rows) == 251
+      assert length(rows) == 31
     end
 
-    @tag :run
     test "with timestamp: ", %{
       sources: [source | _],
       users: [_user | _],
       so: so0
     } do
-      so = %{so0 | querystring: "t:2020-02-01T00:00:00Z", chart_period: :day}
+      so = %{so0 | querystring: "t:2020-02-01T00:00:00", chart_period: :day}
       {_, %{rows: rows} = so} = Search.search_result_aggregates(so)
 
       assert so.error == nil
