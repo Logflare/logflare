@@ -634,7 +634,9 @@ defmodule Logflare.Lql.Parser.Helpers do
         :timestamp
       ) do
     throw(
-      "Error while parsing timestamp filter value: expected ISO8601 string or range, got #{v}"
+      "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got #{
+        v
+      }"
     )
   end
 

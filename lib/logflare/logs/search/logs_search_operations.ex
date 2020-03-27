@@ -88,7 +88,7 @@ defmodule Logflare.Logs.SearchOperations do
         chart_rule = hd(so.chart_rules)
 
         msg =
-          "Error: can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{
+          "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{
             chart_rule.path
           }. Check the source schema for the field used with chart operator."
 
@@ -96,15 +96,15 @@ defmodule Logflare.Logs.SearchOperations do
 
       Timex.diff(max_ts, min_ts, so.chart_period) == 0 ->
         msg =
-          "Selected chart period #{so.chart_period} is larger than timestamp interval. Select a chart period with higher granularity."
+          "Selected chart period #{so.chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
 
         Utils.halt(so, msg)
 
       get_number_of_chart_ticks(min_ts, max_ts, so.chart_period) > @default_max_n_chart_ticks ->
         msg =
-          "the interval length between min and max timestamp is larger than #{
+          "The interval length between min and max timestamp is larger than #{
             @default_max_n_chart_ticks
-          } units, please select use another chart aggregation period."
+          } periods, please use a longer chart aggregation period."
 
         Utils.halt(so, msg)
 
