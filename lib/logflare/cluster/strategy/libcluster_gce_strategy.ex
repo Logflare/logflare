@@ -77,41 +77,41 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   end
 
   defp get_zone_nodes(state, zone, group_name, auth_token) do
-    Cluster.Logger.info(:gce, "Fetching zone nodes ... ")
+    Cluster.Logger.debug(:gce, "Fetching zone nodes ... ")
 
     case GCE.ComputeClient.zone_nodes(zone, group_name, auth_token) do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.info(:gce, "Error getting zone nodes: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "Error getting zone nodes: #{status_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.info(:gce, "Error getting zone nodes: #{inspect(message)}")
+        Cluster.Logger.debug(:gce, "Error getting zone nodes: #{inspect(message)}")
         []
     end
   end
 
   defp get_region_nodes(state, region, group_name, auth_token) do
-    Cluster.Logger.info(:gce, "Fetching region nodes ...")
+    Cluster.Logger.debug(:gce, "Fetching region nodes ...")
 
     case GCE.ComputeClient.region_nodes(region, group_name, auth_token) do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
         get_node_name(state, body, auth_token)
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
-        Cluster.Logger.info(:gce, "Error getting region nodes: #{status_code}: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "Error getting region nodes: #{status_code}: #{inspect(body)}")
         []
 
       {:error, message} ->
-        Cluster.Logger.info(:gce, "Error getting region nodes: #{inspect(message)}")
+        Cluster.Logger.debug(:gce, "Error getting region nodes: #{inspect(message)}")
         []
     end
   end
 
   defp get_node_name(state, body, auth_token) do
-    Cluster.Logger.info(:gce, "Received body: #{inspect(body)}")
+    Cluster.Logger.debug(:gce, "Received body: #{inspect(body)}")
 
     items = Map.get(body, "items")
 
@@ -125,7 +125,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       |> Enum.map(fn %{"instance" => url} ->
         case GCE.ComputeClient.node_metadata(url, auth_token) do
           {:ok, %Tesla.Env{status: 200, body: body}} ->
-            Cluster.Logger.info(:gce, "Received instance data: #{inspect(body)}")
+            Cluster.Logger.debug(:gce, "Received instance data: #{inspect(body)}")
 
             network_ip =
               body
@@ -133,12 +133,12 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
               |> hd
               |> Map.get("networkIP")
 
-            Cluster.Logger.info(:gce, "Node network IP is: #{inspect(network_ip)}")
+            Cluster.Logger.debug(:gce, "Node network IP is: #{inspect(network_ip)}")
 
             release_name = get_release_name(state)
             node_name = :"#{release_name}@#{network_ip}"
 
-            Cluster.Logger.info(:gce, "Found node: #{inspect(node_name)}")
+            Cluster.Logger.debug(:gce, "Found node: #{inspect(node_name)}")
 
             node_name
 
@@ -158,11 +158,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   end
 
   defp get_metadata() do
-    Cluster.Logger.info(:gce, "Fetching metadata ...")
+    Cluster.Logger.debug(:gce, "Fetching metadata ...")
 
     case GCE.AuthClient.metadata() do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
-        Cluster.Logger.info(:gce, "Received access token: #{inspect(body)}")
+        Cluster.Logger.debug(:gce, "Received access token: #{inspect(body)}")
         body
 
       {:ok, %Tesla.Env{status: status_code, body: body}} ->
