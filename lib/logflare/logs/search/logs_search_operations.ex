@@ -134,9 +134,6 @@ defmodule Logflare.Logs.SearchOperations do
 
     chart_data_shape_id =
       cond do
-        not Enum.empty?(so.chart_rules) ->
-          nil
-
         Map.has_key?(flat_type_map, "metadata.level") ->
           :elixir_logger_levels
 
@@ -309,6 +306,19 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       case chart_rules do
+        [%{path: "timestamp", aggregate: :count, value_type: :datetime}] ->
+          case so.chart_data_shape_id do
+            :elixir_logger_levels ->
+              select_count_log_level(query)
+
+            :cloudflare_status_codes ->
+              select_count_http_status_code(query)
+
+            nil ->
+              query
+              |> select_merge_log_count()
+          end
+
         [%{value_type: v, path: p, aggregate: agg}]
         when v in [:integer, :float]
         when p == "timestamp" ->
@@ -321,19 +331,6 @@ defmodule Logflare.Logs.SearchOperations do
           query
           |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, p)
           |> select_merge_agg_value(agg, last_chart_field)
-
-        [] ->
-          case so.chart_data_shape_id do
-            :elixir_logger_levels ->
-              select_count_log_level(query)
-
-            :cloudflare_status_codes ->
-              select_count_http_status_code(query)
-
-            nil ->
-              query
-              |> select_merge_log_count()
-          end
       end
 
     query = group_by(query, 1)
