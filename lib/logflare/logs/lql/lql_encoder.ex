@@ -24,11 +24,11 @@ defmodule Logflare.Lql.Encoder do
               |> Enum.join(" ")
               |> String.replace("chart:timestamp", "")
 
-            {"metadata.level", filter_rules} when length(filter_rules) >= 2 ->
+            {"m.level", filter_rules} when length(filter_rules) >= 2 ->
               {min_level, max_level} =
                 Enum.min_max_by(filter_rules, &Parser.Helpers.get_level_order(&1.value))
 
-              "metadata.level:#{min_level.value}..#{max_level.value}"
+              "m.level:#{min_level.value}..#{max_level.value}"
 
             {_path, filter_rules} ->
               filter_rules |> Enum.map(&to_fragment/1) |> Enum.join(" ")
@@ -40,7 +40,7 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{shorthand: sh} = f) when not is_nil(sh) do
-    "#{f.path}:#{sh}" |> String.trim_trailing("s")
+    "#{f.path}:#{sh}" |> String.trim_trailing("s") |> String.replace("timestamp:", "t:")
   end
 
   defp to_fragment(%FilterRule{modifiers: %{negate: true} = mods} = f) do
@@ -72,7 +72,7 @@ defmodule Logflare.Lql.Encoder do
         to_datetime_with_range(lvstring, rvstring)
       end
 
-    "timestamp:#{dtstring}"
+    "t:#{dtstring}"
   end
 
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v}) do
@@ -86,7 +86,7 @@ defmodule Logflare.Lql.Encoder do
         |> String.trim_trailing("Z")
       end
 
-    "timestamp:#{op}#{dtstring}"
+    "t:#{op}#{dtstring}"
   end
 
   defp to_fragment(%FilterRule{path: "event_message", value: v, modifiers: mods, operator: op}) do
@@ -127,6 +127,7 @@ defmodule Logflare.Lql.Encoder do
       _ ->
         "#{path}:#{op}#{v}"
     end
+    |> String.replace("timestamp:", "t:")
   end
 
   defp to_fragment(%ChartRule{} = c) do
@@ -136,7 +137,7 @@ defmodule Logflare.Lql.Encoder do
         x -> x
       end
 
-    "chart:#{c.aggregate}(#{path}) chart:group_by(timestamp::#{c.period})"
+    "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
   end
 
   def to_datetime_with_range(lvstring, rvstring) do
