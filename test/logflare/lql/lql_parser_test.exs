@@ -4,6 +4,7 @@ defmodule Logflare.LqlParserTest do
   alias Logflare.Lql
   alias Logflare.Lql.Parser, as: Parser
   alias Logflare.Lql.{Utils, ChartRule, FilterRule}
+  alias Logflare.DateTimeUtils
   import Parser
   alias Logflare.Source.BigQuery.SchemaBuilder
 
@@ -778,7 +779,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:yesterday", @schema)
 
       lvalue = now_udt_zero_sec()
-      rvalue = now_udt_zero_sec()
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -795,7 +796,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@minute", @schema)
 
       lvalue = %{now_udt_zero_sec() | minute: 0}
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -812,7 +812,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@hour", @schema)
 
       lvalue = %{now_udt_zero_sec() | minute: 0, hour: 0}
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -830,8 +829,6 @@ defmodule Logflare.LqlParserTest do
 
       lvalue = Timex.beginning_of_week(%{now_udt_zero_sec() | minute: 0, hour: 0})
 
-      rvalue = now_udt_zero_sec()
-
       assert {
                :ok,
                [
@@ -847,7 +844,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@week", @schema)
 
       lvalue = Timex.beginning_of_month(%{now_udt_zero_sec() | minute: 0, hour: 0})
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -864,7 +860,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@month", @schema)
 
       lvalue = Timex.beginning_of_year(%{now_udt_zero_sec() | minute: 0, hour: 0})
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -898,7 +893,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:last@50s", @schema)
 
       lvalue = Timex.shift(now_udt_zero_sec(), minutes: -43)
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -915,7 +909,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:last@43m", @schema)
 
       lvalue = Timex.shift(%{now_udt_zero_sec() | minute: 0}, hours: -100)
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,

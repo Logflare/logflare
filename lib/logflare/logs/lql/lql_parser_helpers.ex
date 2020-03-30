@@ -5,6 +5,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   import NimbleParsec
   alias Logflare.Lql.FilterRule
   alias Logflare.Lql.ChartRule
+  alias Logflare.DateTimeUtils
   @isolated_string :isolated_string
 
   def word do
@@ -235,70 +236,65 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def timestamp_shorthand_to_value(["this", period]) do
-    now_ndt = %{Timex.now() | microsecond: {0, 0}, second: 0}
-    now_ndt_no_m = %{now_ndt | minute: 0}
-    now_ndt_no_h = %{now_ndt_no_m | hour: 0}
+    now_ndt = DateTimeUtils.truncate(Timex.now(), :second)
+    today_ndt = DateTimeUtils.truncate(now_ndt, :day)
 
-    value =
+    lvalue =
       case period do
         :minutes ->
-          {:range_operator, [now_ndt, now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :minute)
 
         :hours ->
-          {:range_operator, [now_ndt_no_m, now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :hour)
 
         :days ->
-          {:range_operator, [now_ndt_no_h, now_ndt]}
+          today_ndt
 
         :weeks ->
-          {:range_operator, [Timex.beginning_of_week(now_ndt_no_h), now_ndt]}
+          Timex.beginning_of_week(today_ndt)
 
         :months ->
-          {:range_operator, [Timex.beginning_of_month(now_ndt_no_h), now_ndt]}
+          Timex.beginning_of_month(today_ndt)
 
         :years ->
-          {:range_operator, [Timex.beginning_of_year(now_ndt_no_h), now_ndt]}
+          Timex.beginning_of_year(today_ndt)
       end
 
+    value = {:range_operator, [lvalue, now_ndt]}
     %{value: value, shorthand: "this@#{period}"}
   end
 
   def timestamp_shorthand_to_value(["last", amount, period]) do
     amount = -amount
-    now_ndt_with_seconds = %{Timex.now() | microsecond: {0, 0}}
-    now_ndt = %{Timex.now() | microsecond: {0, 0}, second: 0}
-    now_ndt_no_m = %{now_ndt | minute: 0}
-    now_ndt_no_h = %{now_ndt_no_m | hour: 0}
 
-    value =
+    now_ndt = DateTimeUtils.truncate(Timex.now(), :second)
+
+    truncated =
       case period do
         :seconds ->
-          {:range_operator,
-           [Timex.shift(now_ndt_with_seconds, [{period, amount}]), now_ndt_with_seconds]}
+          now_ndt
 
         :minutes ->
-          {:range_operator, [Timex.shift(now_ndt, [{period, amount}]), now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :minute)
 
         :hours ->
-          {:range_operator, [Timex.shift(now_ndt_no_m, [{period, amount}]), now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :hour)
 
         :days ->
-          {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :day)
 
         :weeks ->
-          {:range_operator, [Timex.shift(now_ndt_no_h, [{:days, amount * 7}]), now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :day)
 
         :months ->
-          {:range_operator,
-           [
-             Timex.shift(%{now_ndt_no_h | day: 1}, [{period, amount}]),
-             now_ndt
-           ]}
+          DateTimeUtils.truncate(now_ndt, :month)
 
         :years ->
-          {:range_operator, [Timex.shift(now_ndt_no_h, [{period, amount}]), now_ndt]}
+          DateTimeUtils.truncate(now_ndt, :day)
       end
 
+    lvalue = Timex.shift(truncated, [{period, amount}])
+    value = {:range_operator, [lvalue, now_ndt]}
     %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
   end
 
