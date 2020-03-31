@@ -15,7 +15,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       |> unwrap_and_tag(:operator)
     )
     |> concat(
-      ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
+      ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9, ?!, ?%, ?$], min: 1)
       |> unwrap_and_tag(:word)
     )
     |> label("word filter")

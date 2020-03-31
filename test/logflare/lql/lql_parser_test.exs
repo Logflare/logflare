@@ -82,7 +82,41 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == str
     end
 
-    @tag :only
+    test "word contains with allowed characters" do
+      str = ~S|$user! sign.up user_sign_up%|
+      {:ok, result} = Parser.parse(str, @default_schema)
+
+      lql_rules = [
+        %FilterRule{
+          modifiers: %{},
+          operator: :string_contains,
+          path: "event_message",
+          shorthand: nil,
+          value: "$user!",
+          values: nil
+        },
+        %FilterRule{
+          modifiers: %{},
+          operator: :string_contains,
+          path: "event_message",
+          shorthand: nil,
+          value: "sign.up",
+          values: nil
+        },
+        %FilterRule{
+          modifiers: %{},
+          operator: :string_contains,
+          path: "event_message",
+          shorthand: nil,
+          value: "user_sign_up%",
+          values: nil
+        }
+      ]
+
+      assert Utils.get_filter_rules(result) == lql_rules
+      assert Lql.encode!(lql_rules) == str
+    end
+
     test "quoted string contains" do
       schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
       str = ~S|new "user sign up" server|
