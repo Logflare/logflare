@@ -132,12 +132,15 @@ defmodule Logflare.Logs.SearchOperations do
       |> Sources.Cache.get_bq_schema()
       |> SchemaUtils.bq_schema_to_flat_typemap()
 
+    [%{path: path}] = so.chart_rules
+    path_is_timestamp? = path == "timestamp"
+
     chart_data_shape_id =
       cond do
-        Map.has_key?(flat_type_map, "metadata.level") ->
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.level") ->
           :elixir_logger_levels
 
-        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
         true ->
@@ -301,7 +304,7 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
-      |> select_aggregates(so.chart_period)
+      |> select_timestamp(so.chart_period)
       |> order_by([t, ...], desc: 1)
 
     query =
@@ -315,13 +318,10 @@ defmodule Logflare.Logs.SearchOperations do
               select_count_http_status_code(query)
 
             nil ->
-              query
-              |> select_merge_log_count()
+              select_merge_agg_value(query, :count, :timestamp)
           end
 
-        [%{value_type: v, path: p, aggregate: agg}]
-        when v in [:integer, :float]
-        when p == "timestamp" ->
+        [%{value_type: _, path: p, aggregate: agg}] ->
           last_chart_field =
             p
             |> String.split(".")
@@ -345,6 +345,7 @@ defmodule Logflare.Logs.SearchOperations do
       so
     else
       rows = intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)
+
       %{so | rows: rows}
     end
   end
