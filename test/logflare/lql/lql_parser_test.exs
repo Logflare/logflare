@@ -1478,9 +1478,62 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
-  describe "LQL encoding" do
+  describe "LQL parser for timestamp range shorthand" do
     @describetag :this
+    test "simple case" do
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [~N[2020-01-01 00:00:00Z], ~N[2020-02-01 00:50:00Z]]
+                }
+              ]} == Parser.parse("timestamp:2020-{01..02}-01T00:{00..50}:00Z", @default_schema)
 
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~N[2020-01-05 00:15:35],
+                    ~N[2020-12-30 23:20:55]
+                  ]
+                }
+              ]} ==
+               Parser.parse(
+                 "timestamp:2020-{01..12}-{05..30}T{00..23}:{15..20}:{35..55}",
+                 @schema
+               )
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~N[2020-01-01 00:15:35.000001],
+                    ~N[2020-12-30 23:20:55.585444]
+                  ]
+                }
+              ]} ==
+               Parser.parse(
+                 "timestamp:2020-{01..12}-{01..30}T{00..23}:{15..20}:{35..55}.{000001..585444}",
+                 @schema
+               )
+    end
+  end
+
+  describe "LQL encoding" do
     test "to_datetime_with_range" do
       lv = "2020-01-01T03:14:15"
       rv = "2020-01-01T03:54:15"

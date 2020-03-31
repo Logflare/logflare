@@ -287,7 +287,7 @@ defmodule Logflare.Lql.Parser.Helpers do
           DateTimeUtils.truncate(now_ndt, :day)
 
         :months ->
-          DateTimeUtils.truncate(now_ndt, :month)
+          DateTimeUtils.truncate(now_ndt, :day)
 
         :years ->
           DateTimeUtils.truncate(now_ndt, :day)
@@ -299,33 +299,27 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def parse_date_or_datetime_with_range(result) when is_list(result) do
-    maybe_with_range = result |> Map.new()
+    [lv, rv] = result
+    |> Enum.reduce([%{}, %{}], fn
+      {k, v}, [lacc, racc] ->
+        [lv, rv] =
+          case v do
+            [lv, rv] -> [lv, rv]
+            [v] -> [v, v]
+          end
 
-    range = Enum.find(maybe_with_range, fn {_k, v} -> length(v) == 2 end)
-
-    if range do
-      {k, [lvalue, rvalue]} = range
-      [%{maybe_with_range | k => [lvalue]}, %{maybe_with_range | k => [rvalue]}]
-    else
-      [maybe_with_range]
-    end
-    |> Enum.map(fn dtmap ->
-      dtmap =
-        dtmap
-        |> Enum.map(fn {k, [v]} -> {k, v} end)
-        |> Map.new()
-
-      dtmap =
-        if dtmap[:microsecond] do
-          dtmap
-          |> Map.delete(:millisecond)
-          |> Map.put(:microsecond, {dtmap[:microsecond], 6})
-        else
-          dtmap
-        end
-
-      struct!(NaiveDateTime, dtmap)
+        [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
     end)
+    |> Enum.map(fn x ->
+      Map.update(x, :microsecond, {0, 0}, &{&1, 6})
+    end)
+    |> Enum.map(&struct!(NaiveDateTime, &1))
+
+    if lv == rv do
+      [lv]
+    else
+      [lv, rv]
+    end
   end
 
   def parse_date_or_datetime([{tag, result}]) do
