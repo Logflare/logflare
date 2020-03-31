@@ -6,13 +6,13 @@ defmodule Logflare.Lql.Encoder do
 
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules
-    |> Enum.sort_by(fn
-      %FilterRule{} -> 0
-      %ChartRule{} -> 1
-    end)
     |> Enum.group_by(fn
       %ChartRule{} -> :chart
       %FilterRule{} = f -> f.path
+    end)
+    |> Enum.sort_by(fn
+      {:chart, _} -> 1
+      {_path, _} -> 0
     end)
     |> Enum.reduce("", fn
       grouped_rules, qs ->

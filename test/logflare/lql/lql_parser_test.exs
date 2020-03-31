@@ -389,8 +389,6 @@ defmodule Logflare.LqlParserTest do
         )
 
       str = ~S|
-         c:count(metadata.log.metric4)
-         c:group_by(t::minute)
          log "was generated" "by logflare pinger"
          metadata.context.file:"some module.ex"
          metadata.context.line_number:100
@@ -401,6 +399,8 @@ defmodule Logflare.LqlParserTest do
          metadata.log.metric4:>=10
          metadata.user.admin:false
          metadata.user.group_id:5
+         c:count(metadata.log.metric4)
+         c:group_by(t::minute)
        |
 
       {:ok, lql_rules} = Parser.parse(str, schema)
