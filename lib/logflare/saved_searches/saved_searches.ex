@@ -4,6 +4,8 @@ defmodule Logflare.SavedSearches do
   alias Logflare.{SavedSearch, Repo}
   alias Logflare.Source
   alias Logflare.Lql.{FilterRule, ChartRule}
+  alias Logflare.SavedSearchCounter
+  alias Logflare.DateTimeUtils
 
   @spec insert(String.t(), [FilterRule.t() | ChartRule.t()], Source.t()) :: :ok | {:error, term}
   def insert(querystring, lql_rules, %Source{} = source) do
@@ -28,15 +30,24 @@ defmodule Logflare.SavedSearches do
   end
 
   def inc(search_id, tailing?: tailing?) do
-    search = Repo.get(SavedSearch, search_id)
+    {tcount, ntcount} =
+      if tailing? do
+        {1, 0}
+      else
+        {0, 1}
+      end
 
-    cond do
-      search && tailing? ->
-        Repo.update(search, update: [inc: :count_tailing])
-
-      search ->
-        Repo.update(search, update: [inc: :count_non_tailing])
-    end
+    %SavedSearchCounter{
+      saved_search_id: search_id,
+      datetime: DateTime.utc_now() |> DateTimeUtils.truncate(:hour),
+      tailing_count: 0,
+      non_tailing_count: 0,
+      granularity: "day"
+    }
+    |> Repo.insert(
+      on_conflict: [inc: [tailing_count: tcount, non_tailing_count: ntcount]],
+      conflict_target: [:saved_search_id, :datetime, :granularity]
+    )
   end
 
   def get_by(querystring, source) do

@@ -6,8 +6,6 @@ defmodule Logflare.SavedSearch do
   typed_schema "saved_searches" do
     field :querystring, :string
     field :saved_by_user, :boolean
-    field :count_tailing, :integer
-    field :count_non_tailing, :integer
     field :lql, {:array, :map}
     belongs_to :source, Source
 
