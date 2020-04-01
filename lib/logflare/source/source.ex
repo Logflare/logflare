@@ -157,7 +157,8 @@ defmodule Logflare.Source do
   def default_validations(changeset) do
     changeset
     |> validate_required([:name, :token])
-    |> unique_constraint(:name)
+    |> unique_constraint(:name, name: :sources_name_index)
+    |> unique_constraint(:token)
     |> unique_constraint(:public_token)
   end
 
