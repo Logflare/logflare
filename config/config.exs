@@ -39,7 +39,9 @@ config :logflare, ExOauth2Provider,
   use_refresh_token: true,
   default_scopes: ~w(public),
   optional_scopes: ~w(read write),
-  revoke_refresh_token_on_use: true
+  revoke_refresh_token_on_use: true,
+  otp_app: :logflare,
+  access_token_expires_in: nil
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
@@ -76,6 +78,6 @@ config :scrivener_html,
   view_style: :bootstrap_v4
 
 config :logflare,
-  sigterm_shutdown_grace_period_ms: 15_000
+  sigterm_shutdown_grace_period_ms: 1_000
 
 import_config "#{Mix.env()}.exs"

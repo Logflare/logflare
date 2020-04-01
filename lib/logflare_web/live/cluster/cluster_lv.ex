@@ -3,14 +3,14 @@ defmodule LogflareWeb.ClusterLV do
   Provides real-time data on cluster connectivity
   """
   alias LogflareWeb.ClusterView
-  use Phoenix.LiveView
+  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
   alias Phoenix.LiveView.Socket
 
   def render(assigns) do
-    Phoenix.View.render(ClusterView, "index.html", assigns)
+    ClusterView.render("index.html", assigns)
   end
 
-  def mount(_session, socket) do
+  def mount(_params, _session, socket) do
     socket = assign_cluster_status(socket)
     :timer.send_interval(1_000, self(), :update_cluster_status)
     {:ok, socket}

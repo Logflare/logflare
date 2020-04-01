@@ -1,6 +1,9 @@
 defmodule Logflare.Source.WebhookNotificationServer.Client do
   require Logger
 
+  alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.Endpoint
+
   @middleware [Tesla.Middleware.JSON]
 
   @adapter Tesla.Adapter.Hackney
@@ -27,19 +30,32 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
   def post(client, source, rate, recent_events \\ []) do
     prepped_recent_events = prep_recent_events(recent_events)
 
-    case Tesla.post(client, source.webhook_notification_url, %{
-           rate: rate,
-           source_name: source.name,
-           source: source.token,
-           recent_events: prepped_recent_events
-         }) do
+    payload = %{
+      rate: rate,
+      source_name: source.name,
+      source: source.token,
+      recent_events: prepped_recent_events
+    }
+
+    send(client, source.webhook_notification_url, payload)
+  end
+
+  defp send(client, url, payload) do
+    case Tesla.post(client, url, payload) do
       {:ok, %Tesla.Env{status: 200} = response} ->
+        {:ok, response}
+
+      {:ok, %Tesla.Env{status: 204} = response} ->
         {:ok, response}
 
       {:ok, %Tesla.Env{} = response} ->
         resp = prep_tesla_resp_for_log(response)
 
-        Logger.warn("Webhook error!", webhook_response: resp)
+        Logger.warn("Webhook error!",
+          webhook_request: %{url: url, body: inspect(payload)},
+          webhook_response: resp
+        )
+
         {:error, response}
 
       {:error, response} ->

@@ -1,0 +1,133 @@
+<div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><a href="javascript:Source.scrollOverflowBottom();">
+            <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+        <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
+        <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
+        <li>
+          <a href="#" phx-click="set_local_time"
+            id="set_local_time"
+            phx-value-use_local_time="<%= @use_local_time %>"
+            >
+            <span>
+              <%= if @use_local_time do %>
+                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
+              <% else %>
+                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
+              <% end %>
+            </span>
+            <span class="hide-on-mobile">local time</span>
+          </a>
+        </li>
+        <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
+        <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
+          <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
+        <% else %>
+          <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
+          <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
+        <% end %>
+      </ul>
+    </div>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+  </div>
+</div>
+<div class="container source-logs-search-container console-text">
+  <%= render("logs_list.html",
+     log_events: @log_events,
+     last_query_completed_at: @last_query_completed_at,
+     user_local_timezone: @user_local_timezone,
+     use_local_time: @use_local_time) %>
+  <div>
+    <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
+    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading, chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
+  </div>
+  <div class="search-control">
+    <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
+    <div class="form-group form-text">
+      <%= text_input f, :querystring, value: @querystring, class: "form-control form-control-margin", readonly: (if @loading, do: "true"), phx_debounce: "blur", autofocus: true %>
+      <%= if @last_query_completed_at do %>
+        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
+          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0 </span> seconds
+        </small>
+      <% else %>
+        <small class="form-text text-muted">
+          random(tips): <%= @search_tip %>
+        </small>
+      <% end %>
+    </div>
+    <div class="form-row align-items-center form-text">
+      <div class="col-auto">
+        <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
+          <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
+        <% end %>
+      </div>
+      <div class="col-auto">
+        <div class="btn-group-toggle">
+          <%= if @tailing? do %>
+            <span class="btn btn-primary" phx-click="stop_live_search">
+              <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
+              <span class="fas-in-button" id="search-tailing-button">Live</span>
+            </span>
+          <% else %>
+            <span class="btn btn-primary" phx-click="start_live_search">
+              <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
+            </span>
+          <% end %>
+          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
+          <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
+        </div>
+      </div>
+      <div class="col-auto">
+        <a href="#" phx-click="save_search" class="btn btn-primary">
+          <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
+        </a>
+      </div>
+      <div class="col-auto" phx-update="ignore">
+        <span class="btn btn-primary" id="daterangepicker">
+          <span class="fa fa-clock" >
+          </span>
+          DateTime selector
+        </span>
+      </div>
+      <div class="col-auto  hide-on-mobile">
+        Chart period:
+      </div>
+      <div class="col-auto">
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: @chart_period, class: "form-control form-control-sm" %>
+      </div>
+      <div class="col-auto  hide-on-mobile">
+        Aggregate:
+      </div>
+      <div class="col-auto">
+        <%= if @chart_aggregate_enabled? do %>
+          <%= select f,
+         :chart_aggregate,
+          ["sum", "avg", "count"],
+          selected: @chart_aggregate,
+          class: "form-control form-control-sm"
+           %>
+        <% else %>
+          <span class="d-inline-block" tabindex="0"
+          data-toggle="tooltip"
+          title="Chart aggregate setting requires usage of chart: operator"
+          trigger="hover click"
+          delay="100"
+          >
+            <%= select f,
+            :chart_aggregate,
+              ["N/A"],
+              class: "form-control form-control-sm",
+              style: "pointer-events: none;",
+              disabled: true %>
+          </span>
+        <% end %>
+      </div>
+    </div>
+  </form>
+</div>
+<%= render_notifications(@notifications) %>
+<div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
+<%= live_component @socket, ModalLVC, id: :active_modal, active_modal: @active_modal, source: @source, log_events: @log_events, user: @user, search_op_log_events: @search_op_log_events, search_op_log_aggregates: @search_op_log_aggregates, search_op_error: @search_op_error %>
+</div>

@@ -1,0 +1,22 @@
+<div class="table-responsive" phx-hook="SourceSchemaModalTable">
+  <table class="table table-dark show-source-schema">
+    <thead>
+      <td>Field path</td>
+      <td>BigQuery SQL type</td>
+    </thead>
+    <tbody>
+      <%= for {field, type} <- @fields_and_types do %>
+        <tr>
+          <td class="metadata-field">
+            <a href="#">
+              <span class="copy-metadata-field"
+              data-clipboard-text="<%= field %>">
+                <i style="color:green;" class="fas fa-copy"></i>
+              </span></a>
+            <span class="metadata-field-value"> <%= field %> </span> </td>
+          <td><%= type %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

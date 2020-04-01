@@ -58,7 +58,6 @@ defmodule Logflare.TableBigQuerySchemaBuilderTest do
       assert new === expected
     end
 
-    @tag run: true
     test "correctly builds schema for lists of maps with various shapes" do
       %{schema: expected, metadata: metadata} =
         schema_and_payload_metadata(:list_of_maps_of_varying_shapes)

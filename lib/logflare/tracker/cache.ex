@@ -60,9 +60,9 @@ defmodule Logflare.Tracker.Cache do
         Logger.error("Tracker rates cache expired!", source_id: source_id)
 
         %{
-          average_rate: "err",
-          last_rate: "err",
-          max_rate: "err",
+          average_rate: -1,
+          last_rate: -1,
+          max_rate: -1,
           limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
         }
 
@@ -71,9 +71,9 @@ defmodule Logflare.Tracker.Cache do
 
       {:error, _} ->
         %{
-          average_rate: "err",
-          last_rate: "err",
-          max_rate: "err",
+          average_rate: -1,
+          last_rate: -1,
+          max_rate: -1,
           limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
         }
     end

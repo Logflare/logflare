@@ -30,11 +30,22 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
   def post(client, source, rate, recent_events \\ []) do
     body = slack_post_body(source, rate, recent_events)
-    request = Tesla.post(client, source.slack_hook_url, body)
+    url = source.slack_hook_url
+    request = Tesla.post(client, url, body)
 
     case request do
       {:ok, %Tesla.Env{status: 200} = response} ->
         {:ok, response}
+
+      {:ok, %Tesla.Env{body: "invalid_blocks"} = response} ->
+        resp = prep_tesla_resp_for_log(response)
+
+        Logger.warn("Slack hook response: invalid_blocks",
+          slackhook_response: resp,
+          slackhook_request: %{url: url, body: inspect(body)}
+        )
+
+        {:error, response}
 
       {:ok, %Tesla.Env{body: "no_service"} = response} ->
         resp = prep_tesla_resp_for_log(response)
@@ -59,14 +70,17 @@ defmodule Logflare.Source.SlackHookServer.Client do
         {:error, response}
 
       {:error, response} ->
-        Logger.warn("Slack hook error!", slackhook_response: %{error: response})
+        resp = prep_tesla_resp_for_log(response)
+
+        Logger.warn("Slack hook error!", slackhook_response: resp)
         {:error, response}
     end
   end
 
-  defp prep_tesla_resp_for_log(response) do
-    Map.from_struct(response)
+  defp prep_tesla_resp_for_log(req_or_resp) do
+    Map.from_struct(req_or_resp)
     |> Map.drop([:__client__, :__module__, :headers, :opts, :query])
+    |> Map.put(:body, inspect(req_or_resp.body))
   end
 
   defp prep_recent_events(recent_events, rate) do
@@ -129,7 +143,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
           elements: [
             %{
               type: "mrkdwn",
-              text: "Ideas for the Logflare Slack app? Contact support@logflare.app!"
+              text: "Thanks for using Logflare 🙏"
             }
           ]
         }

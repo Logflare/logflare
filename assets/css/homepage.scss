@@ -2,10 +2,6 @@ a:hover {
   text-decoration: none;
 }
 
-a:focus {
-  outline: none;
-}
-
 .navbar-toggler:focus {
   outline: none !important;
 }
@@ -62,11 +58,13 @@ body {
   .navbar-right {
     float: none !important;
   }
+
   .navbar-fixed-bottom .navbar-collapse,
   .navbar-fixed-top .navbar-collapse {
     max-height: 200vh;
     border: 0 !important;
   }
+
   .side-collapse-container {
     width: 100%;
     position: relative;
@@ -219,8 +217,7 @@ body {
   -webkit-transform: rotate(0);
   transform: rotate(0);
 }
-@media (max-width: 768px) {
-}
+@media (max-width: 768px) {}
 
 .hero {
   min-height: 2000px;

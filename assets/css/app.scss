@@ -16,6 +16,8 @@
 @import "legal";
 @import "forms";
 @import "admin";
+@import "lql";
+@import "oauth";
 
 body {
   background-color: #161616;
@@ -229,7 +231,8 @@ a:hover {
 }
 
 a:focus {
-  text-shadow: 0 0 3px $brand-light-gray;
+  outline: 3px dashed $brand-fuscia;
+  outline-offset: 3px;
 }
 
 .text-primary {

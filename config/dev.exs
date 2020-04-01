@@ -84,5 +84,9 @@ config :libcluster,
 
 config :logflare, Logflare.Tracker, pool_size: 1
 
+config :logflare, LogflareWeb.Auth.ZeitAuth,
+  zeit_app_host: "https://dev.chasegranberry.net",
+  client_id: "191a76cc7da977f734b2089e1f1a7a85fc25ed589c6c1ba41113419a862189de"
+
 import_config "dev.secret.exs"
 import_config "telemetry.exs"

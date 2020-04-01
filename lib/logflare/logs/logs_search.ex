@@ -1,9 +1,13 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
-  alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
-
+  alias Logflare.Logs.SearchOperation, as: SO
   import Logflare.Logs.SearchOperations
+  alias Logflare.Logs.SearchQueries
+  alias Logflare.Source
+  alias Logflare.BqRepo
+  alias Logflare.Google.BigQuery.GCPConfig
+  import Ecto.Query
 
   def search_and_aggs(%SO{} = so) do
     tasks = [
@@ -36,54 +40,52 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
-  def search_result_aggregates(%SO{} = so) do
-    so
-    |> put_time_stats()
-    |> default_from
-    |> parse_querystring()
-    |> verify_path_in_schema()
-    |> apply_local_timestamp_correction()
-    |> apply_wheres()
-    |> exclude_limit()
-    |> apply_group_by_timestamp_period()
-    |> apply_numeric_aggs()
-    |> apply_to_sql()
-    |> do_query()
-    |> process_agg_query_result()
-    |> put_stats()
-    |> case do
-      %{error: nil} = so ->
-        {:ok, so}
+  def search_events(%SO{} = so) do
+    so = %{so | type: :events} |> put_time_stats()
 
-      %{error: e} = so when not is_nil(e) ->
-        {:error, so}
+    with %{error: nil} = so <- apply_query_defaults(so),
+         %{error: nil} = so <- apply_halt_conditions(so),
+         %{error: nil} = so <- apply_local_timestamp_correction(so),
+         %{error: nil} = so <- apply_timestamp_filter_rules(so),
+         %{error: nil} = so <- apply_filters(so),
+         %{error: nil} = so <- apply_to_sql(so),
+         %{error: nil} = so <- do_query(so),
+         %{error: nil} = so <- apply_warning_conditions(so),
+         %{error: nil} = so <- put_stats(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
     end
   end
 
-  @spec search_events(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
-  def search_events(%SO{} = so) do
-    so
-    |> put_time_stats()
-    |> default_from
-    |> parse_querystring()
-    |> verify_path_in_schema()
-    |> apply_local_timestamp_correction()
-    |> partition_or_streaming()
-    |> apply_wheres()
-    |> order_by_default()
-    |> apply_limit_to_query()
-    |> apply_select_all_schema()
-    |> apply_to_sql()
-    |> do_query()
-    |> process_query_result()
-    |> put_stats()
-    |> case do
-      %{error: nil} = so ->
-        {:ok, so}
+  def search_result_aggregates(%SO{} = so) do
+    so = %{so | type: :aggregates} |> put_time_stats()
 
-      %{error: e} = so when not is_nil(e) ->
-        {:error, so}
+    with %{error: nil} = so <- apply_halt_conditions(so),
+         %{error: nil} = so <- put_chart_data_shape_id(so),
+         %{error: nil} = so <- apply_local_timestamp_correction(so),
+         %{error: nil} = so <- apply_timestamp_filter_rules(so),
+         %{error: nil} = so <- apply_numeric_aggs(so),
+         %{error: nil} = so <- apply_to_sql(so),
+         %{error: nil} = so <- do_query(so),
+         %{error: nil} = so <- process_query_result(so),
+         %{error: nil} = so <- add_missing_agg_timestamps(so),
+         %{error: nil} = so <- apply_warning_conditions(so),
+         %{error: nil} = so <- put_stats(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
     end
+  end
+
+  def query_source_streaming_buffer(%Source{} = source) do
+    q =
+      source.bq_table_id
+      |> SearchQueries.source_table_streaming_buffer()
+      |> order_by(desc: :timestamp)
+      |> limit(100)
+
+    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
+    BqRepo.query(bq_project_id, q)
   end
 end

@@ -33,6 +33,7 @@
 
           <h2 id="demo-video">Demo Video</h2>
           <p>Here we send Logflare arbitrary events via a POST request, and query them immediately in realtime.</p>
+					<p># TODO: This demo is a bit old but the concepts still remain relevant.</p>
           <div class="minimg">
             <div class="purplebox">
             </div>

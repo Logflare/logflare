@@ -5,7 +5,7 @@ defmodule Logflare.Mixfile do
   def project do
     [
       app: :logflare,
-      version: "0.15.1",
+      version: "0.8.0",
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -77,50 +77,60 @@ defmodule Logflare.Mixfile do
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:goth, "~> 1.2.0"},
-      {:broadway, "~> 0.5.0"},
       {:deep_merge, "~> 1.0"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:credo, "~> 1.1", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
-      {:mox, "~> 0.5", only: :test},
       {:typed_struct, "~> 0.1"},
       {:publicist, "~> 1.1.0"},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
       {:faker, "~> 0.12", only: :test},
       {:ex_machina, "~> 2.3"},
-      {:iteraptor, "~> 1.9.0"},
+      {:iteraptor, "~> 1.10"},
       {:bertex, ">= 0.0.0"},
-      {:excoveralls, "~> 0.11", only: :test, runtime: false},
-      {:placebo, "~> 1.2"},
-      {:logflare_logger_backend, "~> 0.6.3"},
+      {:logflare_logger_backend, "~> 0.7.1"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "0.4.1"},
+      {:phoenix_live_view, "~> 0.10.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
-      {:scrivener_ecto, "~> 2.2.0"},
-      {:scrivener_list, "~> 2.0.1"},
-      {:scrivener_html, "~> 1.8.1"},
-      {:libcluster, "~> 3.1.1"},
+      {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
       {:ueberauth_slack, "~> 0.6"},
       {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
+      {:cors_plug, "~> 2.0"},
+
+      # Concurrency and pipelines
+      {:broadway, "~> 0.5.0"},
+      {:flow, "~> 0.14"},
+
+      # Test
+      {:excoveralls, "~> 0.11", only: :test, runtime: false},
+      {:placebo, "2.0.0-rc.2"},
+      {:mox, "~> 0.5", only: :test},
+
+      # Pagination
+      {:scrivener_ecto, "~> 2.2"},
+      {:scrivener_list, "~> 2.0"},
+      {:scrivener_html, "~> 1.8"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.20.0"},
-      {:google_api_big_query, "~> 0.31.0"},
+      {:google_api_cloud_resource_manager, "~> 0.28.0"},
+      {:google_api_big_query, "~> 0.34.0"},
 
       # Ecto
+      {:ecto, "~> 3.3", override: true},
       {:ecto_sql, "~> 3.2"},
+      {:typed_ecto_schema, "~> 0.1.0"},
 
       # Telemetry
       {:telemetry, "~> 0.4.0"},
-      {:telemetry_poller, "~> 0.4.0"},
-      {:telemetry_metrics, "~> 0.3.0"},
+      {:telemetry_poller, "0.4.0"},
+      {:telemetry_metrics, "~> 0.4.0"},
 
       # ETS
       {:ets, "~> 0.8.0"},
@@ -129,7 +139,13 @@ defmodule Logflare.Mixfile do
 
       # Statistics
       {:statistex, "~> 1.0.0"},
-      {:floki, "~> 0.23.1"},
+
+      # HTML
+      {:floki, "~> 0.26.0"},
+      {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
+
+      # Rustler
+      {:rustler, "~> 0.21.0", only: [:test], override: true},
 
       # Frontend
       {:phoenix_live_react, "~> 0.2"},

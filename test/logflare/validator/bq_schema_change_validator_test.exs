@@ -4,6 +4,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   use Placebo
 
   import Logflare.Logs.Validators.BigQuerySchemaChange
+  import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.BigQuery.SchemaBuilder
@@ -74,6 +75,48 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       refute valid?(metadata, schema)
       refute valid?(metadata2, schema)
       refute valid?(metadata3, schema)
+    end
+
+    test "valid? returns false for various changed nested list field types" do
+      schema = SchemaFactory.build(:schema, variant: :third_with_lists)
+
+      event = SchemaFactory.build(:metadata, variant: :third_with_lists)
+
+      metadata =
+        event
+        |> put_in(~w[user address cities], ["Amsterdam"])
+
+      assert valid?(metadata, schema)
+
+      metadata =
+        event
+        |> put_in(~w[user address cities], "Amsterdam")
+
+      refute valid?(metadata, schema)
+
+      metadata =
+        event
+        |> put_in(~w[user address cities], [1])
+
+      refute valid?(metadata, schema)
+
+      metadata =
+        event
+        |> put_in(~w[user ids], [10_000])
+
+      assert valid?(metadata, schema)
+
+      metadata =
+        event
+        |> put_in(~w[user ids], ["10000"])
+
+      refute valid?(metadata, schema)
+
+      metadata =
+        event
+        |> put_in(~w[user ids], [10_000.0])
+
+      refute valid?(metadata, schema)
     end
   end
 

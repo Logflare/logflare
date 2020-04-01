@@ -11,8 +11,13 @@ defmodule LogflareWeb.UserController do
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
+  def api_show(%{assigns: %{user: user}} = conn, _params) do
+    conn
+    |> json(user)
+  end
+
   def edit(%{assigns: %{user: user}} = conn, _params) do
-    changeset = User.changeset(user, %{})
+    changeset = User.user_allowed_changeset(user, %{})
 
     render(conn, "edit.html",
       changeset: changeset,
@@ -23,7 +28,7 @@ defmodule LogflareWeb.UserController do
 
   def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
     user
-    |> User.changeset(params)
+    |> User.user_allowed_changeset(params)
     |> Repo.update()
     |> case do
       {:ok, updated_user} ->
@@ -36,7 +41,7 @@ defmodule LogflareWeb.UserController do
 
       {:error, changeset} ->
         conn
-        |> put_flash(:error, "Something went wrong!")
+        |> put_flash(:error, "Something went wrong! See below for errors.")
         |> put_status(406)
         |> render("edit.html",
           changeset: changeset,
@@ -58,8 +63,8 @@ defmodule LogflareWeb.UserController do
     end)
 
     conn
-    |> put_flash(:info, "Account deleted!")
-    |> redirect(to: Routes.marketing_path(conn, :index))
+    |> configure_session(drop: true)
+    |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
   end
 
   def new_api_key(conn, _params) do

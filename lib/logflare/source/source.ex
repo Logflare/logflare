@@ -1,16 +1,47 @@
 defmodule Logflare.Source do
   @moduledoc false
-  use Ecto.Schema
-  alias Logflare.Google.BigQuery.GenUtils
+  use TypedEctoSchema
   import Ecto.Changeset
   @default_source_api_quota 50
-  @derive {Jason.Encoder, only: [:name, :token, :id]}
+  @derive {Jason.Encoder,
+           only: [
+             :name,
+             :token,
+             :id,
+             :favorite,
+             :webhook_notification_url,
+             :api_quota,
+             :slack_hook_url,
+             :bigquery_table_ttl,
+             :public_token,
+             :bq_table_id,
+             :bq_table_schema,
+             :has_rejected_events?,
+             :metrics,
+             :notifications,
+             :custom_event_message_keys
+           ]}
+  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
-    use Ecto.Schema
+    use TypedEctoSchema
 
-    embedded_schema do
+    @derive {Jason.Encoder,
+             only: [
+               :rate,
+               :latest,
+               :avg,
+               :max,
+               :buffer,
+               :inserts,
+               :inserts_string,
+               :recent,
+               :rejected,
+               :fields
+             ]}
+
+    typed_embedded_schema do
       field :rate, :integer
       field :latest, :integer
       field :avg, :integer
@@ -28,7 +59,14 @@ defmodule Logflare.Source do
     @moduledoc false
     use Ecto.Schema
     @primary_key false
-    @derive Jason.Encoder
+    @derive {Jason.Encoder,
+             only: [
+               :team_user_ids_for_email,
+               :team_user_ids_for_sms,
+               :other_email_notifications,
+               :user_email_notifications,
+               :user_text_notifications
+             ]}
 
     embedded_schema do
       field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
@@ -67,9 +105,18 @@ defmodule Logflare.Source do
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
+    field :bq_dataset_id, :string, virtual: true
+    field :bq_table_schema, :any, virtual: true
+    field :bq_table_typemap, :any, virtual: true
     embeds_one :notifications, Notifications, on_replace: :update
+    field :custom_event_message_keys, :string
 
     timestamps()
+  end
+
+  def no_casting_changeset(source) do
+    source
+    |> cast(%{}, [])
   end
 
   @doc false
@@ -84,7 +131,8 @@ defmodule Logflare.Source do
       # users can't update thier API quota currently
       :api_quota,
       :webhook_notification_url,
-      :slack_hook_url
+      :slack_hook_url,
+      :custom_event_message_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
@@ -99,7 +147,8 @@ defmodule Logflare.Source do
       :favorite,
       :bigquery_table_ttl,
       :webhook_notification_url,
-      :slack_hook_url
+      :slack_hook_url,
+      :custom_event_message_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
@@ -108,12 +157,9 @@ defmodule Logflare.Source do
   def default_validations(changeset) do
     changeset
     |> validate_required([:name, :token])
-    |> unique_constraint(:name)
+    |> unique_constraint(:name, name: :sources_name_index)
+    |> unique_constraint(:token)
     |> unique_constraint(:public_token)
-  end
-
-  def put_bq_table_id(%__MODULE__{} = source) do
-    %{source | bq_table_id: generate_bq_table_id(source)}
   end
 
   def generate_bq_table_id(%__MODULE__{} = source) do
@@ -121,11 +167,17 @@ defmodule Logflare.Source do
 
     bq_project_id = source.user.bigquery_project_id || default_project_id
 
-    env = Application.get_env(:logflare, :env)
-    table = GenUtils.format_table_name(source.token)
+    table = format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}_#{env}"
+    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> @dataset_id_append
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source_token) when is_atom(source_token) do
+    source_token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
   end
 end

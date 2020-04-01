@@ -1,4 +1,6 @@
 defmodule Logflare.Users.API do
+  alias Logflare.{Sources, User, Users}
+
   @type api_rates_quotas :: %{
           message: String.t(),
           metrics: %{
@@ -20,8 +22,11 @@ defmodule Logflare.Users.API do
 
   @callback verify_api_rates_quotas(map) :: ok_err_tup
 
-  alias Logflare.{Sources, User}
   @api_call_logs {:api_call, :logs_post}
+
+  def get(user_id) do
+    Users.get(user_id)
+  end
 
   @spec verify_api_rates_quotas(map) :: ok_err_tup
   def verify_api_rates_quotas(%{type: @api_call_logs} = action) do

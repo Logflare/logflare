@@ -1,5 +1,7 @@
 defmodule LogflareWeb.Router do
+  @moduledoc false
   use LogflareWeb, :router
+  alias LogflareWeb.LayoutView
   use PhoenixOauth2Provider.Router, otp_app: :logflare
   import Phoenix.LiveView.Router
 
@@ -9,7 +11,8 @@ defmodule LogflareWeb.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_flash
-    plug Phoenix.LiveView.Flash
+    plug :fetch_live_flash
+    plug :put_root_layout, {LogflareWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser
@@ -19,6 +22,8 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :api do
+    plug LogflareWeb.Plugs.MaybeContentTypeToJson
+
     plug Plug.Parsers,
       parsers: [:json, :bert],
       json_decoder: Jason
@@ -26,10 +31,14 @@ defmodule LogflareWeb.Router do
     plug :accepts, ["json", "bert"]
   end
 
-  pipeline :require_api_auth do
+  pipeline :require_ingest_api_auth do
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetVerifySource
     plug LogflareWeb.Plugs.RateLimiter
+  end
+
+  pipeline :require_mgmt_api_auth do
+    plug LogflareWeb.Plugs.SetVerifyUser
   end
 
   pipeline :require_auth do
@@ -57,14 +66,22 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.AuthSwitch
   end
 
+  # Oauth2 Provider Routes
   scope "/" do
     pipe_through [:api, :oauth_public]
     oauth_api_routes()
   end
 
+  # Oauth2 Provider Routes
   scope "/" do
     pipe_through [:browser, :require_auth]
     oauth_routes()
+  end
+
+  # Oauth2 Provider Routes for Zeit and Cloudflare
+  scope "/oauth/token", LogflareWeb do
+    post "/zeit", Auth.OauthProviderController, :zeit_grant
+    post "/cloudflare", Auth.OauthProviderController, :cloudflare_grant
   end
 
   scope "/", LogflareWeb do
@@ -87,6 +104,7 @@ defmodule LogflareWeb.Router do
     get "/log-search", MarketingController, :log_search
     get "/getting-started", MarketingController, :getting_started
     get "/slack-app-setup", MarketingController, :slack_app_setup
+    get "/zeit-setup", MarketingController, :zeit_setup
   end
 
   scope "/", LogflareWeb do
@@ -106,17 +124,16 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
-      post "/rules", RuleController, :create
-      get "/rules", RuleController, :index
-      delete "/rules/:id", RuleController, :delete
+      live "/rules", Sources.RulesLV, layout: {LogflareWeb.LayoutView, :root}
       delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
+    delete "/:id/force-delete", SourceController, :del_source_and_redirect
     get "/:id/test-alerts", SourceController, :test_alerts
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
-    live "/:source_id/search", Source.SearchLV, session: [:user_id]
+    live "/:source_id/search", Source.SearchLV, layout: {LogflareWeb.LayoutView, :root}
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
@@ -164,6 +181,12 @@ defmodule LogflareWeb.Router do
     get "/cluster", ClusterController, :index
   end
 
+  scope "/install", LogflareWeb do
+    pipe_through :browser
+
+    get "/zeit", Auth.ZeitAuth, :set_oauth_params
+  end
+
   scope "/auth", LogflareWeb do
     pipe_through :browser
 
@@ -178,19 +201,6 @@ defmodule LogflareWeb.Router do
     get "/:provider/callback", Auth.OauthController, :callback
   end
 
-  # deprecate
-  scope "/api", LogflareWeb do
-    pipe_through :api
-    post "/cloudflare/event", CloudflareController, :event
-    post "/v1/cloudflare/event", CloudflareControllerV1, :event
-  end
-
-  # deprecate
-  scope "/api", LogflareWeb do
-    pipe_through [:api, :require_api_auth]
-    post "/logs", LogController, :create
-  end
-
   scope "/webhooks", LogflareWeb do
     pipe_through :api
     post "/cloudflare/v1", CloudflareControllerV1, :event
@@ -201,10 +211,28 @@ defmodule LogflareWeb.Router do
     get "/", HealthCheckController, :check
   end
 
+  # Account management API.
+  scope "/api", LogflareWeb do
+    pipe_through [:api, :require_mgmt_api_auth]
+    get "/account", UserController, :api_show
+    get "/sources", SourceController, :api_index
+  end
+
+  # Old log ingest endpoint. Deprecate.
+  scope "/api/logs", LogflareWeb do
+    pipe_through [:api, :require_ingest_api_auth]
+    post "/", LogController, :create
+  end
+
+  # Log ingest goes through https://api.logflare.app/logs
   scope "/logs", LogflareWeb do
-    pipe_through [:api, :require_api_auth]
+    pipe_through [:api, :require_ingest_api_auth]
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
+    post "/zeit", LogController, :zeit_ingest
     post "/elixir/logger", LogController, :elixir_logger
+    post "/browser/reports", LogController, :browser_reports
+    options "/browser/reports", LogController, :browser_reports
+    post "/json", LogController, :generic_json
   end
 end

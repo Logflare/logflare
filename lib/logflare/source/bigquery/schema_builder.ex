@@ -4,6 +4,8 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   require Logger
   alias GoogleApi.BigQuery.V2.Model
   alias Model.TableFieldSchema, as: TFS
+  import Logflare.Google.BigQuery.SchemaUtils, only: [deep_sort_by_fields_name: 1]
+  alias Logflare.BigQuery.SchemaTypes
 
   @doc """
   Builds table schema from event metadata and prev schema.
@@ -85,24 +87,21 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   end
 
   defp build_fields_schemas({params_key, params_value}) do
-    case Logflare.BigQuery.SchemaTypes.to_schema_type(params_value) do
-      "ARRAY" ->
-        case hd(params_value) do
-          x when is_map(x) ->
-            %TFS{
-              name: params_key,
-              type: "RECORD",
-              mode: "REPEATED",
-              fields: build_fields_schemas(params_value)
-            }
+    case SchemaTypes.to_schema_type(params_value) do
+      {"ARRAY", "RECORD"} ->
+        %TFS{
+          name: params_key,
+          type: "RECORD",
+          mode: "REPEATED",
+          fields: build_fields_schemas(params_value)
+        }
 
-          x when is_binary(x) ->
-            %TFS{
-              name: params_key,
-              type: "STRING",
-              mode: "NULLABLE"
-            }
-        end
+      {"ARRAY", inner_type} ->
+        %TFS{
+          name: params_key,
+          type: inner_type,
+          mode: "REPEATED"
+        }
 
       type ->
         %TFS{
@@ -111,18 +110,6 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
           mode: "NULLABLE"
         }
     end
-  end
-
-  @spec deep_sort_by_fields_name(TFS.t()) :: TFS.t()
-  def deep_sort_by_fields_name(%{fields: nil} = schema), do: schema
-
-  def deep_sort_by_fields_name(%{fields: fields} = schema) when is_list(fields) do
-    sorted_fields =
-      fields
-      |> Enum.sort_by(& &1.name)
-      |> Enum.map(&deep_sort_by_fields_name/1)
-
-    %{schema | fields: sorted_fields}
   end
 
   defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do

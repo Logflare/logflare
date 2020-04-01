@@ -8,11 +8,12 @@ defmodule Logflare.Factory do
   def user_factory do
     %User{
       name: "JaneJohn Jones",
-      email: sequence(:email, &"email-#{&1}@example.com"),
+      email: Faker.Internet.email(),
       provider: "google",
       token: Faker.String.base64(64),
       api_key: Faker.String.base64(10),
-      provider_uid: "provider_uid"
+      provider_uid: "provider_uid",
+      bigquery_udfs_hash: ""
     }
   end
 
@@ -26,7 +27,7 @@ defmodule Logflare.Factory do
   end
 
   def rule_factory do
-    %Rule{regex: "."}
+    %Rule{}
   end
 
   def log_event_factory(attrs) do
@@ -34,7 +35,8 @@ defmodule Logflare.Factory do
 
     params = %{
       "message" => params["message"] || params[:message] || "test-msg",
-      "timestamp" => params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string
+      "timestamp" => params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string,
+      "metadata" => params["metadata"] || params[:metadata] || %{}
     }
 
     LogEvent.make(params, %{source: source})

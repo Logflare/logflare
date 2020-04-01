@@ -1,4 +1,5 @@
 defmodule Logflare.Source.SlackHookServer do
+  @moduledoc false
   use GenServer
 
   require Logger
@@ -14,7 +15,7 @@ defmodule Logflare.Source.SlackHookServer do
   end
 
   def test_post(source) do
-    recent_events = Data.get_logs_across_cluster(source.token)
+    recent_events = Data.get_logs(source.token)
 
     SHS.Client.new()
     |> SHS.Client.post(source, source.metrics.rate, recent_events)
@@ -37,7 +38,7 @@ defmodule Logflare.Source.SlackHookServer do
     case rate > 0 do
       true ->
         if source.slack_hook_url do
-          recent_events = Data.get_logs_across_cluster(rls.source_id)
+          recent_events = Data.get_logs(rls.source_id)
 
           SHS.Client.new()
           |> SHS.Client.post(source, rate, recent_events)
@@ -52,7 +53,7 @@ defmodule Logflare.Source.SlackHookServer do
     end
   end
 
-  def handle_info({:EXIT, pid, :normal}, rls) do
+  def handle_info({:EXIT, _pid, :normal}, rls) do
     :noop
 
     {:noreply, rls}

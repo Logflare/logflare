@@ -2,20 +2,56 @@ defmodule Logflare.User do
   @moduledoc """
   User schema and changeset
   """
-  use Ecto.Schema
+  use TypedEctoSchema
+
   import Ecto.Changeset
-  @default_user_api_quota 150
 
   alias Logflare.Source
   alias Logflare.Teams.Team
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
 
+  @derive {Jason.Encoder,
+           only: [
+             :email,
+             :provider,
+             :api_key,
+             :email_preferred,
+             :name,
+             :image,
+             :email_me_product,
+             :phone,
+             :bigquery_project_id,
+             :bigquery_dataset_location,
+             :bigquery_dataset_id,
+             :api_quota,
+             :company
+           ]}
+
+  @default_user_api_quota 150
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
   @default_dataset_location "US"
+  @valid_bq_dataset_locations [
+    "US",
+    "EU",
+    "us-west2",
+    "northamerica-northeast1",
+    "us-east4",
+    "southamerica-east1",
+    "europe-north1",
+    "europe-west2",
+    "europe-west6",
+    "asia-east2",
+    "asia-south1",
+    "asia-northeast2",
+    "asia-east1",
+    "asia-northeast1",
+    "asia-southeast1",
+    "australia-southeast1"
+  ]
 
-  schema "users" do
+  typed_schema "users" do
     field :email, :string
     field :provider, :string
     field :token, :string
@@ -33,6 +69,8 @@ defmodule Logflare.User do
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
+    field :bigquery_udfs_hash, :string, null: false
+    field :bigquery_processed_bytes_limit, :integer, null: false
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -41,30 +79,47 @@ defmodule Logflare.User do
     timestamps()
   end
 
+  @user_allowed_fields [
+    :email,
+    :provider,
+    :email_preferred,
+    :name,
+    :image,
+    :email_me_product,
+    :phone,
+    :bigquery_project_id,
+    :bigquery_dataset_location,
+    :bigquery_dataset_id,
+    :bigquery_processed_bytes_limit,
+    :valid_google_account,
+    :provider_uid,
+    :company
+  ]
+
+  @fields @user_allowed_fields ++
+            [
+              :token,
+              :api_key,
+              :old_api_key,
+              :api_quota,
+              :bigquery_udfs_hash
+            ]
+
+  @doc """
+  Users are not allowed to modify :token, :admin, :api_quota, :api_key and others
+  """
+  def user_allowed_changeset(user, attrs) do
+    user
+    |> hide_bigquery_defaults()
+    |> cast(attrs, @user_allowed_fields)
+    |> cast_assoc(:team)
+    |> default_validations(user)
+  end
+
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [
-      :email,
-      :provider,
-      :token,
-      :api_key,
-      :old_api_key,
-      :email_preferred,
-      :name,
-      :image,
-      :email_me_product,
-      # Don't cast this so people can't hack into admin mode
-      # :admin,
-      :phone,
-      :bigquery_project_id,
-      :api_quota,
-      :bigquery_dataset_location,
-      :bigquery_dataset_id,
-      :valid_google_account,
-      :provider_uid,
-      :company
-    ])
+    |> cast(attrs, @fields)
     |> cast_assoc(:team)
     |> default_validations(user)
   end
@@ -72,8 +127,37 @@ defmodule Logflare.User do
   def default_validations(changeset, user) do
     changeset
     |> validate_required([:email, :provider, :token, :provider_uid])
+    |> update_change(:email, &String.downcase/1)
+    |> update_change(:email_preferred, &String.downcase/1)
+    |> downcase_email_provider_uid(user)
+    |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
+  end
+
+  def hide_bigquery_defaults(user) do
+    case user do
+      %{bigquery_project_id: @project_id} = u ->
+        %{
+          u
+          | bigquery_project_id: nil,
+            bigquery_dataset_id: nil,
+            bigquery_dataset_location: nil,
+            bigquery_processed_bytes_limit: nil
+        }
+
+      u ->
+        u
+    end
+  end
+
+  def downcase_email_provider_uid(changeset, user) do
+    if user.provider == "email" do
+      changeset
+      |> update_change(:provider_uid, &String.downcase/1)
+    else
+      changeset
+    end
   end
 
   def validate_gcp_project(changeset, field, options \\ []) do
@@ -119,6 +203,10 @@ defmodule Logflare.User do
   end
 
   def valid_bq_dataset_locations do
-    ~w(US EU us-west2 northamerica-northeast1 us-east4 southamerica-east1 europe-north1 europe-west2 europe-west6 asia-east2 asia-south1 asia-northeast2 asia-east1 asia-northeast1 asia-southeast1 australia-southeast1)
+    @valid_bq_dataset_locations
+  end
+
+  def generate_bq_dataset_id(%__MODULE__{id: id} = _user) do
+    "#{id}" <> @dataset_id_append
   end
 end

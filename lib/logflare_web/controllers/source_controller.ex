@@ -23,13 +23,14 @@ defmodule LogflareWeb.SourceController do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
+  def api_index(%{assigns: %{user: user}} = conn, _params) do
+    sources = preload_sources_for_dashboard(user.sources)
+
+    conn |> json(sources)
+  end
+
   def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
-    sources =
-      user.sources
-      |> Enum.map(&Sources.preload_defaults/1)
-      |> Enum.map(&Sources.preload_saved_searches/1)
-      |> Enum.map(&Sources.put_schema_field_count/1)
-      |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
+    sources = preload_sources_for_dashboard(user.sources)
 
     home_team = Teams.get_home_team!(team_user)
 
@@ -45,12 +46,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
-    sources =
-      user.sources
-      |> Enum.map(&Sources.preload_defaults/1)
-      |> Enum.map(&Sources.preload_saved_searches/1)
-      |> Enum.map(&Sources.put_schema_field_count/1)
-      |> Enum.sort_by(&if(&1.favorite, do: 1, else: 0), &>=/2)
+    sources = preload_sources_for_dashboard(user.sources)
 
     home_team = team
 
@@ -87,21 +83,20 @@ defmodule LogflareWeb.SourceController do
     render(conn, "new.html", changeset: changeset)
   end
 
-  def create(%{assigns: %{user: user}} = conn, %{"source" => source}) do
-    user
-    |> Ecto.build_assoc(:sources)
-    |> Source.update_by_user_changeset(source)
-    |> Repo.insert()
+  def create(%{assigns: %{user: user}} = conn, %{"source" => source_params}) do
+    source_params
+    |> Map.put("token", Ecto.UUID.generate())
+    |> Sources.create_source(user)
     |> case do
       {:ok, source} ->
-        Supervisor.new_source(source.token)
-
         if get_session(conn, :oauth_params) do
           conn
           |> put_flash(:info, "Source created!")
           |> AuthController.redirect_for_oauth(user)
         else
-          put_flash_and_redirect_to_dashboard(conn, :info, "Source created!")
+          conn
+          |> put_flash(:info, "Source created!")
+          |> redirect(to: Routes.source_path(conn, :show, source.id))
         end
 
       {:error, changeset} ->
@@ -146,29 +141,44 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
+  def explore(%{assigns: %{team_user: team_user, user: user, source: source}} = conn, _params) do
+    conn
+    |> put_flash(
+      :error,
+      [
+        "Please contact the account owner (#{user.email}) to setup a Data Studio report. See ",
+        Phoenix.HTML.Link.link("this guide",
+          to: "#{Routes.marketing_path(conn, :data_studio_setup)}"
+        ),
+        " for more info."
+      ]
+    )
+    |> redirect(to: Routes.source_path(conn, :show, source.id))
+  end
+
+  def explore(%{assigns: %{user: %{provider: "google"} = user, source: source}} = conn, _params) do
+    bigquery_project_id = user.bigquery_project_id || @project_id
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
+
+    explore_link =
+      generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)
+
+    conn
+    |> redirect(external: explore_link)
+  end
+
   def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
-    if user.provider == "google" do
-      bigquery_project_id = user.bigquery_project_id || @project_id
-      dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
-
-      explore_link =
-        generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)
-
-      conn
-      |> redirect(external: explore_link)
-    else
-      conn
-      |> put_flash(
-        :error,
-        [
-          Phoenix.HTML.Link.link("Sign in with Google ",
-            to: "#{Routes.oauth_path(conn, :request, "google")}"
-          ),
-          "to explore in Data Studio."
-        ]
-      )
-      |> redirect(to: Routes.source_path(conn, :show, source.id))
-    end
+    conn
+    |> put_flash(
+      :error,
+      [
+        Phoenix.HTML.Link.link("Sign in with Google ",
+          to: "#{Routes.oauth_path(conn, :request, "google")}"
+        ),
+        "to explore in Data Studio."
+      ]
+    )
+    |> redirect(to: Routes.source_path(conn, :show, source.id))
   end
 
   def public(conn, %{"public_token" => public_token}) do
@@ -211,6 +221,14 @@ defmodule LogflareWeb.SourceController do
       {:error, response} ->
         conn
         |> put_flash(:error, "Webhook test failed! Error response: #{response}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      _else ->
+        conn
+        |> put_flash(
+          :error,
+          "Webhook test failed! Unknown error. Please contact support if this continues."
+        )
         |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
   end
@@ -287,30 +305,56 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def delete(%{assigns: %{source: source}} = conn, _conn) do
+  def delete(%{assigns: %{source: source}} = conn, params) do
     token = source.token
 
     cond do
       :ets.info(token) == :undefined ->
-        del_source_and_redirect_with_info(conn, source)
+        del_source_and_redirect(conn, params)
 
       :ets.first(token) == :"$end_of_table" ->
-        {:ok, _table} = Supervisor.delete_source(source.token)
-        del_source_and_redirect_with_info(conn, source)
+        del_source_and_redirect(conn, params)
 
-      {timestamp, _unique_int, _monotime} = :ets.first(source.token) ->
+      {timestamp, _unique_int, _monotime} = :ets.first(token) ->
         now = System.os_time(:microsecond)
 
         if now - timestamp > 3_600_000_000 do
-          {:ok, _table} = Supervisor.delete_source(source.token)
-          del_source_and_redirect_with_info(conn, source)
+          del_source_and_redirect(conn, params)
         else
-          put_flash_and_redirect_to_dashboard(
-            conn,
-            :error,
-            "Failed! Recent events found. Latest event must be greater than 24 hours old."
-          )
+          message = [
+            "Failed! Recent events are less than 24 hours old. ",
+            Phoenix.HTML.Link.link("Force delete",
+              to: "#{Routes.source_path(conn, :del_source_and_redirect, source.id)}",
+              method: :delete
+            ),
+            " this source."
+          ]
+
+          put_flash_and_redirect_to_dashboard(conn, :error, message)
         end
+
+      true ->
+        del_source_and_redirect(conn, params)
+    end
+  end
+
+  def del_source_and_redirect(conn, %{"id" => source_id}) do
+    source = Sources.get(source_id)
+
+    if :ets.info(source.token) != :undefined do
+      Supervisor.delete_source(source.token)
+    end
+
+    case Repo.delete(source) do
+      {:ok, _response} ->
+        put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
+
+      {:error, _response} ->
+        put_flash_and_redirect_to_dashboard(
+          conn,
+          :error,
+          "Something went wrong! Please try again later."
+        )
     end
   end
 
@@ -351,6 +395,15 @@ defmodule LogflareWeb.SourceController do
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 
+  defp preload_sources_for_dashboard(sources) do
+    sources
+    |> Enum.map(&Sources.preload_defaults/1)
+    |> Enum.map(&Sources.preload_saved_searches/1)
+    |> Enum.map(&Sources.put_schema_field_count/1)
+    |> Enum.sort_by(& &1.name, &<=/2)
+    |> Enum.sort_by(& &1.favorite, &>=/2)
+  end
+
   defp get_and_encode_logs(%Source{} = source) do
     log_events = Data.get_logs_across_cluster(source.token)
 
@@ -366,20 +419,6 @@ defmodule LogflareWeb.SourceController do
       else
         le
       end
-    end
-  end
-
-  defp del_source_and_redirect_with_info(conn, source) do
-    case Repo.delete(source) do
-      {:ok, _response} ->
-        put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
-
-      {:error, _response} ->
-        put_flash_and_redirect_to_dashboard(
-          conn,
-          :error,
-          "Something went wrong! Please try again later."
-        )
     end
   end
 

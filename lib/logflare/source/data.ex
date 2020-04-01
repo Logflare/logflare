@@ -108,32 +108,34 @@ defmodule Logflare.Source.Data do
   def get_logs_across_cluster(source_id) when is_atom(source_id) do
     nodes = Cluster.Utils.node_list_all()
 
-    tasks =
-      for n <- nodes do
-        Task.Supervisor.async(
-          {Logflare.TaskSupervisor, n},
-          __MODULE__,
-          :get_logs,
-          [source_id]
-        )
-      end
-
-    tasks_with_results = Task.yield_many(tasks)
-
-    results =
-      tasks_with_results
-      |> Enum.map(fn {task, res} ->
-        res || Task.shutdown(task, :brutal_kill)
+    task =
+      Task.async(fn ->
+        for n <- nodes do
+          Task.Supervisor.async(
+            {Logflare.TaskSupervisor, n},
+            __MODULE__,
+            :get_logs,
+            [source_id]
+          )
+        end
+        |> Task.yield_many()
+        |> Enum.map(fn {%Task{pid: pid}, res} ->
+          res || Task.Supervisor.terminate_child(Logflare.TaskSupervisor, pid)
+        end)
       end)
 
-    log_events =
-      for {:ok, events} <- results do
-        events
-      end
+    case Task.yield(task, 5_000) || Task.shutdown(task) do
+      {:ok, results} ->
+        for {:ok, events} <- results do
+          events
+        end
+        |> List.flatten()
+        |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+        |> Enum.take(-100)
 
-    List.flatten(log_events)
-    |> Enum.sort_by(& &1.body.timestamp, &<=/2)
-    |> Enum.take(-100)
+      _else ->
+        get_logs(source_id)
+    end
   end
 
   @spec get_avg_rate(map) :: non_neg_integer

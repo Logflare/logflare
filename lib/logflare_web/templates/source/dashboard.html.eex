@@ -13,7 +13,7 @@
   </div>
 </div>
 <div class="dashboard container mx-auto" hidden>
-  <div id="explore-dashboard"><center><%= link "Please upgrade your Logflare Cloudflare app!", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></center></div>
+  <div id="explore-dashboard"><center><%= link "🌲🎉 Send logs from your Javascript project with the official Pino transport!", to: "https://github.com/Logflare/pino-logflare", target: "_blank" %></center></div>
   <div id="saved-searches" class="">
     <h5 class="header-margin">Saved Searches</h5>
     <ul class="list-unstyled">
@@ -21,7 +21,7 @@
         <%= for source <- @sources do %>
           <%= for saved_search <- source.saved_searches do %>
             <li>
-              <%= link "#{source.name}.#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing?: true}), class: "" %>
+              <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing?: true}), class: "" %>
               <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
                 <i class="fa fa-trash"></i>
               <% end %>

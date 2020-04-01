@@ -1,5 +1,6 @@
 defmodule Logflare.TeamsTest do
   use Logflare.DataCase
+  @moduletag :skip
 
   alias Logflare.Teams
 

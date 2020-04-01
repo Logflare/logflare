@@ -1,8 +1,8 @@
 defmodule Logflare.OauthAccessTokens.OauthAccessToken do
-  use Ecto.Schema
+  use TypedEctoSchema
   use ExOauth2Provider.AccessTokens.AccessToken, otp_app: :logflare
 
-  schema "oauth_access_tokens" do
+  typed_schema "oauth_access_tokens" do
     access_token_fields()
 
     timestamps()

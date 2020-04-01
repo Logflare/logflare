@@ -1,4 +1,4 @@
-<%= if is_nil(@user.bigquery_project_id) == false do %>
+<%= if not is_nil(@changeset.data.bigquery_project_id) do %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
     <div class="form-group">
       <%= text_input e, :bigquery_project_id, placeholder: "your-project-name", class: "form-control form-control-margin", readonly: true %>
@@ -16,12 +16,18 @@
       <small class="form-text text-muted">
         Optional. Defaults to `US`. Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.
       </small>
+      <%= text_input e, :bigquery_processed_bytes_limit, placeholder: "1000000000", class: "form-control form-control-margin", readonly: true %>
+      <%= error_tag e, :bigquery_dataset_location %>
+      <small class="form-text text-muted">
+        Optional. Set the processed bytes limit for queries. Defaults to 10 GB (10000000000 bytes).
+      </small>
     </div>
   <% end %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn e -> %>
-    <%= hidden_input e, :bigquery_project_id, value: nil, class: "form-control form-control-margin" %>
-    <%= hidden_input e, :bigquery_dataset_id, value: nil, class: "form-control form-control-margin" %>
-    <%= hidden_input e, :bigquery_dataset_location, value: nil, class: "form-control form-control-margin" %>
+    <%= hidden_input e, :bigquery_project_id, value: nil %>
+    <%= hidden_input e, :bigquery_dataset_id, value: nil %>
+    <%= hidden_input e, :bigquery_dataset_location, value: nil %>
+    <%= hidden_input e, :bigquery_processed_bytes_limit, value: 10_000_000_000 %>
     <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
   <% end %>
 <% else %>
@@ -41,6 +47,11 @@
       <%= error_tag e, :bigquery_dataset_location %>
       <small class="form-text text-muted">
         Optional. Defaults to `US`. Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.
+      </small>
+      <%= text_input e, :bigquery_processed_bytes_limit, placeholder: "1000000000", class: "form-control form-control-margin" %>
+      <%= error_tag e, :bigquery_dataset_location %>
+      <small class="form-text text-muted">
+        Optional. Set the processed bytes limit for queries. Defaults to 10 GB (10000000000 bytes).
       </small>
     </div>
     <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>

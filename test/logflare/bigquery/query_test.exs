@@ -1,18 +1,21 @@
 defmodule Logflare.Google.BigQuery.QueryTest do
   @moduledoc false
   use Logflare.DataCase
+  alias Logflare.Users
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.Query
   import Logflare.Factory
 
   setup do
-    u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, user_id: u.id)
     {:ok, sources: [s], users: [u]}
   end
 
   describe "query" do
+    # Skipped until I setup multiple users with set IAM
+    @describetag :skip
     test "returns nil rows for a new empty table", %{sources: [source], users: [u]} do
       conn = GenUtils.get_conn()
 

@@ -48,6 +48,7 @@ config :logflare_telemetry,
   source_id: :"e5d18201-f0e0-459b-b6b3-2d3bc7d16fa4"
 
 config :libcluster,
+  debug: true,
   topologies: [
     gce: [
       strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
@@ -59,7 +60,7 @@ config :libcluster,
 
 config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions: [{"us-central1", "logflare-cluster-group"}],
-  zones: []
+  zones: [{"us-central1-a", "instance-group-1"}]
 
 config :logflare, Logflare.Tracker, pool_size: 1
 

@@ -1,10 +1,12 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
+  alias Logflare.{Users, Sources, Tracker, Logs}
 
   def start(_type, _args) do
     import Supervisor.Spec
 
+    # TODO: Set node status in GCP when sigterm is received 
     :ok =
       :gen_event.swap_sup_handler(
         :erl_signal_server,
@@ -15,9 +17,11 @@ defmodule Logflare.Application do
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     children = [
-      Logflare.Users.Cache,
-      Logflare.Sources.Cache,
-      Logflare.Logs.RejectedLogEvents,
+      Users.Cache,
+      Sources.Cache,
+      Tracker.Cache,
+      Logs.LogEvents.Cache,
+      Logs.RejectedLogEvents,
       supervisor(Phoenix.PubSub.PG2, [
         [
           name: Logflare.PubSub,
@@ -25,10 +29,10 @@ defmodule Logflare.Application do
         ]
       ]),
       worker(
-        Logflare.Tracker,
+        Tracker,
         [
           [
-            name: Logflare.Tracker,
+            name: Tracker,
             pubsub_server: Logflare.PubSub,
             broadcast_period: 1_000,
             down_period: 5_000,
@@ -46,6 +50,7 @@ defmodule Logflare.Application do
     topologies = Application.get_env(:libcluster, :topologies)
 
     dev_prod_children = [
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
       supervisor(Phoenix.PubSub.PG2, [
@@ -69,18 +74,18 @@ defmodule Logflare.Application do
         ]
       ),
       # supervisor(LogflareTelemetry.Supervisor, []),
-      Logflare.Users.Cache,
-      Logflare.Sources.Cache,
-      Logflare.Tracker.Cache,
-      Logflare.Sources.Buffers,
-      Logflare.Logs.RejectedLogEvents,
+      Users.Cache,
+      Sources.Cache,
+      Tracker.Cache,
+      Logs.LogEvents.Cache,
+      Sources.Buffers,
+      Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
-      supervisor(Logflare.Sources.Counters, []),
-      supervisor(Logflare.Sources.RateCounters, []),
-      supervisor(Logflare.Tracker.SourceNodeInserts, []),
-      supervisor(Logflare.Tracker.SourceNodeBuffers, []),
-      supervisor(Logflare.Tracker.SourceNodeRates, []),
+      supervisor(Sources.Counters, []),
+      supervisor(Sources.RateCounters, []),
+      supervisor(Tracker.SourceNodeInserts, []),
+      supervisor(Tracker.SourceNodeBuffers, []),
+      supervisor(Tracker.SourceNodeRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, [])

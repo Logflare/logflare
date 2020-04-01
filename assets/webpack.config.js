@@ -30,6 +30,18 @@ module.exports = {
         },
       },
       {
+        // Delete this rule when @nivo PR is merged https://github.com/plouc/nivo/pull/841
+        test: /\.js$/,
+        include: /node_modules\/@nivo\/bar/,
+        use: {
+          loader: 'string-replace-loader',
+          options: {
+            search: 'scaleBand().rangeRound(',
+            replace: 'scaleBand().range(',
+          }
+        },
+      },
+      {
         test: /\.(css|sass|scss)$/,
         use: [
           MiniCssExtractPlugin.loader,
@@ -74,12 +86,6 @@ module.exports = {
     new CopyWebpackPlugin([{ from: "static/", to: "../" }]),
     new Webpack.ProvidePlugin({}),
   ],
-  resolve: {
-    alias: {
-      react: path.resolve(__dirname, "./node_modules/react"),
-      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
-    },
-  },
   externals: {
     jquery: "jQuery",
     lodash: "_",
