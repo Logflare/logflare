@@ -19,7 +19,6 @@
         Don't worry, you can change the name later.
       </small>
       <%= error_tag f, :name %>
-      <%= hidden_input f, :token, value: Ecto.UUID.generate(), class: "form-control form-control-margin" %>
     </div>
 
     <%= submit "Add source", class: "btn btn-primary form-button" %>

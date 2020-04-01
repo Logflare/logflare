@@ -85,6 +85,7 @@ defmodule LogflareWeb.SourceController do
 
   def create(%{assigns: %{user: user}} = conn, %{"source" => source_params}) do
     source_params
+    |> Map.put("token", Ecto.UUID.generate())
     |> Sources.create_source(user)
     |> case do
       {:ok, source} ->
