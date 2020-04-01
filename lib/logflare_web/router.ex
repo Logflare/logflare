@@ -166,6 +166,14 @@ defmodule LogflareWeb.Router do
     get "/new-api-key", UserController, :new_api_key
   end
 
+  scope "/account/billing", LogflareWeb do
+    pipe_through [:browser, :require_auth, :check_owner]
+
+    get "/edit", BillingController, :edit
+    get "/success", BillingController, :success
+    get "/abandoned", BillingController, :abandoned
+  end
+
   scope "/admin", LogflareWeb do
     pipe_through [:browser, :check_admin]
 
