@@ -6,6 +6,7 @@ defmodule Logflare.Billing do
   import Ecto.Query, warn: false
   alias Logflare.Repo
   alias Logflare.Users
+  alias Logflare.User
   alias Logflare.Billing.BillingAccount
 
   @doc """
@@ -56,8 +57,8 @@ defmodule Logflare.Billing do
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_billing_account(user_id, attrs \\ %{}) do
-    Users.get(user_id)
+  def create_billing_account(%User{} = user, attrs \\ %{}) do
+    user
     |> Ecto.build_assoc(:billing_account)
     |> BillingAccount.changeset(attrs)
     |> Repo.insert()
@@ -81,10 +82,10 @@ defmodule Logflare.Billing do
     |> Repo.update()
   end
 
-  def create_or_update_billing_account(user_id, attrs) do
-    case get_billing_account_by(user_id: user_id) do
+  def create_or_update_billing_account(%User{} = user, attrs) do
+    case get_billing_account_by(user_id: user.id) do
       nil ->
-        {:ok, billing_account} = create_billing_account(user_id, attrs)
+        {:ok, billing_account} = create_billing_account(user, attrs)
         {:ok, :created, billing_account}
 
       billing_account ->

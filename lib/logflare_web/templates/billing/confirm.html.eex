@@ -1,0 +1,36 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+       <li></li>
+      </ul>
+    </div>
+    <h5>~/account/billing/confirm</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h4 class="header-margin">Confirm</h4>
+  <p>Confirm</p>
+  <p><%= inspect(@stripe_session) %></p>
+  <%= link "Continue", to: Routes.billing_path(@conn, :start), onclick: "return checkout();", class: "btn btn-primary form-button" %>
+
+</div>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+  function checkout(session_id) {
+
+      var stripe = Stripe('<%= @stripe_key %>');
+
+      stripe.redirectToCheckout({
+          sessionId: '<%= @stripe_session.id %>'
+      }).then(function (result) {
+          // If `redirectToCheckout` fails due to a browser or network
+          // error, display the localized error message to your customer
+          // using `result.error.message`.
+          consol.log("failed")
+      });
+
+      }
+</script>

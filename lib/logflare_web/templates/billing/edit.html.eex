@@ -14,25 +14,23 @@
   <p>Setup your billing account.</p>
 
   <div class="sub-form">
-    <h5 class="header-margin">Pick Your Plan</h5>
+    <h5 class="header-margin">Free Plan</h5>
+    <p>Pick the Free plan.</p>
 
-    <%= button "This plan", to: "", onclick: "checkout()", class: "btn btn-primary form-button" %>
+    <%= link "Confirm", to: Routes.billing_path(@conn, :confirm, %{"plan_id" => "1"}), class: "btn btn-primary form-button" %>
+  </div>
+
+  <div class="sub-form">
+    <h5 class="header-margin">Entry Plan</h5>
+    <p>Pick the Entry plan.</p>
+
+    <%= link "Confirm", to: Routes.billing_path(@conn, :confirm, %{"plan_id" => "3"}), class: "btn btn-primary form-button" %>
+  </div>
+
+  <div class="sub-form">
+    <h5 class="header-margin">Pro Plan</h5>
+    <p>Pick the Pro plan.</p>
+
+    <%= link "Confirm", to: Routes.billing_path(@conn, :confirm, %{"plan_id" => "2"}), class: "btn btn-primary form-button" %>
   </div>
 </div>
-
-<script src="https://js.stripe.com/v3/"></script>
-<script>
-  function checkout(session_id) {
-
-      var stripe = Stripe('<%= @stripe_key %>');
-
-      stripe.redirectToCheckout({
-          sessionId: '<%= @stripe_session.id %>'
-      }).then(function (result) {
-          // If `redirectToCheckout` fails due to a browser or network
-          // error, display the localized error message to your customer
-          // using `result.error.message`.
-      });
-
-      }
-</script>
