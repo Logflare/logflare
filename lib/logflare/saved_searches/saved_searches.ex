@@ -50,10 +50,10 @@ defmodule Logflare.SavedSearches do
     )
   end
 
-  def get_by(querystring, source) do
+  def get_by_qs_source_id(querystring, source_id) do
     SavedSearch
     |> where([s], s.querystring == ^querystring)
-    |> where([s], s.source_id == ^source.id)
+    |> where([s], s.source_id == ^source_id)
     |> Repo.one()
   end
 end
