@@ -3,15 +3,24 @@ defmodule Logflare.SavedSearches do
   import Ecto.Query
   alias Logflare.{SavedSearch, Repo}
   alias Logflare.Source
+  alias Logflare.Lql
   alias Logflare.Lql.{FilterRule, ChartRule}
   alias Logflare.SavedSearchCounter
   alias Logflare.DateTimeUtils
 
-  @spec insert(String.t(), [FilterRule.t() | ChartRule.t()], Source.t()) :: :ok | {:error, term}
+  @spec insert(String.t(), [FilterRule.t() | ChartRule.t()], Source.t()) ::
+          {:ok, SavedSearch} | {:error, term}
   def insert(querystring, lql_rules, %Source{} = source) do
+    lql_filters = Lql.Utils.get_filter_rules(lql_rules)
+    lql_charts = Lql.Utils.get_chart_rules(lql_rules)
+
     source
     |> Ecto.build_assoc(:saved_searches)
-    |> SavedSearch.changeset(%{querystring: querystring, lql: lql_rules})
+    |> SavedSearch.changeset(%{
+      querystring: querystring,
+      lql_filters: lql_filters,
+      lql_charts: lql_charts
+    })
     |> Repo.insert()
   end
 
@@ -20,10 +29,12 @@ defmodule Logflare.SavedSearches do
   end
 
   def save_by_user(querystring, lql_rules, source) do
-    search = get_by(querystring, source)
+    search = get_by_qs_source_id(querystring, source)
 
     if search do
-      Repo.update(search, saved_by_user: true)
+      search
+      |> SavedSearch.changeset(%{saved_by_user: true})
+      |> Repo.update()
     else
       insert(querystring, lql_rules, source)
     end
@@ -39,14 +50,14 @@ defmodule Logflare.SavedSearches do
 
     %SavedSearchCounter{
       saved_search_id: search_id,
-      datetime: DateTime.utc_now() |> DateTimeUtils.truncate(:hour),
+      timestamp: DateTime.utc_now() |> DateTimeUtils.truncate(:hour),
       tailing_count: 0,
       non_tailing_count: 0,
       granularity: "day"
     }
     |> Repo.insert(
       on_conflict: [inc: [tailing_count: tcount, non_tailing_count: ntcount]],
-      conflict_target: [:saved_search_id, :datetime, :granularity]
+      conflict_target: [:saved_search_id, :timestamp, :granularity]
     )
   end
 
@@ -55,5 +66,11 @@ defmodule Logflare.SavedSearches do
     |> where([s], s.querystring == ^querystring)
     |> where([s], s.source_id == ^source_id)
     |> Repo.one()
+  end
+
+  def mark_as_saved_by_users() do
+    SavedSearch
+    |> where([s], is_nil(s.saved_by_user))
+    |> Repo.update_all(set: [saved_by_user: true])
   end
 end

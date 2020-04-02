@@ -4,7 +4,7 @@ defmodule Logflare.SavedSearchCounter do
   import Ecto.Changeset
 
   typed_schema "saved_search_counters" do
-    field :datetime, :utc_datetime
+    field :timestamp, :utc_datetime
     belongs_to :saved_search, SavedSearch
     field :granularity, :string, default: "day"
     field :tailing_count, :integer
@@ -13,7 +13,7 @@ defmodule Logflare.SavedSearchCounter do
 
   def changeset(counter, attrs \\ %{}) do
     counter
-    |> cast(attrs, [:datetime])
-    |> unique_constraint(:datetime, name: :saved_search_counters_datetime_source_id_granularity)
+    |> cast(attrs, [:timestamp])
+    |> unique_constraint(:datetime, name: :saved_search_counters_timestamp_source_id_granularity)
   end
 end
