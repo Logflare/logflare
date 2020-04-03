@@ -24,7 +24,6 @@ defmodule Logflare.Logs.SearchOperation do
     field :use_local_time, boolean
     field :user_local_timezone, String.t()
     field :chart_period, atom(), default: :minute, enforce: true
-    field :chart_aggregate, atom(), default: :count, enforce: true
     field :chart_data_shape_id, atom(), default: nil, enforce: true
     field :type, :events | :aggregates
     field :status, {atom(), String.t() | [String.t()]}

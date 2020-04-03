@@ -7,6 +7,7 @@ defmodule Logflare.Sources do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Rule
   alias Logflare.User
+  alias Logflare.SavedSearch
   require Logger
 
   @default_bucket_width 60
@@ -112,8 +113,12 @@ defmodule Logflare.Sources do
   end
 
   def preload_saved_searches(source) do
-    source
-    |> Repo.preload(:saved_searches)
+    import Ecto.Query
+
+    Repo.preload(
+      source,
+      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user)
+    )
   end
 
   # """

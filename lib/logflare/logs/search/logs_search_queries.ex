@@ -7,7 +7,7 @@ defmodule Logflare.Logs.SearchQueries do
   import BQQueryAPI.UDF
   import BQQueryAPI
 
-  def select_aggregates(q, chart_period) do
+  def select_timestamp(q, chart_period) do
     q
     |> select([t], %{
       timestamp:
@@ -37,11 +37,6 @@ defmodule Logflare.Logs.SearchQueries do
           value: fragment("COUNT(?) as value", field(l, ^last_chart_field))
         })
     end
-  end
-
-  def select_merge_log_count(query) do
-    query
-    |> select_merge([l, ...], %{value: fragment("COUNT(?) as value", l.timestamp)})
   end
 
   def limit_aggregate_chart_period(query, period) when period in @chart_periods do

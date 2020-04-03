@@ -4,6 +4,7 @@ defmodule Logflare.LqlParserTest do
   alias Logflare.Lql
   alias Logflare.Lql.Parser, as: Parser
   alias Logflare.Lql.{Utils, ChartRule, FilterRule}
+  alias Logflare.DateTimeUtils
   import Parser
   alias Logflare.Source.BigQuery.SchemaBuilder
 
@@ -81,7 +82,41 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == str
     end
 
-    @tag :only
+    test "word contains with allowed characters" do
+      str = ~S|$user! sign.up user_sign_up%|
+      {:ok, result} = Parser.parse(str, @default_schema)
+
+      lql_rules = [
+        %FilterRule{
+          modifiers: %{},
+          operator: :string_contains,
+          path: "event_message",
+          shorthand: nil,
+          value: "$user!",
+          values: nil
+        },
+        %FilterRule{
+          modifiers: %{},
+          operator: :string_contains,
+          path: "event_message",
+          shorthand: nil,
+          value: "sign.up",
+          values: nil
+        },
+        %FilterRule{
+          modifiers: %{},
+          operator: :string_contains,
+          path: "event_message",
+          shorthand: nil,
+          value: "user_sign_up%",
+          values: nil
+        }
+      ]
+
+      assert Utils.get_filter_rules(result) == lql_rules
+      assert Lql.encode!(lql_rules) == str
+    end
+
     test "quoted string contains" do
       schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
       str = ~S|new "user sign up" server|
@@ -354,8 +389,6 @@ defmodule Logflare.LqlParserTest do
         )
 
       str = ~S|
-         c:count(metadata.log.metric4)
-         c:group_by(t::minute)
          log "was generated" "by logflare pinger"
          metadata.context.file:"some module.ex"
          metadata.context.line_number:100
@@ -366,6 +399,8 @@ defmodule Logflare.LqlParserTest do
          metadata.log.metric4:>=10
          metadata.user.admin:false
          metadata.user.group_id:5
+         c:count(metadata.log.metric4)
+         c:group_by(t::minute)
        |
 
       {:ok, lql_rules} = Parser.parse(str, schema)
@@ -778,7 +813,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:yesterday", @schema)
 
       lvalue = now_udt_zero_sec()
-      rvalue = now_udt_zero_sec()
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -795,7 +830,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@minute", @schema)
 
       lvalue = %{now_udt_zero_sec() | minute: 0}
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -812,7 +846,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@hour", @schema)
 
       lvalue = %{now_udt_zero_sec() | minute: 0, hour: 0}
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -830,8 +863,6 @@ defmodule Logflare.LqlParserTest do
 
       lvalue = Timex.beginning_of_week(%{now_udt_zero_sec() | minute: 0, hour: 0})
 
-      rvalue = now_udt_zero_sec()
-
       assert {
                :ok,
                [
@@ -847,7 +878,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@week", @schema)
 
       lvalue = Timex.beginning_of_month(%{now_udt_zero_sec() | minute: 0, hour: 0})
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -864,7 +894,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@month", @schema)
 
       lvalue = Timex.beginning_of_year(%{now_udt_zero_sec() | minute: 0, hour: 0})
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -898,7 +927,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:last@50s", @schema)
 
       lvalue = Timex.shift(now_udt_zero_sec(), minutes: -43)
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -915,7 +943,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:last@43m", @schema)
 
       lvalue = Timex.shift(%{now_udt_zero_sec() | minute: 0}, hours: -100)
-      rvalue = now_udt_zero_sec()
 
       assert {
                :ok,
@@ -1451,9 +1478,62 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
-  describe "LQL encoding" do
+  describe "LQL parser for timestamp range shorthand" do
     @describetag :this
+    test "simple case" do
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [~N[2020-01-01 00:00:00Z], ~N[2020-02-01 00:50:00Z]]
+                }
+              ]} == Parser.parse("timestamp:2020-{01..02}-01T00:{00..50}:00Z", @default_schema)
 
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~N[2020-01-05 00:15:35],
+                    ~N[2020-12-30 23:20:55]
+                  ]
+                }
+              ]} ==
+               Parser.parse(
+                 "timestamp:2020-{01..12}-{05..30}T{00..23}:{15..20}:{35..55}",
+                 @schema
+               )
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~N[2020-01-01 00:15:35.000001],
+                    ~N[2020-12-30 23:20:55.585444]
+                  ]
+                }
+              ]} ==
+               Parser.parse(
+                 "timestamp:2020-{01..12}-{01..30}T{00..23}:{15..20}:{35..55}.{000001..585444}",
+                 @schema
+               )
+    end
+  end
+
+  describe "LQL encoding" do
     test "to_datetime_with_range" do
       lv = "2020-01-01T03:14:15"
       rv = "2020-01-01T03:54:15"

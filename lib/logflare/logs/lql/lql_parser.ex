@@ -22,7 +22,7 @@ defmodule Logflare.Lql.Parser do
         word()
       ])
     )
-    |> ignore(choice([ascii_string([?\s, ?\n], min: 1), eos()]))
+    |> optional(ignore(choice([ascii_string([?\s, ?\n], min: 1), eos()])))
     |> reduce(:maybe_apply_negation_modifier)
     |> times(min: 1, max: 100)
   )

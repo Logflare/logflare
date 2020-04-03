@@ -320,10 +320,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("save_search" = ev, _, socket) do
-    %{source: source, querystring: qs} = socket.assigns
+    %{source: source, querystring: qs, lql_rules: lql_rules} = socket.assigns
     log_lv_received_event(ev, source)
 
-    case SavedSearches.insert(qs, source) do
+    case SavedSearches.save_by_user(qs, lql_rules, source) do
       {:ok, _saved_search} ->
         socket = assign_notifications(socket, :warning, "Search saved!")
         {:noreply, socket}
@@ -333,6 +333,19 @@ defmodule LogflareWeb.Source.SearchLV do
         socket = assign_notifications(socket, :warning, "Save search error: #{message}")
         {:noreply, socket}
     end
+  end
+
+  def handle_event("reset_search", _, %{assigns: assigns} = socket) do
+    {:ok, sopts} = SearchOpts.new(%{"querystring" => ""})
+    lql_rules = Lql.decode!(sopts.querystring, assigns.source.bq_table_schema)
+    qs = Lql.encode!(lql_rules)
+
+    socket =
+      socket
+      |> assign(:querystring, qs)
+      |> assign(:lql_rules, lql_rules)
+
+    {:noreply, socket}
   end
 
   def handle_info({:search_result, search_result}, socket) do
@@ -353,7 +366,7 @@ defmodule LogflareWeb.Source.SearchLV do
           message
 
         match?({:warning, _}, search_result.events.status) ->
-          {:warning, message} = search_result.aggregates.status
+          {:warning, message} = search_result.events.status
           message
 
         true ->
