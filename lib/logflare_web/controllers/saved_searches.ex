@@ -13,7 +13,7 @@ defmodule LogflareWeb.SavedSearchesController do
         x.id == String.to_integer(search_id)
       end)
 
-    case SavedSearches.delete(saved_search) do
+    case SavedSearches.delete_by_user(saved_search) do
       {:ok, _response} ->
         conn
         |> put_flash(:info, "Saved search deleted!")

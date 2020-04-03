@@ -2,7 +2,6 @@ defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.{Sources, EctoQueryBQ}
-  alias Logflare.Lql.Parser
   alias Logflare.Lql
   alias Logflare.Logs.Search.Utils
   alias Logflare.Lql.{ChartRule, FilterRule}

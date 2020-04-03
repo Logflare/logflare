@@ -335,6 +335,19 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
+  def handle_event("reset_search", _, %{assigns: assigns} = socket) do
+    {:ok, sopts} = SearchOpts.new(%{"querystring" => ""})
+    lql_rules = Lql.decode!(sopts.querystring, assigns.source.bq_table_schema)
+    qs = Lql.encode!(lql_rules)
+
+    socket =
+      socket
+      |> assign(:querystring, qs)
+      |> assign(:lql_rules, lql_rules)
+
+    {:noreply, socket}
+  end
+
   def handle_info({:search_result, search_result}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
 
@@ -353,7 +366,7 @@ defmodule LogflareWeb.Source.SearchLV do
           message
 
         match?({:warning, _}, search_result.events.status) ->
-          {:warning, message} = search_result.aggregates.status
+          {:warning, message} = search_result.events.status
           message
 
         true ->

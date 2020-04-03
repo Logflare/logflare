@@ -44,7 +44,12 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{modifiers: %{negate: true} = mods} = f) do
-    "-" <> to_fragment(%{f | modifiers: Map.delete(mods, :negate)})
+    fragment =
+      %{f | modifiers: Map.delete(mods, :negate)}
+      |> to_fragment()
+      |> String.replace_leading("metadata.", "m.")
+
+    "-" <> fragment
   end
 
   defp to_fragment(%FilterRule{

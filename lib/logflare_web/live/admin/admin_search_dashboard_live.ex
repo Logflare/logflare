@@ -10,6 +10,9 @@ defmodule LogflareWeb.AdminSearchDashboardLive do
       |> assign(:top_charts_paths, Analytics.top_field_paths(:lql_charts))
       |> assign(:search_timeseries, Analytics.search_timeseries())
       |> assign(:saved_searches, Analytics.saved_searches())
+      |> assign(:operators_filters, Analytics.operators())
+      |> assign(:source_timeseries, Analytics.source_timeseries())
+      |> assign(:user_timeseries, Analytics.user_timeseries())
 
     {:ok, socket}
   end

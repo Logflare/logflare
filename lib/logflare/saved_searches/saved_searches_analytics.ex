@@ -73,4 +73,29 @@ defmodule Logflare.SavedSearches.Analytics do
     |> limit(100)
     |> Repo.all()
   end
+
+  def operators() do
+    operators =
+      SavedSearch
+      |> select([s], %{
+        operator: fragment("jsonb_array_elements(?) -> 'operator'", s.lql_filters),
+        saved_search_id: s.id
+      })
+      |> subquery()
+
+    total =
+      from(operators)
+      |> select([o], fragment("COUNT(DISTINCT(?))", o.saved_search_id))
+      |> Repo.one()
+
+    from(operators)
+    |> group_by([o], o.operator)
+    |> select([o], %{
+      operator: o.operator,
+      searches_with_operator_share:
+        fragment("COUNT(DISTINCT(?))", o.saved_search_id) / type(^total, :float) * 100
+    })
+    |> order_by(desc: 2)
+    |> Repo.all()
+  end
 end
