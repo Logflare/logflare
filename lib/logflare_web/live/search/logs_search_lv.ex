@@ -59,6 +59,8 @@ defmodule LogflareWeb.Source.SearchLV do
         ]
       end
 
+    chart_rule = Enum.find(lql_rules, &match?(%ChartRule{}, &1))
+
     qs = Lql.encode!(lql_rules)
 
     socket =
@@ -78,8 +80,8 @@ defmodule LogflareWeb.Source.SearchLV do
         search_op_error: nil,
         search_op_log_events: nil,
         search_op_log_aggregates: nil,
-        chart_period: search_opts.chart_period,
-        chart_aggregate: search_opts.chart_aggregate,
+        chart_period: chart_rule.period,
+        chart_aggregate: chart_rule.aggregate,
         chart_aggregate_enabled?: nil,
         tailing_timer: nil,
         user_idle_interval: @user_idle_interval,
@@ -267,6 +269,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:ok, lql_rules} = Lql.decode(querystring, prev_assigns.source.bq_table_schema)
     qs = Lql.encode!(lql_rules)
 
+    chart_rule = Enum.find(lql_rules, &match?(%ChartRule{}, &1))
+
     maybe_cancel_tailing_timer(socket)
 
     socket =
@@ -274,6 +278,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:lql_rules, lql_rules)
       |> assign(:querystring, qs)
       |> assign(:log_events, [])
+      |> assign(:chart_period, chart_rule.period)
+      |> assign(:chart_aggregate, chart_rule.aggregate)
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
       |> assign_notifications(:warning, nil)
