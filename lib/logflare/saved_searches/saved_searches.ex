@@ -35,7 +35,7 @@ defmodule Logflare.SavedSearches do
   end
 
   def save_by_user(querystring, lql_rules, source) do
-    search = get_by_qs_source_id(querystring, source)
+    search = get_by_qs_source_id(querystring, source.id)
 
     if search do
       search

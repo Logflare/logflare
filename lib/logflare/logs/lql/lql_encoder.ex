@@ -47,7 +47,6 @@ defmodule Logflare.Lql.Encoder do
     fragment =
       %{f | modifiers: Map.delete(mods, :negate)}
       |> to_fragment()
-      |> String.replace_leading("metadata.", "m.")
 
     "-" <> fragment
   end
@@ -132,7 +131,8 @@ defmodule Logflare.Lql.Encoder do
       _ ->
         "#{path}:#{op}#{v}"
     end
-    |> String.replace("timestamp:", "t:")
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
   end
 
   defp to_fragment(%ChartRule{} = c) do
