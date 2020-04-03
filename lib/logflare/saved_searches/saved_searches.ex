@@ -28,6 +28,12 @@ defmodule Logflare.SavedSearches do
     Repo.delete(search)
   end
 
+  def delete_by_user(search) do
+    search
+    |> SavedSearch.changeset(%{saved_by_user: false})
+    |> Repo.update()
+  end
+
   def save_by_user(querystring, lql_rules, source) do
     search = get_by_qs_source_id(querystring, source)
 

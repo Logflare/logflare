@@ -320,10 +320,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("save_search" = ev, _, socket) do
-    %{source: source, querystring: qs} = socket.assigns
+    %{source: source, querystring: qs, lql_rules: lql_rules} = socket.assigns
     log_lv_received_event(ev, source)
 
-    case SavedSearches.insert(qs, source) do
+    case SavedSearches.save_by_user(qs, lql_rules, source) do
       {:ok, _saved_search} ->
         socket = assign_notifications(socket, :warning, "Search saved!")
         {:noreply, socket}

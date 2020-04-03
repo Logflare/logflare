@@ -41,7 +41,7 @@ const Chart = ({data, keys}) => {
     >
       <ResponsiveBarCanvas
         data={data}
-        margin={{top: 25, right: 25, bottom: 25, left: 25}}
+        margin={{top: 30, right: 30, bottom: 30, left: 30}}
         padding={0.3}
         enableGridY={true}
         keys={keys}

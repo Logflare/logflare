@@ -4,6 +4,33 @@ defmodule Logflare.SavedSearches.Analytics do
   alias Logflare.SavedSearchCounter
   import Ecto.Query
   alias Logflare.Repo
+  alias Logflare.Source
+  alias Logflare.User
+
+  def source_timeseries() do
+    SavedSearchCounter
+    |> join(:left, [c], s in SavedSearch, on: c.saved_search_id == s.id)
+    |> join(:left, [c, s], source in Source, on: s.source_id == source.id)
+    |> group_by([c, s, source], [fragment("?::DATE", c.timestamp)])
+    |> select([c, s, source], %{
+      timestamp: fragment("?::DATE", c.timestamp),
+      count: fragment("count(distinct ?)", source.id)
+    })
+    |> Repo.all()
+  end
+
+  def user_timeseries() do
+    SavedSearchCounter
+    |> join(:left, [c], s in SavedSearch, on: c.saved_search_id == s.id)
+    |> join(:left, [c, s], source in Source, on: s.source_id == source.id)
+    |> join(:left, [c, s, source], user in User, on: source.user_id == user.id)
+    |> group_by([c, s, source], [fragment("?::DATE", c.timestamp)])
+    |> select([c, s, source, user], %{
+      timestamp: fragment("?::DATE", c.timestamp),
+      count: fragment("count(distinct ?)", user.id)
+    })
+    |> Repo.all()
+  end
 
   def search_timeseries() do
     SavedSearchCounter
@@ -15,7 +42,6 @@ defmodule Logflare.SavedSearches.Analytics do
       tailing_count: sum(c.tailing_count)
     })
     |> Repo.all()
-    |> IO.inspect()
   end
 
   def saved_searches() do
