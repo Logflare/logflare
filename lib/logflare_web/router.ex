@@ -169,10 +169,15 @@ defmodule LogflareWeb.Router do
   scope "/account/billing", LogflareWeb do
     pipe_through [:browser, :require_auth, :check_owner]
 
-    get "/start", BillingController, :start
+    post "/", BillingController, :create
+    get "/subscribe", BillingController, :subscribe
     get "/edit", BillingController, :edit
-    get "/confirm", BillingController, :confirm
+    delete "/", BillingController, :delete
+    delete "/subscription", BillingController, :unsubscribe
+    get "/subscription/preview", BillingController, :preview_subscription
+    get "/subscription/change", BillingController, :change_subscription
     get "/success", BillingController, :success
+    get "/update-credit-card-success", BillingController, :update_credit_card_success
     get "/abandoned", BillingController, :abandoned
   end
 

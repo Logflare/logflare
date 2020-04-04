@@ -13,7 +13,7 @@
   <h4 class="header-margin">Confirm</h4>
   <p>Confirm</p>
   <p><%= inspect(@stripe_session) %></p>
-  <%= link "Continue", to: Routes.billing_path(@conn, :start), onclick: "return checkout();", class: "btn btn-primary form-button" %>
+  <%= link "Continue", to: Routes.billing_path(@conn, :subscribe), onclick: "return checkout();", class: "btn btn-primary form-button" %>
 
 </div>
 

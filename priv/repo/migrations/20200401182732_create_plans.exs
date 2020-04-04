@@ -8,9 +8,5 @@ defmodule Logflare.Repo.Migrations.CreatePlans do
 
       timestamps()
     end
-
-    alter table(:billing_accounts) do
-      add :plan_id, references(:plans)
-    end
   end
 end

@@ -52,6 +52,16 @@
   <% end %>
 </div>
 
+<h4 class="header-margin">Billing Account</h4>
+<p>Setup billing.</p>
+
+<div class="sub-form">
+  <h5 class="header-margin">Create a Billing Account</h5>
+  <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
+  <h5 class="header-margin">Delete Billing Account</h5>
+  <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
+</div>
+
 <h4 class="header-margin">Team Preferences</h4>
 <p>Setup your team.</p>
 

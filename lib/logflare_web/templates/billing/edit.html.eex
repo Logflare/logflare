@@ -14,23 +14,27 @@
   <p>Setup your billing account.</p>
 
   <div class="sub-form">
-    <h5 class="header-margin">Free Plan</h5>
-    <p>Pick the Free plan.</p>
+    <h5 class="header-margin">Subscribe</h5>
+    <p>Pick a plan</p>
 
-    <%= link "Confirm", to: Routes.billing_path(@conn, :confirm, %{"plan_id" => "1"}), class: "btn btn-primary form-button" %>
+    <%= link "Entry plan", to: Routes.billing_path(@conn, :preview_subscription, %{"plan_id" => "1"}), class: "btn btn-primary form-button" %>
+
+    <%= link "Pro plan", to: Routes.billing_path(@conn, :preview_subscription, %{"plan_id" => "2"}), class: "btn btn-primary form-button" %>
   </div>
 
   <div class="sub-form">
-    <h5 class="header-margin">Entry Plan</h5>
-    <p>Pick the Entry plan.</p>
+    <h5 class="header-margin">Update Credit Card</h5>
+    <p>Update your credit card on file.</p>
 
-    <%= link "Confirm", to: Routes.billing_path(@conn, :confirm, %{"plan_id" => "3"}), class: "btn btn-primary form-button" %>
+    <%= link "Continue", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>
   </div>
 
-  <div class="sub-form">
-    <h5 class="header-margin">Pro Plan</h5>
-    <p>Pick the Pro plan.</p>
+    <div class="sub-form">
+      <h5 class="header-margin">Delete Subscription</h5>
+      <p>Delete your subscription to unsubscribe from Logflare.</p>
 
-    <%= link "Confirm", to: Routes.billing_path(@conn, :confirm, %{"plan_id" => "2"}), class: "btn btn-primary form-button" %>
-  </div>
+      <%= link "Delete", to: Routes.billing_path(@conn, :unsubscribe), method: :delete, class: "btn btn-danger form-button" %>
+    </div>
+
+
 </div>

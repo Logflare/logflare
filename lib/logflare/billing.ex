@@ -7,7 +7,15 @@ defmodule Logflare.Billing do
   alias Logflare.Repo
   alias Logflare.Users
   alias Logflare.User
+  alias Logflare.Billing
   alias Logflare.Billing.BillingAccount
+
+  require Protocol
+  Protocol.derive(Jason.Encoder, Stripe.List)
+  Protocol.derive(Jason.Encoder, Stripe.Subscription)
+  Protocol.derive(Jason.Encoder, Stripe.Plan)
+  Protocol.derive(Jason.Encoder, Stripe.SubscriptionItem)
+  Protocol.derive(Jason.Encoder, Stripe.Session)
 
   @doc """
   Returns the list of billing_accounts.
@@ -76,22 +84,23 @@ defmodule Logflare.Billing do
       {:error, %Ecto.Changeset{}}
 
   """
+
+  def sync_billing_account(
+        %BillingAccount{stripe_customer: customer_id} = billing_account,
+        attrs \\ %{}
+      ) do
+    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(customer_id) do
+      attrs = Map.put(attrs, :stripe_subscriptions, subscriptions)
+      update_billing_account(billing_account, attrs)
+    else
+      err -> err
+    end
+  end
+
   def update_billing_account(%BillingAccount{} = billing_account, attrs) do
     billing_account
     |> BillingAccount.changeset(attrs)
     |> Repo.update()
-  end
-
-  def create_or_update_billing_account(%User{} = user, attrs) do
-    case get_billing_account_by(user_id: user.id) do
-      nil ->
-        {:ok, billing_account} = create_billing_account(user, attrs)
-        {:ok, :created, billing_account}
-
-      billing_account ->
-        {:ok, billing_account} = update_billing_account(billing_account, attrs)
-        {:ok, :updated, billing_account}
-    end
   end
 
   @doc """

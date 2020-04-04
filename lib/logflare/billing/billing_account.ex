@@ -5,7 +5,7 @@ defmodule Logflare.Billing.BillingAccount do
   schema "billing_accounts" do
     field :latest_successful_stripe_session, :map
     field :stripe_customer, :string
-    belongs_to :plan, Logflare.Plan
+    field :stripe_subscriptions, :map
     belongs_to :user, Logflare.User
 
     timestamps()
@@ -14,7 +14,12 @@ defmodule Logflare.Billing.BillingAccount do
   @doc false
   def changeset(billing_account, attrs) do
     billing_account
-    |> cast(attrs, [:latest_successful_stripe_session, :stripe_customer, :plan_id])
-    |> validate_required([:user_id, :stripe_customer, :plan_id])
+    |> cast(attrs, [
+      :latest_successful_stripe_session,
+      :stripe_customer,
+      :stripe_subscriptions
+    ])
+    |> validate_required([:user_id, :stripe_customer])
+    |> unique_constraint(:user_id)
   end
 end
