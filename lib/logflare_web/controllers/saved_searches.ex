@@ -15,7 +15,9 @@ defmodule LogflareWeb.SavedSearchesController do
         |> put_flash(:info, "Saved search deleted!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
 
-      {:error, _response} ->
+      {:error, response} ->
+        Logger.error("SavedSearchesController delete error: #{inspect response}")
+
         conn
         |> put_flash(:error, "Something went wrong!")
         |> redirect(to: Routes.source_path(conn, :dashboard))
