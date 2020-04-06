@@ -27,7 +27,7 @@ defmodule Logflare.SavedSearches.Analytics do
     })
     |> where([c, ...], c.timestamp >= ago(24, "hour"))
     |> group_by([c, s, source], source.id)
-    |> order_by([c,...], desc: sum(c.tailing_count))
+    |> order_by([c, ...], desc: sum(c.tailing_count))
     |> Repo.all()
   end
 

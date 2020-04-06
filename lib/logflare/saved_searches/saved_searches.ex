@@ -99,7 +99,7 @@ defmodule Logflare.SavedSearches do
       source =
         search.source_id
         |> Sources.get()
-        |> Sources.put_bq_table_data()
+        |> Sources.put_bq_table_schema()
 
       with {:ok, lql_rules} <- Lql.decode(search.querystring, source.bq_table_schema) do
         lql_filters = Lql.Utils.get_filter_rules(lql_rules)

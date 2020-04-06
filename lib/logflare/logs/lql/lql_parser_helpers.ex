@@ -299,21 +299,22 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def parse_date_or_datetime_with_range(result) when is_list(result) do
-    [lv, rv] = result
-    |> Enum.reduce([%{}, %{}], fn
-      {k, v}, [lacc, racc] ->
-        [lv, rv] =
-          case v do
-            [lv, rv] -> [lv, rv]
-            [v] -> [v, v]
-          end
+    [lv, rv] =
+      result
+      |> Enum.reduce([%{}, %{}], fn
+        {k, v}, [lacc, racc] ->
+          [lv, rv] =
+            case v do
+              [lv, rv] -> [lv, rv]
+              [v] -> [v, v]
+            end
 
-        [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
-    end)
-    |> Enum.map(fn x ->
-      Map.update(x, :microsecond, {0, 0}, &{&1, 6})
-    end)
-    |> Enum.map(&struct!(NaiveDateTime, &1))
+          [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
+      end)
+      |> Enum.map(fn x ->
+        Map.update(x, :microsecond, {0, 0}, &{&1, 6})
+      end)
+      |> Enum.map(&struct!(NaiveDateTime, &1))
 
     if lv == rv do
       [lv]

@@ -198,34 +198,37 @@ defmodule LogflareWeb.Source.SearchLV do
           tailing?: search_opts.tailing?
         }
 
-        {:ok, lql_rules} = Lql.decode(search_opts.querystring, source.bq_table_schema)
+        with {:ok, lql_rules} <- Lql.decode(search_opts.querystring, source.bq_table_schema) do
+          qs =
+            lql_rules
+            |> Enum.map(fn
+              %ChartRule{} = lqlc ->
+                %{lqlc | aggregate: search_opts.chart_aggregate, period: search_opts.chart_period}
 
-        qs =
-          lql_rules
-          |> Enum.map(fn
-            %ChartRule{} = lqlc ->
-              %{lqlc | aggregate: search_opts.chart_aggregate, period: search_opts.chart_period}
+              x ->
+                x
+            end)
+            |> Lql.encode!()
 
-            x ->
-              x
-          end)
-          |> Lql.encode!()
+          socket =
+            socket
+            |> assign(:chart_aggregate, search_opts.chart_aggregate)
+            |> assign(:chart_period, search_opts.chart_period)
+            |> assign(:querystring, qs)
+            |> assign(:lql_rules, lql_rules)
+            |> assign(:log_aggregates, [])
+            |> assign(:loading, true)
 
-        socket =
-          socket
-          |> assign(:chart_aggregate, search_opts.chart_aggregate)
-          |> assign(:chart_period, search_opts.chart_period)
-          |> assign(:querystring, qs)
-          |> assign(:lql_rules, lql_rules)
-          |> assign(:log_aggregates, [])
-          |> assign(:loading, true)
+          :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
 
-        :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
-
-        push_patch(socket,
-          to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
-          replace: true
-        )
+          push_patch(socket,
+            to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
+            replace: true
+          )
+        else
+          {:error, err} ->
+            assign_notifications(socket, :error, err)
+        end
       else
         socket
       end
