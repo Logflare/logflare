@@ -117,5 +117,5 @@ defmodule Logflare.Lql.EctoHelpers do
     end
   end
 
-  def is_negated?(modifiers), do: :negate in modifiers
+  def is_negated?(modifiers), do: Map.get(modifiers, :negate)
 end

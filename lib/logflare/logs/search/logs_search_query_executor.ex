@@ -74,7 +74,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       if search do
         search
       else
-        {:ok, search} = SavedSearches.insert(qs, lql_rules, source)
+        {:ok, search} = SavedSearches.insert(%{querystring: qs, lql_rules: lql_rules}, source)
         search
       end
 

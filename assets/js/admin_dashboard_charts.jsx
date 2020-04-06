@@ -50,7 +50,6 @@ const Chart = ({data, keys}) => {
         axisTop={null}
         axisRight={null}
         axisBottom={null}
-        axisLeft={true}
         enableLabel={false}
         motionStiffness={90}
         motionDamping={15}

@@ -6,14 +6,10 @@ defmodule LogflareWeb.SavedSearchesController do
        when action in [:delete]
 
   def delete(conn, %{"id" => search_id} = _params) do
-    source = conn.assigns.source |> Sources.preload_saved_searches()
-
-    saved_search =
-      Enum.find(source.saved_searches, fn x ->
-        x.id == String.to_integer(search_id)
-      end)
-
-    case SavedSearches.delete_by_user(saved_search) do
+    search_id
+    |> SavedSearches.get()
+    |> SavedSearches.delete_by_user()
+    |> case do
       {:ok, _response} ->
         conn
         |> put_flash(:info, "Saved search deleted!")

@@ -2,25 +2,33 @@ defmodule Logflare.SavedSearches do
   @moduledoc false
   import Ecto.Query
   alias Logflare.{SavedSearch, Repo}
-  alias Logflare.Source
+  alias Logflare.{Sources, Source}
   alias Logflare.Lql
   alias Logflare.Lql.{FilterRule, ChartRule}
   alias Logflare.SavedSearchCounter
   alias Logflare.DateTimeUtils
+  require Logger
 
-  @spec insert(String.t(), [FilterRule.t() | ChartRule.t()], Source.t()) ::
-          {:ok, SavedSearch} | {:error, term}
-  def insert(querystring, lql_rules, %Source{} = source) do
+  def get(id) do
+    Repo.get(SavedSearch, id)
+  end
+
+  @spec insert(map(), Source.t()) :: {:ok, SavedSearch} | {:error, term}
+  def insert(%{lql_rules: lql_rules} = params, %Source{} = source) do
     lql_filters = Lql.Utils.get_filter_rules(lql_rules)
     lql_charts = Lql.Utils.get_chart_rules(lql_rules)
 
     source
     |> Ecto.build_assoc(:saved_searches)
-    |> SavedSearch.changeset(%{
-      querystring: querystring,
-      lql_filters: lql_filters,
-      lql_charts: lql_charts
-    })
+    |> SavedSearch.changeset(
+      Map.merge(
+        params,
+        %{
+          lql_filters: lql_filters,
+          lql_charts: lql_charts
+        }
+      )
+    )
     |> Repo.insert()
   end
 
@@ -42,7 +50,7 @@ defmodule Logflare.SavedSearches do
       |> SavedSearch.changeset(%{saved_by_user: true})
       |> Repo.update()
     else
-      insert(querystring, lql_rules, source)
+      insert(%{querystring: querystring, lql_rules: lql_rules, saved_by_user: true}, source)
     end
   end
 
@@ -58,8 +66,7 @@ defmodule Logflare.SavedSearches do
       saved_search_id: search_id,
       timestamp: DateTime.utc_now() |> DateTimeUtils.truncate(:hour),
       tailing_count: 0,
-      non_tailing_count: 0,
-      granularity: "day"
+      non_tailing_count: 0
     }
     |> Repo.insert(
       on_conflict: [inc: [tailing_count: tcount, non_tailing_count: ntcount]],

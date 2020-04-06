@@ -142,7 +142,8 @@ defmodule Logflare.Lql.Encoder do
         x -> x
       end
 
-    "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
+    qs = "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
+    Regex.replace(~r/(?<=sum|avg|count)\(metadata./, qs, "(m.")
   end
 
   def to_datetime_with_range(lvstring, rvstring) do
