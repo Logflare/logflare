@@ -5,9 +5,6 @@ defmodule LogflareWeb.AdminSearchDashboardLive do
   alias Logflare.SavedSearches
 
   def mount(_params, _session, socket) do
-    # remove after first run
-    SavedSearches.mark_as_saved_by_users()
-
     socket =
       socket
       |> assign(:top_filters_paths, Analytics.top_field_paths(:lql_filters))
@@ -17,6 +14,7 @@ defmodule LogflareWeb.AdminSearchDashboardLive do
       |> assign(:operators_filters, Analytics.operators())
       |> assign(:source_timeseries, Analytics.source_timeseries())
       |> assign(:user_timeseries, Analytics.user_timeseries())
+      |> assign(:top_sources, Analytics.top_sources(:"24h"))
 
     {:ok, socket}
   end

@@ -8,10 +8,8 @@ defmodule Logflare.SavedSearches.Analytics do
   alias Logflare.User
 
   def source_timeseries() do
-    SavedSearchCounter
-    |> join(:left, [c], s in SavedSearch, on: c.saved_search_id == s.id)
-    |> join(:left, [c, s], source in Source, on: s.source_id == source.id)
-    |> group_by([c, s, source], [fragment("?::DATE", c.timestamp)])
+    search_counters_with_sources()
+    |> group_by_date()
     |> select([c, s, source], %{
       timestamp: fragment("?::DATE", c.timestamp),
       count: fragment("count(distinct ?)", source.id)
@@ -19,12 +17,23 @@ defmodule Logflare.SavedSearches.Analytics do
     |> Repo.all()
   end
 
+  def top_sources(:"24h") do
+    search_counters_with_sources()
+    |> select([c, s, source], %{
+      id: source.id,
+      name: source.name,
+      tailing_count: sum(c.tailing_count),
+      non_tailing_count: sum(c.non_tailing_count)
+    })
+    |> where([c, ...], c.timestamp >= ago(24, "hour"))
+    |> group_by([c, s, source], source.id)
+    |> order_by([c,...], desc: sum(c.tailing_count))
+    |> Repo.all()
+  end
+
   def user_timeseries() do
-    SavedSearchCounter
-    |> join(:left, [c], s in SavedSearch, on: c.saved_search_id == s.id)
-    |> join(:left, [c, s], source in Source, on: s.source_id == source.id)
-    |> join(:left, [c, s, source], user in User, on: source.user_id == user.id)
-    |> group_by([c, s, source], [fragment("?::DATE", c.timestamp)])
+    search_counters_with_users()
+    |> group_by_date()
     |> select([c, s, source, user], %{
       timestamp: fragment("?::DATE", c.timestamp),
       count: fragment("count(distinct ?)", user.id)
@@ -35,7 +44,7 @@ defmodule Logflare.SavedSearches.Analytics do
   def search_timeseries() do
     SavedSearchCounter
     |> join(:left, [c], s in SavedSearch, on: c.saved_search_id == s.id)
-    |> group_by([c, s], [fragment("?::DATE", c.timestamp)])
+    |> group_by_date()
     |> select([c, s], %{
       timestamp: fragment("?::DATE", c.timestamp),
       non_tailing_count: sum(c.non_tailing_count),
@@ -97,5 +106,20 @@ defmodule Logflare.SavedSearches.Analytics do
     })
     |> order_by(desc: 2)
     |> Repo.all()
+  end
+
+  def search_counters_with_sources() do
+    SavedSearchCounter
+    |> join(:left, [c], s in SavedSearch, on: c.saved_search_id == s.id)
+    |> join(:left, [c, s], source in Source, on: s.source_id == source.id)
+  end
+
+  def search_counters_with_users() do
+    search_counters_with_sources()
+    |> join(:left, [c, s, source], user in User, on: source.user_id == user.id)
+  end
+
+  def group_by_date(q) do
+    group_by(q, [c, ...], [fragment("?::DATE", c.timestamp)])
   end
 end

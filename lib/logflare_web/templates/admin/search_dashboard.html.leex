@@ -52,6 +52,27 @@
   </div>
   <div class="row">
     <div class="col">
+      <h3> Top sources (24h) </h3>
+      <table class="table table-dark ">
+        <thead>
+          <tr>
+            <th>Id</th>
+            <th>Name</th>
+            <th>Tailing count</th>
+            <th>Non-tailing count</th>
+          </tr>
+        </thead>
+        <%= for %{id: id, name: name, tailing_count: tailing_count, non_tailing_count: non_tailing_count } <- @top_sources do %>
+          <tr>
+            <td> <%= id %> </td>
+            <td> <%= name %> </td>
+            <td> <%= tailing_count %> </td>
+            <td> <%= non_tailing_count %> </td>
+          </tr>
+        <% end %>
+      </table>
+    </div>
+    <div class="col">
       <h3> Operator usage share (%)</h3>
       <table class="table table-dark ">
         <thead>
