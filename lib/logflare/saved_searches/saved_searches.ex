@@ -86,4 +86,49 @@ defmodule Logflare.SavedSearches do
     |> where([s], is_nil(s.saved_by_user))
     |> Repo.update_all(set: [saved_by_user: true])
   end
+
+  def update_lql_rules_where_nil() do
+    Logger.info("Updating saved searches, populating lql rules where nil...")
+
+    searches =
+      SavedSearch
+      |> where([s], is_nil(s.lql_filters) or is_nil(s.lql_charts))
+      |> Repo.all()
+
+    for search <- searches do
+      source =
+        search.source_id
+        |> Sources.get()
+        |> Sources.put_bq_table_data()
+
+      with {:ok, lql_rules} <- Lql.decode(search.querystring, source.bq_table_schema) do
+        lql_filters = Lql.Utils.get_filter_rules(lql_rules)
+        lql_charts = Lql.Utils.get_chart_rules(lql_rules)
+
+        search
+        |> SavedSearch.changeset(%{lql_filters: lql_filters, lql_charts: lql_charts})
+        |> Repo.update()
+        |> case do
+          {:ok, search} ->
+            Logger.info(
+              "Saved search #{search.id} for source #{search.source_id} was successfully updated with LQL filters and charts."
+            )
+
+          {:error, changeset} ->
+            Logger.error(
+              "Saved search #{search.id} for source #{search.source_id} failed to update LQL filters and charts, Repo update error: #{
+                inspect(changeset.errors)
+              }"
+            )
+        end
+      else
+        {:error, error} ->
+          Logger.error(
+            "Saved search #{search.id} for source #{search.source_id} failed to upgrade to new LQL filters format, LQL decoding error: #{
+              inspect(error)
+            }"
+          )
+      end
+    end
+  end
 end
