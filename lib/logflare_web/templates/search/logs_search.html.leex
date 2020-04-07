@@ -68,7 +68,7 @@
           <%= if @tailing? do %>
             <span class="btn btn-primary" phx-click="stop_live_search">
               <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
-              <span class="fas-in-button" id="search-tailing-button">Live</span>
+              <span class="fas-in-button" id="search-tailing-button">Pause</span>
             </span>
           <% else %>
             <span class="btn btn-primary" phx-click="start_live_search">
@@ -84,16 +84,16 @@
           <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
         </a>
       </div>
-      <div class="col-auto">
-        <span class="btn btn-primary" phx-click="reset_search">
-          Reset
-        </span>
-      </div>
       <div class="col-auto" phx-update="ignore">
         <span class="btn btn-primary" id="daterangepicker">
           <span class="fa fa-clock" >
           </span>
-          DateTime selector
+          DateTime
+        </span>
+      </div>
+      <div class="col-auto">
+        <span class="btn btn-primary" phx-click="reset_search">
+          Reset
         </span>
       </div>
       <div class="col-auto  hide-on-mobile">
