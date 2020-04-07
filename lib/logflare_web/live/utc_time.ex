@@ -1,6 +1,6 @@
 defmodule LogflareWeb.UtcTimeLive do
   @moduledoc false
-  use Phoenix.LiveView
+  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
 
   def render(assigns) do
     ~L"""

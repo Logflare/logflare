@@ -61,7 +61,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
           sink: sink.token,
           source_id: s.id,
           lql_filters: [
-            %FilterRule{operator: "~", path: "message", modifiers: [], value: "info"},
+            %FilterRule{operator: "~", path: "message", modifiers: %{}, value: "info"},
             lql_string: "message:info"
           ]
         )
@@ -184,7 +184,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                %Logflare.Rule{
                  lql_filters: [
                    %Logflare.Lql.FilterRule{
-                     modifiers: [],
+                     modifiers: %{},
                      operator: :"~",
                      path: "event_message",
                      value: ~S"\w+"
@@ -197,7 +197,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                %Logflare.Rule{
                  lql_filters: [
                    %Logflare.Lql.FilterRule{
-                     modifiers: [],
+                     modifiers: %{},
                      operator: :"~",
                      path: "event_message",
                      value: ~S"\d\d"
@@ -210,7 +210,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                %Logflare.Rule{
                  lql_filters: [
                    %Logflare.Lql.FilterRule{
-                     modifiers: [],
+                     modifiers: %{},
                      operator: :"~",
                      path: "event_message",
                      value: "100"

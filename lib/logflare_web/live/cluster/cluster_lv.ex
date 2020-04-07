@@ -3,7 +3,7 @@ defmodule LogflareWeb.ClusterLV do
   Provides real-time data on cluster connectivity
   """
   alias LogflareWeb.ClusterView
-  use Phoenix.LiveView
+  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
   alias Phoenix.LiveView.Socket
 
   def render(assigns) do

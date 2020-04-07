@@ -4,15 +4,11 @@ defmodule Logflare.Lql.Utils do
   alias Logflare.Lql.{FilterRule, ChartRule}
 
   def get_filter_rules(rules) do
-    rules
-    |> Enum.filter(&match?(%FilterRule{}, &1))
-    |> Enum.sort()
+    Enum.filter(rules, &match?(%FilterRule{}, &1))
   end
 
   def get_chart_rules(rules) do
-    rules
-    |> Enum.filter(&match?(%ChartRule{}, &1))
-    |> Enum.sort()
+    Enum.filter(rules, &match?(%ChartRule{}, &1))
   end
 
   def get_ts_filters(rules) do

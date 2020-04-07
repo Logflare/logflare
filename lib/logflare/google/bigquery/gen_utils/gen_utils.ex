@@ -78,19 +78,18 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   def maybe_parse_google_api_result(x), do: x
 
-  @spec get_tesla_error_message(:emfile | :timeout | Tesla.Env.t()) :: String.t()
+  @spec get_tesla_error_message(:emfile | :timeout | :closed | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
     case Jason.decode(message.body) do
-      {:ok, message_body} ->
-        message_body["error"]["message"]
+      {:ok, body} ->
+        body["error"]["message"]
 
-      {:error, message} ->
-        "#{message}"
+      {:error, body} ->
+        body.data
     end
   end
 
   def get_tesla_error_message(:emfile), do: "emfile"
   def get_tesla_error_message(:timeout), do: "timeout"
   def get_tesla_error_message(:closed), do: "closed"
-  def get_tesla_error_message(message), do: "#{message}"
 end

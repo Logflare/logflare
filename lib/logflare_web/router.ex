@@ -12,7 +12,7 @@ defmodule LogflareWeb.Router do
     plug :fetch_session
     plug :fetch_flash
     plug :fetch_live_flash
-    plug :put_live_layout, {LayoutView, "app.html"}
+    plug :put_root_layout, {LogflareWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser
@@ -124,7 +124,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :require_auth]
 
     resources "/", SourceController, except: [:index] do
-      live "/rules", Sources.RulesLV
+      live "/rules", Sources.RulesLV, layout: {LogflareWeb.LayoutView, :root}
       delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
@@ -133,7 +133,7 @@ defmodule LogflareWeb.Router do
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
-    live "/:source_id/search", Source.SearchLV
+    live "/:source_id/search", Source.SearchLV, layout: {LogflareWeb.LayoutView, :root}
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
@@ -170,6 +170,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :check_admin]
 
     get "/dashboard", AdminController, :dashboard
+    live "/dashboard/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
     get "/cluster", ClusterController, :index
   end
 

@@ -105,6 +105,7 @@ defmodule Logflare.Source do
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
+    field :bq_dataset_id, :string, virtual: true
     field :bq_table_schema, :any, virtual: true
     field :bq_table_typemap, :any, virtual: true
     embeds_one :notifications, Notifications, on_replace: :update
@@ -156,7 +157,8 @@ defmodule Logflare.Source do
   def default_validations(changeset) do
     changeset
     |> validate_required([:name, :token])
-    |> unique_constraint(:name)
+    |> unique_constraint(:name, name: :sources_name_index)
+    |> unique_constraint(:token)
     |> unique_constraint(:public_token)
   end
 

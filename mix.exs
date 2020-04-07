@@ -90,9 +90,9 @@ defmodule Logflare.Mixfile do
       {:ex_machina, "~> 2.3"},
       {:iteraptor, "~> 1.10"},
       {:bertex, ">= 0.0.0"},
-      {:logflare_logger_backend, "~> 0.7.0"},
+      {:logflare_logger_backend, "~> 0.7.1"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "~> 0.9.0"},
+      {:phoenix_live_view, "~> 0.10.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
@@ -129,7 +129,7 @@ defmodule Logflare.Mixfile do
 
       # Telemetry
       {:telemetry, "~> 0.4.0"},
-      {:telemetry_poller, "~> 0.4.0"},
+      {:telemetry_poller, "0.4.0"},
       {:telemetry_metrics, "~> 0.4.0"},
 
       # ETS

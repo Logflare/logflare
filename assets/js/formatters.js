@@ -3,12 +3,12 @@ import { format, formatDistance } from "date-fns"
 
 import * as userConfig from "./user-config-storage"
 
-export const timestampNsToLocalDate = ns =>
-  format(ns / 1000, "EEE MMM d yyyy hh:mm:ssa")
+const fmtString = "EEE MMM d yyyy HH:mm:ss"
+export const timestampNsToLocalDate = ns => format(ns / 1000, fmtString)
 
 export const timestampNsToUtcDate = ns => {
   const datetime = DateTime.fromMillis(ns / 1000)
-  return datetime.toUTC().toFormat("EEE MMM d yyyy hh:mm:ssa") + " UTC"
+  return datetime.toUTC().toFormat(fmtString) + " UTC"
 }
 
 export const timestampNsToAgo = ns =>

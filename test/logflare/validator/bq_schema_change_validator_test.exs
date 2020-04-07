@@ -76,6 +76,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       refute valid?(metadata2, schema)
       refute valid?(metadata3, schema)
     end
+
     test "valid? returns false for various changed nested list field types" do
       schema = SchemaFactory.build(:schema, variant: :third_with_lists)
 

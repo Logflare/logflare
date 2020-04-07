@@ -25,7 +25,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
           path: "metadata.datacenter",
           value: "ne-1",
           operator: :=,
-          modifiers: []
+          modifiers: %{}
         }
       ]
 
@@ -70,13 +70,13 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
             path: "metadata.user.id",
             operator: :=,
             value: 5,
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.datacenter",
             value: "ne-1",
             operator: :=,
-            modifiers: []
+            modifiers: %{}
           }
         ]
         |> Enum.sort()
@@ -134,7 +134,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
           path: "metadata.user.address.country",
           operator: :=,
           value: "AQ",
-          modifiers: []
+          modifiers: %{}
         }
       ]
 
@@ -183,61 +183,61 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
             path: "metadata.user.address.country",
             operator: :=,
             value: "AQ",
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.user.address.city",
             operator: :=,
             value: "Aboa",
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.user.rating",
             operator: :>,
             value: 100,
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.context.pid",
             operator: :=,
             value: "<0.255.0>",
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.user.exceptions",
             operator: :>=,
             value: 0,
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.user.variables",
             operator: :<=,
             value: 2,
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.user.name",
             operator: :"~",
             value: "Neo",
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.datacenter",
             operator: :=,
             value: "AWS",
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.user.source_count",
             operator: :<,
             value: 10,
-            modifiers: []
+            modifiers: %{}
           },
           %FilterRule{
             path: "metadata.context.file",
             operator: :=,
             value: "lib/bigquery.ex",
-            modifiers: []
+            modifiers: %{}
           }
         ]
         |> Enum.sort()
