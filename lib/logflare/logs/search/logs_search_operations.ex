@@ -23,7 +23,7 @@ defmodule Logflare.Logs.SearchOperations do
   @type chart_period :: :day | :hour | :minute | :second
 
   @default_limit 100
-  @default_max_n_chart_ticks 250
+  @default_max_n_chart_ticks 1_000
 
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
