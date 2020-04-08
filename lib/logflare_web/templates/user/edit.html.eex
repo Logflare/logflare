@@ -2,6 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
+        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li>
         <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
@@ -52,14 +53,19 @@
   <% end %>
 </div>
 
-<h4 class="header-margin">Billing Account</h4>
+<h4 id="billing-account" class="header-margin">Billing Account</h4>
 <p>Setup billing.</p>
 
 <div class="sub-form">
-  <h5 class="header-margin">Create a Billing Account</h5>
-  <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
+<%= if @user.billing_account do %>
+  <h5 class="header-margin">Edit Billing Account</h5>
+  <%= link "Edit billing account", to: Routes.billing_path(@conn, :edit), class: "btn btn-primary form-button" %>
   <h5 class="header-margin">Delete Billing Account</h5>
   <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
+<% else %>
+  <h5 class="header-margin">Create a Billing Account</h5>
+  <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
+<% end %>
 </div>
 
 <h4 class="header-margin">Team Preferences</h4>

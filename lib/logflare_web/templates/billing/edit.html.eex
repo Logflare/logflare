@@ -2,16 +2,17 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-       <li></li>
+        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
-    <h5>~/account/billing/edit</h5>
+    <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/billing/edit</h5>
   </div>
 </div>
 
 <div class="container mx-auto">
   <h4 class="header-margin">Billing Account</h4>
-  <p>Setup your billing account.</p>
+  <p>Edit your billing account.</p>
 
   <div class="sub-form">
     <h5 class="header-margin">Subscribe</h5>
