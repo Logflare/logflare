@@ -37,5 +37,10 @@
       <%= link "Delete", to: Routes.billing_path(@conn, :unsubscribe), method: :delete, class: "btn btn-danger form-button" %>
     </div>
 
+    <div class="sub-form">
+    <h5 class="header-margin">Delete Billing Account</h5>
+    <p>Delete your billing account.</p>
+    <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
+  </div>
 
 </div>
