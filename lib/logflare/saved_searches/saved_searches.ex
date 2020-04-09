@@ -42,15 +42,23 @@ defmodule Logflare.SavedSearches do
     |> Repo.update()
   end
 
-  def save_by_user(querystring, lql_rules, source) do
+  def save_by_user(querystring, lql_rules, source, tailing?) do
     search = get_by_qs_source_id(querystring, source.id)
 
     if search do
       search
-      |> SavedSearch.changeset(%{saved_by_user: true})
+      |> SavedSearch.changeset(%{saved_by_user: true, tailing?: tailing?})
       |> Repo.update()
     else
-      insert(%{querystring: querystring, lql_rules: lql_rules, saved_by_user: true}, source)
+      insert(
+        %{
+          querystring: querystring,
+          lql_rules: lql_rules,
+          saved_by_user: true,
+          tailing?: tailing?
+        },
+        source
+      )
     end
   end
 
