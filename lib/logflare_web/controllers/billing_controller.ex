@@ -58,12 +58,7 @@ defmodule LogflareWeb.BillingController do
     end
   end
 
-  def subscribe(%{assigns: %{user: user}} = conn, _params) do
-    conn
-    |> render("start.html")
-  end
-
-  def preview_subscription(
+  def confirm_subscription(
         %{assigns: %{user: %{billing_account: billing_account}} = user} = conn,
         %{
           "plan_id" => plan_id
@@ -146,7 +141,7 @@ defmodule LogflareWeb.BillingController do
            }),
          {:ok, _billing_account} <-
            Billing.sync_billing_account(billing_account, billing_params) do
-      success_and_redirect(conn, "Subscription created!")
+      success_and_redirect(conn, "Payment method updated!")
     else
       err ->
         Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})

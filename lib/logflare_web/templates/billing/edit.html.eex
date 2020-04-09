@@ -1,4 +1,5 @@
 <div class="subhead subhead-fixed">
+
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
@@ -59,7 +60,7 @@
                   <li>Unlimited*</li>
                   <li>2 additional users</li>
                 </ul>
-                <%= link "Subscribe", to: Routes.billing_path(@conn, :preview_subscription, %{"plan_id" => "1"}), class: "btn btn-primary form-button" %>
+                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_id" => "1"}), class: "btn btn-primary form-button" %>
             </div>
         </div>
         <div class="card card-pricing text-center px-3 mb-4">
@@ -79,7 +80,7 @@
                   <li>Unlimited*</li>
                   <li>20 additional users</li>
                 </ul>
-                <%= link "Subscribe", to: Routes.billing_path(@conn, :preview_subscription, %{"plan_id" => "2"}), class: "btn btn-primary form-button" %>
+                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_id" => "2"}), class: "btn btn-primary form-button" %>
             </div>
         </div>
         <div class="card card-pricing text-center px-3 mb-4">
@@ -104,22 +105,19 @@
         </div>
     </div>
     <p>*unlimited events when you <strong>bring your own backend</strong>™</p>
+  </div>
 </div>
-  </div>
 
-  <div class="sub-form">
-    <h5 class="header-margin">Update Credit Card</h5>
-    <p>Update your credit card on file.</p>
+<div class="sub-form">
+  <h5 class="header-margin">Update Credit Card</h5>
+  <p>Update your credit card on file.</p>
+  <%= link "Continue", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>
+</div>
 
-    <%= link "Continue", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>
-  </div>
-
-
-
-    <div class="sub-form">
-    <h5 class="header-margin">Delete Billing Account</h5>
-    <p>Delete your billing account.</p>
-    <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
-  </div>
+<div class="sub-form">
+  <h5 class="header-margin">Delete Billing Account</h5>
+  <p>If something goes terribly wrong you can delete and re-create your billing account.</p>
+  <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
+</div>
 
 </div>

@@ -2,10 +2,11 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-       <li></li>
+        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
-    <h5>~/account/billing/confirm</h5>
+    <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/<%= link "billing", to: Routes.billing_path(@conn, :edit), class: "text-primary" %>/subscription/confirm</h5>
   </div>
 </div>
 
@@ -13,13 +14,13 @@
   <h4 class="header-margin">Confirm</h4>
   <p>Confirm</p>
   <p><%= inspect(@stripe_session) %></p>
-  <%= link "Continue", to: Routes.billing_path(@conn, :subscribe), onclick: "return checkout();", class: "btn btn-primary form-button" %>
+  <button onclick="return checkout();" class="btn btn-primary form-button">Continue</button>
 
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
 <script>
-  function checkout(session_id) {
+  function checkout() {
 
       var stripe = Stripe('<%= @stripe_key %>');
 
