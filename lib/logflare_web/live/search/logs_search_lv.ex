@@ -112,6 +112,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(@default_assigns)
       |> assign(
         source: source,
         loading: false,
@@ -121,7 +122,6 @@ defmodule LogflareWeb.Source.SearchLV do
         search_tip: gen_search_tip(),
         use_local_time: true
       )
-      |> assign(@default_assigns)
 
     with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
       lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
@@ -132,7 +132,12 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:querystring, optimizedqs)
     else
       {:error, error} ->
-        assign_notifications(socket, :error, error)
+        maybe_cancel_tailing_timer(socket)
+
+        socket
+        |> assign(:querystring, querystring)
+        |> assign(:tailing?, false)
+        |> assign_notifications(:error, error)
     end
   end
 
