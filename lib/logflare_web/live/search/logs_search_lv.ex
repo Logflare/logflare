@@ -87,6 +87,24 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: querystring
       )
 
+    socket =
+      with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
+        lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
+        optimizedqs = Lql.encode!(lql_rules)
+
+        socket
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:querystring, optimizedqs)
+      else
+        {:error, error} ->
+          maybe_cancel_tailing_timer(socket)
+
+          socket
+          |> assign(:querystring, querystring)
+          |> assign(:tailing?, false)
+          |> assign_notifications(:error, error)
+      end
+
     if source.user_id == user.id do
       socket
     else
@@ -407,8 +425,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("reset_search", _, %{assigns: assigns} = socket) do
-    {:ok, sopts} = SearchOpts.new(%{"querystring" => ""})
-    lql_rules = Lql.decode!(sopts.querystring, assigns.source.bq_table_schema)
+    lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
     qs = Lql.encode!(lql_rules)
 
     socket =
