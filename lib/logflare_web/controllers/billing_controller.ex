@@ -1,6 +1,8 @@
 defmodule LogflareWeb.BillingController do
   use LogflareWeb, :controller
 
+  require Logger
+
   alias Logflare.Billing
   alias Logflare.Plans
   alias Logflare.Billing.Stripe
@@ -18,7 +20,9 @@ defmodule LogflareWeb.BillingController do
             }), customer} do
       success_and_redirect(conn, "Billing account created!")
     else
-      {_err, customer} ->
+      {err, customer} ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         {:ok, _response} = Stripe.delete_customer(customer.id)
 
         conn
@@ -45,7 +49,9 @@ defmodule LogflareWeb.BillingController do
       |> put_flash(:info, "Billing account deleted!")
       |> redirect(to: Routes.user_path(conn, :edit))
     else
-      _err ->
+      err ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         conn
         |> put_flash(:error, @default_error_message)
         |> redirect(to: Routes.user_path(conn, :edit))
@@ -73,7 +79,9 @@ defmodule LogflareWeb.BillingController do
       {:ok, _subscription} ->
         error_and_redirect(conn, "Please delete your current subscription first!")
 
-      _err ->
+      err ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         error_and_redirect(conn, @default_error_message)
     end
   end
@@ -91,7 +99,9 @@ defmodule LogflareWeb.BillingController do
       {:error, :not_found} ->
         error_and_redirect(conn, "Please subscribe first!")
 
-      _err ->
+      err ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         error_and_redirect(conn, @default_error_message)
     end
   end
@@ -106,7 +116,9 @@ defmodule LogflareWeb.BillingController do
       {:error, :not_found} ->
         error_and_redirect(conn, "Subscription not found.")
 
-      _err ->
+      err ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         error_and_redirect(conn)
     end
   end
@@ -136,7 +148,9 @@ defmodule LogflareWeb.BillingController do
            Billing.sync_billing_account(billing_account, billing_params) do
       success_and_redirect(conn, "Subscription created!")
     else
-      _err ->
+      err ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         error_and_redirect(conn)
     end
   end
@@ -151,7 +165,9 @@ defmodule LogflareWeb.BillingController do
            Billing.sync_billing_account(billing_account, billing_params) do
       success_and_redirect(conn, "Subscription created!")
     else
-      _err ->
+      err ->
+        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+
         error_and_redirect(conn)
     end
   end
@@ -183,8 +199,8 @@ defmodule LogflareWeb.BillingController do
       [subscription] ->
         {:ok, subscription}
 
-      _else ->
-        {:error, :uknown_error}
+      other ->
+        {:error, inspect(other)}
     end
   end
 end

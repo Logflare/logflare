@@ -12,7 +12,7 @@
 
 <div class="container mx-auto">
   <h4 class="header-margin">Billing Account</h4>
-  <p>Edit your billing account.</p>
+  <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
 
   <div class="sub-form">
     <h5 class="header-margin">Pick a Plan</h5>
@@ -35,7 +35,11 @@
                     <li>7 day event history</li>
                     <li>0 additional users</li>
                 </ul>
-                <%= link "Unsubscribe", to: Routes.billing_path(@conn, :preview_subscription, %{"plan_id" => "1"}), class: "btn btn-danger form-button disabled" %>
+                <%= if @user.billing_account.stripe_subscriptions do %>
+                <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe), method: "delete", class: "btn btn-danger form-button" %>
+                <% else %>
+                <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe), method: "delete", class: "btn btn-danger form-button disabled" %>
+                <% end %>
             </div>
         </div>
         <div class="card card-pricing text-center px-3 mb-4">
@@ -99,6 +103,7 @@
             </div>
         </div>
     </div>
+    <p>*unlimited events when you <strong>bring your own backend</strong>™</p>
 </div>
   </div>
 
