@@ -16,7 +16,7 @@ defmodule Logflare.Logs.Search.Utils do
   def gen_search_tip() do
     tips = [
       "Search is case sensitive.",
-      "Exact match an integer (e.g. `metadata.response.status:500`).",
+      "Exact match an integer (e.g. `metadata.response.status_code:500`).",
       "Integers support greater and less than symobols (e.g. `metadata.response.origin_time:<1000`).",
       ~s|Exact match a string in a field (e.g. `metadata.response.cf-ray:"505c16f9a752cec8-IAD"`).|,
       "Timestamps support greater and less than symbols (e.g. `timestamp:>=2019-07-01`).",
