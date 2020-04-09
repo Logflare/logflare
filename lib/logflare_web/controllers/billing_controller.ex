@@ -106,7 +106,8 @@ defmodule LogflareWeb.BillingController do
 
     with {:ok, subscription} <- get_billing_account_subscription(billing_account),
          {:ok, _response} <- Stripe.delete_subscription(subscription["id"]),
-         {:ok, _billing_account} <- Billing.sync_billing_account(billing_account, billing_params) do
+         {:ok, _billing_account} <-
+           Billing.update_billing_account(billing_account, billing_params) do
       success_and_redirect(conn, "Subscription deleted!")
     else
       {:error, :subscription_not_found} ->
