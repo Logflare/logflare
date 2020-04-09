@@ -146,6 +146,11 @@ defmodule Logflare.Lql.Encoder do
     Regex.replace(~r/(?<=sum|avg|count)\(metadata./, qs, "(m.")
   end
 
+  # FIXME: update to generate nested range
+  def to_datetime_with_range(lvstring, rvstring) do
+    "#{lvstring}..#{rvstring}"
+  end
+
   def to_datetime_with_range(lvstring, rvstring) do
     myers_diff = String.myers_difference(lvstring, rvstring)
 
