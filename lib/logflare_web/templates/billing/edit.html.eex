@@ -17,8 +17,9 @@
 
   <div class="sub-form">
     <h5 class="header-margin">Pick a Plan</h5>
-    <div class="container mb-5 mt-5">
-    <div class="pricing card-deck flex-column flex-md-row mb-3">
+    <div class="scrolling-wrapper">
+    <div class="container mb-5 mt-5 min-pricing-width">
+    <div class="pricing card-deck flex-md-row mb-3">
         <div class="card card-pricing text-center px-3 mb-4">
             <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Free</span>
             <div class="bg-transparent card-header pt-4 border-0">
@@ -95,7 +96,7 @@
                   <li>Custom</li>
                   <li>Unlimited</li>
                   <li>Unlimited</li>
-                  <li>1,000,000,000+</li>
+                  <li>1,000,000,000+ events/month</li>
                   <li>100+</li>
                   <li>Unlimited</li>
                   <li>Unlimited</li>
@@ -104,8 +105,10 @@
             </div>
         </div>
     </div>
-    <p>*unlimited events when you <strong>bring your own backend</strong>™</p>
   </div>
+
+</div>
+<p>*unlimited events when you <strong>bring your own backend</strong>™</p>
 </div>
 
 <div class="sub-form">
