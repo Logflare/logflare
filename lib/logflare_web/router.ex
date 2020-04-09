@@ -181,7 +181,7 @@ defmodule LogflareWeb.Router do
     get "/abandoned", BillingController, :abandoned
     delete "/", BillingController, :unsubscribe
     get "/confirm", BillingController, :confirm_subscription
-    get "/change", BillingController, :change_subscription
+    get "/confirm/change", BillingController, :change_subscription
     get "/updated-payment-method", BillingController, :update_credit_card_success
   end
 

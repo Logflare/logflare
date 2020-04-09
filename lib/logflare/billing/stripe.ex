@@ -43,6 +43,11 @@ defmodule Logflare.Billing.Stripe do
     end
   end
 
+  def list_customer_invoices(stripe_customer_id) do
+    params = %{customer: stripe_customer_id}
+    Stripe.Invoice.list(params)
+  end
+
   def get_setup_intent(id) do
     params = %{}
     Stripe.SetupIntent.retrieve(id, params)
@@ -66,7 +71,8 @@ defmodule Logflare.Billing.Stripe do
   end
 
   def list_customer_subscriptions(stripe_customer_id) do
-    Stripe.Subscription.list(%{customer: stripe_customer_id})
+    params = %{customer: stripe_customer_id}
+    Stripe.Subscription.list(params)
   end
 
   def get_subscription(id) do

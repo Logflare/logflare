@@ -21,7 +21,7 @@ defmodule LogflareWeb.BillingController do
       success_and_redirect(conn, "Billing account created!")
     else
       {err, customer} ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         {:ok, _response} = Stripe.delete_customer(customer.id)
 
@@ -50,7 +50,7 @@ defmodule LogflareWeb.BillingController do
       |> redirect(to: Routes.user_path(conn, :edit))
     else
       err ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         conn
         |> put_flash(:error, @default_error_message)
@@ -65,7 +65,7 @@ defmodule LogflareWeb.BillingController do
         }
       ) do
     with plan <- Plans.get_plan!(plan_id),
-         {:error, :not_found} <- get_billing_account_subscription(billing_account),
+         {:error, :subscription_not_found} <- get_billing_account_subscription(billing_account),
          {:ok, session} <- Stripe.create_customer_session(billing_account, plan) do
       conn
       |> put_session(:stripe_session, session)
@@ -75,7 +75,7 @@ defmodule LogflareWeb.BillingController do
         error_and_redirect(conn, "Please delete your current subscription first!")
 
       err ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         error_and_redirect(conn, @default_error_message)
     end
@@ -91,28 +91,29 @@ defmodule LogflareWeb.BillingController do
       |> put_session(:stripe_session, session)
       |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
     else
-      {:error, :not_found} ->
+      {:error, :subscription_not_found} ->
         error_and_redirect(conn, "Please subscribe first!")
 
       err ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         error_and_redirect(conn, @default_error_message)
     end
   end
 
   def unsubscribe(%{assigns: %{user: %{billing_account: billing_account}} = user} = conn, _params) do
+    billing_params = %{stripe_subscriptions: nil}
+
     with {:ok, subscription} <- get_billing_account_subscription(billing_account),
          {:ok, _response} <- Stripe.delete_subscription(subscription["id"]),
-         {:ok, _billing_account} <-
-           Billing.update_billing_account(billing_account, %{stripe_subscriptions: nil}) do
+         {:ok, _billing_account} <- Billing.sync_billing_account(billing_account, billing_params) do
       success_and_redirect(conn, "Subscription deleted!")
     else
-      {:error, :not_found} ->
+      {:error, :subscription_not_found} ->
         error_and_redirect(conn, "Subscription not found.")
 
       err ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         error_and_redirect(conn)
     end
@@ -144,7 +145,7 @@ defmodule LogflareWeb.BillingController do
       success_and_redirect(conn, "Payment method updated!")
     else
       err ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         error_and_redirect(conn)
     end
@@ -161,7 +162,7 @@ defmodule LogflareWeb.BillingController do
       success_and_redirect(conn, "Subscription created!")
     else
       err ->
-        Logger.error("Billing error!", %{billing: %{error_string: inspect(err)}})
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         error_and_redirect(conn)
     end
@@ -189,7 +190,10 @@ defmodule LogflareWeb.BillingController do
     # we only support one subscription currently
     case billing_account.stripe_subscriptions["data"] do
       nil ->
-        {:error, :not_found}
+        {:error, :subscription_not_found}
+
+      [] ->
+        {:error, :subscription_not_found}
 
       [subscription] ->
         {:ok, subscription}

@@ -3,6 +3,8 @@ defmodule Logflare.Billing do
   The Billing context.
   """
 
+  require Logger
+
   import Ecto.Query, warn: false
   alias Logflare.Repo
   alias Logflare.Users
@@ -16,6 +18,8 @@ defmodule Logflare.Billing do
   Protocol.derive(Jason.Encoder, Stripe.Plan)
   Protocol.derive(Jason.Encoder, Stripe.SubscriptionItem)
   Protocol.derive(Jason.Encoder, Stripe.Session)
+  Protocol.derive(Jason.Encoder, Stripe.Invoice)
+  Protocol.derive(Jason.Encoder, Stripe.LineItem)
 
   @doc """
   Returns the list of billing_accounts.
@@ -89,8 +93,12 @@ defmodule Logflare.Billing do
         %BillingAccount{stripe_customer: customer_id} = billing_account,
         attrs \\ %{}
       ) do
-    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(customer_id) do
-      attrs = Map.put(attrs, :stripe_subscriptions, subscriptions)
+    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(customer_id),
+         {:ok, invoices} <- Billing.Stripe.list_customer_invoices(customer_id) do
+      attrs =
+        Map.put(attrs, :stripe_subscriptions, subscriptions)
+        |> Map.put(:stripe_invoices, invoices)
+
       update_billing_account(billing_account, attrs)
     else
       err -> err
