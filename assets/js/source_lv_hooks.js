@@ -149,6 +149,10 @@ hooks.SourceLogsSearch = {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
     })
+
+    $daterangepicker.on("show.daterangepicker", (e, picker) => {
+      hook.pushEvent("pause_live_search", {})
+    })
   },
   reconnected() {
     setTimezone(this)
@@ -160,6 +164,10 @@ hooks.SourceLogsSearch = {
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
+    })
+
+    $daterangepicker.on("show.daterangepicker", (e, picker) => {
+      hook.pushEvent("pause_live_search", {})
     })
 
     initSearchInViewObserver(this)

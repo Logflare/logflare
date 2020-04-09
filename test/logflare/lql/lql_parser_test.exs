@@ -343,7 +343,7 @@ defmodule Logflare.LqlParserTest do
 
       assert lql_rules == Utils.get_filter_rules(result)
 
-      assert clean_and_trim_lql_string(str) == Lql.encode!(lql_rules)
+      assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
 
       str = ~S|
         t:2019-01-01..2019-02-01
@@ -745,7 +745,8 @@ defmodule Logflare.LqlParserTest do
 
       assert length(Utils.get_filter_rules(result)) == length(expected)
 
-      assert Lql.encode!(result) == clean_and_trim_lql_string(str)
+      assert Lql.encode!(result) ==
+               clean_and_trim_lql_string(str) |> String.replace(" metadata.", " m.")
     end
 
     test "timestamp with microseconds" do
@@ -990,7 +991,7 @@ defmodule Logflare.LqlParserTest do
                ]
              } == Parser.parse("timestamp:last@2w", @schema)
 
-      lvalue = Timex.shift(%{now_udt_zero_sec() | minute: 0, hour: 0, day: 1}, months: -1)
+      lvalue = Timex.shift(%{now_udt_zero_sec() | minute: 0, hour: 0}, months: -1)
 
       lql_rules = [
         %Logflare.Lql.FilterRule{
@@ -1593,6 +1594,11 @@ defmodule Logflare.LqlParserTest do
   end
 
   def clean_and_trim_lql_string(str) do
-    str |> String.replace(~r/\s{2,}/, " ") |> String.trim()
+    str
+    |> String.replace(~r/\s{2,}/, " ")
+    |> String.trim()
+    |> String.replace_prefix("metadata.", "m.")
+    |> String.replace(" metadata.", " m.")
+    |> String.replace("(metadata.", "(m.")
   end
 end

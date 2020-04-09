@@ -75,7 +75,6 @@
               <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
             </span>
           <% end %>
-          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
         </div>
       </div>
@@ -100,7 +99,7 @@
         Chart period:
       </div>
       <div class="col-auto">
-        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: @chart_period, class: "form-control form-control-sm" %>
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: (get_chart_rule(@lql_rules) || %{period: "minute"}).period, class: "form-control form-control-sm" %>
       </div>
       <div class="col-auto  hide-on-mobile">
         Aggregate:
@@ -110,7 +109,7 @@
           <%= select f,
          :chart_aggregate,
           ["sum", "avg", "count"],
-          selected: @chart_aggregate,
+          selected: (get_chart_rule(@lql_rules) || %{aggregate: "count"}).aggregate,
           class: "form-control form-control-sm"
            %>
         <% else %>
@@ -118,14 +117,15 @@
           data-toggle="tooltip"
           title="Chart aggregate setting requires usage of chart: operator"
           trigger="hover click"
-          delay="100"
+          delay="0"
           >
             <%= select f,
             :chart_aggregate,
-              ["N/A"],
+              ["count"],
+              selected: "count",
               class: "form-control form-control-sm",
-              style: "pointer-events: none;",
-              disabled: true %>
+              style: "pointer-events: none;"
+              %>
           </span>
         <% end %>
       </div>

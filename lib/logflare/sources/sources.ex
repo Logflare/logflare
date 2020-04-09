@@ -10,7 +10,6 @@ defmodule Logflare.Sources do
   alias Logflare.User
   alias Logflare.SavedSearch
   require Logger
-
   @default_bucket_width 60
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
