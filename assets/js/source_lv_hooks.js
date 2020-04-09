@@ -151,7 +151,7 @@ hooks.SourceLogsSearch = {
     })
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("pause_live_search", {})
+      hook.pushEvent("stop_live_search", {})
     })
   },
   reconnected() {
@@ -167,7 +167,7 @@ hooks.SourceLogsSearch = {
     })
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("pause_live_search", {})
+      hook.pushEvent("stop_live_search", {})
     })
 
     initSearchInViewObserver(this)
