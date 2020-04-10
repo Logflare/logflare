@@ -91,9 +91,7 @@
         </span>
       </div>
       <div class="col-auto">
-        <span class="btn btn-primary" phx-click="reset_search">
-          Reset
-        </span>
+        <%= link "Reset", to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source, querystring: "c:count(*) c:group_by(t::minute)", tailing?: true), class: "btn btn-primary" %>
       </div>
       <div class="col-auto  hide-on-mobile">
         Chart period:
