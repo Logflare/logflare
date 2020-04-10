@@ -21,7 +21,7 @@ defmodule Logflare.Lql.Utils do
     Enum.filter(rules, &match?(%ChartRule{}, &1))
   end
 
-  @spec get_chart_rule(lql_list) :: ChartRule.t()
+  @spec get_chart_rule(lql_list) :: ChartRule.t() | nil
   def get_chart_rule(rules) do
     Enum.find(rules, &match?(%ChartRule{}, &1))
   end

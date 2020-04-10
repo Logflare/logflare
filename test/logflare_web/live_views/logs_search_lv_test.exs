@@ -22,7 +22,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   describe "user action flow simulation" do
     setup [:assign_user_source]
 
-    @tag :this
     test "user sequence", %{conn: conn, source: [s | _]} do
       {:ok, view, html} = live(conn, "/sources/#{s.id}/search")
 

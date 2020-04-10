@@ -269,7 +269,8 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket = assign(socket, :querystring, new_qs)
 
-    prev_chart_rule = Lql.Utils.get_chart_rule(prev_assigns.lql_rules)
+    prev_chart_rule =
+      Lql.Utils.get_chart_rule(prev_assigns.lql_rules) || Lql.Utils.default_chart_rule()
 
     socket =
       if new_chart_agg != prev_chart_rule.aggregate or
