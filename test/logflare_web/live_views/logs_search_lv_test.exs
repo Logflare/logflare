@@ -256,7 +256,24 @@ defmodule LogflareWeb.Source.SearchLVTest do
   describe "other functions" do
     setup [:assign_user_source]
 
-    @tag :run
+    test "stop/start live search", %{conn: conn, source: [s]} do
+      conn =
+        conn
+        |> live("/sources/#{s.id}/search?q=error")
+
+      {:ok, view, html} = conn
+
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "stop_live_search", %{})
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "start_live_search", %{})
+
+      assert get_view_assigns(view).tailing?
+    end
+
     test "datepicker_update", %{conn: conn, source: [s | _], user: [u | _]} do
       conn =
         conn

@@ -191,7 +191,9 @@ defmodule LogflareWeb.Source.SearchLV do
         maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(stoken)
 
-        assign(socket, :tailing?, false)
+        socket
+        |> assign(:tailing?, false)
+        |> push_patch_with_params()
       else
         socket
       end
@@ -204,14 +206,14 @@ defmodule LogflareWeb.Source.SearchLV do
     log_lv_received_event(ev, source)
 
     socket =
-      if not prev_assigns.tailing? do
+      if prev_assigns.tailing? do
+        socket
+      else
         socket = assign(socket, :tailing?, true)
 
         SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
 
-        socket
-      else
-        socket
+        push_patch_with_params(socket)
       end
 
     {:noreply, socket}
@@ -367,6 +369,19 @@ defmodule LogflareWeb.Source.SearchLV do
       end
 
     {:noreply, socket}
+  end
+
+  def push_patch_with_params(socket) do
+    path =
+      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
+        querystring: socket.assigns.querystring,
+        tailing?: socket.assigns.tailing?
+      })
+
+    push_patch(socket,
+      to: path,
+      replace: true
+    )
   end
 
   def new_live_path(socket, params) do
