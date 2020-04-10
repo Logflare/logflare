@@ -19,7 +19,13 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  @spec select_merge_agg_value(any, :avg | :count | :sum, any) :: Ecto.Query.t()
+  @spec select_merge_agg_value(any, :avg | :count | :sum, atom()) :: Ecto.Query.t()
+  def select_merge_agg_value(query, :count, :timestamp) do
+    select_merge(query, [t, ...], %{
+      value: fragment("COUNT(?) as value", t.timestamp)
+    })
+  end
+
   def select_merge_agg_value(query, chart_aggregate, last_chart_field) do
     case chart_aggregate do
       :sum ->

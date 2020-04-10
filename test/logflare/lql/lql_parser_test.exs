@@ -343,7 +343,8 @@ defmodule Logflare.LqlParserTest do
 
       assert lql_rules == Utils.get_filter_rules(result)
 
-      assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
+      assert Lql.encode!(lql_rules) ==
+               "m.context.error_count:>=100 m.user.about:~referrall m.user.id:<1 m.user.type:paid m.user.views:<=1 m.users.source_count:>100 t:2019-{01..02}-01T00:{13..23}:{37..34}"
 
       str = ~S|
         t:2019-01-01..2019-02-01
@@ -548,7 +549,9 @@ defmodule Logflare.LqlParserTest do
       ]
 
       assert lql_rules == Utils.get_filter_rules(result)
-      assert clean_and_trim_lql_string(str) == Lql.encode!(lql_rules)
+
+      assert "-m.context.error_count:>=100 -m.user.about:~referrall -m.user.type:paid -t:2019-{01..02}-01T00:{13..23}:{37..34}" ==
+               Lql.encode!(lql_rules)
 
       str = ~S|
         t:2019-01-01..2019-02-01
@@ -1440,7 +1443,7 @@ defmodule Logflare.LqlParserTest do
        |
 
       assert {:error,
-              "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got 20"} ==
+              "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got '20'"} ==
                Parser.parse(str, schema)
     end
 
@@ -1480,38 +1483,47 @@ defmodule Logflare.LqlParserTest do
   end
 
   describe "LQL parser for timestamp range shorthand" do
-    @describetag :this
     test "simple case" do
-      assert {:ok,
-              [
-                %Logflare.Lql.FilterRule{
-                  modifiers: %{},
-                  operator: :range,
-                  path: "timestamp",
-                  shorthand: nil,
-                  value: nil,
-                  values: [~N[2020-01-01 00:00:00Z], ~N[2020-02-01 00:50:00Z]]
-                }
-              ]} == Parser.parse("timestamp:2020-{01..02}-01T00:{00..50}:00Z", @default_schema)
+      qs = "t:2020-{01..02}-01T00:{00..50}:00"
 
-      assert {:ok,
-              [
-                %Logflare.Lql.FilterRule{
-                  modifiers: %{},
-                  operator: :range,
-                  path: "timestamp",
-                  shorthand: nil,
-                  value: nil,
-                  values: [
-                    ~N[2020-01-05 00:15:35],
-                    ~N[2020-12-30 23:20:55]
-                  ]
-                }
-              ]} ==
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [~N[2020-01-01 00:00:00Z], ~N[2020-02-01 00:50:00Z]]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [
+            ~N[2020-01-05 00:15:35],
+            ~N[2020-12-30 23:20:55]
+          ]
+        }
+      ]
+
+      qs = "t:2020-{01..12}-{05..30}T{00..23}:{15..20}:{35..55}"
+
+      assert {:ok, lql_rules} ==
                Parser.parse(
-                 "timestamp:2020-{01..12}-{05..30}T{00..23}:{15..20}:{35..55}",
+                 qs,
                  @schema
                )
+
+      assert qs == Lql.encode!(lql_rules)
 
       assert {:ok,
               [
@@ -1536,50 +1548,50 @@ defmodule Logflare.LqlParserTest do
 
   describe "LQL encoding" do
     test "to_datetime_with_range" do
-      lv = "2020-01-01T03:14:15"
-      rv = "2020-01-01T03:54:15"
+      lv = "2020-01-01T03:14:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-01-01T03:54:15Z" |> NaiveDateTime.from_iso8601!()
 
       assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{14..54}:15"
     end
 
     test "to_datetime_with_range 2" do
-      lv = "2020-01-01T03:40:15"
-      rv = "2020-01-01T03:45:15"
+      lv = "2020-01-01T03:40:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-01-01T03:45:15Z" |> NaiveDateTime.from_iso8601!()
 
       assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{40..45}:15"
     end
 
     test "to_datetime_with_range 3" do
-      lv = "2020-01-01T03:05:15"
-      rv = "2020-01-01T03:59:15"
+      lv = "2020-01-01T03:05:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-01-01T03:59:15Z" |> NaiveDateTime.from_iso8601!()
 
       assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{05..59}:15"
     end
 
     test "to_datetime_with_range 4" do
-      lv = "2020-01-01T17:00:15"
-      rv = "2020-01-01T23:00:15"
+      lv = "2020-01-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-01-01T23:00:15Z" |> NaiveDateTime.from_iso8601!()
 
       assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T{17..23}:00:15"
     end
 
     test "to_datetime_with_range 5" do
-      lv = "2020-01-01T17:00:15"
-      rv = "2020-01-15T17:00:15"
+      lv = "2020-01-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-01-15T17:00:15Z" |> NaiveDateTime.from_iso8601!()
 
       assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-{01..15}T17:00:15"
     end
 
     test "to_datetime_with_range 6" do
-      lv = "2020-12-01T17:00:15"
-      rv = "2020-21-01T17:00:15"
+      lv = "2020-12-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-12-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
 
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-{12..21}-01T17:00:15"
+      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-12-01T17:00:15"
     end
 
     test "to_datetime_with_range 7" do
-      lv = "2020-12-01T17:00:15"
-      rv = "2020-12-01T17:50:15"
+      lv = "2020-12-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
+      rv = "2020-12-01T17:50:15Z" |> NaiveDateTime.from_iso8601!()
 
       assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-12-01T17:{00..50}:15"
     end

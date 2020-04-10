@@ -96,7 +96,7 @@ defmodule Logflare.Logs.SearchOperations do
 
         Utils.halt(so, msg)
 
-      Timex.diff(max_ts, min_ts, chart_period) == 0 ->
+      Timex.diff(max_ts, min_ts, chart_period) == 0 and chart_period != :second ->
         msg =
           "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
 
@@ -365,6 +365,13 @@ defmodule Logflare.Logs.SearchOperations do
 
     min = maybe_truncate_to_second.(min)
     max = maybe_truncate_to_second.(max)
+
+    {min, max} =
+      if min == max and chart_period == :second do
+        {min, Timex.shift(max, seconds: 1)}
+      else
+        {min, max}
+      end
 
     {step_period, from, until} =
       case chart_period do
