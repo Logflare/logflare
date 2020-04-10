@@ -215,6 +215,7 @@ defmodule LogflareWeb.Router do
   scope "/webhooks", LogflareWeb do
     pipe_through :api
     post "/cloudflare/v1", CloudflareControllerV1, :event
+    post "/stripe", StripeController, :event
   end
 
   scope "/health", LogflareWeb do

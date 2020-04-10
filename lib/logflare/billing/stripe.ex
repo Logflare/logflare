@@ -26,7 +26,7 @@ defmodule Logflare.Billing.Stripe do
       payment_method_types: ["card"],
       success_url: Routes.billing_url(Endpoint, :success),
       cancel_url: Routes.billing_url(Endpoint, :abandoned),
-      subscription_data: %{items: [%{plan: plan.stripe_id}], trial_period_days: 14}
+      subscription_data: %{items: [%{plan: plan.stripe_id}]}
     }
 
     Stripe.Session.create(params)
