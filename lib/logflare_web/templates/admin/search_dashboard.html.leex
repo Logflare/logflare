@@ -1,4 +1,18 @@
-<div class="container" style="margin-top: 100px;">
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><%= live_render(@socket, LogflareWeb.UtcTimeLive, id: @socket.id) %></li>
+        <li><%= link to: Routes.admin_path(@socket, :dashboard) do %><i class="fas fa-list"></i><span class="hide-on-mobile"> sources</span><% end %></li>
+        <li><%= link to: Routes.cluster_path(@socket, :index) do %><i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span><% end %></li>
+        <li><%= link to: Routes.live_path(@socket, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><strong><span class="hide-on-mobile"> search</span></strong><% end %></li>
+      </ul>
+    </div>
+    <h5>~/admin/dashboard/search</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
   <h1>Search Dashboard</h1>
   <div class="row">
     <div class="col-6">

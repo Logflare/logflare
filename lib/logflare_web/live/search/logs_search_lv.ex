@@ -20,84 +20,166 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.{Sources, Users}
   @tail_search_interval 500
   @user_idle_interval 300_000
+  @default_qs "c:count(*) c:group_by(t::minute)"
+  @default_assigns [
+    log_events: [],
+    log_aggregates: [],
+    loading: false,
+    tailing_paused?: nil,
+    tailing_timer: nil,
+    notifications: %{},
+    search_op: nil,
+    search_op_error: nil,
+    search_op_log_events: nil,
+    search_op_log_aggregates: nil,
+    chart_aggregate_enabled?: nil,
+    tailing_timer: nil,
+    user_idle_interval: @user_idle_interval,
+    active_modal: nil,
+    user_local_timezone: nil,
+    use_local_time: true,
+    last_query_completed_at: nil,
+    lql_rules: [],
+    querystring: ""
+  ]
 
   def render(assigns) do
-    assigns = %{
+    SearchView.render("logs_search.html", %{
       assigns
       | chart_aggregate_enabled?: search_agg_controls_enabled?(assigns.lql_rules)
-    }
-
-    SearchView.render("logs_search.html", assigns)
+    })
   end
 
-  def mount(%{"source_id" => source_id} = params, %{"user_id" => user_id}, socket) do
+  def mount(params, session, socket) do
     Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
 
-    source =
-      source_id
-      |> String.to_integer()
-      |> Sources.Cache.get_by_id_and_preload()
-      |> Sources.put_bq_table_data()
-
-    user = Users.Cache.get_by_and_preload(id: user_id)
-
-    {:ok, search_opts} = SearchOpts.new(params)
-    {:ok, lql_rules} = Lql.decode(search_opts.querystring, source.bq_table_schema)
-
-    lql_rules =
-      if Enum.find(lql_rules, &match?(%ChartRule{}, &1)) do
-        lql_rules
-      else
-        [
-          %ChartRule{
-            aggregate: :count,
-            path: "timestamp",
-            period: :minute,
-            value_type: nil
-          }
-          | lql_rules
-        ]
-      end
-
-    chart_rule = Enum.find(lql_rules, &match?(%ChartRule{}, &1))
-
-    qs = Lql.encode!(lql_rules)
-
     socket =
-      assign(
-        socket,
-        source: source,
-        log_events: [],
-        log_aggregates: [],
-        loading: false,
-        tailing?: search_opts.tailing?,
-        tailing_paused?: nil,
-        tailing_timer: nil,
-        user: user,
-        notifications: %{},
-        querystring: qs,
-        search_op: nil,
-        search_op_error: nil,
-        search_op_log_events: nil,
-        search_op_log_aggregates: nil,
-        chart_period: chart_rule.period,
-        chart_aggregate: chart_rule.aggregate,
-        chart_aggregate_enabled?: nil,
-        tailing_timer: nil,
-        user_idle_interval: @user_idle_interval,
-        active_modal: nil,
-        search_tip: gen_search_tip(),
-        user_local_timezone: nil,
-        use_local_time: true,
-        last_query_completed_at: nil,
-        lql_rules: lql_rules
-      )
+      if connected?(socket) do
+        mount_connected(params, session, socket)
+      else
+        mount_disconnected(params, session, socket)
+      end
 
     {:ok, socket}
   end
 
-  def handle_params(_params, _uri, socket) do
+  def mount_disconnected(
+        %{"source_id" => source_id} = params,
+        %{"user_id" => user_id} = session,
+        socket
+      ) do
+    source = get_source_for_param(source_id)
+    user = Users.Cache.get_by_and_preload(id: user_id)
+
+    %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
+
+    socket =
+      socket
+      |> assign(@default_assigns)
+      |> assign(
+        source: source,
+        loading: false,
+        tailing?: tailing?,
+        user: user,
+        notifications: %{},
+        search_tip: gen_search_tip(),
+        use_local_time: true,
+        querystring: querystring
+      )
+
+    socket =
+      with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
+        lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
+        optimizedqs = Lql.encode!(lql_rules)
+
+        socket
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:querystring, optimizedqs)
+      else
+        {:error, error} ->
+          maybe_cancel_tailing_timer(socket)
+
+          socket
+          |> assign(:querystring, querystring)
+          |> assign(:tailing?, false)
+          |> assign_notifications(:error, error)
+      end
+
+    if source.user_id == user.id do
+      socket
+    else
+      redirect(socket, to: "/")
+    end
+  end
+
+  defp get_source_for_param(source_id) do
+    source_id
+    |> String.to_integer()
+    |> Sources.Cache.get_by_id_and_preload()
+    |> Sources.put_bq_table_data()
+  end
+
+  def mount_connected(
+        %{"source_id" => source_id} = params,
+        %{"user_id" => user_id} = session,
+        socket
+      ) do
+    source = get_source_for_param(source_id)
+    user = Users.Cache.get_by_and_preload(id: user_id)
+    %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
+
+    socket =
+      socket
+      |> assign(@default_assigns)
+      |> assign(
+        source: source,
+        loading: false,
+        tailing?: tailing?,
+        user: user,
+        notifications: %{},
+        search_tip: gen_search_tip(),
+        use_local_time: true
+      )
+
+    with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
+      lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
+      optimizedqs = Lql.encode!(lql_rules)
+
+      socket
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, optimizedqs)
+    else
+      {:error, error} ->
+        maybe_cancel_tailing_timer(socket)
+
+        socket
+        |> assign(:querystring, querystring)
+        |> assign(:tailing?, false)
+        |> assign_notifications(:error, error)
+    end
+  end
+
+  def handle_params(_, _, socket) do
     {:noreply, socket}
+  end
+
+  defp prepare_params(params) do
+    params
+    |> case do
+      %{"querystring" => ""} = p ->
+        %{p | "querystring" => @default_qs}
+
+      %{"q" => q} = p ->
+        Map.put(p, "querystring", q)
+
+      p ->
+        p
+    end
+    |> Map.put_new("querystring", @default_qs)
+    |> Map.put_new("tailing?", "true")
+    |> Map.update!("tailing?", &String.to_existing_atom/1)
+    |> MapKeys.to_atoms_unsafe!()
+    |> Map.take([:querystring, :tailing?])
   end
 
   def handle_event("stop_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
@@ -109,7 +191,9 @@ defmodule LogflareWeb.Source.SearchLV do
         maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(stoken)
 
-        assign(socket, :tailing?, false)
+        socket
+        |> assign(:tailing?, false)
+        |> push_patch_with_params()
       else
         socket
       end
@@ -122,14 +206,14 @@ defmodule LogflareWeb.Source.SearchLV do
     log_lv_received_event(ev, source)
 
     socket =
-      if not prev_assigns.tailing? do
+      if prev_assigns.tailing? do
+        socket
+      else
         socket = assign(socket, :tailing?, true)
 
         SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
 
-        socket
-      else
-        socket
+        push_patch_with_params(socket)
       end
 
     {:noreply, socket}
@@ -179,56 +263,44 @@ defmodule LogflareWeb.Source.SearchLV do
     source = prev_assigns.source
     log_lv_received_event(ev, source)
 
-    {:ok, search_opts} = SearchOpts.new(prev_assigns, search)
+    new_qs = search["querystring"]
+    new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
+    new_chart_period = String.to_existing_atom(search["chart_period"])
+
+    socket = assign(socket, :querystring, new_qs)
+
+    prev_chart_rule =
+      Lql.Utils.get_chart_rule(prev_assigns.lql_rules) || Lql.Utils.default_chart_rule()
 
     socket =
-      socket
-      |> assign(:querystring, search_opts.querystring)
-      |> assign(:tailing?, search_opts.tailing?)
-
-    %{chart_aggregate: prev_agg_fn, chart_period: prev_agg_period} = prev_assigns
-
-    socket =
-      if search_opts.chart_aggregate != prev_agg_fn or
-           search_opts.chart_period != prev_agg_period do
-        params = %{
-          chart_aggregate: "#{search_opts.chart_aggregate}",
-          chart_period: "#{search_opts.chart_period}",
-          querystring: search_opts.querystring,
-          tailing?: search_opts.tailing?
-        }
-
-        with {:ok, lql_rules} <- Lql.decode(search_opts.querystring, source.bq_table_schema) do
-          qs =
-            lql_rules
-            |> Enum.map(fn
-              %ChartRule{} = lqlc ->
-                %{lqlc | aggregate: search_opts.chart_aggregate, period: search_opts.chart_period}
-
-              x ->
-                x
-            end)
-            |> Lql.encode!()
-
-          socket =
-            socket
-            |> assign(:chart_aggregate, search_opts.chart_aggregate)
-            |> assign(:chart_period, search_opts.chart_period)
-            |> assign(:querystring, qs)
-            |> assign(:lql_rules, lql_rules)
-            |> assign(:log_aggregates, [])
-            |> assign(:loading, true)
-
-          :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
-
-          push_patch(socket,
-            to: Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params),
-            replace: true
+      if new_chart_agg != prev_chart_rule.aggregate or
+           new_chart_period != prev_chart_rule.period do
+        lql_rules =
+          prev_assigns.lql_rules
+          |> Lql.Utils.update_chart_rule(
+            Lql.Utils.default_chart_rule(),
+            %{
+              aggregate: new_chart_agg,
+              period: new_chart_period
+            }
           )
-        else
-          {:error, err} ->
-            assign_notifications(socket, :error, err)
-        end
+
+        qs = Lql.encode!(lql_rules)
+
+        socket =
+          socket
+          |> assign(:querystring, qs)
+          |> assign(:lql_rules, lql_rules)
+          |> assign(:log_aggregates, [])
+          |> assign(:loading, true)
+
+        :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
+
+        push_patch(
+          socket,
+          to: new_live_path(socket, %{querystring: qs, tailing?: prev_assigns.tailing?}),
+          replace: true
+        )
       else
         socket
       end
@@ -242,12 +314,10 @@ defmodule LogflareWeb.Source.SearchLV do
         %{assigns: assigns} = socket
       ) do
     log_lv_received_event(ev, socket.assigns.source)
+
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
-    lql_rules =
-      assigns.lql_rules
-      |> Enum.reject(&(&1.path == "timestamp" and match?(%FilterRule{}, &1)))
-      |> Enum.concat(ts_rules)
+    lql_rules = Lql.Utils.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
     qs = Lql.encode!(lql_rules)
 
@@ -259,42 +329,68 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search" = ev,
-        %{"search" => %{"querystring" => querystring}},
+        %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
     %{id: sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
+    bq_table_schema = prev_assigns.source.bq_table_schema
 
-    params =
-      prev_assigns
-      |> Map.take([:chart_aggregate, :chart_period, :querystring, :tailing?])
-
-    {:ok, lql_rules} = Lql.decode(querystring, prev_assigns.source.bq_table_schema)
-    qs = Lql.encode!(lql_rules)
-
-    chart_rule = Enum.find(lql_rules, &match?(%ChartRule{}, &1))
+    params = Map.take(prev_assigns, [:querystring, :tailing?])
 
     maybe_cancel_tailing_timer(socket)
 
     socket =
-      socket
-      |> assign(:lql_rules, lql_rules)
-      |> assign(:querystring, qs)
-      |> assign(:log_events, [])
-      |> assign(:chart_period, chart_rule.period)
-      |> assign(:chart_aggregate, chart_rule.aggregate)
-      |> assign(:loading, true)
-      |> assign(:tailing_initial?, true)
-      |> assign_notifications(:warning, nil)
-      |> assign_notifications(:error, nil)
-      |> push_patch(
-        to: Routes.live_path(socket, __MODULE__, sid, params),
-        replace: true
-      )
+      with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
+        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+        qs = Lql.encode!(lql_rules)
 
-    SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
+        socket =
+          socket
+          |> assign(:log_events, [])
+          |> assign(:loading, true)
+          |> assign(:tailing_initial?, true)
+          |> assign_notifications(:warning, nil)
+          |> assign_notifications(:error, nil)
+          |> assign(:lql_rules, lql_rules)
+          |> assign(:querystring, qs)
+          |> push_patch(
+            to: new_live_path(socket, params),
+            replace: true
+          )
+
+        SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
+
+        socket
+      else
+        {:error, error} ->
+          socket
+          |> assign(:log_events, [])
+          |> assign_notifications(:error, error)
+      end
 
     {:noreply, socket}
+  end
+
+  def push_patch_with_params(socket) do
+    path =
+      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
+        querystring: socket.assigns.querystring,
+        tailing?: socket.assigns.tailing?
+      })
+
+    push_patch(socket,
+      to: path,
+      replace: true
+    )
+  end
+
+  def new_live_path(socket, params) do
+    Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
+  end
+
+  def build_params_from_assigns(assigns) do
+    Map.take(assigns, [:querystring, :tailing?])
   end
 
   def handle_event("set_user_local_timezone", metadata, socket) do
@@ -329,10 +425,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("save_search" = ev, _, socket) do
-    %{source: source, querystring: qs, lql_rules: lql_rules} = socket.assigns
+    %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?} = socket.assigns
     log_lv_received_event(ev, source)
 
-    case SavedSearches.save_by_user(qs, lql_rules, source) do
+    case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
       {:ok, _saved_search} ->
         socket = assign_notifications(socket, :warning, "Search saved!")
         {:noreply, socket}
@@ -345,8 +441,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("reset_search", _, %{assigns: assigns} = socket) do
-    {:ok, sopts} = SearchOpts.new(%{"querystring" => ""})
-    lql_rules = Lql.decode!(sopts.querystring, assigns.source.bq_table_schema)
+    lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
     qs = Lql.encode!(lql_rules)
 
     socket =

@@ -46,7 +46,7 @@
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group form-text">
-      <%= text_input f, :querystring, value: @querystring, class: "form-control form-control-margin", readonly: (if @loading, do: "true"), phx_debounce: "blur", autofocus: true %>
+      <%= text_input f, :querystring, value: @querystring, class: "form-control form-control-margin", autofocus: true %>
       <%= if @last_query_completed_at do %>
         <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
           Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0 </span> seconds
@@ -68,14 +68,13 @@
           <%= if @tailing? do %>
             <span class="btn btn-primary" phx-click="stop_live_search">
               <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
-              <span class="fas-in-button" id="search-tailing-button">Live</span>
+              <span class="fas-in-button" id="search-tailing-button">Pause</span>
             </span>
           <% else %>
             <span class="btn btn-primary" phx-click="start_live_search">
               <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
             </span>
           <% end %>
-          <%= checkbox f, :tailing?, value: @tailing?, class: "d-none tailing_checkbox" %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
         </div>
       </div>
@@ -84,23 +83,21 @@
           <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
         </a>
       </div>
-      <div class="col-auto">
-        <span class="btn btn-primary" phx-click="reset_search">
-          Reset
-        </span>
-      </div>
       <div class="col-auto" phx-update="ignore">
         <span class="btn btn-primary" id="daterangepicker">
           <span class="fa fa-clock" >
           </span>
-          DateTime selector
+          DateTime
         </span>
+      </div>
+      <div class="col-auto">
+        <%= link "Reset", to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source, querystring: "c:count(*) c:group_by(t::minute)", tailing?: true), class: "btn btn-primary" %>
       </div>
       <div class="col-auto  hide-on-mobile">
         Chart period:
       </div>
       <div class="col-auto">
-        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: @chart_period, class: "form-control form-control-sm" %>
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: (get_chart_rule(@lql_rules) || %{period: "minute"}).period, class: "form-control form-control-sm" %>
       </div>
       <div class="col-auto  hide-on-mobile">
         Aggregate:
@@ -110,7 +107,7 @@
           <%= select f,
          :chart_aggregate,
           ["sum", "avg", "count"],
-          selected: @chart_aggregate,
+          selected: (get_chart_rule(@lql_rules) || %{aggregate: "count"}).aggregate,
           class: "form-control form-control-sm"
            %>
         <% else %>
@@ -118,14 +115,15 @@
           data-toggle="tooltip"
           title="Chart aggregate setting requires usage of chart: operator"
           trigger="hover click"
-          delay="100"
+          delay="0"
           >
             <%= select f,
             :chart_aggregate,
-              ["N/A"],
+              ["count"],
+              selected: "count",
               class: "form-control form-control-sm",
-              style: "pointer-events: none;",
-              disabled: true %>
+              style: "pointer-events: none;"
+              %>
           </span>
         <% end %>
       </div>
