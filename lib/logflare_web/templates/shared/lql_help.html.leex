@@ -108,35 +108,23 @@
       <tr>
         <th scope="col">Field</th>
         <th scope="col">Filter</th>
-        <th scope="col">Syntax</th>
         <th scope="col">Example</th>
       </tr>
     </thead>
       <tbody>
         <tr>
           <th scope="row">Timestamp</th>
-          <td>match greater, less, equals</td>
-          <td> <kbd>t</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> </td>
-              <td>
-                <kbd>error</kbd> <kbd>t:>=2019-08-14T03:42:31</kbd> <kbd>t:<=2019-08-14T03:42:35</kbd>
-                  </td>
-        </tr>
-        <tr>
-          <th scope="row">Timestamp</th>
           <td>date range</td>
-          <td><kbd>t</kbd> <kbd>:</kbd> <kbd>date</kbd> <kbd>..</kbd> <kbd>date</kbd></td>
-          <td><kbd>error</kbd> <kbd>t:2020-01-14..2020-01-20</kbd></td>
+          <td><kbd>error</kbd> <kbd>t:2020-04-{07..09}T00:00:00</kbd></td>
         </tr>
         <tr>
           <th scope="row"></th>
           <td>microsecond range</td>
-          <td></td>
           <td><kbd>t:2020-04-08T07:40:02.{000001..999999}</kbd></td>
         </tr>
         <tr>
           <th scope="row"></th>
           <td>minute range</td>
-          <td></td>
           <td><kbd>t:2020-04-08T07:{40..45}:02</kbd></td>
         </tr>
       </tbody>
