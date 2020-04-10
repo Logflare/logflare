@@ -76,21 +76,21 @@
 
 					<h2 id="example-searches">Example Searches</h2>
 					<p>Here are some searches you might find useful with your ZEIT deployment. It doesn't take long for your events to be searchable by Logflare.</p>
-					<p>This is a search for <code>metadata.source:"static"</code> which lets you see all the logs generated from the ZEIT CDN.<p>
+					<p>This is a search for <code>m.source:"static"</code> which lets you see all the logs generated from the ZEIT CDN.<p>
 						<div class="minimg">
 		          <div class="purplebox">
 		          </div>
 		          <img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/example-zeit-search.gif">
 		        </div>
 					<p>All 5xx status codes:
-						<code>metadata.proxy.statusCode:>499 metadata.proxy.statusCode:<600</code>
+						<code>m.proxy.statusCode:>499 m.proxy.statusCode:<600</code>
 					</p>
 					<p>All user agents with `bot` in the user agent string:
-						<code>metadata.proxy.userAgent:~"bot"</code>
+						<code>m.proxy.userAgent:~"bot"</code>
 					</p>
-					<p>When ZEIT sends lambda logs over we parse data out of that message over for you automatically into the <code>metadata.parsedLambdaMessage</code> object.</p>
+					<p>When ZEIT sends lambda logs over we parse data out of that message over for you automatically into the <code>m.parsedLambdaMessage</code> object.</p>
 					<p>To see all labda requests with a response time greater than 1,000 ms:
-						 <code>metadata.parsedLambdaMessage.report.duration_ms:>1000</code>
+						 <code>m.parsedLambdaMessage.report.duration_ms:>1000</code>
 					 </p>
 
 					<h2 id="example-dashboard">Example Dashboard</h2>
@@ -112,7 +112,7 @@
 						</div>
 						<img class="imgf img-fluid guide-img" src="/images/marketing/guides/zeit-setup/custom-data-object.png">
 					</div>
-					<p>So you can do a search for <code>metadata.parsedLambdaMessage.lines.data.event.tag:"api"</code> like this:</p>
+					<p>So you can do a search for <code>m.parsedLambdaMessage.lines.data.event.tag:"api"</code> like this:</p>
 					<div class="minimg">
 						<div class="purplebox">
 						</div>
