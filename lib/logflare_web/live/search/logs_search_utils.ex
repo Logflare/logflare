@@ -23,7 +23,8 @@ defmodule Logflare.Logs.Search.Utils do
       ~s|Match a field with regex (e.g. `m.browser:~"Firefox 5\\d"`).|,
       "Search between times with multiple fields (e.g. `t:>=2019-07-01 t:<=2019-07-02`).",
       "Default behavoir is to search the log message field (e.g. `error`).",
-      "Turn off Live Search to search the full history of this source."
+      "Turn off Live Search to search the full history of this source.",
+      "Timestamps are automatically converted to UTC if local time is displayed."
     ]
 
     Enum.random(tips)
