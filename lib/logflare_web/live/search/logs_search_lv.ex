@@ -105,7 +105,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign_notifications(:error, error)
       end
 
-    if source.user_id == user.id do
+    if user.admin or source.user_id == user.id do
       socket
     else
       redirect(socket, to: "/")

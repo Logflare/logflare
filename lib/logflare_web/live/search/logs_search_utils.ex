@@ -18,7 +18,7 @@ defmodule Logflare.Logs.Search.Utils do
       "Search is case sensitive.",
       "Exact match an integer (e.g. `m.response.status_code:500`).",
       "Integers support greater and less than symobols (e.g. `m.response.origin_time:<1000`).",
-      ~s|Exact match a string in a field (e.g. `m.response.cf-ray:"505c16f9a752cec8-IAD"`).|,
+      ~s|Exact match a string in a field (e.g. `m.response.cf_ray:"505c16f9a752cec8-IAD"`).|,
       "Timestamps support greater and less than symbols (e.g. `t:>=2019-07-01`).",
       ~s|Match a field with regex (e.g. `m.browser:~"Firefox 5\\d"`).|,
       "Search a date range (e.g. `t:2019-07-{01..05}T00:00:00`).",

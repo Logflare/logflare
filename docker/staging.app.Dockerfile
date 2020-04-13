@@ -8,10 +8,10 @@ ENV MIX_ENV staging
 RUN mix deps.get
 RUN mix compile --force
 
-RUN cd /logflare/assets \ 
-    && yarn \
-    && yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react \
-    && ./node_modules/webpack/bin/webpack.js --mode production --silent
+WORKDIR /logflare/assets
+RUN yarn 
+RUN yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react
+RUN ./node_modules/webpack/bin/webpack.js --mode production 
 
 WORKDIR /logflare
 
