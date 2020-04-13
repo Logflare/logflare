@@ -6,9 +6,9 @@ import { userSelectedFormatter } from "./formatters"
 import { activateClipboardForSelector } from "./utils"
 import { applyToAllLogTimestamps } from "./logs"
 
-export async function main({ scrollTracker }, { avgEventsPerSecond }) {
-  const { sourceToken, logs } = $("#__phx-assigns__").data()
-  await initLogsUiFunctions({ scrollTracker })
+$("#navbarSupportedContent").collapse({
+  toggle: false,
+})
 
   if (avgEventsPerSecond < 25) {
     joinSourceChannel(sourceToken)
@@ -69,6 +69,11 @@ export function scrollBottom() {
   window.scrollTo(0, y)
 }
 
+window.toggleCollapsedMetadata = (e) => {
+  const id = e.target.attributes.href.value
+  $(`${id}`).collapse("toggle")
+}
+
 async function logTemplate(e) {
   const { via_rule, origin_source_id, body } = e
   const metadata = JSON.stringify(body.metadata, null, 2)
@@ -79,7 +84,7 @@ async function logTemplate(e) {
 
   const metadataElement = !_.isEmpty(body.metadata)
     ? `
-    <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
+    <a class="metadata-link" href="#${metadataId}" onClick="toggleCollapsedMetadata(event)" aria-expanded="false">
         metadata
     </a>
     <div class="collapse metadata" id="${metadataId}">
