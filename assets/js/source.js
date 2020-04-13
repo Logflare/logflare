@@ -10,6 +10,10 @@ $("#navbarSupportedContent").collapse({
   toggle: false,
 })
 
+export async function main({scrollTracker}, {avgEventsPerSecond}) {
+  const {sourceToken, logs} = $("#__phx-assigns__").data()
+  await initLogsUiFunctions({scrollTracker})
+
   if (avgEventsPerSecond < 25) {
     joinSourceChannel(sourceToken)
   }
