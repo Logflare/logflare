@@ -5,6 +5,8 @@ defmodule LogflareWeb.SourceControllerTest do
   use Placebo
 
   alias Logflare.{Sources, Repo, LogEvent}
+  alias Logflare.Lql.FilterRule
+  alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
 
@@ -323,6 +325,39 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(source_path(conn, :public, s1.public_token))
 
       assert html_response(conn, 200) =~ s1.name
+    end
+  end
+
+  describe "delete" do
+    @describetag :this
+    test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
+      {:ok, saved_search} =
+        SavedSearches.insert(
+          %{
+            querystring: "error",
+            lql_rules: [
+              %FilterRule{
+                operator: :=,
+                value: "error",
+                modifiers: %{},
+                path: "event_message"
+              }
+            ]
+          },
+          s1
+        )
+
+      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing?: false)
+      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing?: true)
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> delete(source_path(conn, :del_source_and_redirect, s1.id))
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+      assert is_nil(Sources.get(s1.id))
+      assert is_nil(SavedSearches.get(saved_search.id))
     end
   end
 
