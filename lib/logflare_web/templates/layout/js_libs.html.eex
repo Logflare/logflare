@@ -1,4 +1,4 @@
-<script src="https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4/dist/js/bootstrap.bundle.min.js"></script>
 <%= if Application.get_env(:logflare, :env) == :prod do %>
   <script src="https://cdn.jsdelivr.net/npm/react@16/umd/react.production.min.js"></script>
