@@ -2,7 +2,6 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><%= live_render(@socket, LogflareWeb.UtcTimeLive, id: @socket.id) %></li>
         <li><%= link to: Routes.admin_path(@socket, :dashboard) do %><i class="fas fa-list"></i><span class="hide-on-mobile"> sources</span><% end %></li>
         <li><%= link to: Routes.cluster_path(@socket, :index) do %><i class="fas fa-server"></i><strong><span class="hide-on-mobile"> cluster</span></strong><% end %></li>
         <li><%= link to: Routes.live_path(@socket, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><span class="hide-on-mobile"> search</span><% end %></li>
