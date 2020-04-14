@@ -133,7 +133,7 @@ defmodule LogflareWeb.Router do
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook
     get "/:id/rejected", SourceController, :rejected_logs
-    live "/:source_id/search", Source.SearchLV, layout: {LogflareWeb.LayoutView, :root}
+    live "/:source_id/search", Source.SearchLV
     get "/:id/favorite", SourceController, :favorite
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
@@ -189,6 +189,7 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :check_admin]
 
     get "/dashboard", AdminController, :dashboard
+    live "/dashboard/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
     get "/cluster", ClusterController, :index
   end
 

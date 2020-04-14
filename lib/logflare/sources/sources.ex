@@ -4,11 +4,12 @@ defmodule Logflare.Sources do
   """
   alias Logflare.{Repo, Source, Tracker, Cluster}
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Rule
   alias Logflare.User
+  alias Logflare.SavedSearch
   require Logger
-
   @default_bucket_width 60
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
@@ -86,8 +87,8 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    with {:ok, table} <- Logflare.Google.BigQuery.get_table(source.token) do
-      schema = SchemaUtils.deep_sort_by_fields_name(table.schema)
+    with %{schema: schema} <- Schema.get_state(source.token) do
+      schema = SchemaUtils.deep_sort_by_fields_name(schema)
       {:ok, schema}
     else
       errtup -> errtup
@@ -112,8 +113,12 @@ defmodule Logflare.Sources do
   end
 
   def preload_saved_searches(source) do
-    source
-    |> Repo.preload(:saved_searches)
+    import Ecto.Query
+
+    Repo.preload(
+      source,
+      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user)
+    )
   end
 
   # """

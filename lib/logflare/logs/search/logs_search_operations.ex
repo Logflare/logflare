@@ -2,7 +2,6 @@ defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.{Sources, EctoQueryBQ}
-  alias Logflare.Lql.Parser
   alias Logflare.Lql
   alias Logflare.Logs.Search.Utils
   alias Logflare.Lql.{ChartRule, FilterRule}
@@ -24,7 +23,7 @@ defmodule Logflare.Logs.SearchOperations do
   @type chart_period :: :day | :hour | :minute | :second
 
   @default_limit 100
-  @default_max_n_chart_ticks 250
+  @default_max_n_chart_ticks 1_000
 
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
@@ -74,8 +73,9 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
   def apply_halt_conditions(%SO{} = so) do
-    %{min: min_ts, max: max_ts} =
-      get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
+    chart_period = hd(so.chart_rules).period
+
+    %{min: min_ts, max: max_ts} = get_min_max_filter_timestamps(so.lql_ts_filters, chart_period)
 
     cond do
       so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
@@ -96,13 +96,13 @@ defmodule Logflare.Logs.SearchOperations do
 
         Utils.halt(so, msg)
 
-      Timex.diff(max_ts, min_ts, so.chart_period) == 0 ->
+      Timex.diff(max_ts, min_ts, chart_period) == 0 and chart_period != :second ->
         msg =
-          "Selected chart period #{so.chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
+          "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
 
         Utils.halt(so, msg)
 
-      get_number_of_chart_ticks(min_ts, max_ts, so.chart_period) > @default_max_n_chart_ticks ->
+      get_number_of_chart_ticks(min_ts, max_ts, chart_period) > @default_max_n_chart_ticks ->
         msg =
           "The interval length between min and max timestamp is larger than #{
             @default_max_n_chart_ticks
@@ -117,7 +117,8 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_warning_conditions(SO.t()) :: SO.t()
   def apply_warning_conditions(%SO{} = so) do
-    %{message: message} = get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
+    %{message: message} =
+      get_min_max_filter_timestamps(so.lql_ts_filters, hd(so.chart_rules).period)
 
     if message do
       put_status(so, :warning, message)
@@ -132,12 +133,15 @@ defmodule Logflare.Logs.SearchOperations do
       |> Sources.Cache.get_bq_schema()
       |> SchemaUtils.bq_schema_to_flat_typemap()
 
+    [%{path: path}] = so.chart_rules
+    path_is_timestamp? = path == "timestamp"
+
     chart_data_shape_id =
       cond do
-        Map.has_key?(flat_type_map, "metadata.level") ->
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.level") ->
           :elixir_logger_levels
 
-        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
         true ->
@@ -174,6 +178,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   def apply_timestamp_filter_rules(%SO{type: :events} = so) do
     %SO{tailing?: t?, tailing_initial?: ti?, query: query} = so
+    chart_period = hd(so.chart_rules).period
 
     utc_today = Date.utc_today()
 
@@ -194,7 +199,7 @@ defmodule Logflare.Logs.SearchOperations do
           )
 
         not Enum.empty?(ts_filters) ->
-          %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
+          %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, chart_period)
 
           query
           |> where(
@@ -213,14 +218,14 @@ defmodule Logflare.Logs.SearchOperations do
 
     ts_filters = so.lql_ts_filters
 
-    period = to_timex_shift_key(so.chart_period)
-    tick_count = default_period_tick_count(so.chart_period)
+    period = to_timex_shift_key(hd(so.chart_rules).period)
+    tick_count = default_period_tick_count(hd(so.chart_rules).period)
 
     utc_today = Date.utc_today()
     utc_now = DateTime.utc_now()
 
     partition_days =
-      case so.chart_period do
+      case hd(so.chart_rules).period do
         :day -> 31
         :hour -> 7
         :minute -> 1
@@ -237,7 +242,8 @@ defmodule Logflare.Logs.SearchOperations do
         )
         |> limit([t], ^tick_count)
       else
-        %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, so.chart_period)
+        %{min: min, max: max} =
+          get_min_max_filter_timestamps(ts_filters, hd(so.chart_rules).period)
 
         query
         |> where(
@@ -301,7 +307,7 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
-      |> select_aggregates(so.chart_period)
+      |> select_timestamp(hd(so.chart_rules).period)
       |> order_by([t, ...], desc: 1)
 
     query =
@@ -315,13 +321,10 @@ defmodule Logflare.Logs.SearchOperations do
               select_count_http_status_code(query)
 
             nil ->
-              query
-              |> select_merge_log_count()
+              select_merge_agg_value(query, :count, :timestamp)
           end
 
-        [%{value_type: v, path: p, aggregate: agg}]
-        when v in [:integer, :float]
-        when p == "timestamp" ->
+        [%{value_type: _, path: p, aggregate: agg}] ->
           last_chart_field =
             p
             |> String.split(".")
@@ -339,12 +342,14 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def add_missing_agg_timestamps(%SO{} = so) do
-    %{min: min, max: max} = get_min_max_filter_timestamps(so.lql_ts_filters, so.chart_period)
+    %{min: min, max: max} =
+      get_min_max_filter_timestamps(so.lql_ts_filters, hd(so.chart_rules).period)
 
     if min == max do
       so
     else
-      rows = intersperse_missing_range_timestamps(so.rows, min, max, so.chart_period)
+      rows = intersperse_missing_range_timestamps(so.rows, min, max, hd(so.chart_rules).period)
+
       %{so | rows: rows}
     end
   end
@@ -360,6 +365,13 @@ defmodule Logflare.Logs.SearchOperations do
 
     min = maybe_truncate_to_second.(min)
     max = maybe_truncate_to_second.(max)
+
+    {min, max} =
+      if min == max and chart_period == :second do
+        {min, Timex.shift(max, seconds: 1)}
+      else
+        {min, max}
+      end
 
     {step_period, from, until} =
       case chart_period do

@@ -29,7 +29,7 @@
       </mark>
       <%= log.body.message %>
       <%= if map_size(log.body.metadata) > 0 do %>
-        <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
+        <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
           metadata
         </a>
         <div class="collapse metadata" id="metadata-<%= inx %>">
@@ -47,24 +47,25 @@
 </ul>
 </div>
 <div class="container mx-auto">
-<%= if @logs == [] do %>
-  <div id="no-logs-warning">
-    <h4>No logs ... add some logs!</h4>
-  </div>
-<% else %>
-  <div>
-    <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
-    <div class="form-group form-text">
-      <%= text_input f, :querystring, placeholder: "404", class: "form-control form-control-margin", autofocus: true %>
-      <small class="form-text text-muted">
-        random(tips): <%= @search_tip %>
-      </small>
+  <%= if @logs == [] do %>
+    <div id="no-logs-warning">
+      <h4>No logs ... add some logs!</h4>
     </div>
-    <%= submit class: "btn btn-primary form-button" do %>
-      <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
+  <% else %>
+    <div>
+      <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
+      <div class="form-group form-text">
+        <%= text_input f, :querystring, placeholder: "404", class: "form-control form-control-margin", autofocus: true %>
+        <%= hidden_input f, :tailing?, value: "true" %>
+        <small class="form-text text-muted">
+          random(tips): <%= @search_tip %>
+        </small>
+      </div>
+      <%= submit class: "btn btn-primary form-button" do %>
+        <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
+      <% end %>
     <% end %>
-  <% end %>
-</div>
+  </div>
 <% end %>
 </div>
 <!-- Modal -->

@@ -246,6 +246,52 @@ defmodule Logflare.Logs.SourceRoutingTest do
       assert SourceRouting.route_with_lql_rules?(le, rule)
     end
 
+    test "multiple negated filter" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      rule = %Rule{
+        lql_string: "",
+        lql_filters: [
+          %FR{
+            value: "info",
+            operator: :=,
+            modifiers: %{negate: true},
+            path: "metadata.level"
+          },
+          %FR{
+            value: "error",
+            operator: :=,
+            modifiers: %{negate: true},
+            path: "metadata.level"
+          }
+        ]
+      }
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"level" => "info"}
+        )
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"level" => "error"}
+        )
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+
+      le =
+        build(:log_event,
+          source: source,
+          metadata: %{"level" => "warn"}
+        )
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
     test "nested lists with maps lvl4" do
       metadata = %{
         "lines" => [

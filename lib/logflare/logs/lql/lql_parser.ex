@@ -22,7 +22,7 @@ defmodule Logflare.Lql.Parser do
         word()
       ])
     )
-    |> ignore(choice([ascii_string([?\s, ?\n], min: 1), eos()]))
+    |> optional(ignore(choice([ascii_string([?\s, ?\n], min: 1), eos()])))
     |> reduce(:maybe_apply_negation_modifier)
     |> times(min: 1, max: 100)
   )
@@ -127,7 +127,7 @@ defmodule Logflare.Lql.Parser do
   defp maybe_cast_value(%{value: "false"} = c, :boolean), do: %{c | value: false}
 
   defp maybe_cast_value(%{value: v, path: p}, :boolean),
-    do: throw("Query syntax error: Expected boolean for #{p}, got: #{v}")
+    do: throw("Query syntax error: Expected boolean for #{p}, got: '#{v}'")
 
   defp maybe_cast_value(%{value: v, path: p} = c, type)
        when is_binary(v) and type in [:integer, :float] do
@@ -140,7 +140,7 @@ defmodule Logflare.Lql.Parser do
     value =
       case mod.parse(v) do
         {value, ""} -> value
-        _ -> throw("Query syntax error: expected #{type} for #{p}, got: #{v}")
+        _ -> throw("Query syntax error: expected #{type} for #{p}, got: '#{v}'")
       end
 
     %{c | value: value}

@@ -6,13 +6,13 @@ defmodule Logflare.Lql.Encoder do
 
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules
-    |> Enum.sort_by(fn
-      %FilterRule{} -> 0
-      %ChartRule{} -> 1
-    end)
     |> Enum.group_by(fn
       %ChartRule{} -> :chart
       %FilterRule{} = f -> f.path
+    end)
+    |> Enum.sort_by(fn
+      {:chart, _} -> 1
+      {_path, _} -> 0
     end)
     |> Enum.reduce("", fn
       grouped_rules, qs ->
@@ -44,7 +44,11 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{modifiers: %{negate: true} = mods} = f) do
-    "-" <> to_fragment(%{f | modifiers: Map.delete(mods, :negate)})
+    fragment =
+      %{f | modifiers: Map.delete(mods, :negate)}
+      |> to_fragment()
+
+    "-" <> fragment
   end
 
   defp to_fragment(%FilterRule{
@@ -57,19 +61,7 @@ defmodule Logflare.Lql.Encoder do
       if match?(%Date{}, lv) do
         "#{lv}..#{rv}"
       else
-        lvstring =
-          lv
-          |> DateTime.from_naive!("Etc/UTC")
-          |> Timex.format!("{ISO:Extended:Z}")
-          |> String.trim_trailing("Z")
-
-        rvstring =
-          rv
-          |> DateTime.from_naive!("Etc/UTC")
-          |> Timex.format!("{ISO:Extended:Z}")
-          |> String.trim_trailing("Z")
-
-        to_datetime_with_range(lvstring, rvstring)
+        to_datetime_with_range(lv, rv)
       end
 
     "t:#{dtstring}"
@@ -127,7 +119,8 @@ defmodule Logflare.Lql.Encoder do
       _ ->
         "#{path}:#{op}#{v}"
     end
-    |> String.replace("timestamp:", "t:")
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
   end
 
   defp to_fragment(%ChartRule{} = c) do
@@ -137,55 +130,54 @@ defmodule Logflare.Lql.Encoder do
         x -> x
       end
 
-    "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
+    qs = "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
+    Regex.replace(~r/(?<=sum|avg|count)\(metadata./, qs, "(m.")
   end
 
-  def to_datetime_with_range(lvstring, rvstring) do
-    myers_diff = String.myers_difference(lvstring, rvstring)
+  def to_datetime_with_range(ldt, rdt) do
+    date_periods = [:year, :month, :day]
+    time_periods = [:hour, :minute, :second]
+    us = [:microsecond]
 
-    del_ins_count =
-      myers_diff
-      |> Enum.filter(&(elem(&1, 0) in ~w[del ins]a))
-      |> Enum.count()
+    mapper = fn
+      period ->
+        {lv, rv} =
+          if period != :microsecond do
+            lv = Map.get(ldt, period)
+            rv = Map.get(rdt, period)
 
-    if del_ins_count == 2 do
-      original_myers_diff = myers_diff
+            lv = String.pad_leading("#{lv}", 2, "0")
+            rv = String.pad_leading("#{rv}", 2, "0")
+            {lv, rv}
+          else
+            {lv, _} = Map.get(ldt, period)
+            {rv, _} = Map.get(rdt, period)
 
-      {start, myers_diff} = Keyword.pop_first(myers_diff, :eq)
-      {l, myers_diff} = Keyword.pop_first(myers_diff, :del)
-      {r, myers_diff} = Keyword.pop_first(myers_diff, :ins)
-      {maybe_eq, end_} = Keyword.pop_first(myers_diff, :eq)
-
-      {maybe_eq, end_} =
-        if end_ == [] do
-          {nil, maybe_eq}
-        else
-          {maybe_eq, end_[:eq]}
-        end
-
-      cond do
-        maybe_eq ->
-          case Keyword.keys(original_myers_diff) |> Enum.reject(&(&1 == :eq)) do
-            [:del, :ins] ->
-              start <> "{#{l}#{maybe_eq}..#{maybe_eq}#{r}}" <> end_
-
-            [:ins, :del] ->
-              start <> "{#{maybe_eq}#{l}..#{r}#{maybe_eq}}" <> end_
+            if lv == 0 and rv == 0 do
+              {"", ""}
+            else
+              lv = String.pad_leading("#{lv}", 6, "0")
+              rv = String.pad_leading("#{rv}", 6, "0")
+              {lv, rv}
+            end
           end
 
-        String.first(end_) not in ["T", ":", "-"] ->
-          {common, end_} = String.split_at(end_, 1)
-          start <> "{#{l}#{common}..#{r}#{common}}" <> end_
+        if lv == rv do
+          "#{lv}"
+        else
+          "{#{lv}..#{rv}}"
+        end
+    end
 
-        String.last(start) not in ["T", ":", "-"] ->
-          {start, common} = String.split_at(start, -1)
-          start <> "{#{common}#{l}..#{common}#{r}}" <> end_
+    date_string = date_periods |> Enum.map(mapper) |> Enum.join("-")
+    time_string = time_periods |> Enum.map(mapper) |> Enum.join(":")
+    maybe_us_string = us |> Enum.map(mapper) |> hd
+    datetime_string = date_string <> "T" <> time_string
 
-        true ->
-          start <> "{#{l}..#{r}}" <> end_
-      end
+    if maybe_us_string != "" do
+      datetime_string <> "." <> maybe_us_string
     else
-      lvstring <> ".." <> rvstring
+      datetime_string
     end
   end
 end

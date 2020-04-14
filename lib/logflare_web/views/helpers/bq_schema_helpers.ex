@@ -25,17 +25,18 @@ defmodule LogflareWeb.Helpers.BqSchema do
     SharedView.render("bq_schema.html", fields_and_types: fields_and_types)
   end
 
+  @fmt_string "%a %b %d %Y %H:%M:%S"
   def format_timestamp(timestamp) do
     timestamp
     |> Timex.from_unix(:microsecond)
-    |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)
+    |> Timex.format!(@fmt_string, :strftime)
   end
 
   def format_timestamp(timestamp, user_local_timezone) do
     timestamp
     |> Timex.from_unix(:microsecond)
     |> Timex.Timezone.convert(user_local_timezone)
-    |> Timex.format!("%a %b %d %Y %I:%M:%S%p", :strftime)
+    |> Timex.format!(@fmt_string, :strftime)
   end
 
   def encode_metadata(metadata) do

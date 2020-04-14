@@ -10,6 +10,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.{Users, User}
   alias Logflare.Logs
   alias Logflare.Source
+  alias Logflare.SavedSearches
+  alias Logflare.Lql
   use TypedStruct
   require Logger
   @query_timeout 60_000
@@ -50,6 +52,10 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_execute_query(source_token, params) when is_atom(source_token) do
+    Task.start_link(fn ->
+      update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
+    end)
+
     source_token
     |> name()
     |> Process.whereis()
@@ -58,6 +64,21 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     else
       Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
     end
+  end
+
+  def update_saved_search_counters(lql_rules, tailing?, source) do
+    qs = Lql.encode!(lql_rules)
+    search = SavedSearches.get_by_qs_source_id(qs, source.id)
+
+    search =
+      if search do
+        search
+      else
+        {:ok, search} = SavedSearches.insert(%{querystring: qs, lql_rules: lql_rules}, source)
+        search
+      end
+
+    SavedSearches.inc(search.id, tailing?: tailing?)
   end
 
   def query(params) do

@@ -4,6 +4,7 @@ defmodule LogflareWeb.SearchView do
   import LogflareWeb.Helpers.Notifications
   import LogflareWeb.Helpers.Modals
   import LogflareWeb.Helpers.BqSchema
+  import Logflare.Lql.Utils
 
   import PhoenixLiveReact, only: [live_react_component: 2]
 

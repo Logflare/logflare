@@ -9,7 +9,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   alias Logflare.{Source, Sources, EctoQueryBQ}
   @query_request_timeout 60_000
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
-  @default_open_interval_length 250
+  @default_open_interval_length 1_000
 
   @spec get_min_max_filter_timestamps([FR.t()], atom()) :: minmax()
   def get_min_max_filter_timestamps([], chart_period) do
@@ -139,8 +139,8 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   end
 
   def generate_message(period) do
-    "Your timestamp filter is an unbounded interval. Max number of chart ticks is limited to 250 #{
-      to_timex_shift_key(period)
-    }."
+    "Your timestamp filter is an unbounded interval. Max number of chart ticks is limited to #{
+      @default_open_interval_length
+    } #{to_timex_shift_key(period)}."
   end
 end
