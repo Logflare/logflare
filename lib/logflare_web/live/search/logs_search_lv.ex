@@ -3,21 +3,23 @@ defmodule LogflareWeb.Source.SearchLV do
   Handles all user interactions with the source logs search
   """
   use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+
   alias LogflareWeb.Router.Helpers, as: Routes
-
   alias LogflareWeb.SearchView
-
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SavedSearches
-  alias __MODULE__.SearchOpts
   alias Logflare.Lql
-  alias Logflare.Lql.{ChartRule, FilterRule}
+  alias Logflare.Lql.{ChartRule}
+  alias Logflare.{Sources, Users}
+
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
+
   use LogflareWeb.LiveViewUtils
   use LogflareWeb.ModalsLVHelpers
+
   require Logger
-  alias Logflare.{Sources, Users}
+
   @tail_search_interval 500
   @user_idle_interval 300_000
   @default_qs "c:count(*) c:group_by(t::minute)"
@@ -65,7 +67,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_disconnected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = session,
+        %{"user_id" => user_id} = _session,
         socket
       ) do
     source = get_source_for_param(source_id)
@@ -121,7 +123,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_connected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = session,
+        %{"user_id" => user_id} = _session,
         socket
       ) do
     source = get_source_for_param(source_id)
@@ -332,7 +334,7 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    %{id: sid, token: stoken} = prev_assigns.source
+    %{id: _sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.bq_table_schema
 

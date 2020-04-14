@@ -1,6 +1,6 @@
 defmodule LogflareWeb.SavedSearchesController do
   use LogflareWeb, :controller
-  alias Logflare.{SavedSearches, Sources}
+  alias Logflare.{SavedSearches}
   require Logger
 
   plug LogflareWeb.Plugs.SetVerifySource
@@ -11,7 +11,7 @@ defmodule LogflareWeb.SavedSearchesController do
     |> SavedSearches.get()
     |> SavedSearches.delete_by_user()
     |> case do
-      {:ok, response} ->
+      {:ok, _response} ->
         conn
         |> put_flash(:info, "Saved search deleted!")
         |> redirect(to: Routes.source_path(conn, :dashboard))

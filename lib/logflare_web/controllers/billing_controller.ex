@@ -14,7 +14,7 @@ defmodule LogflareWeb.BillingController do
 
   def create(%{assigns: %{user: user}} = conn, _params) do
     with {:ok, customer} <- Stripe.create_customer(user),
-         {{:ok, _billing_account}, customer} <-
+         {{:ok, _billing_account}, _customer} <-
            {Billing.create_billing_account(user, %{
               stripe_customer: customer.id
             }), customer} do
@@ -31,18 +31,18 @@ defmodule LogflareWeb.BillingController do
     end
   end
 
-  def edit(%{assigns: %{user: %{billing_account: nil}} = user} = conn, _params) do
+  def edit(%{assigns: %{user: %{billing_account: nil}} = _user} = conn, _params) do
     conn
     |> put_flash(:error, "Please creaete a billing account first!")
     |> redirect(to: Routes.user_path(conn, :edit) <> "#billing-account")
   end
 
-  def edit(%{assigns: %{user: user}} = conn, _params) do
+  def edit(%{assigns: %{user: _user}} = conn, _params) do
     conn
     |> render("edit.html")
   end
 
-  def delete(%{assigns: %{user: %{billing_account: billing_account}} = user} = conn, _params) do
+  def delete(%{assigns: %{user: %{billing_account: billing_account}} = _user} = conn, _params) do
     with {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer),
          {:ok, _response} <- Billing.delete_billing_account(billing_account) do
       conn
@@ -59,7 +59,7 @@ defmodule LogflareWeb.BillingController do
   end
 
   def confirm_subscription(
-        %{assigns: %{user: %{billing_account: billing_account}} = user} = conn,
+        %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
         %{
           "plan_id" => plan_id
         }
@@ -82,10 +82,10 @@ defmodule LogflareWeb.BillingController do
   end
 
   def change_subscription(
-        %{assigns: %{user: %{billing_account: billing_account}} = user} = conn,
+        %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
         _params
       ) do
-    with {:ok, subscription} <- get_billing_account_subscription(billing_account),
+    with {:ok, _subscription} <- get_billing_account_subscription(billing_account),
          {:ok, session} <- Stripe.create_add_credit_card_session(billing_account) do
       conn
       |> put_session(:stripe_session, session)
@@ -101,7 +101,10 @@ defmodule LogflareWeb.BillingController do
     end
   end
 
-  def unsubscribe(%{assigns: %{user: %{billing_account: billing_account}} = user} = conn, _params) do
+  def unsubscribe(
+        %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
+        _params
+      ) do
     billing_params = %{stripe_subscriptions: nil}
 
     with {:ok, subscription} <- get_billing_account_subscription(billing_account),
@@ -121,7 +124,7 @@ defmodule LogflareWeb.BillingController do
   end
 
   def update_credit_card_success(
-        %{assigns: %{user: %{billing_account: billing_account}} = user} = conn,
+        %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
         _params
       ) do
     stripe_session = get_session(conn, :stripe_session)
@@ -152,11 +155,11 @@ defmodule LogflareWeb.BillingController do
     end
   end
 
-  def success(%{assigns: %{user: %{billing_account: billing_account}} = user} = conn, _params) do
+  def success(%{assigns: %{user: %{billing_account: billing_account}} = _user} = conn, _params) do
     stripe_session = get_session(conn, :stripe_session)
     billing_params = %{latest_successful_stripe_session: stripe_session}
 
-    with {:ok, stripe_session} <-
+    with {:ok, _stripe_session} <-
            Stripe.find_completed_session(stripe_session.id),
          {:ok, _billing_account} <-
            Billing.sync_billing_account(billing_account, billing_params) do

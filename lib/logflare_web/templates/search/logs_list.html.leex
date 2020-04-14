@@ -3,7 +3,7 @@
     <div id="logs-list" class="list-unstyled console-text-list"  >
       <%= for log <- @log_events do %>
         <li id="log-event_<%= log.id || log.body.timestamp %>">
-          <% %{metadata: metadata, timestamp: timestamp, message: message} = log.body %>
+          <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>
           <mark class="log-datestamp" data-timestamp="<%= timestamp %>">
             <%= if @use_local_time do %>
               <%= format_timestamp(timestamp, @user_local_timezone) %>

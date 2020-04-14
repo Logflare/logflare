@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li>
+        <!-- <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li> -->
         <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
@@ -53,6 +53,7 @@
   <% end %>
 </div>
 
+<!--
 <h4 id="billing-account" class="header-margin">Billing Account</h4>
 <p>Create a billing account to subscribe to Logflare.</p>
 
@@ -65,6 +66,7 @@
   <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
 <% end %>
 </div>
+-->
 
 <h4 class="header-margin">Team Preferences</h4>
 <p>Setup your team.</p>
