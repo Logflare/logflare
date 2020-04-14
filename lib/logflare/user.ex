@@ -11,7 +11,7 @@ defmodule Logflare.User do
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
 
-  @derive {Jason.Encoder,
+  @derive {Jsonrs.Encoder,
            only: [
              :email,
              :provider,

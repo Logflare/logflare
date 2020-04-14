@@ -26,7 +26,7 @@ defmodule LogflareWeb.Router do
 
     plug Plug.Parsers,
       parsers: [:json, :bert],
-      json_decoder: Jason
+      json_decoder: Jsonrs
 
     plug :accepts, ["json", "bert"]
   end

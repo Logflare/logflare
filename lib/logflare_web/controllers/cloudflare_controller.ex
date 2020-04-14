@@ -1,6 +1,7 @@
 defmodule LogflareWeb.CloudflareController do
   use LogflareWeb, :controller
 
+  alias Logflare.JSON
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -10,7 +11,7 @@ defmodule LogflareWeb.CloudflareController do
 
     response =
       build_response(conn, user_token)
-      |> Jason.encode!()
+      |> JSON.encode!()
 
     conn
     |> put_resp_content_type("application/json")

@@ -3,6 +3,7 @@ defmodule LogflareWeb.Auth.OauthController do
 
   plug Ueberauth
 
+  alias Logflare.JSON
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
@@ -19,7 +20,7 @@ defmodule LogflareWeb.Auth.OauthController do
         %{"state" => state, "provider" => "slack"} = _params
       )
       when is_binary(state) do
-    state = Jason.decode!(state)
+    state = JSON.decode!(state)
 
     case state["action"] do
       "save_hook_url" ->

@@ -1,6 +1,7 @@
 defmodule LogflareWeb.HealthCheckController do
   use LogflareWeb, :controller
 
+  alias Logflare.JSON
   alias Logflare.Cluster
 
   def check(conn, _params) do
@@ -15,7 +16,7 @@ defmodule LogflareWeb.HealthCheckController do
         nodes: nodes,
         nodes_count: Enum.count(nodes)
       }
-      |> Jason.encode!()
+      |> JSON.encode!()
 
     conn
     |> put_resp_content_type("application/json")

@@ -144,8 +144,9 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.26.0"},
       {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
 
-      # Rustler
-      {:rustler, "~> 0.21.0", only: [:test], override: true},
+      # Rust NIFs
+      {:rustler, "~> 0.21.0", override: true},
+      {:jsonrs, "0.1.4"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.2"},

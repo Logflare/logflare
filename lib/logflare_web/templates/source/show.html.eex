@@ -33,7 +33,7 @@
           metadata
         </a>
         <div class="collapse metadata" id="metadata-<%= inx %>">
-          <pre class="pre-metadata"><code><%= Jason.encode!(log.body.metadata, pretty: true) %></code></pre>
+          <pre class="pre-metadata"><code><%= JSON.encode!(log.body.metadata, pretty: true) %></code></pre>
         </div>
       <% end %>
       <%= if log.via_rule do %>

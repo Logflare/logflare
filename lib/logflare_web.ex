@@ -58,6 +58,7 @@ defmodule LogflareWeb do
       alias LogflareWeb.Router.Helpers, as: Routes
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
+      alias Logflare.JSON
     end
   end
 

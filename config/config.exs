@@ -27,10 +27,10 @@ config :ueberauth, Ueberauth,
     google: {Ueberauth.Strategy.Google, []},
     slack: {Ueberauth.Strategy.Slack, [default_scope: "identity.basic,identity.email"]}
   ],
-  json_library: Jason
+  json_library: Jsonrs
 
-# Use Jason for JSON parsing in Phoenix
-config :phoenix, :json_library, Jason
+config :phoenix, :json_library, Jsonrs
+config :postgrex, :json_library, Jsonrs
 
 config :logflare, ExOauth2Provider,
   repo: Logflare.Repo,

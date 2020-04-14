@@ -2,11 +2,12 @@ defmodule Logflare.Logs.Search.Utils do
   @moduledoc """
   Utilities for Logs search and Logs live view modules
   """
+  alias Logflare.JSON
   require Logger
 
   def format_error(%Tesla.Env{body: body}) do
     body
-    |> Poison.decode!()
+    |> JSON.decode!()
     |> Map.get("error")
     |> Map.get("message")
   end
