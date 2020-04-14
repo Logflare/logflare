@@ -7,7 +7,6 @@ defmodule Logflare.Billing do
 
   import Ecto.Query, warn: false
   alias Logflare.Repo
-  alias Logflare.Users
   alias Logflare.User
   alias Logflare.Billing
   alias Logflare.Billing.BillingAccount
@@ -88,6 +87,30 @@ defmodule Logflare.Billing do
       {:error, %Ecto.Changeset{}}
 
   """
+
+  def sync_subscriptions(
+        %BillingAccount{stripe_customer: stripe_customer_id} = billing_account,
+        attrs \\ %{}
+      ) do
+    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(stripe_customer_id) do
+      attrs = Map.put(attrs, :stripe_subscriptions, subscriptions)
+
+      update_billing_account(billing_account, attrs)
+    end
+  end
+
+  def sync_invoices(
+        %BillingAccount{stripe_customer: stripe_customer_id} = billing_account,
+        attrs \\ %{}
+      ) do
+    with {:ok, invoices} <- Billing.Stripe.list_customer_invoices(stripe_customer_id) do
+      attrs = Map.put(attrs, :stripe_invoices, invoices)
+
+      update_billing_account(billing_account, attrs)
+    else
+      err -> err
+    end
+  end
 
   def sync_billing_account(
         %BillingAccount{stripe_customer: customer_id} = billing_account,

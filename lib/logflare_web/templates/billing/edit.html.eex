@@ -176,6 +176,12 @@
 </div>
 
 <div class="sub-form">
+  <h5 class="header-margin">Sync Billing Account</h5>
+  <p>Something here missing? We use Stripe to handle billing. If something didn't sync correctly with Stripe you can trigger this manually.</p>
+  <%= link "Sync billing account", to: Routes.billing_path(@conn, :sync), method: :post, class: "btn btn-primary form-button" %>
+</div>
+
+<div class="sub-form">
   <h5 class="header-margin">Delete Billing Account</h5>
   <p>If something goes terribly wrong you can delete and re-create your billing account. You will no longer be able to access any subscriptions or invoices listed here.</p>
   <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>

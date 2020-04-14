@@ -138,14 +138,8 @@ defmodule LogflareWeb.BillingController do
            Stripe.update_customer(billing_account.stripe_customer, %{
              invoice_settings: %{default_payment_method: setup_intent.payment_method}
            }),
-         {:ok, subscription} <-
-           get_billing_account_subscription(billing_account),
-         {:ok, _response} <-
-           Stripe.update_subscription(subscription["id"], %{
-             default_payment_method: setup_intent.payment_method
-           }),
          {:ok, _billing_account} <-
-           Billing.sync_billing_account(billing_account, billing_params) do
+           Billing.update_billing_account(billing_account, billing_params) do
       success_and_redirect(conn, "Payment method updated!")
     else
       err ->
@@ -162,8 +156,19 @@ defmodule LogflareWeb.BillingController do
     with {:ok, _stripe_session} <-
            Stripe.find_completed_session(stripe_session.id),
          {:ok, _billing_account} <-
-           Billing.sync_billing_account(billing_account, billing_params) do
+           Billing.update_billing_account(billing_account, billing_params) do
       success_and_redirect(conn, "Subscription created!")
+    else
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn)
+    end
+  end
+
+  def sync(%{assigns: %{user: %{billing_account: billing_account}} = _user} = conn, _params) do
+    with {:ok, _billing_account} <- Billing.sync_subscriptions(billing_account) do
+      success_and_redirect(conn, "Billing account synced!")
     else
       err ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
