@@ -1,67 +1,76 @@
 #homepage-header {
-    background-color: #1d1d1d;
+  background-color: #1d1d1d;
 }
 
 #homepage-header-text {
-    padding-top: 5em;
-    padding-bottom: 5em;
-    padding-left: 5%;
+  padding-top: 5em;
+  padding-bottom: 5em;
+  padding-left: 5%;
 }
 
 .header-margin {
-    padding: 1em 0 0.25em;
-    color: #fff;
+  padding: 1em 0 0.25em;
+  color: #fff;
 }
 
 .secondary-header {
-    padding-top: 5em;
-    padding-bottom: 5em;
-    background-color: #1d1d1d;
+  padding-top: 5em;
+  padding-bottom: 5em;
+  background-color: #1d1d1d;
 }
 
 .subhead {
-    background-color: #63ff99;
-    padding-top: 0.35em;
-    padding-bottom: 0.35em;
-    color: black;
-    box-shadow: 0 0 35px #000000;
+  background-color: #63ff99;
+  padding-top: 0.35em;
+  padding-bottom: 0.35em;
+  color: black;
+  box-shadow: 0 0 35px #000000;
 
-    & code {
-        color: white;
-        background-color: #e35b8d;
-        padding: 0.2em;
-    }
+  & code {
+    color: white;
+    background-color: #e35b8d;
+    padding: 0.2em;
+  }
 
-    & h5 {
-        margin: 0;
-        display: flex;
-        max-width: 70%;
-        overflow: hidden;
-    }
+  & h5 {
+    margin: 0;
+    display: flex;
+    max-width: 70%;
+    white-space: nowrap;
+  }
 
-    & li {
-        display: inline-block;
-        margin-left: 0.5em;
-    }
+  & h5 > a {
+    display: block;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
 
-    & ul {
-        margin: 0;
-        padding: 0;
-    }
+  & a {}
+
+  & li {
+    display: inline-block;
+    margin-left: 0.5em;
+  }
+
+  & ul {
+    margin: 0;
+    padding: 0;
+  }
 }
 
 .subhead-fixed {
-    position: fixed;
-    top: 55px;
-    right: 0;
-    left: 0;
-    z-index: 1020;
+  position: fixed;
+  top: 55px;
+  right: 0;
+  left: 0;
+  z-index: 1020;
 }
 
 .no-subhead {
-    margin-top: -55px;
+  margin-top: -55px;
 }
 
 .bg-light {
-    background-color: #5eeb8f !important;
+  background-color: #5eeb8f !important;
 }

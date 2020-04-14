@@ -166,6 +166,25 @@ defmodule LogflareWeb.Router do
     get "/new-api-key", UserController, :new_api_key
   end
 
+  scope "/account/billing", LogflareWeb do
+    pipe_through [:browser, :require_auth, :check_owner]
+
+    post "/", BillingController, :create
+    delete "/", BillingController, :delete
+    get "/edit", BillingController, :edit
+  end
+
+  scope "/account/billing/subscription", LogflareWeb do
+    pipe_through [:browser, :require_auth, :check_owner]
+
+    get "/subscribed", BillingController, :success
+    get "/abandoned", BillingController, :abandoned
+    delete "/", BillingController, :unsubscribe
+    get "/confirm", BillingController, :confirm_subscription
+    get "/confirm/change", BillingController, :change_subscription
+    get "/updated-payment-method", BillingController, :update_credit_card_success
+  end
+
   scope "/admin", LogflareWeb do
     pipe_through [:browser, :check_admin]
 
@@ -197,6 +216,7 @@ defmodule LogflareWeb.Router do
   scope "/webhooks", LogflareWeb do
     pipe_through :api
     post "/cloudflare/v1", CloudflareControllerV1, :event
+    post "/stripe", StripeController, :event
   end
 
   scope "/health", LogflareWeb do
