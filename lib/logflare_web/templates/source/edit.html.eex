@@ -167,7 +167,7 @@
   <% end %>
 
   <h5 class="header-margin">Backend TTL</h5>
-  <%= if @conn.assigns.user.bigquery_project_id do %>
+  <%= if @conn.assigns.user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] do %>
     <p>Set how long to keep data in your custom backend.</p>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
       <div class="form-group">
@@ -181,7 +181,7 @@
       <% end %>
   <% else %>
     <p>Add a Google Cloud Platform project ID to get started!</p>
-    <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit), class: "btn btn-primary form-button", role: "button" %>
+    <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#big-query-preferences", class: "btn btn-primary form-button", role: "button" %>
   <% end %>
 
 <script>
