@@ -1,7 +1,9 @@
 defmodule Logflare.Billing.Stripe do
+  @moduledoc """
+    Communicate with the Stripe API.
+  """
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-  alias Logflare.Plans
   alias Logflare.Billing.BillingAccount
 
   def create_add_credit_card_session(%BillingAccount{} = billing_account) do
