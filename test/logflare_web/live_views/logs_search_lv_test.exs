@@ -5,13 +5,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Sources
   alias Logflare.Users
   @endpoint LogflareWeb.Endpoint
-  import Logflare.Factory
   use Placebo
   alias Logflare.BigQuery.PredefinedTestUser
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql
-  alias Logflare.Source
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
   setup_all do
@@ -22,16 +20,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
   describe "user action flow simulation" do
     setup [:assign_user_source]
 
+    @tag :this
     test "user sequence", %{conn: conn, source: [s | _]} do
-      {:ok, view, html} = live(conn, "/sources/#{s.id}/search")
+      {:ok, view, html} =
+        live(conn, "/sources/#{s.id}/search",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "minute"
-      assert find_search_form_value(html, "#search_chart_aggregate option") == "count"
+      assert find_selected_chart_period(html) == "minute"
+      assert find_chart_aggregate(html) == "count"
 
-      assert find_search_form_value(html, "#search_querystring") ==
-               "c:count(*) c:group_by(t::minute)"
-
-      # assert find_search_form_value(html, ".tailing_checkbox") == "true"
+      assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
 
       html =
         render_change(view, :form_update, %{
@@ -43,11 +42,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
           }
         })
 
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "minute"
-      assert find_search_form_value(html, "#search_chart_aggregate option") == "count"
-
-      assert find_search_form_value(html, "#search_querystring") ==
-               "c:count(*) c:group_by(t::minute)"
+      assert find_selected_chart_period(html) == "minute"
+      assert find_chart_aggregate(html) == "count"
+      assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
 
       html =
         render_change(view, :form_update, %{
@@ -61,10 +58,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       lql_rules = get_view_assigns(view).lql_rules
       assert Lql.Utils.get_chart_rule(lql_rules).aggregate == :count
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "minute"
-
-      assert find_search_form_value(html, "#search_querystring") ==
-               "c:count(*) c:group_by(t::minute) error crash"
+      assert find_selected_chart_period(html) == "minute"
+      assert find_querystring(html) == "c:count(*) c:group_by(t::minute) error crash"
 
       html =
         render_change(view, :form_update, %{
@@ -79,11 +74,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       lql_rules = get_view_assigns(view).lql_rules
       assert Lql.Utils.get_chart_rule(lql_rules).aggregate == :count
 
-      assert find_search_form_value(html, "#search_querystring") ==
-               "c:count(*) c:group_by(t::day)"
-
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "day"
-      assert find_search_form_value(html, "#search_chart_aggregate option[selected]") == "count"
+      assert find_querystring(html) == "c:count(*) c:group_by(t::day)"
+      assert find_selected_chart_period(html) == "day"
+      assert find_selected_chart_aggregate(html) == "count"
 
       html =
         render_change(view, :start_search, %{
@@ -92,15 +85,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
           }
         })
 
-      assert find_search_form_value(html, "#search_querystring") ==
-               "error crash c:count(*) c:group_by(t::day)"
+      assert find_querystring(html) == "error crash c:count(*) c:group_by(t::day)"
 
       lql_rules = get_view_assigns(view).lql_rules
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
+
       assert chart_rule.aggregate == :count
       assert chart_rule.period == :day
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "day"
-      assert find_search_form_value(html, "#search_chart_aggregate option[selected]") == "count"
+      assert find_selected_chart_period(html) == "day"
+      assert find_selected_chart_aggregate(html) == "count"
 
       html =
         render_change(view, :start_search, %{
@@ -109,19 +102,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
           }
         })
 
-      assert find_search_form_value(html, "#search_querystring") ==
+      assert find_querystring(html) ==
                "error crash c:sum(m.int_field_1) c:group_by(t::minute)"
 
       lql_rules = get_view_assigns(view).lql_rules
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
       assert chart_rule.aggregate == :sum
       assert chart_rule.period == :minute
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "minute"
-      assert find_search_form_value(html, "#search_chart_aggregate option[selected]") == "sum"
+      assert find_selected_chart_period(html) == "minute"
+      assert find_selected_chart_aggregate(html) == "sum"
 
       assert get_view_assigns(view).tailing? == true
 
-      html = render_change(view, :stop_live_search, %{})
+      _html = render_change(view, :stop_live_search, %{})
       assert get_view_assigns(view).tailing? == false
 
       html =
@@ -142,15 +135,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
                }
              ]
 
-      assert find_search_form_value(html, "#search_querystring") ==
-               "error crash t:2020-01-01T01:10:00..2020-02-01T10:22:20 c:sum(m.int_field_1) c:group_by(t::minute)"
+      assert get_view_assigns(view).querystring ==
+               "error crash t:2020-{01..02}-01T{01..10}:{10..22}:{00..20} c:sum(m.int_field_1) c:group_by(t::minute)"
+
+      assert find_querystring(html) ==
+               "error crash t:2020-{01..02}-01T{01..10}:{10..22}:{00..20} c:sum(m.int_field_1) c:group_by(t::minute)"
 
       lql_rules = get_view_assigns(view).lql_rules
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
       assert chart_rule.aggregate == :sum
       assert chart_rule.period == :minute
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "minute"
-      assert find_search_form_value(html, "#search_chart_aggregate option[selected]") == "sum"
+      assert find_selected_chart_period(html) == "minute"
+      assert find_selected_chart_aggregate(html) == "sum"
 
       html =
         render_change(view, :start_search, %{
@@ -164,8 +160,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
       assert chart_rule.aggregate == :avg
       assert chart_rule.period == :hour
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "hour"
-      assert find_search_form_value(html, "#search_chart_aggregate option[selected]") == "avg"
+      assert find_selected_chart_period(html) == "hour"
+      assert find_selected_chart_aggregate(html) == "avg"
 
       html =
         render_change(view, :start_search, %{
@@ -179,8 +175,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
       assert chart_rule.aggregate == :avg
       assert chart_rule.period == :hour
-      assert find_search_form_value(html, "#search_chart_period option[selected]") == "hour"
-      assert find_search_form_value(html, "#search_chart_aggregate option[selected]") == "avg"
+      assert find_selected_chart_period(html) == "hour"
+      assert find_selected_chart_aggregate(html) == "avg"
     end
   end
 
@@ -188,17 +184,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
     setup [:assign_user_source]
 
     test "generates correct querystring", %{conn: conn, source: [s | _]} do
-      {:ok, view, html} = live(conn, "/sources/#{s.id}/search")
+      {:ok, view, _html} =
+        live(conn, "/sources/#{s.id}/search",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
-      html =
+      _html =
         render_change(view, :form_update, %{
           "search" => %{
-            "querystring" => ""
+            "querystring" => "",
+            "chart_aggregate" => "count",
+            "chart_period" => "minute"
           }
         })
 
-      assert get_view_assigns(view).querystring == ~s|c:count(*) c:group_by(t::minute)|
-      assert html =~ ~s|c:count(*) c:group_by(t::minute)|
+      assert get_view_assigns(view).querystring == ""
     end
   end
 
@@ -209,7 +209,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> live("/sources/#{s.id}/search")
+        |> live("/sources/#{s.id}/search",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
       assert {:ok, view, html} = conn
 
@@ -225,10 +227,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "shows notification error for malformed query", %{
       conn: conn,
-      source: [s | _],
-      user: [u | _]
+      source: [s | _]
     } do
-      conn = live(conn, "/sources/#{s.id}/search?q=t:20020")
+      conn =
+        live(conn, "/sources/#{s.id}/search?q=t:20020",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
       assert {:ok, view, html} = conn
 
@@ -243,12 +247,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "redirected for non-owner user", %{conn: conn, source: [s | _], user: [u | _]} do
       u = %{u | id: u.id - 1}
       conn = assign(conn, :user, u)
-      assert {:error, %{redirect: %{to: "/"}}} = live(conn, "/sources/#{s.id}/search")
+
+      assert {:error, %{redirect: %{to: "/"}}} =
+               live(conn, "/sources/#{s.id}/search",
+                 connect_params: %{"user_timezone" => "Europe/Berlin"}
+               )
     end
 
-    test "redirected for anonymous user", %{conn: conn, source: [s | _], user: [u | _]} do
+    test "redirected for anonymous user", %{conn: conn, source: [s | _]} do
       conn = assign(conn, :user, nil)
-      assert {:error, %{redirect: %{to: "/"}}} = live(conn, "/sources/#{s.id}/search")
+
+      assert {:error, %{redirect: %{to: "/"}}} =
+               live(conn, "/sources/#{s.id}/search",
+                 connect_params: %{"user_timezone" => "Europe/Berlin"}
+               )
     end
   end
 
@@ -258,9 +270,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "stop/start live search", %{conn: conn, source: [s]} do
       conn =
         conn
-        |> live("/sources/#{s.id}/search?q=error")
+        |> live("/sources/#{s.id}/search?q=error",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
-      {:ok, view, html} = conn
+      {:ok, view, _html} = conn
 
       assert get_view_assigns(view).tailing?
 
@@ -273,11 +287,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).tailing?
     end
 
-    test "datepicker_update", %{conn: conn, source: [s | _], user: [u | _]} do
+    test "datepicker_update", %{conn: conn, source: [s | _]} do
       conn =
         conn
-        |> assign(:user, u)
-        |> live("/sources/#{s.id}/search?q=error")
+        |> live("/sources/#{s.id}/search?q=error",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
       {:ok, view, html} = conn
 
@@ -296,10 +311,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> get("/sources/#{s.id}/search")
+        |> live("/sources/#{s.id}/search",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
-      assert html_response(conn, 200) =~ "source-logs-search-container"
-      {:ok, view, html} = live(conn)
+      {:ok, view, _html} = conn
 
       assert render_click(view, "set_local_time", %{"use_local_time" => "true"}) =~
                ~S|id="user-local-timezone"|
@@ -309,10 +325,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> get("/sources/#{s.id}/search")
+        |> live("/sources/#{s.id}/search",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
-      assert html_response(conn, 200) =~ "source-logs-search-container"
-      {:ok, view, html} = live(conn)
+      {:ok, view, _html} = conn
 
       assert render_click(view, "user_idle", %{}) =~
                "Live search paused due to user inactivity."
@@ -325,20 +342,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> get("/sources/#{s.id}/search")
+        |> live("/sources/#{s.id}/search",
+          connect_params: %{"user_timezone" => "Europe/Berlin"}
+        )
 
-      assert html_response(conn, 200) =~ "source-logs-search-container"
-      {:ok, view, html} = live(conn)
+      {:ok, view, _html} = conn
 
       assert render_click(view, "activate_modal", %{"modal_id" => "searchHelpModal"}) =~
-               "Search Your Log Events"
+               "Logflare Query Language"
 
       refute render_click(view, "deactivate_modal", %{}) =~
-               "Search Your Log Events"
+               "Logflare Query Language"
     end
   end
 
-  defp assign_user_source(context) do
+  defp assign_user_source(_context) do
     {:ok, _} = RLS.start_link(%RLS{source_id: @test_token})
     Process.sleep(2500)
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
@@ -347,7 +365,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     source = Sources.get_by(token: @test_token)
 
     conn =
-      build_conn
+      build_conn()
       |> assign(:user, user)
 
     %{source: [source], user: [user], conn: conn}
@@ -364,5 +382,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
     |> Floki.find(selector)
     |> Floki.attribute("value")
     |> hd
+  end
+
+  def find_selected_chart_period(html) do
+    find_search_form_value(html, "#search_chart_period option[selected]")
+  end
+
+  def find_selected_chart_aggregate(html) do
+    assert find_search_form_value(html, "#search_chart_aggregate option[selected]")
+  end
+
+  def find_chart_aggregate(html) do
+    assert find_search_form_value(html, "#search_chart_aggregate option")
+  end
+
+  def find_querystring(html) do
+    find_search_form_value(html, "#search_querystring")
   end
 end

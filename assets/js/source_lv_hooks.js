@@ -87,12 +87,6 @@ hooks.ModalHook = {
   },
 }
 
-const setTimezone = (hook) => {
-  // Set user timezone
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  hook.pushEvent("set_user_local_timezone", {tz: timeZone})
-}
-
 const datepickerConfig = {
   "showDropdowns": true,
   "timePicker": true,
@@ -141,7 +135,6 @@ const buildTsClause = (start, end, label) => {
 
 hooks.SourceLogsSearch = {
   updated() {
-    setTimezone(this)
     const hook = this
     const $daterangepicker = $("#daterangepicker")
     $daterangepicker.daterangepicker(datepickerConfig)
@@ -154,9 +147,7 @@ hooks.SourceLogsSearch = {
       hook.pushEvent("stop_live_search", {})
     })
   },
-  reconnected() {
-    setTimezone(this)
-  },
+  reconnected() {},
   mounted() {
     const hook = this
     const $daterangepicker = $("#daterangepicker")
@@ -175,8 +166,6 @@ hooks.SourceLogsSearch = {
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
-
-    setTimezone(this)
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")
@@ -199,8 +188,6 @@ hooks.SourceLogsSearch = {
         $("#last-query-completed-at span").text(elapsed.toFixed(1))
       }
     }, 250)
-
-    $("button#search").click()
   },
 }
 
