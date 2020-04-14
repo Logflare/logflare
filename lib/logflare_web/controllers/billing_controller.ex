@@ -33,7 +33,17 @@ defmodule LogflareWeb.BillingController do
 
   def edit(%{assigns: %{user: %{billing_account: nil}} = _user} = conn, _params) do
     conn
-    |> put_flash(:error, "Please creaete a billing account first!")
+    |> put_flash(
+      :error,
+      [
+        "Please ",
+        Phoenix.HTML.Link.link("create a billing account",
+          to: Routes.billing_path(conn, :create),
+          method: :post
+        ),
+        " first!"
+      ]
+    )
     |> redirect(to: Routes.user_path(conn, :edit) <> "#billing-account")
   end
 
@@ -60,18 +70,16 @@ defmodule LogflareWeb.BillingController do
 
   def confirm_subscription(
         %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
-        %{
-          "plan_id" => plan_id
-        }
+        %{"plan_name" => plan_name}
       ) do
-    with plan <- Plans.get_plan!(plan_id),
-         {:error, :subscription_not_found} <- get_billing_account_subscription(billing_account),
+    with plan <- Plans.get_plan_by(name: plan_name),
+         false <- billing_accoount_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_customer_session(billing_account, plan) do
       conn
       |> put_session(:stripe_session, session)
       |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
     else
-      {:ok, _subscription} ->
+      true ->
         error_and_redirect(conn, "Please delete your current subscription first!")
 
       err ->
@@ -85,13 +93,13 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
         _params
       ) do
-    with {:ok, _subscription} <- get_billing_account_subscription(billing_account),
+    with true <- billing_accoount_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_add_credit_card_session(billing_account) do
       conn
       |> put_session(:stripe_session, session)
       |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
     else
-      {:error, :subscription_not_found} ->
+      false ->
         error_and_redirect(conn, "Please subscribe first!")
 
       err ->
@@ -103,14 +111,12 @@ defmodule LogflareWeb.BillingController do
 
   def unsubscribe(
         %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
-        _params
+        %{"id" => stripe_subscription_id}
       ) do
-    billing_params = %{stripe_subscriptions: nil}
-
-    with {:ok, subscription} <- get_billing_account_subscription(billing_account),
+    with {:ok, subscription} <-
+           get_billing_account_subscription(billing_account, stripe_subscription_id),
          {:ok, _response} <- Stripe.delete_subscription(subscription["id"]),
-         {:ok, _billing_account} <-
-           Billing.update_billing_account(billing_account, billing_params) do
+         {:ok, _billing_account} <- Billing.sync_subscriptions(billing_account) do
       success_and_redirect(conn, "Subscription deleted!")
     else
       {:error, :subscription_not_found} ->
@@ -167,7 +173,7 @@ defmodule LogflareWeb.BillingController do
   end
 
   def sync(%{assigns: %{user: %{billing_account: billing_account}} = _user} = conn, _params) do
-    with {:ok, _billing_account} <- Billing.sync_subscriptions(billing_account) do
+    with {:ok, _billing_account} <- Billing.sync_billing_account(billing_account) do
       success_and_redirect(conn, "Billing account synced!")
     else
       err ->
@@ -195,20 +201,25 @@ defmodule LogflareWeb.BillingController do
     |> redirect(to: Routes.billing_path(conn, :edit))
   end
 
-  defp get_billing_account_subscription(billing_account) do
-    # we only support one subscription currently
-    case billing_account.stripe_subscriptions["data"] do
+  defp get_billing_account_subscription(billing_account, stripe_subscription_id) do
+    subscription =
+      billing_account.stripe_subscriptions["data"]
+      |> Enum.find(fn sub -> sub["id"] == stripe_subscription_id end)
+
+    case subscription do
       nil ->
         {:error, :subscription_not_found}
 
-      [] ->
-        {:error, :subscription_not_found}
-
-      [subscription] ->
+      _else ->
         {:ok, subscription}
+    end
+  end
 
-      other ->
-        {:error, inspect(other)}
+  defp billing_accoount_has_subscription?(billing_account) do
+    if subcriptions = billing_account.stripe_subscriptions["data"] do
+      Enum.count(subcriptions) > 0
+    else
+      false
     end
   end
 end

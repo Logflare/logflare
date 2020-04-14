@@ -11,10 +11,20 @@
 </div>
 
 <div class="container mx-auto">
-  <h4 class="header-margin">Confirm</h4>
-  <p>Confirm</p>
-  <p><%= inspect(@stripe_session) %></p>
-  <button onclick="return checkout();" class="btn btn-primary form-button">Continue</button>
+  <h4 class="header-margin">Confirm Subscirption Details</h4>
+  <p>Please confirm your subscription details.</p>
+  <%= for item <- @stripe_session.display_items do %>
+  <div class=sub-form>
+  <h5 class="header-margin">Plan</h5>
+  <ul class="list-unstyled">
+    <li>Plan name: <%= item.plan.nickname %></li>
+    <li>Plan price: <%= Money.to_string(Money.new(item.plan.amount, String.upcase(item.plan.currency) |> String.to_atom())) %></li>
+    <li>Trial period days: <%= item.plan.trial_period_days %></li>
+    <li>Billing interval: <%= "per " <> item.plan.interval %></li>
+  </ul>
+  </div>
+  <% end %>
+  <button onclick="return checkout();" class="btn btn-primary form-button">Confirm and add payment method</button>
 
 </div>
 

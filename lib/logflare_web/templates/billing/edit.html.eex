@@ -37,11 +37,6 @@
                     <li>7 day event history</li>
                     <li>0 additional users</li>
                 </ul>
-                <%= if @user.billing_account.stripe_subscriptions do %>
-                <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe), method: "delete", class: "btn btn-danger form-button" %>
-                <% else %>
-                <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe), method: "delete", class: "btn btn-danger form-button disabled" %>
-                <% end %>
             </div>
         </div>
         <div class="card card-pricing text-center px-3 mb-4">
@@ -61,7 +56,7 @@
                   <li>Unlimited*</li>
                   <li>2 additional users</li>
                 </ul>
-                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_id" => "1"}), class: "btn btn-primary form-button" %>
+                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_name" => "Entry"}), class: "btn btn-primary form-button" %>
             </div>
         </div>
         <div class="card card-pricing text-center px-3 mb-4">
@@ -81,7 +76,7 @@
                   <li>Unlimited*</li>
                   <li>20 additional users</li>
                 </ul>
-                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_id" => "2"}), class: "btn btn-primary form-button" %>
+                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_name" => "Pro"}), class: "btn btn-primary form-button" %>
             </div>
         </div>
         <div class="card card-pricing text-center px-3 mb-4">
@@ -140,7 +135,7 @@
           <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
           <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>
           <td><%= if sub["trial_end"], do: DateTime.from_unix!(sub["trial_end"]) %></td>
-          <td><%= link "unsubscribe", to: Routes.billing_path(@conn, :unsubscribe), method: "delete" %></td>
+          <td><%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe, id: sub["id"]), method: :delete, class: "btn  btn-danger btn-small" %></td>
         </tr>
         <% end %>
       <% end %>

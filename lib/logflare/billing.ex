@@ -75,36 +75,23 @@ defmodule Logflare.Billing do
     |> Repo.insert()
   end
 
-  @doc """
-  Updates a billing_account.
+  def sync_subscriptions(nil), do: :noop
 
-  ## Examples
-
-      iex> update_billing_account(billing_account, %{field: new_value})
-      {:ok, %BillingAccount{}}
-
-      iex> update_billing_account(billing_account, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-
-  def sync_subscriptions(
-        %BillingAccount{stripe_customer: stripe_customer_id} = billing_account,
-        attrs \\ %{}
-      ) do
+  def sync_subscriptions(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
     with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(stripe_customer_id) do
-      attrs = Map.put(attrs, :stripe_subscriptions, subscriptions)
+      attrs = %{stripe_subscriptions: subscriptions}
 
       update_billing_account(billing_account, attrs)
+    else
+      err -> err
     end
   end
 
-  def sync_invoices(
-        %BillingAccount{stripe_customer: stripe_customer_id} = billing_account,
-        attrs \\ %{}
-      ) do
+  def sync_invoices(nil), do: :noop
+
+  def sync_invoices(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
     with {:ok, invoices} <- Billing.Stripe.list_customer_invoices(stripe_customer_id) do
-      attrs = Map.put(attrs, :stripe_invoices, invoices)
+      attrs = %{stripe_invoices: invoices}
 
       update_billing_account(billing_account, attrs)
     else
@@ -127,6 +114,19 @@ defmodule Logflare.Billing do
       err -> err
     end
   end
+
+  @doc """
+  Updates a billing_account.
+
+  ## Examples
+
+      iex> update_billing_account(billing_account, %{field: new_value})
+      {:ok, %BillingAccount{}}
+
+      iex> update_billing_account(billing_account, %{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
 
   def update_billing_account(%BillingAccount{} = billing_account, attrs) do
     billing_account
