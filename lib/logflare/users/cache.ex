@@ -1,4 +1,8 @@
 defmodule Logflare.Users.Cache do
+  @moduledoc """
+  Cache for users.
+  """
+
   alias Logflare.{Users}
   import Cachex.Spec
   @ttl 5_000

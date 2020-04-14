@@ -44,7 +44,7 @@ defmodule Logflare.Logs.SourceRouting do
     le = Map.put(le.params, "event_message", le.params["message"])
 
     lql_rules_match? =
-      Enum.reduce_while(lql_filters, true, fn lql_filter, acc ->
+      Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->
         %Lql.FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter
 
         le_values = collect_by_path(le, path)

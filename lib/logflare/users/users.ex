@@ -29,10 +29,20 @@ defmodule Logflare.Users do
     |> Repo.preload(:team)
   end
 
+  def preload_billing_account(user) do
+    user
+    |> Repo.preload(:billing_account)
+  end
+
   def preload_defaults(user) do
     user
-    |> Repo.preload(:sources)
+    |> preload_sources
     |> maybe_preload_bigquery_defaults()
+  end
+
+  def preload_sources(user) do
+    user
+    |> Repo.preload(:sources)
   end
 
   def maybe_preload_bigquery_defaults(user) do

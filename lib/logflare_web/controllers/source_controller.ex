@@ -141,7 +141,7 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def explore(%{assigns: %{team_user: team_user, user: user, source: source}} = conn, _params) do
+  def explore(%{assigns: %{team_user: _team_user, user: user, source: source}} = conn, _params) do
     conn
     |> put_flash(
       :error,
@@ -167,7 +167,7 @@ defmodule LogflareWeb.SourceController do
     |> redirect(external: explore_link)
   end
 
-  def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
+  def explore(%{assigns: %{user: _user, source: source}} = conn, _params) do
     conn
     |> put_flash(
       :error,

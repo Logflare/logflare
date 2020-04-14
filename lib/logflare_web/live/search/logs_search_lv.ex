@@ -3,20 +3,23 @@ defmodule LogflareWeb.Source.SearchLV do
   Handles all user interactions with the source logs search
   """
   use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+
   alias LogflareWeb.Router.Helpers, as: Routes
-
   alias LogflareWeb.SearchView
-
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SavedSearches
   alias Logflare.Lql
   alias Logflare.Lql.{ChartRule}
+  alias Logflare.{Sources, Users}
+
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
+
   use LogflareWeb.LiveViewUtils
   use LogflareWeb.ModalsLVHelpers
+
   require Logger
-  alias Logflare.{Sources, Users}
+
   @tail_search_interval 500
   @user_idle_interval 300_000
   @default_qs "c:count(*) c:group_by(t::minute)"

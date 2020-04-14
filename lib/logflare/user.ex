@@ -8,6 +8,7 @@ defmodule Logflare.User do
 
   alias Logflare.Source
   alias Logflare.Teams.Team
+  alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
 
   @derive {Jason.Encoder,
@@ -63,6 +64,7 @@ defmodule Logflare.User do
     field :admin, :boolean, default: false
     has_many :sources, Source
     has_one :team, Team
+    has_one :billing_account, BillingAccount
     field :phone, :string
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
