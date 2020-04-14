@@ -30,7 +30,9 @@ defmodule Logflare.BillingTest do
     end
 
     test "create_billing_account/1 with valid data creates a billing_account" do
-      assert {:ok, %BillingAccount{} = billing_account} = Billing.create_billing_account(@valid_attrs)
+      assert {:ok, %BillingAccount{} = billing_account} =
+               Billing.create_billing_account(@valid_attrs)
+
       assert billing_account.latest_successful_stripe_session == %{}
       assert billing_account.ststripe_customer == %{}
     end
@@ -41,14 +43,20 @@ defmodule Logflare.BillingTest do
 
     test "update_billing_account/2 with valid data updates the billing_account" do
       billing_account = billing_account_fixture()
-      assert {:ok, %BillingAccount{} = billing_account} = Billing.update_billing_account(billing_account, @update_attrs)
+
+      assert {:ok, %BillingAccount{} = billing_account} =
+               Billing.update_billing_account(billing_account, @update_attrs)
+
       assert billing_account.latest_successful_stripe_session == %{}
       assert billing_account.ststripe_customer == %{}
     end
 
     test "update_billing_account/2 with invalid data returns error changeset" do
       billing_account = billing_account_fixture()
-      assert {:error, %Ecto.Changeset{}} = Billing.update_billing_account(billing_account, @invalid_attrs)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Billing.update_billing_account(billing_account, @invalid_attrs)
+
       assert billing_account == Billing.get_billing_account!(billing_account.id)
     end
 
