@@ -4,7 +4,7 @@ export function activateClipboardForSelector(selector, options) {
   const clipboard = new ClipboardJS(selector, options)
 
   clipboard.on("success", e => {
-    alert("Copied: " + e.text)
+    document.getElementById("copy-tooltip").innerHTML = "Copied!"
     e.clearSelection()
   })
   clipboard.on("error", e => {
