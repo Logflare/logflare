@@ -30,16 +30,7 @@ steps:
         ".",
       ]
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "push",
-        "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA",
-      ]
+    args: ["push", "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
-    args:
-      [
-        "push",
-        "gcr.io/logflare-232118/logflare_app:latest",
-      ]
-
+    args: ["push", "gcr.io/logflare-232118/logflare_app:latest"]
 timeout: 1800s
