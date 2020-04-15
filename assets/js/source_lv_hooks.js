@@ -8,7 +8,10 @@ let hooks = {}
 
 hooks.SourceSchemaModalTable = {
   mounted() {
-    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`, {container: document.getElementById("logflare-modal")})
+    activateClipboardForSelector(`.${this.el.classList} .copy-metadata-field`, {
+      container: document.getElementById("logflare-modal"),
+    })
+    $(".copy-metadata-field").tooltip()
   },
 }
 const initSearchInViewObserver = hook => {
