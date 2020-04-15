@@ -20,7 +20,7 @@ export async function main() {
 }
 
 async function initTooltips() {
-  $(".source-info").tooltip({ delay: { show: 100, hide: 200 } })
+  $(".logflare-tooltip").tooltip({ delay: { show: 100, hide: 200 } })
 }
 
 async function initClipboards() {
