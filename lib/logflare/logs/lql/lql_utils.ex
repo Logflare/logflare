@@ -9,7 +9,7 @@ defmodule Logflare.Lql.Utils do
       aggregate: :count,
       path: "timestamp",
       period: :minute,
-      value_type: nil
+      value_type: :datetime
     }
   end
 
