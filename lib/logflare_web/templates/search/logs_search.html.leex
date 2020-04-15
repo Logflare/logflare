@@ -22,14 +22,15 @@
           </a>
         </li>
         <li>
-          <a href="#" id="search-uri-query" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
+          <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
           <span>
             <i class="fas fa-copy">
             </i>
           </span>
           <span class="hide-on-mobile">
             share
-          </span></a>
+          </span>
+          </span>
       </li>
       <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
         <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
