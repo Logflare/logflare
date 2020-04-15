@@ -1,0 +1,47 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
+      </ul>
+    </div>
+    <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/<%= link "billing", to: Routes.billing_path(@conn, :edit), class: "text-primary" %>/subscription/confirm</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h4 class="header-margin">Confirm Subscirption Details</h4>
+  <p>Please confirm your subscription details.</p>
+  <%= for item <- @stripe_session.display_items do %>
+  <div class=sub-form>
+  <h5 class="header-margin">Plan</h5>
+  <ul class="list-unstyled">
+    <li>Plan name: <%= item.plan.nickname %></li>
+    <li>Plan price: <%= Money.to_string(Money.new(item.plan.amount, String.upcase(item.plan.currency) |> String.to_atom())) %></li>
+    <li>Trial period days: <%= item.plan.trial_period_days %></li>
+    <li>Billing interval: <%= "per " <> item.plan.interval %></li>
+  </ul>
+  </div>
+  <% end %>
+  <button onclick="return checkout();" class="btn btn-primary form-button">Confirm and add payment method</button>
+
+</div>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+  function checkout() {
+
+      var stripe = Stripe('<%= @stripe_key %>');
+
+      stripe.redirectToCheckout({
+          sessionId: '<%= @stripe_session.id %>'
+      }).then(function (result) {
+          // If `redirectToCheckout` fails due to a browser or network
+          // error, display the localized error message to your customer
+          // using `result.error.message`.
+          consol.log("failed")
+      });
+
+      }
+</script>

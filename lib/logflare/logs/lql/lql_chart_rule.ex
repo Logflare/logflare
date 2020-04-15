@@ -2,7 +2,7 @@ defmodule Logflare.Lql.ChartRule do
   @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
-  @derive {Jason.Encoder, []}
+  @derive {Jsonrs.Encoder, []}
 
   @primary_key false
   typed_embedded_schema do

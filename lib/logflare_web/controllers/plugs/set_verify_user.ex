@@ -17,10 +17,14 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
   def call(%{request_path: "/api/logs" <> _} = conn, opts),
     do: set_user_for_ingest_api(conn, opts)
 
-  def call(%{request_path: "/logs" <> _} = conn, opts), do: set_user_for_ingest_api(conn, opts)
-  def call(%{request_path: "/api" <> _} = conn, opts), do: set_user_for_mgmt_api(conn, opts)
+  def call(%{request_path: "/logs" <> _} = conn, opts),
+    do: set_user_for_ingest_api(conn, opts)
 
-  def call(conn, opts), do: set_user_for_browser(conn, opts)
+  def call(%{request_path: "/api" <> _} = conn, opts),
+    do: set_user_for_mgmt_api(conn, opts)
+
+  def call(conn, opts),
+    do: set_user_for_browser(conn, opts)
 
   defp set_user_for_browser(conn, _opts) do
     user =
@@ -31,6 +35,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
         id when is_integer(id) ->
           Users.get_by_and_preload(id: id)
           |> Users.preload_team()
+          |> Users.preload_billing_account()
 
         _ ->
           nil

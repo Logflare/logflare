@@ -15,6 +15,7 @@ defmodule LogflareWeb.SourceController do
               :explore
             ]
 
+  alias Logflare.JSON
   alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams}
   alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Logs.{RejectedLogEvents, Search}
@@ -141,7 +142,7 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def explore(%{assigns: %{team_user: team_user, user: user, source: source}} = conn, _params) do
+  def explore(%{assigns: %{team_user: _team_user, user: user, source: source}} = conn, _params) do
     conn
     |> put_flash(
       :error,
@@ -167,7 +168,7 @@ defmodule LogflareWeb.SourceController do
     |> redirect(external: explore_link)
   end
 
-  def explore(%{assigns: %{user: user, source: source}} = conn, _params) do
+  def explore(%{assigns: %{user: _user, source: source}} = conn, _params) do
     conn
     |> put_flash(
       :error,
@@ -376,7 +377,7 @@ defmodule LogflareWeb.SourceController do
        )
        when is_atom(source_id) do
     {:ok, explore_link_config} =
-      Jason.encode(%{
+      JSON.encode(%{
         "projectId" => project_id,
         "tableId" => BigQuery.GenUtils.format_table_name(source_id),
         "datasetId" => dataset_id,

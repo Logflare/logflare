@@ -23,7 +23,7 @@
           log payload
         </a>
         <div class="collapse metadata" id="metadata-<%= inx %>">
-          <pre class="pre-metadata"><code><%= Jason.encode!(log_event.params, pretty: true) %></code></pre>
+          <pre class="pre-metadata"><code><%= JSON.encode!(log_event.params, pretty: true) %></code></pre>
         </div>
       </li>
     <% end) %>

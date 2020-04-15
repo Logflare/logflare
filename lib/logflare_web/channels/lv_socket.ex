@@ -1,19 +1,23 @@
-defmodule LogflareWeb.LiveView.Socket do
+defmodule Logflare.LiveView.Socket do
   @moduledoc """
   The LiveView socket for Phoenix Endpoints.
   """
-  use Phoenix.Socket, log: false
+  # use Phoenix.Socket, serializer: Logflare.Socket.CustomJSONSerializer, log: false
+  use Phoenix.Socket
   require Logger
 
   if Version.match?(System.version(), ">= 1.8.0") do
-    @derive {Inspect, only: [:id, :endpoint, :view, :parent_pid, :root_id, :assigns, :changed]}
+    @derive {Inspect,
+             only: [:id, :endpoint, :router, :view, :parent_pid, :root_pid, :assigns, :changed]}
   end
 
   defstruct id: nil,
             endpoint: nil,
             view: nil,
+            root_view: nil,
             parent_pid: nil,
             root_pid: nil,
+            router: nil,
             assigns: %{},
             changed: %{},
             private: %{},
@@ -23,7 +27,7 @@ defmodule LogflareWeb.LiveView.Socket do
 
   @type t :: %__MODULE__{}
   @type unsigned_params :: map
-  @type assigns :: map
+  @type assigns :: map | Phoenix.LiveView.Socket.AssignsNotInSocket.t()
 
   channel "lv:*", Phoenix.LiveView.Channel
 
@@ -32,6 +36,8 @@ defmodule LogflareWeb.LiveView.Socket do
   """
   @impl Phoenix.Socket
   def connect(_params, %Phoenix.Socket{} = socket, connect_info) do
+    socket = put_in(socket.serializer, Logflare.Socket.TemporaryOverrideJSONSerializer)
+
     case connect_info do
       %{session: session} when is_map(session) ->
         {:ok, put_in(socket.private[:session], session)}

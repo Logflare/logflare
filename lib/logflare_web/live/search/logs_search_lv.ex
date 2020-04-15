@@ -3,21 +3,23 @@ defmodule LogflareWeb.Source.SearchLV do
   Handles all user interactions with the source logs search
   """
   use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+
   alias LogflareWeb.Router.Helpers, as: Routes
-
   alias LogflareWeb.SearchView
-
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SavedSearches
-  alias __MODULE__.SearchOpts
   alias Logflare.Lql
-  alias Logflare.Lql.{ChartRule, FilterRule}
+  alias Logflare.Lql.{ChartRule}
+  alias Logflare.{Sources, Users}
+
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
+
   use LogflareWeb.LiveViewUtils
   use LogflareWeb.ModalsLVHelpers
+
   require Logger
-  alias Logflare.{Sources, Users}
+
   @tail_search_interval 500
   @user_idle_interval 300_000
   @default_qs "c:count(*) c:group_by(t::minute)"
@@ -65,7 +67,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_disconnected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = session,
+        %{"user_id" => user_id} = _session,
         socket
       ) do
     source = get_source_for_param(source_id)
@@ -81,6 +83,7 @@ defmodule LogflareWeb.Source.SearchLV do
         loading: false,
         tailing?: tailing?,
         user: user,
+        loading: true,
         notifications: %{},
         search_tip: gen_search_tip(),
         use_local_time: true,
@@ -105,7 +108,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign_notifications(:error, error)
       end
 
-    if user.admin or source.user_id == user.id do
+    if user && (user.admin or source.user_id == user.id) do
       socket
     else
       redirect(socket, to: "/")
@@ -121,9 +124,18 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_connected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = session,
+        %{"user_id" => user_id} = _session,
         socket
       ) do
+    user_timezone = get_connect_params(socket)["user_timezone"]
+
+    user_timezone =
+      if Timex.Timezone.exists?(user_timezone) do
+        user_timezone
+      else
+        "Etc/UTC"
+      end
+
     source = get_source_for_param(source_id)
     user = Users.Cache.get_by_and_preload(id: user_id)
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
@@ -135,9 +147,12 @@ defmodule LogflareWeb.Source.SearchLV do
         source: source,
         loading: false,
         tailing?: tailing?,
+        tailing_initial?: true,
+        loading: true,
         user: user,
         notifications: %{},
         search_tip: gen_search_tip(),
+        user_local_timezone: user_timezone,
         use_local_time: true
       )
 
@@ -145,12 +160,18 @@ defmodule LogflareWeb.Source.SearchLV do
       lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
       optimizedqs = Lql.encode!(lql_rules)
 
+      socket =
+        socket
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:querystring, optimizedqs)
+
+      SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
+
       socket
-      |> assign(:lql_rules, lql_rules)
-      |> assign(:querystring, optimizedqs)
     else
       {:error, error} ->
         maybe_cancel_tailing_timer(socket)
+        SearchQueryExecutor.maybe_cancel_query(source.token)
 
         socket
         |> assign(:querystring, querystring)
@@ -332,7 +353,7 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    %{id: sid, token: stoken} = prev_assigns.source
+    %{id: _sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.bq_table_schema
 
@@ -391,11 +412,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def build_params_from_assigns(assigns) do
     Map.take(assigns, [:querystring, :tailing?])
-  end
-
-  def handle_event("set_user_local_timezone", metadata, socket) do
-    socket = assign(socket, :user_local_timezone, metadata["tz"])
-    {:noreply, socket}
   end
 
   def handle_event("set_local_time" = ev, metadata, socket) do

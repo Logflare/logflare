@@ -4,8 +4,7 @@ defmodule LogflareWeb.Endpoint do
 
   socket "/socket", LogflareWeb.UserSocket, websocket: true
 
-  socket "/live", LogflareWeb.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]]
+  socket "/live", Logflare.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -31,7 +30,7 @@ defmodule LogflareWeb.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
-    json_decoder: Jason
+    json_decoder: Jsonrs
 
   plug Plug.MethodOverride
   plug Plug.Head

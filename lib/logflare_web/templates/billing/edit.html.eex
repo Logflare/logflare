@@ -1,0 +1,185 @@
+<div class="subhead subhead-fixed">
+
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
+      </ul>
+    </div>
+    <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/billing/edit</h5>
+  </div>
+</div>
+
+<div class="container mx-auto">
+  <h4 class="header-margin">Billing Account</h4>
+  <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
+
+  <div class="sub-form">
+    <h5 class="header-margin">Pick a Plan</h5>
+    <div class="scrolling-wrapper">
+    <div class="container mb-5 mt-5 min-pricing-width">
+    <div class="pricing card-deck flex-md-row mb-3">
+        <div class="card card-pricing text-center px-3 mb-4">
+            <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Free</span>
+            <div class="bg-transparent card-header pt-4 border-0">
+                <h1 class="h1 font-weight-normal text-center mb-0" data-pricing-value="15">$<span class="price">0</span></h1>
+                <span class="h6 text-muted ml-2">/ per month</span>
+            </div>
+            <div class="card-body pt-0">
+                <ul class="list-unstyled mb-4">
+                    <li>Alerts every 1 hour</li>
+                    <li>No custom backend</li>
+                    <li>Rate limit 2/second</li>
+                    <li>120 burst per second</li>
+                    <li>5,200,000 events/month</li>
+                    <li>Up to 3 sources</li>
+                    <li>7 day event history</li>
+                    <li>0 additional users</li>
+                </ul>
+            </div>
+        </div>
+        <div class="card card-pricing text-center px-3 mb-4">
+            <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Entry</span>
+            <div class="bg-transparent card-header pt-4 border-0">
+                <h1 class="h1 font-weight-normal text-center mb-0" data-pricing-value="30">$<span class="price">20</span></h1>
+                <span class="h6 text-muted ml-2">/ per month</span>
+            </div>
+            <div class="card-body pt-0">
+                <ul class="list-unstyled mb-4">
+                  <li>Alerts every 15 minutes</li>
+                  <li>BYOB BigQuery</li>
+                  <li>Rate limit 5/second</li>
+                  <li>300 burst per second</li>
+                  <li>13,000,000 events/month</li>
+                  <li>Up to 5 sources</li>
+                  <li>Unlimited*</li>
+                  <li>2 additional users</li>
+                </ul>
+                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_name" => "Entry"}), class: "btn btn-primary form-button" %>
+            </div>
+        </div>
+        <div class="card card-pricing text-center px-3 mb-4">
+            <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Professional</span>
+            <div class="bg-transparent card-header pt-4 border-0">
+                <h1 class="h1 font-weight-normal text-center mb-0" data-pricing-value="45">$<span class="price">90</span></h1>
+                <span class="h6 text-muted ml-2">/ per month</span>
+            </div>
+            <div class="card-body pt-0">
+                <ul class="list-unstyled mb-4">
+                  <li>Alerts every 5 minutes</li>
+                  <li>BYOB BigQuery</li>
+                  <li>Rate limit 19/second</li>
+                  <li>1,140 burst per second</li>
+                  <li>50,000,000 events/month</li>
+                  <li>Up to 20 sources</li>
+                  <li>Unlimited*</li>
+                  <li>20 additional users</li>
+                </ul>
+                <%= link "Subscribe", to: Routes.billing_path(@conn, :confirm_subscription, %{"plan_name" => "Pro"}), class: "btn btn-primary form-button" %>
+            </div>
+        </div>
+        <div class="card card-pricing text-center px-3 mb-4">
+            <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Enterprise</span>
+            <div class="bg-transparent card-header pt-4 border-0">
+                <h1 class="h1 font-weight-normal text-center mb-0" data-pricing-value="60"><span class="h6 text-muted ml-2"></span>$<span class="price">250</span></h1>
+                <span class="h6 text-muted ml-2">/ starting per month</span>
+            </div>
+            <div class="card-body pt-0">
+                <ul class="list-unstyled mb-4">
+                  <li>Alerts every 1 second</li>
+                  <li>Custom</li>
+                  <li>Unlimited</li>
+                  <li>Unlimited</li>
+                  <li>1,000,000,000+ events/month</li>
+                  <li>100+</li>
+                  <li>Unlimited</li>
+                  <li>Unlimited</li>
+                </ul>
+                <button type="button" class="btn btn-primary mb-3">Contact us</button>
+            </div>
+        </div>
+    </div>
+  </div>
+
+</div>
+<p>*unlimited events when you <strong>bring your own backend</strong>™</p>
+</div>
+
+<div class="sub-form">
+  <h5 class="header-margin">Payment Method</h5>
+  <p>Update your credit card on file.</p>
+  <%= link "Update payment method", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>
+</div>
+
+<div class="sub-form">
+  <h5 class="header-margin">Subscriptions</h5>
+  <p>Details of your current Logflare subscription.</p>
+  <table class="table table-dark">
+    <thead>
+      <tr>
+        <th scope="col">Plan</th>
+        <th scope="col">Price</th>
+        <th scope="col">Next invoice</th>
+        <th scope="col">Trial start</th>
+        <th scope="col">Trial end</th>
+        <th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= if @user.billing_account.stripe_subscriptions["data"] do %>
+        <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
+        <tr>
+          <td><%= sub["plan"]["nickname"] %></td>
+          <td><%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %></td>
+          <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
+          <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>
+          <td><%= if sub["trial_end"], do: DateTime.from_unix!(sub["trial_end"]) %></td>
+          <td><%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe, id: sub["id"]), method: :delete, class: "btn  btn-danger btn-small" %></td>
+        </tr>
+        <% end %>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<div class="sub-form">
+  <h5 class="header-margin">Invoices</h5>
+  <p>View and download your invoices!</p>
+  <table class="table table-dark">
+    <thead>
+      <tr>
+        <th scope="col">Number</th>
+        <th scope="col">Amount</th>
+        <th scope="col">Status</th>
+        <th scope="col">PDF</th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= if @user.billing_account.stripe_invoices["data"] do %>
+        <%= for invoice <- @user.billing_account.stripe_invoices["data"] do %>
+        <tr>
+          <td><%= link "#{invoice["number"]}", to: invoice["hosted_invoice_url"], target: "_blank" %></td>
+          <td><%= Money.to_string(Money.new(invoice["amount_due"], String.upcase(invoice["currency"]) |> String.to_atom())) %></td>
+          <td><%= invoice["status"] %></td>
+          <td><%= link "download", to: invoice["invoice_pdf"] %></td>
+        </tr>
+        <% end %>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<div class="sub-form">
+  <h5 class="header-margin">Sync Billing Account</h5>
+  <p>Something here missing? We use Stripe to handle billing. If something didn't sync correctly with Stripe you can trigger this manually.</p>
+  <%= link "Sync billing account", to: Routes.billing_path(@conn, :sync), method: :post, class: "btn btn-primary form-button" %>
+</div>
+
+<div class="sub-form">
+  <h5 class="header-margin">Delete Billing Account</h5>
+  <p>If something goes terribly wrong you can delete and re-create your billing account. You will no longer be able to access any subscriptions or invoices listed here.</p>
+  <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
+</div>
+
+</div>

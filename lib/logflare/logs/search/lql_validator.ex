@@ -1,7 +1,6 @@
 defmodule Logflare.Lql.Validator do
   @moduledoc false
   import Logflare.Logs.SearchOperations.Helpers
-  import Logflare.Logs.Search.Utils
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
   @default_max_n_chart_ticks 250

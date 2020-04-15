@@ -4,7 +4,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.{Sources, EctoQueryBQ}
   alias Logflare.Lql
   alias Logflare.Logs.Search.Utils
-  alias Logflare.Lql.{ChartRule, FilterRule}
   alias Logflare.BqRepo
   alias Logflare.Google.BigQuery.GCPConfig
 

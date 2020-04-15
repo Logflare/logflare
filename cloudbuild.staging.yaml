@@ -33,5 +33,4 @@ steps:
     args: ["push", "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/logflare-staging/logflare_origin:latest"]
-
 timeout: 1800s

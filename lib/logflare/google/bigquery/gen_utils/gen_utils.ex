@@ -2,6 +2,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @moduledoc """
   Generic utils for BigQuery.
   """
+  alias Logflare.JSON
   alias Logflare.{Sources, Users}
   alias Logflare.{Source, User}
   alias GoogleApi.BigQuery.V2.Connection
@@ -80,7 +81,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_tesla_error_message(:emfile | :timeout | :closed | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
-    case Jason.decode(message.body) do
+    case JSON.decode(message.body) do
       {:ok, body} ->
         body["error"]["message"]
 

@@ -3,6 +3,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   Various utility functions for BQ Schemas
   """
 
+  alias Logflare.JSON
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   import Logflare.BigQuery.SchemaTypes
@@ -69,7 +70,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> trunc
   end
 
-  def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
+  def struct_to_map(struct), do: struct |> JSON.encode!() |> JSON.decode!()
 
   @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
   def to_typemap(nil), do: nil

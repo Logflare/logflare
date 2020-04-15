@@ -30,7 +30,10 @@ const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)
 
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks,
-  params: { _csrf_token: csrfToken },
+  params: {
+    _csrf_token: csrfToken,
+    user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  },
 })
 
 liveSocket.connect()
