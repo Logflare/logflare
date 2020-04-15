@@ -21,17 +21,26 @@
             <span class="hide-on-mobile">local time</span>
           </a>
         </li>
-        <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
-        <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
-          <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
-        <% else %>
-          <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
-          <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
-        <% end %>
-      </ul>
-    </div>
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+        <li>
+          <a href="#" id="search-uri-query" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">
+          <span>
+            <i class="fas fa-copy">
+            </i>
+          </span>
+          <span class="hide-on-mobile">
+            share
+          </span></a>
+      </li>
+      <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
+        <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
+      <% else %>
+        <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
+        <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
+      <% end %>
+    </ul>
   </div>
+  <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+</div>
 </div>
 <div class="container source-logs-search-container console-text">
   <%= render("logs_list.html",

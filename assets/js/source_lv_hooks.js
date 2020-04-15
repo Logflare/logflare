@@ -141,7 +141,11 @@ hooks.SourceLogsSearch = {
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
+
+    activateClipboardForSelector("#search-uri-query", {
+      text: () => location.href,
     })
+    $('#search-uri-query').tooltip()
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
       hook.pushEvent("stop_live_search", {})
@@ -166,6 +170,7 @@ hooks.SourceLogsSearch = {
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
+    $('#search-uri-query').tooltip()
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")
