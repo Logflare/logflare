@@ -141,6 +141,7 @@ hooks.SourceLogsSearch = {
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
       hook.pushEvent("datepicker_update", {querystring: tsClause})
+    })
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
