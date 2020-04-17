@@ -43,7 +43,7 @@ const renderCfStatusCodeTooltip = ({data, color}) => {
     <div>
       <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
       <br/>
-      <strong style={{color: brandGray}}>Total: {data.value}</strong>
+      <strong style={{color: brandGray}}>Total: {data.total}</strong>
       <br/>
       <strong style={{color: errorColor}}>5xx: {data.status_5xx}</strong>
       <br/>
@@ -65,7 +65,7 @@ const renderElixirLoggerTooltip = ({data, color}) => {
     <div>
       <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
       <br/>
-      <strong style={{color: brandGray}}>Total: {data.value}</strong>
+      <strong style={{color: brandGray}}>Total: {data.total}</strong>
       <br/>
       <strong style={{color: errorColor}}>Error: {data.level_error}</strong>
       <br/>
