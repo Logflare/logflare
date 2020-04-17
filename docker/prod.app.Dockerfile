@@ -1,11 +1,4 @@
-FROM rust:1.42 as rust
 FROM gcr.io/logflare-232118/logflare_base:latest
-
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
-COPY --from=rust /usr/local/cargo /usr/local/cargo
-COPY --from=rust /usr/local/rustup /usr/local/rustup
 
 COPY ./ /logflare
 WORKDIR /logflare

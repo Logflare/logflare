@@ -3,7 +3,7 @@ defmodule Logflare.Source do
   use TypedEctoSchema
   import Ecto.Changeset
   @default_source_api_quota 50
-  @derive {Jsonrs.Encoder,
+  @derive {Jason.Encoder,
            only: [
              :name,
              :token,
@@ -27,7 +27,7 @@ defmodule Logflare.Source do
     @moduledoc false
     use TypedEctoSchema
 
-    @derive {Jsonrs.Encoder,
+    @derive {Jason.Encoder,
              only: [
                :rate,
                :latest,
@@ -59,7 +59,7 @@ defmodule Logflare.Source do
     @moduledoc false
     use Ecto.Schema
     @primary_key false
-    @derive {Jsonrs.Encoder,
+    @derive {Jason.Encoder,
              only: [
                :team_user_ids_for_email,
                :team_user_ids_for_sms,

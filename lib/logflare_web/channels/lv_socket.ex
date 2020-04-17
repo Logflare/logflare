@@ -35,8 +35,6 @@ defmodule Logflare.LiveView.Socket do
   """
   @impl Phoenix.Socket
   def connect(_params, %Phoenix.Socket{} = socket, connect_info) do
-    socket = put_in(socket.serializer, Logflare.Socket.TemporaryOverrideJSONSerializer)
-
     case connect_info do
       %{session: session} when is_map(session) ->
         {:ok, put_in(socket.private[:session], session)}

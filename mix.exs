@@ -146,7 +146,6 @@ defmodule Logflare.Mixfile do
 
       # Rust NIFs
       {:rustler, "~> 0.21.0", override: true},
-      {:jsonrs, "0.1.4"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.2"},
