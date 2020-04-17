@@ -2,8 +2,7 @@ defmodule Logflare.LiveView.Socket do
   @moduledoc """
   The LiveView socket for Phoenix Endpoints.
   """
-  # use Phoenix.Socket, serializer: Logflare.Socket.CustomJSONSerializer, log: false
-  use Phoenix.Socket
+  use Phoenix.Socket, log: false
   require Logger
 
   if Version.match?(System.version(), ">= 1.8.0") do
