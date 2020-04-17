@@ -165,6 +165,11 @@ hooks.SourceLogsSearch = {
       hook.pushEvent("datepicker_update", {querystring: tsClause})
     })
 
+    window.stopLiveSearch = () => hook.pushEvent
+    window.datepickerUpdate = (tsClause)  => {
+      hook.pushEvent("datepicker_update", {querystring: tsClause})
+    }
+
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
       hook.pushEvent("stop_live_search", {})
     })

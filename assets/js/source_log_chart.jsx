@@ -1,4 +1,5 @@
 import React from "react"
+import DateTime from "luxon/src/datetime"
 import {ResponsiveBarCanvas} from "@nivo/bar"
 
 import {BarLoader} from "react-spinners"
@@ -131,8 +132,25 @@ const chartSettings = (type) => {
   }
 }
 
-
-const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId}) => {
+const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId, chart_period: chartPeriod}) => {
+  const datepickerUpdate = window.datepickerUpdate
+  const onClick = (event) => {
+    window.stopLiveSearch()
+    const utcDatetime = event.data.datetime
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const start = DateTime.fromISO(utcDatetime, {zone: tz}).toISO({
+      includeOffset: false,
+      suppressMilliseconds: true,
+      format: "extended"
+    })
+    const end = DateTime.fromISO(utcDatetime, {zone: tz}).plus({[chartPeriod + "s"]: 1}).toISO({
+      includeOffset: false,
+      suppressMilliseconds: true,
+      format: "extended"
+    })
+    const ts = `t:${start}..${end}`
+    datepickerUpdate(ts)
+  }
   const renderTooltip = tooltipFactory(chartDataShapeId)
   return (
     <div
@@ -169,6 +187,7 @@ const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId}) 
           axisLeft={null}
           enableLabel={false}
           animate={true}
+          onClick={onClick}
           motionStiffness={90}
           motionDamping={15}
           theme={theme}

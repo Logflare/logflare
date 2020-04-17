@@ -30,7 +30,7 @@
           <span class="hide-on-mobile">
             share
           </span>
-          </span>
+        </span>
       </li>
       <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
         <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
@@ -51,7 +51,8 @@
      use_local_time: @use_local_time) %>
   <div>
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
-    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading, chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
+    <%= live_react_component("Components.LogEventsChart", %{
+      data: @log_aggregates, loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
   </div>
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
@@ -107,7 +108,7 @@
         Chart period:
       </div>
       <div class="col-auto">
-        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: (get_chart_rule(@lql_rules) || %{period: "minute"}).period, class: "form-control form-control-sm" %>
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: get_chart_period(@lql_rules, "minute"), class: "form-control form-control-sm" %>
       </div>
       <div class="col-auto  hide-on-mobile">
         Aggregate:
@@ -117,7 +118,7 @@
           <%= select f,
          :chart_aggregate,
           ["sum", "avg", "count"],
-          selected: (get_chart_rule(@lql_rules) || %{aggregate: "count"}).aggregate,
+          selected: get_chart_aggregate(@lql_rules, "count"),
           class: "form-control form-control-sm"
            %>
         <% else %>
