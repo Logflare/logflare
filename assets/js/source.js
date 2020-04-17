@@ -83,7 +83,7 @@ async function logTemplate(e) {
         metadata
     </a>
     <div class="collapse metadata" id="${metadataId}">
-        <pre class="pre-metadata"><code>${metadata}</code></pre>
+        <pre class="pre-metadata"><code> ${_.escape(metadata)}</code></pre>
     </div> `
     : ""
 
