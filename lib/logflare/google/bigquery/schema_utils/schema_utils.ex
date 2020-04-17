@@ -70,7 +70,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> trunc
   end
 
-  def struct_to_map(struct), do: struct |> JSON.encode!() |> JSON.decode!()
+  def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
   @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
   def to_typemap(nil), do: nil
