@@ -407,27 +407,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def push_patch_with_params(socket) do
-    path =
-      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
-        querystring: socket.assigns.querystring,
-        tailing?: socket.assigns.tailing?
-      })
-
-    push_patch(socket,
-      to: path,
-      replace: true
-    )
-  end
-
-  def new_live_path(socket, params) do
-    Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
-  end
-
-  def build_params_from_assigns(assigns) do
-    Map.take(assigns, [:querystring, :tailing?])
-  end
-
   def handle_event("set_local_time" = ev, metadata, socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
@@ -480,6 +459,27 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:lql_rules, lql_rules)
 
     {:noreply, socket}
+  end
+
+  def push_patch_with_params(socket) do
+    path =
+      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
+        querystring: socket.assigns.querystring,
+        tailing?: socket.assigns.tailing?
+      })
+
+    push_patch(socket,
+      to: path,
+      replace: true
+    )
+  end
+
+  def new_live_path(socket, params) do
+    Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
+  end
+
+  def build_params_from_assigns(assigns) do
+    Map.take(assigns, [:querystring, :tailing?])
   end
 
   def handle_info({:search_result, search_result}, socket) do

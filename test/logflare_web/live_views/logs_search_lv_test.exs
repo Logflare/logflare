@@ -73,6 +73,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       lql_rules = get_view_assigns(view).lql_rules
       assert Lql.Utils.get_chart_rule(lql_rules).aggregate == :count
 
+      assert_patched(
+        view,
+        "/sources/#{s.id}/search?querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29&tailing%3F=true"
+      )
+
       assert find_querystring(html) == "c:count(*) c:group_by(t::day)"
       assert find_selected_chart_period(html) == "day"
       assert find_selected_chart_aggregate(html) == "count"
@@ -85,6 +90,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
         })
 
       assert find_querystring(html) == "error crash c:count(*) c:group_by(t::day)"
+
+      assert_patched(
+        view,
+        "/sources/#{s.id}/search?querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29&tailing%3F=true"
+      )
 
       lql_rules = get_view_assigns(view).lql_rules
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
@@ -111,10 +121,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_selected_chart_period(html) == "minute"
       assert find_selected_chart_aggregate(html) == "sum"
 
+      assert_patched(
+        view,
+        "/sources/#{s.id}/search?querystring=error+crash+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29&tailing%3F=true"
+      )
+
       assert get_view_assigns(view).tailing? == true
 
       _html = render_change(view, :stop_live_search, %{})
       assert get_view_assigns(view).tailing? == false
+
+      assert_patched(
+        view,
+        "/sources/#{s.id}/search?querystring=error+crash+c%3Asum%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Aminute%29&tailing%3F=false"
+      )
 
       html =
         render_change(view, :timestamp_and_chart_update, %{
@@ -162,6 +182,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_selected_chart_period(html) == "hour"
       assert find_selected_chart_aggregate(html) == "avg"
 
+      assert_patched(
+        view,
+        "/sources/#{s.id}/search?querystring=error+crash+t%3A2020-%7B01..02%7D-01T%7B01..10%7D%3A%7B10..22%7D%3A%7B00..20%7D+c%3Asum%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Aminute%29&tailing%3F=false"
+      )
+
       html =
         render_change(view, :start_search, %{
           "search" => %{
@@ -176,6 +201,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert chart_rule.period == :hour
       assert find_selected_chart_period(html) == "hour"
       assert find_selected_chart_aggregate(html) == "avg"
+
+      assert_patched(
+        view,
+        "/sources/#{s.id}/search?querystring=error+crash+t%3A2020-%7B01..02%7D-01T%7B01..10%7D%3A%7B10..22%7D%3A%7B00..20%7D+c%3Aavg%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Ahour%29&tailing%3F=false"
+      )
     end
   end
 
@@ -247,7 +277,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       u = %{u | id: u.id - 1}
       conn = assign(conn, :user, u)
 
-      assert {:error, %{redirect: %{to: "/"}}} =
+      assert {:error, {:redirect, %{to: "/"}}} =
                live(conn, "/sources/#{s.id}/search",
                  connect_params: %{"user_timezone" => "Europe/Berlin"}
                )
@@ -256,7 +286,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "redirected for anonymous user", %{conn: conn, source: [s | _]} do
       conn = assign(conn, :user, nil)
 
-      assert {:error, %{redirect: %{to: "/"}}} =
+      assert {:error, {:redirect, %{to: "/"}}} =
                live(conn, "/sources/#{s.id}/search",
                  connect_params: %{"user_timezone" => "Europe/Berlin"}
                )
@@ -306,12 +336,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
                get_view_assigns(view).querystring
 
       assert render_change(view, "timestamp_and_chart_update", %{
-               "querystring" => "t:2020-04-20T00:{01..02}:00:00",
+               "querystring" => "t:2020-04-20T00:{01..02}:00",
                "period" => "second"
              }) =~
                ~S|id="user-local-timezone"|
 
-      assert "error t:2020-04-20T00:{01..02}:00:00 c:count(*) c:group_by(t::second)" ==
+      assert "error t:2020-04-20T00:{01..02}:00 c:count(*) c:group_by(t::second)" ==
                get_view_assigns(view).querystring
     end
 
@@ -365,8 +395,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp assign_user_source(_context) do
-    {:ok, _} = RLS.start_link(%RLS{source_id: @test_token})
-    Process.sleep(2500)
+    if is_nil(Process.whereis(@test_token)) do
+      {:ok, _} = RLS.start_link(%RLS{source_id: @test_token})
+      Process.sleep(2500)
+    end
+
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
     Sources.Cache.put_bq_schema(@test_token, PredefinedTestUser.table_schema())

@@ -51,8 +51,11 @@
      use_local_time: @use_local_time) %>
   <div>
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
-    <%= live_react_component("Components.LogEventsChart", %{
-      data: @log_aggregates, loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
+    <%= live_react_component(
+    "Components.LogEventsChart",
+    %{data: @log_aggregates, loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
+    [container: [id: "log-events-chart"]]
+    ) %>
   </div>
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
@@ -94,7 +97,7 @@
           <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
         </a>
       </div>
-      <div class="col-auto" phx-update="ignore">
+      <div class="col-auto" id="daterangepicker-container" phx-update="ignore">
         <span class="btn btn-primary" id="daterangepicker">
           <span class="fa fa-clock" >
           </span>

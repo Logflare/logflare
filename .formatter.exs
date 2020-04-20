@@ -5,6 +5,7 @@
     :ecto_sql,
     :ecto,
     :phoenix,
+    :phoenix_live_view,
     :plug,
     :placebo,
     :typed_struct,

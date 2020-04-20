@@ -52,6 +52,8 @@ defmodule LogflareWeb do
           push_patch: 2
         ]
 
+      import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
+
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
 
