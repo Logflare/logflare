@@ -132,8 +132,9 @@ const chartSettings = (type) => {
   }
 }
 
+const periods = ["day", "hour", "minute", "second"]
 const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId, chart_period: chartPeriod}) => {
-  const datepickerUpdate = window.datepickerUpdate
+  const updateTimestampAndChart = window.updateTimestampAndChart
   const onClick = (event) => {
     window.stopLiveSearch()
     const utcDatetime = event.data.datetime
@@ -149,7 +150,9 @@ const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId, c
       format: "extended"
     })
     const ts = `t:${start}..${end}`
-    datepickerUpdate(ts)
+    const index = periods.findIndex(p => p === chartPeriod)
+    const newPeriod = index === 3 ? periods[3] : periods[index + 1]
+    updateTimestampAndChart(ts, newPeriod)
   }
   const renderTooltip = tooltipFactory(chartDataShapeId)
   return (

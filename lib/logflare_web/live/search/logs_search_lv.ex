@@ -329,23 +329,37 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event(
-        "datepicker_update" = ev,
-        %{"querystring" => ts_qs},
-        %{assigns: assigns} = socket
-      ) do
+  def handle_event("timestamp_and_chart_update" = ev, params, %{assigns: assigns} = socket) do
     log_lv_received_event(ev, socket.assigns.source)
+
+    ts_qs = Map.get(params, "querystring")
+    period = Map.get(params, "period")
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
-    lql_rules = Lql.Utils.update_timestamp_rules(assigns.lql_rules, ts_rules)
+    lql_list =
+      assigns.lql_rules
+      |> Lql.Utils.update_timestamp_rules(ts_rules)
 
-    qs = Lql.encode!(lql_rules)
+    lql_list =
+      if period do
+        Lql.Utils.put_chart_period(lql_list, String.to_existing_atom(period))
+      else
+        lql_list
+      end
 
-    {:noreply,
-     socket
-     |> assign(:lql_rules, lql_rules)
-     |> assign(:querystring, qs)}
+    qs = Lql.encode!(lql_list)
+
+    socket =
+      socket
+      |> assign(:lql_rules, lql_list)
+      |> assign(:querystring, qs)
+      |> assign(:log_events, [])
+      |> assign(:loading, true)
+
+    SearchQueryExecutor.maybe_execute_query(assigns.source.token, socket.assigns)
+
+    {:noreply, socket}
   end
 
   def handle_event(

@@ -52,6 +52,17 @@ defmodule Logflare.Lql.Utils do
     |> Enum.concat(new_rules)
   end
 
+  def put_chart_period(lql_list, period) when is_atom(period) do
+    i = Enum.find_index(lql_list, &match?(%ChartRule{}, &1))
+
+    chart =
+      lql_list
+      |> Enum.at(i)
+      |> Map.put(:period, period)
+
+    List.replace_at(lql_list, i, chart)
+  end
+
   @spec update_chart_rule(lql_list, ChartRule.t(), map()) :: lql_list
   def update_chart_rule(rules, default, params) when is_map(params) and is_list(rules) do
     i = Enum.find_index(rules, &match?(%ChartRule{}, &1))

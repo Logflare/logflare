@@ -143,7 +143,8 @@ hooks.SourceLogsSearch = {
     $daterangepicker.daterangepicker(datepickerConfig)
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
-      hook.pushEvent("datepicker_update", {querystring: tsClause})
+        picker.startDate,
+      hook.pushEvent("timestamp_and_chart_update", { querystring: tsClause })
     })
 
     activateClipboardForSelector("#search-uri-query", {
@@ -162,13 +163,14 @@ hooks.SourceLogsSearch = {
     $daterangepicker.daterangepicker(datepickerConfig)
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
       const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
-      hook.pushEvent("datepicker_update", {querystring: tsClause})
+        picker.startDate,
+      hook.pushEvent("timestamp_and_chart_update", { querystring: tsClause })
     })
 
     window.stopLiveSearch = () => hook.pushEvent("stop_live_search", {})
 
-    window.datepickerUpdate = (tsClause)  => {
-      hook.pushEvent("datepicker_update", {querystring: tsClause})
+    window.updateTimestampAndChart = (tsClause, chartPeriod)  => {
+      hook.pushEvent("timestamp_and_chart_update", {querystring: tsClause, period: chartPeriod})
     }
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {

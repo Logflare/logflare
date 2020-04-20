@@ -20,7 +20,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   describe "user action flow simulation" do
     setup [:assign_user_source]
 
-    @tag :this
     test "user sequence", %{conn: conn, source: [s | _]} do
       {:ok, view, html} =
         live(conn, "/sources/#{s.id}/search",
@@ -118,7 +117,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).tailing? == false
 
       html =
-        render_change(view, :datepicker_update, %{
+        render_change(view, :timestamp_and_chart_update, %{
           "querystring" => "t:2020-01-01T01:10:00..2020-02-01T10:22:20"
         })
 
@@ -287,7 +286,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).tailing?
     end
 
-    test "datepicker_update", %{conn: conn, source: [s | _]} do
+    test "timestamp_and_chart_update", %{conn: conn, source: [s | _]} do
       conn =
         conn
         |> live("/sources/#{s.id}/search?q=error",
@@ -300,10 +299,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html =~ "error c:count(*) c:group_by(t::minute)"
 
-      assert render_change(view, "datepicker_update", %{"querystring" => "t:last@2h"}) =~
+      assert render_change(view, "timestamp_and_chart_update", %{"querystring" => "t:last@2h"}) =~
                ~S|id="user-local-timezone"|
 
       assert "error t:last@2hour c:count(*) c:group_by(t::minute)" ==
+               get_view_assigns(view).querystring
+
+      assert render_change(view, "timestamp_and_chart_update", %{
+               "querystring" => "t:2020-04-20T00:{01..02}:00:00",
+               "period" => "second"
+             }) =~
+               ~S|id="user-local-timezone"|
+
+      assert "error t:2020-04-20T00:{01..02}:00:00 c:count(*) c:group_by(t::second)" ==
                get_view_assigns(view).querystring
     end
 
