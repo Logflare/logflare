@@ -14,14 +14,13 @@ hooks.SourceSchemaModalTable = {
     $(".copy-metadata-field").tooltip()
   },
 }
-const initSearchInViewObserver = hook => {
+const initSearchInViewObserver = (hook) => {
   const observer = new IntersectionObserver((entries, observer) => {
-    entries.forEach(entry => {
+    entries.forEach((entry) => {
       let searchInView = entry.isIntersecting
       if (searchInView) {
         hook.pushEvent("resume_live_search", {})
-      }
-      else {
+      } else {
         hook.pushEvent("pause_live_search", {})
       }
     })
@@ -45,7 +44,7 @@ hooks.SourceLogsSearchList = {
   },
 }
 
-const formatModal = $modal => {
+const formatModal = ($modal) => {
   if ($modal.data("modal-type") === "search-op-debug-modal") {
     const $code = $modal.find(`code#search-op-sql-string`)
     const fmtSql = sqlFormatter.format($code.text())
@@ -91,24 +90,24 @@ hooks.ModalHook = {
 }
 
 const datepickerConfig = {
-  "showDropdowns": true,
-  "timePicker": true,
-  "timePicker24Hour": true,
+  showDropdowns: true,
+  timePicker: true,
+  timePicker24Hour: true,
   drops: "up",
   alwaysShowCalendars: true,
   ranges: {
-    "Today": [],
-    "Yesterday": [],
+    Today: [],
+    Yesterday: [],
     "Last 15 Minutes": [],
     "Last 7 Days": [],
     "This Month": [],
-    "Last Month": []
+    "Last Month": [],
   },
 }
 
 const buildTsClause = (start, end, label) => {
   let timestampFilter
-  const formatWithISO8601 = x => x.format("YYYY-MM-DDTHH:mm:ss")
+  const formatWithISO8601 = (x) => x.format("YYYY-MM-DDTHH:mm:ss")
   switch (label) {
     case "Today":
       timestampFilter = ["t:today"]
@@ -129,12 +128,13 @@ const buildTsClause = (start, end, label) => {
       timestampFilter = ["t:last@month"]
       break
     default:
-      timestampFilter = [`t:${formatWithISO8601(start)}..${formatWithISO8601(end)}`]
+      timestampFilter = [
+        `t:${formatWithISO8601(start)}..${formatWithISO8601(end)}`,
+      ]
       break
   }
   return timestampFilter.join(" ")
 }
-
 
 hooks.SourceLogsSearch = {
   updated() {
@@ -142,15 +142,18 @@ hooks.SourceLogsSearch = {
     const $daterangepicker = $("#daterangepicker")
     $daterangepicker.daterangepicker(datepickerConfig)
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
-      const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
+      const tsClause = buildTsClause(
         picker.startDate,
-      hook.pushEvent("timestamp_and_chart_update", { querystring: tsClause })
+        picker.endDate,
+        picker.chosenLabel
+      )
+      hook.pushEvent("timestamp_and_chart_update", {querystring: tsClause})
     })
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
-    $('#search-uri-query').tooltip()
+    $("#search-uri-query").tooltip()
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
       hook.pushEvent("stop_live_search", {})
@@ -162,15 +165,21 @@ hooks.SourceLogsSearch = {
     const $daterangepicker = $("#daterangepicker")
     $daterangepicker.daterangepicker(datepickerConfig)
     $daterangepicker.on("apply.daterangepicker", (e, picker) => {
-      const tsClause = buildTsClause(picker.startDate, picker.endDate, picker.chosenLabel)
+      const tsClause = buildTsClause(
         picker.startDate,
-      hook.pushEvent("timestamp_and_chart_update", { querystring: tsClause })
+        picker.endDate,
+        picker.chosenLabel
+      )
+      hook.pushEvent("timestamp_and_chart_update", {querystring: tsClause})
     })
 
     window.stopLiveSearch = () => hook.pushEvent("stop_live_search", {})
 
-    window.updateTimestampAndChart = (tsClause, chartPeriod)  => {
-      hook.pushEvent("timestamp_and_chart_update", {querystring: tsClause, period: chartPeriod})
+    window.updateTimestampAndChart = (tsClause, chartPeriod) => {
+      hook.pushEvent("timestamp_and_chart_update", {
+        querystring: tsClause,
+        period: chartPeriod,
+      })
     }
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
@@ -182,7 +191,7 @@ hooks.SourceLogsSearch = {
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
-    $('#search-uri-query').tooltip()
+    $("#search-uri-query").tooltip()
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")

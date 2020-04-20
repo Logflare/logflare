@@ -1,9 +1,9 @@
 import "phoenix"
 import "phoenix_html"
-import { Socket } from "phoenix"
+import {Socket} from "phoenix"
 
 let socket = new Socket("/socket", {
-  params: { token: window.userToken, public_token: window.publicToken },
+  params: {token: window.userToken, public_token: window.publicToken},
 })
 
 socket.connect()
