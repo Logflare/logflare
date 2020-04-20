@@ -92,7 +92,7 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:logflare_logger_backend, "~> 0.7.1"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "~> 0.11.0"},
+      {:phoenix_live_view, "~> 0.12.1"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
