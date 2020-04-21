@@ -6,6 +6,7 @@ import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
+import * as User from "./user"
 import {LogEventsChart} from "./source_log_chart.jsx"
 import Chart from "./admin_dashboard_charts.jsx"
 import Loader from "./loader.jsx"
@@ -24,6 +25,7 @@ window.Components = {LogEventsChart, Loader, AdminChart: Chart}
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
+window.User = User
 window.ClipboardJS = ClipboardJS
 
 const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)
