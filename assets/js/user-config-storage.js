@@ -19,4 +19,4 @@ const flipUseLocalTime = async () => {
 
 const useLocalTime = () => store.getItem(USE_LOCAL_TIME_KEY)
 
-export { flipUseLocalTime, useLocalTime }
+export {flipUseLocalTime, useLocalTime}

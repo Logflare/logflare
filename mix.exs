@@ -92,7 +92,7 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:logflare_logger_backend, "~> 0.7.1"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "~> 0.11.0"},
+      {:phoenix_live_view, "~> 0.12.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
@@ -146,7 +146,6 @@ defmodule Logflare.Mixfile do
 
       # Rust NIFs
       {:rustler, "~> 0.21.0", override: true},
-      {:jsonrs, "0.1.4"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.2"},

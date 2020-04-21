@@ -83,6 +83,12 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
+  def select_merge_total(query) do
+    select_merge(query, [t, ...], %{
+      total: fragment("COUNT(?) as total", t.timestamp)
+    })
+  end
+
   def select_count_http_status_code(q) do
     q
     |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.response.status_code")
@@ -100,6 +106,7 @@ defmodule Logflare.Logs.SearchQueries do
       status_4xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_4xx", t.status_code, 400, 499),
       status_5xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_5xx", t.status_code, 500, 599)
     })
+    |> select_merge_total()
   end
 
   def select_count_log_level(q) do
@@ -123,6 +130,7 @@ defmodule Logflare.Logs.SearchQueries do
       level_warn: fragment("COUNTIF(? = ?) as level_warn", t.level, "warn"),
       level_error: fragment("COUNTIF(? = ?) as level_error", t.level, "error")
     })
+    |> select_merge_total()
   end
 
   def source_log_event_query(bq_table_id, id, timestamp) when is_binary(id) do

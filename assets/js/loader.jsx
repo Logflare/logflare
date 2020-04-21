@@ -1,4 +1,4 @@
-import { DotLoader } from "react-spinners"
+import {DotLoader} from "react-spinners"
 
 const brandGreen = "#5eeb8f"
 

@@ -1,11 +1,11 @@
 import $ from "jquery"
 import socket from "./socket"
-import { activateClipboardForSelector } from "./utils"
-import { timestampNsToAgo } from "./formatters"
-import { applyToAllLogTimestamps } from "./logs"
+import {activateClipboardForSelector} from "./utils"
+import {timestampNsToAgo} from "./formatters"
+import {applyToAllLogTimestamps} from "./logs"
 
 export async function main() {
-  const { sourceTokens, apiKey, currentNode } = $("#__phx-assigns__").data()
+  const {sourceTokens, apiKey, currentNode} = $("#__phx-assigns__").data()
 
   await initClipboards()
   await initApiClipboard()
@@ -20,7 +20,7 @@ export async function main() {
 }
 
 async function initTooltips() {
-  $(".source-info").tooltip({ delay: { show: 100, hide: 200 } })
+  $(".logflare-tooltip").tooltip({delay: {show: 100, hide: 200}})
 }
 
 async function initClipboards() {
@@ -36,33 +36,33 @@ function joinSourceChannel(sourceToken, currentNode) {
 
   channel
     .join()
-    .receive("ok", resp => {
+    .receive("ok", (resp) => {
       console.log(
         `Dashboard channel for source ${sourceToken} joined successfully on node ${currentNode}`,
-        resp,
+        resp
       )
     })
-    .receive("error", resp => {
+    .receive("error", (resp) => {
       console.log("Unable to join", resp)
     })
 
   const sourceSelector = `#${sourceToken}`
 
-  channel.on(`log_count`, event => {
+  channel.on(`log_count`, (event) => {
     $(`${sourceSelector}-latest`).html(
-      timestampNsToAgo(new Date().getTime() * 1000),
+      timestampNsToAgo(new Date().getTime() * 1000)
     )
     $(sourceSelector).html(
-      `<small class="my-badge my-badge-info fade-in">${event.log_count}</small>`,
+      `<small class="my-badge my-badge-info fade-in">${event.log_count}</small>`
     )
   })
 
-  channel.on(`rate`, event => {
+  channel.on(`rate`, (event) => {
     $(`${sourceSelector}-rate`).html(`${event.rate}`)
     $(`${sourceSelector}-avg-rate`).html(`${event.average_rate}`)
     $(`${sourceSelector}-max-rate`).html(`${event.max_rate}`)
   })
-  channel.on(`buffer`, event => {
+  channel.on(`buffer`, (event) => {
     $(`${sourceSelector}-buffer`).html(`${event.buffer}`)
   })
 }

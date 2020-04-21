@@ -1,4 +1,5 @@
 import React from "react"
+import DateTime from "luxon/src/datetime"
 import {ResponsiveBarCanvas} from "@nivo/bar"
 
 import {BarLoader} from "react-spinners"
@@ -32,7 +33,7 @@ const renderDefaultTooltip = ({value, color, indexValue}) => {
   return (
     <div>
       <strong style={{color}}>Timestamp: {indexValue}</strong>
-      <br/>
+      <br />
       <strong style={{color}}>Value: {value}</strong>
     </div>
   )
@@ -42,19 +43,19 @@ const renderCfStatusCodeTooltip = ({data, color}) => {
   return (
     <div>
       <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
-      <br/>
-      <strong style={{color: brandGray}}>Total: {data.value}</strong>
-      <br/>
+      <br />
+      <strong style={{color: brandGray}}>Total: {data.total}</strong>
+      <br />
       <strong style={{color: errorColor}}>5xx: {data.status_5xx}</strong>
-      <br/>
+      <br />
       <strong style={{color: warnColor}}>4xx: {data.status_4xx}</strong>
-      <br/>
+      <br />
       <strong style={{color: secondInfoColor}}>3xx: {data.status_3xx}</strong>
-      <br/>
+      <br />
       <strong style={{color: infoColor}}>2xx: {data.status_2xx}</strong>
-      <br/>
+      <br />
       <strong style={{color: debugColor}}>1xx: {data.status_1xx}</strong>
-      <br/>
+      <br />
       <strong style={{color: brandGray}}>Other: {data.other}</strong>
     </div>
   )
@@ -64,23 +65,23 @@ const renderElixirLoggerTooltip = ({data, color}) => {
   return (
     <div>
       <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
-      <br/>
-      <strong style={{color: brandGray}}>Total: {data.value}</strong>
-      <br/>
+      <br />
+      <strong style={{color: brandGray}}>Total: {data.total}</strong>
+      <br />
       <strong style={{color: errorColor}}>Error: {data.level_error}</strong>
-      <br/>
+      <br />
       <strong style={{color: warnColor}}>Warn: {data.level_warn}</strong>
-      <br/>
+      <br />
       <strong style={{color: infoColor}}>Info: {data.level_info}</strong>
-      <br/>
+      <br />
       <strong style={{color: debugColor}}>Debug: {data.level_debug}</strong>
-      <br/>
+      <br />
       <strong style={{color: brandGray}}>Other: {data.other}</strong>
     </div>
   )
 }
 
-const tooltipFactory = dataShape => {
+const tooltipFactory = (dataShape) => {
   switch (dataShape) {
     case "elixir_logger_levels":
       return renderElixirLoggerTooltip
@@ -101,11 +102,17 @@ const chartSettings = (type) => {
             level_error: errorColor,
             level_warn: warnColor,
             level_debug: debugColor,
-            other: brandGray
+            other: brandGray,
           }[id]
           return color || brandGray
         },
-        keys: ["level_info", "level_debug", "level_error", "level_warn", "other"]
+        keys: [
+          "level_info",
+          "level_debug",
+          "level_error",
+          "level_warn",
+          "other",
+        ],
       }
 
     case "cloudflare_status_codes":
@@ -121,25 +128,58 @@ const chartSettings = (type) => {
           }[id]
           return color || brandGray
         },
-        keys: ["status_5xx", "status_4xx", "status_3xx", "status_2xx", "status_1xx", "other"]
+        keys: [
+          "status_5xx",
+          "status_4xx",
+          "status_3xx",
+          "status_2xx",
+          "status_1xx",
+          "other",
+        ],
       }
     default:
       return {
         colors: (_) => infoColor,
-        keys: ["value"]
+        keys: ["value"],
       }
   }
 }
 
-
-const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId}) => {
+const periods = ["day", "hour", "minute", "second"]
+const LogEventsChart = ({
+  data,
+  loading,
+  chart_data_shape_id: chartDataShapeId,
+  chart_period: chartPeriod,
+}) => {
+  const updateTimestampAndChart = window.updateTimestampAndChart
+  const onClick = (event) => {
+    window.stopLiveSearch()
+    const utcDatetime = event.data.datetime
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const start = DateTime.fromISO(utcDatetime, {zone: tz}).toISO({
+      includeOffset: false,
+      suppressMilliseconds: true,
+      format: "extended",
+    })
+    const end = DateTime.fromISO(utcDatetime, {zone: tz})
+      .plus({[chartPeriod + "s"]: 1})
+      .toISO({
+        includeOffset: false,
+        suppressMilliseconds: true,
+        format: "extended",
+      })
+    const ts = `t:${start}..${end}`
+    const index = periods.findIndex((p) => p === chartPeriod)
+    const newPeriod = index === 3 ? periods[3] : periods[index + 1]
+    updateTimestampAndChart(ts, newPeriod)
+  }
   const renderTooltip = tooltipFactory(chartDataShapeId)
   return (
     <div
       style={{
         height: 100,
         display: "flex",
-
         justifyContent: "center",
         alignItems: "center",
       }}
@@ -169,6 +209,7 @@ const LogEventsChart = ({data, loading, chart_data_shape_id: chartDataShapeId}) 
           axisLeft={null}
           enableLabel={false}
           animate={true}
+          onClick={onClick}
           motionStiffness={90}
           motionDamping={15}
           theme={theme}

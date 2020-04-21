@@ -4,7 +4,6 @@ import {ResponsiveBarCanvas} from "@nivo/bar"
 const brandLightBlack = "#1d1d1d"
 const brandGreen = "#5eeb8f"
 
-
 const theme = {
   grid: {
     line: {
@@ -26,7 +25,7 @@ const renderDefaultTooltip = ({value, color, indexValue}) => {
   return (
     <div>
       <strong style={{color}}>Timestamp: {indexValue}</strong>
-      <br/>
+      <br />
       <strong style={{color}}>Value: {value}</strong>
     </div>
   )

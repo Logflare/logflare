@@ -2,13 +2,13 @@ import socket from "./socket"
 import $ from "jquery"
 import * as userConfig from "./user-config-storage"
 import _ from "lodash"
-import { userSelectedFormatter } from "./formatters"
-import { activateClipboardForSelector } from "./utils"
-import { applyToAllLogTimestamps } from "./logs"
+import {userSelectedFormatter} from "./formatters"
+import {activateClipboardForSelector} from "./utils"
+import {applyToAllLogTimestamps} from "./logs"
 
-export async function main({ scrollTracker }, { avgEventsPerSecond }) {
-  const { sourceToken, logs } = $("#__phx-assigns__").data()
-  await initLogsUiFunctions({ scrollTracker })
+export async function main({scrollTracker}, {avgEventsPerSecond}) {
+  const {sourceToken, logs} = $("#__phx-assigns__").data()
+  await initLogsUiFunctions({scrollTracker})
 
   if (avgEventsPerSecond < 25) {
     joinSourceChannel(sourceToken)
@@ -21,14 +21,14 @@ export async function main({ scrollTracker }, { avgEventsPerSecond }) {
   }
 }
 
-export async function initLogsUiFunctions({ scrollTracker }) {
-  await trackScroll({ scrollTracker })
+export async function initLogsUiFunctions({scrollTracker}) {
+  await trackScroll({scrollTracker})
 
   await applyToAllLogTimestamps(await userSelectedFormatter())
   $("#logs-list").removeAttr("hidden")
 }
 
-export async function trackScroll({ scrollTracker }) {
+export async function trackScroll({scrollTracker}) {
   window.scrollTracker = scrollTracker
 
   window.addEventListener("scroll", () => {
@@ -37,15 +37,15 @@ export async function trackScroll({ scrollTracker }) {
   })
 }
 
-const joinSourceChannel = sourceToken => {
+const joinSourceChannel = (sourceToken) => {
   let channel = socket.channel(`source:${sourceToken}`, {})
 
   channel
     .join()
-    .receive("ok", resp => {
+    .receive("ok", (resp) => {
       console.log(`Source ${sourceToken} channel joined successfully`, resp)
     })
-    .receive("error", resp => {
+    .receive("error", (resp) => {
       console.log(`Unable to join ${sourceToken} channel`, resp)
     })
 
@@ -70,7 +70,7 @@ export function scrollBottom() {
 }
 
 async function logTemplate(e) {
-  const { via_rule, origin_source_id, body } = e
+  const {via_rule, origin_source_id, body} = e
   const metadata = JSON.stringify(body.metadata, null, 2)
   const formatter = await userSelectedFormatter()
   const formattedDatetime = formatter(body.timestamp)
@@ -83,7 +83,7 @@ async function logTemplate(e) {
         metadata
     </a>
     <div class="collapse metadata" id="${metadataId}">
-        <pre class="pre-metadata"><code>${metadata}</code></pre>
+        <pre class="pre-metadata"><code> ${_.escape(metadata)}</code></pre>
     </div> `
     : ""
 
@@ -114,9 +114,7 @@ function swapDownArrow() {
 
 export async function switchDateFormat() {
   await userConfig.flipUseLocalTime()
-  $("#swap-date > i")
-    .toggleClass("fa-toggle-off")
-    .toggleClass("fa-toggle-on")
+  $("#swap-date > i").toggleClass("fa-toggle-off").toggleClass("fa-toggle-on")
   const formatter = await userSelectedFormatter()
   await applyToAllLogTimestamps(formatter)
 }

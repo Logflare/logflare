@@ -5,7 +5,7 @@
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
           <span>Ingest API key is
-            <code class="pointer-cursor" id="api-key" data-showing-api-key="false" data-clipboard-text="<%= @user.api_key %>">CLICK ME</code></span></li>
+            <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false" data-clipboard-text="<%= @user.api_key %>" data-toggle="tooltip" data-html=true data-placement="top" title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
     </div>

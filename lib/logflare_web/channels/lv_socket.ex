@@ -2,8 +2,7 @@ defmodule Logflare.LiveView.Socket do
   @moduledoc """
   The LiveView socket for Phoenix Endpoints.
   """
-  # use Phoenix.Socket, serializer: Logflare.Socket.CustomJSONSerializer, log: false
-  use Phoenix.Socket
+  use Phoenix.Socket, log: false
   require Logger
 
   if Version.match?(System.version(), ">= 1.8.0") do
@@ -36,8 +35,6 @@ defmodule Logflare.LiveView.Socket do
   """
   @impl Phoenix.Socket
   def connect(_params, %Phoenix.Socket{} = socket, connect_info) do
-    socket = put_in(socket.serializer, Logflare.Socket.TemporaryOverrideJSONSerializer)
-
     case connect_info do
       %{session: session} when is_map(session) ->
         {:ok, put_in(socket.private[:session], session)}

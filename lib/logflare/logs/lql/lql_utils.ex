@@ -13,6 +13,26 @@ defmodule Logflare.Lql.Utils do
     }
   end
 
+  def get_chart_period(lql_rules, default \\ nil) do
+    chart = get_chart_rule(lql_rules)
+
+    if chart do
+      chart.period
+    else
+      default
+    end
+  end
+
+  def get_chart_aggregate(lql_rules, default \\ nil) do
+    chart = get_chart_rule(lql_rules)
+
+    if chart do
+      chart.aggregate
+    else
+      default
+    end
+  end
+
   def get_filter_rules(rules) do
     Enum.filter(rules, &match?(%FilterRule{}, &1))
   end
@@ -30,6 +50,17 @@ defmodule Logflare.Lql.Utils do
     lql_list
     |> Enum.reject(&match?(%FilterRule{path: "timestamp"}, &1))
     |> Enum.concat(new_rules)
+  end
+
+  def put_chart_period(lql_list, period) when is_atom(period) do
+    i = Enum.find_index(lql_list, &match?(%ChartRule{}, &1))
+
+    chart =
+      lql_list
+      |> Enum.at(i)
+      |> Map.put(:period, period)
+
+    List.replace_at(lql_list, i, chart)
   end
 
   @spec update_chart_rule(lql_list, ChartRule.t(), map()) :: lql_list

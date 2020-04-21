@@ -6,7 +6,5 @@ defmodule LogflareWeb.SearchView do
   import LogflareWeb.Helpers.BqSchema
   import Logflare.Lql.Utils
 
-  import PhoenixLiveReact, only: [live_react_component: 2]
-
   alias LogflareWeb.Source.SearchLV.ModalLVC
 end

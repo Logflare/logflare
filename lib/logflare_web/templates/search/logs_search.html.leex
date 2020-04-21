@@ -21,17 +21,27 @@
             <span class="hide-on-mobile">local time</span>
           </a>
         </li>
-        <li><a href="#" id="search-uri-query"><span><i class="fas fa-copy"></i></span> <span class="hide-on-mobile">share</span></a></li>
-        <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
-          <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
-        <% else %>
-          <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
-          <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
-        <% end %>
-      </ul>
-    </div>
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+        <li>
+          <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
+          <span>
+            <i class="fas fa-copy">
+            </i>
+          </span>
+          <span class="hide-on-mobile">
+            share
+          </span>
+        </span>
+      </li>
+      <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
+        <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
+      <% else %>
+        <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
+        <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
+      <% end %>
+    </ul>
   </div>
+  <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+</div>
 </div>
 <div class="container source-logs-search-container console-text">
   <%= render("logs_list.html",
@@ -41,7 +51,11 @@
      use_local_time: @use_local_time) %>
   <div>
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
-    <%= live_react_component("Components.LogEventsChart", %{data: @log_aggregates, loading: @loading, chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)}) %>
+    <%= live_react_component(
+    "Components.LogEventsChart",
+    %{data: @log_aggregates, loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
+    [container: [id: "log-events-chart"]]
+    ) %>
   </div>
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
@@ -66,12 +80,12 @@
       <div class="col-auto">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
-            <span class="btn btn-primary" phx-click="stop_live_search">
+            <span class="btn btn-primary" phx-click="stop_live_search" style="width: 100px;">
               <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
               <span class="fas-in-button" id="search-tailing-button">Pause</span>
             </span>
           <% else %>
-            <span class="btn btn-primary" phx-click="start_live_search">
+            <span class="btn btn-primary" phx-click="start_live_search" style="width: 100px;">
               <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
             </span>
           <% end %>
@@ -83,7 +97,7 @@
           <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
         </a>
       </div>
-      <div class="col-auto" phx-update="ignore">
+      <div class="col-auto" id="daterangepicker-container" phx-update="ignore">
         <span class="btn btn-primary" id="daterangepicker">
           <span class="fa fa-clock" >
           </span>
@@ -97,7 +111,7 @@
         Chart period:
       </div>
       <div class="col-auto">
-        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: (get_chart_rule(@lql_rules) || %{period: "minute"}).period, class: "form-control form-control-sm" %>
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: get_chart_period(@lql_rules, "minute"), class: "form-control form-control-sm" %>
       </div>
       <div class="col-auto  hide-on-mobile">
         Aggregate:
@@ -107,7 +121,7 @@
           <%= select f,
          :chart_aggregate,
           ["sum", "avg", "count"],
-          selected: (get_chart_rule(@lql_rules) || %{aggregate: "count"}).aggregate,
+          selected: get_chart_aggregate(@lql_rules, "count"),
           class: "form-control form-control-sm"
            %>
         <% else %>
