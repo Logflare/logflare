@@ -8,25 +8,28 @@
   <ul class="list-group">
     <li class="list-group-item">
       <%= link to: Routes.oauth_path(@conn, :request, "google"), class: "nav-link" do %>
-      <span class="login-icon"><i class="fab fa-google"></span></i> Sign in with Google
+      <span class="login-icon"><i class="fab fa-google"></span></i> Continue with Google
       <% end %>
     </li>
     <li class="list-group-item">
       <%= link to: Routes.oauth_path(@conn, :request, "github"), class: "nav-link" do %>
-      <span class="login-icon"><i class="fab fa-github"></span></i> Sign in with Github
+      <span class="login-icon"><i class="fab fa-github"></span></i> Continue with Github
       <% end %>
     </li>
     <li class="list-group-item">
       <%= link to: Routes.oauth_path(@conn, :request, "slack"), class: "nav-link" do %>
-      <span class="login-icon"><i class="fab fa-slack"></span></i> Sign in with Slack
+      <span class="login-icon"><i class="fab fa-slack"></span></i> Continue with Slack
       <% end %>
     </li>
     <li class="list-group-item">
       <%= link to: Routes.email_path(@conn, :login), class: "nav-link" do %>
-      <span class="login-icon"><i class="fas fa-envelope"></span></i> Sign in with email
+      <span class="login-icon"><i class="fas fa-envelope"></span></i> Continue with email
       <% end %>
     </li>
   </ul>
+  <p class="text-center">
+    <small>If you don't already have a Logflare account one will get created for you.</small>
+  </p>
   <p class="text-center">
     <small>When using the Logflare hosted service you agree to our <%= link "terms of service", to: Routes.marketing_path(@conn, :terms) %>, <%= link "privacy policy", to: Routes.marketing_path(@conn, :privacy) %> and <%= link "cookie policy", to: Routes.marketing_path(@conn, :cookies) %>.</small>
   </p>
