@@ -1,4 +1,7 @@
 defmodule LogflareWeb.Auth.VercelAuth do
+  @moduledoc """
+  What we do when someone signs up and oauth's from the Vercel integration.
+  """
   use LogflareWeb, :controller
 
   @config Application.get_env(:logflare, __MODULE__)
