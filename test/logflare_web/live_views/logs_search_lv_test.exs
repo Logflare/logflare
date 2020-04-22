@@ -93,7 +93,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert_patched(
         view,
-        "/sources/283/search?querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29+error+crash&tailing%3F=true"
+        "/sources/283/search?querystring=error+crash+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29&tailing%3F=true"
       )
 
       lql_rules = get_view_assigns(view).lql_rules
@@ -123,7 +123,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert_patched(
         view,
-        "/sources/283/search?querystring=c%3Asum%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Aminute%29+error+crash&tailing%3F=true"
+        "/sources/283/search?querystring=error+crash+c%3Asum%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Aminute%29&tailing%3F=true"
       )
 
       assert get_view_assigns(view).tailing? == true
@@ -184,7 +184,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert_patched(
         view,
-        "/sources/283/search?querystring=error+crash+t%3A2020-01-01T01%3A10%3A00..2020-02-01T10%3A22%3A20+c%3Aavg%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Ahour%29&tailing%3F=false"
+        "/sources/#{s.id}/search?querystring=error+crash+t%3A2020-%7B01..02%7D-01T%7B01..10%7D%3A%7B10..22%7D%3A%7B00..20%7D+c%3Aavg%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Ahour%29&tailing%3F=false"
       )
 
       html =
@@ -204,7 +204,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert_patched(
         view,
-        "/sources/283/search?querystring=error+crash+t%3A2020-01-01T01%3A10%3A00..2020-02-01T10%3A22%3A20+c%3Aavg%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Ahour%29&tailing%3F=false"
+        "/sources/#{s.id}/search?querystring=error+crash+t%3A2020-%7B01..02%7D-01T%7B01..10%7D%3A%7B10..22%7D%3A%7B00..20%7D+c%3Aavg%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Ahour%29&tailing%3F=false"
       )
     end
   end
