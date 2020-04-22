@@ -47,7 +47,7 @@ config :phoenix, :stacktrace_depth, 20
 config :logflare, Logflare.Repo,
   username: "chasegranberry",
   password: "",
-  database: "logtail_dev",
+  database: "logflare",
   hostname: "localhost",
   pool_size: 10,
   prepare: :unnamed,

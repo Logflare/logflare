@@ -1,10 +1,10 @@
-defmodule Logflare.Logs.Zeit do
+defmodule Logflare.Logs.Vercel do
   @moduledoc """
   See https://elixirforum.com/t/parse-this-string/29252 for a NimbleParsec example.
   """
   require Logger
 
-  alias Logflare.Logs.Zeit.NimbleLambdaMessageParser
+  alias Logflare.Logs.Vercel.NimbleLambdaMessageParser
 
   def handle_batch(batch, source) when is_list(batch) do
     Enum.map(batch, fn x ->
@@ -26,7 +26,7 @@ defmodule Logflare.Logs.Zeit do
       _e ->
         Logger.error("Lambda parse error!",
           source_id: source.token,
-          zeit_app: %{lambda_message: message, parse_status: "error"}
+          vercel_app: %{lambda_message: message, parse_status: "error"}
         )
 
         {:error, %{"parse_status" => "error"}}
