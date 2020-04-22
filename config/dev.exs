@@ -85,8 +85,8 @@ config :libcluster,
 config :logflare, Logflare.Tracker, pool_size: 1
 
 config :logflare, LogflareWeb.Auth.VercelAuth,
-  vercel_app_host: "https://dev.chasegranberry.net",
-  client_id: "191a76cc7da977f734b2089e1f1a7a85fc25ed589c6c1ba41113419a862189de"
+  vercel_app_host: "https://menu-calls-parish-southern.trycloudflare.com",
+  client_id: "9b73d10edd067ba404148b28ef1eb4b1cb2a7027ade973b6cadc2b24f7c16702"
 
 import_config "dev.secret.exs"
 import_config "telemetry.exs"

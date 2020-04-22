@@ -81,6 +81,7 @@ defmodule LogflareWeb.Router do
   # Oauth2 Provider Routes for Vercel and Cloudflare
   scope "/oauth/token", LogflareWeb do
     post "/vercel", Auth.OauthProviderController, :vercel_grant
+    post "/zeit", Auth.OauthProviderController, :vercel_grant
     post "/cloudflare", Auth.OauthProviderController, :cloudflare_grant
   end
 
@@ -198,6 +199,7 @@ defmodule LogflareWeb.Router do
     pipe_through :browser
 
     get "/vercel", Auth.VercelAuth, :set_oauth_params
+    get "/zeit", Auth.VercelAuth, :set_oauth_params
   end
 
   scope "/auth", LogflareWeb do
