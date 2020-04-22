@@ -1,4 +1,4 @@
-defmodule Logflare.Logs.Zeit.LambdaMessageParser do
+defmodule Logflare.Logs.Vercel.LambdaMessageParser do
   @moduledoc """
   Message examples:
 

@@ -1,6 +1,6 @@
-defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParser do
+defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   @moduledoc """
-  Parser for incoming Zeit Lambda messages
+  Parser for incoming Vercel Lambda messages
   """
   import NimbleParsec
   alias Logflare.JSON

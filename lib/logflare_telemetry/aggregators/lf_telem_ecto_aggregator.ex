@@ -6,7 +6,6 @@ defmodule LogflareTelemetry.Aggregators.V0.Ecto do
   alias LogflareTelemetry.MetricsCache
   alias Telemetry.Metrics.{Summary}
   alias LogflareTelemetry, as: LT
-  alias LT.LogflareMetrics
   alias LT.Aggregators.GenAggregator
   @default_percentiles [25, 50, 75, 90, 95, 99]
   @default_summary_fields [:average, :median, :percentiles]

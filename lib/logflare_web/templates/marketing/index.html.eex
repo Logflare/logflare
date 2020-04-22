@@ -11,7 +11,7 @@
 						<h2>Collect for years, query in seconds</h2>
 					</div>
 					<div class="col-lg-5">
-						<p>For Cloudflare, ZEIT & Elixir apps</p>
+						<p>For Cloudflare, Vercel & Elixir apps</p>
 						<div class="btns">
 							<p>
 								<iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no" frameBorder="0">
@@ -21,7 +21,7 @@
 						</div>
 						<p>Install the <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></p>
 						<p>Setup our <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
-						<p>Check out the <%= link "Logflare ZEIT app", to: "https://zeit.co/integrations/logflare", target: "_blank" %></p>
+						<p>Check out the <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
 						<p>Javascript? Use our <%= link "Pino transport", to: "https://github.com/Logflare/pino-logflare", target: "_blank" %></p>
 					</div>
 				</div>
@@ -342,7 +342,7 @@
 						</div>
 						<p>Install the <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></p>
 						<p>Setup our <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
-						<p>Check out the <%= link "Logflare ZEIT app", to: "https://zeit.co/integrations/logflare", target: "_blank" %></p>
+						<p>Check out the <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
 					</div>
 				</div>
 			</div>
@@ -360,7 +360,7 @@
 				</div>
 				<p>Install the <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></p>
 				<p>Setup our <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %></p>
-				<p>Check out the <%= link "Logflare ZEIT app", to: "https://zeit.co/integrations/logflare", target: "_blank" %></p>
+				<p>Check out the <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
 			</div>
 		</div>
 	</div>

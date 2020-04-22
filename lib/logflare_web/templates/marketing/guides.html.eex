@@ -43,12 +43,12 @@
 				<% end %>
 			</div>
 			<div class="col-lg-4">
-				<%= link to: Routes.marketing_path(@conn, :zeit_setup), class: "miniboxguid fr3" do %>
+				<%= link to: Routes.marketing_path(@conn, :vercel_setup), class: "miniboxguid fr3" do %>
 					<img class="leftbg" src="/images/marketing/guides/fr3bgimg.png" alt="">
-					<h2>Setup the ZEIT Integration</h2>
-					<p>Monitor your ZEIT deployment with structured logging</p>
+					<h2>Setup the Vercel Integration</h2>
+					<p>Monitor your Vercel deployment with structured logging</p>
 					<div class="miniimgbox">
-						<img id="zeit-logo" src="/images/marketing/guides/zeit-logo.png" alt="">
+						<img id="vercel-logo" src="/images/marketing/guides/vercel-logo.png" alt="">
 					</div>
 				<% end %>
 			</div>

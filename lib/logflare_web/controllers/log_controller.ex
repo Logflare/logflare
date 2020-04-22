@@ -74,11 +74,11 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
-  def zeit_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+  def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch =
       batch
-      |> Logs.Zeit.handle_batch(source)
+      |> Logs.Vercel.handle_batch(source)
 
     ingest_and_render(conn, batch, source)
   end

@@ -45,13 +45,6 @@ defmodule LogflareWeb.Source.SearchLV do
     querystring: ""
   ]
 
-  def render(assigns) do
-    SearchView.render("logs_search.html", %{
-      assigns
-      | chart_aggregate_enabled?: search_agg_controls_enabled?(assigns.lql_rules)
-    })
-  end
-
   def mount(params, session, socket) do
     Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
 
@@ -63,6 +56,46 @@ defmodule LogflareWeb.Source.SearchLV do
       end
 
     {:ok, socket}
+  end
+
+  def handle_params(%{"querystring" => qs}, _uri, socket) do
+    source = socket.assigns.source
+
+    socket =
+      with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema) do
+        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+        qs = Lql.encode!(lql_rules)
+
+        socket =
+          socket
+          |> assign(:loading, true)
+          |> assign(:log_events, [])
+          |> assign(:log_aggregates, [])
+          |> assign(:lql_rules, lql_rules)
+          |> assign(:querystring, qs)
+
+        SearchQueryExecutor.maybe_execute_query(socket.assigns.source.token, socket.assigns)
+
+        socket
+      else
+        {:error, error} ->
+          socket
+          |> assign(:log_events, [])
+          |> assign_notifications(:error, error)
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
+
+  def render(assigns) do
+    SearchView.render("logs_search.html", %{
+      assigns
+      | chart_aggregate_enabled?: search_agg_controls_enabled?(assigns.lql_rules)
+    })
   end
 
   def mount_disconnected(
@@ -165,8 +198,6 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:lql_rules, lql_rules)
         |> assign(:querystring, optimizedqs)
 
-      SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
-
       socket
     else
       {:error, error} ->
@@ -178,10 +209,6 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:tailing?, false)
         |> assign_notifications(:error, error)
     end
-  end
-
-  def handle_params(_, _, socket) do
-    {:noreply, socket}
   end
 
   defp prepare_params(params) do
@@ -214,7 +241,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
         |> assign(:tailing?, false)
-        |> push_patch_with_params()
+        |> push_patch_with_params(%{tailing?: false, querystring: prev_assigns.querystring})
       else
         socket
       end
@@ -223,21 +250,19 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("start_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
+    %{source: source} = prev_assigns
     log_lv_received_event(ev, source)
 
     socket =
       if prev_assigns.tailing? do
         socket
       else
-        socket = assign(socket, :tailing?, true)
-
-        socket =
-          assign_new_search_maybe_execute_with_qs(
-            socket,
-            %{querystring: prev_assigns.querystring, tailing?: true},
-            source.bq_table_schema
-          )
+        socket
+        |> assign(:tailing?, true)
+        |> assign_new_search_with_qs(
+          %{querystring: prev_assigns.querystring, tailing?: true},
+          source.bq_table_schema
+        )
       end
 
     {:noreply, socket}
@@ -311,20 +336,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
         qs = Lql.encode!(lql_rules)
 
-        socket =
-          socket
-          |> assign(:querystring, qs)
-          |> assign(:lql_rules, lql_rules)
-          |> assign(:log_aggregates, [])
-          |> assign(:loading, true)
-
-        :ok = SearchQueryExecutor.maybe_execute_query(source.token, socket.assigns)
-
-        push_patch(
-          socket,
-          to: new_live_path(socket, %{querystring: qs, tailing?: prev_assigns.tailing?}),
-          replace: true
-        )
+        socket
+        |> assign(:querystring, qs)
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:log_events, [])
+        |> assign(:log_aggregates, [])
+        |> assign(:loading, true)
+        |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
         socket
       end
@@ -357,10 +375,9 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
-      |> assign(:log_events, [])
+      # |> assign(:log_events, [])
       |> assign(:loading, true)
-
-    SearchQueryExecutor.maybe_execute_query(assigns.source.token, socket.assigns)
+      |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
 
     {:noreply, socket}
   end
@@ -378,7 +395,7 @@ defmodule LogflareWeb.Source.SearchLV do
     SearchQueryExecutor.maybe_cancel_query(stoken)
 
     socket =
-      assign_new_search_maybe_execute_with_qs(
+      assign_new_search_with_qs(
         socket,
         %{querystring: qs, tailing?: prev_assigns.tailing?},
         bq_table_schema
@@ -441,57 +458,39 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp assign_new_search_maybe_execute_with_qs(socket, params, bq_table_schema) do
-    %{querystring: qs, tailing?: _tailing?} = params
+  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
+    %{querystring: qs, tailing?: tailing?} = params
 
     with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
       lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
       qs = Lql.encode!(lql_rules)
 
-      socket =
-        socket
-        |> assign(:log_events, [])
-        |> assign(:loading, true)
-        |> assign(:tailing_initial?, true)
-        |> assign_notifications(:warning, nil)
-        |> assign_notifications(:error, nil)
-        |> assign(:lql_rules, lql_rules)
-        |> assign(:querystring, qs)
-        |> push_patch(
-          to: new_live_path(socket, MapKeys.to_strings(params)),
-          replace: true
-        )
-
-      SearchQueryExecutor.maybe_execute_query(socket.assigns.source.token, socket.assigns)
-
       socket
+      |> assign(:loading, true)
+      |> assign(:tailing_initial?, true)
+      |> assign_notifications(:warning, nil)
+      |> assign_notifications(:error, nil)
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, qs)
+      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
     else
       {:error, error} ->
         socket
+        |> assign(:tailing?, false)
+        |> assign(:log_aggregates, [])
         |> assign(:log_events, [])
         |> assign_notifications(:error, error)
     end
   end
 
-  def push_patch_with_params(socket) do
+  def push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
     path =
       Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
-        querystring: socket.assigns.querystring,
-        tailing?: socket.assigns.tailing?
+        querystring: querystring,
+        tailing?: tailing?
       })
 
-    push_patch(socket,
-      to: path,
-      replace: true
-    )
-  end
-
-  def new_live_path(socket, params) do
-    Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
-  end
-
-  def build_params_from_assigns(assigns) do
-    Map.take(assigns, [:querystring, :tailing?])
+    push_patch(socket, to: path, replace: false)
   end
 
   def handle_info({:search_result, search_result}, socket) do

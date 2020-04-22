@@ -5,7 +5,7 @@ defmodule LogflareWeb.Auth.OauthProviderController do
 
   @config Application.get_env(:logflare, ExOauth2Provider)
 
-  def zeit_grant(conn, params) do
+  def vercel_grant(conn, params) do
     case Token.grant(params, @config) do
       {:ok, access_token} ->
         conn
