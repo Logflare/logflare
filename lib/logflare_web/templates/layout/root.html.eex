@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Easily access your Cloudflare, ZEIT & Elixir logs in a centralized web-based log management solution.">
+    <meta name="description" content="Easily access your Cloudflare, Vercel & Elixir logs in a centralized web-based log management solution.">
     <meta name="author" content="">
     <title><%= page_title(assigns) %></title>
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">

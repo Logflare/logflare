@@ -47,7 +47,7 @@ config :phoenix, :stacktrace_depth, 20
 config :logflare, Logflare.Repo,
   username: "chasegranberry",
   password: "",
-  database: "logtail_dev",
+  database: "logflare",
   hostname: "localhost",
   pool_size: 10,
   prepare: :unnamed,
@@ -84,8 +84,8 @@ config :libcluster,
 
 config :logflare, Logflare.Tracker, pool_size: 1
 
-config :logflare, LogflareWeb.Auth.ZeitAuth,
-  zeit_app_host: "https://dev.chasegranberry.net",
+config :logflare, LogflareWeb.Auth.VercelAuth,
+  vercel_app_host: "https://dev.chasegranberry.net",
   client_id: "191a76cc7da977f734b2089e1f1a7a85fc25ed589c6c1ba41113419a862189de"
 
 import_config "dev.secret.exs"

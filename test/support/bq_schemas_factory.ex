@@ -2,7 +2,6 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   use ExMachina
-  alias Logflare.Source.BigQuery.SchemaBuilder
 
   def schema_factory(%{variant: :third}) do
     %TS{

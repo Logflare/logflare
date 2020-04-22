@@ -78,9 +78,9 @@ defmodule LogflareWeb.Router do
     oauth_routes()
   end
 
-  # Oauth2 Provider Routes for Zeit and Cloudflare
+  # Oauth2 Provider Routes for Vercel and Cloudflare
   scope "/oauth/token", LogflareWeb do
-    post "/zeit", Auth.OauthProviderController, :zeit_grant
+    post "/vercel", Auth.OauthProviderController, :vercel_grant
     post "/cloudflare", Auth.OauthProviderController, :cloudflare_grant
   end
 
@@ -104,7 +104,7 @@ defmodule LogflareWeb.Router do
     get "/log-search", MarketingController, :log_search
     get "/getting-started", MarketingController, :getting_started
     get "/slack-app-setup", MarketingController, :slack_app_setup
-    get "/zeit-setup", MarketingController, :zeit_setup
+    get "/vercel-setup", MarketingController, :vercel_setup
   end
 
   scope "/", LogflareWeb do
@@ -197,7 +197,7 @@ defmodule LogflareWeb.Router do
   scope "/install", LogflareWeb do
     pipe_through :browser
 
-    get "/zeit", Auth.ZeitAuth, :set_oauth_params
+    get "/vercel", Auth.VercelAuth, :set_oauth_params
   end
 
   scope "/auth", LogflareWeb do
@@ -244,6 +244,7 @@ defmodule LogflareWeb.Router do
     post "/", LogController, :create
     post "/cloudflare", LogController, :create
     post "/zeit", LogController, :zeit_ingest
+    post "/vercel", LogController, :vercel_ingest
     post "/elixir/logger", LogController, :elixir_logger
     post "/browser/reports", LogController, :browser_reports
     options "/browser/reports", LogController, :browser_reports
