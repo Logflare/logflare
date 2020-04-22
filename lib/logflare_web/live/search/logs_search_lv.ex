@@ -69,6 +69,8 @@ defmodule LogflareWeb.Source.SearchLV do
         socket =
           socket
           |> assign(:loading, true)
+          |> assign(:log_events, [])
+          |> assign(:log_aggregates, [])
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
 
@@ -248,7 +250,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("start_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
+    %{source: source} = prev_assigns
     log_lv_received_event(ev, source)
 
     socket =
@@ -337,6 +339,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
         |> assign(:querystring, qs)
         |> assign(:lql_rules, lql_rules)
+        |> assign(:log_events, [])
         |> assign(:log_aggregates, [])
         |> assign(:loading, true)
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
@@ -463,7 +466,6 @@ defmodule LogflareWeb.Source.SearchLV do
       qs = Lql.encode!(lql_rules)
 
       socket
-      # |> assign(:log_events, [])
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
       |> assign_notifications(:warning, nil)
@@ -475,6 +477,7 @@ defmodule LogflareWeb.Source.SearchLV do
       {:error, error} ->
         socket
         |> assign(:tailing?, false)
+        |> assign(:log_aggregates, [])
         |> assign(:log_events, [])
         |> assign_notifications(:error, error)
     end
