@@ -1,4 +1,7 @@
 defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.ComputeClient do
+  @moduledoc """
+  Inteface to GCP for the cluster strategy.
+  """
   require Logger
 
   use Tesla
