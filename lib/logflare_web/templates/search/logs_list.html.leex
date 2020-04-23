@@ -1,25 +1,29 @@
 <%= if length(@log_events) > 0 do %>
   <div id="logs-list-container" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
-    <div id="logs-list" class="list-unstyled console-text-list"  >
-      <%= for log <- @log_events do %>
-        <li id="log-event_<%= log.id || log.body.timestamp %>">
-          <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>
-          <mark class="log-datestamp" data-timestamp="<%= timestamp %>">
-            <%= if @use_local_time do %>
-              <%= format_timestamp(timestamp, @user_local_timezone) %>
-            <% else %>
-              <%= format_timestamp(timestamp) <> " UTC"%><% end %></mark>
-          <%= message %>
-          <a class="metadata-link"
+    <%= for log <- @log_events do %>
+      <%= if @loading do %>
+        <div id="logs-list" class="blurred list-unstyled console-text-list">
+        <% else %>
+          <div id="logs-list" class="list-unstyled console-text-list">
+          <% end %>
+          <li id="log-event_<%= log.id || log.body.timestamp %>">
+            <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>
+            <mark class="log-datestamp" data-timestamp="<%= timestamp %>">
+              <%= if @use_local_time do %>
+                <%= format_timestamp(timestamp, @user_local_timezone) %>
+              <% else %>
+                <%= format_timestamp(timestamp) <> " UTC"%><% end %></mark>
+            <%= message %>
+            <a class="metadata-link"
                 phx-click="activate_modal"
                 phx-value-modal_id="metadataModal:<%= to_string(log.id) <> "|" <> to_string(log.body.timestamp) %>"
                 href="#" aria-expanded="false">
-            metadata
-          </a>
-        </li>
-      <% end %>
+              metadata
+            </a>
+          </li>
+        <% end %>
+      </div>
     </div>
-  </div>
-<% else %>
-  <div id="logs-list-container-empty"></div>
-<% end %>
+  <% else %>
+    <div id="logs-list-container-empty"> </div>
+  <% end %>

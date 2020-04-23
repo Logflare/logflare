@@ -16,20 +16,14 @@
     margin: 10px 10px 0 0;
   }
 
-  #logs-list-container {
-    /* height: calc(100vh - 250px); */
-    /* overflow-y: scroll; */
-  }
-
-  #logs-list-container-empty {
-    /* height: calc(100vh - 250px); */
-  }
-
   & #logs-list {
     display: flex;
     flex-direction: column-reverse;
     flex-grow: 1;
-    /* min-height: 100vh; */
+  }
+
+  & .blurred {
+    filter: blur(2px);
   }
 }
 

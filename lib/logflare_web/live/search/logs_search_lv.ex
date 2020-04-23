@@ -69,7 +69,6 @@ defmodule LogflareWeb.Source.SearchLV do
         socket =
           socket
           |> assign(:loading, true)
-          |> assign(:log_events, [])
           |> assign(:log_aggregates, [])
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
@@ -339,7 +338,6 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
         |> assign(:querystring, qs)
         |> assign(:lql_rules, lql_rules)
-        |> assign(:log_events, [])
         |> assign(:log_aggregates, [])
         |> assign(:loading, true)
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
@@ -355,6 +353,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
     ts_qs = Map.get(params, "querystring")
     period = Map.get(params, "period")
+
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.maybe_cancel_query(socket.assigns.source.token)
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
@@ -373,10 +374,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
-      # |> assign(:log_events, [])
-      |> assign(:loading, true)
       |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
 
     {:noreply, socket}
