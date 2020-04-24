@@ -48,7 +48,9 @@
      log_events: @log_events,
      last_query_completed_at: @last_query_completed_at,
      user_local_timezone: @user_local_timezone,
-     use_local_time: @use_local_time) %>
+     use_local_time: @use_local_time,
+     loading: @loading
+     ) %>
   <div>
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component(
