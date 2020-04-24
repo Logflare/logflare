@@ -1,5 +1,11 @@
 steps:
   - name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        docker pull gcr.io/logflare-staging/logflare_base:latest || exit 0
+  - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
@@ -11,7 +17,9 @@ steps:
         "MAGIC_COOKIE_PREFIX",
         "-t",
         "gcr.io/logflare-staging/logflare_base:latest",
-        "."
+        "--cache-from",
+        "gcr.io/logflare-staging/logflare_base:latest",
+        ".",
       ]
     env:
       - "SHORT_COMMIT_SHA=$SHORT_SHA"

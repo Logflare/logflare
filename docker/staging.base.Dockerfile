@@ -8,9 +8,6 @@ ENV SHORT_COMMIT_SHA=$SHORT_COMMIT_SHA
 
 ENV MIX_ENV staging
 
-COPY ./ /logflare
-WORKDIR /logflare
-
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 
 RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
@@ -20,10 +17,11 @@ RUN apt-get update
 
 RUN apt-get install -y nodejs yarn
 
-WORKDIR /logflare
-
 RUN mix local.rebar --force
 RUN mix local.hex --force
+
+COPY ./ /logflare
+WORKDIR /logflare
 
 RUN mix deps.get
 RUN mix compile
