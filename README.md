@@ -20,9 +20,9 @@ Automatically log structured request/response data in a few clicks with the Clou
     width="150">
 </a>
 
-## For ZEIT
+## For Vercel
 
-Setup the [Logflare ZEIT integration](https://zeit.co/integrations/logflare) and we'll automatically structure your ZEIT logs.
+Setup the [Logflare Vercel integration](https://vercel.com/integrations/logflare) and we'll automatically structure your Vercel logs.
 
 ## For Javascript
 
