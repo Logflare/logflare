@@ -12,9 +12,10 @@ COPY ./ /logflare
 WORKDIR /logflare
 
 RUN mix deps.get
-RUN mix compile --force
+RUN mix compile 
 
 WORKDIR /logflare/assets
+
 RUN yarn 
 RUN yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react
 RUN ./node_modules/webpack/bin/webpack.js --mode production 
