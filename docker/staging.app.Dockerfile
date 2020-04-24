@@ -23,7 +23,7 @@ RUN ./node_modules/webpack/bin/webpack.js --mode production
 WORKDIR /logflare
 
 RUN mix phx.digest
-RUN mix release --force --overwrite
+RUN mix release --overwrite
 
 WORKDIR /logflare
 
