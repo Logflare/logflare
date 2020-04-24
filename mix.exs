@@ -1,11 +1,12 @@
 defmodule Logflare.Mixfile do
   @moduledoc false
   use Mix.Project
+  @version "0.15.2"
 
   def project do
     [
       app: :logflare,
-      version: "0.8.0",
+      version: @version,
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -21,7 +22,7 @@ defmodule Logflare.Mixfile do
       ],
       releases: [
         logflare: [
-          version: "0.14.0",
+          version: @version,
           include_executables_for: [:unix],
           applications: [runtime_tools: :permanent, ssl: :permanent],
           cookie: get_magic_cookie(Mix.env())
