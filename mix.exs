@@ -23,7 +23,8 @@ defmodule Logflare.Mixfile do
         logflare: [
           version: "0.14.0",
           include_executables_for: [:unix],
-          applications: [runtime_tools: :permanent, ssl: :permanent]
+          applications: [runtime_tools: :permanent, ssl: :permanent],
+          cookie: get_magic_cookie(Mix.env())
         ]
       ]
     ]
@@ -172,5 +173,17 @@ defmodule Logflare.Mixfile do
       # compile: ["compile --warnings-as-errors"]
       # test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
+  end
+
+  defp get_magic_cookie(:staging) do
+    System.get_env("MAGIC_COOKIE_PREFIX") <> "_" <> System.get_env("SHORT_COMMIT_SHA")
+  end
+
+  defp get_magic_cookie(:dev) do
+    "magic_cookie_for_dev"
+  end
+
+  defp get_magic_cookie(_) do
+    Base.url_encode64(:crypto.strong_rand_bytes(40))
   end
 end

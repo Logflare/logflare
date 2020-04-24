@@ -1,9 +1,15 @@
 FROM gcr.io/logflare-staging/logflare_base
 
-COPY ./ /logflare
-WORKDIR /logflare
+ARG MAGIC_COOKIE_PREFIX
+ARG SHORT_COMMIT_SHA
+
+ENV MAGIC_COOKIE_PREFIX=$MAGIC_COOKIE_PREFIX
+ENV SHORT_COMMIT_SHA=$SHORT_COMMIT_SHA
 
 ENV MIX_ENV staging
+
+COPY ./ /logflare
+WORKDIR /logflare
 
 RUN mix deps.get
 RUN mix compile --force
