@@ -44,9 +44,9 @@ steps:
     env:
       - "SHORT_COMMIT_SHA=$SHORT_SHA"
     secretEnv: ["MAGIC_COOKIE_PREFIX"]
-    images:
-      - "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"
-      - "gcr.io/logflare-staging/logflare_origin:latest"
+images:
+  - "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"
+  - "gcr.io/logflare-staging/logflare_origin:latest"
 secrets:
   - kmsKeyName: projects/logflare-staging/locations/us-central1/keyRings/logflare-keyring-us-central1/cryptoKeys/logflare-secrets-key
     secretEnv:
