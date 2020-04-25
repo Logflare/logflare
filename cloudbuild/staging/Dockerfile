@@ -33,13 +33,14 @@ ENV SHORT_COMMIT_SHA=$SHORT_COMMIT_SHA
 
 ENV MIX_ENV staging
 
-COPY ./ /logflare
-WORKDIR /logflare
+COPY assets /logflare/assets/
 
 WORKDIR /logflare/assets
 RUN ./node_modules/webpack/bin/webpack.js --mode production 
 
+COPY . /logflare
 WORKDIR /logflare
+
 RUN mix phx.digest
 RUN mix release --overwrite
 
