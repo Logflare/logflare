@@ -20,7 +20,15 @@ steps:
   - name: "gcr.io/kaniko-project/executor:latest"
     args:
       [
-        "--dockerfile=./cloudbuild/staging/Dockerfile",
+        "--dockerfile=./docker/staging.base.Dockerfile",
+        "--destination=gcr.io/$PROJECT_ID/logflare_base:latest",
+        "--cache=true",
+        "--cache-ttl=336h",
+      ]
+  - name: "gcr.io/kaniko-project/executor:latest"
+    args:
+      [
+        "--dockerfile=./docker/staging.app.Dockerfile",
         "--destination=gcr.io/$PROJECT_ID/logflare_origin:$COMMIT_SHA",
         "--destination=gcr.io/$PROJECT_ID/logflare_origin:latest",
         "--build-arg",
