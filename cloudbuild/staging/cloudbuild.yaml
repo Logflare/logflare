@@ -25,23 +25,28 @@ steps:
         "--cache=true",
         "--cache-ttl=336h",
       ]
-  - name: "gcr.io/kaniko-project/executor:latest"
+  - name: "gcr.io/cloud-builders/docker"
     args:
       [
-        "--dockerfile=./docker/staging.app.Dockerfile",
-        "--destination=gcr.io/$PROJECT_ID/logflare_origin:$COMMIT_SHA",
-        "--destination=gcr.io/$PROJECT_ID/logflare_origin:latest",
+        "build",
+        "-f",
+        "docker/staging.app.Dockerfile",
         "--build-arg",
         "SHORT_COMMIT_SHA",
         "--build-arg",
         "MAGIC_COOKIE_PREFIX",
-        "--cache=true",
-        "--cache-ttl=336h",
+        "-t",
+        "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
+        "-t",
+        "gcr.io/logflare-staging/logflare_origin:latest",
+        ".",
       ]
     env:
       - "SHORT_COMMIT_SHA=$SHORT_SHA"
     secretEnv: ["MAGIC_COOKIE_PREFIX"]
-    timeout: 1800s
+    images:
+      - "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"
+      - "gcr.io/logflare-staging/logflare_origin:latest"
 secrets:
   - kmsKeyName: projects/logflare-staging/locations/us-central1/keyRings/logflare-keyring-us-central1/cryptoKeys/logflare-secrets-key
     secretEnv:

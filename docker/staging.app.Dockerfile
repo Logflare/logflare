@@ -1,13 +1,11 @@
 FROM gcr.io/logflare-staging/logflare_base
 
-COPY assets /logflare/assets/
+COPY . /logflare
 
 WORKDIR /logflare/assets
 RUN ./node_modules/webpack/bin/webpack.js --mode production 
 
-COPY . /logflare
 WORKDIR /logflare
-
 RUN mix phx.digest
 RUN mix release --overwrite
 
