@@ -15,5 +15,4 @@ WORKDIR /logflare
 RUN mix phx.digest
 RUN mix release --overwrite
 
-
 ENTRYPOINT [ "/logflare/run_staging.bash" ]
