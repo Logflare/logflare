@@ -4,7 +4,6 @@ defmodule Logflare.Lql.Parser.Helpers do
   """
   import NimbleParsec
   alias Logflare.Lql.FilterRule
-  alias Logflare.Lql.ChartRule
   alias Logflare.DateTimeUtils
   @isolated_string :isolated_string
 
