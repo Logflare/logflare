@@ -23,25 +23,15 @@ steps:
         "build",
         "-f",
         "docker/prod.app.Dockerfile",
-        "--build-arg",
-        "SHORT_COMMIT_SHA",
-        "--build-arg",
-        "MAGIC_COOKIE_PREFIX",
         "-t",
         "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA",
         "-t",
         "gcr.io/logflare-232118/logflare_app:latest",
         ".",
       ]
-    env:
-      - "SHORT_COMMIT_SHA=$SHORT_SHA"
-    secretEnv: ["MAGIC_COOKIE_PREFIX"]
+    timeout: 1800s
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/logflare-232118/logflare_app:latest"]
-secrets:
-  - kmsKeyName: projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
-    secretEnv:
-      MAGIC_COOKIE_PREFIX: "CiQAaKkB6bwW6k2L9NxnoxLiSerCpIeLBGlN54tyvdAtGmTqBeISSQA/IRNwMsuZjfo6o1os4UkkFYG3eJzzxp6hDWbI+6El6HxSZLWLDy3ousxpSU8hip3hLypJ9aSjOLlj4zrnXFxS6qzwLA3/pEE="
 timeout: 1800s
