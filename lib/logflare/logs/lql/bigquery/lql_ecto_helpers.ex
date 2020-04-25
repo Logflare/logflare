@@ -77,8 +77,8 @@ defmodule Logflare.Lql.EctoHelpers do
     end
   end
 
-  @type operators :: :< | :<= | := | :> | :>= | :"~"
-  @spec dynamic_where_filter_rule(atom(), operators, any, [atom()]) :: Ecto.Query.DynamicExpr.t()
+  @type operators :: :< | :<= | := | :> | :>= | :"~" | :list_includes | :string_contains
+  @spec dynamic_where_filter_rule(atom(), operators, any, map()) :: Ecto.Query.DynamicExpr.t()
   def dynamic_where_filter_rule(c, op, v, modifiers) do
     clause =
       case op do
