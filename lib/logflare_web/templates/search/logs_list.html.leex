@@ -3,7 +3,7 @@
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list">
     <% else %>
-        <div id="logs-list" class="list-unstyled console-text-list">
+      <div id="logs-list" class="list-unstyled console-text-list">
     <% end %>
         <%= for log <- @log_events do %>
           <li id="log-event_<%= log.id || log.body.timestamp %>">
