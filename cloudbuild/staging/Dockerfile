@@ -16,10 +16,10 @@ RUN mix local.hex --force
 WORKDIR /logflare
 COPY mix.* /logflare/
 RUN mix deps.get
+RUN mix compile
 
 RUN mkdir -p /logflare/assets
 COPY assets/package.json /logflare/assets
-COPY assets/webpack.config.js /logflare/assets
 COPY assets/yarn.lock /logflare/assets
 
 WORKDIR /logflare/assets
