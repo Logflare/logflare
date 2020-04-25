@@ -38,4 +38,6 @@ secrets:
   - kmsKeyName: projects/logflare-staging/locations/us-central1/keyRings/logflare-keyring-us-central1/cryptoKeys/logflare-secrets-key
     secretEnv:
       MAGIC_COOKIE_PREFIX: "CiQAjmyjI9e7+KoUiS1WSalyQ819p/siYrGH8g5c9eiEPOYYYP8SSQDomD3wX4E++lI29Tj94GjGqhcHZeGkGt81el3/hMW4/5FepSlZrcaxoncTn3z51lab4obbhL1DhIB++Yyg0N7FnRcega3nXVg="
+options:
+  machineType: "N1_HIGHCPU_32"
 timeout: 1800s
