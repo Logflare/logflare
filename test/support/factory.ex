@@ -10,6 +10,7 @@ defmodule Logflare.Factory do
       name: "JaneJohn Jones",
       email: Faker.Internet.email(),
       provider: "google",
+      bigquery_processed_bytes_limit: 10_000_000_000,
       token: Faker.String.base64(64),
       api_key: Faker.String.base64(10),
       provider_uid: "provider_uid",

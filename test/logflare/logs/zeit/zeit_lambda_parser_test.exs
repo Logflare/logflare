@@ -1,9 +1,9 @@
-defmodule Logflare.Logs.Zeit.NimbleLambdaMessageParserTest do
+defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
   @moduledoc false
   use Logflare.DataCase, async: true
-  import Logflare.Logs.Zeit.NimbleLambdaMessageParser
+  import Logflare.Logs.Vercel.NimbleLambdaMessageParser
 
-  describe "Zeit Lambda Message Parser" do
+  describe "Vercel Lambda Message Parser" do
     test "example message 1" do
       message = """
       START RequestId: 026080a5-4157-4f7d-8256-0b61aa0fb167 Version: $LATEST
