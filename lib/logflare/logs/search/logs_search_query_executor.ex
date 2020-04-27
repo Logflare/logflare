@@ -177,7 +177,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     # prevents removal of log events loaded
     # during initial tailing query
     log_events =
-      if events_so.tailing? do
+      if events_so.tailing_initial? do
         params.log_events
         |> Enum.concat(rows)
         |> Enum.uniq_by(& &1.body)
