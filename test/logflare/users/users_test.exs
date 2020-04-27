@@ -33,5 +33,16 @@ defmodule Logflare.UsersTest do
       assert left_user.id == right_user.id
       assert get_by(api_key: "nil") == nil
     end
+
+    test "delete preferred email", %{user: u1} do
+      user = get_by(api_key: u1.api_key)
+
+      email = Faker.Internet.free_email()
+      {:ok, user} = Users.update_user_allowed(user, %{"email_preferred" => email})
+      assert get_by(api_key: u1.api_key).email_preferred == email
+
+      {:ok, user} = Users.update_user_allowed(user, %{"email_preferred" => nil})
+      assert get_by(api_key: u1.api_key).email_preferred == nil
+    end
   end
 end

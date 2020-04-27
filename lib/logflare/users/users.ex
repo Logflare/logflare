@@ -71,6 +71,12 @@ defmodule Logflare.Users do
     |> Repo.update()
   end
 
+  def update_user_allowed(user, params) do
+    user
+    |> User.user_allowed_changeset(params)
+    |> Repo.update()
+  end
+
   def insert_or_update_user(auth_params) do
     cond do
       user = Repo.get_by(User, provider_uid: auth_params.provider_uid) ->

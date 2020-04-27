@@ -5,7 +5,6 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.LogEvent
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
-  alias Logflare.Source
   alias Logflare.BqRepo
 
   @spec fetch_event_by_id_and_timestamp(atom, keyword) :: {:ok, map()} | {:error, map()}

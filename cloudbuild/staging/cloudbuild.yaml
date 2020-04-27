@@ -1,0 +1,56 @@
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud_staging.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/staging.secret.exs.enc
+      - --plaintext-file=./config/staging.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: "gcr.io/kaniko-project/executor:latest"
+    args:
+      [
+        "--dockerfile=./docker/staging.base.Dockerfile",
+        "--destination=gcr.io/$PROJECT_ID/logflare_base:latest",
+        "--cache=true",
+        "--cache-ttl=336h",
+      ]
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-f",
+        "docker/staging.app.Dockerfile",
+        "--build-arg",
+        "SHORT_COMMIT_SHA",
+        "--build-arg",
+        "MAGIC_COOKIE_PREFIX",
+        "-t",
+        "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
+        "-t",
+        "gcr.io/logflare-staging/logflare_origin:latest",
+        ".",
+      ]
+    env:
+      - "SHORT_COMMIT_SHA=$SHORT_SHA"
+    secretEnv: ["MAGIC_COOKIE_PREFIX"]
+images:
+  - "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"
+  - "gcr.io/logflare-staging/logflare_origin:latest"
+secrets:
+  - kmsKeyName: projects/logflare-staging/locations/us-central1/keyRings/logflare-keyring-us-central1/cryptoKeys/logflare-secrets-key
+    secretEnv:
+      MAGIC_COOKIE_PREFIX: "CiQAjmyjI9e7+KoUiS1WSalyQ819p/siYrGH8g5c9eiEPOYYYP8SSQDomD3wX4E++lI29Tj94GjGqhcHZeGkGt81el3/hMW4/5FepSlZrcaxoncTn3z51lab4obbhL1DhIB++Yyg0N7FnRcega3nXVg="
+options:
+  machineType: "N1_HIGHCPU_32"
+timeout: 1800s

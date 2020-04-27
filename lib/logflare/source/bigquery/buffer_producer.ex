@@ -64,8 +64,8 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   end
 
   @impl true
-  def terminate(reason, _state) do
-    Logger.info("Going Down: #{__MODULE__}")
+  def terminate(reason, state) do
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}")
     reason
   end
 

@@ -49,6 +49,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(rls) do
     Process.flag(:trap_exit, true)
+
     prune()
 
     broadcast()
@@ -153,9 +154,12 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
-  def terminate(reason, %__MODULE__{} = state) do
+  def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{state.source_id}")
+    Logger.info("Going Down - #{inspect(reason)} - #{state.source_id}", %{
+      source_id: state.source_id
+    })
+
     reason
   end
 

@@ -1,0 +1,30 @@
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud_staging.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/staging.secret.exs.enc
+      - --plaintext-file=./config/staging.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: "gcr.io/kaniko-project/executor:latest"
+    args:
+      [
+        "--dockerfile=./cloudbuild/staging/Dockerfile",
+        "--destination=gcr.io/$PROJECT_ID/logflare_origin:latest",
+        "--cache=true",
+        "--cache-ttl=336h",
+      ]
+    env:
+      - "SHORT_COMMIT_SHA=$SHORT_SHA"
+timeout: 1800s

@@ -23,6 +23,7 @@ defmodule Logflare.Source.Supervisor do
 
   def init(source_ids) do
     Process.flag(:trap_exit, true)
+
     {:ok, source_ids, {:continue, :boot}}
   end
 
@@ -51,7 +52,7 @@ defmodule Logflare.Source.Supervisor do
     end)
     |> Enum.chunk_every(25)
     |> Enum.each(fn x ->
-      Supervisor.start_link(x, strategy: :one_for_one)
+      Supervisor.start_link(x, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
       Process.sleep(1_000)
     end)
 
@@ -121,7 +122,7 @@ defmodule Logflare.Source.Supervisor do
 
   def terminate(reason, _state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{__MODULE__}")
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}")
     reason
   end
 
@@ -164,6 +165,6 @@ defmodule Logflare.Source.Supervisor do
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one)
+    Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
   end
 end

@@ -71,9 +71,12 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def terminate(reason, _state) do
+  def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{__MODULE__}")
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: state.source_token
+    })
+
     reason
   end
 

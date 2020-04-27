@@ -1,6 +1,5 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.{FilterRule, ChartRule}
   @type lql_list :: [ChartRule.t() | FilterRule.t()]
 

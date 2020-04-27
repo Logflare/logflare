@@ -1,23 +1,18 @@
 FROM gcr.io/logflare-staging/logflare_base
 
-COPY ./ /logflare
-WORKDIR /logflare
+ARG MAGIC_COOKIE_PREFIX
+ARG SHORT_COMMIT_SHA
 
-ENV MIX_ENV staging
+ENV MAGIC_COOKIE_PREFIX=$MAGIC_COOKIE_PREFIX
+ENV SHORT_COMMIT_SHA=$SHORT_COMMIT_SHA
 
-RUN mix deps.get
-RUN mix compile --force
+COPY . /logflare
 
 WORKDIR /logflare/assets
-RUN yarn 
-RUN yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react
 RUN ./node_modules/webpack/bin/webpack.js --mode production 
 
 WORKDIR /logflare
-
 RUN mix phx.digest
-RUN mix release --force --overwrite
-
-WORKDIR /logflare
+RUN mix release --overwrite
 
 ENTRYPOINT [ "/logflare/run_staging.bash" ]

@@ -1,27 +1,22 @@
 FROM elixir:1.10
 
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash - && \
+    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
+    echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list && \
+    apt-get update && \
+    apt-get install -y nodejs yarn && \
+    mix local.rebar --force && \ 
+    mix local.hex --force
+
 ENV MIX_ENV staging
 
-COPY ./ /logflare
-WORKDIR /logflare
+COPY config /logflare/config/
+COPY mix.* /logflare/
 
-RUN curl -sL https://deb.nodesource.com/setup_13.x | bash -
+RUN cd /logflare && \
+    mix deps.get && \
+    mix compile
 
-RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
-RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+COPY assets/package.json assets/yarn.lock /logflare/assets/
 
-RUN apt-get update
-
-RUN apt-get install -y nodejs yarn
-
-WORKDIR /logflare
-
-RUN mix local.rebar --force
-RUN mix local.hex --force
-
-RUN mix deps.get
-RUN mix compile
-
-RUN cd /logflare/assets && yarn 
-
-WORKDIR /logflare
+RUN cd /logflare/assets && yarn && yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react

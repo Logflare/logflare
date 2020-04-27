@@ -128,7 +128,10 @@ defmodule Logflare.User do
     changeset
     |> validate_required([:email, :provider, :token, :provider_uid])
     |> update_change(:email, &String.downcase/1)
-    |> update_change(:email_preferred, &String.downcase/1)
+    |> update_change(:email_preferred, fn
+      nil -> nil
+      x when is_binary(x) -> String.downcase(x)
+    end)
     |> downcase_email_provider_uid(user)
     |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
