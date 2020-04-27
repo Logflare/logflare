@@ -66,9 +66,13 @@ defmodule LogflareWeb.Source.SearchLV do
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
         qs = Lql.encode!(lql_rules)
 
+        stale_log_events =
+          Enum.map(socket.assigns.log_events, &Map.put(&1, :is_from_stale_query?, true))
+
         socket =
           socket
           |> assign(:loading, true)
+          |> assign(:log_events, stale_log_events)
           |> assign(:log_aggregates, [])
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
