@@ -80,9 +80,12 @@ defmodule Logflare.Source.RateCounterServer do
     {:noreply, source_id}
   end
 
-  def terminate(reason, _state) do
+  def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{__MODULE__}")
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: Atom.to_string(state)
+    })
+
     reason
   end
 
