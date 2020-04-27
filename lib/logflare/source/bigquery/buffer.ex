@@ -126,9 +126,9 @@ defmodule Logflare.Source.BigQuery.Buffer do
     {:noreply, state}
   end
 
-  def terminate(reason, _state) do
+  def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down: #{__MODULE__}")
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_id})
     reason
   end
 
