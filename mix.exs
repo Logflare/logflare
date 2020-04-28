@@ -1,7 +1,7 @@
 defmodule Logflare.Mixfile do
   @moduledoc false
   use Mix.Project
-  @version "0.15.2"
+  @version "0.8.2"
 
   def project do
     [
@@ -91,7 +91,7 @@ defmodule Logflare.Mixfile do
       {:ex_machina, "~> 2.3"},
       {:iteraptor, "~> 1.10"},
       {:bertex, ">= 0.0.0"},
-      {:logflare_logger_backend, "~> 0.7.1"},
+      {:logflare_logger_backend, "~> 0.7.2"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
       {:phoenix_live_view, "~> 0.12.0"},
       {:decorator, "~> 1.3"},

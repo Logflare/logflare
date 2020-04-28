@@ -52,8 +52,9 @@ defmodule Logflare.Source.Supervisor do
     end)
     |> Enum.chunk_every(25)
     |> Enum.each(fn x ->
+      Logger.info("Sleeping for startup Logflare.Source.Supervisor")
+      Process.sleep(2_000)
       Supervisor.start_link(x, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
-      Process.sleep(1_000)
     end)
 
     {:noreply, source_ids}
