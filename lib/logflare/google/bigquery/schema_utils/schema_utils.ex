@@ -3,7 +3,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   Various utility functions for BQ Schemas
   """
 
-  alias Logflare.JSON
+  require Logger
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   import Logflare.BigQuery.SchemaTypes
@@ -125,9 +125,21 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
         v =
           cond do
-            mode == "REPEATED" and t == "RECORD" -> %{t: bq_type_to_ex(t)}
-            mode == "REPEATED" and t != "RECORD" -> %{t: {:list, bq_type_to_ex(t)}}
-            mode in ["NULLABLE", "REQUIRED"] -> %{t: bq_type_to_ex(t)}
+            mode == "REPEATED" and t == "RECORD" ->
+              %{t: bq_type_to_ex(t)}
+
+            mode == "REPEATED" and t != "RECORD" ->
+              %{t: {:list, bq_type_to_ex(t)}}
+
+            mode in ["NULLABLE", "REQUIRED"] ->
+              %{t: bq_type_to_ex(t)}
+
+            is_nil(mode) ->
+              %{t: bq_type_to_ex(t)}
+
+            true ->
+              Logger.warn("Unexpected value of TFS mode: #{mode}")
+              %{t: bq_type_to_ex(t)}
           end
 
         v =
