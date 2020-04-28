@@ -142,6 +142,11 @@ defmodule Logflare.Google.CloudResourceManager do
       },
       %Model.Binding{
         condition: nil,
+        members: ["serviceAccount:#{@cloud_build_sa}"],
+        role: "roles/cloudkms.cryptoKeyDecrypter"
+      },
+      %Model.Binding{
+        condition: nil,
         members: [
           "serviceAccount:#{@container_engine_robot_sa}"
         ],
