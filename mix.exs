@@ -1,7 +1,7 @@
 defmodule Logflare.Mixfile do
   @moduledoc false
   use Mix.Project
-  @version "0.15.2"
+  @version "0.8.2"
 
   def project do
     [
