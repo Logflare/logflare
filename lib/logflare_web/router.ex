@@ -9,6 +9,7 @@ defmodule LogflareWeb.Router do
 
   pipeline :browser do
     plug LogflareWeb.Plugs.SetNodeHeader
+    plug Plug.RequestId
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_flash

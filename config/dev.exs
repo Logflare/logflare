@@ -33,14 +33,13 @@ config :logflare, LogflareWeb.Endpoint,
     ]
   ]
 
-config :logger, :console, format: "[$level] $message\n"
-
-# config :logger,
-#   level: :info,
-#   backends: [LogflareLogger.HttpBackend]
-
 config :logger,
-  level: :debug
+  level: :debug,
+  backends: [:console, LogflareLogger.HttpBackend]
+
+config :logger, :console,
+  format: "\n[$level] [$metadata] $message\n",
+  metadata: [:request_id]
 
 config :phoenix, :stacktrace_depth, 20
 
