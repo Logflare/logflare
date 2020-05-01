@@ -156,7 +156,10 @@ defmodule Logflare.Mixfile do
 
       # Billing
       {:stripity_stripe, "~> 2.7.1"},
-      {:money, "~> 1.7"}
+      {:money, "~> 1.7"},
+
+      # Utils
+      {:recase, "~> 0.6.0"}
     ]
   end
 
