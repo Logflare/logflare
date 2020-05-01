@@ -17,9 +17,9 @@ config :logflare, LogflareWeb.Endpoint,
   pubsub: [name: Logflare.PubSub]
 
 # Configures Elixir's Logger
-config :logger, :console,
+config :logger,
   handle_otp_reports: true,
-  handle_sasl_reports: true
+  handle_sasl_reports: false
 
 config :ueberauth, Ueberauth,
   providers: [

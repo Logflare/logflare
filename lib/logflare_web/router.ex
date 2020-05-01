@@ -8,6 +8,8 @@ defmodule LogflareWeb.Router do
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
+    plug LogflareWeb.Plugs.SetNodeHeader
+    plug Plug.RequestId
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_flash
