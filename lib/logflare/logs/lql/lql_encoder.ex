@@ -2,7 +2,7 @@ defmodule Logflare.Lql.Encoder do
   @moduledoc """
   Encodes Lql rules to a lql querystring
   """
-  alias Logflare.Lql.{Parser, Encoder, FilterRule, ChartRule}
+  alias Logflare.Lql.{Parser, FilterRule, ChartRule}
 
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules

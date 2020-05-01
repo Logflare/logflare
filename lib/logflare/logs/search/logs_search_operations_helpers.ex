@@ -6,7 +6,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.Google.BigQuery
-  alias Logflare.{Source, Sources, EctoQueryBQ}
+  alias Logflare.{Source, EctoQueryBQ}
   @query_request_timeout 60_000
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
   @default_open_interval_length 1_000
@@ -107,26 +107,6 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     sql_and_params = {EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id), params}
     sql_string = EctoQueryBQ.SQL.sql_params_to_sql(sql_and_params)
     %{sql_with_params: sql, params: params, sql_string: sql_string}
-  end
-
-  @deprecated "use BQRepo"
-  def query_with_params(sql, params, opts \\ [])
-      when is_binary(sql) and is_list(params) do
-    query_request = %QueryRequest{
-      query: sql,
-      useLegacySql: false,
-      useQueryCache: true,
-      parameterMode: "POSITIONAL",
-      queryParameters: params,
-      dryRun: false,
-      timeoutMs: @query_request_timeout
-    }
-
-    with {:ok, response} <- BigQuery.query(query_request) do
-      AtomicMap.convert(response, %{safe: false})
-    else
-      errtup -> errtup
-    end
   end
 
   @spec get_number_of_chart_ticks(
