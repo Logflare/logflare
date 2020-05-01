@@ -45,7 +45,15 @@ defmodule Logflare.BqRepo do
         |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
         |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer_or_zero/1)
         |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
-        |> AtomicMap.convert(%{safe: false})
+        |> Map.from_struct()
+        |> Enum.map(fn {k, v} ->
+          {
+            k |> Atom.to_string() |> Recase.to_snake() |> String.to_atom(),
+            v
+          }
+        end)
+        |> Map.new()
+        |> MapKeys.to_atoms_unsafe!()
 
       {:ok, response}
     else
