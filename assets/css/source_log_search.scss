@@ -20,12 +20,17 @@
     display: flex;
     flex-direction: column-reverse;
     flex-grow: 1;
+
+    will-change: all;
+    transform: translateZ(0);
     transition: 0.2s filter linear;
   }
 
   & .blurred {
-    filter: blur(2px) contrast(0.8);
+    will-change: all;
+    transform: translateZ(0);
     transition: 0.2s filter linear;
+    filter: blur(2px) contrast(0.8);
   }
 }
 
