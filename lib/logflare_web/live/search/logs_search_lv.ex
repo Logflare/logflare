@@ -72,6 +72,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket =
           socket
           |> assign(:loading, true)
+          |> assign(:tailing_initial?, true)
           |> assign(:log_events, stale_log_events)
           |> assign(:log_aggregates, [])
           |> assign(:lql_rules, lql_rules)
