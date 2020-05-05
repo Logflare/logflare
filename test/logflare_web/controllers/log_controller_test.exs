@@ -325,6 +325,20 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "SetVerifySource for HTML routes" do
+    test "without a valid source", %{conn: conn, users: [u | _], sources: [s | _]} do
+      log_params = build_log_params()
+
+      conn =
+        conn
+        |> assign(:user, u)
+        |> get(source_path(conn, :show, 100))
+
+      assert get_flash(conn) == %{"error" => "Source not found!"}
+      assert redirected_to(conn, 302) == "/"
+    end
+  end
+
   def metadata() do
     %{
       "datacenter" => "aws",

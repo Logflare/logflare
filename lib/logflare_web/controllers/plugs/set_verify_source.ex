@@ -67,13 +67,20 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> redirect(to: Routes.marketing_path(conn, :index))
         |> halt()
 
-      {nil, _} ->
+      {nil, true} ->
         message = "Source or source_name is nil, empty or not found."
 
         conn
         |> put_status(406)
         |> put_view(LogflareWeb.LogView)
         |> render("index.json", message: message)
+        |> halt()
+
+      {nil, false} ->
+        conn
+        |> put_status(302)
+        |> put_flash(:error, "Source not found!")
+        |> redirect(to: Routes.marketing_path(conn, :index))
         |> halt()
     end
   end
