@@ -198,8 +198,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       refute s1_new.name === "it's mine now!"
       assert conn.halted === true
-      assert get_flash(conn, :error) =~ "That's not yours!"
-      assert redirected_to(conn, 403) =~ marketing_path(conn, :index)
+      assert html_response(conn, 403) =~ "Forbidden"
       refute_called Sources.Cache.get_by(any()), once()
     end
   end
@@ -231,7 +230,23 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u2)
         |> get(source_path(conn, :show, s1.id))
 
-      assert redirected_to(conn, 403) === "/"
+      assert html_response(conn, 403) =~ "403"
+      assert html_response(conn, 403) =~ "Forbidden"
+      refute_called Sources.Cache.get_by(any()), once()
+    end
+
+    test "returns 404 for non-existing source", %{
+      conn: conn,
+      users: [_u1, u2 | _],
+      sources: [s1 | _]
+    } do
+      conn =
+        conn
+        |> login_user(u2)
+        |> get(source_path(conn, :show, 10000))
+
+      assert html_response(conn, 404) =~ "404"
+      assert html_response(conn, 404) =~ "not found"
       refute_called Sources.Cache.get_by(any()), once()
     end
   end
