@@ -32,63 +32,36 @@
   </head>
   <body>
     <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
-      <%= if @user do %>
-        <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
-          <i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small>
-        <% end %>
-      <% else %>
-        <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
-      <% end %>
+      <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare </a>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
-          <%= if @user do %>
-            <li class="nav-item" >
-              <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
-            </li>
-            <li class="nav-item" >
-              <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
-              <%= link "Profile", to: Routes.team_user_path(@conn, :edit), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
-              <%= link "Account", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
-              <%= link "Sign out", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>
-            </li>
-            <li class="nav-item" >
-              <%= link "logflare.app", to: Routes.marketing_path(@conn, :index), class: "nav-link" %>
-            </li>
-            <%= if @user.admin do %>
-              <li class="nav-item">
-                <%= link "Admin", to: Routes.admin_path(@conn, :dashboard), class: "nav-link" %>
-              </li>
-            <% end %>
-          <% else %>
-            <li class="nav-item" >
-              <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
-            </li>
-            <li class="nav-item" >
-              <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
-              <%= link "Continue with Github", to: Routes.oauth_path(@conn, :request, "github"), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
-              <%= link "Continue with Google", to: Routes.oauth_path(@conn, :request, "google"), class: "nav-link" %>
-            </li>
-          <% end %>
         </ul>
       </div>
     </nav>
     <main>
-      500 Server error!
-      Oops, something went wrong. We've been notified. If this error persists please contact us at support@logflare.app
+      <div class="container-fluid hero no-subhead">
+        <div class="container">
+          <div class="row cta">
+            <div class="col-lg-10 order-lg-1">
+              <div class="row">
+                <div class="col-lg-7">
+                  <h1>500 Server error!</h1>
+                  <h2>Oops, something went wrong. We've been notified. If this error persists please contact us at <a href="mailto:support@logflare.app">support@logflare.app</a></h2>
+                </div>
+                <div class="col-lg-5">
+                  <p>Looking for something else?</p>
+                  <%= render(LogflareWeb.SharedView, "logflare_services_list.html") %>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-1">
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
-    <%= render("js_libs.html") %>
   </body>
 </html>
