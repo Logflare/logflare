@@ -1,0 +1,28 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <div class="log-settings float-right">
+      <ul>
+        <li><%= live_render(@conn, LogflareWeb.UtcTimeLive) %></li>
+        <li><%= link to: Routes.admin_path(@conn, :dashboard) do %><i class="fas fa-list"></i><strong><span class="hide-on-mobile"> sources</span></strong><% end %></li>
+        <li><%= link to: Routes.cluster_path(@conn, :index) do %><i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span><% end %></li>
+        <li><%= link to: Routes.live_path(@conn, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><span class="hide-on-mobile"> search</span><% end %></li>
+      </ul>
+    </div>
+    <h5>~/admin/dashboard/sources</h5>
+  </div>
+</div>
+<div class="container mx-auto">
+  <h1>New Plan</h1>
+  <%= form_for @changeset, Routes.admin_plan_path(@conn, :create), fn f -> %>
+  <div class="form-group">
+    <%= label f, :name, class: "label-padding" %>
+    <%= text_input f, :name, placeholder: "Great plan", class: "form-control form-control-margin", autofocus: true %>
+    <%= error_tag f, :name %>
+    <%= label f, :stripe_id, class: "label-padding" %>
+    <%= text_input f, :stripe_id, placeholder: "stripe id", class: "form-control form-control-margin" %>
+    <%= error_tag f, :stripe_id %>
+  </div>
+  <%= submit "Create plan", class: "btn btn-primary form-button" %>
+<% end %>
+</div>
+</div>

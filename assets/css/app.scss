@@ -112,7 +112,8 @@ main.app {
 }
 
 .copyable-code {
-  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   background-color: $brand-light-black;
   color: $brand-light-gray;
   display: block;
@@ -163,12 +164,6 @@ code {
 
 .footer {
   margin-top: 4em;
-}
-
-.help-block {
-  color: #dc3545;
-  text-transform: uppercase;
-  font-size: 0.75rem;
 }
 
 .log-settings a,
@@ -270,7 +265,8 @@ mark {
   flex-direction: column-reverse; */
 }
 
-.console-text-list {}
+.console-text-list {
+}
 
 .container {
   max-width: 95%;
@@ -298,7 +294,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-moz-keyframes fadeIn {
   0% {
@@ -306,14 +303,16 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-webkit-keyframes fadeIn {
   0% {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-o-keyframes fadeIn {
   0% {
@@ -321,7 +320,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-ms-keyframes fadeIn {
   0% {
@@ -329,7 +329,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 .flash-text {
@@ -344,33 +345,38 @@ mark {
     color: #2a6cce;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-moz-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-webkit-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-o-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 @-ms-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }

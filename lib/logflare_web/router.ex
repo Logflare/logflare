@@ -195,6 +195,9 @@ defmodule LogflareWeb.Router do
     get "/dashboard", AdminController, :dashboard
     live "/dashboard/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
     get "/cluster", ClusterController, :index
+    get "/plans", AdminPlanController, :index
+    get "/plans/new", AdminPlanController, :new
+    post "/plans", AdminPlanController, :create
   end
 
   scope "/install", LogflareWeb do

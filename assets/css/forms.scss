@@ -7,7 +7,9 @@
 
 .form-text {
   margin-top: 0;
-  font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,
+    Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji,
+    Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
 }
 
 .input_container input.form-control {
@@ -17,7 +19,7 @@
 }
 
 .form-control-margin {
-  margin-bottom: 0.3em!important;
+  margin-bottom: 0.3em !important;
   margin-top: 1em;
 }
 
@@ -34,4 +36,11 @@
 
 .fas-in-button {
   padding-left: 0.5em;
+}
+
+.help-block {
+  color: #dc3545;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  display: block;
 }
