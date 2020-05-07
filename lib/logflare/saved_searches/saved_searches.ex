@@ -62,7 +62,10 @@ defmodule Logflare.SavedSearches do
     end
   end
 
-  def inc(search_id, tailing?: tailing?) do
+  def inc(search_id, opts) do
+    tailing? = opts[:tailing?]
+    timestamp = opts[:timestamp] || DateTime.utc_now() |> DateTimeUtils.truncate(:hour)
+
     {tcount, ntcount} =
       if tailing? do
         {1, 0}
@@ -72,9 +75,9 @@ defmodule Logflare.SavedSearches do
 
     %SavedSearchCounter{
       saved_search_id: search_id,
-      timestamp: DateTime.utc_now() |> DateTimeUtils.truncate(:hour),
-      tailing_count: 0,
-      non_tailing_count: 0
+      timestamp: timestamp,
+      tailing_count: tcount,
+      non_tailing_count: ntcount
     }
     |> Repo.insert(
       on_conflict: [inc: [tailing_count: tcount, non_tailing_count: ntcount]],

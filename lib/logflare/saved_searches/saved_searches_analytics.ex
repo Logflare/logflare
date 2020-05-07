@@ -14,6 +14,7 @@ defmodule Logflare.SavedSearches.Analytics do
       timestamp: fragment("?::DATE", c.timestamp),
       count: fragment("count(distinct ?)", source.id)
     })
+    |> order_by_date_default()
     |> Repo.all()
   end
 
@@ -38,6 +39,7 @@ defmodule Logflare.SavedSearches.Analytics do
       timestamp: fragment("?::DATE", c.timestamp),
       count: fragment("count(distinct ?)", user.id)
     })
+    |> order_by_date_default()
     |> Repo.all()
   end
 
@@ -50,6 +52,7 @@ defmodule Logflare.SavedSearches.Analytics do
       non_tailing_count: sum(c.non_tailing_count),
       tailing_count: sum(c.tailing_count)
     })
+    |> order_by_date_default()
     |> Repo.all()
   end
 
@@ -121,5 +124,9 @@ defmodule Logflare.SavedSearches.Analytics do
 
   def group_by_date(q) do
     group_by(q, [c, ...], [fragment("?::DATE", c.timestamp)])
+  end
+
+  defp order_by_date_default(q) do
+    order_by(q, [c, ...], asc: fragment("?::DATE", c.timestamp))
   end
 end
