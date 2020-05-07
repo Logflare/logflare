@@ -197,7 +197,9 @@ defmodule LogflareWeb.Router do
     get "/cluster", ClusterController, :index
     get "/plans", AdminPlanController, :index
     get "/plans/new", AdminPlanController, :new
-    post "/plans", AdminPlanController, :create
+    post "/plans/new", AdminPlanController, :create
+    get "/plans/:id/edit", AdminPlanController, :edit
+    put "/plans/:id/edit", AdminPlanController, :update
   end
 
   scope "/install", LogflareWeb do

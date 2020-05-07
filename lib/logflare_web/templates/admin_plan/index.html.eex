@@ -20,6 +20,9 @@
           <th scope="col">Id</th>
           <th scope="col">Name</th>
           <th scope="col">Stripe Id</th>
+          <th scope="col">Price</th>
+          <th scope="col">Period</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody>
@@ -28,6 +31,9 @@
             <th scope="row"><%= p.id %></th>
             <td><%= p.name %></td>
             <td><%= p.stripe_id %></td>
+            <td><%= p.price %></td>
+            <td><%= p.period %></td>
+            <td><%= button "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm", method: :get %></td>
           </tr>
         <% end %>
       </tbody>

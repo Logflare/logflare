@@ -8,11 +8,11 @@
         <li><%= link to: Routes.live_path(@conn, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><span class="hide-on-mobile"> search</span><% end %></li>
       </ul>
     </div>
-    <h5>~/admin/plans/new</h5>
+    <h5>~/admin/dashboard/sources</h5>
   </div>
 </div>
 <div class="container mx-auto">
-  <h1>New Plan</h1>
-  <%= render "form.html", Map.put(assigns, :action, Routes.admin_plan_path(@conn, :new)) %>
+  <h1>Edit Plan</h1>
+  <%= render "form.html", Map.put(assigns, :action, Routes.admin_plan_path(@conn, :edit, @plan)) %>
 </div>
 </div>

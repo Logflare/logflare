@@ -1,0 +1,18 @@
+<%= form_for @changeset, @action, fn f -> %>
+<div class="form-group">
+  <%= label f, :name, class: "label-padding" %>
+  <%= text_input f, :name, placeholder: "Great plan", class: "form-control form-control-margin", autofocus: true %>
+  <%= error_tag f, :name %>
+  <%= label f, :stripe_id, class: "label-padding" %>
+  <%= text_input f, :stripe_id, placeholder: "stripe id", class: "form-control form-control-margin" %>
+  <%= error_tag f, :stripe_id %>
+  <%= label f, :period, class: "label-padding" %>
+  <%= text_input f, :period, placeholder: "`month` or `year`", class: "form-control form-control-margin" %>
+  <%= error_tag f, :period %>
+  <%= label f, :price, class: "label-padding" %>
+  <%= text_input f, :price, placeholder: "2000 is $20", class: "form-control form-control-margin" %>
+  <%= error_tag f, :price %>
+  <%= hidden_input f, :id %>
+</div>
+<%= submit "Submit", class: "btn btn-primary form-button" %>
+<% end %>
