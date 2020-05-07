@@ -1,0 +1,66 @@
+defmodule LogflareWeb.AdminSearchDashboardLiveTest do
+  @moduledoc false
+  use LogflareWeb.ConnCase
+  import Phoenix.LiveViewTest
+  alias Logflare.Sources
+  alias Logflare.Users
+  @endpoint LogflareWeb.Endpoint
+  alias Logflare.BigQuery.PredefinedTestUser
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql
+  @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
+
+  setup_all do
+    Logflare.Sources.Counters.start_link()
+    :ok
+  end
+
+  describe "mount" do
+    setup [:assign_user_source]
+
+    test "successfully for admin", %{conn: conn, user: [user | _], source: [source | _]} do
+      assert {:ok, view, html} =
+               conn
+               |> assign(:user, %{user | admin: true})
+               |> live("/admin/dashboard/search")
+
+      assert html =~ "Search Dashboard"
+    end
+
+    test "forbidden for non-admin", %{conn: conn, user: [user | _], source: [source | _]} do
+      conn =
+        conn
+        |> get("/admin/dashboard/search")
+
+      assert html_response(conn, 403) =~ "403"
+    end
+
+    test "forbidden for anonynous user", %{conn: conn, user: [user | _], source: [source | _]} do
+      conn =
+        conn
+        |> assign(:user, nil)
+        |> get("/admin/dashboard/search")
+
+      assert html_response(conn, 403) =~ "403"
+    end
+  end
+
+  defp assign_user_source(_context) do
+    if is_nil(Process.whereis(@test_token)) do
+      {:ok, _} = RLS.start_link(%RLS{source_id: @test_token})
+      Process.sleep(2500)
+    end
+
+    user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+
+    Sources.Cache.put_bq_schema(@test_token, PredefinedTestUser.table_schema())
+    source = Sources.get_by(token: @test_token)
+
+    conn =
+      build_conn()
+      |> assign(:user, user)
+
+    %{source: [source], user: [user], conn: conn}
+  end
+end
