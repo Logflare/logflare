@@ -91,7 +91,7 @@ defmodule Logflare.Logs.SearchQueries do
 
   def select_count_http_status_code(q) do
     q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.response.status_code")
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.response.status_code")
     |> select_merge([..., t], %{
       other:
         fragment(
@@ -111,7 +111,7 @@ defmodule Logflare.Logs.SearchQueries do
 
   def select_count_log_level(q) do
     q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:left, "metadata.level")
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.level")
     |> select_merge([..., t], %{
       other:
         fragment(
