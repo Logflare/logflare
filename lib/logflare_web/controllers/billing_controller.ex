@@ -70,9 +70,9 @@ defmodule LogflareWeb.BillingController do
 
   def confirm_subscription(
         %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
-        %{"plan_name" => plan_name}
+        %{"stripe_id" => stripe_id}
       ) do
-    with plan <- Plans.get_plan_by(name: plan_name),
+    with plan <- Plans.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_customer_session(billing_account, plan) do
       conn
