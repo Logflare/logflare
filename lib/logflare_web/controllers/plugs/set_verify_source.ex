@@ -4,7 +4,6 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
   import Plug.Conn
   import Phoenix.Controller
   alias Logflare.{Sources, Source}
-  alias LogflareWeb.Router.Helpers, as: Routes
 
   def call(%{assigns: %{source: %Source{}}} = conn, _opts), do: conn
 

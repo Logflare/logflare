@@ -6,6 +6,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.Search.Utils
   alias Logflare.BqRepo
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.DateTimeUtils
 
   import Ecto.Query
 

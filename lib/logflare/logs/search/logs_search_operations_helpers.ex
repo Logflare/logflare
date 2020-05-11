@@ -3,11 +3,8 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.EctoQueryBQ
   alias Logflare.Source
-  alias GoogleApi.BigQuery.V2.Model.QueryRequest
-  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
-  alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.{GenUtils}
   alias Logflare.{Source, EctoQueryBQ}
-  @query_request_timeout 60_000
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
   @default_open_interval_length 1_000
 

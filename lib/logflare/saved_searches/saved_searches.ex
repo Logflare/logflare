@@ -4,7 +4,6 @@ defmodule Logflare.SavedSearches do
   alias Logflare.{SavedSearch, Repo}
   alias Logflare.{Sources, Source}
   alias Logflare.Lql
-  alias Logflare.Lql.{FilterRule, ChartRule}
   alias Logflare.SavedSearchCounter
   alias Logflare.DateTimeUtils
   require Logger

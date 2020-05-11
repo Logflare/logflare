@@ -3,10 +3,8 @@
     <h5>~/applications/<span class="text-primary overflow-scroll-nowrap"><%= @application.name %></span>/edit</h5>
   </div>
 </div>
-
 <div class="container mx-auto">
-<%= render "form.html", changeset: @changeset,
+  <%= render "form.html", changeset: @changeset,
                         action: Routes.oauth_application_path(@conn, :update, @application) %>
-
-<span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>
+  <span><%= link "Back", to: Routes.oauth_application_path(@conn, :index) %></span>
 </div>

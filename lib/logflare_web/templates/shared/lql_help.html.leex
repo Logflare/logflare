@@ -1,5 +1,4 @@
 <p>Logflare provides simple and powerful filtering capabilities both for historical search and realtime streams via the Logflare Query Language. Use the Logflare Query Language to search your log events or match and route log events dynamically via rules.</p>
-
 <h5 class="header-margin">Searching Log Event Messages</h5>
 <p>
   Any string not matching a supported operator will search against the log event message. Some strings may need to be wrapped in double quotes.
@@ -36,7 +35,6 @@
     </tbody>
   </table>
 </div>
-
 <h5 class="header-margin">Searching Metadata Fields</h5>
 <p>
   You can use data in metadata fields to limit your search. Reference your schema for supported fields.
@@ -51,83 +49,81 @@
         <th scope="col">Example</th>
       </tr>
     </thead>
-      <tbody>
-        <tr>
-          <th scope="row">Metadata</th>
-          <td>exact match</td>
-          <td><kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd></td>
-          <td><kbd>m.response.status_code:500</kbd></td>
-        </tr>
-        <tr>
-          <th scope="row">Metadata</th>
-          <td>match float, integer or datetime values</td>
-          <td>
-            <kbd>path</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> <kbd>value</kbd>
-          </td>
-            <td><kbd>m.response.status_code:>300</kbd> <kbd>m.response.status_code:<=400</kbd> <kbd>m.user.created_at:>2019-07-01T00:15:00</kbd></td>
-        </tr>
-        <tr>
-          <th scope="row">Metadata</th>
-          <td>match regex</td>
-          <td><kbd>path</kbd> <kbd>:</kbd> <kbd>~</kbd> <kbd>regex</kbd></td>
-          <td><kbd>m.browser:~"Firefox 5\d"</kbd></td>
-        </tr>
-        <tr>
-          <th scope="row">Metadata</th>
-          <td>match array includes</td>
-          <td>
-            <kbd>path</kbd> <kbd>:</kbd> <kbd>@></kbd> <kbd>value</kbd>
-          </td>
-          <td>
-            <kbd>m.user.roles:@>"new subscriber"</kbd>
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Metadata</th>
-          <td>match does NOT include</td>
-          <td>
-            <kbd>-</kbd>
-            <kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd>
-          </td>
-          <td>
-            <kbd>-m.user.company:"My Company"</kbd>
-          </td>
-        </tr>
-      </tbody>
-    </thead>
-  </table>
-</div>
-
-
-<h5 class="header-margin">Searching with Timestamps</h5>
-<p>Timestamps are not available when live search is active.</p>
-<p><i class="fas fa-exclamation-circle"></i> Timestamps will be automatically converted to UTC if Logflare is set to display local time.</p>
-<div class="table-responsive">
-  <table class="table table-dark">
-    <thead>
+    <tbody>
       <tr>
-        <th scope="col">Field</th>
-        <th scope="col">Filter</th>
-        <th scope="col">Example</th>
+        <th scope="row">Metadata</th>
+        <td>exact match</td>
+        <td><kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd></td>
+        <td><kbd>m.response.status_code:500</kbd></td>
       </tr>
-    </thead>
-      <tbody>
-        <tr>
-          <th scope="row">Timestamp</th>
-          <td>date range</td>
-          <td><kbd>error</kbd> <kbd>t:2020-04-{07..09}T00:00:00</kbd></td>
-        </tr>
-        <tr>
-          <th scope="row">Timestamp</th>
-          <td>microsecond range</td>
-          <td><kbd>t:2020-04-08T07:40:02.{000001..999999}</kbd></td>
-        </tr>
-        <tr>
-          <th scope="row">Timestamp</th>
-          <td>minute range</td>
-          <td><kbd>t:2020-04-08T07:{40..45}:02</kbd></td>
-        </tr>
-      </tbody>
-    </thead>
-  </table>
-</div>
+      <tr>
+        <th scope="row">Metadata</th>
+        <td>match float, integer or datetime values</td>
+        <td>
+          <kbd>path</kbd> <kbd>:</kbd> <kbd> >=, >, <=, < </kbd> <kbd>value</kbd>
+            </td>
+            <td><kbd>m.response.status_code:>300</kbd> <kbd>m.response.status_code:<=400</kbd> <kbd>m.user.created_at:>2019-07-01T00:15:00</kbd></td>
+              </tr>
+              <tr>
+                <th scope="row">Metadata</th>
+                <td>match regex</td>
+                <td><kbd>path</kbd> <kbd>:</kbd> <kbd>~</kbd> <kbd>regex</kbd></td>
+                <td><kbd>m.browser:~"Firefox 5\d"</kbd></td>
+              </tr>
+              <tr>
+                <th scope="row">Metadata</th>
+                <td>match array includes</td>
+                <td>
+                  <kbd>path</kbd> <kbd>:</kbd> <kbd>@></kbd> <kbd>value</kbd>
+                </td>
+                <td>
+                  <kbd>m.user.roles:@>"new subscriber"</kbd>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Metadata</th>
+                <td>match does NOT include</td>
+                <td>
+                  <kbd>-</kbd>
+                  <kbd>path</kbd> <kbd>:</kbd> <kbd>value</kbd>
+                </td>
+                <td>
+                  <kbd>-m.user.company:"My Company"</kbd>
+                </td>
+              </tr>
+            </tbody>
+          </thead>
+        </table>
+      </div>
+      <h5 class="header-margin">Searching with Timestamps</h5>
+      <p>Timestamps are not available when live search is active.</p>
+      <p><i class="fas fa-exclamation-circle"></i> Timestamps will be automatically converted to UTC if Logflare is set to display local time.</p>
+      <div class="table-responsive">
+        <table class="table table-dark">
+          <thead>
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Filter</th>
+              <th scope="col">Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Timestamp</th>
+              <td>date range</td>
+              <td><kbd>error</kbd> <kbd>t:2020-04-{07..09}T00:00:00</kbd></td>
+            </tr>
+            <tr>
+              <th scope="row">Timestamp</th>
+              <td>microsecond range</td>
+              <td><kbd>t:2020-04-08T07:40:02.{000001..999999}</kbd></td>
+            </tr>
+            <tr>
+              <th scope="row">Timestamp</th>
+              <td>minute range</td>
+              <td><kbd>t:2020-04-08T07:{40..45}:02</kbd></td>
+            </tr>
+          </tbody>
+        </thead>
+      </table>
+    </div>
