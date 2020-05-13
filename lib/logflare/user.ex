@@ -75,6 +75,7 @@ defmodule Logflare.User do
     field :valid_google_account, :boolean
     field :provider_uid, :string
     field :company, :string
+    field :billing_enabled?, :boolean, default: false, null: false
 
     timestamps()
   end

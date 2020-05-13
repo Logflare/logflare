@@ -22,7 +22,7 @@ defmodule LogflareWeb.BillingPlansLive do
 
   def render(assigns) do
     ~L"""
-    <p>Showing pricing per <%= @period %>.</p>
+    <p>Showing pricing per <%= @period %>. Get 20% off the monthly price if you choose a yearly plan.</p>
     <button phx-click="switch_period" phx-value-period=<%= period!(@period) %> class="btn btn-primary">See pricing per <%= period!(@period) %></button>
     <div class="scrolling-wrapper">
     <div class="container mt-5 min-pricing-width">

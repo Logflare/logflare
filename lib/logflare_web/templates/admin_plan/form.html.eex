@@ -12,6 +12,15 @@
   <%= label f, :price, class: "label-padding" %>
   <%= text_input f, :price, placeholder: "2000 is $20", class: "form-control form-control-margin" %>
   <%= error_tag f, :price %>
+  <%= label f, "Source Limit", class: "label-padding" %>
+  <%= text_input f, :limit_sources, placeholder: "", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_sources %>
+  <%= label f, "Rate Limit", class: "label-padding" %>
+  <%= text_input f, :limit_rate_limit, placeholder: "per second", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_sources %>
+  <%= label f, "Alerts Every", class: "label-padding" %>
+  <%= text_input f, :limit_alert_freq, placeholder: "milliseconds", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_alert_freq %>
   <%= hidden_input f, :id %>
 </div>
 <%= submit "Submit", class: "btn btn-primary form-button" %>

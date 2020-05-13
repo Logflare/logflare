@@ -14,7 +14,10 @@
   <h4 class="header-margin">Billing Account</h4>
   <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
   <div class="sub-form">
-    <h5 class="header-margin">Pick a Plan</h5>
+    <h5 class="header-margin">Launch Offer</h5>
+  </div>
+  <div class="sub-form">
+    <h5 class="header-margin">Pick a Standard Plan</h5>
     <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
   </div>
   <div class="sub-form">

@@ -22,6 +22,9 @@
           <th scope="col">Stripe Id</th>
           <th scope="col">Price</th>
           <th scope="col">Period</th>
+          <th scope="col">Sources</th>
+          <th scope="col">Rate (per sec)</th>
+          <th scope="col">Alerts (ms)</th>
           <th scope="col"></th>
         </tr>
       </thead>
@@ -33,6 +36,9 @@
             <td><%= p.stripe_id %></td>
             <td><%= p.price %></td>
             <td><%= p.period %></td>
+            <td><%= p.limit_sources %></td>
+            <td><%= p.limit_rate_limit %></td>
+            <td><%= p.limit_alert_freq %></td>
             <td><%= button "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm", method: :get %></td>
           </tr>
         <% end %>
