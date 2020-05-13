@@ -18,24 +18,37 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         conn
 
       team_user_id ->
-        t = TeamUsers.get_team_user!(team_user_id)
+        case TeamUsers.get_team_user(team_user_id) do
+          nil ->
+            drop(conn)
 
-        case TeamUsers.touch_team_user(t) do
-          {1, [team_user]} ->
-            team_user |> TeamUsers.preload_defaults()
+          t ->
+            case TeamUsers.touch_team_user(t) do
+              {1, [team_user]} ->
+                team_user |> TeamUsers.preload_defaults()
 
-            conn
-            |> assign(:team_user, team_user)
+                conn
+                |> assign(:team_user, team_user)
 
-          _ ->
-            conn
-            |> put_flash(
-              :error,
-              "Something went wrong. If this continues please contact support."
-            )
-            |> redirect(to: Routes.source_path(conn, :dashboard))
-            |> halt()
+              _ ->
+                error(conn)
+            end
         end
     end
+  end
+
+  defp error(conn) do
+    conn
+    |> put_flash(
+      :error,
+      "Something went wrong. If this continues please contact support."
+    )
+    |> redirect(to: Routes.source_path(conn, :dashboard))
+  end
+
+  defp drop(conn) do
+    conn
+    |> configure_session(drop: true)
+    |> redirect(to: Routes.auth_path(conn, :login, team_user_deleted: true))
   end
 end
