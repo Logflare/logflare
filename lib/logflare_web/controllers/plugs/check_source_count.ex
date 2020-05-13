@@ -9,17 +9,21 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
   end
 
   def call(conn, _params) do
-    plan = Plans.get_plan_by(stripe_id: get_stripe_plan(conn.assigns.user.billing_account))
-    source_count = length(conn.assigns.user.sources)
+    if conn.assigns.user.billing_enabled? do
+      plan = Plans.get_plan_by(stripe_id: get_stripe_plan(conn.assigns.user.billing_account))
+      source_count = length(conn.assigns.user.sources)
 
-    if conn.assigns.user.billing_enabled? && source_count >= plan.limit_sources do
-      conn
-      |> put_flash(
-        :error,
-        "You have #{source_count} sources. Your limit is #{plan.limit_sources}. Delete one or upgrade first!"
-      )
-      |> redirect(to: Routes.source_path(conn, :dashboard))
-      |> halt()
+      if source_count >= plan.limit_sources do
+        conn
+        |> put_flash(
+          :error,
+          "You have #{source_count} sources. Your limit is #{plan.limit_sources}. Delete one or upgrade first!"
+        )
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> halt()
+      else
+        conn
+      end
     else
       conn
     end
