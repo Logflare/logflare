@@ -12,9 +12,6 @@ defmodule Ecto.Term do
     {:ok, value}
   end
 
-  def cast(value), do: value
-  def cast(_), do: :error
-
   @spec load(any) :: :error | {:ok, any}
   def load(value) do
     try do
@@ -28,5 +25,11 @@ defmodule Ecto.Term do
     {:ok, :erlang.term_to_binary(value)}
   end
 
-  def dump(_), do: :error
+  def embed_as(_) do
+    :self
+  end
+
+  def equal?(term1, term2) do
+    term1 === term2
+  end
 end

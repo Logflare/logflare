@@ -2,7 +2,7 @@ defmodule Logflare.SavedSearches do
   @moduledoc false
   import Ecto.Query
   alias Logflare.{SavedSearch, Repo}
-  alias Logflare.{Sources, Source}
+  alias Logflare.{Source}
   alias Logflare.Lql
   alias Logflare.SavedSearchCounter
   alias Logflare.DateTimeUtils

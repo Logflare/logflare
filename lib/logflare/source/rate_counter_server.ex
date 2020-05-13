@@ -8,11 +8,12 @@ defmodule Logflare.Source.RateCounterServer do
 
   require Logger
   alias __MODULE__, as: RCS
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Sources.Counters
-  alias Logflare.Source.Data
   alias Logflare.Source
+  alias Logflare.Source.Data
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
   alias Logflare.Tracker
 
   @default_bucket_width 60
@@ -22,13 +23,13 @@ defmodule Logflare.Source.RateCounterServer do
   use Publicist
 
   typedstruct do
-    field :source_id, atom(), enforce: false
-    field :count, non_neg_integer(), default: 0
-    field :last_rate, non_neg_integer(), default: 0
-    field :begin_time, non_neg_integer(), enforce: false
-    field :max_rate, non_neg_integer(), default: 0
+    field(:source_id, atom(), enforce: false)
+    field(:count, non_neg_integer(), default: 0)
+    field(:last_rate, non_neg_integer(), default: 0)
+    field(:begin_time, non_neg_integer(), enforce: false)
+    field(:max_rate, non_neg_integer(), default: 0)
 
-    field :buckets, map,
+    field(:buckets, map,
       default: %{
         @default_bucket_width => %{
           queue: LQueue.new(@default_bucket_width),
@@ -37,6 +38,7 @@ defmodule Logflare.Source.RateCounterServer do
           duration: @default_bucket_width
         }
       }
+    )
   end
 
   @rate_period 1_000
@@ -247,7 +249,7 @@ defmodule Logflare.Source.RateCounterServer do
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
   def get_insert_count(source_id) when is_atom(source_id) do
-    Logflare.Sources.Counters.get_inserts(source_id)
+    Sources.Counters.get_inserts(source_id)
   end
 
   def average(xs) when is_list(xs) do

@@ -1,8 +1,6 @@
 defmodule Logflare.Source.WebhookNotificationServer.Client do
+  @moduledoc false
   require Logger
-
-  alias LogflareWeb.Router.Helpers, as: Routes
-  alias LogflareWeb.Endpoint
 
   @middleware [Tesla.Middleware.JSON]
 

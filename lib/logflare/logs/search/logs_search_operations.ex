@@ -1,12 +1,12 @@
 defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
-  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
-  alias Logflare.{Sources, EctoQueryBQ}
-  alias Logflare.Lql
-  alias Logflare.Logs.Search.Utils
   alias Logflare.BqRepo
-  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.DateTimeUtils
+  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
+  alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Logs.Search.Utils
+  alias Logflare.Lql
+  alias Logflare.{Sources, EctoQueryBQ}
 
   import Ecto.Query
 
