@@ -48,6 +48,21 @@ defmodule LogflareWeb.Auth.OauthController do
     end
   end
 
+  def callback(%{assigns: %{ueberauth_auth: auth}} = conn, %{"provider" => "google"} = _params) do
+    auth_params = %{
+      token: auth.credentials.token,
+      email: auth.info.email,
+      email_preferred: auth.info.email,
+      provider: "google",
+      image: auth.info.image,
+      name: auth.info.name,
+      provider_uid: generate_provider_uid(auth, auth.provider),
+      valid_google_account: true
+    }
+
+    AuthController.check_invite_token_and_signin(conn, auth_params)
+  end
+
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     auth_params = %{
       token: auth.credentials.token,

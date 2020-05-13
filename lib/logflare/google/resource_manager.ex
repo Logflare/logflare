@@ -9,6 +9,8 @@ defmodule Logflare.Google.CloudResourceManager do
   alias GoogleApi.CloudResourceManager.V1.Connection
   alias Logflare.Repo
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.User
+  alias Logflare.TeamUsers.TeamUser
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
@@ -201,23 +203,36 @@ defmodule Logflare.Google.CloudResourceManager do
     ]
   end
 
-  defp build_members() do
-    query =
-      from(u in "users",
+  def build_members() do
+    users_query =
+      from(u in User,
         where: u.provider == "google",
         where: u.valid_google_account == true or is_nil(u.valid_google_account),
         select: %{
-          email: u.email
-        },
-        order_by: [desc: u.updated_at],
-        limit: 1450
+          email: u.email,
+          updated_at: u.updated_at
+        }
       )
+
+    team_users_query =
+      from(t in TeamUser,
+        where: t.provider == "google",
+        where: t.valid_google_account == true or is_nil(t.valid_google_account),
+        select: %{
+          email: t.email,
+          updated_at: t.updated_at
+        }
+      )
+      |> union(^users_query)
+
+    query = from q in subquery(team_users_query), order_by: [desc: q.updated_at], limit: 1450
 
     emails = Repo.all(query)
 
     Enum.map(emails, fn e ->
       "user:" <> e.email
     end)
+    |> Enum.uniq()
   end
 
   defp get_conn() do

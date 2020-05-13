@@ -106,7 +106,7 @@ defmodule LogflareWeb.AuthController do
 
       {:ok_found_user, user} ->
         CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access!(user.id)
+        BigQuery.patch_dataset_access!(user)
 
         case is_nil(oauth_params) do
           true ->
