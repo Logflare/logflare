@@ -4,7 +4,6 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
   alias Logflare.{Sources, Source, Users, LogEvent}
   import Logflare.Factory
   use Logflare.DataCase
-  use Placebo
 
   setup do
     s1 = build(:source)
@@ -13,19 +12,10 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     u1 = insert(:user, sources: sources)
     u1 = Users.preload_defaults(u1)
 
-    allow(Source.Data.get_rate()) |> exec(fn _ -> 0 end)
-    allow(Source.Data.get_latest_date()) |> exec(fn _ -> 0 end)
-    allow(Source.Data.get_avg_rate()) |> exec(fn _ -> 0 end)
-    allow(Source.Data.get_max_rate()) |> exec(fn _ -> 0 end)
-    allow(Source.Data.get_buffer()) |> exec(fn _ -> 0 end)
-    allow(Source.Data.get_total_inserts()) |> exec(fn _ -> 0 end)
-    allow(Source.Data.get_ets_count()) |> exec(fn _ -> 0 end)
-
     {:ok, users: [u1], sources: sources}
   end
 
   describe "rejected logs module" do
-    @tag :skip
     test "inserts logs for source and validator", %{sources: [s1, _]} do
       validator = Logflare.Logs.Validators.EqDeepFieldTypes
 
@@ -53,7 +43,6 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
       assert rle.params == log_event.params
     end
 
-    @tag :skip
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
       source1 = Sources.get_by(token: s1.token)
       source2 = Sources.get_by(token: s2.token)

@@ -21,7 +21,7 @@ defmodule Logflare.Google.BigQuery.SchemaUpdateTest do
         )
       end
 
-      refute catch_error(fun.()) == %Protocol.UndefinedError{
+      assert catch_error(fun.()) == %Protocol.UndefinedError{
                description: "",
                protocol: Enumerable,
                value: nil

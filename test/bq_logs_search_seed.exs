@@ -27,7 +27,7 @@ user =
 
 Repo.delete!(user)
 
-user =
+{:ok_found_user, user} =
   Users.insert_or_update_user(%{
     id: 314_159,
     email: email,

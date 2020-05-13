@@ -126,8 +126,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       u1_updated = Users.get_by(id: u1.id)
       refute u1_updated
-      assert get_flash(conn, :info) == "Account deleted!"
-      assert redirected_to(conn, 302) == marketing_path(conn, :index)
+      assert redirected_to(conn, 302) == auth_path(conn, :login, user_deleted: true)
       refute_called(Users.Cache.get_by(any()), once())
     end
   end

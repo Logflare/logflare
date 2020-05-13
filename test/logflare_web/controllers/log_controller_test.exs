@@ -257,7 +257,6 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "ZEIT log params ingest" do
-    @describetag :run
     test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
       log_param = %{
         "buildId" => "identifier of build only on build logs",
@@ -285,7 +284,7 @@ defmodule LogflareWeb.LogControllerTest do
         "timestamp" => 1_580_845_449_483
       }
 
-      build_zeit_log_params = fn log_param ->
+      build_vercel_log_params = fn log_param ->
         log_params = %{
           "_json" => [log_param],
           "api_key" => "H-a2QUCFTAFR",
@@ -309,12 +308,12 @@ defmodule LogflareWeb.LogControllerTest do
         log_params =
           log_param
           |> put_in(["proxy", "userAgent"], ua)
-          |> build_zeit_log_params.()
+          |> build_vercel_log_params.()
 
         conn =
           conn
           |> post(
-            log_path(conn, :zeit_ingest),
+            log_path(conn, :vercel_ingest),
             log_params
           )
 
@@ -327,15 +326,13 @@ defmodule LogflareWeb.LogControllerTest do
 
   describe "SetVerifySource for HTML routes" do
     test "without a valid source", %{conn: conn, users: [u | _], sources: [s | _]} do
-      log_params = build_log_params()
-
       conn =
         conn
         |> assign(:user, u)
         |> get(source_path(conn, :show, 100))
 
-      assert get_flash(conn) == %{"error" => "Source not found!"}
-      assert redirected_to(conn, 302) == "/"
+      assert html_response(conn, 404) =~ "404"
+      assert html_response(conn, 404) =~ "not found"
     end
   end
 

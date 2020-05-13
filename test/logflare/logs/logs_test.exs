@@ -7,40 +7,86 @@ defmodule Logflare.LogsTest do
   alias Logflare.Rules
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Sources
+  alias Logflare.Source
+  alias Logflare.Source.BigQuery.Schema, as: BigQuerySchemaGS
   alias Logflare.Source.{BigQuery.Buffer}
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.BqRepo
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.{Query, GenUtils}
   alias Logflare.SystemMetricsSup
-  alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Sources.Counters
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Lql
   @test_dataset_location "us-east4"
 
   describe "log event ingest" do
-    @describetag :skip
-    test "succeeds for floats", %{sources: [s | _]} do
+    setup do
+      u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+      u = Users.get(u.id)
+      [sink1, sink2] = insert_list(2, :source, user_id: u.id)
+
+      rule1 = build(:rule, sink: sink1.token, regex: "pattern2")
+      rule2 = build(:rule, sink: sink2.token, regex: "pattern3")
+
+      s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
+
+      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink2.token})
+
       conn = GenUtils.get_conn()
-      project_id = GenUtils.get_project_id(s.token)
-      dataset_id = "dev_dataset_#{s.user.id}"
+      project_id = GenUtils.get_project_id(s1.token)
+      dataset_id = User.generate_bq_dataset_id(u)
 
       assert {:ok, _} =
                BigQuery.create_dataset(
-                 "#{s.user_id}",
+                 "#{u.id}",
                  dataset_id,
                  @test_dataset_location,
                  project_id
                )
 
-      assert {:ok, table} = BigQuery.create_table(s.token, dataset_id, project_id, 300_000)
+      assert {:ok, table} = BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
 
-      table_id = table.id |> String.replace(":", ".")
-      sql = "SELECT * FROM `#{table_id}`"
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"level" => "warn"},
+          SchemaBuilder.initial_table_schema()
+        )
 
-      Logs.ingest_logs([%{"message" => "test", "metadata" => %{"float" => 0.001}}], s)
+      {:ok, _} =
+        BigQuery.patch_table(
+          s1.token,
+          schema,
+          dataset_id,
+          project_id
+        )
+
+      s1 =
+        Sources.get_by(token: s1.token)
+        |> Sources.preload_defaults()
+        |> Sources.put_bq_table_data()
+
+      SystemMetricsSup.start_link()
+      Counters.start_link()
+      Buffer.start_link(%RLS{source_id: s1.token})
+      Buffer.start_link(%RLS{source_id: sink1.token})
+      Buffer.start_link(%RLS{source_id: sink2.token})
+      {:ok, sources: [s1], sinks: [sink1, sink2], users: [u], tables: [table]}
+    end
+
+    test "succeeds for floats", %{sources: [s | _], users: [u | _], tables: [table | _]} do
+      conn = GenUtils.get_conn()
+      project_id = GenUtils.get_project_id(s.token)
+      dataset_id = User.generate_bq_dataset_id(u)
+
+      Logs.ingest_logs([%{"message" => "test"}], s)
       Process.sleep(3_000)
-      {:ok, response} = Query.query(conn, project_id, sql)
+
+      sql = "SELECT * FROM #{s.bq_table_id}"
+      {:ok, response} = BqRepo.query_with_sql_and_params(project_id, sql, [])
       assert response.rows == [%{"log_message" => "test", "metadata" => %{"float" => 0.001}}]
     end
   end
@@ -55,6 +101,10 @@ defmodule Logflare.LogsTest do
       rule2 = build(:rule, sink: sink2.token, regex: "pattern3")
 
       s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
+
+      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink2.token})
 
       conn = GenUtils.get_conn()
       project_id = GenUtils.get_project_id(s1.token)
@@ -166,6 +216,10 @@ defmodule Logflare.LogsTest do
                  project_id
                )
 
+      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
+      Source.BigQuery.Schema.start_link(%RLS{source_id: sink2.token})
+
       assert {:ok, table} = BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
 
       schema =
@@ -181,6 +235,11 @@ defmodule Logflare.LogsTest do
           dataset_id,
           project_id
         )
+
+      Source.BigQuery.Schema.update(s1.token, schema)
+      Source.BigQuery.Schema.update(sink1.token, schema)
+      Source.BigQuery.Schema.update(sink2.token, schema)
+      Process.sleep(100)
 
       {:ok, lql_rule1} =
         Rules.create_rule(%{"sink" => sink1.token, "lql_string" => "warning"}, s1)
