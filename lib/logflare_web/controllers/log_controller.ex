@@ -11,7 +11,7 @@ defmodule LogflareWeb.LogController do
            "Content-Length",
            "X-Requested-With"
          ],
-         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         methods: ["POST", "OPTIONS"],
          send_preflight_response?: true
        ]
        when action in [:browser_reports, :generic_json, :create]
