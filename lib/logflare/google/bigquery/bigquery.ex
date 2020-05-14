@@ -248,7 +248,7 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  def patch_dataset_access!(
+  def patch_dataset_access(
         %User{
           bigquery_dataset_id: dataset_id,
           bigquery_project_id: project_id
@@ -317,6 +317,8 @@ defmodule Logflare.Google.BigQuery do
     )
     |> GenUtils.maybe_parse_google_api_result()
   end
+
+  defp patch(dataset_id, [], project_id, user_id), do: :noop
 
   defp patch(dataset_id, emails, project_id, user_id) do
     conn = GenUtils.get_conn()
