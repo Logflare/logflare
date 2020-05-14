@@ -394,7 +394,8 @@ defmodule LogflareWeb.SourceController do
         "datasetId" => dataset_id,
         # billingProjectId" => billing_project_id,
         "connectorType" => "BIG_QUERY",
-        "sqlType" => "STANDARD_SQL"
+        "sqlType" => "STANDARD_SQL",
+        "isPartitioned" => true
       })
 
     explore_link_prefix = "https://datastudio.google.com/explorer?authuser=#{user_email}&config="
