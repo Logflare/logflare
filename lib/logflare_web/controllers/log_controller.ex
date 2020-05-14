@@ -14,7 +14,7 @@ defmodule LogflareWeb.LogController do
          methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          send_preflight_response?: true
        ]
-       when action in [:browser_reports]
+       when action in [:browser_reports, :generic_json, :create]
 
   alias Logflare.Logs
 
@@ -25,6 +25,19 @@ defmodule LogflareWeb.LogController do
   end
 
   def create(%{assigns: %{source: source}} = conn, log_params) do
+    batch =
+      log_params
+      |> Map.take(~w[log_entry metadata timestamp])
+      |> List.wrap()
+
+    ingest_and_render(conn, batch, source)
+  end
+
+  def cloudflare(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
+    ingest_and_render(conn, batch, source)
+  end
+
+  def cloudflare(%{assigns: %{source: source}} = conn, log_params) do
     batch =
       log_params
       |> Map.take(~w[log_entry metadata timestamp])
