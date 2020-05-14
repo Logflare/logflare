@@ -57,10 +57,7 @@ defmodule LogflareWeb.UserController do
     Supervisor.delete_all_user_sources(user)
     BigQuery.delete_dataset(user)
     Repo.delete!(user)
-
-    spawn(fn ->
-      CloudResourceManager.set_iam_policy()
-    end)
+    CloudResourceManager.set_iam_policy()
 
     conn
     |> configure_session(drop: true)

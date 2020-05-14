@@ -255,7 +255,8 @@ defmodule Logflare.Google.BigQuery do
         } = user
       ) do
     user = Users.preload_sources(user) |> Users.preload_team()
-    team_users = TeamUsers.list_team_users_by(team_id: user.team.id)
+
+    team_users = if user.team, do: TeamUsers.list_team_users_by(team_id: user.team.id), else: []
 
     emails =
       Enum.map([user | team_users], fn x -> if x.provider == "google", do: x.email end)

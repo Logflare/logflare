@@ -251,12 +251,14 @@ defmodule LogflareWeb.Router do
   scope "/logs", LogflareWeb do
     pipe_through [:api, :require_ingest_api_auth]
     post "/", LogController, :create
-    post "/cloudflare", LogController, :create
-    post "/zeit", LogController, :vercel_ingest
-    post "/vercel", LogController, :vercel_ingest
-    post "/elixir/logger", LogController, :elixir_logger
+    options "/", LogController, :create
     post "/browser/reports", LogController, :browser_reports
     options "/browser/reports", LogController, :browser_reports
     post "/json", LogController, :generic_json
+    options "/json", LogController, :generic_json
+    post "/cloudflare", LogController, :cloudflare
+    post "/zeit", LogController, :vercel_ingest
+    post "/vercel", LogController, :vercel_ingest
+    post "/elixir/logger", LogController, :elixir_logger
   end
 end
