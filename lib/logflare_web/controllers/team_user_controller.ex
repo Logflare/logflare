@@ -5,6 +5,8 @@ defmodule LogflareWeb.TeamUserController do
   plug LogflareWeb.Plugs.AuthMustBeOwner when action in [:delete]
 
   alias Logflare.TeamUsers
+  alias Logflare.Google.BigQuery
+  alias Logflare.Google.CloudResourceManager
 
   def edit(%{assigns: %{team_user: team_user}} = conn, _params) do
     changeset = TeamUsers.TeamUser.changeset(team_user, %{})
@@ -26,11 +28,14 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def delete(%{assigns: %{user: _user}} = conn, %{"id" => team_user_id} = _params) do
+  def delete(%{assigns: %{user: user}} = conn, %{"id" => team_user_id} = _params) do
     team_user = TeamUsers.get_team_user!(team_user_id)
 
     case TeamUsers.delete_team_user(team_user) do
       {:ok, _team_user} ->
+        CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(user)
+
         conn
         |> put_flash(:info, "Member profile deleted!")
         |> redirect(to: Routes.user_path(conn, :edit))
@@ -42,9 +47,12 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def delete_self(%{assigns: %{team_user: team_user}} = conn, _params) do
+  def delete_self(%{assigns: %{team_user: team_user, user: user}} = conn, _params) do
     case TeamUsers.delete_team_user(team_user) do
       {:ok, _team_user} ->
+        CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(user)
+
         conn
         |> configure_session(drop: true)
         |> put_flash(:info, "Profile deleted!")

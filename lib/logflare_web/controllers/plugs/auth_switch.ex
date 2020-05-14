@@ -24,12 +24,9 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
         } = conn,
         opts
       ) do
-    switch_to_team_user = TeamUsers.get_team_user!(team_user_id)
-
-    if is_nil(switch_to_team_user) do
-      reject(conn, opts)
-    else
-      verify(team_user.email, switch_to_team_user.email, conn, opts)
+    case TeamUsers.get_team_user(team_user_id) do
+      nil -> reject(conn, opts)
+      switch_to_team_user -> verify(team_user.email, switch_to_team_user.email, conn, opts)
     end
   end
 
@@ -44,12 +41,9 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
         } = conn,
         opts
       ) do
-    switch_to_user = Users.get(user_id)
-
-    if is_nil(switch_to_user) do
-      reject(conn, opts)
-    else
-      verify(team_user.email, switch_to_user.email, conn, opts)
+    case Users.get(user_id) do
+      nil -> reject(conn, opts)
+      switch_to_user -> verify(team_user.email, switch_to_user.email, conn, opts)
     end
   end
 
@@ -64,12 +58,9 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
         } = conn,
         opts
       ) do
-    team_user = TeamUsers.get_team_user!(team_user_id)
-
-    if is_nil(team_user) do
-      reject(conn, opts)
-    else
-      verify(user.email, team_user.email, conn, opts)
+    case TeamUsers.get_team_user(team_user_id) do
+      nil -> reject(conn, opts)
+      team_user -> verify(user.email, team_user.email, conn, opts)
     end
   end
 

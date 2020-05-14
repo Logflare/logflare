@@ -14,6 +14,9 @@ defmodule Logflare.Google.BigQuery do
 
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
+  alias Logflare.Sources
+  alias Logflare.User
+  alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
@@ -245,56 +248,28 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  @spec patch_dataset_access!(non_neg_integer()) :: ok_err_tup
-  def patch_dataset_access!(user_id) do
-    conn = GenUtils.get_conn()
+  def patch_dataset_access(
+        %User{
+          bigquery_dataset_id: dataset_id,
+          bigquery_project_id: project_id
+        } = user
+      ) do
+    user = Users.preload_sources(user) |> Users.preload_team()
+    team_users = TeamUsers.list_team_users_by(team_id: user.team.id)
 
-    %Logflare.User{
-      email: email,
-      provider: provider,
-      bigquery_dataset_id: dataset_id,
-      bigquery_project_id: project_id
-    } = Users.get_by(id: user_id)
+    emails =
+      Enum.map([user | team_users], fn x -> if x.provider == "google", do: x.email end)
+      |> Enum.reject(&is_nil(&1))
 
-    dataset_id = dataset_id || Integer.to_string(user_id) <> @dataset_id_append
+    if Enum.count(user.sources) > 0 do
+      Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+        patch(dataset_id, emails, project_id, user.id)
+      end)
 
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      if provider == "google" do
-        access = [
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
-            role: "READER",
-            userByEmail: email
-          },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
-            role: "WRITER",
-            specialGroup: "projectWriters"
-          },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
-            role: "OWNER",
-            specialGroup: "projectOwners"
-          },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
-            role: "OWNER",
-            userByEmail: @service_account
-          },
-          %GoogleApi.BigQuery.V2.Model.DatasetAccess{
-            role: "READER",
-            specialGroup: "projectReaders"
-          }
-        ]
-
-        body = %Model.Dataset{
-          access: access
-        }
-
-        {:ok, _response} =
-          Api.Datasets.bigquery_datasets_patch(conn, project_id || @project_id, dataset_id,
-            body: body
-          )
-
-        Logger.info("Dataset patched: #{dataset_id} | #{email}")
-      end
-    end)
+      {:ok, :patch_attempted}
+    else
+      {:ok, :nothing_patched}
+    end
   end
 
   @doc """
@@ -341,5 +316,50 @@ defmodule Logflare.Google.BigQuery do
       }
     )
     |> GenUtils.maybe_parse_google_api_result()
+  end
+
+  defp patch(dataset_id, [], project_id, user_id), do: :noop
+
+  defp patch(dataset_id, emails, project_id, user_id) do
+    conn = GenUtils.get_conn()
+    dataset_id = dataset_id || Integer.to_string(user_id) <> @dataset_id_append
+
+    access_emails =
+      Enum.map(emails, fn x ->
+        %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+          role: "READER",
+          userByEmail: x
+        }
+      end)
+
+    access_defaults = [
+      %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+        role: "WRITER",
+        specialGroup: "projectWriters"
+      },
+      %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+        role: "OWNER",
+        specialGroup: "projectOwners"
+      },
+      %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+        role: "OWNER",
+        userByEmail: @service_account
+      },
+      %GoogleApi.BigQuery.V2.Model.DatasetAccess{
+        role: "READER",
+        specialGroup: "projectReaders"
+      }
+    ]
+
+    access = access_emails ++ access_defaults
+
+    body = %Model.Dataset{
+      access: access
+    }
+
+    {:ok, _response} =
+      Api.Datasets.bigquery_datasets_patch(conn, project_id || @project_id, dataset_id, body: body)
+
+    Logger.info("Dataset patched: #{dataset_id} | #{inspect(emails)}")
   end
 end

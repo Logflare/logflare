@@ -64,18 +64,19 @@ defmodule LogflareWeb.AuthController do
       |> put_session(:invite_token, nil)
       |> signin(auth_params)
     else
-      signin_invitee(conn, auth_params, invited_by_team_id)
+      signin_invitee(conn, auth_params, team)
     end
   end
 
-  def signin_invitee(conn, auth_params, invited_by_team_id) do
-    invited_by_user_id = Teams.get_team!(invited_by_team_id).user_id
-
-    case TeamUsers.insert_or_update_team_user(invited_by_team_id, auth_params) do
+  def signin_invitee(conn, auth_params, team) do
+    case TeamUsers.insert_or_update_team_user(team.id, auth_params) do
       {:ok, team_user} ->
+        CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(team.user)
+
         conn
         |> put_flash(:info, "Welcome to Logflare!")
-        |> put_session(:user_id, invited_by_user_id)
+        |> put_session(:user_id, team.user.id)
         |> put_session(:team_user_id, team_user.id)
         |> put_session(:invite_token, nil)
         |> redirect(to: Routes.source_path(conn, :dashboard))
@@ -98,6 +99,7 @@ defmodule LogflareWeb.AuthController do
       {:ok, user} ->
         AccountEmail.welcome(user) |> Mailer.deliver()
         CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(user)
 
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
@@ -106,7 +108,7 @@ defmodule LogflareWeb.AuthController do
 
       {:ok_found_user, user} ->
         CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access!(user.id)
+        BigQuery.patch_dataset_access(user)
 
         case is_nil(oauth_params) do
           true ->

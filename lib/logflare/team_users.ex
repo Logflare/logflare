@@ -32,6 +32,15 @@ defmodule Logflare.TeamUsers do
     end
   end
 
+  def list_team_users_by(kv) do
+    query =
+      from t in TeamUser,
+        where: ^kv,
+        select: t
+
+    Repo.all(query)
+  end
+
   @doc """
   Gets a single team_user.
 
@@ -69,6 +78,8 @@ defmodule Logflare.TeamUsers do
 
   def get_team_user!(id), do: Repo.get!(TeamUser, id)
 
+  def get_team_user(id), do: Repo.get(TeamUser, id)
+
   def get_team_user_and_preload(id) do
     case Repo.get(TeamUser, id) do
       nil ->
@@ -77,6 +88,11 @@ defmodule Logflare.TeamUsers do
       team_user ->
         Repo.preload(team_user, :team)
     end
+  end
+
+  def preload_defaults(team_user) do
+    team_user
+    |> Repo.preload(:team)
   end
 
   @doc """
@@ -114,6 +130,11 @@ defmodule Logflare.TeamUsers do
     team_user
     |> TeamUser.changeset(attrs)
     |> Repo.update()
+  end
+
+  def touch_team_user(%TeamUser{} = team_user) do
+    from(t in TeamUser, select: t, where: t.id == ^team_user.id)
+    |> Repo.update_all(set: [updated_at: DateTime.utc_now()])
   end
 
   @doc """
