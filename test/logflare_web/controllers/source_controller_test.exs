@@ -7,6 +7,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Teams
   alias Logflare.{Sources, Repo, LogEvent}
   alias Logflare.Lql.FilterRule
+  alias Logflare.Logs.Validators
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
@@ -52,7 +53,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
-        validation_error: Logflare.Logs.Validators.EqDeepFieldTypes.message(),
+        validation_error: Validators.EqDeepFieldTypes.message(),
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
         valid?: false,
@@ -238,12 +239,12 @@ defmodule LogflareWeb.SourceControllerTest do
     test "returns 404 for non-existing source", %{
       conn: conn,
       users: [_u1, u2 | _],
-      sources: [s1 | _]
+      sources: [_s1 | _]
     } do
       conn =
         conn
         |> login_user(u2)
-        |> get(source_path(conn, :show, 10000))
+        |> get(source_path(conn, :show, 10_000))
 
       assert html_response(conn, 404) =~ "404"
       assert html_response(conn, 404) =~ "not found"

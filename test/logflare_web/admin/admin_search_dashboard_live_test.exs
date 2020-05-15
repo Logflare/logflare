@@ -7,7 +7,6 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
   @endpoint LogflareWeb.Endpoint
   alias Logflare.BigQuery.PredefinedTestUser
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Lql
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
   setup_all do
@@ -27,7 +26,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
       assert html =~ "Search Dashboard"
     end
 
-    test "forbidden for non-admin", %{conn: conn, user: [user | _], source: [_source | _]} do
+    test "forbidden for non-admin", %{conn: conn, user: [_user | _], source: [_source | _]} do
       conn =
         conn
         |> get("/admin/dashboard/search")
@@ -35,7 +34,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
       assert html_response(conn, 403) =~ "403"
     end
 
-    test "forbidden for anonynous user", %{conn: conn, user: [user | _], source: [_source | _]} do
+    test "forbidden for anonynous user", %{conn: conn, user: [_user | _], source: [_source | _]} do
       conn =
         conn
         |> assign(:user, nil)

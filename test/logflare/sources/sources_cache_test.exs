@@ -1,7 +1,6 @@
 defmodule Logflare.SourcesCacheTest do
   @moduledoc false
   import Logflare.Sources.Cache
-  alias Logflare.Sources
   use Logflare.DataCase
   import Logflare.Factory
 

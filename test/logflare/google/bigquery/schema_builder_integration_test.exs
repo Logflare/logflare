@@ -1,6 +1,5 @@
 defmodule Logflare.TableBigQuerySchemaBuilderTest do
-  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
+  @moduledoc false
   alias Logflare.Source.BigQuery.SchemaBuilder, as: SchemaBuilder
   import Logflare.BigQuery.TableSchema.SchemaBuilderHelpers
   use ExUnit.Case

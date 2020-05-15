@@ -1,7 +1,6 @@
 defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.{Users, Sources}
   alias Logflare.Source
   alias Logflare.Tracker
@@ -27,13 +26,8 @@ defmodule LogflareWeb.LogControllerTest do
     Sources.Counters.start_link()
     Sources.RateCounters.start_link()
 
-    # {:ok, _} = RLS.start_link(%RLS{source_id: s.token})
-
     Source.RateCounterServer.start_link(%RLS{source_id: s.token})
     SourceBuffer.start_link(%RLS{source_id: s.token})
-
-    # Process.sleep(1000)
-    # Tracker.Cache.cache_cluster_rates()
 
     {:ok, users: [u1, u2], sources: [s]}
   end
@@ -285,7 +279,7 @@ defmodule LogflareWeb.LogControllerTest do
       }
 
       build_vercel_log_params = fn log_param ->
-        log_params = %{
+        %{
           "_json" => [log_param],
           "api_key" => "H-a2QUCFTAFR",
           "source_id" => "9e885e3b-f9c0-4d2f-a30d-b78dfbf2d7ef"
@@ -325,7 +319,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "SetVerifySource for HTML routes" do
-    test "without a valid source", %{conn: conn, users: [u | _], sources: [s | _]} do
+    test "without a valid source", %{conn: conn, users: [u | _], sources: [_s | _]} do
       conn =
         conn
         |> assign(:user, u)

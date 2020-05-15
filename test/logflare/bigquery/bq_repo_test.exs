@@ -3,7 +3,7 @@ defmodule Logflare.Google.BigQuery.BqRepoTest do
   use Logflare.DataCase
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source.BigQuery.BqRepo
+  alias Logflare.BqRepo
   alias Logflare.Users
   import Logflare.Factory
 
@@ -15,8 +15,6 @@ defmodule Logflare.Google.BigQuery.BqRepoTest do
 
   describe "query" do
     test "returns nil rows for a new empty table", %{sources: [source], users: [u]} do
-      conn = GenUtils.get_conn()
-
       %{
         bigquery_table_ttl: bigquery_table_ttl,
         bigquery_dataset_location: bigquery_dataset_location,
@@ -38,7 +36,7 @@ defmodule Logflare.Google.BigQuery.BqRepoTest do
       sql = "SELECT timestamp FROM `#{table_id}`"
 
       {:ok, response} = BqRepo.query_with_sql_and_params(bigquery_project_id, sql, [])
-      assert is_nil(response.rows)
+      assert response.rows == []
       assert response.totalRows == "0"
     end
   end

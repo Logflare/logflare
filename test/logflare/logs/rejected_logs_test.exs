@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.RejectedLogEventsTest do
   @moduledoc false
   alias Logflare.Logs.RejectedLogEvents
-  alias Logflare.{Sources, Source, Users, LogEvent}
+  alias Logflare.{Sources, Users, LogEvent}
   import Logflare.Factory
   use Logflare.DataCase
 
