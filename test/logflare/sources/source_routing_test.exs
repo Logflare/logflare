@@ -3,15 +3,17 @@ defmodule Logflare.Logs.SourceRoutingTest do
   use Logflare.DataCase
   use Placebo
   import Logflare.Factory
-  alias Logflare.{Rule, Rules}
-  alias Logflare.{Users}
-  alias Logflare.Source
+
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Sources
   alias Logflare.Logs.SourceRouting
-  alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Google.BigQuery
   alias Logflare.Lql.FilterRule, as: FR
+  alias Logflare.{Rule, Rules}
+  alias Logflare.Source
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Sources
+  alias Logflare.Users
 
   describe "Source Routing LQL operator rules" do
     test "list_includes operator" do
@@ -571,6 +573,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
         params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
 
+      Schema.start_link(%RLS{source_id: s1.token})
+
       {:ok, sink} =
         params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
@@ -583,13 +587,14 @@ defmodule Logflare.Logs.SourceRoutingTest do
           SchemaBuilder.initial_table_schema()
         )
 
-      {:ok, _} =
-        BigQuery.patch_table(
-          s1.token,
-          schema,
-          u.bigquery_dataset_id,
-          u.bigquery_project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
-        )
+      Schema.update(s1.token, schema)
+      # {:ok, _} =
+      #   BigQuery.patch_table(
+      #     s1.token,
+      #     schema,
+      #     u.bigquery_dataset_id,
+      #     u.bigquery_project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+      #   )
 
       Process.sleep(1_000)
 

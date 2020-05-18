@@ -1,11 +1,12 @@
 defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
-  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
-  alias Logflare.{Sources, EctoQueryBQ}
-  alias Logflare.Lql
-  alias Logflare.Logs.Search.Utils
   alias Logflare.BqRepo
+  alias Logflare.DateTimeUtils
+  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Logs.Search.Utils
+  alias Logflare.Lql
+  alias Logflare.{Sources, EctoQueryBQ}
 
   import Ecto.Query
 
@@ -356,35 +357,23 @@ defmodule Logflare.Logs.SearchOperations do
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
     use Timex
 
-    maybe_truncate_to_second = fn dt ->
-      dt
-      |> Timex.to_datetime()
-      |> DateTime.truncate(:second)
-    end
-
-    min = maybe_truncate_to_second.(min)
-    max = maybe_truncate_to_second.(max)
-
-    {min, max} =
-      if min == max and chart_period == :second do
-        {min, Timex.shift(max, seconds: 1)}
-      else
-        {min, max}
-      end
-
     {step_period, from, until} =
       case chart_period do
         :day ->
-          {:days, min, max}
+          {:days, DateTimeUtils.truncate(min, :day), DateTimeUtils.truncate(max, :day)}
 
         :hour ->
-          {:hours, %{min | second: 0, minute: 0}, %{max | second: 0, minute: 0}}
+          {:hours, DateTimeUtils.truncate(min, :hour), DateTimeUtils.truncate(max, :hour)}
 
         :minute ->
-          {:minutes, %{min | second: 0}, %{max | second: 0}}
+          {:minutes, DateTimeUtils.truncate(min, :minute), DateTimeUtils.truncate(max, :minute)}
 
         :second ->
-          {:seconds, min, max}
+          if min == max do
+            {:seconds, min, Timex.shift(max, seconds: 1)}
+          else
+            {:seconds, min, max}
+          end
       end
 
     empty_aggs =

@@ -4,8 +4,10 @@ defmodule LogflareWeb.SourceControllerTest do
   use LogflareWeb.ConnCase
   use Placebo
 
+  alias Logflare.Teams
   alias Logflare.{Sources, Repo, LogEvent}
   alias Logflare.Lql.FilterRule
+  alias Logflare.Logs.Validators
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
@@ -13,6 +15,8 @@ defmodule LogflareWeb.SourceControllerTest do
   setup do
     u1 = insert(:user)
     u2 = insert(:user)
+    Teams.create_team(u1, %{name: "u1 team"})
+    Teams.create_team(u2, %{name: "u2 team"})
 
     s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
     s2 = insert(:source, user_id: u1.id)
@@ -28,8 +32,7 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "dashboard" do
     setup [:assert_caches_not_called]
 
-    @tag :skip
-    test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
+    test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, s2 | _]} do
       conn =
         conn
         |> login_user(u1)
@@ -40,17 +43,17 @@ defmodule LogflareWeb.SourceControllerTest do
 
       source_stat_fields = ~w[avg buffer inserts latest max rate id]a
 
+      sources = conn.assigns.sources
       assert is_list(dash_sources)
       assert source_stat_fields -- Map.keys(dash_source_1) === []
-      assert hd(conn.assigns.sources).id == s1.id
-      assert hd(conn.assigns.sources).token == s1.token
+      assert Enum.sort(Enum.map(sources, & &1.id)) == Enum.sort(Enum.map([s1, s2], & &1.id))
       assert html_response(conn, 200) =~ "dashboard"
       refute_called Sources.Cache.get_by(any()), once()
     end
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
-        validation_error: Logflare.Logs.Validators.EqDeepFieldTypes.message(),
+        validation_error: Validators.EqDeepFieldTypes.message(),
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
         valid?: false,
@@ -80,7 +83,6 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "update" do
     setup [:assert_caches_not_called]
 
-    @tag :skip
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
 
@@ -114,7 +116,6 @@ defmodule LogflareWeb.SourceControllerTest do
       refute_called Sources.Cache.get_by(any()), once()
     end
 
-    @tag :skip
     test "returns 406 with invalid params", %{
       conn: conn,
       users: [u1, _u2],
@@ -198,8 +199,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       refute s1_new.name === "it's mine now!"
       assert conn.halted === true
-      assert get_flash(conn, :error) =~ "That's not yours!"
-      assert redirected_to(conn, 403) =~ marketing_path(conn, :index)
+      assert html_response(conn, 403) =~ "Forbidden"
       refute_called Sources.Cache.get_by(any()), once()
     end
   end
@@ -231,7 +231,23 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u2)
         |> get(source_path(conn, :show, s1.id))
 
-      assert redirected_to(conn, 403) === "/"
+      assert html_response(conn, 403) =~ "403"
+      assert html_response(conn, 403) =~ "Forbidden"
+      refute_called Sources.Cache.get_by(any()), once()
+    end
+
+    test "returns 404 for non-existing source", %{
+      conn: conn,
+      users: [_u1, u2 | _],
+      sources: [_s1 | _]
+    } do
+      conn =
+        conn
+        |> login_user(u2)
+        |> get(source_path(conn, :show, 10_000))
+
+      assert html_response(conn, 404) =~ "404"
+      assert html_response(conn, 404) =~ "not found"
       refute_called Sources.Cache.get_by(any()), once()
     end
   end
@@ -240,33 +256,36 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
+      name = Faker.Name.name()
+
       conn =
         conn
         |> login_user(u1)
         |> post("/sources", %{
           "source" => %{
-            "name" => Faker.Name.name(),
-            "token" => Faker.UUID.v4()
+            "name" => name
           }
         })
 
+      source = Sources.get_by(name: name)
+
       refute conn.assigns[:changeset]
-      assert redirected_to(conn, 302) === source_path(conn, :dashboard)
+      assert redirected_to(conn, 302) === source_path(conn, :show, source.id)
       refute_called Sources.Cache.get_by(any()), once()
     end
 
-    test "renders error flash and redirects for missing token", %{conn: conn, users: [u1 | _]} do
+    test "renders error flash and redirects for missing name", %{conn: conn, users: [u1 | _]} do
       conn =
         conn
         |> login_user(u1)
         |> post("/sources", %{
           "source" => %{
-            "name" => Faker.Name.name()
+            "name" => ""
           }
         })
 
       assert conn.assigns[:changeset].errors === [
-               token: {"can't be blank", [validation: :required]}
+               name: {"can't be blank", [validation: :required]}
              ]
 
       assert redirected_to(conn, 302) === source_path(conn, :new)
@@ -279,8 +298,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> post("/sources", %{
           "source" => %{
-            "name" => "",
-            "token" => Faker.UUID.v4()
+            "name" => ""
           }
         })
 
@@ -329,7 +347,6 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "delete" do
-    @describetag :this
     test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
       {:ok, saved_search} =
         SavedSearches.insert(

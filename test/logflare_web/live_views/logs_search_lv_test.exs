@@ -93,7 +93,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert_patched(
         view,
-        "/sources/283/search?querystring=error+crash+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29&tailing%3F=true"
+        "/sources/#{s.id}/search?querystring=error+crash+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aday%29&tailing%3F=true"
       )
 
       lql_rules = get_view_assigns(view).lql_rules
@@ -123,7 +123,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert_patched(
         view,
-        "/sources/283/search?querystring=error+crash+c%3Asum%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Aminute%29&tailing%3F=true"
+        "/sources/#{s.id}/search?querystring=error+crash+c%3Asum%28m.int_field_1%29+c%3Agroup_by%28t%3A%3Aminute%29&tailing%3F=true"
       )
 
       assert get_view_assigns(view).tailing? == true

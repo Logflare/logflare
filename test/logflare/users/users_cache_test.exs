@@ -1,21 +1,25 @@
 defmodule Logflare.Users.CacheTest do
   @moduledoc false
-  alias Logflare.Users.Cache
   alias Logflare.Users
-  import Cache
   use Logflare.DataCase
 
   setup do
-    source = build(:source)
-    user = insert(:user, sources: [source])
+    source = build(:source, notifications: %{})
+
+    user =
+      insert(:user,
+        sources: [source],
+        bigquery_dataset_id: "test_dataset_id",
+        bigquery_project_id: "test_project_id"
+      )
+
     {:ok, user: user, source: source}
   end
 
   describe "users cache" do
-    @tag :skip
     test "get_by_id/1", %{user: user} do
       u =
-        get_by(id: user.id)
+        Users.Cache.get_by(id: user.id)
         |> Users.preload_defaults()
         |> Map.update!(:sources, &Enum.map(&1, fn s -> %{s | rules: []} end))
 

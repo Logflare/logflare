@@ -32,4 +32,12 @@ defmodule Ecto.Regex do
   end
 
   def dump(_), do: :error
+
+  def embed_as(_) do
+    :self
+  end
+
+  def equal?(term1, term2) do
+    term1 === term2
+  end
 end

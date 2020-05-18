@@ -1,4 +1,5 @@
 defmodule Ecto.Atom do
+  @moduledoc false
   @behaviour Ecto.Type
 
   def type, do: :string
@@ -10,4 +11,12 @@ defmodule Ecto.Atom do
 
   def dump(value) when is_atom(value), do: {:ok, Atom.to_string(value)}
   def dump(_), do: :error
+
+  def embed_as(_) do
+    :self
+  end
+
+  def equal?(term1, term2) do
+    term1 === term2
+  end
 end

@@ -6,12 +6,13 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Users
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
-  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source
 
   setup do
     u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+    Source.BigQuery.Schema.start_link(%RLS{source_id: s.token})
 
     {:ok, sources: [s], users: [u]}
   end
@@ -36,15 +37,15 @@ defmodule Logflare.SourcesTest do
         bigquery_dataset_id
       )
 
-      schema = %TS{
+      schema = %GoogleApi.BigQuery.V2.Model.TableSchema{
         fields: [
           %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
             categories: nil,
             description: nil,
             fields: nil,
-            policyTags: nil,
             mode: "NULLABLE",
             name: "event_message",
+            policyTags: nil,
             type: "STRING"
           },
           %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
@@ -52,36 +53,17 @@ defmodule Logflare.SourcesTest do
             description: nil,
             fields: nil,
             mode: "NULLABLE",
+            name: "id",
             policyTags: nil,
-            type: "STRING",
-            name: "id"
+            type: "STRING"
           },
           %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
             categories: nil,
             description: nil,
-            mode: "NULLABLE",
-            policyTags: nil,
-            fields: [
-              %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
-                categories: nil,
-                description: nil,
-                fields: nil,
-                mode: "NULLABLE",
-                name: "string1",
-                policyTags: nil,
-                type: "STRING"
-              }
-            ],
-            name: "metadata",
-            type: "RECORD"
-          },
-          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
-            categories: nil,
-            description: nil,
-            policyTags: nil,
             fields: nil,
             mode: "REQUIRED",
             name: "timestamp",
+            policyTags: nil,
             type: "TIMESTAMP"
           }
         ]

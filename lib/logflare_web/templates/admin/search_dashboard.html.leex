@@ -10,20 +10,19 @@
     <h5>~/admin/dashboard/search</h5>
   </div>
 </div>
-
 <div class="container mx-auto">
   <h1>Search Dashboard</h1>
   <div class="row">
     <div class="col-6">
       <h3> Active sources (at least 1 search) </h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @source_timeseries, keys: ["count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @source_timeseries, keys: ["count"]}, [container: [id: "active-sources-chart"]]) %>
       </div>
     </div>
     <div class="col-6">
       <h3> Active users (at least 1 search) </h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @user_timeseries, keys: ["count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @user_timeseries, keys: ["count"]}, [container: [id: "active-users-chart"]]) %>
       </div>
     </div>
   </div>
@@ -31,13 +30,14 @@
     <div class="col-6">
       <h3>Daily tailing searches count</h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["tailing_count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["tailing_count"]}, [container: [id: "daily-tailing-searches-chart"]]
+        ) %>
       </div>
     </div>
     <div class="col-6">
       <h3>Daily non-tailing searches count</h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["non_tailing_count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["non_tailing_count"]}, [container: [id: "daily-non-tailing-searches-chart"]]) %>
       </div>
     </div>
   </div>
@@ -102,13 +102,5 @@
         <% end %>
       </table>
     </div>
-  </div>
-  <div>
-    <span class="btn btn-primary" phx-click="upgrade_saved_searches">
-      Upgrade saved searches
-    </span>
-    <span class="btn btn-primary" phx-click="upgrade_rules_lql_filters">
-      Upgrade source rules LQL filters
-    </span>
   </div>
 </div>

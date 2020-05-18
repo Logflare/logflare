@@ -2,10 +2,9 @@ defmodule Logflare.User.BigQueryUDFs do
   @moduledoc false
   alias __MODULE__.SearchFns, as: SFns
   require Logger
-  alias Logflare.Google.BigQuery
-  alias GoogleApi.BigQuery.V2.Model.QueryRequest
-  alias Logflare.Users
+  alias Logflare.BqRepo
   alias Logflare.User
+  alias Logflare.Users
 
   def create_if_not_exists_udfs_for_user_dataset(
         %User{
@@ -20,12 +19,7 @@ defmodule Logflare.User.BigQueryUDFs do
     new_udfs_hash = to_md5_hash(sql)
 
     if bq_udfs_hash != new_udfs_hash do
-      result =
-        BigQuery.query(%QueryRequest{
-          query: sql,
-          useLegacySql: false,
-          useQueryCache: false
-        })
+      result = BqRepo.query_with_sql_and_params(bq_project_id, sql, [], useQueryCache: false)
 
       with {:ok, _} <- result,
            {:ok, user} <- Users.update_user_all_fields(user, %{bigquery_udfs_hash: new_udfs_hash}) do

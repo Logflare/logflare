@@ -1,16 +1,16 @@
 defmodule LogflareWeb.ErrorViewTest do
   use LogflareWeb.ConnCase, async: true
+  alias LogflareWeb.ErrorView
 
-  # Bring render/3 and render_to_string/3 for testing custom views
   import Phoenix.View
 
-  test "renders 404.html" do
-    assert render_to_string(LogflareWeb.ErrorView, "404.html", []) ==
-             "Not Found"
+  test "renders 404.html", %{conn: conn} do
+    assert render_to_string(ErrorView, "404_page.html", conn: conn) =~ "404"
+    assert render_to_string(ErrorView, "404_page.html", conn: conn) =~ "not found"
   end
 
-  test "renders 500.html" do
-    assert render_to_string(LogflareWeb.ErrorView, "500.html", []) ==
-             "Internal Server Error"
+  test "renders 401.html", %{conn: conn} do
+    assert render_to_string(ErrorView, "404_page.html", conn: conn) =~ "404"
+    assert render_to_string(ErrorView, "404_page.html", conn: conn) =~ "not found"
   end
 end

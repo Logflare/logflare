@@ -4,7 +4,6 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
   import Plug.Conn
   import Phoenix.Controller
   alias Logflare.{Sources, Source}
-  alias LogflareWeb.Router.Helpers, as: Routes
 
   def call(%{assigns: %{source: %Source{}}} = conn, _opts), do: conn
 
@@ -44,28 +43,8 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     user_authorized? = &(&1.user_id === user.id || user.admin)
 
     case {source && user_authorized?.(source), is_api_path} do
-      {true, false} ->
-        assign(conn, :source, source)
-
       {true, true} ->
         assign(conn, :source, source)
-
-      {false, true} ->
-        message = "Source is not owned by this user."
-
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
-      {false, false} ->
-        conn
-        |> put_status(403)
-        |> fetch_flash()
-        |> put_flash(:error, "That's not yours!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
-        |> halt()
 
       {nil, true} ->
         message = "Source or source_name is nil, empty or not found."
@@ -76,11 +55,30 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> render("index.json", message: message)
         |> halt()
 
+      {false, true} ->
+        message = "Source is not owned by this user."
+
+        conn
+        |> put_status(403)
+        |> put_view(LogflareWeb.LogView)
+        |> render("index.json", message: message)
+        |> halt()
+
+      {true, false} ->
+        assign(conn, :source, source)
+
+      {false, false} ->
+        conn
+        |> put_status(403)
+        |> put_view(LogflareWeb.ErrorView)
+        |> render("403_page.html")
+        |> halt()
+
       {nil, false} ->
         conn
-        |> put_status(302)
-        |> put_flash(:error, "Source not found!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> put_status(404)
+        |> put_view(LogflareWeb.ErrorView)
+        |> render("404_page.html")
         |> halt()
     end
   end

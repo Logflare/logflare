@@ -16,7 +16,7 @@ defmodule LogflareWeb.AuthController do
     |> redirect(to: Routes.marketing_path(conn, :index))
   end
 
-  def login(conn, params) do
+  def login(conn, _params) do
     conn
     |> maybe_flash_invite_message()
     |> maybe_flash_account_deleted()

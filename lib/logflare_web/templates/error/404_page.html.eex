@@ -1,0 +1,7 @@
+<%= render_layout LogflareWeb.ErrorView, "error_page_layout.html", assigns do %>
+  <div class="col-lg-7">
+    <h1>404 </h1>
+    <h2>Page not found </h2>
+    <p>Get back <a href="/dashboard" target="_blank">to dashboard</a></p>
+  </div>
+<% end %>
