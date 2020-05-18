@@ -66,7 +66,7 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
                   fields: nil,
                   mode: "NULLABLE",
                   name: "vip",
-                  type: "BOOLEAN"
+                  type: "BOOL"
                 },
                 %TFS{
                   description: nil,
@@ -270,7 +270,7 @@ defmodule Logflare.Google.BigQuery.SchemaFactory do
                   mode: "NULLABLE",
                   name: "vip",
                   policyTags: nil,
-                  type: "BOOLEAN"
+                  type: "BOOL"
                 }
               ],
               mode: "REPEATED",
