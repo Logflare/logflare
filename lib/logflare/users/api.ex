@@ -35,7 +35,11 @@ defmodule Logflare.Users.API do
     source_bucket_metrics = Sources.get_rate_limiter_metrics(source, bucket: :default)
     user_sum_of_sources = get_total_user_api_rate(user)
 
-    source_limit = source_bucket_metrics.duration * source.api_quota
+    source_limit =
+      if user.billing_enabled?,
+        do: source_bucket_metrics.duration * plan.limit_source_rate_limit,
+        else: source_bucket_metrics.duration * source.api_quota
+
     source_remaining = source_limit - source_bucket_metrics.sum
 
     user_limit =
