@@ -64,22 +64,28 @@ defmodule Logflare.Mixfile do
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
-      {:ueberauth_google, "~> 0.8"},
       {:phoenix_live_view, "~> 0.12.0"},
       {:phoenix_live_dashboard, "~> 0.1"},
+
+      # Oauth
+      {:ueberauth_google, "~> 0.8"},
+      {:ueberauth_github, github: "Logflare/ueberauth_github"},
+      {:ueberauth_slack, "~> 0.6"},
+      {:oauth2, "~> 2.0.0", override: true},
+
+      # Oauth2 provider
+      {:phoenix_oauth2_provider, "~> 0.5.1"},
+      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
 
       # Ecto and DB
       {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:plug_cowboy, "~> 2.0"},
-      {:ueberauth_github, "~> 0.7"},
       {:jason, "~> 1.0"},
       {:distillery, "~> 2.1.0"},
       {:edeliver, ">= 1.7.0"},
       # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
-      {:phoenix_oauth2_provider, "~> 0.5.1"},
-      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
       {:poison, "~> 3.1"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
@@ -103,8 +109,6 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
-      {:ueberauth_slack, "~> 0.6"},
-      {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
       {:cors_plug, "~> 2.0"},
 
