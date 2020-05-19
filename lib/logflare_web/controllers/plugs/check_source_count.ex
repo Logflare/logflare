@@ -2,16 +2,14 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
   @moduledoc false
   import Plug.Conn
   import Phoenix.Controller
-  alias Logflare.Plans
   alias LogflareWeb.Router.Helpers, as: Routes
 
   def init(_params) do
   end
 
-  def call(conn, _params) do
-    if conn.assigns.user.billing_enabled? do
-      plan = Plans.get_plan_by(stripe_id: get_stripe_plan(conn.assigns.user.billing_account))
-      source_count = length(conn.assigns.user.sources)
+  def call(%{assigns: %{user: user, plan: plan}} = conn, _params) do
+    if user.billing_enabled? do
+      source_count = length(user.sources)
 
       if source_count >= plan.limit_sources do
         conn
@@ -29,20 +27,5 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
     end
   end
 
-  defp get_stripe_plan(billing_account) do
-    case billing_account.stripe_subscriptions["data"] do
-      nil ->
-        free_plan = Plans.get_plan_by(name: "Free")
-        free_plan.limit_sources
-
-      [] ->
-        free_plan = Plans.get_plan_by(name: "Free")
-        free_plan.limit_sources
-
-      list ->
-        subscription = hd(list)
-
-        subscription["plan"]["id"]
-    end
-  end
+  def call(conn, _params), do: conn
 end

@@ -21,6 +21,7 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetTeamIfNil
     plug LogflareWeb.Plugs.SetTeamUser
     plug LogflareWeb.Plugs.SetTeam
+    plug LogflareWeb.Plugs.SetPlan
   end
 
   pipeline :api do
@@ -36,6 +37,7 @@ defmodule LogflareWeb.Router do
   pipeline :require_ingest_api_auth do
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetVerifySource
+    plug LogflareWeb.Plugs.SetPlanFromCache
     plug LogflareWeb.Plugs.RateLimiter
   end
 

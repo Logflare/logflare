@@ -1,12 +1,12 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs}
+  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans}
 
   def start(_type, _args) do
     import Supervisor.Spec
 
-    # TODO: Set node status in GCP when sigterm is received 
+    # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
         :erl_signal_server,
@@ -19,6 +19,8 @@ defmodule Logflare.Application do
     children = [
       Users.Cache,
       Sources.Cache,
+      BillingAccounts.Cache,
+      Plans.Cache,
       Tracker.Cache,
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
@@ -64,6 +66,8 @@ defmodule Logflare.Application do
       # supervisor(LogflareTelemetry.Supervisor, []),
       Users.Cache,
       Sources.Cache,
+      BillingAccounts.Cache,
+      Plans.Cache,
       Tracker.Cache,
       Logs.LogEvents.Cache,
       Sources.Buffers,

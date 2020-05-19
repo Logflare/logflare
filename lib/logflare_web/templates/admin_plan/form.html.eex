@@ -15,10 +15,13 @@
   <%= label f, "Source Limit", class: "label-padding" %>
   <%= text_input f, :limit_sources, placeholder: "", class: "form-control form-control-margin" %>
   <%= error_tag f, :limit_sources %>
-  <%= label f, "Rate Limit", class: "label-padding" %>
+  <%= label f, "Rate Limit (per second)", class: "label-padding" %>
   <%= text_input f, :limit_rate_limit, placeholder: "per second", class: "form-control form-control-margin" %>
-  <%= error_tag f, :limit_sources %>
-  <%= label f, "Alerts Every", class: "label-padding" %>
+  <%= error_tag f, :limit_rate_limit %>
+  <%= label f, "Source Rate Limit (per second)", class: "label-padding" %>
+  <%= text_input f, :limit_source_rate_limit, placeholder: "per second", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_source_rate_limit %>
+  <%= label f, "Alerts Every (milliseconds)", class: "label-padding" %>
   <%= text_input f, :limit_alert_freq, placeholder: "milliseconds", class: "form-control form-control-margin" %>
   <%= error_tag f, :limit_alert_freq %>
   <%= hidden_input f, :id %>

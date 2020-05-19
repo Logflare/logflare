@@ -3,13 +3,13 @@ defmodule LogflareWeb.StripeController do
 
   require Logger
 
-  alias Logflare.Billing
+  alias Logflare.BillingAccounts
 
   def event(conn, %{"type" => type, "data" => %{"object" => %{"customer" => customer}}}) do
     case type do
       "invoice." <> _sub_type ->
-        with billing_account <- Billing.get_billing_account_by(stripe_customer: customer),
-             {:ok, _billing_account} <- Billing.sync_invoices(billing_account) do
+        with billing_account <- BillingAccounts.get_billing_account_by(stripe_customer: customer),
+             {:ok, _billing_account} <- BillingAccounts.sync_invoices(billing_account) do
           ok(conn)
         else
           err ->
@@ -21,8 +21,8 @@ defmodule LogflareWeb.StripeController do
         end
 
       "customer.subscription." <> _sub_type ->
-        with billing_account <- Billing.get_billing_account_by(stripe_customer: customer),
-             {:ok, _billing_account} <- Billing.sync_subscriptions(billing_account) do
+        with billing_account <- BillingAccounts.get_billing_account_by(stripe_customer: customer),
+             {:ok, _billing_account} <- BillingAccounts.sync_subscriptions(billing_account) do
           ok(conn)
         else
           err ->

@@ -1,4 +1,4 @@
-defmodule Logflare.Billing do
+defmodule Logflare.BillingAccounts do
   @moduledoc """
   The Billing context.
   """
@@ -8,8 +8,8 @@ defmodule Logflare.Billing do
   import Ecto.Query, warn: false
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.Billing
-  alias Logflare.Billing.BillingAccount
+  alias __MODULE__
+  alias Logflare.BillingAccounts.BillingAccount
 
   require Protocol
   Protocol.derive(Jason.Encoder, Stripe.List)
@@ -78,7 +78,8 @@ defmodule Logflare.Billing do
   def sync_subscriptions(nil), do: :noop
 
   def sync_subscriptions(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
-    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(stripe_customer_id) do
+    with {:ok, subscriptions} <-
+           BillingAccounts.Stripe.list_customer_subscriptions(stripe_customer_id) do
       attrs = %{stripe_subscriptions: subscriptions}
 
       update_billing_account(billing_account, attrs)
@@ -90,7 +91,7 @@ defmodule Logflare.Billing do
   def sync_invoices(nil), do: :noop
 
   def sync_invoices(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
-    with {:ok, invoices} <- Billing.Stripe.list_customer_invoices(stripe_customer_id) do
+    with {:ok, invoices} <- BillingAccounts.Stripe.list_customer_invoices(stripe_customer_id) do
       attrs = %{stripe_invoices: invoices}
 
       update_billing_account(billing_account, attrs)
@@ -103,8 +104,8 @@ defmodule Logflare.Billing do
         %BillingAccount{stripe_customer: customer_id} = billing_account,
         attrs \\ %{}
       ) do
-    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(customer_id),
-         {:ok, invoices} <- Billing.Stripe.list_customer_invoices(customer_id) do
+    with {:ok, subscriptions} <- BillingAccounts.Stripe.list_customer_subscriptions(customer_id),
+         {:ok, invoices} <- BillingAccounts.Stripe.list_customer_invoices(customer_id) do
       attrs =
         Map.put(attrs, :stripe_subscriptions, subscriptions)
         |> Map.put(:stripe_invoices, invoices)
@@ -161,5 +162,10 @@ defmodule Logflare.Billing do
   """
   def change_billing_account(%BillingAccount{} = billing_account) do
     BillingAccount.changeset(billing_account, %{})
+  end
+
+  def get_billing_account_stripe_plan(%BillingAccount{} = billing_account) do
+    data = billing_account.stripe_subscriptions["data"] |> hd
+    {:ok, data["plan"]}
   end
 end

@@ -9,6 +9,7 @@ defmodule Logflare.Plans.Plan do
     field :period, :string
     field :limit_sources, :integer
     field :limit_rate_limit, :integer
+    field :limit_source_rate_limit, :integer
     field :limit_alert_freq, :integer
 
     timestamps()
@@ -24,6 +25,7 @@ defmodule Logflare.Plans.Plan do
       :period,
       :limit_sources,
       :limit_rate_limit,
+      :limit_source_rate_limit,
       :limit_alert_freq
     ])
     |> validate_required([
@@ -32,6 +34,7 @@ defmodule Logflare.Plans.Plan do
       :period,
       :limit_sources,
       :limit_rate_limit,
+      :limit_source_rate_limit,
       :limit_alert_freq
     ])
   end

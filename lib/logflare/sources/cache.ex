@@ -8,7 +8,7 @@ defmodule Logflare.Sources.Cache do
 
   def child_spec(_) do
     %{
-      id: :cachex_sources_cache,
+      id: __MODULE__,
       start: {
         Cachex,
         :start_link,
@@ -48,6 +48,6 @@ defmodule Logflare.Sources.Cache do
   def valid_source_token_param?(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
   defp apply_repo_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_repo_fun(Sources, arg1, arg2)
+    Logflare.ContextCache.apply_fun(Sources, arg1, arg2)
   end
 end

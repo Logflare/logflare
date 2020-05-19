@@ -7,10 +7,11 @@ defmodule LogflareWeb.Plugs.RateLimiter do
 
   def init(_opts), do: nil
 
-  def call(%{assigns: %{user: user, source: source}} = conn, _opts \\ []) do
+  def call(%{assigns: %{user: user, source: source, plan: plan}} = conn, _opts \\ []) do
     %{
       user: user,
       source: source,
+      plan: plan,
       type: {:api_call, :logs_post}
     }
     |> Users.API.verify_api_rates_quotas()
