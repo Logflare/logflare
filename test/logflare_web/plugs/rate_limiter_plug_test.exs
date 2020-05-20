@@ -7,7 +7,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Tracker.SourceNodeRates
   import Logflare.Factory
-  use Placebo
+
+  @moduletag :skip
 
   setup do
     Sources.Counters.start_link()

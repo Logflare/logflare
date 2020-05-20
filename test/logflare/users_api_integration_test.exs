@@ -4,8 +4,11 @@ defmodule Logflare.Users.APIIntegrationTest do
   alias Logflare.Source.RateCounterServer, as: SRC
   alias Logflare.Sources
   import Logflare.Factory
+  alias Logflare.Plans.Plan
 
   use Logflare.DataCase
+
+  @moduletag :skip
 
   setup do
     user = insert(:user)
@@ -31,10 +34,16 @@ defmodule Logflare.Users.APIIntegrationTest do
     } do
       user = insert(:user, api_quota: 11, sources: [source])
 
+      plan = %Plan{
+        limit_source_rate_limit: 10,
+        limit_rate_limit: 11
+      }
+
       action = %{
         type: {:api_call, :logs_post},
         user: user,
-        source: source
+        source: source,
+        plan: plan
       }
 
       SRC.update_ets_table(src)
