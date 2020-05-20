@@ -1,13 +1,7 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
-      <ul>
-        <li><%= link to: Routes.admin_path(@socket, :dashboard) do %><i class="fas fa-list"></i><span class="hide-on-mobile"> sources</span><% end %></li>
-        <li><%= link to: Routes.cluster_path(@socket, :index) do %><i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span><% end %></li>
-        <li><%= link to: Routes.live_path(@socket, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><strong><span class="hide-on-mobile"> search</span></strong><% end %></li>
-      </ul>
-    </div>
-    <h5>~/admin/dashboard/search</h5>
+    <%= render LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket %>
+    <h5>~/admin/search</h5>
   </div>
 </div>
 <div class="container mx-auto">

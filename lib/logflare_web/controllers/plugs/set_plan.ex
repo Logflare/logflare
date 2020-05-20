@@ -15,7 +15,6 @@ defmodule LogflareWeb.Plugs.SetPlan do
   def call(conn, _opts), do: conn
 
   defp set_plan(%{assigns: %{user: user}} = conn, _opts) do
-    # Set plan from cache and enable on API
     if user.billing_enabled? do
       case BillingAccounts.get_billing_account_by(user_id: user.id) do
         nil ->

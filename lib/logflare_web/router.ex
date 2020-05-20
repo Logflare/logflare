@@ -195,8 +195,9 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :check_admin]
 
     get "/dashboard", AdminController, :dashboard
-    live "/dashboard/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
-    get "/cluster", ClusterController, :index
+    get "/sources", AdminController, :sources
+    live "/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
+    get "/cluster", AdminClusterController, :index
     get "/plans", AdminPlanController, :index
     get "/plans/new", AdminPlanController, :new
     post "/plans/new", AdminPlanController, :create
