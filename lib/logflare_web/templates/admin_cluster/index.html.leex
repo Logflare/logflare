@@ -1,0 +1,16 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <%= render LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket %>
+    <h5>~/admin/cluster</h5>
+  </div>
+</div>
+<div class="container mx-auto">
+  <h1>Self node</h1>
+  <%= @node_self %>
+  <h1>Nodes</h1>
+  <%= for node <- @nodes do %>
+    <div>
+      <%= node %>
+    </div>
+  <% end %>
+</div>

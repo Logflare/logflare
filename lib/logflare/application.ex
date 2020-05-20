@@ -1,12 +1,12 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs}
+  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans}
 
   def start(_type, _args) do
     import Supervisor.Spec
 
-    # TODO: Set node status in GCP when sigterm is received 
+    # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
         :erl_signal_server,
@@ -19,15 +19,12 @@ defmodule Logflare.Application do
     children = [
       Users.Cache,
       Sources.Cache,
+      BillingAccounts.Cache,
+      Plans.Cache,
       Tracker.Cache,
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
-      supervisor(Phoenix.PubSub.PG2, [
-        [
-          name: Logflare.PubSub,
-          fastlane: Phoenix.Channel.Server
-        ]
-      ]),
+      {Phoenix.PubSub, name: Logflare.PubSub},
       worker(
         Tracker,
         [
@@ -53,29 +50,24 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       supervisor(Logflare.Repo, []),
-      supervisor(Phoenix.PubSub.PG2, [
-        [
-          name: Logflare.PubSub,
-          fastlane: Phoenix.Channel.Server
-        ]
-      ]),
-      worker(
+      {Phoenix.PubSub, name: Logflare.PubSub},
+      {
         Logflare.Tracker,
         [
-          [
-            name: Logflare.Tracker,
-            pubsub_server: Logflare.PubSub,
-            broadcast_period: 250,
-            down_period: 5_000,
-            permdown_period: 30_000,
-            pool_size: tracker_pool_size,
-            log_level: false
-          ]
+          name: Logflare.Tracker,
+          pubsub_server: Logflare.PubSub,
+          broadcast_period: 250,
+          down_period: 5_000,
+          permdown_period: 30_000,
+          pool_size: tracker_pool_size,
+          log_level: false
         ]
-      ),
+      },
       # supervisor(LogflareTelemetry.Supervisor, []),
       Users.Cache,
       Sources.Cache,
+      BillingAccounts.Cache,
+      Plans.Cache,
       Tracker.Cache,
       Logs.LogEvents.Cache,
       Sources.Buffers,

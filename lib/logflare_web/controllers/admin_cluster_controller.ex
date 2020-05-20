@@ -1,4 +1,4 @@
-defmodule LogflareWeb.ClusterController do
+defmodule LogflareWeb.AdminClusterController do
   use LogflareWeb, :controller
   alias LogflareWeb.ClusterLV
 

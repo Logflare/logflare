@@ -7,43 +7,18 @@ defmodule Logflare.LogsTest do
   alias Logflare.Rules
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Sources
+  alias Logflare.Source
+  alias Logflare.Source.BigQuery.Schema, as: BigQuerySchemaGS
   alias Logflare.Source.{BigQuery.Buffer}
-  alias Logflare.Google.BigQuery
-  alias Logflare.Google.BigQuery.{Query, GenUtils}
-  alias Logflare.SystemMetricsSup
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
+  alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.SystemMetricsSup
   alias Logflare.Lql
   @test_dataset_location "us-east4"
-
-  describe "log event ingest" do
-    @describetag :skip
-    test "succeeds for floats", %{sources: [s | _]} do
-      conn = GenUtils.get_conn()
-      project_id = GenUtils.get_project_id(s.token)
-      dataset_id = "dev_dataset_#{s.user.id}"
-
-      assert {:ok, _} =
-               BigQuery.create_dataset(
-                 "#{s.user_id}",
-                 dataset_id,
-                 @test_dataset_location,
-                 project_id
-               )
-
-      assert {:ok, table} = BigQuery.create_table(s.token, dataset_id, project_id, 300_000)
-
-      table_id = table.id |> String.replace(":", ".")
-      sql = "SELECT * FROM `#{table_id}`"
-
-      Logs.ingest_logs([%{"message" => "test", "metadata" => %{"float" => 0.001}}], s)
-      Process.sleep(3_000)
-      {:ok, response} = Query.query(conn, project_id, sql)
-      assert response.rows == [%{"log_message" => "test", "metadata" => %{"float" => 0.001}}]
-    end
-  end
 
   describe "log event ingest for source with regex rules" do
     setup do
@@ -56,7 +31,10 @@ defmodule Logflare.LogsTest do
 
       s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
 
-      conn = GenUtils.get_conn()
+      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink2.token})
+
       project_id = GenUtils.get_project_id(s1.token)
       dataset_id = User.generate_bq_dataset_id(u)
 
@@ -116,7 +94,7 @@ defmodule Logflare.LogsTest do
     end
 
     test "sink routing is allowed for one depth level only", %{
-      users: [u],
+      users: [_u],
       sources: [s1],
       sinks: [first_sink, last_sink | _]
     } do
@@ -154,7 +132,6 @@ defmodule Logflare.LogsTest do
 
       s1 = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
 
-      conn = GenUtils.get_conn()
       project_id = GenUtils.get_project_id(s1.token)
       dataset_id = User.generate_bq_dataset_id(u)
 
@@ -165,6 +142,10 @@ defmodule Logflare.LogsTest do
                  @test_dataset_location,
                  project_id
                )
+
+      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
+      Source.BigQuery.Schema.start_link(%RLS{source_id: sink2.token})
 
       assert {:ok, table} = BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
 
@@ -182,10 +163,15 @@ defmodule Logflare.LogsTest do
           project_id
         )
 
-      {:ok, lql_rule1} =
+      Source.BigQuery.Schema.update(s1.token, schema)
+      Source.BigQuery.Schema.update(sink1.token, schema)
+      Source.BigQuery.Schema.update(sink2.token, schema)
+      Process.sleep(100)
+
+      {:ok, _lql_rule1} =
         Rules.create_rule(%{"sink" => sink1.token, "lql_string" => "warning"}, s1)
 
-      {:ok, lql_rule2} =
+      {:ok, _lql_rule2} =
         Rules.create_rule(
           %{"sink" => sink2.token, "lql_string" => "crash metadata.level:error"},
           s1
@@ -228,7 +214,7 @@ defmodule Logflare.LogsTest do
     end
 
     test "sink routing is allowed for one depth level only", %{
-      users: [u],
+      users: [_u],
       sources: [s1],
       sinks: [first_sink, last_sink | _]
     } do

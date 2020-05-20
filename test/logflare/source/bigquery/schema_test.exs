@@ -1,7 +1,6 @@
 defmodule Logflare.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Google.BigQuery, as: GoogleBigQuery
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
   import Logflare.Factory
@@ -26,8 +25,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
       assert %{schema | next_update: :placeholder} == %{
                bigquery_project_id: nil,
                bigquery_dataset_id: nil,
-               field_count: nil,
-               type_map: %{},
                schema: %GoogleApi.BigQuery.V2.Model.TableSchema{
                  fields: [
                    %GoogleApi.BigQuery.V2.Model.TableFieldSchema{

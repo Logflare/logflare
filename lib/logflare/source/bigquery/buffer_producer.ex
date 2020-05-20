@@ -1,4 +1,5 @@
 defmodule Logflare.Source.BigQuery.BufferProducer do
+  @moduledoc false
   use GenStage
 
   require Logger
@@ -64,7 +65,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   end
 
   @impl true
-  def terminate(reason, state) do
+  def terminate(reason, _state) do
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}")
     reason
   end

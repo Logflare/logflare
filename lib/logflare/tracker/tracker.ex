@@ -3,6 +3,16 @@ defmodule Logflare.Tracker do
 
   require Logger
 
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 1_000
+    }
+  end
+
   def start_link(opts) do
     opts = Keyword.merge([name: __MODULE__], opts)
     Phoenix.Tracker.start_link(__MODULE__, opts, opts)

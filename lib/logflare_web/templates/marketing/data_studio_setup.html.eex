@@ -1,25 +1,22 @@
 <div class="container-fluid heroguidepage no-subhead">
-	<div class="container">
-		<div class="row">
-			<div class="col-md-12">
-				<h1>Using Logflare with Google Data Studio</h1>
-				<p>Make dashboards and get insights out of your event data.</p>
-			</div>
-		</div>
-	</div>
-	<div class="miniimgbox">
-		<img src="/images/marketing/guides/dataStudioLogo2.png" alt="">
-	</div>
+  <div class="container">
+    <div class="row">
+      <div class="col-md-12">
+        <h1>Using Logflare with Google Data Studio</h1>
+        <p>Make dashboards and get insights out of your event data.</p>
+      </div>
+    </div>
+  </div>
+  <div class="miniimgbox">
+    <img src="/images/marketing/guides/dataStudioLogo2.png" alt="">
+  </div>
 </div>
-
-
 <div class="container-fluid contentguidepage">
-	<div class="container">
-		<div class="row">
-
+  <div class="container">
+    <div class="row">
       <div class="col-lg-3 hide-on-mobile">
-				<div class="forfixed">
-					<div class="contentmenu">
+        <div class="forfixed">
+          <div class="contentmenu">
             <h2>Content</h2>
             <%= link "Automatically Shared", to: "#auto-shared", class: "scrollmenu menu1 activecon" %>
             <%= link "Open Data Studio and Add a Source", to: "#open-ds", class: "scrollmenu menu2" %>
@@ -36,7 +33,6 @@
           </div>
         </div>
       </div>
-
       <div class="col-lg-9">
         <div class="cont">
           <h1 class="menu1cont" id="auto-shared">Automatically Shared</h1>
@@ -48,21 +44,18 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/add-data-source.png">
           </div>
-
           <h2 class="menu3cont" id="select-connector">Select the BigQuery Connector</h2>
           <div class="minimg">
             <div class="purplebox">
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/select-bigquery-connector.png">
           </div>
-
           <h2 class="menu4cont" id="find-logflare-source">Find Your Logflare Source</h2>
           <div class="minimg">
             <div class="purplebox">
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/find-logflare-source.png">
           </div>
-
           <h2 class="menu5cont" id="partitioned-table">Select Partitioned Table Time Dimension</h2>
           <p>Keeping this selected will make your reports faster and let you effectively use the date range picker in a report.</p>
           <p>If you just started sending data to your Logflare source, you may not see anything in Data Studio with this selected. In this case it's best to wait 15 minutes so you have some data to play with in Data Studio.</p>
@@ -90,14 +83,12 @@
     _PARTITIONTIME IS NULL</code>
           </pre>
           <%= link "Learn more about BigQuery and partitioned tables", to: "https://cloud.google.com/bigquery/docs/partitioned-tables", class: "btn btn-primary", role: "button" %>
-
           <h2 class="menu6cont" id="connect">Connect</h2>
           <div class="minimg">
             <div class="purplebox">
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/connect.png">
           </div>
-
           <h2 class="menu7cont" id="datehour-timestamp">Set Timestamp Type to Date Hour</h2>
           <p>This is optional, but lets you see more fine grained fluctuations in your data.</p>
           <p>If you'd like to mix hourly and daily data in your reports you can <code>duplicate</code> that field and set one to <code>Date Hour</code> and keep one as <code>Date</code>.</p>
@@ -106,7 +97,6 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/set-timestamp-to-date-hour.png">
           </div>
-
           <h2 class="menu8cont" id="create-report-settings">Create Report & Configure Settings</h2>
           <div class="minimg">
             <div class="purplebox">
@@ -118,36 +108,30 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/select-report-settings.png">
           </div>
-
           <h2 class="menu9cont" id="select-data-source">Select Report Data Source</h2>
           <div class="minimg">
             <div class="purplebox">
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/select-data-source.png">
           </div>
-
           <h2 class="menu9cont" id="set-default-date-range">Set Default Report Date Range</h2>
           <div class="minimg">
             <div class="purplebox">
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/select-data-source-and-default-date-range.png">
           </div>
-
           <h2 class="menu9cont" id="create-first-chart">Create Your First Chart</h2>
           <div class="minimg">
             <div class="purplebox">
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/add-chart.png">
           </div>
-
           <h2 class="menu9cont" id="learn-more">Learn More</h2>
           <p>Google Data Studio has extensive documenation and lots of tutorials where you can learn more.</p>
           <%= link "Data Studio docs", to: "https://support.google.com/datastudio", class: "btn btn-primary", role: "button" %>
-
         </div>
       </div>
     </div>
   </div>
 </div>
-
 <%= render LogflareWeb.SharedView, "footer.html", assigns %>

@@ -6,23 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Easily access your Cloudflare logs in a centralized web-based log management solution.">
     <meta name="author" content="">
-
     <title><%= page_title(assigns) %></title>
-
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
-
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
-
     <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
-
     <script>
       <%= if @user do %>
         window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
       <% end %>
     </script>
   </head>
-
   <body class="experimental-ui">
     <nav class="navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @conn.request_path != "/" do %>
@@ -34,11 +28,9 @@
       <% end %>
       <div class="live-tail-search"> Live Search βeta </div>
     </nav>
-
     <main role="main">
-      <%= render @view_module, @view_template, assigns %>
+      <%= @inner_content %>
     </main>
-
     <script src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>

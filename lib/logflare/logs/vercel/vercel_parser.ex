@@ -41,7 +41,7 @@ defmodule Logflare.Logs.Vercel.LambdaMessageParser do
 
     lines =
       Enum.chunk_every(lines, 2)
-      |> Enum.map(fn [[t], [_id, l, m]] = x ->
+      |> Enum.map(fn [[t], [_id, l, m]] = _x ->
         %{"timestamp" => t, "level" => l, "message" => String.trim(m, "\n")}
       end)
 

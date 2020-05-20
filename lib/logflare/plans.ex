@@ -103,4 +103,8 @@ defmodule Logflare.Plans do
   def change_plan(%Plan{} = plan) do
     Plan.changeset(plan, %{})
   end
+
+  def legacy_plan() do
+    %Plan{limit_rate_limit: 150, limit_source_rate_limit: 50, name: "Legacy"}
+  end
 end

@@ -1,16 +1,16 @@
 defmodule Logflare.Users.APIIntegrationTest do
   @moduledoc false
   import Logflare.Users.API
-  alias Logflare.SourceRateCounter, as: SRC
+  alias Logflare.Source.RateCounterServer, as: SRC
+  alias Logflare.Sources
   import Logflare.Factory
 
   use Logflare.DataCase
 
-  @moduletag integration: true
-
   setup do
+    user = insert(:user)
     source_id = Faker.UUID.v4()
-    source = insert(:source, token: source_id)
+    source = insert(:source, token: source_id, user: user)
     source_id_atom = source.token
     SRC.setup_ets_table(source_id_atom)
     src = SRC.new(source_id_atom)
@@ -20,6 +20,7 @@ defmodule Logflare.Users.APIIntegrationTest do
         SRC.update_state(acc, 10 * n)
       end)
 
+    source = Sources.get(String.to_atom(source_id))
     {:ok, source: source, src: src_state}
   end
 
@@ -39,19 +40,21 @@ defmodule Logflare.Users.APIIntegrationTest do
       SRC.update_ets_table(src)
 
       assert verify_api_rates_quotas(action) ==
-               {:ok,
-                %{
-                  message: nil,
-                  metrics: %{
-                    source: %{limit: 3000, remaining: 2400},
-                    user: %{limit: 660, remaining: 60}
-                  }
-                }}
+               {
+                 :error,
+                 %{
+                   message:
+                     "Source rate is over the API quota. Email support@logflare.app to increase your rate limit.",
+                   metrics: %{
+                     source: %{limit: 3000, remaining: -5_997_000},
+                     user: %{limit: 660, remaining: -5_999_340}
+                   }
+                 }
+               }
     end
 
     test "action_allowed?/1 returns true for api_quota of 9 and average rate of 10", %{
       src: src,
-      source_id: source_id,
       source: source
     } do
       user = insert(:user, api_quota: 9, sources: [source])
@@ -59,22 +62,24 @@ defmodule Logflare.Users.APIIntegrationTest do
       action = %{
         type: {:api_call, :logs_post},
         user: user,
-        source_id: source_id
+        source: source
       }
 
       SRC.update_ets_table(src)
-      SRC.get_avg_rate(source_id)
+      SRC.get_avg_rate(source.token)
 
       assert verify_api_rates_quotas(action) ==
-               {:error,
-                %{
-                  message:
-                    "User rate is over the API quota. Email support@logflare.app to increase your rate limit.",
-                  metrics: %{
-                    source: %{limit: 3000, remaining: 2400},
-                    user: %{limit: 540, remaining: -60}
-                  }
-                }}
+               {
+                 :error,
+                 %{
+                   message:
+                     "Source rate is over the API quota. Email support@logflare.app to increase your rate limit.",
+                   metrics: %{
+                     source: %{limit: 3000, remaining: -5_997_000},
+                     user: %{limit: 540, remaining: -5_999_460}
+                   }
+                 }
+               }
     end
   end
 end

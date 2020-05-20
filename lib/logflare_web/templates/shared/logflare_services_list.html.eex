@@ -1,0 +1,4 @@
+<p>Install the <a href="https://www.cloudflare.com/apps/logflare" target="_blank">Cloudflare app</a></p>
+<p>Setup our <a href="https://github.com/Logflare/logflare_logger_backend" target="_blank">Elixir Logger backend</a></p>
+<p>Check out the <a href="https://vercel.co/integrations/logflare" target="_blank">Logflare Vercel app</a></p>
+<p>Javascript? Use our <a href="https://github.com/Logflare/pino-logflare" target="_blank">Pino transport</a></p>

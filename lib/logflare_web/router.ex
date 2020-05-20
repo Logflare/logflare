@@ -21,6 +21,7 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetTeamIfNil
     plug LogflareWeb.Plugs.SetTeamUser
     plug LogflareWeb.Plugs.SetTeam
+    plug LogflareWeb.Plugs.SetPlan
   end
 
   pipeline :api do
@@ -36,6 +37,7 @@ defmodule LogflareWeb.Router do
   pipeline :require_ingest_api_auth do
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetVerifySource
+    plug LogflareWeb.Plugs.SetPlanFromCache
     plug LogflareWeb.Plugs.RateLimiter
   end
 
@@ -193,8 +195,9 @@ defmodule LogflareWeb.Router do
     pipe_through [:browser, :check_admin]
 
     get "/dashboard", AdminController, :dashboard
-    live "/dashboard/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
-    get "/cluster", ClusterController, :index
+    get "/sources", AdminController, :sources
+    live "/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
+    get "/cluster", AdminClusterController, :index
     get "/plans", AdminPlanController, :index
     get "/plans/new", AdminPlanController, :new
     post "/plans/new", AdminPlanController, :create

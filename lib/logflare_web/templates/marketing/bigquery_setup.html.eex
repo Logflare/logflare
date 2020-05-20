@@ -1,23 +1,22 @@
 <div class="container-fluid heroguidepage no-subhead">
-	<div class="container">
-		<div class="row">
-			<div class="col-md-12">
-				<h1>Setup a BigQuery Backend</h1>
-				<p>The easiest ETL pipeline ever.</p>
-			</div>
-		</div>
-	</div>
-	<div class="miniimgbox">
-		<img src="/images/marketing/guides/bigquerylogo.png" alt="">
-	</div>
+  <div class="container">
+    <div class="row">
+      <div class="col-md-12">
+        <h1>Setup a BigQuery Backend</h1>
+        <p>The easiest ETL pipeline ever.</p>
+      </div>
+    </div>
+  </div>
+  <div class="miniimgbox">
+    <img src="/images/marketing/guides/bigquerylogo.png" alt="">
+  </div>
 </div>
-
 <div class="container-fluid contentguidepage">
-	<div class="container">
-		<div class="row">
-			<div class="col-lg-3 hide-on-mobile">
-				<div class="forfixed">
-					<div class="contentmenu">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-3 hide-on-mobile">
+        <div class="forfixed">
+          <div class="contentmenu">
             <h2>Content</h2>
             <%= link "Dead Simple Setup", to: "#simple-setup", class: "scrollmenu menu1 activecon" %>
             <%= link "Navigate to IAM", to: "#nav-to-iam", class: "scrollmenu menu2" %>
@@ -29,66 +28,60 @@
           </div>
         </div>
       </div>
-
-    <div class="col-lg-9">
-      <div class="cont">
-        <h1 class="menu1cont" id="simple-setup">Dead Simple Setup</h1>
-        <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner and BigQuery Job User permissions.</p>
-        <h2 class="menu2cont" id="nav-to-iam">Navigate to IAM</h2>
-        <div class="minimg">
-          <div class="purplebox">
+      <div class="col-lg-9">
+        <div class="cont">
+          <h1 class="menu1cont" id="simple-setup">Dead Simple Setup</h1>
+          <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner and BigQuery Job User permissions.</p>
+          <p><i class="fas fa-exclamation-circle"></i> Enable a Google Cloud Platform billing account with payment information or we won't be able to insert into your BigQuery table!</p>
+          <h2 class="menu2cont" id="nav-to-iam">Navigate to IAM</h2>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/navigate-to-iam.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/navigate-to-iam.png">
-        </div>
-
-        <h2 id="add-member">Add a Member</h2>
-        <div class="minimg">
-          <div class="purplebox">
+          <h2 id="add-member">Add a Member</h2>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/add-a-member.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/add-a-member.png">
-        </div>
-
-        <h2 id="add-service-account">Add Our Service Account with Permissions</h2>
-        <p>Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
-        <p>Assign <code>BigQuery Data Owner</code> and <code>BigQuery Job User</code> permissions to the Logflare service account.</p>
-        <div class="minimg">
-          <div class="purplebox">
+          <h2 id="add-service-account">Add Our Service Account with Permissions</h2>
+          <p>Our serivce account is <code>logflare@logflare-232118.iam.gserviceaccount.com</code>.</p>
+          <p>Assign <code>BigQuery Data Owner</code> and <code>BigQuery Job User</code> permissions to the Logflare service account.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/add-service-account-with-permissions.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/add-service-account-with-permissions.png">
-        </div>
-        <div class="minimg">
-          <div class="purplebox">
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/bq-job-user-permissions.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/bq-job-user-permissions.png">
-        </div>
-
-
-        <h2 id="set-project-id">Set the Project ID in Logflare</h2>
-        <p>Find your Google Cloud Platform project ID on <%= link "your GCP dashboard", to: "https://console.cloud.google.com/home/dashboard" %>.</p>
-        <div class="minimg">
-          <div class="purplebox">
+          <h2 id="set-project-id">Set the Project ID in Logflare</h2>
+          <p>Find your Google Cloud Platform project ID on <%= link "your GCP dashboard", to: "https://console.cloud.google.com/home/dashboard" %>.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/get-project-id.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/get-project-id.png">
-        </div>
-        <p>Navigate to <%= link "your account preferences", to: Routes.user_path(@conn, :edit) %> and add your GCP project ID.</p>
-        <div class="minimg">
-          <div class="purplebox">
+          <p>Navigate to <%= link "your account preferences", to: Routes.user_path(@conn, :edit) %> and add your GCP project ID.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/set-project-id.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/set-project-id.png">
-        </div>
-
-        <h2 id="update-ttl">Update the Source TTL</h2>
-        <p>Edit a source and set the TTL.</p>
-        <div class="minimg">
-          <div class="purplebox">
+          <h2 id="update-ttl">Update the Source TTL</h2>
+          <p>Edit a source and set the TTL.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/set-source-ttl.png">
           </div>
-          <img class="imgf img-fluid guide-img" src="/images/marketing/set-source-ttl.png">
-        </div>
-
-        <h2 id="query">Query BigQuery</h2>
-        <p>You can query any Logflare managed BigQuery table directly if you need to.</p>
-        <p>BigQuery has great support for nested records and Standard SQL both of wich we take advantage of. To query inside a nested record you must <code>UNNEST</code> it like so:</p>
-        <pre>
+          <h2 id="query">Query BigQuery</h2>
+          <p>You can query any Logflare managed BigQuery table directly if you need to.</p>
+          <p>BigQuery has great support for nested records and Standard SQL both of wich we take advantage of. To query inside a nested record you must <code>UNNEST</code> it like so:</p>
+          <pre>
         <code>
     SELECT timestamp, req.url, h.cf_cache_status
     FROM `your_project_id.your_dataset_name.your_table_name`,
@@ -101,10 +94,9 @@
     LIMIT 10
         </code>
       </pre>
-
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-</div>
-</div>
-</div>
-  <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>

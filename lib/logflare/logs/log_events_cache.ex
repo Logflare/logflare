@@ -10,7 +10,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
 
   def child_spec(_) do
     %{
-      id: :cachex_logs_log_events_cache,
+      id: __MODULE__,
       start: {
         Cachex,
         :start_link,

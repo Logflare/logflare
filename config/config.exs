@@ -14,7 +14,7 @@ config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
-  pubsub: [name: Logflare.PubSub]
+  pubsub_server: Logflare.PubSub
 
 # Configures Elixir's Logger
 config :logger,

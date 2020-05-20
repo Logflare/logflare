@@ -30,15 +30,23 @@ defmodule Logflare.Users.API do
 
   @spec verify_api_rates_quotas(map) :: ok_err_tup
   def verify_api_rates_quotas(%{type: @api_call_logs} = action) do
-    %{source: source, user: user} = action
+    %{source: source, user: user, plan: plan} = action
 
     source_bucket_metrics = Sources.get_rate_limiter_metrics(source, bucket: :default)
     user_sum_of_sources = get_total_user_api_rate(user)
 
-    source_limit = source_bucket_metrics.duration * source.api_quota
+    source_limit =
+      if user.billing_enabled?,
+        do: source_bucket_metrics.duration * plan.limit_source_rate_limit,
+        else: source_bucket_metrics.duration * source.api_quota
+
     source_remaining = source_limit - source_bucket_metrics.sum
 
-    user_limit = source_bucket_metrics.duration * user.api_quota
+    user_limit =
+      if user.billing_enabled?,
+        do: source_bucket_metrics.duration * plan.limit_rate_limit,
+        else: source_bucket_metrics.duration * user.api_quota
+
     user_remaining = user_limit - user_sum_of_sources
 
     {status, message} =

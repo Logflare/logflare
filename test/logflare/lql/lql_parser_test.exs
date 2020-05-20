@@ -5,10 +5,8 @@ defmodule Logflare.LqlParserTest do
   alias Logflare.Lql.Parser, as: Parser
   alias Logflare.Lql.{Utils, ChartRule, FilterRule}
   alias Logflare.DateTimeUtils
-  import Parser
   alias Logflare.Source.BigQuery.SchemaBuilder
 
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   @default_schema Logflare.BigQuery.TableSchema.SchemaBuilderHelpers.schemas().initial
 
   describe "LQL parsing" do
@@ -773,7 +771,7 @@ defmodule Logflare.LqlParserTest do
                   operator: :=,
                   path: "timestamp",
                   shorthand: "now",
-                  value: now_ndt
+                  value: now_ndt()
                 }
               ]} == Parser.parse("timestamp:now", @schema)
 
@@ -913,8 +911,8 @@ defmodule Logflare.LqlParserTest do
                ]
              } == Parser.parse("timestamp:this@year", @schema)
 
-      lvalue = Timex.shift(now_ndt, seconds: -50)
-      rvalue = now_ndt
+      lvalue = Timex.shift(now_ndt(), seconds: -50)
+      rvalue = now_ndt()
 
       assert {
                :ok,
@@ -1377,6 +1375,53 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
     end
 
+    test "boolean" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{
+            isAllowed: true
+          }
+          |> MapKeys.to_strings(),
+          @default_schema
+        )
+
+      str = ~S|
+         metadata.isAllowed:true
+       |
+
+      {:ok, lql_rules} = Parser.parse(str, schema)
+
+      assert Utils.get_filter_rules(lql_rules) == [
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.isAllowed",
+                 shorthand: nil,
+                 value: true,
+                 values: nil
+               }
+             ]
+
+      str = ~S|
+         metadata.isAllowed:false
+       |
+
+      {:ok, lql_rules} = Parser.parse(str, schema)
+
+      assert Utils.get_filter_rules(lql_rules) == [
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.isAllowed",
+                 shorthand: nil,
+                 value: false,
+                 values: nil
+               }
+             ]
+
+      assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
+    end
+
     test "chart period, chart aggregate" do
       schema =
         SchemaBuilder.build_table_schema(
@@ -1602,7 +1647,7 @@ defmodule Logflare.LqlParserTest do
   end
 
   def now_udt_zero_sec() do
-    %{now_ndt | second: 0}
+    %{now_ndt() | second: 0}
   end
 
   def clean_and_trim_lql_string(str) do

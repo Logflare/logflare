@@ -2,12 +2,12 @@ defmodule LogflareWeb.ClusterLV do
   @moduledoc """
   Provides real-time data on cluster connectivity
   """
-  alias LogflareWeb.ClusterView
+  alias LogflareWeb.AdminClusterView
   use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
   alias Phoenix.LiveView.Socket
 
   def render(assigns) do
-    ClusterView.render("index.html", assigns)
+    AdminClusterView.render("index.html", assigns)
   end
 
   def mount(_params, _session, socket) do

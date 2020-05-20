@@ -13,7 +13,7 @@ defmodule Logflare.Users.Cache do
     ]
 
     %{
-      id: :cachex_users_cache,
+      id: __MODULE__,
       start: {Cachex, :start_link, [Users.Cache, cachex_opts]}
     }
   end
@@ -23,6 +23,6 @@ defmodule Logflare.Users.Cache do
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
 
   defp apply_repo_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_repo_fun(Users, arg1, arg2)
+    Logflare.ContextCache.apply_fun(Users, arg1, arg2)
   end
 end

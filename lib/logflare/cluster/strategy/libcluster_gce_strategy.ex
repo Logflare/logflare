@@ -1,4 +1,5 @@
 defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
+  @moduledoc false
   use GenServer
   use Cluster.Strategy
 
@@ -158,7 +159,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
             :error
 
-          {:error, response} ->
+          {:error, _response} ->
             :error
         end
       end)

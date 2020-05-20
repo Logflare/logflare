@@ -1,29 +1,22 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
-      <ul>
-        <li><%= link to: Routes.admin_path(@socket, :dashboard) do %><i class="fas fa-list"></i><span class="hide-on-mobile"> sources</span><% end %></li>
-        <li><%= link to: Routes.cluster_path(@socket, :index) do %><i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span><% end %></li>
-        <li><%= link to: Routes.live_path(@socket, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><strong><span class="hide-on-mobile"> search</span></strong><% end %></li>
-      </ul>
-    </div>
-    <h5>~/admin/dashboard/search</h5>
+    <%= render LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket %>
+    <h5>~/admin/search</h5>
   </div>
 </div>
-
 <div class="container mx-auto">
   <h1>Search Dashboard</h1>
   <div class="row">
     <div class="col-6">
       <h3> Active sources (at least 1 search) </h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @source_timeseries, keys: ["count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @source_timeseries, keys: ["count"]}, [container: [id: "active-sources-chart"]]) %>
       </div>
     </div>
     <div class="col-6">
       <h3> Active users (at least 1 search) </h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @user_timeseries, keys: ["count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @user_timeseries, keys: ["count"]}, [container: [id: "active-users-chart"]]) %>
       </div>
     </div>
   </div>
@@ -31,13 +24,14 @@
     <div class="col-6">
       <h3>Daily tailing searches count</h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["tailing_count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["tailing_count"]}, [container: [id: "daily-tailing-searches-chart"]]
+        ) %>
       </div>
     </div>
     <div class="col-6">
       <h3>Daily non-tailing searches count</h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["non_tailing_count"]}) %>
+        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["non_tailing_count"]}, [container: [id: "daily-non-tailing-searches-chart"]]) %>
       </div>
     </div>
   </div>
@@ -102,13 +96,5 @@
         <% end %>
       </table>
     </div>
-  </div>
-  <div>
-    <span class="btn btn-primary" phx-click="upgrade_saved_searches">
-      Upgrade saved searches
-    </span>
-    <span class="btn btn-primary" phx-click="upgrade_rules_lql_filters">
-      Upgrade source rules LQL filters
-    </span>
   </div>
 </div>

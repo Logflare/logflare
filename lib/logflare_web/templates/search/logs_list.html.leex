@@ -2,9 +2,9 @@
   <div id="logs-list-container" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list">
-    <% else %>
-      <div id="logs-list" class="list-unstyled console-text-list">
-    <% end %>
+      <% else %>
+        <div id="logs-list" class="list-unstyled console-text-list">
+        <% end %>
         <%= for log <- @log_events do %>
           <li id="log-event_<%= log.id || log.body.timestamp %>">
             <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>

@@ -3,7 +3,7 @@ defmodule Logflare.UsersTest do
   import Logflare.Factory
   use Logflare.DataCase
   alias Logflare.Sources
-  alias Logflare.{Repo, Users, Source}
+  alias Logflare.Users
   import Users
 
   setup do
@@ -41,7 +41,7 @@ defmodule Logflare.UsersTest do
       {:ok, user} = Users.update_user_allowed(user, %{"email_preferred" => email})
       assert get_by(api_key: u1.api_key).email_preferred == email
 
-      {:ok, user} = Users.update_user_allowed(user, %{"email_preferred" => nil})
+      {:ok, _user} = Users.update_user_allowed(user, %{"email_preferred" => nil})
       assert get_by(api_key: u1.api_key).email_preferred == nil
     end
   end

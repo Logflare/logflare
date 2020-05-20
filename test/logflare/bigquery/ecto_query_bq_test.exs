@@ -251,8 +251,8 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
 
       {sql, params} = Logflare.EctoQueryBQ.SQL.to_sql_params(q)
 
-      sql ==
-        ~s|
+      assert sql ==
+               ~s|
       SELECT t0.timestamp,
       t0.metadata
       FROM `logflare-dev-238720`.1_dev.6efefdc5_e6fa_4193_864a_9e9daa6924d7 AS t0
@@ -288,8 +288,8 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
         AND (f19.exceptions >= ?)
         AND (REGEXP_CONTAINS(f21.name, ?))
       |
-        |> String.replace(~r/[\s]+/, " ")
-        |> String.trim()
+               |> String.replace(~r/[\s]+/, " ")
+               |> String.trim()
 
       assert params == [
                %GoogleApi.BigQuery.V2.Model.QueryParameter{

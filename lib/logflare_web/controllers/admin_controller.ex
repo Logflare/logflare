@@ -6,7 +6,12 @@ defmodule LogflareWeb.AdminController do
 
   @page_size 50
 
-  def dashboard(conn, params) do
+  def dashboard(conn, _params) do
+    conn
+    |> render("dashboard.html")
+  end
+
+  def sources(conn, params) do
     sort_options = [
       :fields,
       :latest,
@@ -21,7 +26,7 @@ defmodule LogflareWeb.AdminController do
 
     sorted_sources = sorted_sources(params)
 
-    render(conn, "dashboard.html", sources: sorted_sources, sort_options: sort_options)
+    render(conn, "sources.html", sources: sorted_sources, sort_options: sort_options)
   end
 
   defp sorted_sources(%{"page" => page, "sort_by" => sort_by} = _params) do

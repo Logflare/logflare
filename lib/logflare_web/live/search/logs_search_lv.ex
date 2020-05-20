@@ -4,13 +4,14 @@ defmodule LogflareWeb.Source.SearchLV do
   """
   use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
 
+  alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Lql
+  alias Logflare.Lql.ChartRule
+  alias Logflare.SavedSearches
+  alias Logflare.{Sources, Users}
+  alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
-  alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.SavedSearches
-  alias Logflare.Lql
-  alias Logflare.Lql.{ChartRule}
-  alias Logflare.{Sources, Users}
 
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
@@ -539,7 +540,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           :timestamp,
-          &LogflareWeb.Helpers.BqSchema.format_timestamp(&1, timezone)
+          &BqSchemaHelpers.format_timestamp(&1, timezone)
         )
       end)
 

@@ -3,7 +3,6 @@
     <h5>~/logs/new</h5>
   </div>
 </div>
-
 <div class="container mx-auto">
   <p>
     Sources are where logs go. You can name your source anything you want. We suggest
@@ -13,14 +12,13 @@
     If you're hosted on <%= link "Vercel", to: "https://vercel.co", target: "_blank" %> maybe name it <code>YourApp.vercel</code>.
   </p>
   <%= form_for @changeset, Routes.source_path(@conn, :create), fn f -> %>
-    <div class="form-group">
-      <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin", autofocus: true %>
-      <small class="form-text text-muted">
-        Don't worry, you can change the name later.
-      </small>
-      <%= error_tag f, :name %>
-    </div>
-
-    <%= submit "Add source", class: "btn btn-primary form-button" %>
-  <% end %>
+  <div class="form-group">
+    <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin", autofocus: true %>
+    <small class="form-text text-muted">
+      Don't worry, you can change the name later.
+    </small>
+    <%= error_tag f, :name %>
+  </div>
+  <%= submit "Add source", class: "btn btn-primary form-button" %>
+<% end %>
 </div>

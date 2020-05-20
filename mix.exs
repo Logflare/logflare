@@ -57,30 +57,40 @@ defmodule Logflare.Mixfile do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.4.0"},
-      {:phoenix_pubsub, "~> 1.1.2"},
+      # Phoenix and LogflareWeb
+      {:phoenix, "~> 1.5.0", override: true},
+      {:phoenix_pubsub, "~> 2.0.0"},
       {:phoenix_ecto, "~> 4.0"},
-      {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
+      {:plug, "~> 1.8"},
+      {:phoenix_live_view, "~> 0.12.0"},
+      {:phoenix_live_dashboard, "~> 0.1"},
+
+      # Oauth
+      {:ueberauth_google, "~> 0.8"},
+      {:ueberauth_github, github: "Logflare/ueberauth_github"},
+      {:ueberauth_slack, "~> 0.6"},
+      {:oauth2, "~> 2.0.0", override: true},
+
+      # Oauth2 provider
+      {:phoenix_oauth2_provider, "~> 0.5.1"},
+      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
+
+      # Ecto and DB
+      {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:plug_cowboy, "~> 2.0"},
-      {:ueberauth_github, "~> 0.7"},
-      {:plug, "~> 1.8"},
       {:jason, "~> 1.0"},
       {:distillery, "~> 2.1.0"},
       {:edeliver, ">= 1.7.0"},
+      # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
-      {:phoenix_oauth2_provider, "~> 0.5.1"},
-      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
       {:poison, "~> 3.1"},
-      {:ueberauth_google, "~> 0.8"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:goth, "~> 1.2.0"},
       {:deep_merge, "~> 1.0"},
-      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
-      {:credo, "~> 1.1", only: [:dev, :test], runtime: false},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
       {:typed_struct, "~> 0.1"},
@@ -93,15 +103,12 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:logflare_logger_backend, "~> 0.7.2"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
-      {:phoenix_live_view, "~> 0.12.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:nimble_parsec, "~> 0.5.0"},
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
-      {:ueberauth_slack, "~> 0.6"},
-      {:oauth2, "~> 2.0.0", override: true},
       {:observer_cli, "~> 1.5"},
       {:cors_plug, "~> 2.0"},
 
@@ -110,9 +117,9 @@ defmodule Logflare.Mixfile do
       {:flow, "~> 0.14"},
 
       # Test
-      {:excoveralls, "~> 0.11", only: :test, runtime: false},
       {:placebo, "2.0.0-rc.2"},
       {:mox, "~> 0.5", only: :test},
+      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
@@ -120,8 +127,8 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.28.0"},
-      {:google_api_big_query, "~> 0.36.0"},
+      {:google_api_cloud_resource_manager, "~> 0.29.0"},
+      {:google_api_big_query, "~> 0.38.0"},
 
       # Ecto
       {:ecto, "~> 3.3", override: true},
@@ -159,7 +166,12 @@ defmodule Logflare.Mixfile do
       {:money, "~> 1.7"},
 
       # Utils
-      {:recase, "~> 0.6.0"}
+      {:recase, "~> 0.6.0"},
+
+      # Code quality
+      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
+      {:excoveralls, "~> 0.11", only: :test, runtime: false}
     ]
   end
 

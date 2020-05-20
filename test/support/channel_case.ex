@@ -1,4 +1,6 @@
 defmodule LogflareWeb.ChannelCase do
+  alias Ecto.Adapters.SQL
+
   @moduledoc """
   This module defines the test case to be used by
   channel tests.
@@ -18,7 +20,7 @@ defmodule LogflareWeb.ChannelCase do
   using do
     quote do
       # Import conveniences for testing with channels
-      use Phoenix.ChannelTest
+      import Phoenix.ChannelTest
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
@@ -26,10 +28,10 @@ defmodule LogflareWeb.ChannelCase do
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    :ok = SQL.Sandbox.checkout(Logflare.Repo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     end
 
     :ok

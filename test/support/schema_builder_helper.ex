@@ -511,7 +511,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
                   fields: nil,
                   mode: "NULLABLE",
                   name: "vip",
-                  type: "BOOLEAN"
+                  type: "BOOL"
                 },
                 %TFS{
                   description: nil,
@@ -626,7 +626,7 @@ defmodule Logflare.BigQuery.TableSchema.SchemaBuilderHelpers do
                   fields: nil,
                   mode: "NULLABLE",
                   name: "vip",
-                  type: "BOOLEAN"
+                  type: "BOOL"
                 },
                 %TFS{
                   description: nil,
