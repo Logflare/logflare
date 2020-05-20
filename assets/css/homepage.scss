@@ -9,7 +9,7 @@ a:hover {
 CSS
 */
 body {
-  background: #B7B7B7;
+  background: #b7b7b7;
   overflow-x: hidden;
 }
 @media (min-width: 1320px) {
@@ -217,11 +217,13 @@ body {
   -webkit-transform: rotate(0);
   transform: rotate(0);
 }
-@media (max-width: 768px) {}
+@media (max-width: 768px) {
+}
 
 .hero {
   min-height: 2000px;
-  background: url("/images/marketing/homepage/bgDesktopTop-4x.png") no-repeat center;
+  background: url("/images/marketing/homepage/bgDesktopTop-4x.png") no-repeat
+    center;
   background-size: cover;
   padding-bottom: 20px;
   padding-top: 230px;
@@ -372,7 +374,7 @@ body {
 }
 
 .hero h3 span {
-  color: #E35B8D;
+  color: #e35b8d;
   font-family: monospace;
   font-weight: normal;
 }
@@ -400,10 +402,6 @@ body {
   line-height: 26px;
   font-size: 16px;
   margin-top: 80px;
-}
-
-.catchimgtop {
-  margin-top: -330px;
 }
 
 .catchimgbtn img,
@@ -517,7 +515,7 @@ body {
 .scale .tablescale .col3 h2 {
   padding: 0;
   margin: 0;
-  color: #B7B7B7;
+  color: #b7b7b7;
   font-weight: 600;
   line-height: 26px;
   font-size: 16px;
@@ -531,7 +529,7 @@ body {
 .scale .tablescale .col3 h3 {
   padding: 0;
   margin: 0;
-  color: #B7B7B7;
+  color: #b7b7b7;
   font-weight: 500;
   line-height: 26px;
   font-size: 14px;
@@ -601,7 +599,7 @@ body {
 
 .scale .tablescale .col2:hover,
 .scale .tablescale .col3:hover {
-  background: #1F1C24;
+  background: #1f1c24;
 }
 
 .scale .tablescale .col2:hover h3,
@@ -611,12 +609,12 @@ body {
 
 .scale .tablescale .col2:hover h3 i,
 .scale .tablescale .col3:hover h3 i {
-  color: #64DEBF;
+  color: #64debf;
 }
 
 .scale .tablescale .col2:hover .money,
 .scale .tablescale .col3:hover .money {
-  color: #64DEBF;
+  color: #64debf;
 }
 
 .stepsimgtop img {
@@ -636,7 +634,7 @@ body {
   z-index: 1;
   padding-top: 60px;
   padding-bottom: 60px;
-  border-bottom: 1px solid #2F2F2F;
+  border-bottom: 1px solid #2f2f2f;
 }
 
 .steps h2 {
@@ -674,7 +672,7 @@ body {
 .steps .circle {
   width: 39px;
   height: 39px;
-  background: #D35D9F;
+  background: #d35d9f;
   border-radius: 50%;
   padding-top: 10px;
   display: inline-block;
@@ -687,13 +685,13 @@ body {
   background: #161616;
   padding-top: 60px;
   padding-bottom: 60px;
-  border-bottom: 1px solid #2F2F2F;
+  border-bottom: 1px solid #2f2f2f;
 }
 
 .features h3 {
   padding: 0;
   margin: 20px 0 0;
-  color: #B7B7B7;
+  color: #b7b7b7;
   font-weight: 600;
   line-height: 26px;
   font-size: 18px;
@@ -711,7 +709,7 @@ body {
 }
 
 .features ul li:before {
-  content: '\f058';
+  content: "\f058";
   font-size: 19px;
   font-weight: 600;
   /* width: 19px; */
@@ -734,7 +732,7 @@ body {
 }
 
 .features a {
-  color: #E35B8D;
+  color: #e35b8d;
   -webkit-transition: all 0.15s ease;
   transition: all 0.15s ease;
 }
@@ -859,7 +857,7 @@ body {
 .ctav2 .forphone3 .text p {
   padding: 0;
   margin: 15px 0 0;
-  color: #B7B7B7;
+  color: #b7b7b7;
   font-weight: 400;
   line-height: 26px;
   font-size: 16px;
@@ -920,7 +918,7 @@ body {
 }
 
 .footer ul li a:hover {
-  color: #E35B8D;
+  color: #e35b8d;
 }
 
 .footer .rightside {
@@ -1049,12 +1047,9 @@ body {
     margin-right: auto;
   }
 
-  .catchimgtop {
-    margin-top: -480px;
-  }
-
   .ctav2 h1,
-  .ctav2 p {}
+  .ctav2 p {
+  }
 }
 @media (max-width: 992px) {
   .scale .tablescale .col1 h2,
@@ -1353,7 +1348,7 @@ body {
 .forphone .nav-tabs > li.active > a:hover {
   background: transparent;
   border: 0;
-  border-bottom: 2px solid #CF407B;
+  border-bottom: 2px solid #cf407b;
   color: #fff;
   padding-bottom: 12px;
   margin-bottom: -2px;
@@ -1364,7 +1359,7 @@ body {
 .forphone .nav-tabs > li > .active:hover {
   background: transparent;
   border: 0;
-  border-bottom: 2px solid #CF407B;
+  border-bottom: 2px solid #cf407b;
   color: #fff;
   padding-bottom: 12px;
   margin-bottom: -2px;
@@ -1625,8 +1620,12 @@ body {
   .footer {
     padding-top: 40px;
     margin: 0;
-    background: url("/images/marketing/homepage/footerbg.png") no-repeat top left, -webkit-gradient(linear, left top, left bottom, color-stop(100%, #161616), to(#161616));
-    background: url("/images/marketing/homepage/footerbg.png") no-repeat top left, linear-gradient(#161616 100%, #161616 100%);
+    background: url("/images/marketing/homepage/footerbg.png") no-repeat top
+        left,
+      -webkit-gradient(linear, left top, left bottom, color-stop(100%, #161616), to(#161616));
+    background: url("/images/marketing/homepage/footerbg.png") no-repeat top
+        left,
+      linear-gradient(#161616 100%, #161616 100%);
     background-size: cover;
   }
 
