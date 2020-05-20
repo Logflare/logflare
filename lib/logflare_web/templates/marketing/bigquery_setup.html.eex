@@ -32,6 +32,7 @@
         <div class="cont">
           <h1 class="menu1cont" id="simple-setup">Dead Simple Setup</h1>
           <p>Setup is super easy. Simply add our service account to your IAM with BigQuery Data Owner and BigQuery Job User permissions.</p>
+          <p><i class="fas fa-exclamation-circle"></i> Enable a Google Cloud Platform billing account with payment information or we won't be able to insert into your BigQuery table!</p>
           <h2 class="menu2cont" id="nav-to-iam">Navigate to IAM</h2>
           <div class="minimg">
             <div class="purplebox">
