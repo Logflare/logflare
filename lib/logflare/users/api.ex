@@ -1,4 +1,5 @@
 defmodule Logflare.Users.API do
+  @moduledoc false
   alias Logflare.{Sources, User, Users}
 
   @type api_rates_quotas :: %{

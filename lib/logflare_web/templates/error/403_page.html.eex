@@ -2,6 +2,6 @@
   <div class="col-lg-7">
     <h1>403 </h1>
     <h2>Forbidden </h2>
-    <p>Get back <a href="/dashboard" target="_blank">to dashboard</a></p>
+    <p>Get back <a href="/" target="_blank">to homepage</a></p>
   </div>
 <% end %>

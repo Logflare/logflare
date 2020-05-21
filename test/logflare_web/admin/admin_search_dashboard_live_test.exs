@@ -21,7 +21,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
       assert {:ok, view, html} =
                conn
                |> assign(:user, %{user | admin: true})
-               |> live("/admin/dashboard/search")
+               |> live("/admin/search")
 
       assert html =~ "Search Dashboard"
     end
@@ -29,7 +29,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
     test "forbidden for non-admin", %{conn: conn, user: [_user | _], source: [_source | _]} do
       conn =
         conn
-        |> get("/admin/dashboard/search")
+        |> get("/admin/search")
 
       assert html_response(conn, 403) =~ "403"
     end
@@ -38,7 +38,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
       conn =
         conn
         |> assign(:user, nil)
-        |> get("/admin/dashboard/search")
+        |> get("/admin/search")
 
       assert html_response(conn, 403) =~ "403"
     end

@@ -70,6 +70,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
       {false, false} ->
         conn
         |> put_status(403)
+        |> put_layout(false)
         |> put_view(LogflareWeb.ErrorView)
         |> render("403_page.html")
         |> halt()
@@ -77,6 +78,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
       {nil, false} ->
         conn
         |> put_status(404)
+        |> put_layout(false)
         |> put_view(LogflareWeb.ErrorView)
         |> render("404_page.html")
         |> halt()

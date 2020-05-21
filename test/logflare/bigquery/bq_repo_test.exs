@@ -37,7 +37,7 @@ defmodule Logflare.Google.BigQuery.BqRepoTest do
 
       {:ok, response} = BqRepo.query_with_sql_and_params(bigquery_project_id, sql, [])
       assert response.rows == []
-      assert response.total_rows == "0"
+      assert response.total_rows == 0
     end
   end
 end

@@ -1,17 +1,71 @@
-<div class="container-fluid hero no-subhead">
-  <div class="container">
-    <div class="row cta">
-      <div class="col-lg-10 order-lg-1">
-        <div class="row">
-          <%= @inner_content %>
-          <div class="col-lg-5">
-            <p>Looking for something else?</p>
-            <%= render(LogflareWeb.SharedView, "logflare_services_list.html") %>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Easily access your Cloudflare, Vercel & Elixir logs in a centralized web-based log management solution.">
+    <meta name="author" content="">
+    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
+    <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/images/apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="/images/apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/images/apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/images/apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/images/apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/images/apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192"  href="/images/android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="manifest" href="<%= Routes.static_path(@conn, "/manifest.json") %>">
+    <meta name="msapplication-TileColor" content="#5eeb8f">
+    <meta name="msapplication-TileImage" content="/images/ms-icon-144x144.png">
+    <meta name="theme-color" content="#5eeb8f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="slack-app-id" content="AQEDJ7H7G">
+    <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
+  </head>
+  <body>
+    <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+        <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
+        <ul class="navbar-nav mr-auto">
+          <li class="nav-item" >
+            <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
+          </li>
+          <li class="nav-item" >
+            <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "nav-link" %>
+          </li>
+        </ul>
+      </div>
+    </nav>
+    <main>
+      <div class="container-fluid errors hero no-subhead">
+        <div class="container">
+          <div class="row cta">
+            <div class="col-lg-10 order-lg-1">
+              <div class="row">
+                <%= @inner_content %>
+                <div class="col-lg-5">
+                  <p>Looking for something else?</p>
+                  <%= render(LogflareWeb.SharedView, "logflare_services_list.html") %>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-1">
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-lg-1">
-      </div>
-    </div>
-  </div>
-</div>
+    </main>
+    <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+  </body>
+</html>
