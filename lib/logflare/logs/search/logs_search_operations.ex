@@ -369,6 +369,9 @@ defmodule Logflare.Logs.SearchOperations do
           {:minutes, DateTimeUtils.truncate(min, :minute), DateTimeUtils.truncate(max, :minute)}
 
         :second ->
+          min = DateTimeUtils.truncate(min, :second)
+          max = DateTimeUtils.truncate(max, :second)
+
           if min == max do
             {:seconds, min, Timex.shift(max, seconds: 1)}
           else
