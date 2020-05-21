@@ -11,7 +11,7 @@
     </button>
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
       <%= for option <- @sort_options do %>
-        <%= link option, to: Routes.admin_path(@conn, :dashboard, sort_by: option), class: "dropdown-item" %>
+        <%= link option, to: Routes.admin_path(@conn, :sources, sort_by: option), class: "dropdown-item" %>
       <% end %>
     </div>
   </div>
