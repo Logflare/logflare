@@ -64,7 +64,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
-      {:phoenix_live_view, "~> 0.12.0"},
+      {:phoenix_live_view, "~> 0.13.0"},
       {:phoenix_live_dashboard, "~> 0.1"},
 
       # Oauth
@@ -150,7 +150,6 @@ defmodule Logflare.Mixfile do
 
       # HTML
       {:floki, "~> 0.26.0"},
-      {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
 
       # Rust NIFs
       {:rustler, "~> 0.21.0", override: true},

@@ -17,28 +17,28 @@
           <th scope="col">Period</th>
           <th scope="col">Sources</th>
           <th scope="col">Rate Limit </br> <small>(per sec)</small></th>
-        <th scope="col">Source Rate Limit </br> <small>(per sec)</small></th>
-      <th scope="col">Alerts </br> <small>(ms)</small></th>
-    <th scope="col"></th>
-  </tr>
-</thead>
-<tbody>
-  <%= for p <- @plans do %>
-    <tr>
-      <th scope="row"><%= p.id %></th>
-      <td><%= p.name %></td>
-      <td><%= p.stripe_id %></td>
-      <td><%= p.price %></td>
-      <td><%= p.period %></td>
-      <td><%= p.limit_sources %></td>
-      <td><%= p.limit_rate_limit %></td>
-      <td><%= p.limit_source_rate_limit %></td>
-      <td><%= p.limit_alert_freq %></td>
-      <td><%= link "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm" %></td>
-    </tr>
-  <% end %>
-</tbody>
-</table>
-</div>
-<%= link "New plan", to: Routes.admin_plan_path(@conn, :new), class: "btn btn-primary" %>
+          <th scope="col">Source Rate Limit </br> <small>(per sec)</small></th>
+          <th scope="col">Alerts </br> <small>(ms)</small></th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for p <- @plans do %>
+        <tr>
+          <th scope="row"><%= p.id %></th>
+          <td><%= p.name %></td>
+          <td><%= p.stripe_id %></td>
+          <td><%= p.price %></td>
+          <td><%= p.period %></td>
+          <td><%= p.limit_sources %></td>
+          <td><%= p.limit_rate_limit %></td>
+          <td><%= p.limit_source_rate_limit %></td>
+          <td><%= p.limit_alert_freq %></td>
+          <td><%= link "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm" %></td>
+        </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <%= link "New plan", to: Routes.admin_plan_path(@conn, :new), class: "btn btn-primary" %>
 </div>

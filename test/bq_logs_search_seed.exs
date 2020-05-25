@@ -13,21 +13,12 @@ alias Logflare.LogEvent
 import Ecto.Query
 
 email = System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM")
-bigquery_dataset_location = "EU"
+bigquery_dataset_location = "US"
 bigquery_project_id = "logflare-dev-238720"
 bigquery_table_ttl = 60 * 60 * 24 * 365
 source_token = "2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
-user =
-  User
-  |> where([u], u.email == ^email)
-  |> Repo.one()
-
-{:ok, _} = BigQuery.delete_dataset(user)
-
-Repo.delete!(user)
-
-{:ok_found_user, user} =
+# {_, user} =
   Users.insert_or_update_user(%{
     id: 314_159,
     email: email,
@@ -39,11 +30,23 @@ Repo.delete!(user)
     name: "Test source name"
   })
 
-{:ok, source} =
+user =
+  User
+  |> where([u], u.email == ^email)
+  |> Repo.one()
+
+BigQuery.delete_dataset(user)
+
+# Repo.delete!(user)
+
+
+# {:ok, source} =
   Sources.create_source(
     %{"token" => source_token, "name" => "Automated testing source #1"},
     user
   )
+
+source = Sources.get_by(token: source_token)
 
 %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(source.token)
 

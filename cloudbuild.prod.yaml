@@ -17,6 +17,24 @@ steps:
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud_test.json.enc
+      - --plaintext-file=gcloud_test.json
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/test.secret.exs.enc
+      - --plaintext-file=./config/test.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
@@ -30,6 +48,20 @@ steps:
         "-f",
         "docker/prod.app.Dockerfile",
         ".",
+      ]
+    secretEnv: ["MAGIC_COOKIE"]
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "run",
+        "-e",
+        "MIX_ENV=test",
+        "-e",
+        "TEST_ENV=gcp_cloud_build",
+        "-w",
+        "/logflare",
+        "gcr.io/logflare-232118/logflare_app:latest",
+        "/logflare/run_test.bash",
       ]
     secretEnv: ["MAGIC_COOKIE"]
   - name: "gcr.io/cloud-builders/docker"

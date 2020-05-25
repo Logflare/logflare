@@ -23,6 +23,7 @@
     line-height: 26px;
     text-align: center;
   }
+
   position: relative;
 
   .miniimgbox {
@@ -91,11 +92,6 @@
       margin: 0 0 25px;
       width: 100%;
       display: block;
-      -webkit-transition: all 0.15s ease;
-      -moz-transition: all 0.15s ease;
-      -ms-transition: all 0.15s ease;
-      -o-transition: all 0.15s ease;
-      transition: all 0.15s ease;
     }
 
     .scrollmenu:hover {
@@ -220,5 +216,6 @@
       }
     }
   }
+
   padding-bottom: 50px;
 }

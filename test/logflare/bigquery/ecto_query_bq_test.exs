@@ -8,6 +8,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
   alias Logflare.Lql.FilterRule
   import Ecto.Query
   import Logflare.Factory
+  @moduletag :skip
 
   setup do
     u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))

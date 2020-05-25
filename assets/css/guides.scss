@@ -34,13 +34,13 @@
 }
 
 .getstartguide {
-  background: rgba(24,24,24,1);
-  background: -moz-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
-  background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(24,24,24,1)), color-stop(100%, rgba(15,15,15,1)));
-  background: -webkit-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
-  background: -o-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
-  background: -ms-linear-gradient(top, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
-  background: linear-gradient(to bottom, rgba(24,24,24,1) 0%, rgba(15,15,15,1) 100%);
+  background: rgba(24, 24, 24, 1);
+  background: -moz-linear-gradient(top, rgba(24, 24, 24, 1) 0%, rgba(15, 15, 15, 1) 100%);
+  background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(24, 24, 24, 1)), color-stop(100%, rgba(15, 15, 15, 1)));
+  background: -webkit-linear-gradient(top, rgba(24, 24, 24, 1) 0%, rgba(15, 15, 15, 1) 100%);
+  background: -o-linear-gradient(top, rgba(24, 24, 24, 1) 0%, rgba(15, 15, 15, 1) 100%);
+  background: -ms-linear-gradient(top, rgba(24, 24, 24, 1) 0%, rgba(15, 15, 15, 1) 100%);
+  background: linear-gradient(to bottom, rgba(24, 24, 24, 1) 0%, rgba(15, 15, 15, 1) 100%);
   /* filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#181818', endColorstr='#0f0f0f', GradientType=0 ); */
   padding-top: 25px;
 
@@ -74,6 +74,7 @@
       position: relative;
       margin: 25px 0 0;
     }
+
     position: relative;
 
     .btnopen {
@@ -99,11 +100,6 @@
         max-width: 164px;
         width: 100%;
         display: block;
-        -webkit-transition: all 0.15s ease;
-        -moz-transition: all 0.15s ease;
-        -ms-transition: all 0.15s ease;
-        -o-transition: all 0.15s ease;
-        transition: all 0.15s ease;
       }
 
       a:hover {
@@ -119,13 +115,8 @@
     display: block;
     border-radius: 15px;
     margin-bottom: 50px;
-    box-shadow: 0 0 39px 0 rgba(0,0,0,0.2);
+    box-shadow: 0 0 39px 0 rgba(0, 0, 0, 0.2);
     position: relative;
-    -webkit-transition: all 0.15s ease;
-    -moz-transition: all 0.15s ease;
-    -ms-transition: all 0.15s ease;
-    -o-transition: all 0.15s ease;
-    transition: all 0.15s ease;
 
     .leftbg {
       position: absolute;

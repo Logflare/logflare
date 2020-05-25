@@ -8,6 +8,9 @@
         </button>
       </div>
       <div class="modal-body">
+        <h5 class="header-margin">Source ID</h5>
+        <p>You'll need this source ID for some integrations or libraries.</p>
+        <span class="pointer-cursor logflare-tooltip" id="source-id" data-toggle="tooltip" data-html=true data-placement="top" title="<span id=copy-tooltip>Copy this</span>" data-clipboard-text="<%= @source.token %>"><code><%= @source.token %></code> <i class="fas fa-copy"></i></span>
         <h5 class="header-margin">With the Cloudflare App</h5>
         <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
         <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no" frameborder="0" style="height: 48px; width: 180px">
