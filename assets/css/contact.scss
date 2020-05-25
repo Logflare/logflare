@@ -1,5 +1,5 @@
 .contactcon {
-  background: url("/images/marketing/contact_us/contactBackground.png") no-repeat bottom center, linear-gradient(rgba(24,24,24,1) 100%, rgba(24,24,24,1)100%);
+  background: url("/images/marketing/contact_us/contactBackground.png") no-repeat bottom center, linear-gradient(rgba(24, 24, 24, 1) 100%, rgba(24, 24, 24, 1)100%);
   -webkit-background-size: cover;
   -moz-background-size: cover;
   -o-background-size: cover;
@@ -65,7 +65,7 @@
       input {
         width: 100%;
         padding: 13px 24px;
-        background-color: rgba(0,0,0,0.5);
+        background-color: rgba(0, 0, 0, 0.5);
         border-radius: 3px;
         color: #969696;
         // font-family: "Rubik";
@@ -80,7 +80,7 @@
       textarea {
         width: 100%;
         padding: 13px 24px;
-        background-color: rgba(0,0,0,0.5);
+        background-color: rgba(0, 0, 0, 0.5);
         border-radius: 3px;
         color: #969696;
         // font-family: "Rubik";
@@ -122,7 +122,7 @@
         border-radius: 0;
         -webkit-appearance: none;
         padding: 13px 24px;
-        background-color: rgba(0,0,0,0.5);
+        background-color: rgba(0, 0, 0, 0.5);
         border-radius: 3px;
         color: #969696;
         // font-family: "Rubik";
@@ -175,11 +175,6 @@
         text-align: center;
         text-transform: uppercase;
         margin-top: 25px;
-        -webkit-transition: all 0.15s ease;
-        -moz-transition: all 0.15s ease;
-        -ms-transition: all 0.15s ease;
-        -o-transition: all 0.15s ease;
-        transition: all 0.15s ease;
       }
 
       button:hover {
@@ -235,6 +230,7 @@
       width: 100%;
       border-radius: 20px;
     }
+
     position: relative;
 
     .boxofcont {
