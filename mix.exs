@@ -150,7 +150,6 @@ defmodule Logflare.Mixfile do
 
       # HTML
       {:floki, "~> 0.26.0"},
-      {:html5ever, github: "rusterlium/html5ever_elixir", only: [:test]},
 
       # Rust NIFs
       {:rustler, "~> 0.21.0", override: true},
