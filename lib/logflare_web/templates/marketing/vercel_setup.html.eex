@@ -1,4 +1,3 @@
- 
 <div class="container-fluid heroguidepage no-subhead">
   <div class="container">
     <div class="row">
@@ -32,31 +31,46 @@
       <div class="col-lg-9">
         <div class="cont">
           <h1 class="menu1cont" id="overview">Structured Logging with Vercel</h1>
-          <p>Vercel's log drains provide a robust and scalable way to send application logs from your Vercel app to any consolidated logging system. We've developed the Logflare Vercel integration on top of log drains to make it
-            easy for you to get logs from Vercel into your Logflare account. Once setup it's super easy to stream, search, alert on and dashboard your structured logs from Vercel.</p>
-          <p>Not only that, but you can <%= link "log a structured event from your Vercel app", to: "#json-log" %> as a stringified JSON object and we'll automatically parse that into a JSON object on our end which enables
-            all the powerful streaming, searching, alerting and dashboaring features for each individual field of that object.</p>
+          <p>Vercel's log drains provide a robust and scalable way to send application logs from your Vercel app to any
+            consolidated logging system. We've developed the Logflare Vercel integration on top of log drains to make it
+            easy for you to get logs from Vercel into your Logflare account. Once setup it's super easy to stream,
+            search, alert on and dashboard your structured logs from Vercel.</p>
+          <p>Not only that, but you can <%= link "log a structured event from your Vercel app", to: "#json-log" %> as a
+            stringified JSON object and we'll automatically parse that into a JSON object on our end which enables
+            all the powerful streaming, searching, alerting and dashboaring features for each individual field of that
+            object.</p>
           <h2 id="install-integration">Install the Integration</h2>
-          <p>Visit the Logflare integration page and click `add`. This will walk you through the Logflare sign up process. You will create a Logflare source during that process. A `source` is where your Vercel logs will go.</p>
+          <p>Visit the Logflare integration page and click `add`. This will walk you through the Logflare sign up
+            process. You will create a Logflare source during that process. A `source` is where your Vercel logs will
+            go.</p>
           <%= link "Install the Logflare Vercel integration", to: "https://vercel.co/integrations/logflare", class: "btn btn-primary", role: "button", target: "_blank" %>
           <h2 id="log-drain">Setup a Log Drain</h2>
-          <p>After installing the integation you'll navigate to the installed integration configuration page in your Vercel account. Now you need to add a log drain. This is what tells Vercel to send all your logs to Logflare.</p>
+          <p>After installing the integation you'll navigate to the installed integration configuration page in your
+            Vercel account. Now you need to add a log drain. This is what tells Vercel to send all your logs to
+            Logflare.</p>
           <div class="minimg">
             <div class="purplebox">
             </div>
-            <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/create-vercel-log-drain.png">
+            <img class="imgf img-fluid guide-img"
+              src="/images/marketing/guides/vercel-setup/create-vercel-log-drain.png">
           </div>
-          <p>Selecting a project: you can choose to filter the logs sent to Logflare by project. You will eventually want to have each project be a `source` in your Logflare account. This lets you do that. You can, however, choose to send
-            Logflare all logs for all projects, and use Logflare's routing to send logs do different sources. This would be useful if you don't want to setup a new log drain for each new project.</p>
-          <p>Once you've successfully added your log drain you should be able to immediately see logs start streaming into your Logflare account. Try visiting your Vercel deployment url then check your Logflare dashboard!</p>
+          <p>Selecting a project: you can choose to filter the logs sent to Logflare by project. You will eventually
+            want to have each project be a `source` in your Logflare account. This lets you do that. You can, however,
+            choose to send
+            Logflare all logs for all projects, and use Logflare's routing to send logs do different sources. This would
+            be useful if you don't want to setup a new log drain for each new project.</p>
+          <p>Once you've successfully added your log drain you should be able to immediately see logs start streaming
+            into your Logflare account. Try visiting your Vercel deployment url then check your Logflare dashboard!</p>
           <%= link "Visit your Logflare dashboard", to: Routes.source_path(@conn, :dashboard), class: "btn btn-primary", role: "button", target: "_blank" %>
           <h2 id="log-type">Build vs Static vs Lambda Logs</h2>
-          <p>Vercel gives us three main kinds of logs: <code>build</code>, <code>static</code> and <code>labda</code>.</p>
-          <p>You'll likely want to route all your build logs to a different source. This doesn't exclude them from the original source, it effectively copies them to another source.</p>
-          <p>To set this up add a build source and create a rule on your main Vercel source to send logs to this new build source.</p>
+          <p>Vercel gives us three main kinds of logs: <code>build</code>, <code>static</code> and <code>labda</code>.
+          </p>
+          <p>You'll likely want to route all your build logs to a different source. This doesn't exclude them from the
+            original source, it effectively copies them to another source.</p>
+          <p>To set this up add a build source and create a rule on your main Vercel source to send logs to this new
+            build source.</p>
           <div class="minimg">
-            <div class="purplebox">
-            </div>
+            <div class="purplebox"></div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/vercel-build-rule.png">
           </div>
           <p>So now when you deploy you should see something like this:</p>
@@ -65,55 +79,66 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/vercel-build-logs.gif">
           </div>
-          <p>Vercel also gives us some <code>static</code> and <code>labda</code> logs depending on if the event came from their CDN or their serverless infrastructure. You can setup different rules for these as well but you probably will want these in the
+          <p>Vercel also gives us some <code>static</code> and <code>labda</code> logs depending on if the event came
+            from their CDN or their serverless infrastructure. You can setup different rules for these as well but you
+            probably will want these in the
             same source so you can have them on the same dashboard later.</p>
           <h2 id="example-searches">Example Searches</h2>
-          <p>Here are some searches you might find useful with your Vercel deployment. It doesn't take long for your events to be searchable by Logflare.</p>
-          <p>This is a search for <code>m.source:"static"</code> which lets you see all the logs generated from the Vercel CDN.
-            <p>
-              <div class="minimg">
-                <div class="purplebox">
-                </div>
-                <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/example-vercel-search.gif">
-              </div>
-              <p>All 5xx status codes:
-                <code>m.proxy.statusCode:>499 m.proxy.statusCode:<600</code>
-                  </p>
-                  <p>All user agents with `bot` in the user agent string:
-                    <code>m.proxy.userAgent:~"bot"</code>
-                  </p>
-                  <p>When Vercel sends lambda logs over we parse data out of that message over for you automatically into the <code>m.parsedLambdaMessage</code> object.</p>
-                  <p>To see all labda requests with a response time greater than 1,000 ms:
-                    <code>m.parsedLambdaMessage.report.duration_ms:>1000</code>
-                  </p>
-                  <h2 id="example-dashboard">Example Dashboard</h2>
-                  <p>
-                    <iframe width="600" height="450" src="https://datastudio.google.com/embed/reporting/1NBEAsKFph8DP3OXapa1ZXRR7fTwZKHEY/page/5O0IB" frameborder="0" style="border:0" allowfullscreen></iframe>
-                  </p>
-                  <h2 id="json-log">Logging a Custom JSON Object</h2>
-                  <p>To enable even more insights from your Vercel deployment you can log any JSON object and we'll parse that accordingly.
-                    <p>
-                      <p>For example, in a Next.js project you can use <%= link "Pino", to: "http://getpino.io/", target: "_blank" %> to log an object.</p>
-                      <pre class="scrollable">
+          <p>Here are some searches you might find useful with your Vercel deployment. It doesn't take long for your
+            events to be searchable by Logflare.</p>
+          <p>This is a search for <code>m.source:"static"</code> which lets you see all the logs generated from the
+            Vercel CDN.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/example-vercel-search.gif">
+          </div>
+          <p>All 5xx status codes: <code>m.proxy.statusCode:>499</code></p>
+          <p>All user agents with `bot` in the user agent string: <code>m.proxy.userAgent:~"bot"</code></p>
+          <p>When Vercel sends lambda logs over we parse data out of that message over for you automatically into
+            the <code>m.parsedLambdaMessage</code> object.</p>
+          <p>To see all labda requests with a response time greater than 1,000 ms:
+            <code>m.parsedLambdaMessage.report.duration_ms:>1000</code>
+          </p>
+          <h2 id="example-dashboard">Example Dashboard</h2>
+          <p>
+            <iframe width="600" height="450"
+              src="https://datastudio.google.com/embed/reporting/1NBEAsKFph8DP3OXapa1ZXRR7fTwZKHEY/page/5O0IB"
+              frameborder="0" style="border:0" allowfullscreen></iframe>
+          </p>
+          <h2 id="json-log">Logging a Custom JSON Object</h2>
+          <p>To enable even more insights from your Vercel deployment you can log any JSON object and we'll parse
+            that accordingly.
+          </p>
+          <p><i class="fas fa-exclamation-circle"></i> When logging an object, your object keys should comply
+            with <a href="https://cloud.google.com/bigquery/docs/schemas#column_names" target="_blank">BigQuery
+              column requirements</a> as we turn all keys
+            into columns for you automatically. Specifically, a column name must contain only letters (a-z,
+            A-Z),
+            numbers (0-9), or underscores (_), and it must start with a letter or underscore.</p>
+          <p>For example, in a Next.js project you can use
+            <%= link "Pino", to: "http://getpino.io/", target: "_blank" %> to log an object.</p>
+          <pre class="scrollable">
 					<code>
   const logger = require('pino')()
   logger.info({user: {name: "Joe Schmo", email: "joe@dunder.dev", company: "Dunder Dev", id: 38}, event: {type: "request", tag: "api"}})</code>
 					</pre>
-                      <p>Which then would give you an object in Logflare like this:</p>
-                      <div class="minimg">
-                        <div class="purplebox">
-                        </div>
-                        <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/custom-data-object.png">
-                      </div>
-                      <p>So you can do a search for <code>m.parsedLambdaMessage.lines.data.event.tag:"api"</code> like this:</p>
-                      <div class="minimg">
-                        <div class="purplebox">
-                        </div>
-                        <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/custom-object-search.png">
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <p>Which then would give you an object in Logflare like this:</p>
+          <div class="minimg">
+            <div class="purplebox">
             </div>
-            <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/custom-data-object.png">
+          </div>
+          <p>So you can do a search for <code>m.parsedLambdaMessage.lines.data.event.tag:"api"</code> like this:
+          </p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/custom-object-search.png">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>
