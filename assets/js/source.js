@@ -2,13 +2,16 @@ import socket from "./socket"
 import $ from "jquery"
 import * as userConfig from "./user-config-storage"
 import _ from "lodash"
-import {userSelectedFormatter} from "./formatters"
-import {activateClipboardForSelector} from "./utils"
-import {applyToAllLogTimestamps} from "./logs"
+import { userSelectedFormatter } from "./formatters"
+import { activateClipboardForSelector } from "./utils"
+import { applyToAllLogTimestamps } from "./logs"
 
-export async function main({scrollTracker}, {avgEventsPerSecond}) {
-  const {sourceToken, logs} = $("#__phx-assigns__").data()
-  await initLogsUiFunctions({scrollTracker})
+export async function main({ scrollTracker }, { avgEventsPerSecond }) {
+  const { sourceToken, logs } = $("#__phx-assigns__").data()
+  await initLogsUiFunctions({ scrollTracker })
+
+  await initClipboards()
+  await initTooltips()
 
   if (avgEventsPerSecond < 25) {
     joinSourceChannel(sourceToken)
@@ -21,14 +24,24 @@ export async function main({scrollTracker}, {avgEventsPerSecond}) {
   }
 }
 
-export async function initLogsUiFunctions({scrollTracker}) {
-  await trackScroll({scrollTracker})
+async function initClipboards() {
+  activateClipboardForSelector("#source-id", {
+    container: document.getElementById('sourceHelpModal')
+  })
+}
+
+async function initTooltips() {
+  $(".logflare-tooltip").tooltip({ delay: { show: 100, hide: 200 } })
+}
+
+export async function initLogsUiFunctions({ scrollTracker }) {
+  await trackScroll({ scrollTracker })
 
   await applyToAllLogTimestamps(await userSelectedFormatter())
   $("#logs-list").removeAttr("hidden")
 }
 
-export async function trackScroll({scrollTracker}) {
+export async function trackScroll({ scrollTracker }) {
   window.scrollTracker = scrollTracker
 
   window.addEventListener("scroll", () => {
@@ -70,7 +83,7 @@ export function scrollBottom() {
 }
 
 async function logTemplate(e) {
-  const {via_rule, origin_source_id, body} = e
+  const { via_rule, origin_source_id, body } = e
   const metadata = JSON.stringify(body.metadata, null, 2)
   const formatter = await userSelectedFormatter()
   const formattedDatetime = formatter(body.timestamp)
@@ -89,16 +102,16 @@ async function logTemplate(e) {
 
   return `<li>
     <mark class="log-datestamp" data-timestamp="${
-      body.timestamp
+    body.timestamp
     }">${formattedDatetime}</mark> ${body.message}
     ${metadataElement}
     ${
-      via_rule
-        ? `<span
+    via_rule
+      ? `<span
     data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
     <i class="fa fa-code-branch" style="font-size: 1em;"></i>
     </span>`
-        : `<span></span>`
+      : `<span></span>`
     }
 </li>`
 }

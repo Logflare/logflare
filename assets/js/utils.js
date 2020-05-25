@@ -8,6 +8,7 @@ export function activateClipboardForSelector(selector, options) {
     e.clearSelection()
   })
   clipboard.on("error", (e) => {
+    console.log("Clipboard error!")
     e.clearSelection()
   })
 }
