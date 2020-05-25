@@ -25,6 +25,7 @@
             <%= link "Example Searches", to: "#example-searches", class: "scrollmenu menu5" %>
             <%= link "Example Dashboard", to: "#example-dashboard", class: "scrollmenu menu6" %>
             <%= link "Custom JSON Object", to: "#json-log", class: "scrollmenu menu7" %>
+            <%= link "Production vs Preview", to: "#prod-vs-preview", class: "scrollmenu menu8" %>
           </div>
         </div>
       </div>
@@ -110,6 +111,9 @@
           <p>To enable even more insights from your Vercel deployment you can log any JSON object and we'll parse
             that accordingly.
           </p>
+          <p><i class="fas fa-exclamation-circle"></i> If you do plan on logging a lot of structured data we suggest to
+            use the <a href="https://github.com/Logflare/pino-logflare">Logflare Pino transport</a>. <u>Vercel's logging
+              infrastructure will truncate long log lines.</u></p>
           <p><i class="fas fa-exclamation-circle"></i> When logging an object, your object keys should comply
             with <a href="https://cloud.google.com/bigquery/docs/schemas#column_names" target="_blank">BigQuery
               column requirements</a> as we turn all keys
@@ -136,6 +140,25 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/custom-object-search.png">
           </div>
+          <h2 id="prod-vs-preview">Production vs Preview vs Development</h2>
+          <p>When logging a custom JSON object with Pino you should separate your production logs from everything else.
+            Environment variables make this easy.
+          </p>
+          <p>Use <a href="https://vercel.com/docs/v2/build-step#environment-variables">Vercel's environment
+              variables</a> and setup an <code>ENV</code> variable for
+            <code>production</code>, <code>preview</code> and <code>development</code>.
+          </p>
+          <p>Then setup Pino to always log the environment. When instantiating, the fields in the <code>base</code>
+            object are always included with your log events.
+            <pre>
+            <code>
+  const logger = require('pino')({
+    base: {
+      env: process.env.ENV || "ENV not set"
+    }
+  })</code>
+          </pre>
+          </p>
         </div>
       </div>
     </div>
