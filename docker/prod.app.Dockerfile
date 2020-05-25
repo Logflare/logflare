@@ -23,4 +23,4 @@ RUN mix release --force --overwrite
 
 WORKDIR /logflare
 
-ENTRYPOINT [ "/logflare/run_prod.bash" ]
+CMD [ "/logflare/run_prod.bash" ]

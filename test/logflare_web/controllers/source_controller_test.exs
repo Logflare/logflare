@@ -288,7 +288,7 @@ defmodule LogflareWeb.SourceControllerTest do
                name: {"can't be blank", [validation: :required]}
              ]
 
-      assert redirected_to(conn, 302) === source_path(conn, :new)
+      assert get_flash(conn) === %{"error" => "Something went wrong!"}
       refute_called Sources.Cache.get_by(any()), once()
     end
 
@@ -306,7 +306,7 @@ defmodule LogflareWeb.SourceControllerTest do
                name: {"can't be blank", [validation: :required]}
              ]
 
-      assert redirected_to(conn, 302) === source_path(conn, :new)
+      assert get_flash(conn) === %{"error" => "Something went wrong!"}
       refute_called Sources.Cache.get_by(any()), once()
     end
   end

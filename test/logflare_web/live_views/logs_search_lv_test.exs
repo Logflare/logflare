@@ -22,9 +22,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "user sequence", %{conn: conn, source: [s | _]} do
       {:ok, view, html} =
-        live(conn, "/sources/#{s.id}/search",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        conn
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search")
 
       assert find_selected_chart_period(html) == "minute"
       assert find_chart_aggregate(html) == "count"
@@ -214,9 +214,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "generates correct querystring", %{conn: conn, source: [s | _]} do
       {:ok, view, _html} =
-        live(conn, "/sources/#{s.id}/search",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        conn
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search")
 
       _html =
         render_change(view, :form_update, %{
@@ -238,9 +238,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> live("/sources/#{s.id}/search",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search")
 
       assert {:ok, view, html} = conn
 
@@ -259,9 +258,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: [s | _]
     } do
       conn =
-        live(conn, "/sources/#{s.id}/search?q=t:20020",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        conn
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search?q=t:20020")
 
       assert {:ok, view, html} = conn
 
@@ -278,18 +277,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn = assign(conn, :user, u)
 
       assert {:error, {:redirect, %{to: "/"}}} =
-               live(conn, "/sources/#{s.id}/search",
-                 connect_params: %{"user_timezone" => "Europe/Berlin"}
-               )
+               conn
+               |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+               |> live("/sources/#{s.id}/search")
     end
 
     test "redirected for anonymous user", %{conn: conn, source: [s | _]} do
       conn = assign(conn, :user, nil)
 
       assert {:error, {:redirect, %{to: "/"}}} =
-               live(conn, "/sources/#{s.id}/search",
-                 connect_params: %{"user_timezone" => "Europe/Berlin"}
-               )
+               conn
+               |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+               |> live("/sources/#{s.id}/search")
     end
   end
 
@@ -299,9 +298,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "stop/start live search", %{conn: conn, source: [s]} do
       conn =
         conn
-        |> live("/sources/#{s.id}/search?q=error",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search?q=error")
 
       {:ok, view, _html} = conn
 
@@ -319,9 +317,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "timestamp_and_chart_update", %{conn: conn, source: [s | _]} do
       conn =
         conn
-        |> live("/sources/#{s.id}/search?q=error",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search?q=error")
 
       {:ok, view, html} = conn
 
@@ -349,9 +346,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> live("/sources/#{s.id}/search",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search")
 
       {:ok, view, _html} = conn
 
@@ -363,9 +359,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> live("/sources/#{s.id}/search",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search")
 
       {:ok, view, _html} = conn
 
@@ -380,9 +375,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn =
         conn
         |> assign(:user, u)
-        |> live("/sources/#{s.id}/search",
-          connect_params: %{"user_timezone" => "Europe/Berlin"}
-        )
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> live("/sources/#{s.id}/search")
 
       {:ok, view, _html} = conn
 

@@ -271,13 +271,13 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
     test "operators/0", %{sources: [_s | _], users: [_u | _]} do
       data = Analytics.operators()
 
-      assert data == [
+      assert Enum.sort(data) == Enum.sort([
                %{operator: "=", searches_with_operator_share: 50.0},
                %{operator: ">=", searches_with_operator_share: 50.0},
                %{operator: "<", searches_with_operator_share: 25.0},
                %{operator: "~", searches_with_operator_share: 25.0},
                %{operator: "range_operator", searches_with_operator_share: 25.0}
-             ]
+             ])
     end
   end
 end
