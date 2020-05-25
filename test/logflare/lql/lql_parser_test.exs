@@ -912,7 +912,6 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@year", @schema)
 
       lvalue = Timex.shift(now_ndt(), seconds: -50)
-      rvalue = now_ndt()
 
       assert {
                :ok,
@@ -923,7 +922,7 @@ defmodule Logflare.LqlParserTest do
                    path: "timestamp",
                    shorthand: "last@50second",
                    value: nil,
-                   values: [lvalue, rvalue]
+                   values: [lvalue, now_ndt()]
                  }
                ]
              } == Parser.parse("timestamp:last@50s", @schema)
@@ -939,7 +938,7 @@ defmodule Logflare.LqlParserTest do
                    path: "timestamp",
                    shorthand: "last@43minute",
                    value: nil,
-                   values: [lvalue, rvalue]
+                   values: [lvalue, now_ndt()]
                  }
                ]
              } == Parser.parse("timestamp:last@43m", @schema)
@@ -955,7 +954,7 @@ defmodule Logflare.LqlParserTest do
                    path: "timestamp",
                    shorthand: "last@100hour",
                    value: nil,
-                   values: [lvalue, rvalue]
+                   values: [lvalue, now_ndt()]
                  }
                ]
              } == Parser.parse("timestamp:last@100h", @schema)
@@ -971,7 +970,7 @@ defmodule Logflare.LqlParserTest do
                    path: "timestamp",
                    shorthand: "last@7day",
                    value: nil,
-                   values: [lvalue, rvalue]
+                   values: [lvalue, now_ndt()]
                  }
                ]
              } == Parser.parse("timestamp:last@7d", @schema)
@@ -987,7 +986,7 @@ defmodule Logflare.LqlParserTest do
                    path: "timestamp",
                    shorthand: "last@2week",
                    value: nil,
-                   values: [lvalue, rvalue]
+                   values: [lvalue, now_ndt()]
                  }
                ]
              } == Parser.parse("timestamp:last@2w", @schema)
@@ -1001,7 +1000,7 @@ defmodule Logflare.LqlParserTest do
           path: "timestamp",
           shorthand: "last@1month",
           value: nil,
-          values: [lvalue, rvalue]
+          values: [lvalue, now_ndt()]
         }
       ]
 
@@ -1022,7 +1021,7 @@ defmodule Logflare.LqlParserTest do
                    path: "timestamp",
                    shorthand: "last@1year",
                    value: nil,
-                   values: [lvalue, rvalue]
+                   values: [lvalue, now_ndt()]
                  }
                ]
              } == Parser.parse("timestamp:last@1y", @schema)
