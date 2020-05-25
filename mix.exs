@@ -64,7 +64,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
-      {:phoenix_live_view, "~> 0.12.0"},
+      {:phoenix_live_view, "~> 0.13.0"},
       {:phoenix_live_dashboard, "~> 0.1"},
 
       # Oauth
