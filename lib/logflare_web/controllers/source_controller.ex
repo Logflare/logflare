@@ -104,7 +104,7 @@ defmodule LogflareWeb.SourceController do
         conn
         |> put_flash(:error, "Something went wrong!")
         |> assign(:changeset, changeset)
-        |> redirect(to: Routes.source_path(conn, :new))
+        |> render("new.html", changeset: changeset)
     end
   end
 
