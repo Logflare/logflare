@@ -105,7 +105,7 @@ defmodule Logflare.Mixfile do
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
-      {:nimble_parsec, "~> 0.5.0"},
+      {:nimble_parsec, "~> 0.6.0"},
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:tesla, "~> 1.3.0"},
