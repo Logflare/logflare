@@ -42,7 +42,8 @@ defmodule Logflare.Logs.Vercel do
 
         %{
           "message" => "#{source} | " <> message,
-          "metadata" => user_agent_to_string(event)
+          "metadata" => user_agent_to_string(event),
+          "timestamp" => event["timestamp"]
         }
 
       _else ->
@@ -50,7 +51,8 @@ defmodule Logflare.Logs.Vercel do
 
         %{
           "message" => "#{source} | " <> message,
-          "metadata" => user_agent_to_string(event)
+          "metadata" => user_agent_to_string(event),
+          "timestamp" => event["timestamp"]
         }
     end
   end
