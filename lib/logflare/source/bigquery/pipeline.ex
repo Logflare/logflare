@@ -160,12 +160,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         e ->
           err = "Field schema type change error!"
 
-          new_body = %{body | metadata: %{"error" => err}}
-
           Logger.warn(inspect(e))
           Logger.warn(err, log_event_string: inspect(log_event))
 
-          %{log_event | body: new_body}
+          log_event
       end
     else
       log_event
