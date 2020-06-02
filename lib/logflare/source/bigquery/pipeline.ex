@@ -158,10 +158,15 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         log_event
       rescue
         e ->
+          # TODO: Put the original log event string JSON into a top level error column with id, timestamp, and metadata
+          # This may be a great way to handle type mismatches in general because you get all the other fields anyways.
+          # TODO: Render error column somewhere on log event popup
+
+          # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
+
           err = "Field schema type change error!"
 
-          Logger.warn(inspect(e))
-          Logger.warn(err, log_event_string: inspect(log_event))
+          Logger.warn(err, error_string: inspect(e), log_event_string: inspect(log_event))
 
           log_event
       end
