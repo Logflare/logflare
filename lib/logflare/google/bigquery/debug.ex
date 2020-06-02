@@ -1,4 +1,4 @@
-defmodule Logflare.Google.BigQuery do
+defmodule Logflare.Google.BigQuery.Debug do
   def gen_bq_ui_url(user_id, source_token) do
     base = "https://console.cloud.google.com/bigquery"
     token = String.replace(source_token, "-", "_")
