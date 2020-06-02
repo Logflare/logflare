@@ -111,8 +111,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
-  defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
-    LogflareLogger.context(source_id: source_id)
+  defp process_data(%LE{body: body, source: %Source{token: source_id}, id: event_id} = log_event) do
+    LogflareLogger.context(
+      source_id: source_id,
+      log_event_id: event_id
+    )
+
     schema_state = Schema.get_state(source_id)
     field_count = schema_state.field_count
 
@@ -153,12 +157,13 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
         log_event
       rescue
-        _e ->
+        e ->
           err = "Field schema type change error!"
 
           new_body = %{body | metadata: %{"error" => err}}
 
-          Logger.warn(err)
+          Logger.warn(inspect(e))
+          Logger.warn(err, log_event_string: inspect(log_event))
 
           %{log_event | body: new_body}
       end
