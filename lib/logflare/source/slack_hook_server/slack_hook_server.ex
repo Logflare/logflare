@@ -59,6 +59,13 @@ defmodule Logflare.Source.SlackHookServer do
     {:noreply, rls}
   end
 
+  def handle_info({:ssl_closed, _details}, rls) do
+    # See https://github.com/benoitc/hackney/issues/464
+    :noop
+
+    {:noreply, rls}
+  end
+
   def terminate(reason, state) do
     # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_id})
