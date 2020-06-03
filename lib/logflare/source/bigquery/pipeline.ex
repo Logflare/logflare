@@ -218,15 +218,17 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       {:ok, user} ->
         Supervisor.reset_all_user_sources(user)
 
-      {:error, _changeset} ->
-        Logger.error("Failed to reset backend for user: #{user.email}")
+        AccountEmail.backend_disconnected(user, message)
+        |> Mailer.deliver()
+
+        Logger.warn("Backend disconnected for: #{user.email}",
+          tesla_response: message
+        )
+
+      {:error, changeset} ->
+        Logger.error("Failed to reset backend for user: #{user.email}",
+          changeset: inspect(changeset)
+        )
     end
-
-    AccountEmail.backend_disconnected(user, message)
-    |> Mailer.deliver()
-
-    Logger.warn("Backend disconnected for: #{user.email}",
-      tesla_response: message
-    )
   end
 end
