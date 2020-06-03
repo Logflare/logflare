@@ -10,6 +10,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
   alias Logflare.{Source}
+  alias Logflare.Users
+  alias Logflare.Source.Supervisor
+  alias Logflare.{AccountEmail, Mailer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
 
@@ -111,7 +114,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
-  defp process_data(%LE{body: body, source: %Source{token: source_id}, id: event_id} = log_event) do
+  defp process_data(
+         %LE{body: body, source: %Source{token: source_id} = source, id: event_id} = log_event
+       ) do
     schema_state = Schema.get_state(source_id)
     field_count = schema_state.field_count
 
@@ -149,11 +154,29 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                 Logger.info("Source schema updated!")
 
               {:error, response} ->
-                Schema.set_next_update(source_id)
+                case GenUtils.get_tesla_error_message(response) do
+                  "Not found:" <> _tail = message ->
+                    # "Not found: Project estrologs"
+                    # "Not found: Table core-catalyst-152408:nerdkap.494f201e_bfe7_4006_a465_6cf0a0184e27"
+                    disconnect_backend_and_email(source, message)
 
-                Logger.warn("Source schema update error!",
-                  tesla_response: GenUtils.get_tesla_error_message(response)
-                )
+                  "The project" <> _tail = message ->
+                    # "The project web-wtc-1537199112807 has not enabled BigQuery."
+                    disconnect_backend_and_email(source, message)
+
+                  "Billing has not been enabled for this project. Enable billing at https://console.cloud.google.com/billing. Datasets must have a default expiration time and default partition expiration time of less than 60 days while in sandbox mode." =
+                      message ->
+                    disconnect_backend_and_email(source, message)
+
+                  _message ->
+                    # "Field metadata.context is type RECORD but has no schema"
+
+                    Schema.set_next_update(source_id)
+
+                    Logger.warn("Source schema update error!",
+                      tesla_response: GenUtils.get_tesla_error_message(response)
+                    )
+                end
             end
           end
         rescue
@@ -180,5 +203,33 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp same_schemas?(old_schema, new_schema) do
     old_schema == new_schema
+  end
+
+  defp disconnect_backend_and_email(source, message) do
+    user = Users.Cache.get_by(id: source.user_id)
+
+    defaults = %{
+      bigquery_dataset_location: nil,
+      bigquery_project_id: nil,
+      bigquery_dataset_id: nil,
+      bigquery_processed_bytes_limit: 10_000_000_000
+    }
+
+    case Users.update_user_allowed(user, defaults) do
+      {:ok, user} ->
+        Supervisor.reset_all_user_sources(user)
+
+      {:error, _changeset} ->
+        Logger.error("Failed to reset backend for user: #{user.email}")
+    end
+
+    AccountEmail.backend_disconnected(user, message)
+    |> Mailer.deliver()
+
+    Schema.set_next_update(source.token)
+
+    Logger.warn("Backend disconnected for: #{user.email}",
+      tesla_response: message
+    )
   end
 end
