@@ -128,13 +128,13 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       bigquery_dataset_id = schema_state.bigquery_dataset_id
 
       Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-        try do
-          LogflareLogger.context(
-            source_id: source_id,
-            log_event_id: event_id,
-            log_event_string: inspect(log_event)
-          )
+        LogflareLogger.context(
+          source_id: source_id,
+          log_event_id: event_id,
+          log_event_string: inspect(log_event)
+        )
 
+        try do
           schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
           if not same_schemas?(old_schema, schema) do
