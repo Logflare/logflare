@@ -165,7 +165,7 @@ defmodule Logflare.Source.RecentLogsServer do
       log_event ->
         now = NaiveDateTime.utc_now()
 
-        if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) > @touch_timer do
+        if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
           Sources.Cache.get_by(token: source_id)
           |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
         end
