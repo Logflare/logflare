@@ -10,7 +10,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
   alias Logflare.{Source}
-  alias Logflare.Users
+  alias Logflare.{Users, Sources}
   alias Logflare.Source.Supervisor
   alias Logflare.{AccountEmail, Mailer}
   alias Logflare.LogEvent, as: LE
@@ -89,8 +89,26 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:error, %Tesla.Env{} = response} ->
         LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-        Logger.warn("Stream batch response error!")
-        messages
+
+        case GenUtils.get_tesla_error_message(response) do
+          "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
+              message ->
+            disconnect_backend_and_email(source_id, message)
+            messages
+
+          "The project" <> _tail = message ->
+            # "The project web-wtc-1537199112807 has not enabled BigQuery."
+            disconnect_backend_and_email(source_id, message)
+            messages
+
+          "Not found:" <> _tail = message ->
+            disconnect_backend_and_email(source_id, message)
+            messages
+
+          _message ->
+            Logger.warn("Stream batch response error!")
+            messages
+        end
 
       {:error, :emfile = response} ->
         LogflareLogger.context(tesla_response: response)
@@ -114,9 +132,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
-  defp process_data(
-         %LE{body: body, source: %Source{token: source_id} = source, id: event_id} = log_event
-       ) do
+  defp process_data(%LE{body: body, source: %Source{token: source_id}, id: event_id} = log_event) do
     schema_state = Schema.get_state(source_id)
     field_count = schema_state.field_count
 
@@ -154,29 +170,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                 Logger.info("Source schema updated!")
 
               {:error, response} ->
-                case GenUtils.get_tesla_error_message(response) do
-                  "Not found:" <> _tail = message ->
-                    # "Not found: Project estrologs"
-                    # "Not found: Table core-catalyst-152408:nerdkap.494f201e_bfe7_4006_a465_6cf0a0184e27"
-                    disconnect_backend_and_email(source, message)
+                Schema.set_next_update(source_id)
 
-                  "The project" <> _tail = message ->
-                    # "The project web-wtc-1537199112807 has not enabled BigQuery."
-                    disconnect_backend_and_email(source, message)
-
-                  "Billing has not been enabled for this project. Enable billing at https://console.cloud.google.com/billing. Datasets must have a default expiration time and default partition expiration time of less than 60 days while in sandbox mode." =
-                      message ->
-                    disconnect_backend_and_email(source, message)
-
-                  _message ->
-                    # "Field metadata.context is type RECORD but has no schema"
-
-                    Schema.set_next_update(source_id)
-
-                    Logger.warn("Source schema update error!",
-                      tesla_response: GenUtils.get_tesla_error_message(response)
-                    )
-                end
+                Logger.warn("Source schema update error!",
+                  tesla_response: GenUtils.get_tesla_error_message(response)
+                )
             end
           end
         rescue
@@ -205,7 +203,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     old_schema == new_schema
   end
 
-  defp disconnect_backend_and_email(source, message) do
+  defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
+    source = Sources.Cache.get_by(token: source_id)
     user = Users.Cache.get_by(id: source.user_id)
 
     defaults = %{
