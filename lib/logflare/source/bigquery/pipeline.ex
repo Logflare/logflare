@@ -128,43 +128,48 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     if map_size(body.metadata) > 0 and
          field_count < 500 and
          schema_state.next_update < System.system_time(:second) do
+      LogflareLogger.context(log_event_string: inspect(log_event))
+
       old_schema = schema_state.schema
       bigquery_project_id = schema_state.bigquery_project_id
       bigquery_dataset_id = schema_state.bigquery_dataset_id
 
-      try do
-        schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
+      Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+        try do
+          schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
-        if not same_schemas?(old_schema, schema) do
-          case BigQuery.patch_table(
-                 source_id,
-                 schema,
-                 bigquery_dataset_id,
-                 bigquery_project_id
-               ) do
-            {:ok, table_info} ->
-              Schema.update(source_id, table_info.schema)
-              Logger.info("Source schema updated!")
+          if not same_schemas?(old_schema, schema) do
+            case BigQuery.patch_table(
+                   source_id,
+                   schema,
+                   bigquery_dataset_id,
+                   bigquery_project_id
+                 ) do
+              {:ok, table_info} ->
+                Schema.update(source_id, table_info.schema)
+                Logger.info("Source schema updated!")
 
-            {:error, response} ->
-              Schema.set_next_update(source_id)
+              {:error, response} ->
+                Schema.set_next_update(source_id)
 
-              Logger.warn("Source schema update error!",
-                tesla_response: GenUtils.get_tesla_error_message(response)
-              )
+                Logger.warn("Source schema update error!",
+                  tesla_response: GenUtils.get_tesla_error_message(response)
+                )
+            end
           end
+        rescue
+          e ->
+            # TODO: Put the original log event string JSON into a top level error column with id, timestamp, and metadata
+            # This may be a great way to handle type mismatches in general because you get all the other fields anyways.
+            # TODO: Render error column somewhere on log event popup
+
+            # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
+
+            Logger.warn("Field schema type change error!", error_string: inspect(e))
         end
+      end)
 
-        log_event
-      rescue
-        e ->
-          err = "Field schema type change error!"
-
-          Logger.warn(inspect(e))
-          Logger.warn(err, log_event_string: inspect(log_event))
-
-          log_event
-      end
+      log_event
     else
       log_event
     end
