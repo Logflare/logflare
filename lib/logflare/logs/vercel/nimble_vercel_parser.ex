@@ -8,6 +8,13 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
 
+    result =
+      if Map.get(result, "start") do
+        Map.delete(result, "start")
+      else
+        Map.put(result, "message_truncated", true)
+      end
+
     {:ok, result}
   rescue
     _e ->
@@ -53,19 +60,22 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   # Example: START RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69 Version: $LATEST\n
 
   start =
-    ignore(string("START RequestId: "))
-    |> concat(uuid)
-    |> ignore(string(" Version: $LATEST\n"))
+    optional(
+      string("START RequestId: ")
+      |> concat(uuid)
+      |> string(" Version: $LATEST")
+      |> optional(newline)
+      |> replace(true)
+      |> unwrap_and_tag("start")
+    )
 
   # Example: END RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69
 
   end_ =
-    ignore(
-      string("END RequestId: ")
-      |> label("end_token")
-      |> concat(uuid)
-      |> optional(newline)
-    )
+    ignore(string("END RequestId: "))
+    |> label("end_token")
+    |> concat(uuid)
+    |> ignore(optional(newline))
 
   # Example: INFO
   severity =
@@ -121,8 +131,16 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
           %{"data" => json, "message" => message}
 
         _ ->
-          message = Keyword.values(tokens) |> Enum.join("")
-          %{"message" => message}
+          result = maybe_parse_multiline_json_body(maybe_json)
+
+          case result do
+            {"lines", lines} ->
+              %{"data" => lines}
+
+            _ ->
+              message = Keyword.values(tokens) |> Enum.join("")
+              %{"message" => message}
+          end
       end
     else
       %{"message" => message}
@@ -205,7 +223,24 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
         {"lines", [%{"data" => json}]}
 
       _ ->
-        {"lines_string", maybe_json}
+        maybe_parse_multiline_json_body(maybe_json)
+    end
+  end
+
+  def maybe_parse_multiline_json_body(maybe_multi_json) do
+    results =
+      maybe_multi_json
+      |> String.split("\n")
+      |> Enum.map(fn maybe_json ->
+        Jason.decode(maybe_json)
+      end)
+      |> Enum.filter(&match?({:ok, _}, &1))
+      |> Enum.map(fn {:ok, datum} -> datum end)
+
+    if not Enum.empty?(results) do
+      {"lines", results}
+    else
+      {"lines_string", maybe_multi_json}
     end
   end
 
@@ -260,9 +295,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
   parser =
     start
-    |> unwrap_and_tag("request_id")
     |> optional(body)
-    |> concat(end_)
+    |> concat(
+      end_
+      |> unwrap_and_tag("request_id")
+    )
     |> concat(report |> unwrap_and_tag("report"))
     |> reduce(:convert_to_map)
 
