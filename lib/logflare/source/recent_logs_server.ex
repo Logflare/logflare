@@ -32,6 +32,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Tracker
   alias __MODULE__, as: RLS
@@ -39,6 +40,7 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @prune_timer 1_000
+  @touch_timer 60_000
   @broadcast_every 250
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
@@ -51,7 +53,7 @@ defmodule Logflare.Source.RecentLogsServer do
     Process.flag(:trap_exit, true)
 
     prune()
-
+    touch()
     broadcast()
 
     {:ok, rls, {:continue, :boot}}
@@ -154,6 +156,25 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
+  def handle_info(:touch, %__MODULE__{source_id: source_id} = state) do
+    case Source.Data.get_latest_log_event(source_id) do
+      %Logflare.LogEvent{params: %{"is_system_log_event?" => true}} ->
+        touch()
+        {:noreply, state}
+
+      log_event ->
+        now = NaiveDateTime.utc_now()
+
+        if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
+          Sources.Cache.get_by(token: source_id)
+          |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
+        end
+
+        touch()
+        {:noreply, state}
+    end
+  end
+
   def terminate(reason, state) do
     # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{state.source_id}", %{
@@ -180,7 +201,11 @@ defmodule Logflare.Source.RecentLogsServer do
     message =
       "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 
-    log_event = LE.make(%{"message" => message}, %{source: %Source{token: source_id}})
+    log_event =
+      LE.make(%{"message" => message, "is_system_log_event?" => true}, %{
+        source: %Source{token: source_id}
+      })
+
     push(source_id, log_event)
 
     Source.ChannelTopics.broadcast_new(log_event)
@@ -188,6 +213,10 @@ defmodule Logflare.Source.RecentLogsServer do
 
   defp prune() do
     Process.send_after(self(), :prune, @prune_timer)
+  end
+
+  defp touch() do
+    Process.send_after(self(), :touch, @touch_timer)
   end
 
   defp broadcast() do

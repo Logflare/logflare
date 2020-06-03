@@ -30,8 +30,13 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
+    # Start sources with events first
+    # Tomorrow only start sources with events in the last day, and auto start recent_log_servers when requests come in if it's not already started
+    # Also start recent_log_servers when anything in source route is viewed (plug maybe)
+
     query =
       from(s in "sources",
+        order_by: s.log_events_updated_at,
         select: %{
           token: s.token
         }

@@ -97,19 +97,19 @@ defmodule Logflare.Source do
     field :api_quota, :integer, default: @default_source_api_quota
     field :webhook_notification_url, :string
     field :slack_hook_url, :string
-
-    belongs_to :user, Logflare.User
-    has_many :rules, Logflare.Rule
-    has_many :saved_searches, Logflare.SavedSearch
-
     field :metrics, :map, virtual: true
     field :has_rejected_events?, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
     field :bq_table_schema, :any, virtual: true
     field :bq_table_typemap, :any, virtual: true
-    embeds_one :notifications, Notifications, on_replace: :update
     field :custom_event_message_keys, :string
+    field :log_events_updated_at, :naive_datetime
+
+    belongs_to :user, Logflare.User
+    has_many :rules, Logflare.Rule
+    has_many :saved_searches, Logflare.SavedSearch
+    embeds_one :notifications, Notifications, on_replace: :update
 
     timestamps()
   end
@@ -132,7 +132,8 @@ defmodule Logflare.Source do
       :api_quota,
       :webhook_notification_url,
       :slack_hook_url,
-      :custom_event_message_keys
+      :custom_event_message_keys,
+      :log_events_updated_at
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()

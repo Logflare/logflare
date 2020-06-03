@@ -42,6 +42,11 @@ defmodule Logflare.Sources do
     Repo.update(changeset)
   end
 
+  def update_source(source, attrs) do
+    Source.changeset(source, attrs)
+    |> Repo.update()
+  end
+
   def get_by(kw) do
     Source
     |> Repo.get_by(kw)
