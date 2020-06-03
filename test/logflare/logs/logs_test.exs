@@ -38,15 +38,14 @@ defmodule Logflare.LogsTest do
       project_id = GenUtils.get_project_id(s1.token)
       dataset_id = User.generate_bq_dataset_id(u)
 
-      assert {:ok, _} =
-               BigQuery.create_dataset(
-                 "#{u.id}",
-                 dataset_id,
-                 @test_dataset_location,
-                 project_id
-               )
+      BigQuery.create_dataset(
+        "#{u.id}",
+        dataset_id,
+        @test_dataset_location,
+        project_id
+      )
 
-      assert {:ok, table} = BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
+      BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
 
       schema =
         SchemaBuilder.build_table_schema(
@@ -135,19 +134,18 @@ defmodule Logflare.LogsTest do
       project_id = GenUtils.get_project_id(s1.token)
       dataset_id = User.generate_bq_dataset_id(u)
 
-      assert {:ok, _} =
-               BigQuery.create_dataset(
-                 "#{u.id}",
-                 dataset_id,
-                 @test_dataset_location,
-                 project_id
-               )
+      BigQuery.create_dataset(
+        "#{u.id}",
+        dataset_id,
+        @test_dataset_location,
+        project_id
+      )
 
       BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
       BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
       Source.BigQuery.Schema.start_link(%RLS{source_id: sink2.token})
 
-      assert {:ok, table} = BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
+      BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
 
       schema =
         SchemaBuilder.build_table_schema(
