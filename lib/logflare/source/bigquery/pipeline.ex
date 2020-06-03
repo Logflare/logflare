@@ -225,8 +225,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     AccountEmail.backend_disconnected(user, message)
     |> Mailer.deliver()
 
-    Schema.set_next_update(source.token)
-
     Logger.warn("Backend disconnected for: #{user.email}",
       tesla_response: message
     )
