@@ -190,6 +190,24 @@ defmodule Logflare.Source.Data do
     end
   end
 
+  def get_latest_log_event(source_id, fallback \\ nil) when is_atom(source_id) do
+    case :ets.info(source_id) do
+      :undefined ->
+        fallback
+
+      _ ->
+        case :ets.last(source_id) do
+          :"$end_of_table" ->
+            fallback
+
+          log_event ->
+            :ets.match(source_id, {log_event, :"$1"})
+            |> List.flatten()
+            |> hd
+        end
+    end
+  end
+
   @spec get_buffer(atom, integer) :: integer
   def get_buffer(source_id, fallback \\ 0) do
     case Process.whereis(String.to_atom("#{source_id}-buffer")) do
