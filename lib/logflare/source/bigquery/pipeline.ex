@@ -112,11 +112,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   defp process_data(%LE{body: body, source: %Source{token: source_id}, id: event_id} = log_event) do
-    LogflareLogger.context(
-      source_id: source_id,
-      log_event_id: event_id
-    )
-
     schema_state = Schema.get_state(source_id)
     field_count = schema_state.field_count
 
@@ -128,8 +123,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     if map_size(body.metadata) > 0 and
          field_count < 500 and
          schema_state.next_update < System.system_time(:second) do
-      LogflareLogger.context(log_event_string: inspect(log_event))
-
       old_schema = schema_state.schema
       bigquery_project_id = schema_state.bigquery_project_id
       bigquery_dataset_id = schema_state.bigquery_dataset_id
