@@ -118,6 +118,15 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
 
       refute valid?(metadata, schema)
     end
+
+    test "correctly handles empty containers in metadata" do
+      schema = SchemaFactory.build(:schema, variant: :third_with_lists)
+      metadata = SchemaFactory.build(:metadata, variant: :third_with_lists)
+      metadata = put_in(metadata, ["user", "ids"], [])
+      metadata = put_in(metadata, ["user", "address"], %{})
+
+      assert valid?(metadata, schema)
+    end
   end
 
   def typemap_for_third() do
