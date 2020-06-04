@@ -267,44 +267,48 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                  "parse_status" => "full",
                  "lines" => [
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
                    },
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
                    }
                  ]
                }
@@ -327,136 +331,148 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                %{
                  "lines" => [
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{
-                         "userId" => "5af38f7a6ca2c9012231de7c"
-                       }
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{
-                         "id" => 13201,
-                         "location" => 2,
-                         "name" => "Wagon Trail RV"
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{
+                           "userId" => "5af38f7a6ca2c9012231de7c"
+                         }
                        },
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
-                   },
-                   %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{
-                         "userId" => "5af38f7a6ca2c9012231de7c"
-                       }
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{
-                         "id" => 13201,
-                         "location" => 2,
-                         "name" => "Wagon Trail RV"
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{
+                           "id" => 13201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
+                         "email" => "example2@example.com"
                        },
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                       "v" => 1
+                     }
                    },
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{
+                           "userId" => "5af38f7a6ca2c9012231de7c"
+                         }
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{
+                           "id" => 13201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
                    },
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
                    },
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
                    },
                    %{
-                     "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
-                     "eventType" => "get_user",
-                     "hostname" => "169.254.202.181",
-                     "httpRequest" => %{
-                       "method" => "GET",
-                       "path" =>
-                         "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
-                       "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
-                     },
-                     "httpResponse" => %{"statusCode" => 200},
-                     "level" => 30,
-                     "pid" => 7,
-                     "time" => 1_582_754_345_208,
-                     "user" => %{
-                       "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
-                       "email" => "example2@example.com"
-                     },
-                     "v" => 1
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
+                   },
+                   %{
+                     "data" => %{
+                       "eventMessage" => "Getting user with ID 5af38f7a6ca2c9012231de7c",
+                       "eventType" => "get_user",
+                       "hostname" => "169.254.202.181",
+                       "httpRequest" => %{
+                         "method" => "GET",
+                         "path" =>
+                           "/users/5af38f7a6ca2c9012231de7c?userId=5af38f7a6ca2c9012231de7c",
+                         "query" => %{"userId" => "5af38f7a6ca2c9012231de7c"}
+                       },
+                       "httpResponse" => %{"statusCode" => 200},
+                       "level" => 30,
+                       "pid" => 7,
+                       "time" => 1_582_754_345_208,
+                       "user" => %{
+                         "dealer" => %{"id" => 13201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "email" => "example2@example.com"
+                       },
+                       "v" => 1
+                     }
                    }
                  ],
                  "parse_status" => "full",
@@ -855,7 +871,6 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
              } == parse(string)
     end
 
-    @tag :this
     test "example message 11: truncated logs" do
       string =
         "d Version: $LATEST\n{\"level\":20,\"time\":1590250719399,\"variables\":{\"id\":\"ck9rmapte00030vl8mfudcatq\"},\"msg\":\"[server/request DashboardSpace]\"}\n{\"level\":10,\"time\":1590250723600,\"response\":{\"http\":{\"headers\":{}},\"data\":{\"dashboard\":{\"space\":{\"id\":\"ck9rmapte00030vl8mfudcatq\",\"slug\":\"demo-space-1\",\"name\":\".Art\",\"extent\":5,\"description\":\"ART is the only domain zone created specifically for the global creative community. With .ART individual artists, galleries, museums, art projects, corporate collections and art media can register a clear and concise web address.\",\"color\":\"#ff8cda\",\"visited\":true,\"sectionId\":\"ck9rj94h000010vlbdyax3nc5\",\"section\":{\"id\":\"ck9rj94h000010vlbdyax3nc5\",\"name\":\"Sponsors\",\"color\":\"#be46ff\",\"__typename\":\"Section\"},\"banner\":{\"id\":\"ckaiv26x300464mqq521b7fbw\",\"type\":\"Image\",\"publicId\":\"uploads/i1yaxauyybrsvkya1qko\",\"uri\":null,\"__typename\":\"Asset\"},\"walls\":[{\"id\":\"ck9rmaptf00050vl8hbdlp7an\",\"x\":0,\"y\":1,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00060vl8cadl12dq\",\"x\":0,\"y\":2,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00070vl8gvmc8ba2\",\"x\":0,\"y\":3,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00080vl8c69e21jg\",\"x\":0,\"y\":4,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00090vl81zgv6wut\",\"x\":1,\"y\":0,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00100vl8uc5byfyz\",\"x\":1,\"y\":1,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00110vl8ic7n0idp\",\"x\":1,\"y\":2,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00120vl8rgx36wvu\",\"x\":1,\"y\":3,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00130vl8s43e5bvj\",\"x\":1,\"y\":4,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00140vl8s7hf5a58\",\"x\":2,\"y\":0,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00150vl8j50ichts\",\"x\":2,\"y\":1,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00160vl8ouhdj9b3\",\"x\":2,\"y\":2,\"__typename\":\"Wall\",\"visited\":true,\"work\":null},{\"id\":\"ck9rmaptf00170vl8p8uottnx\",\"x\":2,\"y\":3,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00180vl87k6npcdo\",\"x\":2,\"y\":4,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00190vl89gnngj0t\",\"x\":3,\"y\":0,\"__typename\":\"Wall\",\"visited\":true,\"work\":null},{\"id\":\"ck9rmaptf00200vl86mn9yqfa\",\"x\":3,\"y\":1,\"__typename\":\"Wall\",\"visited\":true,\"work\":null},{\"id\":\"ck9rmaptf00210vl8cw4c2sd6\",\"x\":3,\"y\":2,\"__typename\":\"Wall\",\"visited\":true,\"work\":null},{\"id\":\"ck9rmaptf00220vl8urekxxkw\",\"x\":3,\"y\":3,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00230vl8fqjya6mu\",\"x\":3,\"y\":4,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00240vl8fkfiana7\",\"x\":4,\"y\":0,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00250vl8xmsrzd8b\",\"x\":4,\"y\":1,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00260vl8na7u0396\",\"x\":4,\"y\":2,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00270vl8vujk4pyt\",\"x\":4,\"y\":3,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00280vl8yvs0niby\",\"x\":4,\"y\":4,\"__typename\":\"Wall\",\"visited\":false,\"work\":null},{\"id\":\"ck9rmaptf00040vl8p86phxiy\",\"x\":0,\"y\":0,\"__typename\":\"Wall\",\"visited\":false,\"work\":{\"id\":\"ckaju7ufy00000vl1ewjqp7dk\",\"slug\":\"tree-of-life\",\"asset\":{\"id\":\"ckaju7ufz00010vl1fg6vt57h\",\"type\":\"Website\",\"publicId\":null,\"uri\":\"https://bitforms.art/thetreeoflife/\",\"__typename\":\"Asset\"},\"name\":\"Tree of Life\",\"timeframe\":null,\"medium\":null,\"description\":null,\"dimensions\":null,\"audioAsset\":null,\"authorId\":null,\"author\":null,\"__typename\":\"Work\"}}],\"__typename\":\"Space\",\"event\":{\"id\":\"ck9rj8sqx00000vl90jaa1hvi\",\"slug\":\"cadaf-online\",\"organization\":{\"id\":\"ck9rj7u7h00010vjxl31elqdz\",\"slug\":\"cadaf\",\"__typename\":\"Organization\"},\"__typename\":\"Event\"},\"managers\":[]},\"__typename\":\"DashboardQueries\"}}},\"msg\":\"[server/response DashboardSpace]\"}\nEND RequestId: a6f8045c-a1b5-418f-b29a-aeeba7747f4d\nREPORT RequestId: a6f8045c-a1b5-418f-b29a-aeeba7747f4d\tDuration: 4330.29 ms\tBilled Duration: 4400 ms\tMemory Size: 1024 MB\tMax Memory Used: 191 MB\t\n"
@@ -864,284 +879,284 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
               %{
                 "lines" => [
                   %{
-                    "data" => [
-                      %{
-                        "level" => 20,
-                        "msg" => "[server/request DashboardSpace]",
-                        "time" => 1_590_250_719_399,
-                        "variables" => %{"id" => "ck9rmapte00030vl8mfudcatq"}
-                      },
-                      %{
-                        "level" => 10,
-                        "msg" => "[server/response DashboardSpace]",
-                        "response" => %{
-                          "data" => %{
-                            "dashboard" => %{
-                              "__typename" => "DashboardQueries",
-                              "space" => %{
-                                "__typename" => "Space",
-                                "banner" => %{
-                                  "__typename" => "Asset",
-                                  "id" => "ckaiv26x300464mqq521b7fbw",
-                                  "publicId" => "uploads/i1yaxauyybrsvkya1qko",
-                                  "type" => "Image",
-                                  "uri" => nil
+                    "data" => %{
+                      "level" => 20,
+                      "msg" => "[server/request DashboardSpace]",
+                      "time" => 1_590_250_719_399,
+                      "variables" => %{"id" => "ck9rmapte00030vl8mfudcatq"}
+                    }
+                  },
+                  %{
+                    "data" => %{
+                      "level" => 10,
+                      "msg" => "[server/response DashboardSpace]",
+                      "response" => %{
+                        "data" => %{
+                          "dashboard" => %{
+                            "__typename" => "DashboardQueries",
+                            "space" => %{
+                              "__typename" => "Space",
+                              "banner" => %{
+                                "__typename" => "Asset",
+                                "id" => "ckaiv26x300464mqq521b7fbw",
+                                "publicId" => "uploads/i1yaxauyybrsvkya1qko",
+                                "type" => "Image",
+                                "uri" => nil
+                              },
+                              "color" => "#ff8cda",
+                              "description" =>
+                                "ART is the only domain zone created specifically for the global creative community. With .ART individual artists, galleries, museums, art projects, corporate collections and art media can register a clear and concise web address.",
+                              "event" => %{
+                                "__typename" => "Event",
+                                "id" => "ck9rj8sqx00000vl90jaa1hvi",
+                                "organization" => %{
+                                  "__typename" => "Organization",
+                                  "id" => "ck9rj7u7h00010vjxl31elqdz",
+                                  "slug" => "cadaf"
                                 },
-                                "color" => "#ff8cda",
-                                "description" =>
-                                  "ART is the only domain zone created specifically for the global creative community. With .ART individual artists, galleries, museums, art projects, corporate collections and art media can register a clear and concise web address.",
-                                "event" => %{
-                                  "__typename" => "Event",
-                                  "id" => "ck9rj8sqx00000vl90jaa1hvi",
-                                  "organization" => %{
-                                    "__typename" => "Organization",
-                                    "id" => "ck9rj7u7h00010vjxl31elqdz",
-                                    "slug" => "cadaf"
-                                  },
-                                  "slug" => "cadaf-online"
+                                "slug" => "cadaf-online"
+                              },
+                              "extent" => 5,
+                              "id" => "ck9rmapte00030vl8mfudcatq",
+                              "managers" => [],
+                              "name" => ".Art",
+                              "section" => %{
+                                "__typename" => "Section",
+                                "color" => "#be46ff",
+                                "id" => "ck9rj94h000010vlbdyax3nc5",
+                                "name" => "Sponsors"
+                              },
+                              "sectionId" => "ck9rj94h000010vlbdyax3nc5",
+                              "slug" => "demo-space-1",
+                              "visited" => true,
+                              "walls" => [
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00050vl8hbdlp7an",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 0,
+                                  "y" => 1
                                 },
-                                "extent" => 5,
-                                "id" => "ck9rmapte00030vl8mfudcatq",
-                                "managers" => [],
-                                "name" => ".Art",
-                                "section" => %{
-                                  "__typename" => "Section",
-                                  "color" => "#be46ff",
-                                  "id" => "ck9rj94h000010vlbdyax3nc5",
-                                  "name" => "Sponsors"
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00060vl8cadl12dq",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 0,
+                                  "y" => 2
                                 },
-                                "sectionId" => "ck9rj94h000010vlbdyax3nc5",
-                                "slug" => "demo-space-1",
-                                "visited" => true,
-                                "walls" => [
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00050vl8hbdlp7an",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 0,
-                                    "y" => 1
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00060vl8cadl12dq",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 0,
-                                    "y" => 2
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00070vl8gvmc8ba2",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 0,
-                                    "y" => 3
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00080vl8c69e21jg",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 0,
-                                    "y" => 4
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00090vl81zgv6wut",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 1,
-                                    "y" => 0
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00100vl8uc5byfyz",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 1,
-                                    "y" => 1
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00110vl8ic7n0idp",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 1,
-                                    "y" => 2
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00120vl8rgx36wvu",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 1,
-                                    "y" => 3
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00130vl8s43e5bvj",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 1,
-                                    "y" => 4
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00140vl8s7hf5a58",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 2,
-                                    "y" => 0
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00150vl8j50ichts",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 2,
-                                    "y" => 1
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00160vl8ouhdj9b3",
-                                    "visited" => true,
-                                    "work" => nil,
-                                    "x" => 2,
-                                    "y" => 2
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00170vl8p8uottnx",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 2,
-                                    "y" => 3
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00180vl87k6npcdo",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 2,
-                                    "y" => 4
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00190vl89gnngj0t",
-                                    "visited" => true,
-                                    "work" => nil,
-                                    "x" => 3,
-                                    "y" => 0
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00200vl86mn9yqfa",
-                                    "visited" => true,
-                                    "work" => nil,
-                                    "x" => 3,
-                                    "y" => 1
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00210vl8cw4c2sd6",
-                                    "visited" => true,
-                                    "work" => nil,
-                                    "x" => 3,
-                                    "y" => 2
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00220vl8urekxxkw",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 3,
-                                    "y" => 3
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00230vl8fqjya6mu",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 3,
-                                    "y" => 4
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00240vl8fkfiana7",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 4,
-                                    "y" => 0
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00250vl8xmsrzd8b",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 4,
-                                    "y" => 1
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00260vl8na7u0396",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 4,
-                                    "y" => 2
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00270vl8vujk4pyt",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 4,
-                                    "y" => 3
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00280vl8yvs0niby",
-                                    "visited" => false,
-                                    "work" => nil,
-                                    "x" => 4,
-                                    "y" => 4
-                                  },
-                                  %{
-                                    "__typename" => "Wall",
-                                    "id" => "ck9rmaptf00040vl8p86phxiy",
-                                    "visited" => false,
-                                    "work" => %{
-                                      "__typename" => "Work",
-                                      "asset" => %{
-                                        "__typename" => "Asset",
-                                        "id" => "ckaju7ufz00010vl1fg6vt57h",
-                                        "publicId" => nil,
-                                        "type" => "Website",
-                                        "uri" => "https://bitforms.art/thetreeoflife/"
-                                      },
-                                      "audioAsset" => nil,
-                                      "author" => nil,
-                                      "authorId" => nil,
-                                      "description" => nil,
-                                      "dimensions" => nil,
-                                      "id" => "ckaju7ufy00000vl1ewjqp7dk",
-                                      "medium" => nil,
-                                      "name" => "Tree of Life",
-                                      "slug" => "tree-of-life",
-                                      "timeframe" => nil
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00070vl8gvmc8ba2",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 0,
+                                  "y" => 3
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00080vl8c69e21jg",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 0,
+                                  "y" => 4
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00090vl81zgv6wut",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 1,
+                                  "y" => 0
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00100vl8uc5byfyz",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 1,
+                                  "y" => 1
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00110vl8ic7n0idp",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 1,
+                                  "y" => 2
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00120vl8rgx36wvu",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 1,
+                                  "y" => 3
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00130vl8s43e5bvj",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 1,
+                                  "y" => 4
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00140vl8s7hf5a58",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 2,
+                                  "y" => 0
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00150vl8j50ichts",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 2,
+                                  "y" => 1
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00160vl8ouhdj9b3",
+                                  "visited" => true,
+                                  "work" => nil,
+                                  "x" => 2,
+                                  "y" => 2
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00170vl8p8uottnx",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 2,
+                                  "y" => 3
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00180vl87k6npcdo",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 2,
+                                  "y" => 4
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00190vl89gnngj0t",
+                                  "visited" => true,
+                                  "work" => nil,
+                                  "x" => 3,
+                                  "y" => 0
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00200vl86mn9yqfa",
+                                  "visited" => true,
+                                  "work" => nil,
+                                  "x" => 3,
+                                  "y" => 1
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00210vl8cw4c2sd6",
+                                  "visited" => true,
+                                  "work" => nil,
+                                  "x" => 3,
+                                  "y" => 2
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00220vl8urekxxkw",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 3,
+                                  "y" => 3
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00230vl8fqjya6mu",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 3,
+                                  "y" => 4
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00240vl8fkfiana7",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 4,
+                                  "y" => 0
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00250vl8xmsrzd8b",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 4,
+                                  "y" => 1
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00260vl8na7u0396",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 4,
+                                  "y" => 2
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00270vl8vujk4pyt",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 4,
+                                  "y" => 3
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00280vl8yvs0niby",
+                                  "visited" => false,
+                                  "work" => nil,
+                                  "x" => 4,
+                                  "y" => 4
+                                },
+                                %{
+                                  "__typename" => "Wall",
+                                  "id" => "ck9rmaptf00040vl8p86phxiy",
+                                  "visited" => false,
+                                  "work" => %{
+                                    "__typename" => "Work",
+                                    "asset" => %{
+                                      "__typename" => "Asset",
+                                      "id" => "ckaju7ufz00010vl1fg6vt57h",
+                                      "publicId" => nil,
+                                      "type" => "Website",
+                                      "uri" => "https://bitforms.art/thetreeoflife/"
                                     },
-                                    "x" => 0,
-                                    "y" => 0
-                                  }
-                                ]
-                              }
+                                    "audioAsset" => nil,
+                                    "author" => nil,
+                                    "authorId" => nil,
+                                    "description" => nil,
+                                    "dimensions" => nil,
+                                    "id" => "ckaju7ufy00000vl1ewjqp7dk",
+                                    "medium" => nil,
+                                    "name" => "Tree of Life",
+                                    "slug" => "tree-of-life",
+                                    "timeframe" => nil
+                                  },
+                                  "x" => 0,
+                                  "y" => 0
+                                }
+                              ]
                             }
-                          },
-                          "http" => %{"headers" => %{}}
+                          }
                         },
-                        "time" => 1_590_250_723_600
-                      }
-                    ]
+                        "http" => %{"headers" => %{}}
+                      },
+                      "time" => 1_590_250_723_600
+                    }
                   }
                 ],
                 "parse_status" => "full",
