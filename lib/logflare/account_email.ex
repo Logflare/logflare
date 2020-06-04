@@ -59,6 +59,20 @@ defmodule Logflare.AccountEmail do
     unsubscribe_email(email, rate, source.name, source_link, unsubscribe_link)
   end
 
+  def backend_disconnected(user, reason) do
+    account_edit_link = Routes.user_url(Endpoint, :edit) <> "#big-query-preferences"
+
+    new()
+    |> to(user.email)
+    |> from({"Logflare", "support@logflare.app"})
+    |> subject("Logflare BigQuery Backend Disabled")
+    |> text_body(
+      "Hey!\n\nWe had some issues inserting log events into your backend. The reason:\n\n#{reason}\n\nIf this continues please reply to this email and let us know!\n\nSetup your backend again: #{
+        account_edit_link
+      }"
+    )
+  end
+
   defp unsubscribe_email(email, rate, source_name, source_link, unsubscribe_link) do
     new()
     |> to(email)

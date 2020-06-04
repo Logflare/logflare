@@ -10,6 +10,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
   alias Logflare.{Source}
+  alias Logflare.{Users, Sources}
+  alias Logflare.Source.Supervisor
+  alias Logflare.{AccountEmail, Mailer}
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
 
@@ -86,8 +89,26 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:error, %Tesla.Env{} = response} ->
         LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-        Logger.warn("Stream batch response error!")
-        messages
+
+        case GenUtils.get_tesla_error_message(response) do
+          "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
+              message ->
+            disconnect_backend_and_email(source_id, message)
+            messages
+
+          "The project" <> _tail = message ->
+            # "The project web-wtc-1537199112807 has not enabled BigQuery."
+            disconnect_backend_and_email(source_id, message)
+            messages
+
+          "Not found:" <> _tail = message ->
+            disconnect_backend_and_email(source_id, message)
+            messages
+
+          _message ->
+            Logger.warn("Stream batch response error!")
+            messages
+        end
 
       {:error, :emfile = response} ->
         LogflareLogger.context(tesla_response: response)
@@ -180,5 +201,34 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp same_schemas?(old_schema, new_schema) do
     old_schema == new_schema
+  end
+
+  defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
+    source = Sources.Cache.get_by(token: source_id)
+    user = Users.Cache.get_by(id: source.user_id)
+
+    defaults = %{
+      bigquery_dataset_location: nil,
+      bigquery_project_id: nil,
+      bigquery_dataset_id: nil,
+      bigquery_processed_bytes_limit: 10_000_000_000
+    }
+
+    case Users.update_user_allowed(user, defaults) do
+      {:ok, user} ->
+        Supervisor.reset_all_user_sources(user)
+
+        AccountEmail.backend_disconnected(user, message)
+        |> Mailer.deliver()
+
+        Logger.warn("Backend disconnected for: #{user.email}",
+          tesla_response: message
+        )
+
+      {:error, changeset} ->
+        Logger.error("Failed to reset backend for user: #{user.email}",
+          changeset: inspect(changeset)
+        )
+    end
   end
 end
