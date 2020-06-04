@@ -135,7 +135,7 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
           case result do
             {"lines", lines} ->
-              %{"data" => lines}
+              %{"multiline" => lines}
 
             _ ->
               message = Keyword.values(tokens) |> Enum.join("")
@@ -208,10 +208,15 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   end
 
   def put_parse_status(maybe_string_with_json: maybe_string_with_json) do
-    if maybe_string_with_json["data"] do
-      [{"lines", [maybe_string_with_json]}, {"parse_status", "full"}]
-    else
-      [{"lines_string", maybe_string_with_json["message"]}, {"parse_status", "partial"}]
+    case maybe_string_with_json do
+      %{"data" => _} ->
+        [{"lines", [maybe_string_with_json]}, {"parse_status", "full"}]
+
+      %{"multiline" => multiline} ->
+        [{"lines", multiline}, {"parse_status", "full"}]
+
+      _ ->
+        [{"lines_string", maybe_string_with_json["message"]}, {"parse_status", "partial"}]
     end
   end
 
@@ -236,6 +241,7 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
       end)
       |> Enum.filter(&match?({:ok, _}, &1))
       |> Enum.map(fn {:ok, datum} -> datum end)
+      |> Enum.map(&%{"data" => &1})
 
     if not Enum.empty?(results) do
       {"lines", results}
