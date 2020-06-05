@@ -75,8 +75,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   def stream_batch(source_id, messages) do
-    LogflareLogger.context(source_id: source_id)
-
     rows = le_messages_to_bq_rows(messages)
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
@@ -88,8 +86,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         messages
 
       {:error, %Tesla.Env{} = response} ->
-        LogflareLogger.context(tesla_response: GenUtils.get_tesla_error_message(response))
-
         case GenUtils.get_tesla_error_message(response) do
           "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
               message ->
@@ -106,28 +102,28 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             messages
 
           _message ->
-            Logger.warn("Stream batch response error!")
+            Logger.warn("Stream batch response error!",
+              tesla_response: GenUtils.get_tesla_error_message(response),
+              source_id: source_id
+            )
+
             messages
         end
 
       {:error, :emfile = response} ->
-        LogflareLogger.context(tesla_response: response)
-        Logger.error("Stream batch emfile error!")
+        Logger.error("Stream batch emfile error!", tesla_response: response)
         messages
 
       {:error, :timeout = response} ->
-        LogflareLogger.context(tesla_response: response)
-        Logger.warn("Stream batch timeout error!")
+        Logger.warn("Stream batch timeout error!", tesla_response: response)
         messages
 
       {:error, :checkout_timeout = response} ->
-        LogflareLogger.context(tesla_response: response)
-        Logger.warn("Stream batch checkout_timeout error!")
+        Logger.warn("Stream batch checkout_timeout error!", tesla_response: response)
         messages
 
       {:error, response} ->
-        LogflareLogger.context(tesla_response: response)
-        Logger.warn("Stream batch unknown error!")
+        Logger.warn("Stream batch unknown error!", tesla_response: response)
         messages
     end
   end
