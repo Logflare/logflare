@@ -55,10 +55,10 @@ defmodule Logflare.Source.Supervisor do
       rls = %RLS{source_id: source_id}
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
     end)
-    |> Enum.chunk_every(25)
+    |> Enum.chunk_every(50)
     |> Enum.each(fn x ->
       Logger.info("Sleeping for startup Logflare.Source.Supervisor")
-      Process.sleep(2_000)
+      Process.sleep(1_000)
       Supervisor.start_link(x, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
