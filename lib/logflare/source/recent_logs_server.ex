@@ -79,15 +79,6 @@ defmodule Logflare.Source.RecentLogsServer do
       bigquery_dataset_id: bigquery_dataset_id
     } = GenUtils.get_bq_user_info(source_id)
 
-    BigQuery.init_table!(
-      user_id,
-      source_id,
-      bigquery_project_id,
-      bigquery_table_ttl,
-      bigquery_dataset_location,
-      bigquery_dataset_id
-    )
-
     :ets.new(source_id, [:named_table, :ordered_set, :public])
 
     load_init_log_message(source_id, bigquery_project_id)

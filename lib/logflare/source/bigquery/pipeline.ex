@@ -144,6 +144,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     if map_size(body.metadata) > 0 and
          field_count < 500 and
          schema_state.next_update < System.system_time(:second) do
+      # TODO Maybe wrap this whole thing in the schema genserver and call it so schema updates are serial
       old_schema = schema_state.schema
       bigquery_project_id = schema_state.bigquery_project_id
       bigquery_dataset_id = schema_state.bigquery_dataset_id
