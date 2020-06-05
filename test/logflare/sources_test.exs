@@ -1,64 +1,79 @@
 defmodule Logflare.SourcesTest do
+  @moduledoc false
   use Logflare.DataCase
-
+  import Logflare.Factory
   alias Logflare.Sources
+  alias Logflare.Users
+  alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source
 
-  describe "source_schemas" do
-    alias Logflare.Sources.SourceSchema
+  setup do
+    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+    s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+    Source.BigQuery.Schema.start_link(%RLS{source_id: s.token})
 
-    @valid_attrs %{bigquery_schema: "some bigquery_schema"}
-    @update_attrs %{bigquery_schema: "some updated bigquery_schema"}
-    @invalid_attrs %{bigquery_schema: nil}
+    {:ok, sources: [s], users: [u]}
+  end
 
-    def source_schema_fixture(attrs \\ %{}) do
-      {:ok, source_schema} =
-        attrs
-        |> Enum.into(@valid_attrs)
-        |> Sources.create_source_schema()
+  describe "Sources" do
+    test "get_bq_schema/1", %{sources: [s | _], users: [u | _]} do
+      source_id = s.token
 
-      source_schema
-    end
+      %{
+        bigquery_table_ttl: bigquery_table_ttl,
+        bigquery_dataset_location: bigquery_dataset_location,
+        bigquery_project_id: bigquery_project_id,
+        bigquery_dataset_id: bigquery_dataset_id
+      } = GenUtils.get_bq_user_info(source_id)
 
-    test "list_source_schemas/0 returns all source_schemas" do
-      source_schema = source_schema_fixture()
-      assert Sources.list_source_schemas() == [source_schema]
-    end
+      BigQuery.init_table!(
+        u.id,
+        source_id,
+        bigquery_project_id,
+        bigquery_table_ttl,
+        bigquery_dataset_location,
+        bigquery_dataset_id
+      )
 
-    test "get_source_schema!/1 returns the source_schema with given id" do
-      source_schema = source_schema_fixture()
-      assert Sources.get_source_schema!(source_schema.id) == source_schema
-    end
+      schema = %GoogleApi.BigQuery.V2.Model.TableSchema{
+        fields: [
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
+            description: nil,
+            fields: nil,
+            mode: "NULLABLE",
+            name: "event_message",
+            policyTags: nil,
+            type: "STRING"
+          },
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
+            description: nil,
+            fields: nil,
+            mode: "NULLABLE",
+            name: "id",
+            policyTags: nil,
+            type: "STRING"
+          },
+          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
+            categories: nil,
+            description: nil,
+            fields: nil,
+            mode: "REQUIRED",
+            name: "timestamp",
+            policyTags: nil,
+            type: "TIMESTAMP"
+          }
+        ]
+      }
 
-    test "create_source_schema/1 with valid data creates a source_schema" do
-      assert {:ok, %SourceSchema{} = source_schema} = Sources.create_source_schema(@valid_attrs)
-      assert source_schema.bigquery_schema == "some bigquery_schema"
-    end
+      assert {:ok, _} =
+               BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id)
 
-    test "create_source_schema/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} = Sources.create_source_schema(@invalid_attrs)
-    end
-
-    test "update_source_schema/2 with valid data updates the source_schema" do
-      source_schema = source_schema_fixture()
-      assert {:ok, %SourceSchema{} = source_schema} = Sources.update_source_schema(source_schema, @update_attrs)
-      assert source_schema.bigquery_schema == "some updated bigquery_schema"
-    end
-
-    test "update_source_schema/2 with invalid data returns error changeset" do
-      source_schema = source_schema_fixture()
-      assert {:error, %Ecto.Changeset{}} = Sources.update_source_schema(source_schema, @invalid_attrs)
-      assert source_schema == Sources.get_source_schema!(source_schema.id)
-    end
-
-    test "delete_source_schema/1 deletes the source_schema" do
-      source_schema = source_schema_fixture()
-      assert {:ok, %SourceSchema{}} = Sources.delete_source_schema(source_schema)
-      assert_raise Ecto.NoResultsError, fn -> Sources.get_source_schema!(source_schema.id) end
-    end
-
-    test "change_source_schema/1 returns a source_schema changeset" do
-      source_schema = source_schema_fixture()
-      assert %Ecto.Changeset{} = Sources.change_source_schema(source_schema)
+      {:ok, left_schema} = Sources.get_bq_schema(s)
+      assert left_schema == schema
     end
   end
 end
