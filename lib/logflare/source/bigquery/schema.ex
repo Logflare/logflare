@@ -11,6 +11,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
 
+  @persist_every 60_000
+
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
       __MODULE__,
@@ -33,6 +35,8 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def init(state) do
     Process.flag(:trap_exit, true)
+
+    persist()
 
     {:ok, state, {:continue, :boot}}
   end
@@ -116,6 +120,19 @@ defmodule Logflare.Source.BigQuery.Schema do
     next = next_update()
 
     {:reply, :ok, %{state | next_update: next}}
+  end
+
+  def handle_info(:persist, state) do
+    Sources.Cache.get_by(token: state.source_token)
+    |> Sources.update_source(%{schema: state.schema})
+
+    persist()
+
+    {:noreply, state}
+  end
+
+  defp persist(persist_every \\ @persist_every) do
+    Process.send_after(self(), :persist, persist_every)
   end
 
   defp count_fields(type_map) do
