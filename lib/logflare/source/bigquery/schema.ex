@@ -36,8 +36,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def init(state) do
     Process.flag(:trap_exit, true)
 
-    # Causes a shitstorm
-    # persist()
+    persist()
 
     {:ok, state, {:continue, :boot}}
   end
@@ -124,11 +123,17 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_info(:persist, state) do
-    Sources.Cache.get_by(token: state.source_token)
-    |> Sources.update_source(%{bigquery_schema: state.schema})
+    source = Sources.Cache.get_by(token: state.source_token)
 
-    # Causes a shitstorm
-    # persist()
+    case Sources.get_source_schema_by(source_id: source.id) do
+      nil ->
+        Sources.create_source_schema(source, %{bigquery_schema: state.schema})
+
+      source_schema ->
+        Sources.update_source_schema(source_schema, %{bigquery_schema: state.schema})
+    end
+
+    persist()
 
     {:noreply, state}
   end

@@ -113,6 +113,7 @@ defmodule Logflare.Source do
     has_many :rules, Logflare.Rule
     has_many :saved_searches, Logflare.SavedSearch
     embeds_one :notifications, Notifications, on_replace: :update
+    has_one :source_schema, Logflare.Sources.SourceSchema
 
     timestamps()
   end
