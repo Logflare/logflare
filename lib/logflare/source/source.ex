@@ -105,6 +105,7 @@ defmodule Logflare.Source do
     field :bq_table_typemap, :any, virtual: true
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
+    field :schema, Ecto.Term
 
     belongs_to :user, Logflare.User
     has_many :rules, Logflare.Rule
@@ -133,7 +134,8 @@ defmodule Logflare.Source do
       :webhook_notification_url,
       :slack_hook_url,
       :custom_event_message_keys,
-      :log_events_updated_at
+      :log_events_updated_at,
+      :schema
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
