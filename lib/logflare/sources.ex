@@ -9,7 +9,11 @@ defmodule Logflare.Sources do
   alias Logflare.Rule
   alias Logflare.User
   alias Logflare.SavedSearch
+
+  alias Logflare.Sources.SourceSchema
+
   require Logger
+
   @default_bucket_width 60
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
@@ -244,8 +248,6 @@ defmodule Logflare.Sources do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
     %{source | bq_dataset_id: dataset_id}
   end
-
-  alias Logflare.Sources.SourceSchema
 
   @doc """
   Returns the list of source_schemas.
