@@ -171,6 +171,27 @@ defmodule Logflare.Source.Supervisor do
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
     ]
 
+    init_table(source_id)
+
     Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+  end
+
+  defp init_table(source_id) do
+    %{
+      user_id: user_id,
+      bigquery_table_ttl: bigquery_table_ttl,
+      bigquery_project_id: bigquery_project_id,
+      bigquery_dataset_location: bigquery_dataset_location,
+      bigquery_dataset_id: bigquery_dataset_id
+    } = BigQuery.GenUtils.get_bq_user_info(source_id)
+
+    BigQuery.init_table!(
+      user_id,
+      source_id,
+      bigquery_project_id,
+      bigquery_table_ttl,
+      bigquery_dataset_location,
+      bigquery_dataset_id
+    )
   end
 end

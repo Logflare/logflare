@@ -78,7 +78,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
 
   def to_typemap(metadata) when is_map(metadata) do
-    for {k, v} <- metadata, into: Map.new() do
+    for {k, v} <- metadata, is_not_empty_container?(v), into: Map.new() do
       v =
         cond do
           match?(%DateTime{}, v) or
@@ -110,6 +110,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
       {k, v}
     end
+  end
+
+  def is_not_empty_container?(value) when value == [] when value == %{} do
+    false
+  end
+
+  def is_not_empty_container?(_) do
+    true
   end
 
   @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}

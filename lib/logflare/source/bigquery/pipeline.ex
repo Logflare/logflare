@@ -144,17 +144,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     if map_size(body.metadata) > 0 and
          field_count < 500 and
          schema_state.next_update < System.system_time(:second) do
+      # TODO Maybe wrap this whole thing in the schema genserver and call it so schema updates are serial
       old_schema = schema_state.schema
       bigquery_project_id = schema_state.bigquery_project_id
       bigquery_dataset_id = schema_state.bigquery_dataset_id
 
       Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-        LogflareLogger.context(
-          source_id: source_id,
-          log_event_id: event_id,
-          log_event_string: inspect(log_event)
-        )
-
         try do
           schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
@@ -167,13 +162,19 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                  ) do
               {:ok, table_info} ->
                 Schema.update(source_id, table_info.schema)
-                Logger.info("Source schema updated!")
+
+                Logger.info("Source schema updated!",
+                  source_id: source_id,
+                  log_event_id: event_id
+                )
 
               {:error, response} ->
                 Schema.set_next_update(source_id)
 
                 Logger.warn("Source schema update error!",
-                  tesla_response: GenUtils.get_tesla_error_message(response)
+                  tesla_response: GenUtils.get_tesla_error_message(response),
+                  source_id: source_id,
+                  log_event_id: event_id
                 )
             end
           end

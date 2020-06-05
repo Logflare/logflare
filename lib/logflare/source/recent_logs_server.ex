@@ -18,7 +18,7 @@ defmodule Logflare.Source.RecentLogsServer do
   use GenServer
 
   alias Logflare.Sources.Counters
-  alias Logflare.Google.{BigQuery, BigQuery.GenUtils}
+  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
 
   alias Logflare.Source.{
@@ -72,21 +72,9 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     %{
-      user_id: user_id,
-      bigquery_table_ttl: bigquery_table_ttl,
       bigquery_project_id: bigquery_project_id,
-      bigquery_dataset_location: bigquery_dataset_location,
       bigquery_dataset_id: bigquery_dataset_id
     } = GenUtils.get_bq_user_info(source_id)
-
-    BigQuery.init_table!(
-      user_id,
-      source_id,
-      bigquery_project_id,
-      bigquery_table_ttl,
-      bigquery_dataset_location,
-      bigquery_dataset_id
-    )
 
     :ets.new(source_id, [:named_table, :ordered_set, :public])
 
