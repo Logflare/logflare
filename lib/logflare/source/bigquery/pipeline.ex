@@ -146,6 +146,13 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       bigquery_dataset_id = schema_state.bigquery_dataset_id
 
       Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+        # LogflareLogger.context here with the log_event_string causes 5% additional CPU load
+        LogflareLogger.context(
+          source_id: source_id,
+          log_event_id: event_id,
+          log_event_string: inspect(log_event, limit: :infinity)
+        )
+
         try do
           schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
 
