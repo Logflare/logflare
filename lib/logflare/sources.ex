@@ -9,7 +9,11 @@ defmodule Logflare.Sources do
   alias Logflare.Rule
   alias Logflare.User
   alias Logflare.SavedSearch
+
+  alias Logflare.Sources.SourceSchema
+
   require Logger
+
   @default_bucket_width 60
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
@@ -126,6 +130,10 @@ defmodule Logflare.Sources do
     )
   end
 
+  def preload_source_schema(source) do
+    Repo.preload(source, :source_schema)
+  end
+
   # """
   # Compiles regex_struct if it's not present in the source rules.
   # By setting regex_struct to nil if invalid, prevents malformed regex matching during log ingest.
@@ -239,5 +247,113 @@ defmodule Logflare.Sources do
   def put_bq_dataset_id(%Source{} = source) do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
     %{source | bq_dataset_id: dataset_id}
+  end
+
+  @doc """
+  Returns the list of source_schemas.
+
+  ## Examples
+
+      iex> list_source_schemas()
+      [%SourceSchema{}, ...]
+
+  """
+  def list_source_schemas do
+    Repo.all(SourceSchema)
+  end
+
+  @doc """
+  Gets a single source_schema.
+
+  Raises `Ecto.NoResultsError` if the Source schema does not exist.
+
+  ## Examples
+
+      iex> get_source_schema!(123)
+      %SourceSchema{}
+
+      iex> get_source_schema!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_source_schema!(id), do: Repo.get!(SourceSchema, id)
+
+  def get_source_schema_by(kv), do: SourceSchema |> Repo.get_by(kv)
+
+  @doc """
+  Creates a source_schema.
+
+  ## Examples
+
+      iex> create_source_schema(%{field: value})
+      {:ok, %SourceSchema{}}
+
+      iex> create_source_schema(%{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def create_source_schema(source, attrs \\ %{}) do
+    source
+    |> Ecto.build_assoc(:source_schema)
+    |> SourceSchema.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def create_or_update_source_schema(source, attrs \\ %{}) do
+    case create_source_schema(source, attrs) do
+      {:ok, _schema} = resp ->
+        resp
+
+      {:error, _changeset} ->
+        get_source_schema_by(source_id: source.id)
+        |> update_source_schema(attrs)
+    end
+  end
+
+  @doc """
+  Updates a source_schema.
+
+  ## Examples
+
+      iex> update_source_schema(source_schema, %{field: new_value})
+      {:ok, %SourceSchema{}}
+
+      iex> update_source_schema(source_schema, %{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_source_schema(%SourceSchema{} = source_schema, attrs) do
+    source_schema
+    |> SourceSchema.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a source_schema.
+
+  ## Examples
+
+      iex> delete_source_schema(source_schema)
+      {:ok, %SourceSchema{}}
+
+      iex> delete_source_schema(source_schema)
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def delete_source_schema(%SourceSchema{} = source_schema) do
+    Repo.delete(source_schema)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking source_schema changes.
+
+  ## Examples
+
+      iex> change_source_schema(source_schema)
+      %Ecto.Changeset{data: %SourceSchema{}}
+
+  """
+  def change_source_schema(%SourceSchema{} = source_schema, attrs \\ %{}) do
+    SourceSchema.changeset(source_schema, attrs)
   end
 end
