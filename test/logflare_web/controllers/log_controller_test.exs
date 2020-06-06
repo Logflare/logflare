@@ -16,7 +16,7 @@ defmodule LogflareWeb.LogControllerTest do
     u1 = Users.preload_defaults(u1)
     u2 = Users.preload_defaults(u2)
 
-    s = insert(:source, user_id: u1.id, api_quota: 50)
+    s = insert(:source, user_id: u1.id, api_quota: 1000)
 
     s = Sources.get_by_and_preload(id: s.id)
 
