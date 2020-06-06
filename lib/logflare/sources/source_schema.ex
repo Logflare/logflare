@@ -16,5 +16,6 @@ defmodule Logflare.Sources.SourceSchema do
     |> cast(attrs, [:bigquery_schema])
     |> validate_required([:bigquery_schema])
     |> foreign_key_constraint(:source_id)
+    |> unique_constraint(:source_id, name: "source_schemas_source_id_index")
   end
 end
