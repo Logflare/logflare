@@ -182,6 +182,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
             # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
 
+            LogflareLogger.context(%{
+              pipeline_process_data_stacktrace: LogflareLogger.Stacktrace.format(__STACKTRACE__)
+            })
+
             Logger.warn("Field schema type change error!", error_string: inspect(e))
         end
       end)
