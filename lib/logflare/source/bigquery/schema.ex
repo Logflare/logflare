@@ -103,7 +103,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     if not same_schemas?(state.schema, schema) and state.next_update < System.system_time(:second) and
          state.field_count < 500 do
       case BigQuery.patch_table(
-             state.source_id,
+             state.source_token,
              schema,
              state.bigquery_dataset_id,
              state.bigquery_project_id
@@ -117,7 +117,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           field_count = count_fields(type_map)
 
           Logger.info("Source schema updated!",
-            source_id: state.source_id,
+            source_id: state.source_token,
             log_event_id: event_id
           )
 
@@ -132,7 +132,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:error, response} ->
           Logger.warn("Source schema update error!",
             tesla_response: GenUtils.get_tesla_error_message(response),
-            source_id: state.source_id,
+            source_id: state.source_token,
             log_event_id: event_id
           )
 
