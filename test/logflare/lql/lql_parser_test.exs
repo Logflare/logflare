@@ -832,6 +832,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@minute", @schema)
 
       lvalue = %{now_udt_zero_sec() | minute: 0}
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -848,6 +849,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@hour", @schema)
 
       lvalue = %{now_udt_zero_sec() | minute: 0, hour: 0}
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -864,6 +866,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@day", @schema)
 
       lvalue = Timex.beginning_of_week(%{now_udt_zero_sec() | minute: 0, hour: 0})
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -880,6 +883,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@week", @schema)
 
       lvalue = Timex.beginning_of_month(%{now_udt_zero_sec() | minute: 0, hour: 0})
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -896,6 +900,7 @@ defmodule Logflare.LqlParserTest do
              } == Parser.parse("timestamp:this@month", @schema)
 
       lvalue = Timex.beginning_of_year(%{now_udt_zero_sec() | minute: 0, hour: 0})
+      rvalue = DateTimeUtils.truncate(Timex.now(), :second)
 
       assert {
                :ok,
@@ -1007,8 +1012,6 @@ defmodule Logflare.LqlParserTest do
       str = "timestamp:last@1mm"
 
       assert {:ok, lql_rules} == Parser.parse(str, @schema)
-
-      # assert clean_and_trim_lql_string(str) == Lql.encode!(lql_rules)
 
       lvalue = Timex.shift(%{now_udt_zero_sec() | minute: 0, hour: 0}, years: -1)
 

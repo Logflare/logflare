@@ -25,7 +25,7 @@
         <p>Use our official Pino transport to send log events from your Javascript project.</p>
         <%= link "Setup the Pino transport", to: "https://github.com/Logflare/pino-logflare", class: "btn btn-primary form-button", target: "_blank" %>
         <h5 class="header-margin">From a Generic Webhook</h5>
-        <p>Use the generic JSON ingeset endpoint to generate log events from an external webhook.</p>
+        <p>Use the generic JSON ingest endpoint to generate log events from an external webhook.</p>
         <p>e.g. you can set a Github webhook to send events to:</p>
         <pre class="pre-scrollable">
           <code>

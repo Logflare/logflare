@@ -299,6 +299,17 @@ defmodule Logflare.Sources do
     |> Repo.insert()
   end
 
+  def create_or_update_source_schema(source, attrs \\ %{}) do
+    case create_source_schema(source, attrs) do
+      {:ok, _schema} = resp ->
+        resp
+
+      {:error, _changeset} ->
+        get_source_schema_by(source_id: source.id)
+        |> update_source_schema(attrs)
+    end
+  end
+
   @doc """
   Updates a source_schema.
 
