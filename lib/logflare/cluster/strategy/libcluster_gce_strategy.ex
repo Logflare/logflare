@@ -36,6 +36,10 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
     {:noreply, state}
   end
 
+  def load() do
+    Process.send(Logflare.ClusterSupervisor, :load, [])
+  end
+
   defp load(%State{} = state) do
     Cluster.Strategy.connect_nodes(
       state.topology,
