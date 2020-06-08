@@ -42,7 +42,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   @spec handle_batch(:bq, list(Broadway.Message.t()), any, RLS.t()) :: [Broadway.Message.t()]
   def handle_batch(:bq, messages, _batch_info, %RLS{} = context) do
-    stream_batch(context.source_id, messages)
+    stream_batch(context, messages)
   end
 
   def le_messages_to_bq_rows(messages) do
@@ -74,14 +74,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     }
   end
 
-  def stream_batch(source_id, messages) do
+  def stream_batch(%RLS{source_id: source_id} = context, messages) do
     rows = le_messages_to_bq_rows(messages)
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
 
-    case BigQuery.stream_batch!(source_id, rows) do
+    case BigQuery.stream_batch!(context, rows) do
       {:ok, _response} ->
         messages
 
