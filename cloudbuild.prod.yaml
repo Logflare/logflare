@@ -37,7 +37,7 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/logflare_app:latest"]
 secrets:
-  - kmsKeyName: projects/$PROJECT_ID/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
+  - kmsKeyName: projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
     secretEnv:
       MAGIC_COOKIE: "CiQAaKkB6bwW6k2L9NxnoxLiSerCpIeLBGlN54tyvdAtGmTqBeISSQA/IRNwMsuZjfo6o1os4UkkFYG3eJzzxp6hDWbI+6El6HxSZLWLDy3ousxpSU8hip3hLypJ9aSjOLlj4zrnXFxS6qzwLA3/pEE="
 timeout: 1800s
