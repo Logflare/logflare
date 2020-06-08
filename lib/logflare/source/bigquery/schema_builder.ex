@@ -83,6 +83,10 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   defp build_fields_schemas(maps) when is_list(maps) do
     maps
     |> Enum.reduce(%{}, &DeepMerge.deep_merge/2)
+    |> Enum.reject(fn
+      {_, v} when v == [] or v == %{} -> true
+      _ -> false
+    end)
     |> Enum.map(&build_fields_schemas/1)
   end
 
