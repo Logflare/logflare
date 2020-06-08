@@ -47,11 +47,14 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
         {:ok, response}
 
       {:ok, %Tesla.Env{} = response} ->
-        resp = prep_tesla_resp_for_log(response)
-
         Logger.warn("Webhook error!",
           webhook_request: %{url: url, body: inspect(payload)},
-          webhook_response: resp
+          webhook_response: %{
+            body: inspect(response.body),
+            method: response.method,
+            status: response.status,
+            url: response.url
+          }
         )
 
         {:error, response}
@@ -60,11 +63,6 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
         Logger.warn("Webhook error!", webhook_response: %{error: response})
         {:error, response}
     end
-  end
-
-  defp prep_tesla_resp_for_log(response) do
-    Map.from_struct(response)
-    |> Map.drop([:__client__, :__module__, :headers, :opts, :query])
   end
 
   defp prep_recent_events(recent_events) do
