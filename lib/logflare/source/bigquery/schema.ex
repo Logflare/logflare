@@ -138,6 +138,8 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           {:reply, :error, %{state | next_update: next_update()}}
       end
+    else
+      {:reply, :ok, state}
     end
   end
 
