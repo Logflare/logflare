@@ -8,8 +8,10 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Source.BigQuery.GenUtils
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
+  alias Logflare.LogEvent
 
   @persist_every 60_000
 
@@ -85,18 +87,58 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), :get)
   end
 
-  def update(source_token, schema) do
+  def update(source_token, log_event) do
     nodes = Cluster.Utils.node_list_all()
 
-    GenServer.multi_call(nodes, name(source_token), {:update, schema})
-  end
-
-  def set_next_update(source_token) do
-    GenServer.call(name(source_token), :set_next_update)
+    GenServer.multi_call(nodes, name(source_token), {:update, log_event})
   end
 
   def handle_call(:get, _from, state) do
     {:reply, state, state}
+  end
+
+  def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
+    schema = SchemaBuilder.build_table_schema(body.metadata, state.schema)
+
+    if not same_schemas?(state.schema, schema) and state.next_update < System.system_time(:second) and
+         state.field_count < 500 do
+      case BigQuery.patch_table(
+             state.source_id,
+             schema,
+             state.bigquery_dataset_id,
+             state.bigquery_project_id
+           ) do
+        {:ok, table_info} ->
+          new_schema =
+            table_info.schema
+            |> SchemaUtils.deep_sort_by_fields_name()
+
+          type_map = SchemaUtils.to_typemap(new_schema)
+          field_count = count_fields(type_map)
+
+          Logger.info("Source schema updated!",
+            source_id: state.source_id,
+            log_event_id: event_id
+          )
+
+          {:reply, :ok,
+           %{
+             state
+             | schema: new_schema,
+               type_map: type_map,
+               field_count: field_count
+           }}
+
+        {:error, response} ->
+          Logger.warn("Source schema update error!",
+            tesla_response: GenUtils.get_tesla_error_message(response),
+            source_id: state.source_id,
+            log_event_id: event_id
+          )
+
+          {:reply, :error, %{state | next_update: next_update()}}
+      end
+    end
   end
 
   def handle_call({:update, schema}, _from, state) do
@@ -114,12 +156,6 @@ defmodule Logflare.Source.BigQuery.Schema do
          field_count: field_count,
          next_update: next_update()
      }}
-  end
-
-  def handle_call(:set_next_update, _from, state) do
-    next = next_update()
-
-    {:reply, :ok, %{state | next_update: next}}
   end
 
   def handle_info(:persist, state) do
@@ -148,5 +184,9 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   defp name(source_token) do
     String.to_atom("#{source_token}" <> "-schema")
+  end
+
+  defp same_schemas?(old_schema, new_schema) do
+    old_schema == new_schema
   end
 end
