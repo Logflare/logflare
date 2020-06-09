@@ -14,7 +14,6 @@ defmodule Logflare.Google.BigQuery do
 
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
-  alias Logflare.Sources
   alias Logflare.User
   alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
@@ -166,7 +165,14 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  def stream_batch!(%RLS{bigquery_project_id: project_id, bigquery_dataset_id: dataset_id, source_id: source_id}, batch)
+  def stream_batch!(
+        %RLS{
+          bigquery_project_id: project_id,
+          bigquery_dataset_id: dataset_id,
+          source_id: source_id
+        },
+        batch
+      )
       when is_atom(source_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
@@ -281,20 +287,6 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  @deprecated "Use Logflare.BqRepo"
-  def query(%Model.QueryRequest{} = body, opts \\ []) do
-    project_id = opts[:project_id] || @project_id
-    use_query_cache = opts[:use_query_cache]
-    conn = GenUtils.get_conn()
-
-    conn
-    |> Api.Jobs.bigquery_jobs_query(
-      project_id,
-      body: body
-    )
-    |> GenUtils.maybe_parse_google_api_result()
-  end
-
   def sql_query_with_cache(sql, params \\ [], opts \\ []) when is_binary(sql) do
     project_id = opts[:project_id] || @project_id
     conn = GenUtils.get_conn()
@@ -313,7 +305,7 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  defp patch(dataset_id, [], project_id, user_id), do: :noop
+  defp patch(_dataset_id, [], _project_id, _user_id), do: :noop
 
   defp patch(dataset_id, emails, project_id, user_id) do
     conn = GenUtils.get_conn()
