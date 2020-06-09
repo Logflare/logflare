@@ -19,16 +19,16 @@ bigquery_table_ttl = 60 * 60 * 24 * 365
 source_token = "2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
 # {_, user} =
-  Users.insert_or_update_user(%{
-    id: 314_159,
-    email: email,
-    bigquery_dataset_location: bigquery_dataset_location,
-    provider: "google",
-    provider_uid: "000000",
-    token: "token",
-    api_key: "api_key",
-    name: "Test source name"
-  })
+Users.insert_or_update_user(%{
+  id: 314_159,
+  email: email,
+  bigquery_dataset_location: bigquery_dataset_location,
+  provider: "google",
+  provider_uid: "000000",
+  token: "token",
+  api_key: "api_key",
+  name: "Test source name"
+})
 
 user =
   User
@@ -39,12 +39,11 @@ BigQuery.delete_dataset(user)
 
 # Repo.delete!(user)
 
-
 # {:ok, source} =
-  Sources.create_source(
-    %{"token" => source_token, "name" => "Automated testing source #1"},
-    user
-  )
+Sources.create_source(
+  %{"token" => source_token, "name" => "Automated testing source #1"},
+  user
+)
 
 source = Sources.get_by(token: source_token)
 
@@ -89,4 +88,12 @@ les =
 bq_rows = Enum.map(les, &Pipeline.le_to_bq_row/1)
 project_id = GenUtils.get_project_id(source.token)
 
-{:ok, _} = BigQuery.stream_batch!(source.token, bq_rows)
+{:ok, _} =
+  BigQuery.stream_batch!(
+    %RLS{
+      bigquery_project_id: project_id,
+      bigquery_dataset_id: bq_dataset_id,
+      source_id: source.token
+    },
+    bq_rows
+  )
