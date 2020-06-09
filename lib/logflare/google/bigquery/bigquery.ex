@@ -18,6 +18,7 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.User
   alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Source.RecentLogsServer, as: RLS
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
@@ -165,17 +166,10 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  @spec stream_batch!(atom, list(map)) :: ok_err_tup
-  def stream_batch!(source_id, batch) when is_atom(source_id) do
+  def stream_batch!(%RLS{bigquery_project_id: project_id, bigquery_dataset_id: dataset_id, source_id: source_id}, batch)
+      when is_atom(source_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-
-    %{
-      bigquery_project_id: project_id,
-      bigquery_dataset_id: dataset_id
-    } = GenUtils.get_bq_user_info(source_id)
-
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
 
     body = %Model.TableDataInsertAllRequest{
       ignoreUnknownValues: true,
