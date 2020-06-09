@@ -44,7 +44,7 @@ steps:
         "-t",
         "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA",
         "-t",
-        "gcr.io/logflare-232118/logflare_app:latest_branch",
+        "gcr.io/$PROJECT_ID/logflare_app:latest_branch",
         "-f",
         "docker/prod.app.Dockerfile",
         ".",
@@ -60,14 +60,14 @@ steps:
         "TEST_ENV=gcp_cloud_build",
         "-w",
         "/logflare",
-        "gcr.io/logflare-232118/logflare_app:latest",
+        "gcr.io/$PROJECT_ID/logflare_app:latest_branch",
         "/logflare/run_test.bash",
       ]
     secretEnv: ["MAGIC_COOKIE"]
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/logflare-232118/logflare_app:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/logflare-232118/logflare_app:latest"]
+    args: ["push", "gcr.io/$PROJECT_ID/logflare_app:latest_branch"]
 secrets:
   - kmsKeyName: projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
     secretEnv:

@@ -128,68 +128,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
-  defp process_data(%LE{body: body, source: %Source{token: source_id}, id: event_id} = log_event) do
-    schema_state = Schema.get_state(source_id)
-    field_count = schema_state.field_count
-
+  defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    if map_size(body.metadata) > 0 and
-         field_count < 500 and
-         schema_state.next_update < System.system_time(:second) do
-      # TODO Maybe wrap this whole thing in the schema genserver and call it so schema updates are serial
-      old_schema = schema_state.schema
-      bigquery_project_id = schema_state.bigquery_project_id
-      bigquery_dataset_id = schema_state.bigquery_dataset_id
-
-      Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-        try do
-          schema = SchemaBuilder.build_table_schema(body.metadata, old_schema)
-
-          if not same_schemas?(old_schema, schema) do
-            case BigQuery.patch_table(
-                   source_id,
-                   schema,
-                   bigquery_dataset_id,
-                   bigquery_project_id
-                 ) do
-              {:ok, table_info} ->
-                Schema.update(source_id, table_info.schema)
-
-                Logger.info("Source schema updated!",
-                  source_id: source_id,
-                  log_event_id: event_id
-                )
-
-              {:error, response} ->
-                Schema.set_next_update(source_id)
-
-                Logger.warn("Source schema update error!",
-                  tesla_response: GenUtils.get_tesla_error_message(response),
-                  source_id: source_id,
-                  log_event_id: event_id
-                )
-            end
-          end
-        rescue
-          e ->
-            # TODO: Put the original log event string JSON into a top level error column with id, timestamp, and metadata
-            # This may be a great way to handle type mismatches in general because you get all the other fields anyways.
-            # TODO: Render error column somewhere on log event popup
-
-            # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
-
-            LogflareLogger.context(%{
-              pipeline_process_data_stacktrace: LogflareLogger.Stacktrace.format(__STACKTRACE__)
-            })
-
-            Logger.warn("Field schema type change error!", error_string: inspect(e))
-        end
-      end)
-
+    if map_size(body.metadata) > 0 do
+      Schema.update(source_id, log_event)
       log_event
     else
       log_event
@@ -198,10 +144,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp name(source_id) when is_atom(source_id) do
     String.to_atom("#{source_id}" <> "-pipeline")
-  end
-
-  defp same_schemas?(old_schema, new_schema) do
-    old_schema == new_schema
   end
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
