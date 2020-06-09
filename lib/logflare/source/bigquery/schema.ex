@@ -249,7 +249,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_info(:persist, state) do
     source = Sources.Cache.get_by(token: state.source_token)
 
-    Sources.create_or_update_source_schema(source, %{bigquery_schema: state.schema})
+    Sources.find_or_create_source_schema(source, %{bigquery_schema: state.schema})
 
     persist()
 
