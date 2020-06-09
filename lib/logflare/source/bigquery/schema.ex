@@ -6,9 +6,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   alias Logflare.Cluster
   alias Logflare.Google.BigQuery
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.BigQuery.GenUtils
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.LogEvent
@@ -46,8 +44,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     case BigQuery.get_table(state.source_token) do
       {:ok, table} ->
-        schema = SchemaUtils.deep_sort_by_fields_name(table.schema)
-        type_map = SchemaUtils.to_typemap(schema)
+        schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(table.schema)
+        type_map = BigQuery.SchemaUtils.to_typemap(schema)
         field_count = count_fields(type_map)
 
         Sources.Cache.put_bq_schema(state.source_token, schema)
@@ -111,9 +109,9 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:ok, table_info} ->
           new_schema =
             table_info.schema
-            |> SchemaUtils.deep_sort_by_fields_name()
+            |> BigQuery.SchemaUtils.deep_sort_by_fields_name()
 
-          type_map = SchemaUtils.to_typemap(new_schema)
+          type_map = BigQuery.SchemaUtils.to_typemap(new_schema)
           field_count = count_fields(type_map)
 
           Logger.info("Source schema updated!",
@@ -126,12 +124,13 @@ defmodule Logflare.Source.BigQuery.Schema do
              state
              | schema: new_schema,
                type_map: type_map,
-               field_count: field_count
+               field_count: field_count,
+               next_update: next_update()
            }}
 
         {:error, response} ->
           Logger.warn("Source schema update error!",
-            tesla_response: GenUtils.get_tesla_error_message(response),
+            tesla_response: BigQuery.GenUtils.get_tesla_error_message(response),
             source_id: state.source_token,
             log_event_id: event_id
           )
@@ -144,8 +143,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_call({:update, schema}, _from, state) do
-    sorted = SchemaUtils.deep_sort_by_fields_name(schema)
-    type_map = SchemaUtils.to_typemap(sorted)
+    sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
+    type_map = BigQuery.SchemaUtils.to_typemap(sorted)
     field_count = count_fields(type_map)
 
     Sources.Cache.put_bq_schema(state.source_token, sorted)
