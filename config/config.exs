@@ -78,6 +78,10 @@ config :scrivener_html,
   view_style: :bootstrap_v4
 
 config :logflare,
-  sigterm_shutdown_grace_period_ms: 5_000
+  # https://cloud.google.com/compute/docs/instances/deleting-instance#delete_timeout
+  # preemtible is 30 seconds from shutdown to sigterm
+  # normal instances can be more than 90 seconds
+
+  sigterm_shutdown_grace_period_ms: 300_000
 
 import_config "#{Mix.env()}.exs"
