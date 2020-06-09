@@ -126,6 +126,13 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       metadata = put_in(metadata, ["user", "address"], %{})
 
       assert valid?(metadata, schema)
+
+      schema = SchemaFactory.build(:schema, variant: :third_with_lists)
+      metadata = SchemaFactory.build(:metadata, variant: :third_with_lists)
+      metadata = put_in(metadata, ["user", "ids"], [[]])
+      metadata = put_in(metadata, ["user", "address"], [%{}])
+
+      assert valid?(metadata, schema)
     end
   end
 

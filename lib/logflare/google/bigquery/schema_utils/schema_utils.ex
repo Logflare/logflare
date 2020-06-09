@@ -112,7 +112,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     end
   end
 
-  def is_not_empty_container?(value) when value == [] when value == %{} do
+  def is_not_empty_container?(value)
+      when value == []
+      when value == %{}
+      when value == [[]]
+      when value == [%{}] do
     false
   end
 
