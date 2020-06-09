@@ -7,7 +7,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.Source.BigQuery.{Schema, SchemaBuilder, BufferProducer}
+  alias Logflare.Source.BigQuery.{Schema, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
   alias Logflare.{Source}
   alias Logflare.{Users, Sources}
@@ -136,10 +136,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     if map_size(body.metadata) > 0 do
       Schema.update(source_id, log_event)
-      log_event
-    else
-      log_event
     end
+
+    log_event
   end
 
   defp name(source_id) when is_atom(source_id) do
