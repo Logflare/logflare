@@ -310,6 +310,13 @@ defmodule Logflare.Sources do
     end
   end
 
+  def find_or_create_source_schema(source, attrs) do
+    case get_source_schema_by(source_id: source.id) do
+      nil -> create_source_schema(source, attrs)
+      source_schema -> update_source_schema(source_schema, attrs)
+    end
+  end
+
   @doc """
   Updates a source_schema.
 

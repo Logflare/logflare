@@ -50,16 +50,16 @@ defmodule Logflare.Source.Supervisor do
         source
       end)
 
-    # BigQuery Rate limit is 100/second
     Enum.map(source_ids, fn source_id ->
       rls = %RLS{source_id: source_id}
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
     end)
     |> Enum.chunk_every(50)
-    |> Enum.each(fn x ->
-      Logger.info("Sleeping for startup Logflare.Source.Supervisor")
-      Process.sleep(1_000)
-      Supervisor.start_link(x, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+    |> Enum.each(fn children ->
+      # BigQuery Rate limit is 100/second
+      # Logger.info("Sleeping for startup Logflare.Source.Supervisor")
+      # Process.sleep(100)
+      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
     {:noreply, source_ids}
