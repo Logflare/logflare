@@ -15,6 +15,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.LogEvent
 
   @persist_every 60_000
+  @timeout 60_000
 
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
@@ -87,7 +88,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def update(source_token, log_event) do
-    GenServer.call(name(source_token), {:update, log_event})
+    GenServer.call(name(source_token), {:update, log_event}, @timeout)
   end
 
   def update_cluster(source_token, schema, type_map, field_count) do
@@ -111,7 +112,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
-    set_next_update_cluster(state.source_token)
+    # set_next_update_cluster(state.source_token)
 
     schema = SchemaBuilder.build_table_schema(body.metadata, state.schema)
 
@@ -127,7 +128,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           type_map = BigQuery.SchemaUtils.to_typemap(schema)
           field_count = count_fields(type_map)
 
-          update_cluster(state.source_token, schema, type_map, field_count)
+          # update_cluster(state.source_token, schema, type_map, field_count)
 
           Logger.info("Source schema updated from log_event!",
             source_id: state.source_token,
@@ -148,8 +149,6 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:error, response} ->
           case BigQuery.GenUtils.get_tesla_error_message(response) do
             "Provided Schema does not match Table" <> _tail = _message ->
-              # Get table, merge schemas and patch table
-
               case BigQuery.get_table(state.source_token) do
                 {:ok, table} ->
                   schema = SchemaBuilder.build_table_schema(body.metadata, table.schema)
@@ -164,7 +163,7 @@ defmodule Logflare.Source.BigQuery.Schema do
                       type_map = BigQuery.SchemaUtils.to_typemap(schema)
                       field_count = count_fields(type_map)
 
-                      update_cluster(state.source_token, schema, type_map, field_count)
+                      # update_cluster(state.source_token, schema, type_map, field_count)
 
                       Logger.info("Source schema updated from BigQuery!",
                         source_id: state.source_token,
