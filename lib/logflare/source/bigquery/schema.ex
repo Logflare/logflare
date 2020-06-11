@@ -87,8 +87,13 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), :get)
   end
 
-  def update(source_token, log_event) do
+  def update(source_token, %LogEvent{} = log_event) do
     GenServer.call(name(source_token), {:update, log_event}, @timeout)
+  end
+
+  # For tests
+  def update(source_token, schema) do
+    GenServer.call(name(source_token), {:update, schema}, @timeout)
   end
 
   def update_cluster(source_token, schema, type_map, field_count) do
@@ -240,6 +245,23 @@ defmodule Logflare.Source.BigQuery.Schema do
      %{
        state
        | schema: schema,
+         type_map: type_map,
+         field_count: field_count,
+         next_update: next_update()
+     }}
+  end
+
+  def handle_call({:update, schema}, _from, state) do
+    sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
+    type_map = BigQuery.SchemaUtils.to_typemap(sorted)
+    field_count = count_fields(type_map)
+
+    Sources.Cache.put_bq_schema(state.source_token, sorted)
+
+    {:reply, :ok,
+     %{
+       state
+       | schema: sorted,
          type_map: type_map,
          field_count: field_count,
          next_update: next_update()
