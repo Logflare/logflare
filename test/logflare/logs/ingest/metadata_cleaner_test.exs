@@ -44,5 +44,49 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
       assert "pid" not in Map.keys(meta_cleaned)
       assert "line" not in Map.keys(hd(meta_cleaned["stacktrace"]))
     end
+
+    test "removes nested empty containers" do
+      meta_with_nils = %{"lists" => %{"nested" => [[]]}, "lists_not_empty" => ["1337"]}
+      meta_cleaned = Cleaner.deep_reject_nil_and_empty(meta_with_nils)
+
+      assert meta_cleaned == %{"lists_not_empty" => ["1337"]}
+
+      meta_with_nils = %{
+        "request" => %{
+          "cf" => %{
+            "asn" => 15169,
+            "clientTrustScore" => 1,
+            "colo" => [""],
+            "country" => nil
+          }
+        }
+      }
+
+      meta_cleaned = Cleaner.deep_reject_nil_and_empty(meta_with_nils)
+
+      assert meta_cleaned == %{
+               "request" => %{"cf" => %{"asn" => 15169, "clientTrustScore" => 1}}
+             }
+
+      meta_with_nils =
+        PayloadTestUtils.standard_metadata(:cloudflare)
+        |> put_in(~w(request cf country), nil)
+        |> put_in(~w(request cf colo), [""])
+        |> put_in(~w(request headers host), %{"lists" => [[]]})
+        |> put_in(~w(request headers host2), %{"lists" => %{"lists2" => [[]]}, "lists1.1" => [""]})
+        |> put_in(~w(response headers vary), [["", [[]]]])
+        |> put_in(~w(response headers vary2), [["", [[[["", [], [%{}]]]]]]])
+
+      meta_cleaned = Cleaner.deep_reject_nil_and_empty(meta_with_nils)
+
+      get_keys_in = &Map.keys(get_in(meta_cleaned, &1))
+
+      assert Map.keys(meta_cleaned["request"]) == ~w[cf headers method url]
+      assert "colo" not in get_keys_in.(~w(request cf))
+      assert "country" not in get_keys_in.(~w(request cf))
+      assert "host" not in get_keys_in.(~w(request headers))
+      assert "vary" not in get_keys_in.(~w(response headers))
+      assert "vary2" not in get_keys_in.(~w(response headers))
+    end
   end
 end

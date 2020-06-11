@@ -17,6 +17,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
       x, acc ->
         [x | acc]
     end)
+    |> Enum.reject(&is_nil_or_empty?/1)
     |> Enum.reverse()
   end
 
@@ -33,6 +34,10 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
       {k, v}, acc ->
         Map.put(acc, k, v)
     end)
+    |> Enum.reject(fn {_, v} -> is_nil_or_empty?(v) end)
     |> Map.new()
   end
+
+  def is_nil_or_empty?(x) when nil_or_empty(x), do: true
+  def is_nil_or_empty?(_), do: false
 end
