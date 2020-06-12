@@ -3,7 +3,7 @@ defmodule Logflare.Tracker.Cache do
   import Cachex.Spec
   require Logger
 
-  @ttl 5_000
+  @ttl 10_000
   @default_bucket_width 60
 
   def child_spec(_) do
