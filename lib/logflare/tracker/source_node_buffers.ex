@@ -2,6 +2,7 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
   alias Logflare.Sources
   alias Logflare.Repo
   alias Logflare.Tracker
+  alias Logflare.Cluster
 
   import Ecto.Query, only: [from: 2]
 
@@ -48,7 +49,7 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
     update_tracker(sources_with_buffer, "buffers")
     Tracker.Cache.cache_cluster_buffers()
 
-    check_buffers()
+    check_buffers(@check_buffers_every * Cluster.Utils.actual_cluster_size())
     {:noreply, state}
   end
 
