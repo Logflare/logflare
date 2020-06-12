@@ -95,6 +95,7 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions: [{"us-central1", "logflare-prod-cluster-group"}],
   zones: [
     {"us-central1-a", "logflare-prod-us-central1-a"},
+    {"us-central1-a", "logflare-prod-us-central1-a-preempt"},
     {"us-central1-b", "logflare-prod-us-central1-b"},
     {"us-central1-c", "logflare-prod-us-central1-c"},
     {"us-central1-f", "logflare-prod-us-central1-f"}
