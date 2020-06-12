@@ -15,4 +15,8 @@ defmodule Logflare.Cluster.Utils do
       @min_cluster_size
     end
   end
+
+  def actual_cluster_size() do
+    Enum.count(node_list_all())
+  end
 end
