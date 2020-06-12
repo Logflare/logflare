@@ -10,7 +10,7 @@ defmodule Logflare.Tracker.SourceNodeRates do
 
   use GenServer
 
-  @check_rates_every 1_000
+  @check_rates_every 250
 
   def start_link() do
     GenServer.start_link(
