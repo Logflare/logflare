@@ -15,6 +15,7 @@
           data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
           data-clipboard-text="<%= @source.token %>"><code><%= @source.token %></code> <i
             class="fas fa-copy"></i></span>
+
         <h5 class="header-margin"><svg width="97" height="22" viewBox="0 0 283 64" fill="none"
             xmlns="http://www.w3.org/2000/svg">
             <path
@@ -22,20 +23,47 @@
               fill="#fff" /></svg></h5>
         <p>If you're hosted on Vercel setup our Vercel integration!</p>
         <%= link "Install the Vercel integration", to: "https://vercel.com/integrations/logflare", class: "btn btn-primary form-button", target: "_blank" %>
+
         <h5 class="header-margin">With the Cloudflare App</h5>
         <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
         <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no"
           frameborder="0" style="height: 48px; width: 180px">
         </iframe>
+
         <h5 class="header-margin">With Elixir Logger</h5>
         <p>Using Elixir? Use our Logger backend to send your structured logs.</p>
         <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-primary form-button", target: "_blank" %>
+
         <h5 class="header-margin">With the Elixir Agent</h5>
         <p>Watch log files on a server with our Elixir agent.</p>
         <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button", target: "_blank" %>
+
         <h5 class="header-margin">For Javascript Projects</h5>
         <p>Use our official Pino transport to send log events from your Javascript project.</p>
         <%= link "Setup the Pino transport", to: "https://github.com/Logflare/pino-logflare", class: "btn btn-primary form-button", target: "_blank" %>
+
+        <h5 class="header-margin">With Fluent Bit</h5>
+        <p>Watch log files on a server with this <%= link "Fluent Bit", to: "https://fluentbit.io/", target: "_blank" %> output config.</p>
+        <pre class="pre-scrollable">
+          <code>
+    [INPUT]
+        Name        tail
+        Path        /var/log/syslog
+
+    [OUTPUT]
+        Name             http
+        Match            *
+        tls              On
+        Host             api.logflare.app
+        Port             443
+        URI              /logs/json?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>
+        Format           json
+        Retry_Limit      5
+        json_date_format iso8601
+        json_date_key    timestamp
+          </code>
+        </pre>
+
         <h5 class="header-margin">From a Generic Webhook</h5>
         <p>Use the generic JSON ingest endpoint to generate log events from an external webhook.</p>
         <p>e.g. you can set a Github webhook to send events to:</p>
@@ -67,6 +95,7 @@
     ]'
           </code>
         </pre>
+
         <h5 class="header-margin">With an API Request</h5>
         <p>Send logs via an HTTP request. This request body payload lets you send over a human readable event message in
           the <code>log_entry</code> field.</p>
@@ -100,6 +129,7 @@
     }'
           </code>
         </pre>
+
         <h5 class="header-margin">With a Custom Cloudflare Worker</h5>
         <p>Customize the Cloudflare worker using the template below.</p>
         <pre class="pre-scrollable">
