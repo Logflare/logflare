@@ -4,6 +4,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   alias Logflare.Repo
   alias Logflare.SystemMetric
+  alias Logflare.Cluster
 
   require Logger
 
@@ -33,7 +34,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
     {:ok, log_count} = log_count(@total_logs)
 
     insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
-    persist()
+    persist(@persist_every * Cluster.Utils.actual_cluster_size())
     {:noreply, state}
   end
 
@@ -104,7 +105,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
     end
   end
 
-  defp persist() do
-    Process.send_after(self(), :persist, @persist_every)
+  defp persist(every \\ @persist_every) do
+    Process.send_after(self(), :persist, every)
   end
 end
