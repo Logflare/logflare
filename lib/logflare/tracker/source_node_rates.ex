@@ -2,6 +2,7 @@ defmodule Logflare.Tracker.SourceNodeRates do
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.Tracker
+  alias Logflare.Cluster
 
   import Ecto.Query, only: [from: 2]
 
@@ -21,11 +22,12 @@ defmodule Logflare.Tracker.SourceNodeRates do
 
   def init(state) do
     init_trackers()
+    update_tracker_every(0)
     check_rates(0)
     {:ok, state}
   end
 
-  def handle_info(:check_rates, state) do
+  def handle_info(:update_tracker, state) do
     query =
       from(s in "sources",
         select: %{
@@ -55,6 +57,12 @@ defmodule Logflare.Tracker.SourceNodeRates do
       |> Enum.into(%{})
 
     update_tracker(sources, "rates")
+    update_tracker_every()
+
+    {:noreply, state}
+  end
+
+  def handle_info(:check_rates, state) do
     Tracker.Cache.cache_cluster_rates()
 
     check_rates()
@@ -77,5 +85,9 @@ defmodule Logflare.Tracker.SourceNodeRates do
 
   defp check_rates(delay \\ @check_rates_every) do
     Process.send_after(self(), :check_rates, delay)
+  end
+
+  defp update_tracker_every(delay \\ @check_rates_every) do
+    Process.send_after(self(), :update_tracker, delay * Cluster.Utils.actual_cluster_size())
   end
 end
