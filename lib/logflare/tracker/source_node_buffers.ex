@@ -22,12 +22,13 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
 
   def init(state) do
     init_trackers()
+    update_tracker_every(0)
     check_buffers(0)
 
     {:ok, state}
   end
 
-  def handle_info(:check_buffers, state) do
+  def handle_info(:update_tracker, state) do
     query =
       from(s in "sources",
         select: %{
@@ -47,9 +48,15 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
       |> Enum.into(%{})
 
     update_tracker(sources_with_buffer, "buffers")
+    update_tracker_every()
+
+    {:noreply, state}
+  end
+
+  def handle_info(:check_buffers, state) do
     Tracker.Cache.cache_cluster_buffers()
 
-    check_buffers(@check_buffers_every * Cluster.Utils.actual_cluster_size())
+    check_buffers()
     {:noreply, state}
   end
 
@@ -65,6 +72,10 @@ defmodule Logflare.Tracker.SourceNodeBuffers do
       Node.self(),
       %{}
     )
+  end
+
+  defp update_tracker_every(delay \\ @check_buffers_every) do
+    Process.send_after(self(), :update_tracker, delay * Cluster.Utils.actual_cluster_size())
   end
 
   defp check_buffers(delay \\ @check_buffers_every) do
