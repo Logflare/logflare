@@ -2,6 +2,7 @@ defmodule Logflare.Tracker.SourceNodeInserts do
   alias Logflare.Source
   alias Logflare.Repo
   alias Logflare.Tracker
+  alias Logflare.Cluster
 
   import Ecto.Query, only: [from: 2]
 
@@ -21,11 +22,12 @@ defmodule Logflare.Tracker.SourceNodeInserts do
 
   def init(state) do
     init_trackers()
+    update_tracker_every(0)
     check_total_inserts(0)
     {:ok, state}
   end
 
-  def handle_info(:check_total_inserts, state) do
+  def handle_info(:update_tracker, state) do
     query =
       from(s in "sources",
         select: %{
@@ -46,6 +48,12 @@ defmodule Logflare.Tracker.SourceNodeInserts do
       |> Enum.into(%{})
 
     update_tracker(sources, "inserts")
+    update_tracker_every()
+
+    {:noreply, state}
+  end
+
+  def handle_info(:check_total_inserts, state) do
     Tracker.Cache.cache_cluster_inserts()
 
     check_total_inserts()
@@ -64,6 +72,10 @@ defmodule Logflare.Tracker.SourceNodeInserts do
       Node.self(),
       %{}
     )
+  end
+
+  defp update_tracker_every(delay \\ @check_total_inserts_every) do
+    Process.send_after(self(), :update_tracker, delay * Cluster.Utils.actual_cluster_size())
   end
 
   defp check_total_inserts(delay \\ @check_total_inserts_every) do
