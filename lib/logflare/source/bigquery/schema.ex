@@ -68,8 +68,7 @@ defmodule Logflare.Source.BigQuery.Schema do
            state
            | schema: schema,
              type_map: type_map,
-             field_count: field_count,
-             next_update: next_update()
+             field_count: field_count
          }}
     end
   end
