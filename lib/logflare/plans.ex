@@ -5,8 +5,9 @@ defmodule Logflare.Plans do
 
   import Ecto.Query, warn: false
   alias Logflare.Repo
-
+  alias Logflare.BillingAccounts
   alias Logflare.Plans.Plan
+  alias Logflare.User
 
   @doc """
   Returns the list of plans.
@@ -38,6 +39,22 @@ defmodule Logflare.Plans do
   def get_plan!(id), do: Repo.get!(Plan, id)
 
   def get_plan_by(kw), do: Repo.get_by(Plan, kw)
+
+  def get_plan_by_user(%User{} = user) do
+    if user.billing_enabled? do
+      case BillingAccounts.get_billing_account_by(user_id: user.id) do
+        nil ->
+          get_plan_by(name: "Free")
+
+        billing_account ->
+          {:ok, stripe_plan} = BillingAccounts.get_billing_account_stripe_plan(billing_account)
+
+          get_plan_by(stripe_id: stripe_plan["id"])
+      end
+    else
+      plan = legacy_plan()
+    end
+  end
 
   @doc """
   Creates a plan.

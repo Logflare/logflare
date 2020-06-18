@@ -12,13 +12,15 @@ defmodule Logflare.Source.RecentLogsServer do
     field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
     field :bigquery_dataset_id, binary()
+    field :source, struct()
+    field :user, struct()
+    field :plan, struct()
     field :total_cluster_inserts, integer(), default: 0
   end
 
   use GenServer
 
   alias Logflare.Sources.Counters
-  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
 
   alias Logflare.Source.{
@@ -32,6 +34,8 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Users
+  alias Logflare.Plans
   alias Logflare.Sources
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Tracker
@@ -70,20 +74,21 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
-    %{
-      bigquery_project_id: bigquery_project_id,
-      bigquery_dataset_id: bigquery_dataset_id
-    } = GenUtils.get_bq_user_info(source_id)
+  def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
+      when is_atom(source_id) do
+    user = Users.get(source.user_id) |> Users.maybe_preload_bigquery_defaults()
+    plan = Plans.get_plan_by_user(user)
 
     :ets.new(source_id, [:named_table, :ordered_set, :public])
 
-    load_init_log_message(source_id, bigquery_project_id)
+    load_init_log_message(source_id, user.bigquery_project_id)
 
     rls = %{
       rls
-      | bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id
+      | bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id,
+        user: user,
+        plan: plan
     }
 
     children = [

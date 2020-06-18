@@ -52,7 +52,7 @@ defmodule Logflare.Source.BigQuery.Schema do
       nil ->
         Sources.Cache.put_bq_schema(state.source_token, state.schema)
 
-        Logger.info("Schema manager init error: #{state.source_token}")
+        Logger.info("Nil schema: #{state.source_token}")
 
         {:noreply, %{state | next_update: next_update()}}
 
