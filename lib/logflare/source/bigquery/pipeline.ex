@@ -16,18 +16,20 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
 
-  def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
+  def start_link(%RLS{source: source, plan: plan} = rls) do
+    procs = calc_procs(source, plan)
+
     Broadway.start_link(__MODULE__,
-      name: name(source_id),
+      name: name(source.token),
       producer: [
         module: {BufferProducer, rls},
         hibernate_after: 30_000
       ],
       processors: [
-        default: [stages: 5]
+        default: [stages: procs]
       ],
       batchers: [
-        bq: [stages: 5, batch_size: 100, batch_timeout: 1000]
+        bq: [stages: procs, batch_size: 100, batch_timeout: 1000]
       ],
       context: rls
     )
@@ -172,5 +174,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           changeset: inspect(changeset)
         )
     end
+  end
+
+  defp calc_procs(source, plan) do
+    limit =
+      if plan.name == "Legacy",
+        do: source.api_quota,
+        else: plan.limit_rate_limit
+
+    Kernel.ceil(limit / 100)
   end
 end

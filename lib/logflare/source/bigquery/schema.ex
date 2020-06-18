@@ -52,7 +52,7 @@ defmodule Logflare.Source.BigQuery.Schema do
       nil ->
         Sources.Cache.put_bq_schema(state.source_token, state.schema)
 
-        Logger.info("Schema manager init error: #{state.source_token}")
+        Logger.info("Nil schema: #{state.source_token}")
 
         {:noreply, %{state | next_update: next_update()}}
 
@@ -68,8 +68,7 @@ defmodule Logflare.Source.BigQuery.Schema do
            state
            | schema: schema,
              type_map: type_map,
-             field_count: field_count,
-             next_update: next_update()
+             field_count: field_count
          }}
     end
   end
@@ -116,7 +115,15 @@ defmodule Logflare.Source.BigQuery.Schema do
     {:reply, :ok, %{state | next_update: next_update()}}
   end
 
-  def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
+  def handle_call({:update, %LogEvent{}}, _from, %{field_count: fc} = state) when fc >= 500,
+    do: {:reply, :ok, state}
+
+  def handle_call(
+        {:update, %LogEvent{body: body, id: event_id}},
+        _from,
+        %{field_count: fc} = state
+      )
+      when fc < 500 do
     # set_next_update_cluster(state.source_token)
     schema =
       try do
@@ -138,8 +145,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           state.schema
       end
 
-    if not same_schemas?(state.schema, schema) and state.next_update < System.system_time(:second) and
-         state.field_count < 500 do
+    if not same_schemas?(state.schema, schema) and state.next_update < System.system_time(:second) do
       case BigQuery.patch_table(
              state.source_token,
              schema,

@@ -6,9 +6,12 @@ defmodule Logflare.Source.Supervisor do
   use GenServer
 
   alias Logflare.Repo
+  alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Cluster
 
   import Ecto.Query, only: [from: 2]
@@ -35,24 +38,18 @@ defmodule Logflare.Source.Supervisor do
     # Also start recent_log_servers when anything in source route is viewed (plug maybe)
 
     query =
-      from(s in "sources",
+      from(s in Source,
         order_by: s.log_events_updated_at,
-        select: %{
-          token: s.token
-        }
+        select: s
       )
 
-    source_ids =
+    sources =
       query
       |> Repo.all()
-      |> Enum.map(fn s ->
-        {:ok, source} = Ecto.UUID.Atom.load(s.token)
-        source
-      end)
 
-    Enum.map(source_ids, fn source_id ->
-      rls = %RLS{source_id: source_id}
-      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
+    Enum.map(sources, fn source ->
+      rls = %RLS{source_id: source.token, source: source}
+      Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
     |> Enum.chunk_every(50)
     |> Enum.each(fn children ->
@@ -62,7 +59,7 @@ defmodule Logflare.Source.Supervisor do
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
-    {:noreply, source_ids}
+    {:noreply, sources}
   end
 
   def handle_cast({:create, source_id}, state) do
@@ -112,6 +109,8 @@ defmodule Logflare.Source.Supervisor do
         send(source_id, {:stop_please, :shutdown})
 
         Process.sleep(1_000)
+
+        reset_persisted_schema(source_id)
 
         case create_source(source_id) do
           {:ok, _pid} ->
@@ -165,7 +164,8 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp create_source(source_id) do
-    rls = %RLS{source_id: source_id}
+    source = Sources.get_by(token: source_id)
+    rls = %RLS{source_id: source_id, source: source}
 
     children = [
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
@@ -174,6 +174,15 @@ defmodule Logflare.Source.Supervisor do
     init_table(source_id)
 
     Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+  end
+
+  defp reset_persisted_schema(source_id) do
+    source = Sources.get_by(token: source_id)
+
+    Sources.get_source_schema_by(source_id: source.id)
+    |> Sources.update_source_schema(%{
+      bigquery_schema: SchemaBuilder.initial_table_schema()
+    })
   end
 
   defp init_table(source_id) do

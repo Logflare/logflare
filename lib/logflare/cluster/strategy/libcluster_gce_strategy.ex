@@ -17,6 +17,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
   @impl true
   def init([%State{} = state]) do
+    IO.inspect(state)
     {:ok, load(state)}
   end
 
