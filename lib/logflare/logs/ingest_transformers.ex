@@ -1,4 +1,6 @@
 defmodule Logflare.Logs.IngestTransformers do
+  import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
+
   def transform(batch, rules) do
     for log_params <- batch do
       Enum.reduce(rules, log_params, &do_transform(&2, &1))
@@ -67,22 +69,4 @@ defmodule Logflare.Logs.IngestTransformers do
         key
     end)
   end
-
-  defp update_all_keys_deep(data, fun) when is_map(data) do
-    data
-    |> Enum.map(fn
-      {k, v} when is_map(v) or is_list(v) ->
-        {fun.(k), update_all_keys_deep(v, fun)}
-
-      {k, v} ->
-        {fun.(k), v}
-    end)
-    |> Map.new()
-  end
-
-  defp update_all_keys_deep(data, fun) when is_list(data) do
-    Enum.map(data, &update_all_keys_deep(&1, fun))
-  end
-
-  defp update_all_keys_deep(data, _), do: data
 end
