@@ -182,6 +182,7 @@ defmodule Logflare.Source.Supervisor do
     # Everything crashed because this got a nil for the get_source_schema_by
     # Create a source then reset it before schema has had a chance to save it to PG
 
+    # Put management fns in a manager genserver so bad changes don't accidentally crash all the log servers
     # Require source schema when creating source
 
     Sources.get_source_schema_by(source_id: source.id)
