@@ -6,6 +6,7 @@ defmodule Logflare.Sources do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Rule
   alias Logflare.User
   alias Logflare.SavedSearch
@@ -24,6 +25,9 @@ defmodule Logflare.Sources do
     |> Repo.insert()
     |> case do
       {:ok, source} ->
+        {:ok, _source_schema} =
+          create_source_schema(source, %{bigquery_schema: SchemaBuilder.initial_table_schema()})
+
         Source.Supervisor.new_source(source.token)
 
         {:ok, source}

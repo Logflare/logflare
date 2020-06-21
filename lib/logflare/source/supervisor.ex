@@ -179,6 +179,12 @@ defmodule Logflare.Source.Supervisor do
   defp reset_persisted_schema(source_id) do
     source = Sources.get_by(token: source_id)
 
+    # Everything crashed because this got a nil for the get_source_schema_by
+    # Create a source then reset it before schema has had a chance to save it to PG
+
+    # Put management fns in a manager genserver so bad changes don't accidentally crash all the log servers
+    # Require source schema when creating source
+
     Sources.get_source_schema_by(source_id: source.id)
     |> Sources.update_source_schema(%{
       bigquery_schema: SchemaBuilder.initial_table_schema()

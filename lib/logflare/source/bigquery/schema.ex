@@ -40,7 +40,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def init(state) do
     Process.flag(:trap_exit, true)
 
-    persist()
+    persist(0)
 
     {:ok, state, {:continue, :boot}}
   end
@@ -118,12 +118,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_call({:update, %LogEvent{}}, _from, %{field_count: fc} = state) when fc >= 500,
     do: {:reply, :ok, state}
 
-  def handle_call(
-        {:update, %LogEvent{body: body, id: event_id}},
-        _from,
-        %{field_count: fc} = state
-      )
-      when fc < 500 do
+  def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
     # set_next_update_cluster(state.source_token)
     schema =
       try do
