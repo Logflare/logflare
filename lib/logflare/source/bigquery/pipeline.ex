@@ -182,6 +182,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         do: source.api_quota,
         else: plan.limit_rate_limit
 
-    Kernel.ceil(limit / 100)
+    # Really only one worker per pipeline. Some contention probably in the buffer.
+    Kernel.ceil(limit / 5000)
   end
 end
