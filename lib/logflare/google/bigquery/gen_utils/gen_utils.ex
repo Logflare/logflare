@@ -85,8 +85,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       {:ok, body} ->
         body["error"]["message"]
 
-      {:error, body} ->
-        body.data
+      {:error, data} ->
+        inspect(data)
     end
   end
 
