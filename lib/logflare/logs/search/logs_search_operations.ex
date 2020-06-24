@@ -144,6 +144,9 @@ defmodule Logflare.Logs.SearchOperations do
         path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.statusCode") ->
+          :vercel_status_codes
+
         true ->
           nil
       end
@@ -318,7 +321,10 @@ defmodule Logflare.Logs.SearchOperations do
               select_count_log_level(query)
 
             :cloudflare_status_codes ->
-              select_count_http_status_code(query)
+              select_count_cloudflare_http_status_code(query)
+
+            :vercel_status_codes ->
+              select_count_vercel_http_status_code(query)
 
             nil ->
               select_merge_agg_value(query, :count, :timestamp)

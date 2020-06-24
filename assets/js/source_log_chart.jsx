@@ -1,8 +1,8 @@
 import React from "react"
 import DateTime from "luxon/src/datetime"
-import {ResponsiveBarCanvas} from "@nivo/bar"
+import { ResponsiveBarCanvas } from "@nivo/bar"
 
-import {BarLoader} from "react-spinners"
+import { BarLoader } from "react-spinners"
 
 const brandLightBlack = "#1d1d1d"
 const brandGray = "#9a9a9a"
@@ -29,54 +29,54 @@ const theme = {
   },
 }
 
-const renderDefaultTooltip = ({value, color, indexValue}) => {
+const renderDefaultTooltip = ({ value, color, indexValue }) => {
   return (
     <div>
-      <strong style={{color}}>Timestamp: {indexValue}</strong>
+      <strong style={{ color }}>Timestamp: {indexValue}</strong>
       <br />
-      <strong style={{color}}>Value: {value}</strong>
+      <strong style={{ color }}>Value: {value}</strong>
     </div>
   )
 }
 
-const renderCfStatusCodeTooltip = ({data, color}) => {
+const renderCfStatusCodeTooltip = ({ data, color }) => {
   return (
     <div>
-      <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
+      <strong style={{ color: brandGray }}>Timestamp: {data.timestamp}</strong>
       <br />
-      <strong style={{color: brandGray}}>Total: {data.total}</strong>
+      <strong style={{ color: brandGray }}>Total: {data.total}</strong>
       <br />
-      <strong style={{color: errorColor}}>5xx: {data.status_5xx}</strong>
+      <strong style={{ color: errorColor }}>5xx: {data.status_5xx}</strong>
       <br />
-      <strong style={{color: warnColor}}>4xx: {data.status_4xx}</strong>
+      <strong style={{ color: warnColor }}>4xx: {data.status_4xx}</strong>
       <br />
-      <strong style={{color: secondInfoColor}}>3xx: {data.status_3xx}</strong>
+      <strong style={{ color: secondInfoColor }}>3xx: {data.status_3xx}</strong>
       <br />
-      <strong style={{color: infoColor}}>2xx: {data.status_2xx}</strong>
+      <strong style={{ color: infoColor }}>2xx: {data.status_2xx}</strong>
       <br />
-      <strong style={{color: debugColor}}>1xx: {data.status_1xx}</strong>
+      <strong style={{ color: debugColor }}>1xx: {data.status_1xx}</strong>
       <br />
-      <strong style={{color: brandGray}}>Other: {data.other}</strong>
+      <strong style={{ color: brandGray }}>Other: {data.other}</strong>
     </div>
   )
 }
 
-const renderElixirLoggerTooltip = ({data, color}) => {
+const renderElixirLoggerTooltip = ({ data, color }) => {
   return (
     <div>
-      <strong style={{color: brandGray}}>Timestamp: {data.timestamp}</strong>
+      <strong style={{ color: brandGray }}>Timestamp: {data.timestamp}</strong>
       <br />
-      <strong style={{color: brandGray}}>Total: {data.total}</strong>
+      <strong style={{ color: brandGray }}>Total: {data.total}</strong>
       <br />
-      <strong style={{color: errorColor}}>Error: {data.level_error}</strong>
+      <strong style={{ color: errorColor }}>Error: {data.level_error}</strong>
       <br />
-      <strong style={{color: warnColor}}>Warn: {data.level_warn}</strong>
+      <strong style={{ color: warnColor }}>Warn: {data.level_warn}</strong>
       <br />
-      <strong style={{color: infoColor}}>Info: {data.level_info}</strong>
+      <strong style={{ color: infoColor }}>Info: {data.level_info}</strong>
       <br />
-      <strong style={{color: debugColor}}>Debug: {data.level_debug}</strong>
+      <strong style={{ color: debugColor }}>Debug: {data.level_debug}</strong>
       <br />
-      <strong style={{color: brandGray}}>Other: {data.other}</strong>
+      <strong style={{ color: brandGray }}>Other: {data.other}</strong>
     </div>
   )
 }
@@ -87,6 +87,8 @@ const tooltipFactory = (dataShape) => {
       return renderElixirLoggerTooltip
     case "cloudflare_status_codes":
       return renderCfStatusCodeTooltip
+    case "vercel_status_codes":
+      return renderCfStatusCodeTooltip
     default:
       return renderDefaultTooltip
   }
@@ -96,7 +98,7 @@ const chartSettings = (type) => {
   switch (type) {
     case "elixir_logger_levels":
       return {
-        colors: ({id}) => {
+        colors: ({ id }) => {
           const color = {
             level_info: infoColor,
             level_error: errorColor,
@@ -117,7 +119,30 @@ const chartSettings = (type) => {
 
     case "cloudflare_status_codes":
       return {
-        colors: ({id}) => {
+        colors: ({ id }) => {
+          const color = {
+            status_5xx: errorColor,
+            status_4xx: warnColor,
+            status_3xx: secondInfoColor,
+            status_2xx: infoColor,
+            status_1xx: debugColor,
+            other: brandGray,
+          }[id]
+          return color || brandGray
+        },
+        keys: [
+          "status_5xx",
+          "status_4xx",
+          "status_3xx",
+          "status_2xx",
+          "status_1xx",
+          "other",
+        ],
+      }
+
+    case "vercel_status_codes":
+      return {
+        colors: ({ id }) => {
           const color = {
             status_5xx: errorColor,
             status_4xx: warnColor,
@@ -157,13 +182,13 @@ const LogEventsChart = ({
     window.stopLiveSearch()
     const utcDatetime = event.data.datetime
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const start = DateTime.fromISO(utcDatetime, {zone: tz}).toISO({
+    const start = DateTime.fromISO(utcDatetime, { zone: tz }).toISO({
       includeOffset: false,
       suppressMilliseconds: true,
       format: "extended",
     })
-    const end = DateTime.fromISO(utcDatetime, {zone: tz})
-      .plus({[chartPeriod + "s"]: 1})
+    const end = DateTime.fromISO(utcDatetime, { zone: tz })
+      .plus({ [chartPeriod + "s"]: 1 })
       .toISO({
         includeOffset: false,
         suppressMilliseconds: true,
@@ -196,28 +221,28 @@ const LogEventsChart = ({
           />
         </div>
       ) : (
-        <ResponsiveBarCanvas
-          data={data}
-          margin={{top: 20, right: 0, bottom: 0, left: 0}}
-          padding={0.3}
-          enableGridY={true}
-          indexBy={"timestamp"}
-          tooltip={renderTooltip}
-          axisTop={null}
-          axisRight={null}
-          axisBottom={null}
-          axisLeft={null}
-          enableLabel={false}
-          animate={true}
-          onClick={onClick}
-          motionStiffness={90}
-          motionDamping={15}
-          theme={theme}
-          {...chartSettings(chartDataShapeId)}
-        />
-      )}
+          <ResponsiveBarCanvas
+            data={data}
+            margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
+            padding={0.3}
+            enableGridY={true}
+            indexBy={"timestamp"}
+            tooltip={renderTooltip}
+            axisTop={null}
+            axisRight={null}
+            axisBottom={null}
+            axisLeft={null}
+            enableLabel={false}
+            animate={true}
+            onClick={onClick}
+            motionStiffness={90}
+            motionDamping={15}
+            theme={theme}
+            {...chartSettings(chartDataShapeId)}
+          />
+        )}
     </div>
   )
 }
 
-export {LogEventsChart}
+export { LogEventsChart }
