@@ -144,7 +144,7 @@ defmodule Logflare.Logs.SearchOperations do
         path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.statusCode") ->
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
           :vercel_status_codes
 
         true ->

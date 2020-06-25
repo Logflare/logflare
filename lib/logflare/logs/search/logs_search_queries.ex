@@ -111,7 +111,7 @@ defmodule Logflare.Logs.SearchQueries do
 
   def select_count_vercel_http_status_code(q) do
     q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.statusCode")
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.proxy.statusCode")
     |> select_merge([..., t], %{
       other:
         fragment(

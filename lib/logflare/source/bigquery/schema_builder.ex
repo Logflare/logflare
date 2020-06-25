@@ -135,7 +135,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
         when is_list(old_fields)
         when is_list(new_fields) do
       # collect all names for new fields schemas
-      new_fields_names = Enum.map(new_fields, & &1.name)
+      new_fields_names = Enum.map(new_fields || [], & &1.name)
 
       # filter field schemas that are present only in old table field schema
       uniq_old_fs = for fs <- old_fields, fs.name not in new_fields_names, do: fs
