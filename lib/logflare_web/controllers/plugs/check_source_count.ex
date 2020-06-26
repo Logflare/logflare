@@ -3,6 +3,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
   import Plug.Conn
   import Phoenix.Controller
   alias LogflareWeb.Router.Helpers, as: Routes
+  alias Logflare.BillingAccounts
 
   def init(_params) do
   end
@@ -20,11 +21,41 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
         |> redirect(to: Routes.source_path(conn, :dashboard))
         |> halt()
       else
-        conn
+        update_stripe_count_and_return(conn, source_count)
       end
     else
       conn
     end
+  end
+
+  defp update_stripe_count_and_return(
+         %{assigns: %{user: user}, method: "POST"} = conn,
+         source_count
+       ) do
+    {:ok, item} =
+      BillingAccounts.get_billing_account_by(user_id: user.id)
+      |> BillingAccounts.get_billing_account_stripe_subscription_item()
+
+    if item do
+      BillingAccounts.Stripe.update_subscription_item(item["id"], %{quantity: source_count + 1})
+    end
+
+    conn
+  end
+
+  defp update_stripe_count_and_return(
+         %{assigns: %{user: user}, method: "DELETE"} = conn,
+         source_count
+       ) do
+    {:ok, item} =
+      BillingAccounts.get_billing_account_by(user_id: user.id)
+      |> BillingAccounts.get_billing_account_stripe_subscription_item()
+
+    if item do
+      BillingAccounts.Stripe.update_subscription_item(item["id"], %{quantity: source_count - 1})
+    end
+
+    conn
   end
 
   def call(conn, _params), do: conn

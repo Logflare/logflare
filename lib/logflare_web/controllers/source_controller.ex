@@ -1,6 +1,6 @@
 defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
-  plug LogflareWeb.Plugs.CheckSourceCount when action in [:new, :create]
+  plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :del_source_and_redirect]
 
   plug LogflareWeb.Plugs.SetVerifySource
        when action in [
@@ -8,6 +8,7 @@ defmodule LogflareWeb.SourceController do
               :edit,
               :update,
               :delete,
+              :del_source_and_redirect,
               :clear_logs,
               :rejected_logs,
               :favorite,
@@ -350,14 +351,12 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def del_source_and_redirect(conn, %{"id" => source_id}) do
-    source = Sources.get(source_id)
-
+  def del_source_and_redirect(%{assigns: %{source: source}} = conn, _params) do
     if :ets.info(source.token) != :undefined do
       Supervisor.delete_source(source.token)
     end
 
-    case Repo.delete(source) do
+    case Sources.delete_source(source) do
       {:ok, _response} ->
         put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")
 

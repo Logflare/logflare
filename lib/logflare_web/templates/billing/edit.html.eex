@@ -14,10 +14,7 @@
   <h4 class="header-margin">Billing Account</h4>
   <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
   <div class="sub-form">
-    <h5 class="header-margin">Launch Offer</h5>
-  </div>
-  <div class="sub-form">
-    <h5 class="header-margin">Pick a Standard Plan</h5>
+    <h5 class="header-margin">Pick a Plan</h5>
     <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
   </div>
   <div class="sub-form">
@@ -31,7 +28,7 @@
     <table class="table table-dark">
       <thead>
         <tr>
-          <th scope="col">Plan</th>
+          <th scope="col">Id</th>
           <th scope="col">Price</th>
           <th scope="col">Next invoice</th>
           <th scope="col">Trial start</th>
@@ -42,7 +39,7 @@
       <tbody>
         <%= if @user.billing_account.stripe_subscriptions["data"] do %> <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
             <tr>
-              <td><%= sub["plan"]["nickname"] %></td>
+              <td><%= sub["id"] %></td>
               <td><%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %></td>
               <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
                 <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>

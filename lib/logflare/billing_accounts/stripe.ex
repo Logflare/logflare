@@ -5,6 +5,7 @@ defmodule Logflare.BillingAccounts.Stripe do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
   alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.Plans.Plan
 
   def create_add_credit_card_session(%BillingAccount{} = billing_account) do
     stripe_customer_id = billing_account.stripe_customer
@@ -22,13 +23,20 @@ defmodule Logflare.BillingAccounts.Stripe do
     Stripe.Session.create(params)
   end
 
-  def create_customer_session(%BillingAccount{stripe_customer: stripe_customer_id}, plan) do
+  def create_customer_session(
+        %BillingAccount{stripe_customer: stripe_customer_id},
+        %Plan{stripe_id: stripe_id} = _plan
+      ) do
     params = %{
       customer: stripe_customer_id,
+      mode: "subscription",
       payment_method_types: ["card"],
       success_url: Routes.billing_url(Endpoint, :success),
       cancel_url: Routes.billing_url(Endpoint, :abandoned),
-      subscription_data: %{items: [%{plan: plan.stripe_id}], trial_period_days: 14}
+      line_items: [
+        %{price: stripe_id, quantity: 10}
+      ],
+      subscription_data: %{trial_from_plan: true}
     }
 
     Stripe.Session.create(params)
@@ -87,5 +95,13 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def list_stripe_events_by(params) when is_map(params) do
     Stripe.Event.list(params)
+  end
+
+  def get_subscription_item(id, opts \\ []) do
+    Stripe.SubscriptionItem.retrieve(id, opts)
+  end
+
+  def update_subscription_item(id, params, opts \\ []) do
+    Stripe.SubscriptionItem.update(id, params, opts)
   end
 end

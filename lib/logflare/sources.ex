@@ -2,6 +2,9 @@ defmodule Logflare.Sources do
   @moduledoc """
   Sources-related context
   """
+
+  import Ecto.Query, only: [from: 2]
+
   alias Logflare.{Repo, Source, Tracker, Cluster}
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Schema
@@ -9,8 +12,8 @@ defmodule Logflare.Sources do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Rule
   alias Logflare.User
+  alias Logflare.BillingAccounts
   alias Logflare.SavedSearch
-
   alias Logflare.Sources.SourceSchema
 
   require Logger
@@ -44,6 +47,14 @@ defmodule Logflare.Sources do
   def get(source_id) do
     Source
     |> Repo.get(source_id)
+  end
+
+  def get_sources_by_user(%User{id: id}) do
+    from(s in Source,
+      where: s.user_id == ^id,
+      select: s
+    )
+    |> Repo.all()
   end
 
   def update_source(changeset) do
@@ -80,6 +91,16 @@ defmodule Logflare.Sources do
       node_rate_limiter_failsafe(node_metrics, cluster_size)
     else
       Tracker.Cache.get_cluster_rates(source.token).limiter_metrics
+    end
+  end
+
+  def delete_source(source) do
+    case Repo.delete(source) do
+      {:ok, response} ->
+        {:ok, response}
+
+      {:error, response} ->
+        {:error, response}
     end
   end
 

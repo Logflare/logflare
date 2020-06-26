@@ -22,7 +22,7 @@ defmodule LogflareWeb.BillingPlansLive do
 
   def render(assigns) do
     ~L"""
-    <p>Showing pricing per <%= @period %>. Get 20% off the monthly price if you choose a yearly plan.</p>
+    <p>Showing pricing per <%= @period %>. Get 2 months free if you choose a yearly plan.</p>
     <button phx-click="switch_period" phx-value-period=<%= period!(@period) %> class="btn btn-primary">See pricing per <%= period!(@period) %></button>
     <div class="scrolling-wrapper">
     <div class="container mt-5 min-pricing-width">
@@ -31,77 +31,109 @@ defmodule LogflareWeb.BillingPlansLive do
         <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Free</span>
         <div class="bg-transparent card-header pt-4 border-0">
           <h1 class="h1 font-weight-normal text-center mb-0">$<span class="price">0</span></h1>
-          <span class="h6 text-muted ml-2">/ per <%= @period %></span>
+          <span class="h6 text-muted ml-2">/ per <%= @period %></span> <br>
+          <span class="h6 text-muted ml-2">/ per source</span>
         </div>
         <div class="card-body pt-0">
           <ul class="list-unstyled mb-4">
-            <li>Alerts every 1 hour</li>
+            <li>Alerts every 4 hours</li>
             <li>No custom backend</li>
-            <li>Rate limit 2/second</li>
-            <li>120 burst per second</li>
-            <li>5,200,000 events/month</li>
-            <li>Up to 3 sources</li>
-            <li>7 day event history</li>
+            <li>No Data Studio integration</li>
+            <li>Rate limit 5/second</li>
+            <li>300 burst per second</li>
+            <li>12,960,000 events/month</li>
+            <li>Up to 1 source</li>
+            <li>Up to 3 saved searches</li>
+            <li>3 day event history</li>
             <li>0 additional users</li>
+            <li>Up to 50 fields</li>
           </ul>
         </div>
       </div>
       <div class="card card-pricing text-center px-3 mb-4">
-        <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Entry</span>
+        <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Hobby</span>
         <div class="bg-transparent card-header pt-4 border-0">
-          <h1 class="h1 font-weight-normal text-center mb-0"><span class="price"><%= find_plan(@plans, @period, "Entry").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
-          <span class="h6 text-muted ml-2">/ per <%= @period %></span>
+          <h1 class="h1 font-weight-normal text-center mb-0"><span class="price"><%= find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
+          <span class="h6 text-muted ml-2">/ per <%= @period %></span> <br>
+          <span class="h6 text-muted ml-2">/ per source</span>
         </div>
         <div class="card-body pt-0">
           <ul class="list-unstyled mb-4">
-            <li>Alerts every 15 minutes</li>
+            <li>Alerts every 1 hour</li>
             <li>BYOB BigQuery</li>
-            <li>Rate limit 5/second</li>
-            <li>300 burst per second</li>
-            <li>13,000,000 events/month</li>
+            <li>Data Studio integration</li>
+            <li>Unlimited events (fair use)</li>
             <li>Up to 5 sources</li>
-            <li>Unlimited*</li>
-            <li>2 additional users</li>
+            <li>Up to 8 saved searches</li>
+            <li>7 day event history</li>
+            <li>1 additional user</li>
+            <li>Up to 100 fields</li>
           </ul>
-          <%= link "Subscribe", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => find_plan(@plans, @period, "Entry").stripe_id}), class: "btn btn-primary form-button" %>
+          <%= link "Subscribe", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => find_plan(@plans, @period, "Hobby").stripe_id}), class: "btn btn-primary form-button" %>
         </div>
       </div>
       <div class="card card-pricing text-center px-3 mb-4">
         <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Professional</span>
         <div class="bg-transparent card-header pt-4 border-0">
           <h1 class="h1 font-weight-normal text-center mb-0"><span class="price"><%= find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
-          <span class="h6 text-muted ml-2">/ per <%= @period %></span>
+          <span class="h6 text-muted ml-2">/ per <%= @period %></span> <br>
+          <span class="h6 text-muted ml-2">/ per source</span>
         </div>
         <div class="card-body pt-0">
-          <ul class="list-unstyled mb-4">
-            <li>Alerts every 5 minutes</li>
+            <ul class="list-unstyled mb-4">
+            <li>Alerts every 15 minutes</li>
             <li>BYOB BigQuery</li>
-            <li>Rate limit 19/second</li>
-            <li>1,140 burst per second</li>
-            <li>50,000,000 events/month</li>
-            <li>Up to 20 sources</li>
-            <li>Unlimited*</li>
-            <li>20 additional users</li>
+            <li>Data Studio integration</li>
+            <li>Unlimited events (fair use)</li>
+            <li>Up to 10 sources</li>
+            <li>Up to 15 saved searches</li>
+            <li>30 day event history</li>
+            <li>4 additional users</li>
+            <li>Up to 250 fields</li>
           </ul>
           <%= link "Subscribe", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => find_plan(@plans, @period, "Pro").stripe_id}), class: "btn btn-primary form-button" %>
         </div>
       </div>
       <div class="card card-pricing text-center px-3 mb-4">
+        <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Business</span>
+        <div class="bg-transparent card-header pt-4 border-0">
+          <h1 class="h1 font-weight-normal text-center mb-0"><span class="h6 text-muted ml-2"></span><span class="price"><%= find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
+          <span class="h6 text-muted ml-2">/ per <%= @period %></span> <br>
+          <span class="h6 text-muted ml-2">/ per source</span>
+        </div>
+        <div class="card-body pt-0">
+          <ul class="list-unstyled mb-4">
+            <li>Alerts every 1 minute</li>
+            <li>BYOB BigQuery</li>
+            <li>Data Studio integration</li>
+            <li>Unlimited events (fair use)</li>
+            <li>Up to 20 sources</li>
+            <li>Up to 30 saved searches</li>
+            <li>60 day event history</li>
+            <li>9 additional users</li>
+            <li>Up to 500 fields</li>
+          </ul>
+          <%= link "Subscribe", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => find_plan(@plans, @period, "Business").stripe_id}), class: "btn btn-primary form-button" %>
+        </div>
+      </div>
+      <div class="card card-pricing text-center px-3 mb-4">
         <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Enterprise</span>
         <div class="bg-transparent card-header pt-4 border-0">
-          <h1 class="h1 font-weight-normal text-center mb-0"><span class="h6 text-muted ml-2"></span><span class="price"><%= find_plan(@plans, @period, "Enterprise").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
-          <span class="h6 text-muted ml-2">/ starting per <%= @period %></span>
+          <h1 class="h1 font-weight-normal text-center mb-0"><span class="h6 text-muted ml-2"></span><span class="price"><%= 2000 |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
+          <span class="h6 text-muted ml-2">/ starting per <%= @period %></span> <br>
+          <span class="h6 text-muted ml-2">/ per source</span>
         </div>
         <div class="card-body pt-0">
           <ul class="list-unstyled mb-4">
             <li>Alerts every 1 second</li>
-            <li>Custom</li>
-            <li>Unlimited</li>
-            <li>Unlimited</li>
-            <li>1 billion+ events/month</li>
-            <li>100+</li>
-            <li>Unlimited</li>
-            <li>Unlimited</li>
+            <li>BYOB BigQuery</li>
+            <li>Any BI integration</li>
+            <li>Unlimited events (fair use)</li>
+            <li>Up to 100 sources</li>
+            <li>Up to 100 saved searches</li>
+            <li>Unlimited event history</li>
+            <li>Unlimited additional users</li>
+            <li>Up to 10,000 fields</li>
           </ul>
           <%= link "Contact us", to: Routes.contact_path(@socket, :contact), class: "btn btn-primary form-button" %>
         </div>
