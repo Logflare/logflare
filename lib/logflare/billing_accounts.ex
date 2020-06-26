@@ -164,8 +164,63 @@ defmodule Logflare.BillingAccounts do
     BillingAccount.changeset(billing_account, %{})
   end
 
+  def get_billing_account_stripe_plan(billing_account) when is_nil(billing_account),
+    do: {:ok, nil}
+
   def get_billing_account_stripe_plan(%BillingAccount{} = billing_account) do
-    data = billing_account.stripe_subscriptions["data"] |> hd
-    {:ok, data["plan"]}
+    plan =
+      case billing_account.stripe_subscriptions["data"] do
+        nil ->
+          nil
+
+        [] ->
+          nil
+
+        list ->
+          first = list |> hd
+          first["plan"]
+      end
+
+    {:ok, plan}
+  end
+
+  def get_billing_account_stripe_subscription(billing_account) when is_nil(billing_account),
+    do: {:ok, nil}
+
+  def get_billing_account_stripe_subscription(%BillingAccount{} = billing_account) do
+    sub =
+      case billing_account.stripe_subscriptions["data"] do
+        nil ->
+          nil
+
+        [] ->
+          nil
+
+        list ->
+          list |> hd
+      end
+
+    {:ok, sub}
+  end
+
+  def get_billing_account_stripe_subscription_item(billing_account) when is_nil(billing_account),
+    do: {:ok, nil}
+
+  def get_billing_account_stripe_subscription_item(%BillingAccount{} = billing_account) do
+    item =
+      case billing_account.stripe_subscriptions["data"] do
+        nil ->
+          nil
+
+        [] ->
+          nil
+
+        list ->
+          sub = list |> hd
+
+          sub["items"]["data"] |> hd
+      end
+
+    {:ok, item}
   end
 end
