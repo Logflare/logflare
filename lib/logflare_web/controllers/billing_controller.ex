@@ -47,9 +47,7 @@ defmodule LogflareWeb.BillingController do
     |> redirect(to: Routes.user_path(conn, :edit) <> "#billing-account")
   end
 
-  def edit(%{assigns: %{user: user}} = conn, _params) do
-    IO.inspect(user.billing_account)
-
+  def edit(%{assigns: %{user: _user}} = conn, _params) do
     conn
     |> render("edit.html")
   end
