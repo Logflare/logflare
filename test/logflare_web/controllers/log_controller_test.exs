@@ -369,17 +369,13 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert %Logflare.LogEvent.Body{
                created_at: nil,
-               message: " |  |  |  |  | ",
+               message: "yo",
                metadata: %{
-                 "metadata" => %{
-                   "context" => %{"host" => "ontospace", "pid" => 324_199.0},
-                   "level" => "info",
-                   "number1" => 1.0
-                 },
-                 "message" => "yo",
-                 "timestamp" => 1_593_455_694_611
+                 "context" => %{"host" => "ontospace", "pid" => 324_199.0},
+                 "level" => "info",
+                 "number1" => 1.0
                },
-               timestamp: 1_593_455_694_611_000
+               timestamp: _
              } = le.body
     end
   end
