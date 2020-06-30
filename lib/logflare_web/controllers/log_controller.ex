@@ -1,5 +1,6 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
+  alias Logflare.Logs.IngestTypecasting
 
   plug CORSPlug,
        [
@@ -84,6 +85,13 @@ defmodule LogflareWeb.LogController do
 
   def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
       when is_list(batch) do
+    ingest_and_render(conn, batch, source)
+  end
+
+  def create_with_typecasts(%{assigns: %{source: source}} = conn, %{"batch" => batch})
+      when is_list(batch) do
+    batch = IngestTypecasting.maybe_cast_batch(batch)
+
     ingest_and_render(conn, batch, source)
   end
 

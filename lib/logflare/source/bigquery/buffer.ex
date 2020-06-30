@@ -16,8 +16,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
       __MODULE__,
       %{
         source_id: source_id,
-        buffer: :queue.new(),
-        read_receipts: %{}
+        buffer: :queue.new()
       },
       name: name(source_id)
     )
@@ -73,9 +72,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
       {:reply, :empty, state}
     else
       {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
-      new_read_receipts = Map.put(state.read_receipts, log_event.id, log_event)
 
-      new_state = %{state | buffer: new_buffer, read_receipts: new_read_receipts}
+      Sources.BuffersCache.put_read_receipt(log_event)
+
+      new_state = %{state | buffer: new_buffer}
 
       Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
       {:reply, log_event, new_state}
@@ -83,23 +83,17 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_call({:ack, log_event_id}, _from, state) do
-    if Enum.empty?(state.read_receipts) do
-      {:reply, {:error, :empty}, state}
-    else
-      case Map.pop(state.read_receipts, log_event_id) do
-        {nil, _read_receipts} ->
-          Logger.warn("Log event not found when acknowledged.",
-            source_id: state.source_id,
-            log_event_id: log_event_id
-          )
+    case Sources.BuffersCache.take_read_receipt(log_event_id) do
+      {:ok, nil} ->
+        Logger.warn("Log event not found when acknowledged.",
+          source_id: state.source_id,
+          log_event_id: log_event_id
+        )
 
-          {:reply, {:error, :not_found}, state}
+        {:reply, {:error, :not_found}, state}
 
-        {%LE{} = log_event, new_read_receipts} ->
-          new_state = %{state | read_receipts: new_read_receipts}
-
-          {:reply, {:ok, log_event}, new_state}
-      end
+      {:ok, %LE{} = log_event} ->
+        {:reply, {:ok, log_event}, state}
     end
   end
 

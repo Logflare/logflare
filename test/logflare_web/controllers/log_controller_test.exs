@@ -330,6 +330,60 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "typecasting endpoint" do
+    test "works correctly", %{conn: conn, users: [u | _], sources: [s]} do
+      params = %{
+        "batch" => [
+          %{
+            "body" => %{
+              "message" => "yo",
+              "metadata" => %{
+                "context" => %{"host" => "ontospace", "pid" => "324199"},
+                "level" => "info",
+                "number1" => "1"
+              },
+              "timestamp" => 1_593_455_694_611
+            },
+            "typecasts" => [
+              %{"from" => "string", "path" => ["metadata", "number1"], "to" => "float"},
+              %{"from" => "string", "path" => ["metadata", "context", "pid"], "to" => "float"}
+            ]
+          }
+        ],
+        "source" => Atom.to_string(s.token)
+      }
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(
+          log_path(conn, :create_with_typecasts),
+          params
+        )
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert SourceBuffer.get_count(s.token) == 1
+      [le] = SourceBuffer.get_log_events(s.token)
+
+      sname = s.name
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message: " |  |  |  |  | ",
+               metadata: %{
+                 "metadata" => %{
+                   "context" => %{"host" => "ontospace", "pid" => 324_199.0},
+                   "level" => "info",
+                   "number1" => 1.0
+                 },
+                 "message" => "yo",
+                 "timestamp" => 1_593_455_694_611
+               },
+               timestamp: 1_593_455_694_611_000
+             } = le.body
+    end
+  end
+
   def metadata() do
     %{
       "datacenter" => "aws",
