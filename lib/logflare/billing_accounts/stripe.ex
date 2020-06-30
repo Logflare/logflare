@@ -53,6 +53,15 @@ defmodule Logflare.BillingAccounts.Stripe do
     end
   end
 
+  def create_billing_portal_session(%BillingAccount{} = billing_account) do
+    params = %{
+      customer: billing_account.stripe_customer,
+      return_url: Routes.billing_url(Endpoint, :edit)
+    }
+
+    Stripe.BillingPortal.Session.create(params)
+  end
+
   def list_customer_invoices(stripe_customer_id) do
     params = %{customer: stripe_customer_id}
     Stripe.Invoice.list(params)
