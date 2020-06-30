@@ -103,9 +103,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_call(:get_log_events, _from, state) do
-    les =
-      state.buffer
-      |> Enum.to_list()
+    {les, _} = state.buffer
 
     {:reply, les, state}
   end
