@@ -16,7 +16,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
       __MODULE__,
       %{
         source_id: source_id,
-        buffer: :queue.new()
+        buffer: :queue.new(),
+        len: 0
       },
       name: name(source_id)
     )
@@ -25,7 +26,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def init(state) do
     Process.flag(:trap_exit, true)
 
-    Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
+    Sources.Buffers.put_buffer_len(state.source_id, state.len)
 
     {:ok, state, {:continue, :boot}}
   end
@@ -43,7 +44,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   @spec pop(atom | binary) :: any
   def pop(source_id) do
-    GenServer.call(name(source_id), :pop)
+    GenServer.call(name(source_id), :pop, 60_000)
   end
 
   @spec ack(atom(), String.t()) :: {:ok, LE.t()}
@@ -61,24 +62,28 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
-    new_state = %{state | buffer: new_buffer}
-    Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
-    {:noreply, new_state}
+    len = state.len + 1
+
+    Sources.Buffers.put_buffer_len(state.source_id, len)
+
+    {:noreply, %{state | len: len, buffer: new_buffer}}
   end
 
   def handle_call(:pop, _from, state) do
     if :queue.is_empty(state.buffer) do
-      Sources.Buffers.put_buffer_len(state.source_id, state.buffer)
-      {:reply, :empty, state}
+      Sources.Buffers.put_buffer_len(state.source_id, 0)
+
+      {:reply, :empty, %{state | len: 0}}
     else
       {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
 
       Sources.BuffersCache.put_read_receipt(log_event)
 
-      new_state = %{state | buffer: new_buffer}
+      len = state.len - 1
 
-      Sources.Buffers.put_buffer_len(state.source_id, new_buffer)
-      {:reply, log_event, new_state}
+      Sources.Buffers.put_buffer_len(state.source_id, len)
+
+      {:reply, log_event, %{state | len: len, buffer: new_buffer}}
     end
   end
 

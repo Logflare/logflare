@@ -14,8 +14,7 @@ defmodule Logflare.Sources.Buffers do
     }
   end
 
-  def put_buffer_len(source_id, buffer) when is_atom(source_id) do
-    len = :queue.len(buffer)
+  def put_buffer_len(source_id, len) when is_atom(source_id) do
     Cachex.put(@cache, source_id, len)
   end
 
