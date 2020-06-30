@@ -161,7 +161,7 @@ defmodule Logflare.Mixfile do
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
 
       # Billing
-      {:stripity_stripe, "~> 2.7.1"},
+      {:stripity_stripe, "~> 2.9.0"},
       {:money, "~> 1.7"},
 
       # Utils
