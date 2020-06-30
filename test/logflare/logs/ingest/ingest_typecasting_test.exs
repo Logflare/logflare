@@ -5,61 +5,70 @@ defmodule Logflare.Logs.IngestTypecastingTest do
 
   describe "maybe cast batch" do
     test "batch 1" do
+      typecasts = [
+        %{
+          "from" => "string",
+          "to" => "float",
+          "path" => ["metadata", "key1", "key2", "key3"]
+        },
+        %{
+          "from" => "string",
+          "to" => "float",
+          "path" => ["metadata", "key1.1", "key2.1", "key3"]
+        }
+      ]
+
       batch = [
         %{
-          "message" => "message 1",
-          "metadata" => %{
-            "key1" => %{
-              "key2" => [
-                %{"key3" => "3.1415"},
-                %{"key3" => "3.1415"},
-                %{"key3.1" => "just a string"}
-              ]
+          "body" => %{
+            "message" => "message 1",
+            "metadata" => %{
+              "key1" => %{
+                "key2" => [
+                  %{"key3" => "3.1415"},
+                  %{"key3" => "3.1415"},
+                  %{"key3.1" => "just a string"}
+                ]
+              }
             }
-          }
+          },
+          "typecasts" => typecasts
         },
         %{
-          "message" => "message 2",
-          "metadata" => %{
-            "key1.1" => %{
-              "key2.1" => [
-                %{"key3" => "3.1415"},
-                %{"key3" => "3.1415"},
-                %{"key3.1" => "just a string"}
-              ]
-            }
-          }
-        },
-        %{
-          "message" => "message 3",
-          "metadata" => %{
-            "key1.1" => [
-              %{
+          "body" => %{
+            "message" => "message 2",
+            "metadata" => %{
+              "key1.1" => %{
                 "key2.1" => [
                   %{"key3" => "3.1415"},
                   %{"key3" => "3.1415"},
                   %{"key3.1" => "just a string"}
                 ]
               }
-            ]
-          }
-        }
-      ]
-
-      typecasts = [
-        %{
-          from: "string",
-          to: "float",
-          path: ["metadata", "key1", "key2", "key3"]
+            }
+          },
+          "typecasts" => typecasts
         },
         %{
-          from: "string",
-          to: "float",
-          path: ["metadata", "key1.1", "key2.1", "key3"]
+          "body" => %{
+            "message" => "message 3",
+            "metadata" => %{
+              "key1.1" => [
+                %{
+                  "key2.1" => [
+                    %{"key3" => "3.1415"},
+                    %{"key3" => "3.1415"},
+                    %{"key3.1" => "just a string"}
+                  ]
+                }
+              ]
+            }
+          },
+          "typecasts" => typecasts
         }
       ]
 
-      result = maybe_cast_batch(batch, %{"schemaTypecasts" => typecasts})
+      result = maybe_cast_batch(batch)
 
       assert result == [
                %{
@@ -107,28 +116,28 @@ defmodule Logflare.Logs.IngestTypecastingTest do
   describe "typecasting strings to numbers" do
     test "strings to numbers" do
       casted =
-        cast(
-          %{
+        maybe_cast_log_params(%{
+          "body" => %{
             "metadata" => %{
               "key1" => "10000.00001"
             }
           },
-          [
+          "typecasts" => [
             %{
-              from: "string",
-              to: "float",
-              path: ["metadata", "key1"]
+              "from" => "string",
+              "to" => "float",
+              "path" => ["metadata", "key1"]
             }
           ]
-        )
+        })
 
       assert casted == %{"metadata" => %{"key1" => 10000.00001}}
     end
 
     test "nested strings to numbers" do
       casted =
-        cast(
-          %{
+        maybe_cast_log_params(%{
+          "body" => %{
             "metadata" => %{
               "key1" => "10000.00001",
               "key2" => %{
@@ -147,24 +156,24 @@ defmodule Logflare.Logs.IngestTypecastingTest do
               }
             }
           },
-          [
+          "typecasts" => [
             %{
-              from: "string",
-              to: "float",
-              path: ["metadata", "key2", "key3.1"]
+              "from" => "string",
+              "to" => "float",
+              "path" => ["metadata", "key2", "key3.1"]
             },
             %{
-              from: "string",
-              to: "float",
-              path: ["metadata", "key2", "key3", "key4"]
+              "from" => "string",
+              "to" => "float",
+              "path" => ["metadata", "key2", "key3", "key4"]
             },
             %{
-              from: "string",
-              to: "float",
-              path: ["metadata", "key1"]
+              "from" => "string",
+              "to" => "float",
+              "path" => ["metadata", "key1"]
             }
           ]
-        )
+        })
 
       assert casted == %{
                "metadata" => %{
