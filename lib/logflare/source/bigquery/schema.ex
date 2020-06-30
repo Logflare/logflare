@@ -96,7 +96,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def update_cluster(source_token, schema, type_map, field_count) do
-    GenServer.multi_call(
+    GenServer.abcast(
       Node.list(),
       name(source_token),
       {:update, schema, type_map, field_count}
@@ -239,10 +239,10 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_call({:update, schema, type_map, field_count}, _from, state) do
+  def handle_cast({:update, schema, type_map, field_count}, state) do
     Sources.Cache.put_bq_schema(state.source_token, schema)
 
-    {:reply, :ok,
+    {:noreply,
      %{
        state
        | schema: schema,
