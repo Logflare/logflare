@@ -151,7 +151,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           type_map = BigQuery.SchemaUtils.to_typemap(schema)
           field_count = count_fields(type_map)
 
-          # update_cluster(state.source_token, schema, type_map, field_count)
+          update_cluster(state.source_token, schema, type_map, field_count)
 
           Logger.info("Source schema updated from log_event!",
             source_id: state.source_token,
@@ -186,7 +186,7 @@ defmodule Logflare.Source.BigQuery.Schema do
                       type_map = BigQuery.SchemaUtils.to_typemap(schema)
                       field_count = count_fields(type_map)
 
-                      # update_cluster(state.source_token, schema, type_map, field_count)
+                      update_cluster(state.source_token, schema, type_map, field_count)
 
                       Logger.info("Source schema updated from BigQuery!",
                         source_id: state.source_token,
