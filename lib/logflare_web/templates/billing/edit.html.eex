@@ -87,14 +87,8 @@
     </table>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Sync Billing Account</h5>
-    <p>Something here missing? We use Stripe to handle billing. If something didn't sync correctly with Stripe you can
-      trigger this manually.</p>
-    <%= link "Sync billing account", to: Routes.billing_path(@conn, :sync), method: :post, class: "btn btn-primary form-button" %>
-  </div>
-  <div class="sub-form">
     <h5 class="header-margin">Billing Account Portal</h5>
-    <p>Manage your subscription using the Stripe customer portal.</p>
+    <p>Update your billing info and download your invoices in Stripe's new customer portal.</p>
     <%= link "Go to portal", to: Routes.billing_path(@conn, :portal), method: :get, class: "btn btn-primary form-button" %>
   </div>
   <div class="sub-form">
