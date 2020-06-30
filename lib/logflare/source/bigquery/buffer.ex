@@ -85,10 +85,12 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_call({:ack, log_event_id}, _from, state) do
     case Sources.BuffersCache.take_read_receipt(log_event_id) do
       {:ok, nil} ->
-        Logger.warn("Log event not found when acknowledged.",
-          source_id: state.source_id,
-          log_event_id: log_event_id
-        )
+        # Seeing a lot of these need to figure it out
+        #
+        # Logger.warn("Log event not found when acknowledged.",
+        #   source_id: state.source_id,
+        #   log_event_id: log_event_id
+        # )
 
         {:reply, {:error, :not_found}, state}
 
