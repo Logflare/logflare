@@ -47,7 +47,9 @@ defmodule LogflareWeb.BillingController do
     |> redirect(to: Routes.user_path(conn, :edit) <> "#billing-account")
   end
 
-  def edit(%{assigns: %{user: _user}} = conn, _params) do
+  def edit(%{assigns: %{user: user}} = conn, _params) do
+    IO.inspect(user.billing_account)
+
     conn
     |> render("edit.html")
   end
@@ -93,10 +95,10 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
         _params
       ) do
-      with {:ok, %{url: portal_url}} <- Stripe.create_billing_portal_session(billing_account) do
-          conn
-          |> redirect(external: portal_url)
-      else
+    with {:ok, %{url: portal_url}} <- Stripe.create_billing_portal_session(billing_account) do
+      conn
+      |> redirect(external: portal_url)
+    else
       err ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 

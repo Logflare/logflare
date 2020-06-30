@@ -19,6 +19,7 @@ defmodule Logflare.BillingAccounts do
   Protocol.derive(Jason.Encoder, Stripe.Session)
   Protocol.derive(Jason.Encoder, Stripe.Invoice)
   Protocol.derive(Jason.Encoder, Stripe.LineItem)
+  Protocol.derive(Jason.Encoder, Stripe.Price)
 
   @doc """
   Returns the list of billing_accounts.

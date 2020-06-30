@@ -2,9 +2,11 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %></li>
+        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span
+            class="hide-on-mobile"> billing</span><% end %></li>
         <li></li>
-        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span
+            class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
     <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/billing/edit</h5>
@@ -29,7 +31,8 @@
       <thead>
         <tr>
           <th scope="col">Id</th>
-          <th scope="col">Price</th>
+          <th scope="col">Price per source</th>
+          <th scope="col">Sources</th>
           <th scope="col">Next invoice</th>
           <th scope="col">Trial start</th>
           <th scope="col">Trial end</th>
@@ -37,59 +40,67 @@
         </tr>
       </thead>
       <tbody>
-        <%= if @user.billing_account.stripe_subscriptions["data"] do %> <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
-            <tr>
-              <td><%= sub["id"] %></td>
-              <td><%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %></td>
-              <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
-                <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>
-                  <td><%= if sub["trial_end"], do: DateTime.from_unix!(sub["trial_end"]) %></td>
-                    <td><%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe, id: sub["id"]), method: :delete, class: "btn btn-danger btn-small" %></td>
-                  </tr>
-                <% end %> <% end %>
-            </tbody>
-          </table>
-        </div>
-        <div class="sub-form">
-          <h5 class="header-margin">Invoices</h5>
-          <p>View and download your invoices!</p>
-          <table class="table table-dark">
-            <thead>
-              <tr>
-                <th scope="col">Number</th>
-                <th scope="col">Amount</th>
-                <th scope="col">Status</th>
-                <th scope="col">PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= if @user.billing_account.stripe_invoices["data"] do %> <%= for invoice <- @user.billing_account.stripe_invoices["data"] do %>
-                  <tr>
-                    <td><%= link "#{invoice["number"]}", to: invoice["hosted_invoice_url"], target: "_blank" %></td>
-                    <td><%= Money.to_string(Money.new(invoice["amount_due"], String.upcase(invoice["currency"]) |> String.to_atom())) %></td>
-                    <td><%= invoice["status"] %></td>
-                    <td><%= link "download", to: invoice["invoice_pdf"] %></td>
-                  </tr>
-                <% end %> <% end %>
-            </tbody>
-          </table>
-        </div>
-        <div class="sub-form">
-          <h5 class="header-margin">Sync Billing Account</h5>
-          <p>Something here missing? We use Stripe to handle billing. If something didn't sync correctly with Stripe you can trigger this manually.</p>
-          <%= link "Sync billing account", to: Routes.billing_path(@conn, :sync), method: :post, class: "btn btn-primary form-button" %>
-        </div>
-        <div class="sub-form">
-          <h5 class="header-margin">Billing Account Portal</h5>
-          <p>Manage your subscription using the Stripe customer portal.</p>
-          <%= link "Go to portal", to: Routes.billing_path(@conn, :portal), method: :get, class: "btn btn-primary form-button" %>
-        </div>
-        <div class="sub-form">
-          <h5 class="header-margin">Delete Billing Account</h5>
-          <p>If something goes terribly wrong you can delete and re-create your billing account. You will no longer be able to access any subscriptions or invoices listed here.</p>
-          <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
-        </div>
-      </div>
-    </div>
+        <%= if @user.billing_account.stripe_subscriptions["data"] do %>
+        <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
+        <tr>
+          <td><%= sub["id"]%></td>
+          <td>
+            <%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %>
+          </td>
+          <td><%= sub["quantity"]%></td>
+          <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
+          <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>
+          <td><%= if sub["trial_end"], do: DateTime.from_unix!(sub["trial_end"]) %></td>
+          <td>
+            <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe, id: sub["id"]), method: :delete, class: "btn btn-danger btn-small" %>
+          </td>
+        </tr>
+        <% end %> <% end %>
+      </tbody>
+    </table>
+  </div>
+  <div class="sub-form">
+    <h5 class="header-margin">Invoices</h5>
+    <p>View and download your invoices!</p>
+    <table class="table table-dark">
+      <thead>
+        <tr>
+          <th scope="col">Number</th>
+          <th scope="col">Amount</th>
+          <th scope="col">Status</th>
+          <th scope="col">PDF</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= if @user.billing_account.stripe_invoices["data"] do %>
+        <%= for invoice <- @user.billing_account.stripe_invoices["data"] do %>
+        <tr>
+          <td><%= link "#{invoice["number"]}", to: invoice["hosted_invoice_url"], target: "_blank" %></td>
+          <td>
+            <%= Money.to_string(Money.new(invoice["amount_due"], String.upcase(invoice["currency"]) |> String.to_atom())) %>
+          </td>
+          <td><%= invoice["status"] %></td>
+          <td><%= link "download", to: invoice["invoice_pdf"] %></td>
+        </tr>
+        <% end %> <% end %>
+      </tbody>
+    </table>
+  </div>
+  <div class="sub-form">
+    <h5 class="header-margin">Sync Billing Account</h5>
+    <p>Something here missing? We use Stripe to handle billing. If something didn't sync correctly with Stripe you can
+      trigger this manually.</p>
+    <%= link "Sync billing account", to: Routes.billing_path(@conn, :sync), method: :post, class: "btn btn-primary form-button" %>
+  </div>
+  <div class="sub-form">
+    <h5 class="header-margin">Billing Account Portal</h5>
+    <p>Manage your subscription using the Stripe customer portal.</p>
+    <%= link "Go to portal", to: Routes.billing_path(@conn, :portal), method: :get, class: "btn btn-primary form-button" %>
+  </div>
+  <div class="sub-form">
+    <h5 class="header-margin">Delete Billing Account</h5>
+    <p>If something goes terribly wrong you can delete and re-create your billing account. You will no longer be able to
+      access any subscriptions or invoices listed here.</p>
+    <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
   </div>
 </div>
