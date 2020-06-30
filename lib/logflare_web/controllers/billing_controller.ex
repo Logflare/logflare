@@ -89,6 +89,21 @@ defmodule LogflareWeb.BillingController do
     end
   end
 
+  def portal(
+        %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
+        _params
+      ) do
+      with {:ok, %{url: portal_url}} <- Stripe.create_billing_portal_session(billing_account) do
+          conn
+          |> redirect(external: portal_url)
+      else
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn, @default_error_message)
+    end
+  end
+
   def change_subscription(
         %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
         _params
