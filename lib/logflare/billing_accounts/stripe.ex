@@ -6,6 +6,7 @@ defmodule Logflare.BillingAccounts.Stripe do
   alias LogflareWeb.Endpoint
   alias Logflare.BillingAccounts.BillingAccount
   alias Logflare.Plans.Plan
+  alias Logflare.User
 
   def create_add_credit_card_session(%BillingAccount{} = billing_account) do
     stripe_customer_id = billing_account.stripe_customer
@@ -24,7 +25,10 @@ defmodule Logflare.BillingAccounts.Stripe do
   end
 
   def create_customer_session(
-        %BillingAccount{stripe_customer: stripe_customer_id},
+        %User{
+          sources: sources,
+          billing_account: %BillingAccount{stripe_customer: stripe_customer_id}
+        } = _user,
         %Plan{stripe_id: stripe_id} = _plan
       ) do
     params = %{
@@ -34,7 +38,7 @@ defmodule Logflare.BillingAccounts.Stripe do
       success_url: Routes.billing_url(Endpoint, :success),
       cancel_url: Routes.billing_url(Endpoint, :abandoned),
       line_items: [
-        %{price: stripe_id, quantity: 10}
+        %{price: stripe_id, quantity: Enum.count(sources)}
       ],
       subscription_data: %{trial_from_plan: true}
     }
