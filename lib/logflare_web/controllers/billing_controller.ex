@@ -23,7 +23,7 @@ defmodule LogflareWeb.BillingController do
       {err, customer} ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
-        {:ok, _response} = Stripe.delete_customer(customer.id)
+        {:ok, _response} = Stripe.delete_customer(customer["id"])
 
         conn
         |> put_flash(:error, @default_error_message)
