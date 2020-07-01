@@ -71,6 +71,11 @@
             <li class="nav-item" >
               <%= link "logflare.app", to: Routes.marketing_path(@conn, :index), class: "nav-link" %>
             </li>
+            <%= if @user.billing_enabled? && is_nil(@user.billing_account) do %>
+              <li class="nav-item">
+                <%= link "❤️ Upgrade ❤️", to: Routes.billing_path(@conn, :edit), class: "nav-link" %>
+              </li>
+            <% end %>
             <%= if @user.admin do %>
               <li class="nav-item">
                 <%= link "Admin", to: Routes.admin_path(@conn, :dashboard), class: "nav-link" %>

@@ -49,10 +49,10 @@
   <%= link "Visit Google", to: "https://myaccount.google.com/permissions?authuser=#{@user.email}", class: "btn btn-primary form-button" %>
 <% end %>
 </div>
-<!--
-<h4 id="billing-account" class="header-margin">Billing Account</h4>
-<p>Create a billing account to subscribe to Logflare.</p>
 
+<%= if @user.billing_enabled? do %>
+<h4 id="billing-account" class="header-margin">Billing Account</h4>
+<p>Create a billing account to subscribe to Logflare. Creating a billing account doesn't obligate you to anything. It's where you can update your billing preferences and manage your subscription.</p>
 <div class="sub-form">
 <%= if @user.billing_account do %>
   <h5 class="header-margin">Edit Billing Account</h5>
@@ -62,7 +62,8 @@
   <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
 <% end %>
 </div>
--->
+<% end %>
+
 <h4 class="header-margin">Team Preferences</h4>
 <p>Setup your team.</p>
 <div class="sub-form">

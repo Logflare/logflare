@@ -27,6 +27,7 @@
   <div class="sub-form">
     <h5 class="header-margin">Subscriptions</h5>
     <p>Details of your current Logflare subscription.</p>
+    <div class="table-responsive">
     <table class="table table-dark">
       <thead>
         <tr>
@@ -58,10 +59,12 @@
         <% end %> <% end %>
       </tbody>
     </table>
+    </div>
   </div>
   <div class="sub-form">
     <h5 class="header-margin">Invoices</h5>
     <p>View and download your invoices!</p>
+    <div class="table-responsive">
     <table class="table table-dark">
       <thead>
         <tr>
@@ -85,6 +88,7 @@
         <% end %> <% end %>
       </tbody>
     </table>
+  </div>
   </div>
   <div class="sub-form">
     <h5 class="header-margin">Billing Account Portal</h5>
