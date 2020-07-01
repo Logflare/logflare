@@ -46,6 +46,9 @@ defmodule Logflare.Plans do
         nil ->
           get_plan_by(name: "Free")
 
+        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
+          get_plan_by(name: "Free")
+
         billing_account ->
           {:ok, stripe_plan} = BillingAccounts.get_billing_account_stripe_plan(billing_account)
 
