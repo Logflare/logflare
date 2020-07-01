@@ -177,7 +177,7 @@ defmodule LogflareWeb.Router do
     post "/", BillingController, :create
     delete "/", BillingController, :delete
     get "/edit", BillingController, :edit
-    post "/sync", BillingController, :sync
+    get "/sync", BillingController, :sync
   end
 
   scope "/account/billing/subscription", LogflareWeb do

@@ -52,7 +52,7 @@ defmodule Logflare.Plans do
           get_plan_by(stripe_id: stripe_plan["id"])
       end
     else
-      plan = legacy_plan()
+      legacy_plan()
     end
   end
 

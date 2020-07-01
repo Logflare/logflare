@@ -71,6 +71,7 @@
             <li class="nav-item" >
               <%= link "logflare.app", to: Routes.marketing_path(@conn, :index), class: "nav-link" %>
             </li>
+
             <%= if @user.admin do %>
               <li class="nav-item">
                 <%= link "Admin", to: Routes.admin_path(@conn, :dashboard), class: "nav-link" %>
@@ -89,6 +90,15 @@
             <li class="nav-item">
               <%= link "Continue with Google", to: Routes.oauth_path(@conn, :request, "google"), class: "nav-link" %>
             </li>
+          <% end %>
+        </ul>
+        <ul class="navbar-nav ml-auto">
+          <%= if @user && @user.billing_enabled? do %>
+            <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
+              <li class="nav-item active">
+                <%= link "❤️ Upgrade ❤️", to: Routes.billing_path(@conn, :edit), class: "nav-link" %>
+              </li>
+            <% end %>
           <% end %>
         </ul>
       </div>

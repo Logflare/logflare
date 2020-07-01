@@ -26,7 +26,7 @@ defmodule LogflareWeb.BillingPlansLive do
     <button phx-click="switch_period" phx-value-period=<%= period!(@period) %> class="btn btn-primary">See pricing per <%= period!(@period) %></button>
     <div class="scrolling-wrapper">
     <div class="container mt-5 min-pricing-width">
-    <div class="pricing card-deck flex-md-row mb-3">
+    <div class="pricing card-deck row mb-3">
       <div class="card card-pricing text-center px-3 mb-4">
         <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Free</span>
         <div class="bg-transparent card-header pt-4 border-0">

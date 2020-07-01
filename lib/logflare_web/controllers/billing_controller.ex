@@ -23,7 +23,7 @@ defmodule LogflareWeb.BillingController do
       {err, customer} ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
-        {:ok, _response} = Stripe.delete_customer(customer.id)
+        {:ok, _response} = Stripe.delete_customer(customer["id"])
 
         conn
         |> put_flash(:error, @default_error_message)
@@ -69,12 +69,12 @@ defmodule LogflareWeb.BillingController do
   end
 
   def confirm_subscription(
-        %{assigns: %{user: %{billing_account: billing_account}} = _user} = conn,
+        %{assigns: %{user: %{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id}
       ) do
     with plan <- Plans.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
-         {:ok, session} <- Stripe.create_customer_session(billing_account, plan) do
+         {:ok, session} <- Stripe.create_customer_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
       |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)

@@ -36,6 +36,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
           Users.get_by_and_preload(id: id)
           |> Users.preload_team()
           |> Users.preload_billing_account()
+          |> Users.preload_sources()
 
         _ ->
           nil
