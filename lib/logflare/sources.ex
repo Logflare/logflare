@@ -12,7 +12,6 @@ defmodule Logflare.Sources do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Rule
   alias Logflare.User
-  alias Logflare.BillingAccounts
   alias Logflare.SavedSearch
   alias Logflare.Sources.SourceSchema
 
