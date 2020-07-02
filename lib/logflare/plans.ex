@@ -22,6 +22,11 @@ defmodule Logflare.Plans do
     Repo.all(Plan)
   end
 
+  def find_plan(plans, period, name) do
+    Enum.filter(plans, fn x -> x.period == period end)
+    |> Enum.find(fn x -> x.name == name end)
+  end
+
   @doc """
   Gets a single plan.
 
