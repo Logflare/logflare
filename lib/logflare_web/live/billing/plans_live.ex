@@ -126,7 +126,7 @@ defmodule LogflareWeb.BillingPlansLive do
       <div class="card card-pricing text-center px-3 mb-4">
         <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Enterprise</span>
         <div class="bg-transparent card-header pt-4 border-0">
-          <h1 class="h1 font-weight-normal text-center mb-0"><span class="h6 text-muted ml-2"></span><span class="price"><%= 2000 |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
+          <h1 class="h1 font-weight-normal text-center mb-0"><span class="h6 text-muted ml-2"></span><span class="price"><%= Plans.find_plan(@plans, @period, "Enterprise").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h1>
           <span class="h6 text-muted ml-2">/ starting per <%= @period %></span> <br>
           <span class="h6 text-muted ml-2">/ per source</span>
         </div>
@@ -155,6 +155,15 @@ defmodule LogflareWeb.BillingPlansLive do
   def sub_button(plan, socket, plans, period, plan_name) do
     cond do
       is_nil(plan) ->
+        link("Subscribe",
+          to:
+            Routes.billing_path(socket, :confirm_subscription, %{
+              "stripe_id" => Plans.find_plan(plans, period, plan_name).stripe_id
+            }),
+          class: "btn btn-primary form-button"
+        )
+
+      plan.name == "Free" || plan.name == "Legacy" ->
         link("Subscribe",
           to:
             Routes.billing_path(socket, :confirm_subscription, %{

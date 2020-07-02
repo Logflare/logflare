@@ -55,9 +55,13 @@ defmodule Logflare.Plans do
           get_plan_by(name: "Free")
 
         billing_account ->
-          {:ok, stripe_plan} = BillingAccounts.get_billing_account_stripe_plan(billing_account)
+          case BillingAccounts.get_billing_account_stripe_plan(billing_account) do
+            {:ok, nil} ->
+              get_plan_by(name: "Free")
 
-          get_plan_by(stripe_id: stripe_plan["id"])
+            {:ok, stripe_plan} ->
+              get_plan_by(stripe_id: stripe_plan["id"])
+          end
       end
     else
       legacy_plan()
