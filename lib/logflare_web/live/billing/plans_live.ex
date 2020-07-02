@@ -14,7 +14,7 @@ defmodule LogflareWeb.BillingPlansLive do
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 
-    plan = Plans.get_plan_by_user(user) |> IO.inspect()
+    plan = Plans.get_plan_by_user(user)
 
     socket =
       socket
