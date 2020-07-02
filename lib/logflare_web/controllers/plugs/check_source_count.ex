@@ -31,6 +31,8 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
     end
   end
 
+  def call(conn, _params), do: conn
+
   defp update_stripe_count_and_return(
          %{assigns: %{user: user}, method: "POST"} = conn,
          source_count
@@ -60,6 +62,4 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
 
     conn
   end
-
-  def call(conn, _params), do: conn
 end

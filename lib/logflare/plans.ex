@@ -22,6 +22,11 @@ defmodule Logflare.Plans do
     Repo.all(Plan)
   end
 
+  def find_plan(plans, period, name) do
+    Enum.filter(plans, fn x -> x.period == period end)
+    |> Enum.find(fn x -> x.name == name end)
+  end
+
   @doc """
   Gets a single plan.
 
@@ -46,10 +51,17 @@ defmodule Logflare.Plans do
         nil ->
           get_plan_by(name: "Free")
 
-        billing_account ->
-          {:ok, stripe_plan} = BillingAccounts.get_billing_account_stripe_plan(billing_account)
+        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
+          get_plan_by(name: "Free")
 
-          get_plan_by(stripe_id: stripe_plan["id"])
+        billing_account ->
+          case BillingAccounts.get_billing_account_stripe_plan(billing_account) do
+            {:ok, nil} ->
+              get_plan_by(name: "Free")
+
+            {:ok, stripe_plan} ->
+              get_plan_by(stripe_id: stripe_plan["id"])
+          end
       end
     else
       legacy_plan()

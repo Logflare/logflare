@@ -5,6 +5,7 @@ defmodule Logflare.BillingAccounts.Stripe do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
   alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.BillingAccounts
   alias Logflare.Plans.Plan
   alias Logflare.User
 
@@ -64,6 +65,17 @@ defmodule Logflare.BillingAccounts.Stripe do
     }
 
     Stripe.BillingPortal.Session.create(params)
+  end
+
+  def change_subscription(billing_account, sources, to_plan) do
+    [subscription] = billing_account.stripe_subscriptions["data"]
+    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+
+    delete_item = %{id: item["id"], deleted: true}
+    add_item = %{price: to_plan.stripe_id, quantity: Enum.count(sources)}
+    params = %{items: [delete_item, add_item]}
+
+    update_subscription(subscription["id"], params)
   end
 
   def list_customer_invoices(stripe_customer_id) do
