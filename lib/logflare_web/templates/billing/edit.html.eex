@@ -16,6 +16,10 @@
   <h4 class="header-margin">Billing Account</h4>
   <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
   <div class="sub-form">
+    <h5 class="header-margin">Summary</h5>
+    <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= Enum.count(@user.sources) %> sources</u> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= Enum.count(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
+  </div>
+  <div class="sub-form">
     <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
   </div>
   <div class="sub-form">
@@ -27,67 +31,67 @@
     <h5 class="header-margin">Subscriptions</h5>
     <p>Details of your current Logflare subscription.</p>
     <div class="table-responsive">
-    <table class="table table-dark">
-      <thead>
-        <tr>
-          <th scope="col">Id</th>
-          <th scope="col">Price per source</th>
-          <th scope="col">Sources</th>
-          <th scope="col">Next invoice</th>
-          <th scope="col">Trial start</th>
-          <th scope="col">Trial end</th>
-          <th scope="col"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <%= if @user.billing_account.stripe_subscriptions["data"] do %>
-        <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
-        <tr>
-          <td><%= sub["id"]%></td>
-          <td>
-            <%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %>
-          </td>
-          <td><%= sub["quantity"]%></td>
-          <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
-          <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>
-          <td><%= if sub["trial_end"], do: DateTime.from_unix!(sub["trial_end"]) %></td>
-          <td>
-            <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe, id: sub["id"]), method: :delete, class: "btn btn-danger btn-small" %>
-          </td>
-        </tr>
-        <% end %> <% end %>
-      </tbody>
-    </table>
+      <table class="table table-dark">
+        <thead>
+          <tr>
+            <th scope="col">Id</th>
+            <th scope="col">Price per source</th>
+            <th scope="col">Sources</th>
+            <th scope="col">Next invoice</th>
+            <th scope="col">Trial start</th>
+            <th scope="col">Trial end</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <%= if @user.billing_account.stripe_subscriptions["data"] do %>
+          <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
+          <tr>
+            <td><%= sub["id"]%></td>
+            <td>
+              <%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %>
+            </td>
+            <td><%= sub["quantity"]%></td>
+            <td><%= if sub["current_period_end"], do: DateTime.from_unix!(sub["current_period_end"]) %></td>
+            <td><%= if sub["trial_start"], do: DateTime.from_unix!(sub["trial_start"]) %></td>
+            <td><%= if sub["trial_end"], do: DateTime.from_unix!(sub["trial_end"]) %></td>
+            <td>
+              <%= link "Unsubscribe", to: Routes.billing_path(@conn, :unsubscribe, id: sub["id"]), method: :delete, class: "btn btn-danger btn-small" %>
+            </td>
+          </tr>
+          <% end %> <% end %>
+        </tbody>
+      </table>
     </div>
   </div>
   <div class="sub-form">
     <h5 class="header-margin">Invoices</h5>
     <p>View and download your invoices!</p>
     <div class="table-responsive">
-    <table class="table table-dark">
-      <thead>
-        <tr>
-          <th scope="col">Number</th>
-          <th scope="col">Amount</th>
-          <th scope="col">Status</th>
-          <th scope="col">PDF</th>
-        </tr>
-      </thead>
-      <tbody>
-        <%= if @user.billing_account.stripe_invoices["data"] do %>
-        <%= for invoice <- @user.billing_account.stripe_invoices["data"] do %>
-        <tr>
-          <td><%= link "#{invoice["number"]}", to: invoice["hosted_invoice_url"], target: "_blank" %></td>
-          <td>
-            <%= Money.to_string(Money.new(invoice["amount_due"], String.upcase(invoice["currency"]) |> String.to_atom())) %>
-          </td>
-          <td><%= invoice["status"] %></td>
-          <td><%= link "download", to: invoice["invoice_pdf"] %></td>
-        </tr>
-        <% end %> <% end %>
-      </tbody>
-    </table>
-  </div>
+      <table class="table table-dark">
+        <thead>
+          <tr>
+            <th scope="col">Number</th>
+            <th scope="col">Amount</th>
+            <th scope="col">Status</th>
+            <th scope="col">PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+          <%= if @user.billing_account.stripe_invoices["data"] do %>
+          <%= for invoice <- @user.billing_account.stripe_invoices["data"] do %>
+          <tr>
+            <td><%= link "#{invoice["number"]}", to: invoice["hosted_invoice_url"], target: "_blank" %></td>
+            <td>
+              <%= Money.to_string(Money.new(invoice["amount_due"], String.upcase(invoice["currency"]) |> String.to_atom())) %>
+            </td>
+            <td><%= invoice["status"] %></td>
+            <td><%= link "download", to: invoice["invoice_pdf"] %></td>
+          </tr>
+          <% end %> <% end %>
+        </tbody>
+      </table>
+    </div>
   </div>
   <div class="sub-form">
     <h5 class="header-margin">Billing Account Portal</h5>
