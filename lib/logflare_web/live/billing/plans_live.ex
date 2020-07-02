@@ -42,7 +42,6 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>Rate limit 5/second</li>
             <li>300 burst per second</li>
             <li>12,960,000 events/month</li>
-            <li>Up to 1 source</li>
             <li>Up to 3 saved searches</li>
             <li>3 day event history</li>
             <li>0 additional users</li>
@@ -63,7 +62,6 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>BYOB BigQuery</li>
             <li>Data Studio integration</li>
             <li>Unlimited events (fair use)</li>
-            <li>Up to 5 sources</li>
             <li>Up to 8 saved searches</li>
             <li>7 day event history</li>
             <li>1 additional user</li>
@@ -85,7 +83,6 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>BYOB BigQuery</li>
             <li>Data Studio integration</li>
             <li>Unlimited events (fair use)</li>
-            <li>Up to 10 sources</li>
             <li>Up to 15 saved searches</li>
             <li>30 day event history</li>
             <li>4 additional users</li>
@@ -107,7 +104,6 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>BYOB BigQuery</li>
             <li>Data Studio integration</li>
             <li>Unlimited events (fair use)</li>
-            <li>Up to 20 sources</li>
             <li>Up to 30 saved searches</li>
             <li>60 day event history</li>
             <li>9 additional users</li>
@@ -129,7 +125,6 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>BYOB BigQuery</li>
             <li>Any BI integration</li>
             <li>Unlimited events (fair use)</li>
-            <li>Up to 100 sources</li>
             <li>Up to 100 saved searches</li>
             <li>Unlimited event history</li>
             <li>Unlimited additional users</li>
