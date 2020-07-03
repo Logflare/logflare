@@ -34,7 +34,7 @@ defmodule Logflare.User.BigQueryUDFs do
         {:error, message} ->
           Logger.error(
             "Error creating BQ UDFs for dataset #{bq_dataset_id} for project #{bq_project_id}: #{
-              message
+              inspect(message)
             }"
           )
 
