@@ -47,6 +47,24 @@ defmodule Logflare.Logs.SearchQueries do
         select_merge(query, [..., l], %{
           value: fragment("MAX(?) as value", field(l, ^last_chart_field))
         })
+
+      :p50 ->
+        select_merge(query, [..., l], %{
+          value:
+            fragment("APPROX_QUANTILES(?, 100)[OFFSET(50)] as value", field(l, ^last_chart_field))
+        })
+
+      :p95 ->
+        select_merge(query, [..., l], %{
+          value:
+            fragment("APPROX_QUANTILES(?, 100)[OFFSET(95)] as value", field(l, ^last_chart_field))
+        })
+
+      :p99 ->
+        select_merge(query, [..., l], %{
+          value:
+            fragment("APPROX_QUANTILES(?, 100)[OFFSET(99)] as value", field(l, ^last_chart_field))
+        })
     end
   end
 
