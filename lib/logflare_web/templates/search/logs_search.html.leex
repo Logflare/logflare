@@ -122,7 +122,7 @@
         <%= if @chart_aggregate_enabled? do %>
           <%= select f,
          :chart_aggregate,
-          ["sum", "avg", "count", "max"],
+          ["sum", "avg", "max", "count"],
           selected: get_chart_aggregate(@lql_rules, "count"),
           class: "form-control form-control-sm"
            %>
