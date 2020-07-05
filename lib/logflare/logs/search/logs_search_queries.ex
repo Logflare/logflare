@@ -19,7 +19,7 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  @spec select_merge_agg_value(any, :avg | :count | :sum, atom()) :: Ecto.Query.t()
+  @spec select_merge_agg_value(any, :avg | :count | :sum | :max, atom()) :: Ecto.Query.t()
   def select_merge_agg_value(query, :count, :timestamp) do
     select_merge(query, [t, ...], %{
       value: fragment("COUNT(?) as value", t.timestamp)
@@ -41,6 +41,11 @@ defmodule Logflare.Logs.SearchQueries do
       :count ->
         select_merge(query, [..., l], %{
           value: fragment("COUNT(?) as value", field(l, ^last_chart_field))
+        })
+
+      :max ->
+        select_merge(query, [..., l], %{
+          value: fragment("MAX(?) as value", field(l, ^last_chart_field))
         })
     end
   end

@@ -90,7 +90,8 @@ defmodule Logflare.Lql.Parser.Helpers do
     choice([
       string("avg") |> replace(:avg),
       string("count") |> replace(:count),
-      string("sum") |> replace(:sum)
+      string("sum") |> replace(:sum),
+      string("max") |> replace(:max)
     ])
     |> unwrap_and_tag(:aggregate)
     |> ignore(string("("))
