@@ -18,6 +18,9 @@ config :logflare, LogflareWeb.Endpoint,
 config :logger,
   level: :info,
   backends: [LogflareLogger.HttpBackend]
+  compile_time_purge_matching: [
+    [level_lower_than: :info]
+  ]
 
 config :phoenix, :serve_endpoints, true
 
