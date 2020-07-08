@@ -87,7 +87,7 @@ defmodule Logflare.Mixfile do
       # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 3.1"},
-      {:swoosh, "~> 0.23"},
+      {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
       {:goth, "~> 1.2.0"},
       {:deep_merge, "~> 1.0"},
