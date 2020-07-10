@@ -64,7 +64,7 @@
             into your Logflare account. Try visiting your Vercel deployment url then check your Logflare dashboard!</p>
           <%= link "Visit your Logflare dashboard", to: Routes.source_path(@conn, :dashboard), class: "btn btn-primary", role: "button", target: "_blank" %>
           <h2 id="log-type">Build vs Static vs Lambda Logs</h2>
-          <p>Vercel gives us three main kinds of logs: <code>build</code>, <code>static</code> and <code>labda</code>.
+          <p>Vercel gives us three main kinds of logs: <code>build</code>, <code>static</code> and <code>lambda</code>.
           </p>
           <p>You'll likely want to route all your build logs to a different source. This doesn't exclude them from the
             original source, it effectively copies them to another source.</p>
@@ -80,7 +80,7 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/vercel-build-logs.gif">
           </div>
-          <p>Vercel also gives us some <code>static</code> and <code>labda</code> logs depending on if the event came
+          <p>Vercel also gives us some <code>static</code> and <code>lambda</code> logs depending on if the event came
             from their CDN or their serverless infrastructure. You can setup different rules for these as well but you
             probably will want these in the
             same source so you can have them on the same dashboard later.</p>
@@ -98,7 +98,7 @@
           <p>All user agents with `bot` in the user agent string: <code>m.proxy.userAgent:~"bot"</code></p>
           <p>When Vercel sends lambda logs over we parse data out of that message over for you automatically into
             the <code>m.parsedLambdaMessage</code> object.</p>
-          <p>To see all labda requests with a response time greater than 1,000 ms:
+          <p>To see all lambda requests with a response time greater than 1,000 ms:
             <code>m.parsedLambdaMessage.report.duration_ms:>1000</code>
           </p>
           <h2 id="example-dashboard">Example Dashboard</h2>
