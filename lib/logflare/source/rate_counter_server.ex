@@ -38,7 +38,6 @@ defmodule Logflare.Source.RateCounterServer do
           duration: @default_bucket_width
         }
       }
-
   end
 
   @rate_period 1_000
@@ -244,6 +243,7 @@ defmodule Logflare.Source.RateCounterServer do
       Tracker.Cache.get_cluster_rates(state.source_id)
       |> Map.put(:source_token, state.source_id)
 
+    Phoenix.PubSub.broadcast(Logflare.PubSub, "source_rates", {:rates, rates})
     Source.ChannelTopics.broadcast_rates(rates)
   end
 
