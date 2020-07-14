@@ -4,10 +4,7 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo}
-  alias Logflare.Google.BigQuery
-  alias Logflare.Google.CloudResourceManager
-  alias Logflare.Source.Supervisor
+  alias Logflare.{User, Repo, Users}
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
@@ -52,16 +49,17 @@ defmodule LogflareWeb.UserController do
   end
 
   def delete(%{assigns: %{user: user}} = conn, _params) do
-    # TODO: soft delete, delayed deleted
+    case Users.delete_user(user) do
+      {:ok, _user} ->
+        conn
+        |> configure_session(drop: true)
+        |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
 
-    Supervisor.delete_all_user_sources(user)
-    BigQuery.delete_dataset(user)
-    Repo.delete!(user)
-    CloudResourceManager.set_iam_policy()
-
-    conn
-    |> configure_session(drop: true)
-    |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Something went wrong! See below for errors.")
+        |> render("edit.html")
+    end
   end
 
   def new_api_key(conn, _params) do

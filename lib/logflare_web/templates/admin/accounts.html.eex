@@ -1,0 +1,51 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <%= render LogflareWeb.AdminSharedView, "nav_links.html", conn: @conn %>
+    <h5>~/admin/customers</h5>
+  </div>
+</div>
+<div class="dashboard container mx-auto parent">
+  <div class="side">
+    <div class="dropdown">
+      <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"
+        aria-haspopup="true" aria-expanded="false">
+        Sort by: <%= @conn.params["sort_by"] %>
+      </button>
+      <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+        <%= for option <- @sort_options do %>
+        <%= link option, to: Routes.admin_path(@conn, :accounts, sort_by: option), class: "dropdown-item" %>
+        <% end %>
+      </div>
+    </div>
+    <%= form_for @conn, Routes.admin_path(@conn, :accounts), [method: :get], fn f -> %>
+    <div class="form-group form-text">
+      <%= text_input f, :email, placeholder: "customer@company.com", class: "form-control form-control-margin", autofocus: true %>
+    </div>
+    <%= submit class: "btn btn-primary form-button" do %>
+    <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
+    <% end %>
+    <% end %>
+  </div>
+  <div class="main">
+    <ul class="list-group">
+      <%= for account <- @accounts do %>
+      <li class="list-group-item">
+        <div class="float-right">
+          <small><%= link "delete", to: Routes.admin_path(@conn, :delete_account, account.id), method: :delete, class: "btn btn-danger btn-sm" %></small>
+        </div>
+        <div><%= account.email %></div>
+        <div><small>Inserted at: <%= account.inserted_at %> Updated at: <%= account.updated_at %></small></div>
+      </li>
+      <% end %>
+    </ul>
+    <%= if @accounts.total_pages > 1 do %>
+    <%= pagination_links @accounts, sort_by: @conn.params["sort_by"] %>
+    <% end %>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    await Dashboard.main()
+  })
+</script>

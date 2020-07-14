@@ -1,3 +1,16 @@
+.parent {
+  display: flex;
+}
+
+.side {
+  flex: 30%;
+  margin-right: 1rem;
+}
+
+.main {
+  flex: 70%;
+}
+
 .pagination .page-item.active .page-link {
   z-index: 1;
   color: black;
