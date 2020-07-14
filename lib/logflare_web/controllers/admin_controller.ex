@@ -33,7 +33,7 @@ defmodule LogflareWeb.AdminController do
     case Users.delete_user(user) do
       {:ok, _user} ->
         conn
-        |> put_flash(:info, "User deleted!")
+        |> put_flash(:info, "Account deleted!")
         |> redirect(to: Routes.admin_path(conn, :accounts))
 
       {:error, _reason} ->
