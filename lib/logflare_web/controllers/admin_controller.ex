@@ -49,8 +49,20 @@ defmodule LogflareWeb.AdminController do
     |> redirect(to: Routes.admin_path(conn, :accounts))
   end
 
+  defp paginate_accounts(%{"page" => page, "sort_by" => ""}) do
+    query_accounts()
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: page})
+  end
+
   defp paginate_accounts(%{"page" => page, "sort_by" => sort_by}) do
     query_accounts(sort_by)
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: page})
+  end
+
+  defp paginate_accounts(%{"page" => page}) do
+    query_accounts()
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end

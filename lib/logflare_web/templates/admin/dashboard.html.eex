@@ -1,7 +1,11 @@
 <div class="subhead subhead-fixed">
-  <div class="container mx-auto">
-    <%= render LogflareWeb.AdminSharedView, "nav_links.html", conn: @conn %>
-    <h5>~/admin/dashboard</h5>
+  <div class="container mx-auto d-flex">
+    <div class="mr-auto">
+      <h5>~/admin/dashboard</h5>
+    </div>
+    <div class="log-settings">
+      <%= render LogflareWeb.AdminSharedView, "nav_links.html", conn: @conn %>
+    </div>
   </div>
 </div>
 <div class="dashboard container mx-auto">
