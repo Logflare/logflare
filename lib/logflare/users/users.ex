@@ -3,6 +3,9 @@ defmodule Logflare.Users do
   alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Google.BigQuery
+  alias Logflare.Google.CloudResourceManager
+  alias Logflare.Source.Supervisor
+
   @moduledoc false
 
   def get(user_id) do
@@ -91,6 +94,20 @@ defmodule Logflare.Users do
 
         changeset = User.changeset(%User{}, auth_params)
         Repo.insert(changeset)
+    end
+  end
+
+  def delete_user(user) do
+    Supervisor.delete_all_user_sources(user)
+
+    case Repo.delete(user) do
+      {:ok, _user} = response ->
+        BigQuery.delete_dataset(user)
+        CloudResourceManager.set_iam_policy()
+        response
+
+      {:error, _reason} = response ->
+        response
     end
   end
 

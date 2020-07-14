@@ -2,13 +2,75 @@ defmodule LogflareWeb.AdminController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source, Sources}
+  alias Logflare.{Repo, Source, Sources, User, Users}
 
   @page_size 50
 
   def dashboard(conn, _params) do
     conn
     |> render("dashboard.html")
+  end
+
+  def accounts(conn, params) do
+    sort_options = [
+      :inserted_at,
+      :updated_at
+    ]
+
+    accounts = paginate_accounts(params)
+
+    conn
+    |> assign(:accounts, accounts)
+    |> assign(:sort_options, sort_options)
+    |> render("accounts.html")
+  end
+
+  def delete_account(%{assigns: %{user: %User{email: "chase@logflare.app"}}} = conn, %{
+        "id" => user_id
+      }) do
+    user = Users.get(user_id)
+
+    case Users.delete_user(user) do
+      {:ok, _user} ->
+        conn
+        |> put_flash(:info, "User deleted!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+    end
+  end
+
+  def delete_account(conn, %{"id" => _user_id}) do
+    conn
+    |> put_flash(:error, "You are not chase@logflare.app!")
+    |> redirect(to: Routes.admin_path(conn, :accounts))
+  end
+
+  defp paginate_accounts(%{"page" => page, "sort_by" => sort_by}) do
+    query_accounts(sort_by)
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: page})
+  end
+
+  defp paginate_accounts(%{"sort_by" => sort_by}) do
+    query_accounts(sort_by)
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: 1})
+  end
+
+  defp paginate_accounts(%{"email" => email}) do
+    query_accounts(email, "inserted_at")
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: 1})
+  end
+
+  defp paginate_accounts(_params) do
+    query_accounts()
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
   def sources(conn, params) do
@@ -60,5 +122,24 @@ defmodule LogflareWeb.AdminController do
     from s in Source,
       order_by: [desc: s.inserted_at],
       select: s
+  end
+
+  defp query_accounts() do
+    from u in User,
+      order_by: [desc: :inserted_at],
+      select: u
+  end
+
+  defp query_accounts(sort_by) when is_binary(sort_by) do
+    from u in User,
+      order_by: [desc: ^String.to_atom(sort_by)],
+      select: u
+  end
+
+  defp query_accounts(email, sort_by) when is_binary(sort_by) do
+    from u in User,
+      order_by: [desc: ^String.to_atom(sort_by)],
+      where: [email: ^email],
+      select: u
   end
 end

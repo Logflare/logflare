@@ -198,6 +198,8 @@ defmodule LogflareWeb.Router do
 
     get "/dashboard", AdminController, :dashboard
     get "/sources", AdminController, :sources
+    get "/accounts", AdminController, :accounts
+    delete "/accounts/:id", AdminController, :delete_account
     live "/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
     get "/cluster", AdminClusterController, :index
     get "/plans", AdminPlanController, :index

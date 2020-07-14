@@ -8,6 +8,7 @@
     margin-left: 25%;
   }
 }
+
 @media screen and (max-width: 992px) {
   .hide-on-mobile {
     display: none !important;
@@ -15,6 +16,10 @@
 
   .btn {
     margin-right: 0;
+  }
+
+  .parent {
+    flex-direction: column;
   }
 
   #saved-searches {
