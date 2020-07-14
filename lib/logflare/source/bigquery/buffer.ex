@@ -116,7 +116,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
-    if Source.Data.get_ets_count(state.source_id) > 0 do
+    if Source.Data.get_ets_count(state.source_id) > 1 do
       broadcast_buffer(state)
     end
 

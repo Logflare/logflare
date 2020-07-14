@@ -33,7 +33,7 @@ defmodule LogflareWeb.AdminController do
     case Users.delete_user(user) do
       {:ok, _user} ->
         conn
-        |> put_flash(:info, "User deleted!")
+        |> put_flash(:info, "Account deleted!")
         |> redirect(to: Routes.admin_path(conn, :accounts))
 
       {:error, _reason} ->
@@ -49,8 +49,20 @@ defmodule LogflareWeb.AdminController do
     |> redirect(to: Routes.admin_path(conn, :accounts))
   end
 
+  defp paginate_accounts(%{"page" => page, "sort_by" => ""}) do
+    query_accounts()
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: page})
+  end
+
   defp paginate_accounts(%{"page" => page, "sort_by" => sort_by}) do
     query_accounts(sort_by)
+    |> Repo.all()
+    |> Repo.paginate(%{page_size: @page_size, page: page})
+  end
+
+  defp paginate_accounts(%{"page" => page}) do
+    query_accounts()
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end
