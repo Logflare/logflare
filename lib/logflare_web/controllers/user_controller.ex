@@ -4,7 +4,7 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo, Users}
+  alias Logflare.{User, Repo, Users, Source.Supervisor}
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
