@@ -66,12 +66,8 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def handle_info(:put_rate, source_id) when is_atom(source_id) do
-    put_current_rate()
-
     {:ok, new_count} = get_insert_count(source_id)
-
     state = get_data_from_ets(source_id)
-
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
@@ -80,6 +76,7 @@ defmodule Logflare.Source.RateCounterServer do
       broadcast(state)
     end
 
+    put_current_rate()
     {:noreply, source_id}
   end
 
