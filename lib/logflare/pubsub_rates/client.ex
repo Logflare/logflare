@@ -1,5 +1,6 @@
 defmodule Logflare.PubSubRates do
   alias Phoenix.PubSub
+  alias Logflare.PubSubRates.Cache
 
   require Logger
 
@@ -19,8 +20,8 @@ defmodule Logflare.PubSubRates do
     {:ok, state}
   end
 
-  def handle_info({:rates, rates}, state) do
-    IO.inspect(rates)
+  def handle_info({:rates, source_id, rates}, state) do
+    Cache.cache_rates(source_id, rates)
     {:noreply, state}
   end
 end

@@ -14,7 +14,7 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Tracker
+  alias Logflare.PubSubRates
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
@@ -69,12 +69,14 @@ defmodule Logflare.Source.RateCounterServer do
     put_current_rate()
 
     {:ok, new_count} = get_insert_count(source_id)
+
     state = get_data_from_ets(source_id)
+
     %RCS{} = state = update_state(state, new_count)
 
     update_ets_table(state)
 
-    if Source.Data.get_ets_count(source_id) > 1 do
+    if Enum.find_value(state.buckets[@default_bucket_width].queue, fn x -> x > 0 end) do
       broadcast(state)
     end
 
@@ -112,13 +114,15 @@ defmodule Logflare.Source.RateCounterServer do
       last_rate: lr,
       max_rate: mr,
       buckets: %{
-        @default_bucket_width => %{
-          average: avg
-        }
+        @default_bucket_width => bucket
       }
     } = state
 
-    %{last_rate: lr, average_rate: avg, max_rate: mr}
+    limiter_metrics =
+      bucket
+      |> Map.drop([:queue])
+
+    %{last_rate: lr, average_rate: bucket.average, max_rate: mr, limiter_metrics: limiter_metrics}
   end
 
   def update_max_rate(%RCS{max_rate: mx, last_rate: lr} = s) do
@@ -239,12 +243,19 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def broadcast(%RCS{} = state) do
-    rates =
-      Tracker.Cache.get_cluster_rates(state.source_id)
+    local_rates = %{Node.self() => state_to_external(state)}
+
+    Phoenix.PubSub.broadcast(
+      Logflare.PubSub,
+      "source_rates",
+      {:rates, state.source_id, local_rates}
+    )
+
+    cluster_rates =
+      PubSubRates.Cache.get_cluster_rates(state.source_id)
       |> Map.put(:source_token, state.source_id)
 
-    Phoenix.PubSub.broadcast(Logflare.PubSub, "source_rates", {:rates, rates})
-    Source.ChannelTopics.broadcast_rates(rates)
+    Source.ChannelTopics.broadcast_rates(cluster_rates)
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}

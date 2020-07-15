@@ -1,7 +1,7 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans}
+  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans, PubSubRates}
 
   def start(_type, _args) do
     import Supervisor.Spec
@@ -69,6 +69,7 @@ defmodule Logflare.Application do
       BillingAccounts.Cache,
       Plans.Cache,
       Tracker.Cache,
+      PubSubRates.Cache,
       Logs.LogEvents.Cache,
       Sources.Buffers,
       Sources.BuffersCache,
@@ -78,7 +79,6 @@ defmodule Logflare.Application do
       supervisor(Sources.RateCounters, []),
       supervisor(Tracker.SourceNodeInserts, []),
       supervisor(Tracker.SourceNodeBuffers, []),
-      supervisor(Tracker.SourceNodeRates, []),
       supervisor(Logflare.PubSubRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
