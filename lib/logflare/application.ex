@@ -1,7 +1,7 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans}
+  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans, PubSubRates}
 
   def start(_type, _args) do
     import Supervisor.Spec
@@ -21,7 +21,7 @@ defmodule Logflare.Application do
       Sources.Cache,
       BillingAccounts.Cache,
       Plans.Cache,
-      Tracker.Cache,
+      PubSubRates.Cache,
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
@@ -68,7 +68,7 @@ defmodule Logflare.Application do
       Sources.Cache,
       BillingAccounts.Cache,
       Plans.Cache,
-      Tracker.Cache,
+      PubSubRates.Cache,
       Logs.LogEvents.Cache,
       Sources.Buffers,
       Sources.BuffersCache,
@@ -76,9 +76,7 @@ defmodule Logflare.Application do
       # init Counters before Manager as Manager calls Counters through table create
       supervisor(Sources.Counters, []),
       supervisor(Sources.RateCounters, []),
-      supervisor(Tracker.SourceNodeInserts, []),
-      supervisor(Tracker.SourceNodeBuffers, []),
-      supervisor(Tracker.SourceNodeRates, []),
+      supervisor(Logflare.PubSubRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, [])

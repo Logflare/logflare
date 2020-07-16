@@ -3,7 +3,6 @@ defmodule LogflareWeb.LogControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.{Users, Sources}
   alias Logflare.Source
-  alias Logflare.Tracker
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   alias Logflare.SystemMetricsSup
@@ -19,8 +18,6 @@ defmodule LogflareWeb.LogControllerTest do
     s = insert(:source, user_id: u1.id, api_quota: 1000)
 
     s = Sources.get_by_and_preload(id: s.id)
-
-    Tracker.SourceNodeRates.start_link()
 
     SystemMetricsSup.start_link()
     Sources.Counters.start_link()

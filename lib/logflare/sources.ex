@@ -5,7 +5,7 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source, Tracker, Cluster}
+  alias Logflare.{Repo, Source, Cluster}
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -14,6 +14,7 @@ defmodule Logflare.Sources do
   alias Logflare.User
   alias Logflare.SavedSearch
   alias Logflare.Sources.SourceSchema
+  alias Logflare.PubSubRates
 
   require Logger
 
@@ -89,7 +90,7 @@ defmodule Logflare.Sources do
     if source.api_quota * @default_bucket_width < node_metrics.sum * cluster_size do
       node_rate_limiter_failsafe(node_metrics, cluster_size)
     else
-      Tracker.Cache.get_cluster_rates(source.token).limiter_metrics
+      PubSubRates.Cache.get_cluster_rates(source.token).limiter_metrics
     end
   end
 
@@ -198,9 +199,9 @@ defmodule Logflare.Sources do
     alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
 
-    rates = Tracker.Cache.get_cluster_rates(token)
-    buffer = Tracker.Cache.get_cluster_buffer(token)
-    inserts = Tracker.Cache.get_cluster_inserts(token)
+    rates = PubSubRates.Cache.get_cluster_rates(token)
+    buffer = PubSubRates.Cache.get_cluster_buffers(token)
+    inserts = PubSubRates.Cache.get_cluster_inserts(token)
     inserts_string = Delimit.number_to_delimited(inserts)
 
     rejected_count = RejectedLogEvents.count(source)
