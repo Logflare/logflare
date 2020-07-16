@@ -244,7 +244,7 @@ defmodule Logflare.Source.RateCounterServer do
 
     Phoenix.PubSub.broadcast(
       Logflare.PubSub,
-      "source_rates",
+      "rates",
       {:rates, state.source_id, local_rates}
     )
 

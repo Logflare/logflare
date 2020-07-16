@@ -201,7 +201,7 @@ defmodule Logflare.Sources do
 
     rates = PubSubRates.Cache.get_cluster_rates(token)
     buffer = Tracker.Cache.get_cluster_buffer(token)
-    inserts = Tracker.Cache.get_cluster_inserts(token)
+    inserts = PubSubRates.Cache.get_cluster_inserts(token)
     inserts_string = Delimit.number_to_delimited(inserts)
 
     rejected_count = RejectedLogEvents.count(source)

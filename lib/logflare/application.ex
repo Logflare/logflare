@@ -77,7 +77,6 @@ defmodule Logflare.Application do
       # init Counters before Manager as Manager calls Counters through table create
       supervisor(Sources.Counters, []),
       supervisor(Sources.RateCounters, []),
-      supervisor(Tracker.SourceNodeInserts, []),
       supervisor(Tracker.SourceNodeBuffers, []),
       supervisor(Logflare.PubSubRates, []),
       supervisor(Logflare.Source.Supervisor, []),
