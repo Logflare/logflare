@@ -3,10 +3,15 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Source
 
+  import Cachex.Spec
+
   @default_bucket_width 60
+  @ttl 300_000
 
   def child_spec(_) do
-    cachex_opts = []
+    cachex_opts = [
+      expiration: expiration(default: @ttl)
+    ]
 
     %{
       id: __MODULE__,
@@ -19,6 +24,8 @@ defmodule Logflare.PubSubRates.Cache do
       nil -> {:commit, rates}
       val -> {:commit, Map.merge(val, rates)}
     end)
+
+    Cachex.refresh(__MODULE__, {source_id, "rates"})
   end
 
   def cache_inserts(source_id, inserts) do
@@ -26,6 +33,8 @@ defmodule Logflare.PubSubRates.Cache do
       nil -> {:commit, inserts}
       val -> {:commit, Map.merge(val, inserts)}
     end)
+
+    Cachex.refresh(__MODULE__, {source_id, "inserts"})
   end
 
   def cache_buffers(source_id, buffers) do
@@ -33,6 +42,8 @@ defmodule Logflare.PubSubRates.Cache do
       nil -> {:commit, buffers}
       val -> {:commit, Map.merge(val, buffers)}
     end)
+
+    Cachex.refresh(__MODULE__, {source_id, "inserts"})
   end
 
   def get_buffers(source_id) do
