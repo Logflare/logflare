@@ -5,7 +5,7 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source, Tracker, Cluster}
+  alias Logflare.{Repo, Source, Cluster}
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -200,7 +200,7 @@ defmodule Logflare.Sources do
     alias Number.Delimit
 
     rates = PubSubRates.Cache.get_cluster_rates(token)
-    buffer = Tracker.Cache.get_cluster_buffer(token)
+    buffer = PubSubRates.Cache.get_cluster_buffers(token)
     inserts = PubSubRates.Cache.get_cluster_inserts(token)
     inserts_string = Delimit.number_to_delimited(inserts)
 

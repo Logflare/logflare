@@ -17,8 +17,14 @@ defmodule Logflare.PubSubRates do
   def init(state) do
     PubSub.subscribe(Logflare.PubSub, "rates")
     PubSub.subscribe(Logflare.PubSub, "inserts")
+    PubSub.subscribe(Logflare.PubSub, "buffers")
 
     {:ok, state}
+  end
+
+  def handle_info({:buffers, source_id, buffers}, state) do
+    Cache.cache_buffers(source_id, buffers)
+    {:noreply, state}
   end
 
   def handle_info({:inserts, source_id, inserts}, state) do

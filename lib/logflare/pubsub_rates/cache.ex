@@ -14,6 +14,44 @@ defmodule Logflare.PubSubRates.Cache do
     }
   end
 
+  def cache_rates(source_id, rates) do
+    Cachex.get_and_update(__MODULE__, {source_id, "rates"}, fn
+      nil -> {:commit, rates}
+      val -> {:commit, Map.merge(val, rates)}
+    end)
+  end
+
+  def cache_inserts(source_id, inserts) do
+    Cachex.get_and_update(__MODULE__, {source_id, "inserts"}, fn
+      nil -> {:commit, inserts}
+      val -> {:commit, Map.merge(val, inserts)}
+    end)
+  end
+
+  def cache_buffers(source_id, buffers) do
+    Cachex.get_and_update(__MODULE__, {source_id, "buffers"}, fn
+      nil -> {:commit, buffers}
+      val -> {:commit, Map.merge(val, buffers)}
+    end)
+  end
+
+  def get_buffers(source_id) do
+    Cachex.get(__MODULE__, {source_id, "buffers"})
+  end
+
+  def get_cluster_buffers(source_id) do
+    case get_buffers(source_id) do
+      {:ok, nil} ->
+        0
+
+      {:ok, node_buffers} ->
+        merge_buffers(node_buffers)
+
+      {:error, _} ->
+        0
+    end
+  end
+
   def get_rates(source_id) do
     Cachex.get(__MODULE__, {source_id, "rates"})
   end
@@ -41,13 +79,6 @@ defmodule Logflare.PubSubRates.Cache do
     end
   end
 
-  def cache_rates(source_id, rates) do
-    Cachex.get_and_update(__MODULE__, {source_id, "rates"}, fn
-      nil -> {:commit, rates}
-      val -> {:commit, Map.merge(val, rates)}
-    end)
-  end
-
   def get_inserts(source_id) do
     Cachex.get(__MODULE__, {source_id, "inserts"})
   end
@@ -65,31 +96,15 @@ defmodule Logflare.PubSubRates.Cache do
     end
   end
 
-  def cache_inserts(source_id, inserts) do
-    Cachex.get_and_update(__MODULE__, {source_id, "inserts"}, fn
-      nil -> {:commit, inserts}
-      val -> {:commit, Map.merge(val, inserts)}
-    end)
+  def merge_buffers(node_buffers) do
+    Enum.map(node_buffers, fn {_node, y} -> y.len end) |> Enum.sum()
   end
 
-  def merge_inserts(nodes_inserts) do
-    acc = {:node, %{bq_inserts: 0, node_inserts: 0}}
+  defp merge_inserts(nodes_inserts) do
+    nodes_total = Enum.map(nodes_inserts, fn {_node, y} -> y.node_inserts end) |> Enum.sum()
+    bq_max = Enum.map(nodes_inserts, fn {_node, y} -> y.bq_inserts end) |> Enum.max()
 
-    {:node, %{bq_inserts: bq, node_inserts: node}} =
-      Enum.reduce(nodes_inserts, acc, fn {_, x}, {_, acc} ->
-        map =
-          Map.merge(x, acc, fn kk, vv1, vv2 ->
-            case kk do
-              :node_inserts -> vv1 + vv2
-              :bq_inserts -> Enum.max([vv1, vv2])
-              _ -> vv1
-            end
-          end)
-
-        {:node, map}
-      end)
-
-    bq + node
+    nodes_total + bq_max
   end
 
   defp merge_node_rates(nodes_rates) do
@@ -98,35 +113,24 @@ defmodule Logflare.PubSubRates.Cache do
       %{
         average_rate: 0,
         last_rate: 0,
-        limiter_metrics: %{average: 0, duration: 60, sum: 0},
+        limiter_metrics: %{average: 0, duration: @default_bucket_width, sum: 0},
         max_rate: 0
       }
     }
 
     {:cluster, rates} =
       Enum.reduce(nodes_rates, acc, fn {_, x}, {_, acc} ->
-        map =
-          Map.merge(x, acc, fn kk, vv1, vv2 ->
-            case kk do
-              :average_rate ->
-                vv1 + vv2
+        ar = x.average_rate + acc.average_rate
+        lr = x.last_rate + acc.last_rate
+        sum = x.limiter_metrics.sum + acc.limiter_metrics.sum
+        mr = x.max_rate + acc.max_rate
 
-              :last_rate ->
-                vv1 + vv2
-
-              :max_rate ->
-                vv1 + vv2
-
-              :limiter_metrics ->
-                Map.merge(vv1, vv2, fn kkk, vvv1, vvv2 ->
-                  case kkk do
-                    :average -> vvv1 + vvv2
-                    :duration -> @default_bucket_width
-                    :sum -> vvv1 + vvv2
-                  end
-                end)
-            end
-          end)
+        map = %{
+          average_rate: ar,
+          last_rate: lr,
+          limiter_metrics: %{average: ar, duration: @default_bucket_width, sum: sum},
+          max_rate: mr
+        }
 
         {:cluster, map}
       end)
