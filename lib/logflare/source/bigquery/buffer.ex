@@ -5,7 +5,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
   alias Logflare.Sources
-  alias Logflare.Tracker
+  alias Logflare.PubSubRates
 
   require Logger
 
@@ -116,6 +116,8 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_info(:check_buffer, state) do
+    # This could be smarter
+    # Keep a 60 second history of the buffer (like the inserts) and check if any is > 1
     if Source.Data.get_ets_count(state.source_id) > 1 do
       broadcast_buffer(state)
     end
@@ -132,10 +134,18 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   defp broadcast_buffer(state) do
-    buffer = Tracker.Cache.get_cluster_buffer(state.source_id)
+    local_buffer = %{Node.self() => %{len: state.len}}
+
+    Phoenix.PubSub.broadcast(
+      Logflare.PubSub,
+      "buffers",
+      {:buffers, state.source_id, local_buffer}
+    )
+
+    cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_id)
 
     payload = %{
-      buffer: buffer,
+      buffer: cluster_buffer,
       source_token: state.source_id
     }
 

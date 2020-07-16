@@ -38,7 +38,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Plans
   alias Logflare.Sources
   alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.Tracker
+  alias Logflare.PubSubRates
   alias __MODULE__, as: RLS
 
   require Logger
@@ -121,9 +121,15 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_info(:broadcast, %{source_id: source_id} = state) do
     if Source.Data.get_ets_count(source_id) > 1 do
-      {:ok, total_cluster_inserts} = broadcast_count(state)
+      {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
       broadcast()
-      {:noreply, %{state | total_cluster_inserts: total_cluster_inserts}}
+
+      {:noreply,
+       %{
+         state
+         | total_cluster_inserts: total_cluster_inserts,
+           inserts_since_boot: inserts_since_boot
+       }}
     else
       broadcast()
       {:noreply, state}
@@ -179,15 +185,28 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
-    inserts = Tracker.Cache.get_cluster_inserts(state.source_id)
+    node_inserts = Source.Data.get_node_inserts(state.source_id)
 
-    payload = %{log_count: inserts, source_token: state.source_id}
+    if node_inserts > state.inserts_since_boot do
+      bq_inserts = Source.Data.get_bq_inserts(state.source_id)
 
-    if inserts > state.total_cluster_inserts do
+      inserts_payload = %{Node.self() => %{node_inserts: node_inserts, bq_inserts: bq_inserts}}
+
+      Phoenix.PubSub.broadcast(
+        Logflare.PubSub,
+        "inserts",
+        {:inserts, state.source_id, inserts_payload}
+      )
+    end
+
+    cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_id)
+
+    if cluster_inserts > state.total_cluster_inserts do
+      payload = %{log_count: cluster_inserts, source_token: state.source_id}
       Source.ChannelTopics.broadcast_log_count(payload)
     end
 
-    {:ok, inserts}
+    {:ok, cluster_inserts, node_inserts}
   end
 
   defp load_init_log_message(source_id, _bigquery_project_id) do

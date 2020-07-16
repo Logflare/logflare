@@ -69,19 +69,6 @@ defmodule Logflare.Source.Data do
     bq_inserts
   end
 
-  def get_inserts(source_id) when is_atom(source_id) do
-    log_table_info = :ets.info(source_id)
-
-    case log_table_info do
-      :undefined ->
-        0
-
-      _ ->
-        {:ok, inserts} = Counters.get_inserts(source_id)
-        inserts
-    end
-  end
-
   @spec get_rate(map) :: non_neg_integer
   def get_rate(%{id: _id, name: _name, token: source_token}) do
     {:ok, source_id} = Ecto.UUID.Atom.load(source_token)

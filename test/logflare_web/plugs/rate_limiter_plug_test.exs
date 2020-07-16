@@ -5,7 +5,6 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Tracker.SourceNodeRates
   import Logflare.Factory
 
   @moduletag :skip
@@ -24,7 +23,6 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
     s1 = Sources.get_by(id: s1.id)
     s2 = Sources.get_by(id: s2.id)
 
-    {:ok, _} = SourceNodeRates.start_link()
     {:ok, _} = RateCounterServer.start_link(%RLS{source_id: s1.token})
     {:ok, _} = RateCounterServer.start_link(%RLS{source_id: s2.token})
     Process.sleep(5_000)
