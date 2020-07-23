@@ -13,7 +13,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.ComputeClient do
     max_retries: 10,
     max_delay: 4_000,
     should_retry: fn
-      {:ok, %{status: status}} when status in 500..599 -> true
+      {:ok, %{status: status}} when status in 404..599 -> true
       {:ok, _} -> false
       {:error, _} -> true
     end
