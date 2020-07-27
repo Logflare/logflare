@@ -15,7 +15,7 @@
             <div class="btns">
               <p>
                 <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no"
-                  frameBorder="0">
+                  frameBorder="0" loading="lazy">
                 </iframe>
               </p>
               <p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
@@ -42,7 +42,7 @@
         <div class="forifream">
           <iframe class="ifreamfordiagram"
             src="https://datastudio.google.com/embed/reporting/1JuRjywr8r-IeNOg30on8t21Lns4hSJnx/page/FLer"
-            frameborder="0" style="border:0" allowfullscreen></iframe>
+            frameborder="0" style="border:0" allowfullscreen loading="lazy"></iframe>
         </div>
       </div>
     </div>
@@ -417,7 +417,7 @@
             <div class="btns">
               <p>
                 <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no"
-                  frameBorder="0">
+                  frameBorder="0" loading="lazy">
                 </iframe>
               </p>
               <p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
@@ -440,7 +440,7 @@
         <div class="btns">
           <p>
             <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no"
-              frameBorder="0">
+              frameBorder="0" loading="lazy">
             </iframe>
           </p>
           <p><a href="" class="signup">SIGN UP</a></p>
