@@ -22,7 +22,7 @@ defmodule Logflare.Logs.Search.Utils do
       ~s|Exact match a string in a field (e.g. `m.response.cf_ray:"505c16f9a752cec8-IAD"`).|,
       ~s|Match a field with regex (e.g. `m.browser:~"Firefox 5\\d"`).|,
       "Search a date range (e.g. `t:2020-03-{01..05}T00:00:00`).",
-      "Default behavoir is to search the log message field (e.g. `error`).",
+      "Default behavior is to search the log message field (e.g. `error`).",
       "Turn off Live Search to search the full history of this source.",
       "Timestamps are automatically converted to UTC if local time is displayed."
     ]
