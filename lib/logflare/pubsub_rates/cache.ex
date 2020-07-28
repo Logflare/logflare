@@ -78,6 +78,7 @@ defmodule Logflare.PubSubRates.Cache do
         }
 
       {:ok, rates} ->
+        # cache this function calc so we don't do it on every request
         merge_node_rates(rates)
 
       {:error, _} ->
