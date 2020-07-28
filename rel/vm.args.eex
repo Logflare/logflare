@@ -11,9 +11,9 @@
 ##-env ERL_FULLSWEEP_AFTER 10
 
 ## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
-+sbwt none
-+sbwtdcpu none
-+sbwtdio none
++sbwt very_short
++sbwtdcpu very_short
++sbwtdio very_short
 ## Set process limit
 +P 1000000
 +t 32000000
