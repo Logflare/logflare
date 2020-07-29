@@ -127,7 +127,7 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.29.0"},
+      {:google_api_cloud_resource_manager, "~> 0.31.1"},
       {:google_api_big_query, "~> 0.38.0"},
 
       # Ecto
