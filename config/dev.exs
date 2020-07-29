@@ -89,5 +89,8 @@ config :logflare, LogflareWeb.Auth.VercelAuth,
   vercel_app_host: "https://dev.chasegranberry.net",
   client_id: "9b73d10edd067ba404148b28ef1eb4b1cb2a7027ade973b6cadc2b24f7c16702"
 
+config :goth,
+  json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
+
 import_config "dev.secret.exs"
 import_config "telemetry.exs"
