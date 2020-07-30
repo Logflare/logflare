@@ -99,9 +99,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             disconnect_backend_and_email(source_id, message)
             messages
 
-          "Not found:" <> _tail = message ->
-            disconnect_backend_and_email(source_id, message)
-            messages
+          # Don't disconnect here because sometimes the GCP API doesn't find projects
+          #
+          # "Not found:" <> _tail = message ->
+          #   disconnect_backend_and_email(source_id, message)
+          #   messages
 
           _message ->
             Logger.warn("Stream batch response error!",
