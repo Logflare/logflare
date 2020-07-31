@@ -25,6 +25,8 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :api do
+    plug LogflareWeb.Plugs.SetNodeHeader
+    plug Plug.RequestId
     plug LogflareWeb.Plugs.MaybeContentTypeToJson
 
     plug Plug.Parsers,
