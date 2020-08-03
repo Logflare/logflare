@@ -42,7 +42,7 @@
   <%= label bn, :team_user_ids_for_email, "Select some team members to alert", class: "label-padding" %></br>
 <%= multiple_select bn, :team_user_ids_for_email, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin selectpicker", data: [width: "65%"] %>
 <small class="form-text text-muted">
-  Reset email preferences to clear list list (for now).
+  Reset email preferences to clear this list.
 </small>
 <% end %>
 </div>
@@ -74,7 +74,7 @@
   <%= label cn, :team_user_ids_for_sms, "Select some team members to alert (team members without phone numbers are not listed)", class: "label-padding" %>
   <%= multiple_select cn, :team_user_ids_for_sms, Enum.filter(@team.team_users, &(&1.phone)) |> Enum.map(fn x -> {"#{x.name || x.email} (#{x.phone})", x.id} end), selected: @source.notifications.team_user_ids_for_sms, class: "form-control form-control-margin selectpicker", data: [width: "65%"] %>
   <small class="form-text text-muted">
-    Reset SMS preferences to clear list list (for now).
+    Reset SMS preferences to clear this list.
   </small>
 <% end %>
 </div>
@@ -175,7 +175,7 @@
         alert("Copied!");
         e.clearSelection();
     });
-  
+
     clipboard.on('error', (e) => {
         alert("Something went wrong!");
         e.clearSelection();
