@@ -23,6 +23,9 @@
           <th scope="col">Rate Limit </br> <small>(per sec)</small></th>
           <th scope="col">Source Rate Limit </br> <small>(per sec)</small></th>
           <th scope="col">Alerts </br> <small>(ms)</small></th>
+          <th scope="col">Saved Searches</th>
+          <th scope="col">Team Users</th>
+          <th scope="col">Source Fields</th>
           <th scope="col"></th>
         </tr>
       </thead>
@@ -38,6 +41,9 @@
           <td><%= p.limit_rate_limit %></td>
           <td><%= p.limit_source_rate_limit %></td>
           <td><%= p.limit_alert_freq %></td>
+          <td><%= p.limit_saved_search_limit %></td>
+          <td><%= p.limit_team_users_limit %></td>
+          <td><%= p.limit_source_fields_limit %></td>
           <td><%= link "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm" %></td>
         </tr>
         <% end %>

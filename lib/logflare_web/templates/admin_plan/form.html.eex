@@ -24,6 +24,15 @@
   <%= label f, "Alerts Every (milliseconds)", class: "label-padding" %>
   <%= text_input f, :limit_alert_freq, placeholder: "milliseconds", class: "form-control form-control-margin" %>
   <%= error_tag f, :limit_alert_freq %>
+  <%= label f, "Saved Searches", class: "label-padding" %>
+  <%= text_input f, :limit_saved_search_limit, placeholder: "8", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_saved_search_limit %>
+  <%= label f, "Team Users", class: "label-padding" %>
+  <%= text_input f, :limit_team_users_limit, placeholder: "1", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_team_users_limit %>
+  <%= label f, "Source Fields", class: "label-padding" %>
+  <%= text_input f, :limit_source_fields_limit, placeholder: "1", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_source_fields_limit %>
   <%= hidden_input f, :id %>
 </div>
 <%= submit "Submit", class: "btn btn-primary form-button" %>
