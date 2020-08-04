@@ -115,7 +115,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     {:reply, :ok, %{state | next_update: next_update()}}
   end
 
-  def handle_call({:update, %LogEvent{}}, _from, %{field_count: fc} = state) when fc >= 500,
+  def handle_call({:update, %LogEvent{}}, _from, %{field_count: fc} = state) when fc > 500,
     do: {:reply, :ok, state}
 
   def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
