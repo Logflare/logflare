@@ -7,7 +7,11 @@ config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4000,
     transport_options: [max_connections: 16_384, num_acceptors: 100],
-    protocol_options: [max_keepalive: 1_000_000]
+    protocol_options: [
+      max_keepalive: 1_000_000,
+      idle_timeout: 60_000,
+      inactivity_timeout: 620_000
+    ]
   ],
   url: [host: "logflare.app", scheme: "https", port: 443],
   cache_static_manifest: "priv/static/cache_manifest.json",
