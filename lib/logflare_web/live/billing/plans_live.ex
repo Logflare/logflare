@@ -53,7 +53,7 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>Rate limit 5/second</li>
             <li>300 burst per second</li>
             <li>12,960,000 events/month</li>
-            <li>Up to 3 saved searches</li>
+            <li>Up to 2 saved searches</li>
             <li>3 day event history</li>
             <li>0 additional users</li>
             <li>Up to 50 fields</li>
@@ -72,8 +72,8 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>Alerts every 1 hour</li>
             <li>BYOB BigQuery</li>
             <li>Data Studio integration</li>
-            <li>Unlimited events (fair use)</li>
-            <li>Up to 8 saved searches</li>
+            <li>Unlimited data</li>
+            <li>Up to 4 saved searches</li>
             <li>7 day event history</li>
             <li>1 additional user</li>
             <li>Up to 100 fields</li>
@@ -93,8 +93,8 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>Alerts every 15 minutes</li>
             <li>BYOB BigQuery</li>
             <li>Data Studio integration</li>
-            <li>Unlimited events (fair use)</li>
-            <li>Up to 15 saved searches</li>
+            <li>Unlimited data</li>
+            <li>Up to 8 saved searches</li>
             <li>30 day event history</li>
             <li>4 additional users</li>
             <li>Up to 250 fields</li>
@@ -114,8 +114,8 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>Alerts every 1 minute</li>
             <li>BYOB BigQuery</li>
             <li>Data Studio integration</li>
-            <li>Unlimited events (fair use)</li>
-            <li>Up to 30 saved searches</li>
+            <li>Unlimited data</li>
+            <li>Up to 12 saved searches</li>
             <li>60 day event history</li>
             <li>9 additional users</li>
             <li>Up to 500 fields</li>
@@ -123,6 +123,7 @@ defmodule LogflareWeb.BillingPlansLive do
           <%= sub_button(@plan, @socket, @plans, @period, "Business") %>
         </div>
       </div>
+      <!--
       <div class="card card-pricing text-center px-3 mb-4">
         <span class="h6 w-60 mx-auto px-4 py-1 rounded-bottom bg-primary text-dark shadow-sm">Enterprise</span>
         <div class="bg-transparent card-header pt-4 border-0">
@@ -135,7 +136,7 @@ defmodule LogflareWeb.BillingPlansLive do
             <li>Alerts every 1 second</li>
             <li>BYOB BigQuery</li>
             <li>Any BI integration</li>
-            <li>Unlimited events (fair use)</li>
+            <li>Unlimited data</li>
             <li>Up to 100 saved searches</li>
             <li>Unlimited event history</li>
             <li>Unlimited additional users</li>
@@ -146,6 +147,7 @@ defmodule LogflareWeb.BillingPlansLive do
           <%= link "Contact us", to: Routes.contact_path(@socket, :contact), class: "btn btn-primary form-button" %>
         </div>
       </div>
+      -->
     </div>
     </div>
     </div>

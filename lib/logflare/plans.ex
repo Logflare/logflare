@@ -134,6 +134,13 @@ defmodule Logflare.Plans do
   end
 
   def legacy_plan() do
-    %Plan{limit_rate_limit: 150, limit_source_rate_limit: 50, name: "Legacy"}
+    %Plan{
+      limit_rate_limit: 150,
+      limit_source_rate_limit: 50,
+      name: "Legacy",
+      limit_saved_search_limit: 1,
+      limit_team_users_limit: 0,
+      limit_source_fields_limit: 500
+    }
   end
 end

@@ -5,6 +5,7 @@ defmodule Logflare.TeamUsers do
   import Ecto.Query, warn: false
 
   alias Logflare.Teams
+  alias Logflare.Plans
   alias Logflare.Repo
   alias Logflare.TeamUsers.TeamUser
 
@@ -57,7 +58,10 @@ defmodule Logflare.TeamUsers do
   """
   def get_team_user_by(kv), do: Repo.get_by(TeamUser, kv)
 
-  def insert_or_update_team_user(team_id, auth_params) do
+  def insert_or_update_team_user(team, auth_params) do
+    team_id = team.id
+    user = team.user
+
     cond do
       team_user =
           from(u in TeamUser,
@@ -72,7 +76,14 @@ defmodule Logflare.TeamUsers do
         update_team_user(team_user, auth_params)
 
       true ->
-        create_team_user(team_id, auth_params)
+        count = list_team_users_by(id: team_id) |> Enum.count()
+        %Plans.Plan{limit_team_users_limit: limit} = Plans.get_plan_by_user(user)
+
+        if count < limit do
+          create_team_user(team_id, auth_params)
+        else
+          {:error, :limit_reached}
+        end
     end
   end
 

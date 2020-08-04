@@ -8,7 +8,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
-  alias Logflare.{Sources, Users}
+  alias Logflare.{Sources, Users, Plans}
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -109,7 +109,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
       ) do
     source = get_source_for_param(source_id)
-    user = Users.Cache.get_by_and_preload(id: user_id)
+    user = Users.get_by_and_preload(id: user_id)
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
@@ -154,9 +154,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp get_source_for_param(source_id) do
-    source_id
-    |> String.to_integer()
-    |> Sources.Cache.get_by_id_and_preload()
+    Sources.get_by_and_preload(id: source_id)
+    |> Sources.preload_saved_searches()
     |> Sources.put_bq_table_data()
   end
 
@@ -175,7 +174,7 @@ defmodule LogflareWeb.Source.SearchLV do
       end
 
     source = get_source_for_param(source_id)
-    user = Users.Cache.get_by_and_preload(id: user_id)
+    user = Users.get_by_and_preload(id: user_id)
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
     socket =
@@ -437,18 +436,36 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("save_search" = ev, _, socket) do
-    %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?} = socket.assigns
+    %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?, user: user} =
+      socket.assigns
+
     log_lv_received_event(ev, source)
 
-    case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
-      {:ok, _saved_search} ->
-        socket = assign_notifications(socket, :warning, "Search saved!")
-        {:noreply, socket}
+    %Plans.Plan{limit_saved_search_limit: limit} = Plans.get_plan_by_user(user)
 
-      {:error, changeset} ->
-        {message, _} = changeset.errors[:querystring]
-        socket = assign_notifications(socket, :warning, "Save search error: #{message}")
-        {:noreply, socket}
+    if Enum.count(source.saved_searches) < limit do
+      case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
+        {:ok, _saved_search} ->
+          socket =
+            assign_notifications(socket, :warning, "Search saved!")
+            |> assign(:source, get_source_for_param(source.id))
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          {message, _} = changeset.errors[:querystring]
+          socket = assign_notifications(socket, :warning, "Save search error: #{message}")
+          {:noreply, socket}
+      end
+    else
+      socket =
+        assign_notifications(
+          socket,
+          :warning,
+          "You've reached your saved search limit for this source. Delete one or upgrade first!"
+        )
+
+      {:noreply, socket}
     end
   end
 
