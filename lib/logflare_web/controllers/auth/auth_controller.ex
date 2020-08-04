@@ -69,7 +69,7 @@ defmodule LogflareWeb.AuthController do
   end
 
   def signin_invitee(conn, auth_params, team) do
-    case TeamUsers.insert_or_update_team_user(team.id, auth_params) do
+    case TeamUsers.insert_or_update_team_user(team, auth_params) do
       {:ok, team_user} ->
         CloudResourceManager.set_iam_policy()
         BigQuery.patch_dataset_access(team.user)
@@ -80,6 +80,15 @@ defmodule LogflareWeb.AuthController do
         |> put_session(:team_user_id, team_user.id)
         |> put_session(:invite_token, nil)
         |> redirect(to: Routes.source_path(conn, :dashboard))
+
+      {:error, :limit_reached} ->
+        conn
+        |> put_flash(
+          :error,
+          "Team member limit reached. Please contact the account owner for support."
+        )
+        |> put_session(:invite_token, nil)
+        |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, _changeset} ->
         conn
