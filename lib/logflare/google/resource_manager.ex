@@ -10,7 +10,9 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.Repo
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.User
+  alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
+  alias Logflare.Plans
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
@@ -204,35 +206,41 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   def build_members() do
-    users_query =
+    query =
       from(u in User,
+        join: t in assoc(u, :team),
         where: u.provider == "google",
         where: u.valid_google_account == true or is_nil(u.valid_google_account),
-        select: %{
-          email: u.email,
-          updated_at: u.updated_at
-        }
+        preload: [team: t],
+        select: u
       )
 
-    team_users_query =
-      from(t in TeamUser,
-        where: t.provider == "google",
-        where: t.valid_google_account == true or is_nil(t.valid_google_account),
-        select: %{
-          email: t.email,
-          updated_at: t.updated_at
-        }
-      )
-      |> union(^users_query)
+    paid_users =
+      Repo.all(query)
+      |> Enum.filter(fn x ->
+        case Plans.get_plan_by_user(x) do
+          %Plans.Plan{name: "Free"} ->
+            false
 
-    query = from q in subquery(team_users_query), order_by: [desc: q.updated_at], limit: 1450
+          %Plans.Plan{name: "Legacy"} ->
+            true
 
-    emails = Repo.all(query)
+          _plan ->
+            true
+        end
+      end)
 
-    Enum.map(emails, fn e ->
-      "user:" <> e.email
-    end)
-    |> Enum.uniq()
+    paid_users_team_members =
+      Enum.map(paid_users, fn x ->
+        TeamUsers.list_team_users_by(team_id: x.team.id)
+        |> Enum.filter(&(&1.valid_google_account == true or is_nil(&1.valid_google_account)))
+      end)
+      |> List.flatten()
+
+    (paid_users ++ paid_users_team_members)
+    |> Enum.sort_by(& &1.updated_at, :desc)
+    |> Enum.take(1450)
+    |> Enum.map(&("user:" <> &1.email))
   end
 
   defp get_conn() do
