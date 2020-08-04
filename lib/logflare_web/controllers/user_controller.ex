@@ -23,6 +23,23 @@ defmodule LogflareWeb.UserController do
     )
   end
 
+  def update(%{assigns: %{plan: %{name: "Free"}}} = conn, %{
+        "user" => %{"bigquery_project_id" => _id}
+      }) do
+    message =
+      message = [
+        "Please ",
+        Phoenix.HTML.Link.link("upgrade to a paid plan",
+          to: "#{Routes.billing_path(conn, :edit)}"
+        ),
+        " to setup your own BigQuery backend."
+      ]
+
+    conn
+    |> put_flash(:error, message)
+    |> redirect(to: Routes.user_path(conn, :edit))
+  end
+
   def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
     user
     |> User.user_allowed_changeset(params)
