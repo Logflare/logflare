@@ -10,7 +10,7 @@
   </div>
 </div>
 <div class="container mx-auto">
-  <h5 class="header-margin">Source Name</h5>
+  <%= section_header("Source Name") %>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a good place to keep all bot logs. Route logs with LQL rules using <%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLV, @source.id) do %>rules<% end %>.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn a -> %>
   <div class="form-group">
@@ -19,7 +19,7 @@
   </div>
   <%= submit "Update name", class: "btn btn-primary form-button" %>
 <% end %>
-<h5 class="header-margin">Email Alerts</h5>
+<%= section_header("Email Alerts") %>
 <p>Send emails when this source gets new events. Add email addresses below. Sometimes sources can get a lot of events quickly. At most you will get one email per minute.</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn b -> %>
 <div class="form-group">
@@ -56,7 +56,7 @@
 <% end %>
 <%= submit "Reset email preferences", class: "btn btn-sm btn-secondary form-button" %>
 <% end %>
-<h5 class="header-margin">SMS Alerts</h5>
+<%= section_header("SMS Alerts") %>
 <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one text message per minute.</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
 <div class="form-group">
@@ -87,7 +87,7 @@
 <% end %>
 <%= submit "Reset SMS preferences", class: "btn btn-sm btn-secondary form-button" %>
 <% end %>
-<h5 class="header-margin">Slack Alerts</h5>
+<%= section_header("Slack Alerts") %>
 <p>Get Logflare notifications in your Slack channels! Separate from signing in with Slack. You can send alerts to any Slack channel from any Logflare source.</p>
 <div class="form-button">
   <a href="https://slack.com/oauth/authorize?client_id=689539426144.830460255254&scope=incoming-webhook&redirect_uri=<%= LogflareWeb.Endpoint.url() <> "/auth/slack/callback" %>&state=<%= Jason.encode!(%{"action" => "save_hook_url", "source" => @source}) %>"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
@@ -96,7 +96,7 @@
   <%= link "Test Slack webhook", to: Routes.source_path(@conn, :test_slack_hook, @source), class: "btn btn-primary form-button", role: "button" %>
   <%= link "Delete Slack webhook", to: Routes.source_path(@conn, :delete_slack_hook, @source), class: "btn btn-sm btn-danger form-button", role: "button" %>
 <% end %>
-<h5 class="header-margin">Webhook Alerts</h5>
+<%= section_header("Webhook Alerts") %>
 <p>We recommend setting up <%= link "RequestBin", to: "https://requestbin.com/", target: "_blank" %> to see what our payloads look like. Once a webhook url is saved here you can send a test request to it.</p>
 <p><i class="fab fa-discord"></i> Payloads are automagically compatible with Discord webhook urls!</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
@@ -112,7 +112,7 @@
 <%= if @source.webhook_notification_url do %>
   <%= link "Test webhook", to: Routes.source_path(@conn, :test_alerts, @source), class: "btn btn-primary form-button", role: "button" %>
 <% end %>
-<h5 class="header-margin">Custom Event Message</h5>
+<%= section_header("Custom Event Message") %>
 <p>Comma separated list of metadata keys to customize the event message.</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
 <div class="form-group">
@@ -124,7 +124,7 @@
 </div>
 <%= submit "Update keys", class: "btn btn-primary form-button" %>
 <% end %>
-<h5 class="header-margin">Public Access</h5>
+<%= section_header("Public Access") %>
 <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
 <%= if @source.public_token != nil do %>
   <div>
@@ -139,7 +139,7 @@
 </div>
 <%= submit "Generate path", class: "btn btn-primary form-button" %>
 <% end %>
-<h5 class="header-margin">Rate Limit</h5>
+<%= section_header("Rate Limit") %>
 <p>Rate limits are based on the number of events per second on average for the last 60 seconds. This means if your rate limit is 10 per second you can burst up to 600 requests in a 60 second window if you have not sent any other events in during that window.  If you've sent in 100 events in that 60 seconds, then you can burst up to 500 at once.</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
 <div class="form-group">
@@ -151,7 +151,7 @@
 </div>
 <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
 <% end %>
-<h5 class="header-margin">Backend TTL</h5>
+<%= section_header("Backend TTL") %>
 <%= if @conn.assigns.user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] do %>
   <p>Set how long to keep data in your custom backend.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>

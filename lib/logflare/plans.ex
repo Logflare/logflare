@@ -139,7 +139,7 @@ defmodule Logflare.Plans do
       limit_source_rate_limit: 50,
       name: "Legacy",
       limit_saved_search_limit: 1,
-      limit_team_users_limit: 0,
+      limit_team_users_limit: 2,
       limit_source_fields_limit: 500
     }
   end

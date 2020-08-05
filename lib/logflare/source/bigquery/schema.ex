@@ -31,6 +31,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           id: %{t: :string}
         },
         field_count: 3,
+        field_count_limit: rls.plan.limit_source_fields_limit,
         next_update: System.system_time(:second)
       },
       name: name(rls.source_id)
@@ -115,8 +116,13 @@ defmodule Logflare.Source.BigQuery.Schema do
     {:reply, :ok, %{state | next_update: next_update()}}
   end
 
-  def handle_call({:update, %LogEvent{}}, _from, %{field_count: fc} = state) when fc >= 500,
-    do: {:reply, :ok, state}
+  def handle_call(
+        {:update, %LogEvent{}},
+        _from,
+        %{field_count: fc, field_count_limit: limit} = state
+      )
+      when fc > limit,
+      do: {:reply, :ok, state}
 
   def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
     # set_next_update_cluster(state.source_token)

@@ -143,6 +143,18 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
+  def explore(%{assigns: %{plan: %{name: "Free"}, source: source}} = conn, _params) do
+    message = [
+      "Please ",
+      Phoenix.HTML.Link.link("upgrade to explore",
+        to: "#{Routes.billing_path(conn, :edit)}"
+      ),
+      " in Google Data Studio."
+    ]
+
+    explore_error(conn, source, message)
+  end
+
   def explore(
         %{assigns: %{team_user: %{provider: "google"} = team_user, user: user, source: source}} =
           conn,
@@ -162,7 +174,14 @@ defmodule LogflareWeb.SourceController do
         %{assigns: %{team_user: _team_user, user: _user, source: source}} = conn,
         _params
       ) do
-    explore_error(conn, source)
+    message = [
+      Phoenix.HTML.Link.link("Sign in with Google",
+        to: "#{Routes.oauth_path(conn, :request, "google")}"
+      ),
+      " to explore in Data Studio."
+    ]
+
+    explore_error(conn, source, message)
   end
 
   def explore(%{assigns: %{user: %{provider: "google"} = user, source: source}} = conn, _params) do
@@ -177,20 +196,19 @@ defmodule LogflareWeb.SourceController do
   end
 
   def explore(%{assigns: %{user: _user, source: source}} = conn, _params) do
-    explore_error(conn, source)
+    message = [
+      Phoenix.HTML.Link.link("Sign in with Google",
+        to: "#{Routes.oauth_path(conn, :request, "google")}"
+      ),
+      " to explore in Data Studio."
+    ]
+
+    explore_error(conn, source, message)
   end
 
-  defp explore_error(conn, source) do
+  defp explore_error(conn, source, message) do
     conn
-    |> put_flash(
-      :error,
-      [
-        Phoenix.HTML.Link.link("Sign in with Google",
-          to: "#{Routes.oauth_path(conn, :request, "google")}"
-        ),
-        " to explore in Data Studio."
-      ]
-    )
+    |> put_flash(:error, message)
     |> redirect(to: Routes.source_path(conn, :show, source.id))
   end
 
