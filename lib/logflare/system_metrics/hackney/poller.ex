@@ -19,10 +19,16 @@ defmodule Logflare.SystemMetrics.Hackney.Poller do
   end
 
   def handle_info(:poll_metrics, state) do
-    hackney_stats = :hackney_pool.get_stats(Client.BigQuery)
+    bq_stats = :hackney_pool.get_stats(Client.BigQuery)
+    default_stats = :hackney_pool.get_stats(:default)
 
     if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("Hackney stats!", hackney_stats: hackney_stats)
+      Logger.info("Hackney BigQuery stats!",
+        hackney_stats: bq_stats,
+        hackney_pool: Client.BigQuery
+      )
+
+      Logger.info("Hackney :default stats!", hackney_stats: default_stats, hackney_pool: :default)
     end
 
     poll_metrics()
