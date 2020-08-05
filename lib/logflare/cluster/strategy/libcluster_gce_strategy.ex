@@ -169,7 +169,12 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
             :error
 
-          {:error, _response} ->
+          {:error, response} ->
+            Cluster.Logger.error(
+              :gce,
+              "Error getting node metadata: #{inspect(response)}"
+            )
+
             :error
         end
       end)
