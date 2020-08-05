@@ -56,7 +56,7 @@ config :swoosh, local: false
 
 config :tesla,
   adapter:
-    {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 50, recv_timeout: 60_000]}
+    {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 200, recv_timeout: 60_000]}
 
 config :number,
   delimit: [
