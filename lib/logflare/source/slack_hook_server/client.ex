@@ -7,8 +7,6 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
   @middleware [Tesla.Middleware.JSON]
 
-  @adapter Tesla.Adapter.Hackney
-
   def new() do
     middleware =
       [
@@ -23,7 +21,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
          end}
       ] ++ @middleware
 
-    adapter = {@adapter, pool: __MODULE__, recv_timeout: 60_000}
+    adapter = {Tesla.Adapter.Mint, timeout: 60_000}
 
     Tesla.client(middleware, adapter)
   end

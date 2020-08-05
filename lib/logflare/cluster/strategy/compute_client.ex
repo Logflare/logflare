@@ -23,7 +23,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.ComputeClient do
 
   plug Tesla.Middleware.JSON
 
-  adapter(Tesla.Adapter.Hackney, pool: __MODULE__, recv_timeout: 60_000)
+  adapter(Tesla.Adapter.Mint, timeout: 60_000)
 
   def zone_nodes(zone, group_name, auth_token) do
     post("/zones/" <> zone <> "/instanceGroups/" <> group_name <> "/listInstances", "",
