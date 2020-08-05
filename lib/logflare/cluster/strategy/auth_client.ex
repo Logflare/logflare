@@ -16,7 +16,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.AuthClient do
   plug Tesla.Middleware.BaseUrl, "http://metadata.google.internal/computeMetadata/v1"
   plug Tesla.Middleware.JSON
 
-  adapter(Tesla.Adapter.Mint, timeout: 60_000)
+  adapter(Tesla.Adapter.Mint, timeout: 60_000, mode: :passive)
 
   def metadata() do
     get("/instance/service-accounts/default/token", headers: [{"Metadata-Flavor", "Google"}])

@@ -66,14 +66,12 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       region_nodes =
         Enum.map(@regions, fn {region, group_name} ->
           get_region_nodes(state, region, group_name, auth_token)
-          Process.sleep(250)
         end)
         |> Enum.concat()
 
       zone_nodes =
         Enum.map(@zones, fn {zone, group_name} ->
           get_zone_nodes(state, zone, group_name, auth_token)
-          Process.sleep(250)
         end)
         |> Enum.concat()
 
