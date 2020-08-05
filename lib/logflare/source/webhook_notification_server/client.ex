@@ -18,7 +18,7 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
         #   end}
       ] ++ @middleware
 
-    adapter = {Tesla.Adapter.Mint, timeout: 60_000}
+    adapter = {Tesla.Adapter.Mint, timeout: 60_000, mode: :passive}
 
     Tesla.client(middleware, adapter)
   end

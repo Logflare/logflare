@@ -21,7 +21,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
         {Tesla.Middleware.Query, [wait: "true"]}
       ] ++ @middleware
 
-    adapter = {Tesla.Adapter.Mint, timeout: 60_000}
+    adapter = {Tesla.Adapter.Mint, timeout: 60_000, mode: :passive}
 
     Tesla.client(middleware, adapter)
   end
