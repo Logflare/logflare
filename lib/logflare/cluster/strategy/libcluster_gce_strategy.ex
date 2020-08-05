@@ -17,7 +17,6 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
   @impl true
   def init([%State{} = state]) do
-    IO.inspect(state)
     {:ok, load(state)}
   end
 
@@ -98,7 +97,11 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
         []
 
       {:error, message} ->
-        Cluster.Logger.error(:gce, "Error getting zone nodes: #{inspect(message)}")
+        Cluster.Logger.error(
+          :gce,
+          "Error getting zone nodes: #{inspect(message)} | #{zone} | #{group_name}"
+        )
+
         []
     end
   end
