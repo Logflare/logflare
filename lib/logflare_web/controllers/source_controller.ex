@@ -17,7 +17,7 @@ defmodule LogflareWeb.SourceController do
             ]
 
   alias Logflare.JSON
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams}
+  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans}
   alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
@@ -231,8 +231,22 @@ defmodule LogflareWeb.SourceController do
 
     render(conn, "edit.html",
       changeset: changeset,
-      source: source
+      source: source,
+      notifications_opts: notifications_options()
     )
+  end
+
+  defp notifications_options() do
+    plans = Plans.list_plans()
+
+    for p <- plans do
+      limit = p.limit_alert_freq
+      interval = Timex.Duration.from_milliseconds(limit)
+      label = Timex.format_duration(interval, :humanized)
+
+      [key: label, value: limit]
+    end
+    |> Enum.dedup()
   end
 
   def test_alerts(conn, %{"id" => source_id}) do
@@ -304,6 +318,42 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
+  def update(
+        %{assigns: %{source: source, user: _user, plan: plan}} = conn,
+        %{"source" => %{"notifications_every" => _freq} = params}
+      ) do
+    case Sources.update_source_by_user(source, plan, params) do
+      {:ok, _source} ->
+        conn
+        |> put_flash(:info, "Source updated!")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, :upgrade} ->
+        message = [
+          "Please ",
+          Phoenix.HTML.Link.link("upgrade",
+            to: "#{Routes.billing_path(conn, :edit)}"
+          ),
+          " first!"
+        ]
+
+        conn
+        |> put_flash(:error, message)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, changeset} ->
+        conn
+        |> put_status(406)
+        |> put_flash(:error, "Something went wrong!")
+        |> render(
+          "edit.html",
+          changeset: changeset,
+          source: source,
+          notifications_opts: notifications_options()
+        )
+    end
+  end
+
   def update(%{assigns: %{source: old_source, user: user}} = conn, %{"source" => source_params}) do
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
@@ -331,7 +381,8 @@ defmodule LogflareWeb.SourceController do
         |> render(
           "edit.html",
           changeset: changeset,
-          source: old_source
+          source: old_source,
+          notifications_opts: notifications_options()
         )
     end
   end

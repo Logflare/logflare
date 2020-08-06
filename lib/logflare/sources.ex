@@ -66,6 +66,34 @@ defmodule Logflare.Sources do
     |> Repo.update()
   end
 
+  def update_source_by_user(source, attrs) do
+    Source.update_by_user_changeset(source, attrs)
+    |> Repo.update()
+  end
+
+  def update_source_by_user(source, plan, %{"notifications_every" => freq} = attrs) do
+    freq = String.to_integer(freq)
+    limit = plan.limit_alert_freq
+
+    case freq < limit do
+      true ->
+        {:error, :upgrade}
+
+      false ->
+        Source.update_by_user_changeset(source, attrs)
+        |> Repo.update()
+        |> case do
+          {:ok, source} = response ->
+            Source.Supervisor.reset_source(source.token)
+
+            response
+
+          response ->
+            response
+        end
+    end
+  end
+
   def get_by(kw) do
     Source
     |> Repo.get_by(kw)

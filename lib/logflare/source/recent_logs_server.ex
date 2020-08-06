@@ -88,7 +88,8 @@ defmodule Logflare.Source.RecentLogsServer do
       | bigquery_project_id: user.bigquery_project_id,
         bigquery_dataset_id: user.bigquery_dataset_id,
         user: user,
-        plan: plan
+        plan: plan,
+        notifications_every: source.notifications_every
     }
 
     children = [
