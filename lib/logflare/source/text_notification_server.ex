@@ -46,12 +46,14 @@ defmodule Logflare.Source.TextNotificationServer do
 
         if source.notifications.team_user_ids_for_sms do
           Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
-            team_user = TeamUsers.get_team_user!(x)
+            team_user = TeamUsers.get_team_user(x)
             body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
-            Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-              ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
-            end)
+            if team_user do
+              Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+                ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
+              end)
+            end
           end)
         end
 
