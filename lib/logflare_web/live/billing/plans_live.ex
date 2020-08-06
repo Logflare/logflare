@@ -8,6 +8,8 @@ defmodule LogflareWeb.BillingPlansLive do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
+  import LogflareWeb.Helpers.Forms
+
   def mount(_params, %{"user_id" => user_id}, socket) do
     user =
       Users.get(user_id)
@@ -32,7 +34,7 @@ defmodule LogflareWeb.BillingPlansLive do
 
   def render(assigns) do
     ~L"""
-    <h5 class="header-margin"><%= String.capitalize(@period) %>ly Pricing</h5
+    <%= section_header("Pricing") %>
     <p>Get 2 months free if you choose a yearly plan.</p>
     <button phx-click="switch_period" phx-value-period=<%= period!(@period) %> class="btn btn-primary">See pricing per <%= period!(@period) %></button>
     <div class="scrolling-wrapper">

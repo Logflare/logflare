@@ -13,7 +13,7 @@
   <h4 class="header-margin">Account Owner Preferences</h4>
   <p>Preferences for the Logflare account owner.</p>
   <div class="sub-form">
-    <h5 class="header-margin">Contact Information</h5>
+    <%= section_header("Contact Information") %>
     <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
     <div class="form-group">
       <%= label f, :name, class: "label-padding"  %>
@@ -38,7 +38,7 @@
     </div>
     <%= submit "Update preferences", class: "btn btn-primary form-button" %>
   <% end %>
-  <h5 class="header-margin">Signed In with <%= String.capitalize(@user.provider) %></h5>
+  <%= section_header("Signed In with #{String.capitalize(@user.provider)}") %>
   <p>You signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
   <%= if @user.provider == "github" do %>
     <p>Review your authorized Oauth applications at Github.</p>
@@ -55,10 +55,10 @@
 <p>Create a billing account to subscribe to Logflare. Creating a billing account doesn't obligate you to anything. It's where you can update your billing preferences and manage your subscription.</p>
 <div class="sub-form">
 <%= if @user.billing_account do %>
-  <h5 class="header-margin">Edit Billing Account</h5>
+  <%= section_header("Edit Billing Account") %>
   <%= link "Edit billing account", to: Routes.billing_path(@conn, :edit), class: "btn btn-primary form-button" %>
 <% else %>
-  <h5 class="header-margin">Create a Billing Account</h5>
+  <%= section_header("Create a Billing Account") %>
   <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
 <% end %>
 </div>
@@ -67,7 +67,7 @@
 <h4 class="header-margin">Team Preferences</h4>
 <p>Setup your team.</p>
 <div class="sub-form">
-  <h5 class="header-margin">Team Name</h5>
+  <%= section_header("Team Name") %>
   <%= form_for @changeset, Routes.user_path(@conn, :update), fn a -> %>
   <div class="form-group">
     <%= inputs_for a, :team, fn team -> %>
@@ -79,7 +79,7 @@
 <% end %>
 <h5 id="team-members" class="header-margin">Team Members</h5>
 <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
-<h5 class="header-margin">Invite Team Members</h5>
+<%= section_header("Invite Team Members") %>
 <div class="form-group">
   <p>Team members can delete and edit sources. They cannot edit account settings or manage team members. Use this link to invite team members. This link will expire 24 hours from now.</p>
   <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %></code>
@@ -89,13 +89,13 @@
 <h4 class="header-margin">Account Preferences</h4>
 <p>Set your account wide preferences.</p>
 <div class="sub-form">
-  <h5 id="big-query-preferences" class="header-margin">BigQuery Backend</h5>
+  <%= section_header("BigQuery Backend") %>
   <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner and BigQuery Job User permissions. See <%= link "this guide", to: Routes.marketing_path(@conn, :big_query_setup) %> for more info.</p>
   <%= render(LogflareWeb.UserView, "edit_bq_form.html", conn: @conn, changeset: @changeset) %>
-  <h5 class="header-margin">Delete Your Account</h5>
+  <%= section_header("Delete Your Account") %>
   <p>This will immediately delete everything associated with your account. There is no undo.</p>
   <%= link "Delete now", to: Routes.user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>
-  <h5 class="header-margin">Reset Your API Key</h5>
+  <%= section_header("Reset API Key") %>
   <p>Immediately resest your API key. All future requests with your old API key will be rejected.</p>
   <%= link "Reset now", to: Routes.user_path(@conn, :new_api_key), class: "btn btn-danger form-button" %></li>
 </div>

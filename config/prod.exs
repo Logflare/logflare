@@ -9,7 +9,7 @@ config :logflare, LogflareWeb.Endpoint,
     transport_options: [max_connections: 16_384, num_acceptors: 100],
     protocol_options: [
       max_keepalive: 1_000_000,
-      idle_timeout: 620_000,
+      idle_timeout: 60_000,
       inactivity_timeout: 620_000
     ]
   ],
