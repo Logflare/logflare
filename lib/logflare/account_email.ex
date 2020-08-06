@@ -60,7 +60,7 @@ defmodule Logflare.AccountEmail do
   end
 
   def backend_disconnected(user, reason) do
-    account_edit_link = Routes.user_url(Endpoint, :edit) <> "#big-query-preferences"
+    account_edit_link = Routes.user_url(Endpoint, :edit) <> "#bigquery-backend"
 
     new()
     |> to(user.email)

@@ -166,7 +166,7 @@
 <% end %>
 <% else %>
   <p>Add a Google Cloud Platform project ID to get started!</p>
-  <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#big-query-preferences", class: "btn btn-primary form-button", role: "button" %>
+  <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
 <% end %>
 <script>
   document.addEventListener("DOMContentLoaded", async () => {

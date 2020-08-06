@@ -6,9 +6,7 @@ defmodule LogflareWeb.Helpers.Forms do
     anchor = String.downcase(text) |> String.replace(" ", "-")
 
     ~E"""
-    <a name="<%= anchor %>">
-      <h5 class="header-margin"><%= text %> <%= link "#", to: "#" <> anchor %></h5>
-    </a>
+    <h5 id="<%= anchor %>" class="header-margin"><%= text %> <%= link "#", to: "#" <> anchor %></h5>
     """
   end
 end
