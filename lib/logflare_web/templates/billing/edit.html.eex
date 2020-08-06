@@ -16,7 +16,7 @@
   <h4 class="header-margin">Billing Account</h4>
   <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
   <div class="sub-form">
-    <h5 class="header-margin">Summary</h5>
+    <%= section_header("Summary") %>
     <%= if @user.billing_account.stripe_subscriptions["data"] do %>
     <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= Enum.count(@user.sources) %> sources</u> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= Enum.count(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
     <% else %>
@@ -27,23 +27,23 @@
     <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Enterprise Plans & Support</h5>
+    <%= section_header("Enterprise Plans & Support") %>
     <p>Contact us to learn more about our Enterprise plans and support options. We can handle any event volume required. Need to ingest directly to the EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you do just about anything you need with your data pipeline so please reach out.</p>
     <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "btn btn-primary form-button" %>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Fair Use Policy</h5>
+    <%= section_header("Fair Use Policy") %>
     <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of 1,500 log events ingested in a single second. As an example, if you're doing 5 requests a second you'd be able to burst up to 1200 requests in a second (1500 - (5 * 60) = 1200).</p>
     <p>If you require more throughput please contact us about our Enterprise plans & support.</p>
     <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of Logflare that is feasible for both parties long term. However, if you're consistently hitting our fair use limits we reserve the right to delete your account without notice.</p>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Payment Method</h5>
+    <%= section_header("Payment Method") %>
     <p>Update your credit card on file.</p>
     <%= link "Update payment method", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Subscriptions</h5>
+    <%= section_header("Subscriptions") %>
     <p>Details of your current Logflare subscription.</p>
     <div class="table-responsive">
       <table class="table table-dark">
@@ -80,7 +80,7 @@
     </div>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Invoices</h5>
+    <%= section_header("Invoices") %>
     <p>View and download your invoices!</p>
     <div class="table-responsive">
       <table class="table table-dark">
@@ -109,12 +109,12 @@
     </div>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Billing Account Portal</h5>
+    <%= section_header("Billing Account Portal") %>
     <p>Update your billing info and download your invoices in Stripe's new customer portal.</p>
     <%= link "Go to portal", to: Routes.billing_path(@conn, :portal), method: :get, class: "btn btn-primary form-button" %>
   </div>
   <div class="sub-form">
-    <h5 class="header-margin">Delete Billing Account</h5>
+    <%= section_header("Delete Billing Account") %>
     <p>If something goes terribly wrong you can delete and re-create your billing account. You will no longer be able to
       access any subscriptions or invoices listed here.</p>
     <%= link "Delete billing account", to: Routes.billing_path(@conn, :delete), method: :delete, class: "btn btn-danger form-button" %>
