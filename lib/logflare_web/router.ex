@@ -30,7 +30,7 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.MaybeContentTypeToJson
 
     plug Plug.Parsers,
-      parsers: [:json, :bert],
+      parsers: [:json, :bert, :syslog],
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
@@ -270,5 +270,6 @@ defmodule LogflareWeb.Router do
     post "/vercel", LogController, :vercel_ingest
     post "/elixir/logger", LogController, :elixir_logger
     post "/typecasts", LogController, :create_with_typecasts
+    post "/syslog", LogController, :syslog
   end
 end

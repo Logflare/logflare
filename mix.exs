@@ -67,6 +67,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
       {:phoenix_live_view, "~> 0.13.0"},
       {:phoenix_live_dashboard, "~> 0.1"},
+      {:cors_plug, "~> 2.0"},
 
       # Oauth
       {:ueberauth_google, "~> 0.8"},
@@ -93,14 +94,15 @@ defmodule Logflare.Mixfile do
       {:cachex, "~> 3.1"},
       {:ex_machina, "~> 2.3"},
       {:iteraptor, "~> 1.10"},
-      {:bertex, ">= 0.0.0"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
-      {:nimble_parsec, "~> 0.6.0"},
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
-      {:cors_plug, "~> 2.0"},
+
+      # Parsing
+      {:bertex, ">= 0.0.0"},
+      {:nimble_parsec, "~> 0.6.0"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
