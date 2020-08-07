@@ -73,7 +73,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
         {:error, response}
 
       {:error, response} ->
-        Logger.warn("Webhook error!", webhook_response: %{error: response})
+        Logger.warn("Webhook error!", webhook_response: %{error: inspect(response)})
         {:error, response}
     end
   end
