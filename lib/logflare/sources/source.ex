@@ -105,6 +105,7 @@ defmodule Logflare.Source do
     field :bq_table_typemap, :any, virtual: true
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
+    field :notifications_every, :integer, default: :timer.hours(4), nullable: false
 
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
@@ -137,7 +138,8 @@ defmodule Logflare.Source do
       :webhook_notification_url,
       :slack_hook_url,
       :custom_event_message_keys,
-      :log_events_updated_at
+      :log_events_updated_at,
+      :notifications_every
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()
@@ -153,7 +155,8 @@ defmodule Logflare.Source do
       :bigquery_table_ttl,
       :webhook_notification_url,
       :slack_hook_url,
-      :custom_event_message_keys
+      :custom_event_message_keys,
+      :notifications_every
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations()

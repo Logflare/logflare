@@ -77,7 +77,7 @@
 </div>
 <%= submit "Update team", class: "btn btn-primary form-button" %>
 <% end %>
-<h5 id="team-members" class="header-margin">Team Members</h5>
+<%= section_header("Team Members") %>
 <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
 <%= section_header("Invite Team Members") %>
 <div class="form-group">

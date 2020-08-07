@@ -47,6 +47,14 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
+  def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
+    batch =
+      batch
+      |> Logs.Syslog.handle_batch()
+
+    ingest_and_render(conn, batch, source)
+  end
+
   def generic_json(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch =
