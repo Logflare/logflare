@@ -5,6 +5,7 @@ defmodule LogflareWeb.BillingController do
 
   alias Logflare.BillingAccounts
   alias Logflare.Plans
+  alias Logflare.Source
   alias Logflare.User
   alias Logflare.BillingAccounts.Stripe
 
@@ -53,9 +54,12 @@ defmodule LogflareWeb.BillingController do
     |> render("edit.html")
   end
 
-  def delete(%{assigns: %{user: %User{billing_account: billing_account}} = _user} = conn, _params) do
-    with {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer),
-         {:ok, _response} <- BillingAccounts.delete_billing_account(billing_account) do
+  def delete(
+        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
+        _params
+      ) do
+    with {:ok, _response} <- BillingAccounts.delete_billing_account(user),
+         {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer) do
       conn
       |> put_flash(:info, "Billing account deleted!")
       |> redirect(to: Routes.user_path(conn, :edit))
@@ -91,12 +95,15 @@ defmodule LogflareWeb.BillingController do
   end
 
   def change_subscription(
-        %{assigns: %{user: %User{billing_account: billing_account, sources: sources}}} = conn,
+        %{assigns: %{user: %User{billing_account: billing_account, sources: sources} = user}} =
+          conn,
         %{"plan" => plan_id}
       ) do
     with plan <- Plans.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <- Stripe.change_subscription(billing_account, sources, plan) do
+      Source.Supervisor.reset_all_user_sources(user)
+
       success_and_redirect(conn, "Plan successfully changed!")
     else
       false ->
@@ -145,13 +152,15 @@ defmodule LogflareWeb.BillingController do
   end
 
   def unsubscribe(
-        %{assigns: %{user: %User{billing_account: billing_account}} = _user} = conn,
+        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"id" => stripe_subscription_id}
       ) do
     with {:ok, subscription} <-
            get_billing_account_subscription(billing_account, stripe_subscription_id),
          {:ok, _response} <- Stripe.delete_subscription(subscription["id"]),
          {:ok, _billing_account} <- BillingAccounts.sync_subscriptions(billing_account) do
+      Source.Supervisor.reset_all_user_sources(user)
+
       success_and_redirect(conn, "Subscription deleted!")
     else
       {:error, :subscription_not_found} ->
@@ -191,7 +200,7 @@ defmodule LogflareWeb.BillingController do
   end
 
   def success(
-        %{assigns: %{user: %User{billing_account: billing_account}} = _user} = conn,
+        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         _params
       ) do
     stripe_session = get_session(conn, :stripe_session)
@@ -201,6 +210,8 @@ defmodule LogflareWeb.BillingController do
            Stripe.find_completed_session(stripe_session.id),
          {:ok, _billing_account} <-
            BillingAccounts.update_billing_account(billing_account, billing_params) do
+      Source.Supervisor.reset_all_user_sources(user)
+
       success_and_redirect(conn, "Subscription created!")
     else
       err ->
