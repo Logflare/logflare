@@ -8,6 +8,7 @@ defmodule Logflare.BillingAccounts do
   import Ecto.Query, warn: false
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Source
   alias __MODULE__
   alias Logflare.BillingAccounts.BillingAccount
 
@@ -74,6 +75,15 @@ defmodule Logflare.BillingAccounts do
     |> Ecto.build_assoc(:billing_account)
     |> BillingAccount.changeset(attrs)
     |> Repo.insert()
+    |> case do
+      {:ok, _user} = response ->
+        Source.Supervisor.reset_all_user_sources(user)
+
+        response
+
+      {:error, _changeset = response} ->
+        response
+    end
   end
 
   def sync_subscriptions(nil), do: :noop
@@ -137,19 +147,27 @@ defmodule Logflare.BillingAccounts do
   end
 
   @doc """
-  Deletes a BillingAccount.
+  Deletes a BillingAccount for a User.
 
   ## Examples
 
-      iex> delete_billing_account(billing_account)
+      iex> delete_billing_account(user)
       {:ok, %BillingAccount{}}
 
-      iex> delete_billing_account(billing_account)
+      iex> delete_billing_account(user)
       {:error, %Ecto.Changeset{}}
 
   """
-  def delete_billing_account(%BillingAccount{} = billing_account) do
-    Repo.delete(billing_account)
+  def delete_billing_account(%User{billing_account: billing_account} = user) do
+    case Repo.delete(billing_account) do
+      {:ok, _user} = response ->
+        Source.Supervisor.reset_all_user_sources(user)
+
+        response
+
+      {:error, _changeset = response} ->
+        response
+    end
   end
 
   @doc """
