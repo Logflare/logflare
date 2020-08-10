@@ -72,7 +72,7 @@ defmodule Logflare.Source.RateCounterServer do
 
     update_ets_table(state)
 
-    if Enum.find_value(state.buckets[@default_bucket_width].queue, fn x -> x > 0 end) do
+    if should_broadcast?(source_id) do
       broadcast(state)
     end
 
@@ -179,6 +179,15 @@ defmodule Logflare.Source.RateCounterServer do
     source_id
     |> get_data_from_ets()
     |> Map.get(:max_rate)
+  end
+
+  def should_broadcast?(source_id) when is_atom(source_id) do
+    source_id
+    |> get_data_from_ets()
+    |> Map.get(:buckets)
+    |> Map.get(@default_bucket_width)
+    |> Map.get(:queue)
+    |> Enum.any?(fn x -> x > 0 end)
   end
 
   @spec get_rate_metrics(atom, atom) :: map

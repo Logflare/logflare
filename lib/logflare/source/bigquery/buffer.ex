@@ -118,7 +118,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_info(:check_buffer, state) do
     # This could be smarter
     # Keep a 60 second history of the buffer (like the inserts) and check if any is > 1
-    if Source.Data.get_ets_count(state.source_id) > 1 do
+    if Source.RateCounterServer.should_broadcast?(state.source_id) do
       broadcast_buffer(state)
     end
 
