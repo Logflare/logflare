@@ -377,6 +377,74 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "Log params with transforms directives" do
+    test "numbers to floats typecasted correctly", %{conn: conn, users: [u | _], sources: [s | _]} do
+      params = %{
+        "source" => Atom.to_string(s.token),
+        "batch" => [
+          %{
+            "log_entry" => "info message",
+            "metadata" => %{
+              "number_field" => 1,
+              "number_field_2" => 1.0,
+              "string_field" => "1",
+              "nested" => %{
+                "number_field2" => 2,
+                "number_field2_1" => 2.1,
+                "string_field2" => "2",
+                "nested2" => %{
+                  "number_field3" => 3,
+                  "number_field3_1" => 3.1,
+                  "string_field3" => "3"
+                }
+              }
+            },
+            "@logflareTransformDirectives" => %{
+              "numbersToFloats" => true
+            }
+          }
+        ]
+      }
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> post(
+          log_path(conn, :create),
+          params
+        )
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert SourceBuffer.get_count(s.token) == 1
+      [le] = SourceBuffer.get_log_events(s.token)
+
+      sname = s.name
+
+      assert is_nil(le.body["@logflareTransformDirectives"])
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message: "info message",
+               metadata: %{
+                 "nested" => %{
+                   "nested2" => %{
+                     "number_field3" => 3.0,
+                     "number_field3_1" => 3.1,
+                     "string_field3" => "3"
+                   },
+                   "number_field2" => 2.0,
+                   "number_field2_1" => 2.1,
+                   "string_field2" => "2"
+                 },
+                 "number_field" => 1.0,
+                 "number_field_2" => 1.0,
+                 "string_field" => "1"
+               },
+               timestamp: _
+             } = le.body
+    end
+  end
+
   def metadata() do
     %{
       "datacenter" => "aws",

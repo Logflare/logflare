@@ -28,7 +28,7 @@ defmodule LogflareWeb.LogController do
   def create(%{assigns: %{source: source}} = conn, log_params) do
     batch =
       log_params
-      |> Map.take(~w[log_entry metadata timestamp])
+      |> Map.take(~w[log_entry metadata timestamp @logflareTransformDirectives])
       |> List.wrap()
 
     ingest_and_render(conn, batch, source)
