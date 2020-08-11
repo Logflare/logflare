@@ -228,19 +228,6 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_cast({:update, schema, type_map, field_count}, state) do
-    Sources.Cache.put_bq_schema(state.source_token, schema)
-
-    {:noreply,
-     %{
-       state
-       | schema: schema,
-         type_map: type_map,
-         field_count: field_count,
-         next_update: next_update()
-     }}
-  end
-
   def handle_call({:update, schema}, _from, state) do
     sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
     type_map = BigQuery.SchemaUtils.to_typemap(sorted)
@@ -252,6 +239,19 @@ defmodule Logflare.Source.BigQuery.Schema do
      %{
        state
        | schema: sorted,
+         type_map: type_map,
+         field_count: field_count,
+         next_update: next_update()
+     }}
+  end
+
+  def handle_cast({:update, schema, type_map, field_count}, state) do
+    Sources.Cache.put_bq_schema(state.source_token, schema)
+
+    {:noreply,
+     %{
+       state
+       | schema: schema,
          type_map: type_map,
          field_count: field_count,
          next_update: next_update()
