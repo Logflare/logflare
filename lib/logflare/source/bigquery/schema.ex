@@ -125,7 +125,8 @@ defmodule Logflare.Source.BigQuery.Schema do
       do: {:reply, :ok, state}
 
   def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
-    # set_next_update_cluster(state.source_token)
+    LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
+
     schema = try_schema_update(body.metadata, state.schema)
 
     if not same_schemas?(state.schema, schema) and
@@ -142,10 +143,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           update_cluster(state.source_token, schema, type_map, field_count)
 
-          Logger.info("Source schema updated from log_event!",
-            source_id: state.source_token,
-            log_event_id: event_id
-          )
+          Logger.info("Source schema updated from log_event!")
 
           Sources.Cache.put_bq_schema(state.source_token, schema)
 
@@ -177,10 +175,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       update_cluster(state.source_token, schema, type_map, field_count)
 
-                      Logger.info("Source schema updated from BigQuery!",
-                        source_id: state.source_token,
-                        log_event_id: event_id
-                      )
+                      Logger.info("Source schema updated from BigQuery!")
 
                       Sources.Cache.put_bq_schema(state.source_token, schema)
 
@@ -195,9 +190,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                     {:error, response} ->
                       Logger.warn("Source schema update error!",
-                        tesla_response: BigQuery.GenUtils.get_tesla_error_message(response),
-                        source_id: state.source_token,
-                        log_event_id: event_id
+                        tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
                       )
 
                       {:reply, :error, %{state | next_update: next_update()}}
@@ -205,9 +198,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                 {:error, response} ->
                   Logger.warn("Source schema update error!",
-                    tesla_response: BigQuery.GenUtils.get_tesla_error_message(response),
-                    source_id: state.source_token,
-                    log_event_id: event_id
+                    tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
                   )
 
                   {:reply, :error, %{state | next_update: next_update()}}
@@ -215,9 +206,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
             message ->
               Logger.warn("Source schema update error!",
-                tesla_response: message,
-                source_id: state.source_token,
-                log_event_id: event_id
+                tesla_response: message
               )
 
               {:reply, :error, %{state | next_update: next_update()}}
