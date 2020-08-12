@@ -126,27 +126,10 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
     # set_next_update_cluster(state.source_token)
-    schema =
-      try do
-        SchemaBuilder.build_table_schema(body.metadata, state.schema)
-      rescue
-        e ->
-          # TODO: Put the original log event string JSON into a top level error column with id, timestamp, and metadata
-          # This may be a great way to handle type mismatches in general because you get all the other fields anyways.
-          # TODO: Render error column somewhere on log event popup
+    schema = try_schema_update(body.metadata, state.schema)
 
-          # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
-
-          LogflareLogger.context(%{
-            pipeline_process_data_stacktrace: LogflareLogger.Stacktrace.format(__STACKTRACE__)
-          })
-
-          Logger.warn("Field schema type change error!", error_string: inspect(e))
-
-          state.schema
-      end
-
-    if not same_schemas?(state.schema, schema) and state.next_update < System.system_time(:second) do
+    if not same_schemas?(state.schema, schema) and
+         state.next_update < System.system_time(:second) do
       case BigQuery.patch_table(
              state.source_token,
              schema,
@@ -180,7 +163,7 @@ defmodule Logflare.Source.BigQuery.Schema do
             "Provided Schema does not match Table" <> _tail = _message ->
               case BigQuery.get_table(state.source_token) do
                 {:ok, table} ->
-                  schema = SchemaBuilder.build_table_schema(body.metadata, table.schema)
+                  schema = try_schema_update(body.metadata, table.schema)
 
                   case BigQuery.patch_table(
                          state.source_token,
@@ -245,19 +228,6 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_cast({:update, schema, type_map, field_count}, state) do
-    Sources.Cache.put_bq_schema(state.source_token, schema)
-
-    {:noreply,
-     %{
-       state
-       | schema: schema,
-         type_map: type_map,
-         field_count: field_count,
-         next_update: next_update()
-     }}
-  end
-
   def handle_call({:update, schema}, _from, state) do
     sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
     type_map = BigQuery.SchemaUtils.to_typemap(sorted)
@@ -269,6 +239,19 @@ defmodule Logflare.Source.BigQuery.Schema do
      %{
        state
        | schema: sorted,
+         type_map: type_map,
+         field_count: field_count,
+         next_update: next_update()
+     }}
+  end
+
+  def handle_cast({:update, schema, type_map, field_count}, state) do
+    Sources.Cache.put_bq_schema(state.source_token, schema)
+
+    {:noreply,
+     %{
+       state
+       | schema: schema,
          type_map: type_map,
          field_count: field_count,
          next_update: next_update()
@@ -305,5 +288,26 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   defp same_schemas?(old_schema, new_schema) do
     old_schema == new_schema
+  end
+
+  defp try_schema_update(metadata, schema) do
+    try do
+      SchemaBuilder.build_table_schema(metadata, schema)
+    rescue
+      e ->
+        # TODO: Put the original log event string JSON into a top level error column with id, timestamp, and metadata
+        # This may be a great way to handle type mismatches in general because you get all the other fields anyways.
+        # TODO: Render error column somewhere on log event popup
+
+        # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
+
+        LogflareLogger.context(%{
+          pipeline_process_data_stacktrace: LogflareLogger.Stacktrace.format(__STACKTRACE__)
+        })
+
+        Logger.warn("Field schema type change error!", error_string: inspect(e))
+
+        schema
+    end
   end
 end
