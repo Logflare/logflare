@@ -22,6 +22,7 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetTeamUser
     plug LogflareWeb.Plugs.SetTeam
     plug LogflareWeb.Plugs.SetPlan
+    plug LogflareWeb.Plugs.EnsureSourceStarted
   end
 
   pipeline :api do
@@ -39,6 +40,7 @@ defmodule LogflareWeb.Router do
   pipeline :require_ingest_api_auth do
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetVerifySource
+    plug LogflareWeb.Plugs.EnsureSourceStarted
     plug LogflareWeb.Plugs.SetPlanFromCache
     plug LogflareWeb.Plugs.RateLimiter
   end
@@ -49,6 +51,14 @@ defmodule LogflareWeb.Router do
 
   pipeline :require_auth do
     plug LogflareWeb.Plugs.RequireAuth
+  end
+
+  pipeline :set_source do
+    plug LogflareWeb.Plugs.SetVerifySource
+  end
+
+  pipeline :ensure_source_started do
+    plug LogflareWeb.Plugs.EnsureSourceStarted
   end
 
   pipeline :oauth_public do
@@ -120,22 +130,41 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/sources", LogflareWeb do
-    pipe_through :browser
-    get "/public/:public_token", SourceController, :public
+    pipe_through [:browser, :set_source]
+
     get "/:id/unsubscribe/:token", Auth.UnsubscribeController, :unsubscribe
     get "/:id/unsubscribe/stranger/:token", Auth.UnsubscribeController, :unsubscribe_stranger
     get "/:id/unsubscribe/team-member/:token", Auth.UnsubscribeController, :unsubscribe_team_user
   end
 
   scope "/sources", LogflareWeb do
+    pipe_through [:browser, :set_source, :ensure_source_started]
+
+    get "/public/:public_token", SourceController, :public
+  end
+
+  scope "/sources", LogflareWeb do
     pipe_through [:browser, :require_auth]
 
-    resources "/", SourceController, except: [:index] do
+    get "/new", SourceController, :new
+    post "/", SourceController, :create
+  end
+
+  scope "/sources", LogflareWeb do
+    pipe_through [:browser, :require_auth, :set_source]
+
+    delete "/:id", SourceController, :delete
+    delete "/:id/force-delete", SourceController, :del_source_and_redirect
+  end
+
+  scope "/sources", LogflareWeb do
+    pipe_through [:browser, :require_auth, :set_source, :ensure_source_started]
+
+    resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live "/rules", Sources.RulesLV, layout: {LogflareWeb.LayoutView, :root}
       delete "/saved-searches/:id", SavedSearchesController, :delete
     end
 
-    delete "/:id/force-delete", SourceController, :del_source_and_redirect
     get "/:id/test-alerts", SourceController, :test_alerts
     get "/:id/test-slack-hook", SourceController, :test_slack_hook
     get "/:id/delete-slack-hook", SourceController, :delete_slack_hook

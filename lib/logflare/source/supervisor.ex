@@ -33,13 +33,17 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
-    # Start sources with events first
-    # Tomorrow only start sources with events in the last day, and auto start recent_log_servers when requests come in if it's not already started
-    # Also start recent_log_servers when anything in source route is viewed (plug maybe)
+    # Starting sources with events first
+    # Starting sources only when we've seen an event in the last 7 days
+    # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
+
+    milli = :timer.hours(24) * 7
+    from_datetime = DateTime.utc_now() |> DateTime.add(-milli, :millisecond)
 
     query =
       from(s in Source,
         order_by: s.log_events_updated_at,
+        where: s.log_events_updated_at > ^from_datetime,
         select: s
       )
 
@@ -63,14 +67,20 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_id}, state) do
-    case create_source(source_id) do
-      {:ok, _pid} ->
-        state = Enum.uniq([source_id | state])
-        {:noreply, state}
+    case Process.whereis(source_id) do
+      nil ->
+        case create_source(source_id) do
+          {:ok, _pid} ->
+            state = Enum.uniq([source_id | state])
+            {:noreply, state}
 
-      {:error, _reason} ->
-        Logger.error("Failed to start RecentLogsServer: #{source_id}")
+          {:error, _reason} ->
+            Logger.error("Failed to start RecentLogsServer: #{source_id}")
 
+            {:noreply, state}
+        end
+
+      _ ->
         {:noreply, state}
     end
   end
