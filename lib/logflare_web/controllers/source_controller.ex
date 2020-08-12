@@ -223,7 +223,14 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp notifications_options() do
-    plans = Plans.list_plans()
+    env = Application.get_env(:logflare, :env)
+
+    plans =
+      if env == :dev || :staging do
+        Plans.list_plans() ++ [Plans.legacy_plan()] ++ [%Plans.Plan{limit_alert_freq: 60_000}]
+      else
+        Plans.list_plans() ++ [Plans.legacy_plan()]
+      end
 
     for p <- plans do
       limit = p.limit_alert_freq
