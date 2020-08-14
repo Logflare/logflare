@@ -14,15 +14,15 @@ defmodule Logflare.SystemMetrics.Hackney.Poller do
   end
 
   def init(state) do
-    poll_metrics()
+    poll_metrics(Enum.random(0..:timer.seconds(60)))
     {:ok, state}
   end
 
   def handle_info(:poll_metrics, state) do
-    bq_stats = :hackney_pool.get_stats(Client.BigQuery)
-    default_stats = :hackney_pool.get_stats(:default)
-
     if Application.get_env(:logflare, :env) == :prod do
+      bq_stats = :hackney_pool.get_stats(Client.BigQuery)
+      default_stats = :hackney_pool.get_stats(:default)
+
       Logger.info("Hackney BigQuery stats!",
         hackney_stats: bq_stats,
         hackney_pool: Client.BigQuery
@@ -35,7 +35,7 @@ defmodule Logflare.SystemMetrics.Hackney.Poller do
     {:noreply, state}
   end
 
-  defp poll_metrics() do
-    Process.send_after(self(), :poll_metrics, @poll_every)
+  defp poll_metrics(every \\ @poll_every) do
+    Process.send_after(self(), :poll_metrics, every)
   end
 end

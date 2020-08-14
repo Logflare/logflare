@@ -13,7 +13,7 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
   end
 
   def init(_state) do
-    poll_metrics()
+    poll_metrics(Enum.random(0..:timer.seconds(60)))
     last_scheduler_metrics = :scheduler.sample()
     {:ok, last_scheduler_metrics}
   end
@@ -32,7 +32,7 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
     {:noreply, current_scheduler_metrics}
   end
 
-  defp poll_metrics() do
-    Process.send_after(self(), :poll_metrics, @poll_every)
+  defp poll_metrics(every \\ @poll_every) do
+    Process.send_after(self(), :poll_metrics, every)
   end
 end

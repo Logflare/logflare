@@ -16,7 +16,7 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
   end
 
   def init(state) do
-    poll_metrics()
+    poll_metrics(Enum.random(0..:timer.seconds(60)))
     {:ok, state}
   end
 
@@ -31,7 +31,7 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
     {:noreply, state}
   end
 
-  defp poll_metrics() do
-    Process.send_after(self(), :poll_metrics, @poll_every)
+  defp poll_metrics(every \\ @poll_every) do
+    Process.send_after(self(), :poll_metrics, every)
   end
 end

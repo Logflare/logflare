@@ -18,7 +18,7 @@ defmodule Logflare.Source.Supervisor do
 
   require Logger
 
-  # TODO: periodically check the database and locally create or delete any sources accordingly
+  # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
 
   def start_link do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -33,7 +33,7 @@ defmodule Logflare.Source.Supervisor do
   ## Server
 
   def handle_continue(:boot, _source_ids) do
-    # Starting sources with events first
+    # Starting sources by latest events first
     # Starting sources only when we've seen an event in the last 7 days
     # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
 
@@ -136,18 +136,22 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def terminate(reason, _state) do
-    # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}")
     reason
   end
 
   ## Public Functions
 
-  def new_source(source_id) do
-    # Calling this server doing boot times out due to logs of sources getting created at once and handle_continue blocks
-    # GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+  def start_source(source_id) do
+    # Calling this server doing boot times out due to dealing with bigquery in init_table()
 
-    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+    # Double check source is in the database before starting
+    # Can be removed when manager fns move into their own genserver
+    if Sources.get_by(token: source_id) do
+      GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+    else
+      Logger.warn("Attempted to start a source not found in the database.", source_id: source_id)
+    end
   end
 
   def delete_source(source_id) do

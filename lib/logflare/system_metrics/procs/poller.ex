@@ -18,7 +18,7 @@ defmodule Logflare.SystemMetrics.Procs.Poller do
   end
 
   def init(_state) do
-    poll_metrics()
+    poll_metrics(Enum.random(0..:timer.seconds(60)))
     {:ok, %{last_processes: Procs.get_processes()}}
   end
 
@@ -34,8 +34,8 @@ defmodule Logflare.SystemMetrics.Procs.Poller do
     {:noreply, %{last_processes: current_processes}}
   end
 
-  defp poll_metrics() do
-    Process.send_after(self(), :poll_metrics, @poll_every)
+  defp poll_metrics(every \\ @poll_every) do
+    Process.send_after(self(), :poll_metrics, every)
   end
 
   defp final_processes(
