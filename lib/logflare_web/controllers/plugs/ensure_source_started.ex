@@ -13,7 +13,7 @@ defmodule LogflareWeb.Plugs.EnsureSourceStarted do
       nil ->
         Logger.info("Source process not found, starting...", source_id: source_id)
 
-        Supervisor.new_source(source_id)
+        Supervisor.start_source(source_id)
 
         conn
 

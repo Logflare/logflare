@@ -143,11 +143,15 @@ defmodule Logflare.Source.Supervisor do
 
   ## Public Functions
 
-  def new_source(source_id) do
+  def start_source(source_id) do
     # Calling this server doing boot times out due to logs of sources getting created at once and handle_continue blocks
     # GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
 
-    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+    if Sources.get_by(token: source_id) do
+      GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+    else
+      Logger.warn("Attempted to start a source not found in the database.", source_id: source_id)
+    end
   end
 
   def delete_source(source_id) do
