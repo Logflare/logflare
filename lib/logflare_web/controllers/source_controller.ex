@@ -198,18 +198,9 @@ defmodule LogflareWeb.SourceController do
     |> redirect(to: Routes.source_path(conn, :show, source.id))
   end
 
-  def public(conn, %{"public_token" => public_token}) do
-    Sources.Cache.get_by_and_preload(public_token: public_token)
-    |> case do
-      %Source{} = source ->
-        avg_rate = source.metrics.avg
-        render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
-
-      _ ->
-        conn
-        |> put_flash(:error, "Public path not found!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
-    end
+  def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => public_token}) do
+    avg_rate = source.metrics.avg
+    render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
 
   def edit(%{assigns: %{source: source}} = conn, _params) do

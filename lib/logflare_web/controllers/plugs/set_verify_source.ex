@@ -7,6 +7,10 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
 
   def call(%{assigns: %{source: %Source{}}} = conn, _opts), do: conn
 
+  def call(%{request_path: "/sources/public/" <> public_token} = conn, opts) do
+    set_source_for_public(public_token, conn, opts)
+  end
+
   def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     token = params["source"] || params["source_id"]
@@ -82,6 +86,22 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> put_view(LogflareWeb.ErrorView)
         |> render("404_page.html")
         |> halt()
+    end
+  end
+
+  defp set_source_for_public(public_token, conn, opts) do
+    case Sources.Cache.get_by_and_preload(public_token: public_token) do
+      nil ->
+        conn
+        |> put_status(404)
+        |> put_layout(false)
+        |> put_view(LogflareWeb.ErrorView)
+        |> render("404_page.html")
+        |> halt()
+
+      source ->
+        conn
+        |> assign(:source, source)
     end
   end
 end
