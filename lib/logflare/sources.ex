@@ -31,7 +31,7 @@ defmodule Logflare.Sources do
         {:ok, _source_schema} =
           create_source_schema(source, %{bigquery_schema: SchemaBuilder.initial_table_schema()})
 
-        Source.Supervisor.new_source(source.token)
+        Source.Supervisor.start_source(source.token)
 
         {:ok, source}
 
