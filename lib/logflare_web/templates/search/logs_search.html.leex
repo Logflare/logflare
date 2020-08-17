@@ -1,6 +1,7 @@
 <div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
+  <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+    <div class="log-settings">
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();">
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
@@ -40,7 +41,6 @@
       <% end %>
     </ul>
   </div>
-  <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
 </div>
 </div>
 <div class="container source-logs-search-container console-text">
@@ -73,52 +73,51 @@
         </small>
       <% end %>
     </div>
-    <div class="form-row align-items-center form-text">
-      <div class="col-auto">
+    <div class="d-flex flex-wrap align-items-center form-text">
+      <div class="pr-3 pt-1 pb-1">
         <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
-          <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
+          <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
         <% end %>
       </div>
-      <div class="col-auto">
+      <div class="pr-3 pt-1 pb-1">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
-            <span class="btn btn-primary" phx-click="stop_live_search" style="width: 100px;">
+            <span class="btn btn-primary live-pause" phx-click="stop_live_search" style="">
               <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
-              <span class="fas-in-button" id="search-tailing-button">Pause</span>
+              <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
             </span>
           <% else %>
-            <span class="btn btn-primary" phx-click="start_live_search" style="width: 100px;">
-              <i class="fas fa-play"></i><span class="fas-in-button">Live</span>
+            <span class="btn btn-primary live-pause" phx-click="start_live_search" style="">
+              <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
             </span>
           <% end %>
           <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
         </div>
       </div>
-      <div class="col-auto">
+      <div class="pr-3 pt-1 pb-1">
         <a href="#" phx-click="save_search" class="btn btn-primary">
-          <i class="fas fa-save"></i><span class="fas-in-button">Save</span>
+          <i class="fas fa-save"></i><span class="fas-in-button  hide-on-mobile">Save</span>
         </a>
       </div>
-      <div class="col-auto">
+      <div class="pr-3 pt-1 pb-1">
         <span class="btn btn-primary" id="daterangepicker">
-          <span class="fa fa-clock" >
-          </span>
-          DateTime
+          <span class="fa fa-clock" ></span>
+          <span class="hide-on-mobile">DateTime</span>
         </span>
       </div>
-      <div class="col-auto">
+      <div class="pr-3 pt-1 pb-1">
         <%= link "Reset", to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source, querystring: "c:count(*) c:group_by(t::minute)", tailing?: true), class: "btn btn-primary" %>
       </div>
-      <div class="col-auto  hide-on-mobile">
+      <div class="pr-3 pt-1 pb-1  hide-on-mobile">
         Chart period:
       </div>
-      <div class="col-auto">
+      <div class="pr-3 pt-1 pb-1">
         <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: get_chart_period(@lql_rules, "minute"), class: "form-control form-control-sm" %>
       </div>
-      <div class="col-auto  hide-on-mobile">
+      <div class="pr-3 pt-1 pb-1 hide-on-mobile">
         Aggregate:
       </div>
-      <div class="col-auto">
+      <div class="pr-3 pt-1 pb-1">
         <%= if @chart_aggregate_enabled? do %>
           <%= select f,
          :chart_aggregate,

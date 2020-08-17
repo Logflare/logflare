@@ -1,12 +1,13 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/edit</h5>
+    <div class="log-settings">
       <ul>
         <li><%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLV, @source.id) do %><i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
     </div>
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/edit</h5>
+
   </div>
 </div>
 <div class="container mx-auto">

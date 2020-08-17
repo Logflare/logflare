@@ -1,6 +1,7 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
+    <h5>~/logs</h5>
+    <div class="log-settings">
       <ul>
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
@@ -9,7 +10,7 @@
       <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
     </ul>
   </div>
-  <h5>~/logs</h5>
+
 </div>
 </div>
 <div class="dashboard container mx-auto" hidden>

@@ -1,6 +1,12 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
     <h5>~/oauth/authorized</h5>
+    <div class="log-settings">
+      <ul>
+        <li>
+        </li>
+      </ul>
+    </div>
   </div>
 </div>
 

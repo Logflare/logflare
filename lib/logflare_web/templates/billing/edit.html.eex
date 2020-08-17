@@ -1,6 +1,7 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
+    <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/billing/edit</h5>
+    <div class="log-settings">
       <ul>
         <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span
             class="hide-on-mobile"> billing</span><% end %></li>
@@ -9,7 +10,6 @@
             class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
-    <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/billing/edit</h5>
   </div>
 </div>
 <div class="container mx-auto">

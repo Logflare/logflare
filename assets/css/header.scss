@@ -33,9 +33,10 @@
   }
 
   & h5 {
-    margin: 0;
+    margin-top: .25em;
+    margin-bottom: .25em;
     display: flex;
-    max-width: 70%;
+    max-width: 100%;
     white-space: nowrap;
   }
 
@@ -50,7 +51,8 @@
 
   & li {
     display: inline-block;
-    margin-left: 0.5em;
+    margin-left: 1em;
+    margin-bottom: .25em;
   }
 
   & ul {
@@ -68,7 +70,7 @@
 }
 
 .no-subhead {
-  margin-top: -55px;
+  margin-top: -125px;
 }
 
 .bg-light {

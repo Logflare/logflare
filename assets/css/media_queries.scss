@@ -7,11 +7,19 @@
   #source-list {
     margin-left: 25%;
   }
+
+  .live-pause {
+    width: 100px;
+  }
 }
 
 @media screen and (max-width: 992px) {
   .hide-on-mobile {
     display: none !important;
+  }
+
+  .live-pause {
+    width: 45px;
   }
 
   .btn {
