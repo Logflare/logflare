@@ -7,27 +7,27 @@ defmodule Logflare.Logs.SyslogParser do
     :do_parse,
     optional(
       byte_length()
-      |> ignore(separator())
+      |> ignore(sp())
     )
     |> concat(priority())
     |> concat(version())
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(timestamp()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(hostname()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(appname()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(proc_id()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(msg_id()))
     |> concat(
-      ignore(separator())
+      ignore(sp())
       |> maybe(sd_element())
     )
     |> concat(
       optional(
-        ignore(separator())
+        ignore(sp())
         |> message_text()
       )
     )
@@ -36,28 +36,28 @@ defmodule Logflare.Logs.SyslogParser do
   defparsec(
     :do_parse_heroku_dialect,
     byte_length()
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(priority())
     |> concat(version())
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(timestamp()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(hostname()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(appname()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(proc_id()))
-    |> ignore(separator())
+    |> ignore(sp())
     |> concat(maybe(msg_id()))
     |> concat(
       optional(
-        ignore(separator())
+        ignore(sp())
         |> maybe(sd_element())
       )
     )
     |> concat(
       optional(
-        ignore(separator())
+        ignore(sp())
         |> message_text()
       )
     )
@@ -68,7 +68,6 @@ defmodule Logflare.Logs.SyslogParser do
 
   @doc """
   Parses incoming message string into Logflare.Syslog.Message struct.
-
   """
   def parse(messagestr, opts \\ []) when is_binary(messagestr) do
     parser =
@@ -77,7 +76,6 @@ defmodule Logflare.Logs.SyslogParser do
         nil -> &do_parse/1
       end
 
-    # with {:ok, tokens, "", _, _, _} <- parser.(messagestr) |> IO.inspect() do
     with {:ok, tokens, "", _, _, _} <- parser.(messagestr) do
       map =
         tokens
@@ -96,25 +94,20 @@ defmodule Logflare.Logs.SyslogParser do
   end
 
   defp merge_structured_data(%{sd_elements: sd_elements} = m) when length(sd_elements) > 0 do
-    {{:sd_name, sd_name}, sd_params_vals} =
+    sd_names =
       sd_elements
-      |> hd()
-      |> List.pop_at(0)
+      |> Enum.map(&hd/1)
+      |> Enum.map(fn {:sd_name, sd_name} -> sd_name end)
 
     sd =
       sd_elements
-      |> List.flatten()
-      |> Enum.reject(fn
-        {:sd_name, _} -> true
-        _ -> false
-      end)
-      |> Enum.chunk_every(2)
+      |> Enum.flat_map(fn [sd_name | rest] -> rest end)
       |> Enum.map(fn [param_name: k, param_value: v] ->
         {k, v}
       end)
       |> Map.new()
 
-    Map.merge(m, %{data: sd, data_id: sd_name})
+    Map.merge(m, %{data: sd, data_ids: sd_names})
   end
 
   defp merge_structured_data(m), do: m
@@ -142,7 +135,4 @@ defmodule Logflare.Logs.SyslogParser do
       tokens
     end
   end
-
-  defparsec :sd_element, sd_element
-  defparsec :sd_param, param_value
 end

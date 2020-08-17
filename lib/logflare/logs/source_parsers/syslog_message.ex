@@ -15,7 +15,8 @@ defmodule Logflare.Syslog.Message do
           message: binary,
           message_raw: binary,
           key_values: map,
-          message_json: map
+          message_json: map,
+          data_ids: list(map)
         }
 
   defstruct [
@@ -32,7 +33,7 @@ defmodule Logflare.Syslog.Message do
     :message_raw,
     :key_values,
     :message_json,
-    :data_id,
+    :data_ids,
     :data
   ]
 end

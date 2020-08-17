@@ -15,7 +15,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: nil,
-                 data_id: nil,
+                 data_ids: nil,
                  facility: :local7,
                  host_name: "host",
                  ip: nil,
@@ -45,7 +45,7 @@ defmodule Logflare.Logs.SyslogParserTest do
       assert {:ok,
               %Logflare.Syslog.Message{
                 data: nil,
-                data_id: nil,
+                data_ids: nil,
                 facility: :local7,
                 host_name: "host",
                 ip: nil,
@@ -75,7 +75,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: nil,
-                 data_id: nil,
+                 data_ids: nil,
                  facility: :local7,
                  host_name: "host",
                  ip: nil,
@@ -105,7 +105,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: nil,
-                 data_id: nil,
+                 data_ids: nil,
                  facility: :local7,
                  host_name: "host",
                  ip: nil,
@@ -135,7 +135,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: nil,
-                 data_id: nil,
+                 data_ids: nil,
                  facility: :local7,
                  host_name: "host",
                  ip: nil,
@@ -194,7 +194,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: %{"iut" => "3"},
-                 data_id: "ex@31932",
+                 data_ids: ["ex@31932"],
                  facility: :auth,
                  host_name: "leodido",
                  ip: nil,
@@ -224,7 +224,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: %{"iut" => "3"},
-                 data_id: "ex@31932",
+                 data_ids: ["ex@31932"],
                  facility: :auth,
                  host_name: "leodido",
                  ip: nil,
@@ -256,7 +256,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: %{"iut" => "3"},
-                 data_id: "ex@31932",
+                 data_ids: ["ex@31932"],
                  facility: :auth,
                  host_name: "leodido",
                  ip: nil,
@@ -287,7 +287,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: %{"iut" => "3"},
-                 data_id: "ex@31932",
+                 data_ids: ["ex@31932"],
                  facility: :auth,
                  host_name: "leodido",
                  ip: nil,
@@ -323,7 +323,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: nil,
-                 data_id: nil,
+                 data_ids: nil,
                  facility: :auth,
                  host_name: "mymachine.example.com",
                  ip: nil,
@@ -353,7 +353,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: nil,
-                 data_id: nil,
+                 data_ids: nil,
                  facility: :local4,
                  host_name: "192.0.2.1",
                  ip: nil,
@@ -383,7 +383,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                :ok,
                %Logflare.Syslog.Message{
                  data: %{"eventID" => "1011", "eventSource" => "Application", "iut" => "3"},
-                 data_id: "exampleSDID@32473",
+                 data_ids: ["exampleSDID@32473"],
                  facility: :local4,
                  host_name: "mymachine.example.com",
                  ip: nil,
@@ -418,7 +418,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                    "eventSource" => "Application",
                    "iut" => "3"
                  },
-                 data_id: "exampleSDID@32473",
+                 data_ids: ["exampleSDID@32473", "examplePriority@32473"],
                  facility: :local4,
                  host_name: "mymachine.example.com",
                  ip: nil,
@@ -453,7 +453,7 @@ defmodule Logflare.Logs.SyslogParserTest do
                    "eventSource" => "Application",
                    "iut" => "3"
                  },
-                 data_id: "exampleSDID@32473",
+                 data_ids: ["exampleSDID@32473", "examplePriority@32473"],
                  facility: :local4,
                  host_name: "mymachine.example.com",
                  ip: nil,

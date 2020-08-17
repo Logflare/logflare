@@ -58,9 +58,11 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     choice(c1, [ignore(nilvalue()), c])
   end
 
-  @sd_name_chars @ascii_printable_chars
-                 |> hd()
-                 |> Enum.reject(&(&1 in [?=, 32, ?], ?"]))
+  # ?= => 61
+  # ?] => 93
+  # ?" => 34
+  # ?space => 34
+  @sd_name_chars Enum.into(hd(@ascii_printable_chars), []) -- [61, 32, 93, 34]
   def sd_and_param_name(c \\ empty()) do
     ascii_string(c, @sd_name_chars,
       min: 1,
@@ -72,14 +74,13 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     ignore(string("["))
     |> sd_name
     |> times(
-      ignore(separator())
+      ignore(sp())
       |> concat(param_name())
       |> concat(ignore(string("=")))
       |> concat(param_value())
       |> wrap(),
       min: 1
     )
-    # |> optional(ignore(ascii_char([{:not, ?\e}])))
     |> ignore(string("]"))
     |> tag(:sd_element)
     |> label("sd_element")
@@ -104,7 +105,6 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
       ]),
       {:not_param_value_escaped, []}
     )
-    # |> utf8_string([{:not, ?"}], min: 1, max: 32000)
     |> ignore(string("\""))
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(:param_value)
@@ -142,7 +142,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     |> label("nilvalue")
   end
 
-  def separator(c \\ empty()) do
+  def sp(c \\ empty()) do
     c
     |> string(" ")
     |> label("separator")
@@ -200,7 +200,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
       {:ok, dt} ->
         Timex.to_datetime(dt, "Etc/UTC")
 
-      {:error, error} = errtup ->
+      {:error, _} = errtup ->
         errtup
     end
   end
@@ -221,10 +221,4 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
   def not_param_value_escaped(<<10, _::binary>>, context, _, _), do: {:halt, context}
   def not_param_value_escaped(<<?], _::binary>>, context, _, _), do: {:halt, context}
   def not_param_value_escaped(_, context, _, _), do: {:cont, context}
-
-  def not_bracket(<<?], _::binary>>, context, _, _), do: {:halt, context}
-  def not_bracket(_, context, _, _), do: {:cont, context}
-
-  def not_backslash(<<10, _::binary>>, context, _, _), do: {:halt, context}
-  def not_backslash(_, context, _, _), do: {:cont, context}
 end
