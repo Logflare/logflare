@@ -1,6 +1,11 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
     <h5>~/logs/new</h5>
+    <div class="log-settings">
+      <ul>
+        <li></li>
+      </ul>
+    </div>
   </div>
 </div>
 <div class="container mx-auto">

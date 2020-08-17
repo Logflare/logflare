@@ -1,12 +1,12 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
-    <div class="log-settings float-right">
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/rules</h5>
+    <div class="log-settings">
       <ul>
         <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
         <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
       </ul>
     </div>
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/rules</h5>
   </div>
 </div>
 <div id="lql-rules-container" class="container mx-auto">
