@@ -24,7 +24,10 @@ defmodule Logflare.SystemMetrics.Procs.Poller do
 
   def handle_info(:poll_metrics, state) do
     processes =
-      Wobserver.Processes.list() |> Enum.sort_by(& &1.reductions, :desc) |> Stream.take(10)
+      Wobserver.Processes.list()
+      |> Enum.reject(&(&1 == :error))
+      |> Enum.sort_by(& &1.reductions, :desc)
+      |> Enum.take(10)
 
     if Application.get_env(:logflare, :env) == :prod do
       Logger.info("Process metrics!", processes: processes)
