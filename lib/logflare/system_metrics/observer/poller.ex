@@ -22,9 +22,13 @@ defmodule Logflare.SystemMetrics.Observer.Poller do
 
   def handle_info(:poll_metrics, state) do
     observer_metrics = Observer.get_metrics()
+    mem_metrics = Observer.get_memory()
 
     if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("Observer metrics!", observer_metrics: observer_metrics)
+      Logger.info("Observer metrics!",
+        observer_metrics: observer_metrics,
+        observer_memory: mem_metrics
+      )
     end
 
     poll_metrics()
