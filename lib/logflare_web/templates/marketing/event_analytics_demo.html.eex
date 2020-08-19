@@ -29,11 +29,8 @@
           <p>Use Logflare as the hub of your event analytics pipeline. Send Logflare arbitrary events with arbitrary dynamic metadata. Logflare handles inserting into BigQuery and updating the underlying schema. It's the easiest way on the market to stream data into a BigQuery data warehouse.</p>
           <h2 id="demo-video">Demo Video</h2>
           <p>Here we send Logflare arbitrary events via a POST request, and query them immediately in realtime.</p>
-          <p># TODO: This demo is a bit old but the concepts still remain relevant.</p>
           <div class="minimg">
-            <div class="purplebox">
-            </div>
-            <iframe width="100%" height="350px" class="imgf guide-img" src="https://www.youtube.com/embed/WQc5pRRzmhs" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            <div style="position: relative; padding-bottom: 62.5%; height: 0;"><iframe src="https://www.loom.com/embed/d0c58ce170c24af0be6c22bc6fb0d6f4" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
           </div>
         </div>
       </div>
