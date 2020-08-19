@@ -1,0 +1,434 @@
+<div class="container-fluid heropricing">
+    <div class="container">
+        <div class="heropr">
+            <div class="row">
+                <div class="col-md-12">
+                    <h1>Flat Rate, Unlimited Log Events</h1>
+                    <p class="paragraph">Start with us for a flat, per source fee. Grow into custom Enterprise class
+                        service, support and plans.</p>
+                    <p class="sign-up"><a href="#plans">SIGN UP</a></p>
+                    <p><span>Start 14-day trial</span></p>
+                </div>
+            </div>
+        </div>
+        <div id="plans"></div>
+        <div class="row fordesktoppricingplan">
+            <div class="col-md-12">
+                <div class="pricingtable">
+                    <div class="row">
+                        <div class="col-md-2-5">
+                            <div class="tablecol1">
+                                <h2></h2>
+                                <p>Team Members</p>
+                                <p>Sources <a href="#sources"><i class="fas fa-info-circle"></i></a></p>
+                                <div class="line"></div>
+                                <p>Alert frequency</p>
+                                <p>Dashboards<a href="#dashboards"><i class="fas fa-info-circle"></i></a></p>
+                                <div class="line"></div>
+                                <p>Backend <small>optional</small> <a href="#backend"><i class="fas fa-info-circle"></i></a></p>
+                                <p>Fields <a href="#fields"><i class="fas fa-info-circle"></i></a></p>
+                                <div class="line"></div>
+                                <p>Event retention</p>
+                                <p>Events per month</p>
+                                <div class="line"></div>
+                                <p>Rate limit <a href="#rate-limit"><i class="fas fa-info-circle"></i></a></p>
+                                <p>Rate burst</p>
+                            </div>
+                        </div>
+                        <div class="col-md-2-5 unactive">
+                            <div class="tablecol">
+                                <h2>Free</h2>
+                                <p>0 additional</p>
+                                <p>Unlimited</p>
+                                <div class="line"></div>
+                                <p>4 hours</p>
+                                <p>None</p>
+                                <div class="line"></div>
+                                <p>Logflare</p>
+                                <p>Up to 50</p>
+                                <div class="line"></div>
+                                <p>3 days</p>
+                                <p>12,960,000</p>
+                                <div class="line"></div>
+                                <p>5 per second</p>
+                                <p>300</p>
+                                <h3 class="custom">Free</h3>
+                                <p class="pm"></p>
+                                <p class="btn"><%= link "Continue", to: Routes.auth_path(@conn, :login) %></p>
+                                <p class="free30"></p>
+                            </div>
+                        </div>
+                        <div class="col-md-2-5">
+                            <div class="tablecol oneactive oneactive2">
+                                <h2>Hobby</h2>
+                                <p>1 additional</p>
+                                <p>Unlimited</p>
+                                <div class="line"></div>
+                                <p>1 hour</p>
+                                <p>Google Data Studio</p>
+                                <div class="line"></div>
+                                <p>Logflare || BYOB BigQuery <sup>1</sup></p>
+                                <p>Up to 100</p>
+                                <div class="line"></div>
+                                <p>7 days || Unlimited</p>
+                                <p>Unlimited <sup>2</sup></p>
+                                <div class="line"></div>
+                                <p>25 per second</p>
+                                <p>1,500</p>
+                                <h3 class="price">$5</h3>
+                                <p class="pm">/ per month / per source</p>
+                                <p class="btn"><a href="">Start trial</a></p>
+                                <p class="free30">14-day trial</p>
+                            </div>
+                        </div>
+                        <div class="col-md-2-5 unactive">
+                            <div class="tablecol">
+                                <h2>Pro</h2>
+                                <p>4 additional</p>
+                                <p>Unlimited</p>
+                                <div class="line"></div>
+                                <p>15 minutes</p>
+                                <p>Google Data Studio</p>
+                                <div class="line"></div>
+                                <p>Logflare || BYOB BigQuery <sup>1</sup></p>
+                                <p>Up to 250</p>
+                                <div class="line"></div>
+                                <p>30 days || Unlimited</p>
+                                <p>Unlimited <sup>2</sup></p>
+                                <div class="line"></div>
+                                <p>25 per second</p>
+                                <p>1,500</p>
+                                <h3 class="price">$8</h3>
+                                <p class="pm">/ per month / per source</p>
+                                <p class="btn"><a href="">Start trial</a></p>
+                                <p class="free30">14-day trial</p>
+                            </div>
+                        </div>
+                        <div class="col-md-2-5 unactive">
+                            <div class="tablecol ">
+                                <h2>Business</h2>
+                                <p>9 additional</p>
+                                <p>Unlimited</p>
+                                <div class="line"></div>
+                                <p>1 minute</p>
+                                <p>Google Data Studio</p>
+                                <div class="line"></div>
+                                <p>Logflare || BYOB BigQuery <sup>1</sup></p>
+                                <p>Up to 500</p>
+                                <div class="line"></div>
+                                <p>60 days || Unlimited</p>
+                                <p>Unlimited <sup>2</sup></p>
+                                <div class="line"></div>
+                                <p>25 per second</p>
+                                <p>1,500</p>
+                                <h3 class="price">$12</h3>
+                                <p class="pm">/ per month / per source</p>
+                                <p class="btn"><a href="">Start trial</a></p>
+                                <p class="free30">14-day trial</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row formobilepricingplan">
+            <div class="col-12">
+                <div id="myCarousel" class="carousel slide" data-ride="carousel">
+                    <div class="maxwidthplan">
+                        <img src="img/plans.png" class="plansforslider" alt="">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="tablecol1">
+                                    <h2></h2>
+                                    <p>External storage <i class="fas fa-info-circle"></i></p>
+                                    <p>Sources <i class="fas fa-info-circle"></i></p>
+                                    <div class="line"></div>
+                                    <p>Events per month</p>
+                                    <p>Event retention</p>
+                                    <div class="line"></div>
+                                    <p>Rate limit <i class="fas fa-info-circle"></i></p>
+                                    <p>Rate burst <i class="fas fa-info-circle"></i></p>
+                                    <p>Max. event size</p>
+                                    <div class="line"></div>
+                                    <p>Alerts frequency <i class="fas fa-info-circle"></i></p>
+                                    <p>Additional users</p>
+                                </div>
+
+
+                                <ul class="carousel-indicators">
+                                    <li data-target="#myCarousel" data-slide-to="0" class="active"></li>
+                                    <li data-target="#myCarousel" data-slide-to="1"></li>
+                                    <li data-target="#myCarousel" data-slide-to="2"></li>
+                                    <li data-target="#myCarousel" data-slide-to="3"></li>
+                                </ul>
+                                <p class="nom">Plan <span class="nonowofpage">1</span> out of <span
+                                        class="noofpage"></span></p>
+
+
+                            </div>
+                            <div class="col-6">
+
+                                <!-- Indicators -->
+
+                                <!-- The slideshow -->
+                                <div class="carousel-inner">
+                                    <div class="carousel-item active">
+                                        <div class="tablecol oneactive">
+                                            <h2>Pro</h2>
+                                            <p>Google Big Query</p>
+                                            <p>20</p>
+                                            <div class="line"></div>
+                                            <p>50 million</p>
+                                            <p>Unlimited</p>
+                                            <div class="line"></div>
+                                            <p>19 / second</p>
+                                            <p>1,140</p>
+                                            <p>500 kB</p>
+                                            <div class="line"></div>
+                                            <p>5 minutes</p>
+                                            <p>5</p>
+                                            <h3 class="price">$90</h3>
+                                            <p class="pm">/ per month / per source</p>
+                                            <p class="btn"><a href="">Try now</a></p>
+                                            <p class="free30">14-day trial</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="carousel-item">
+                                    <div class="tablecol oneactive">
+                                        <h2>Enterprise</h2>
+                                        <p>Google Big Query</p>
+                                        <p>100+</p>
+                                        <div class="line"></div>
+                                        <p>Over 100 million</p>
+                                        <p>Unlimited</p>
+                                        <div class="line"></div>
+                                        <p>Unlimited</p>
+                                        <p>Unlimited</p>
+                                        <p>1 MB</p>
+                                        <div class="line"></div>
+                                        <p>1 second</p>
+                                        <p>Unlimited</p>
+                                        <h3 class="custom">Custom</h3>
+                                        <p class="pm"></p>
+                                        <p class="btn"><a href="">CONTACT US</a></p>
+                                        <p class="free30"></p>
+                                    </div>
+                                </div>
+
+                                <div class="carousel-item">
+                                    <div class="tablecol oneactive">
+                                        <h2>Entry</h2>
+                                        <p>Google Big Query</p>
+                                        <p>5</p>
+                                        <div class="line"></div>
+                                        <p>13 million</p>
+                                        <p>Unlimited</p>
+                                        <div class="line"></div>
+                                        <p>5 / second</p>
+                                        <p>300</p>
+                                        <p>100 kB</p>
+                                        <div class="line"></div>
+                                        <p>15 minutes</p>
+                                        <p>2</p>
+                                        <h3 class="price">$20</h3>
+                                        <p class="pm">/ per month / per source</p>
+                                        <p class="btn"><a href="">Try now</a></p>
+                                        <p class="free30">14-day trial</p>
+                                    </div>
+                                </div>
+
+                                <div class="carousel-item">
+                                    <div class="tablecol oneactive">
+                                        <h2>Free</h2>
+                                        <p><i class="fas fa-times"></i></p>
+                                        <p>3</p>
+                                        <div class="line"></div>
+                                        <p>5.2 million</p>
+                                        <p>7 days</p>
+                                        <div class="line"></div>
+                                        <p>2 / second</p>
+                                        <p>120</p>
+                                        <p>10 kB</p>
+                                        <div class="line"></div>
+                                        <p>1 hour</p>
+                                        <p><i class="fas fa-times"></i></p>
+                                        <h3 class="price">Free</h3>
+                                        <p class="pm"></p>
+                                        <p class="btn"><a href="">Sign up</a></p>
+                                        <p class="free30"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <p class="nam-consectetur-an"><sup>1</sup> Bring Your Own Backend™ to use with Logflare. Give our service account access to your Google Cloud Platform account and all reads and writes from Logflare will be performed directly on your BigQuery tables. Never archive to object storage again.</p>
+            <p class="nam-consectetur-an"><sup>2</sup> Unlimited log events is subject to our fair use policy.</p>
+        </div>
+    </div>
+    <!--
+    <div class="row tablescalerow tablescalerowpricing">
+        <div class="col-md-12">
+            <h1>How much can I save?</h1>
+            <h2>Compare: <span>Logflare</span> vs <span href="" class="openpopup"><span
+                        class="dropdowntext">Sentry</span> <i class="fas fa-chevron-down"></i></span></h2>
+
+            <div class="custompopup">
+                <h3>Select service to compare <span class="xpopup" href=""><i class="fas fa-times"></i></span></h3>
+                <div class="line"></div>
+                <p>Event based analytics</p>
+                <a>Sentry</a>
+                <a>Keen</a>
+                <p>Log based analytics</p>
+                <a>Papertrail</a>
+                <a>Datahog</a>
+            </div>
+        </div>
+        <div class="col-md-3"></div>
+        <div class="col-md-6">
+            <img src="img/bgoftable.png" class="bgoftable" alt="">
+            <div class="tablescale">
+                <div class="col1">
+                    <h2>Brief comparison</h2>
+                    <h3>Storage type</h3>
+                    <h3>External storage</h3>
+                    <h3 class="lastone">Direct data access</h3>
+
+                    <h3>Price</h3>
+                    <h3>1 TB of logs</h3>
+                    <h3>100 TB of logs</h3>
+                </div>
+                <a href="">
+                    <div class="col2">
+                        <h2>Logflare</h2>
+                        <h3>BigData</h3>
+                        <h3><i class="fa fa-check"></i></h3>
+                        <h3 class="lastone"><i class="fa fa-check"></i></h3>
+                        <h3 class="nothing">.</h3>
+                        <h3 class="money">$50</h3>
+                        <h3 class="money">$500</h3>
+
+                    </div>
+                </a>
+                <a href="">
+                    <div class="col3">
+                        <h2>Others</h2>
+                        <h3>Elastic</h3>
+                        <h3><i class="fa fa-times"></i></h3>
+                        <h3 class="lastone"><i class="fa fa-times"></i></h3>
+                        <h3 class="nothing">.</h3>
+                        <h3 class="money">$150</h3>
+                        <h3 class="money">$5000</h3>
+
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+-->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="trialwork">
+                <h1>How does the trial work?</h1>
+                <p>Start your trial with Logflare and you get 14 days to try it out. After 14 days your credit card will be charged, and you'll be charged monthly or yearly depending on your plan.</p>
+                <h1 id="sources">What is a source?</h1>
+                <p>A source is where your log events go. If you use Cloudflare you'll have a source for your Cloudflare logs. If you're sending log files from a server with our FluentBit config, you'll have a source for those.</p>
+                <h1 id="dashboards">How do you do dashboards?</h1>
+                <p>Because of our tight integration with BigQuery we get Google Data Studio for free. Like Logflare, Google Data Studio balances power and simplicity. You don't have to read the manual to start creating dashboards and you can do 98% of what any other enterprise level BI tool can do. And because we're built on BigQuery, you can always fallback to custom SQL queries when needed.</p>
+                <h1 id="backend">What is a backend?</h1>
+                <p>A backend is where we store your log events. We always store them in BigQuery, you can let us keep your log events in our Google Cloud Platform account, or you can give our service account access to your GCP account and we'll use your BigQuery tables to read and write from. Need another backend? Please let us know.</p>
+                <h1 id="fields">How do I add fields?</h1>
+                <p>Logflare is a semi-schema'd service. We support schema'd backends, as BigQuery requires a schema. However, we detect and automatically update your schema for you based on the shape of your log events. Never worry about running a migration before adding a new field. Logflare does that automatically. We'll warn you about data type mismatches.</p>
+                <h1 id="rate-limit">What happens when I'm rate limited?</h1>
+                <p>If you're constantly hitting your rate limits we'll likely contact you about upgrading to a custom enterprise plan. If you hit your rate limit rarely it's not a big deal. You'll be warned when you hit your rate limit and log events won't be ingested. </p>
+
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<%= render LogflareWeb.SharedView, "footer.html", assigns %>
+
+<script>
+    $('.navbar-toggler').click(function () {
+        var atratribut = $('.navbar-toggler').attr('aria-expanded');
+        if (atratribut == "false") {
+
+
+            $(".barsic").css("display", "none");
+            $(".xicon").css("display", "block");
+        } else {
+            $(".barsic").css("display", "block");
+            $(".xicon").css("display", "none");
+        }
+    });
+
+
+
+    $(function () {
+        $('.unactive').hover(function () {
+            $(".oneactive2").removeClass("oneactive");
+        }, function () {
+            $(".oneactive2").addClass("oneactive");
+
+
+        });
+    });
+
+    $(".openpopup").click(function () {
+        $(".custompopup").css("display", "block");
+        $(".custompopup").css("opacity", "1");
+        $(".custompopup").css("visibility", "visible");
+    });
+    $(".xpopup").click(function () {
+        $(".custompopup").css("display", "none");
+        $(".custompopup").css("opacity", "0");
+        $(".custompopup").css("visibility", "hidden");
+    });
+
+
+    var noofslides = $(".formobilepricingplan .maxwidthplan .carousel-indicators li:last-child").attr("data-slide-to");
+    var intno = parseInt(noofslides) + 1;
+    $(".noofpage").text(intno);
+
+
+    $('#myCarousel').bind('slide.bs.carousel', function (e) {
+        console.log('slide event!');
+
+        setTimeout(
+            function () {
+                var nonow = $(".formobilepricingplan .maxwidthplan .carousel-indicators .active").attr(
+                    "data-slide-to");
+                var intnonow = parseInt(nonow) + 1;
+
+                if (intnonow > intno) {
+                    var intnonow = 1;
+                    $(".nonowofpage").text(intnonow);
+                } else {
+                    $(".nonowofpage").text(intnonow);
+                }
+            }, 50);
+
+    });
+    $('#myCarousel').bind('slid', function (e) {
+        console.log("slid event!");
+    });
+    $('.heropricing .tablescalerowpricing .custompopup a').click(function () {
+        var text = $(this).text();
+        $(".dropdowntext").html(text);
+    });
+    $(".heropricing .tablescalerowpricing .custompopup a").click(function () {
+        $(".custompopup").css("display", "none");
+        $(".custompopup").css("opacity", "0");
+        $(".custompopup").css("visibility", "hidden");
+    });
+
+</script>
