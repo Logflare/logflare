@@ -79,7 +79,14 @@ defmodule Logflare.Source.RecentLogsServer do
     user = Users.get(source.user_id) |> Users.maybe_preload_bigquery_defaults()
     plan = Plans.get_plan_by_user(user)
 
-    :ets.new(source_id, [:named_table, :ordered_set, :public])
+    :ets.new(source_id, [
+      :named_table,
+      :ordered_set,
+      :public,
+      write_concurrency: true,
+      read_concurrency: true,
+      decentralized_counters: true
+    ])
 
     load_init_log_message(source_id, user.bigquery_project_id)
 
