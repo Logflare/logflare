@@ -9,10 +9,21 @@ defmodule LogflareWeb.Plugs.RequireAuth do
   def call(conn, _opts) do
     cond do
       conn.assigns[:user] ->
-        if is_nil(get_session(conn)[:user_id]) do
-          put_session(conn, :user_id, conn.assigns.user.id)
-        else
-          conn
+        user_id = get_session(conn, :user_id)
+
+        if user_id do
+          referer = get_session(conn, :redirect_to)
+
+          if referer do
+            conn
+            |> put_session(:user_id, user_id)
+            |> put_session(:redirect_to, nil)
+            |> redirect(to: referer)
+            |> halt()
+          else
+            conn
+            |> put_session(:user_id, user_id)
+          end
         end
 
       conn.request_path == "/oauth/authorize" ->
@@ -22,9 +33,12 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         |> halt()
 
       is_nil(conn.assigns[:user]) ->
+        referer = conn.request_path
+
         conn
         |> put_flash(:error, "You must be logged in.")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> put_session(:redirect_to, referer)
+        |> redirect(to: Routes.auth_path(conn, :login))
         |> halt()
     end
   end
