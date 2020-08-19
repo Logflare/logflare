@@ -135,7 +135,9 @@
             <div class="col-12">
                 <div id="myCarousel" class="carousel slide" data-ride="carousel">
                     <div class="maxwidthplan">
+                        <!--
                         <img src="img/plans.png" class="plansforslider" alt="">
+                        -->
                         <div class="row">
                             <div class="col-6">
                                 <div class="tablecol1">
