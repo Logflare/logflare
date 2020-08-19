@@ -84,8 +84,9 @@ defmodule Logflare.Source.RecentLogsServer do
       :ordered_set,
       :public,
       write_concurrency: true,
-      read_concurrency: true,
-      decentralized_counters: true
+      read_concurrency: true
+      # This should be the default with OTP 23
+      # decentralized_counters: true
     ])
 
     load_init_log_message(source_id, user.bigquery_project_id)
