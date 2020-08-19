@@ -4,7 +4,7 @@ defmodule LogflareWeb.UtcTimeLive do
 
   def render(assigns) do
     ~L"""
-    <span> UTC time is <%= @date %> </span>
+    <span><%= @date %> UTC</span>
     """
   end
 

@@ -104,6 +104,7 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through :browser
     get "/", MarketingController, :index
+    get "/pricing", MarketingController, :pricing
     get "/terms", MarketingController, :terms
     get "/privacy", MarketingController, :privacy
     get "/cookies", MarketingController, :cookies
