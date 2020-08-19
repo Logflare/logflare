@@ -13,14 +13,18 @@ defmodule LogflareWeb.AuthController do
   def logout(conn, _params) do
     conn
     |> configure_session(drop: true)
-    |> redirect(to: Routes.marketing_path(conn, :index))
+    |> redirect(to: Routes.auth_path(conn, :login))
   end
 
   def login(conn, _params) do
+    last_provider = conn.cookies["_logflare_last_provider"]
+
+    user = %{provider: last_provider}
+
     conn
     |> maybe_flash_invite_message()
     |> maybe_flash_account_deleted()
-    |> render("login.html")
+    |> render("login.html", last_login: user)
   end
 
   def check_invite_token_and_signin(conn, auth_params) do
