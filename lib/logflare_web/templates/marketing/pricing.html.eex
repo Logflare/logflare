@@ -269,7 +269,7 @@
             </div>
         </div>
     </div>
-    <div class="row">
+    <div class="">
         <div class="col-md-12">
             <p class="nam-consectetur-an"><sup>1</sup> Bring Your Own Backend™ to use with Logflare. Give our service account access to your Google Cloud Platform account and all reads and writes from Logflare will be performed directly on your BigQuery tables. Never archive to object storage again.</p>
             <p class="nam-consectetur-an"><sup>2</sup> Unlimited log events is subject to our fair use policy.</p>
@@ -335,7 +335,7 @@
         </div>
     </div>
 -->
-    <div class="row">
+    <div class="">
         <div class="col-md-12">
             <div class="trialwork">
                 <h1>How does the trial work?</h1>
