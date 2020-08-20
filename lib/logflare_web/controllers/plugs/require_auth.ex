@@ -8,7 +8,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
 
   def call(conn, _opts) do
     cond do
-      conn.assigns[:user] ->
+      user = conn.assigns[:user] ->
         user_id = get_session(conn, :user_id)
 
         if user_id do
@@ -22,6 +22,11 @@ defmodule LogflareWeb.Plugs.RequireAuth do
             |> halt()
           else
             conn
+            |> put_resp_cookie(
+              "_logflare_last_provider",
+              user.provider,
+              max_age: 2_592_000
+            )
             |> put_session(:user_id, user_id)
           end
         end

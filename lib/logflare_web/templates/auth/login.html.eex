@@ -12,6 +12,11 @@
         <code><%= @user.provider %></code>
         account <code><%= @user.email %></code>.</p>
       <% end %>
+      <%= if @last_login.provider do %>
+      <p><i class="fas fa-exclamation-circle"></i> You recently signed in with your
+        <code><%= @last_login.provider %></code>
+        account.</p>
+        <% end %>
     </center>
   </div>
   <div class="d-flex flex-row justify-content-center">
