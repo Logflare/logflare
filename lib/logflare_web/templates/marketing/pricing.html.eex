@@ -11,7 +11,9 @@
                 </div>
             </div>
         </div>
-        <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
+        <div id="plans">
+            <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
+        </div>
     </div>
 
     <!--
