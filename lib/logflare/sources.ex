@@ -416,4 +416,10 @@ defmodule Logflare.Sources do
   def change_source_schema(%SourceSchema{} = source_schema, attrs \\ %{}) do
     SourceSchema.changeset(source_schema, attrs)
   end
+
+  def count_for_billing(sources) do
+    count = Enum.count(sources)
+
+    if count == 0, do: 1, else: count
+  end
 end

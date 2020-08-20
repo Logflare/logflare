@@ -18,9 +18,14 @@
   <div class="sub-form">
     <%= section_header("Summary") %>
     <%= if @user.billing_account.stripe_subscriptions["data"] do %>
-    <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= Enum.count(@user.sources) %> sources</u> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= Enum.count(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
+      <%= if @plan.name != "Free" do %>
+        <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= count_for_billing(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
+        <p><small><sup>1</sup> Minimum 1 source required for billing.</small></p>
+      <% else %>
+        <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
+      <% end %>
     <% else %>
-    <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
+      <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
     <% end %>
   </div>
   <div class="sub-form">

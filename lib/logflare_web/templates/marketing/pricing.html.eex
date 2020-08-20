@@ -275,6 +275,9 @@
             <p class="nam-consectetur-an"><sup>2</sup> Unlimited log events is subject to our fair use policy.</p>
         </div>
     </div>
+
+    <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
+
     <!--
     <div class="row tablescalerow tablescalerowpricing">
         <div class="col-md-12">
