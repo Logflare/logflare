@@ -70,7 +70,7 @@ defmodule LogflareWeb.BillingPlansLive do
           </ul>
           <div class="py-4 px-2">
             <p>Get 2 months free with a yearly plan!</p>
-            <button phx-click="switch_period" phx-value-period=<%= period!(@period) %> class="btn btn-primary w-100 mr-0">Choose <%= period!(@period) <> "ly" %></button>
+            <button phx-click="switch_period" phx-value-period=<%= period!(@period) %> class="btn btn-dark text-white w-100 mr-0">Choose <%= period!(@period) <> "ly" %></button>
           </div>
         </div>
       </div>
