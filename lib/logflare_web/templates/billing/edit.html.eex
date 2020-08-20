@@ -5,7 +5,6 @@
       <ul>
         <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span
             class="hide-on-mobile"> billing</span><% end %></li>
-        <li></li>
         <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span
             class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
@@ -29,6 +28,7 @@
     <% end %>
   </div>
   <div class="sub-form">
+    <%= section_header("Pricing") %>
     <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
   </div>
   <div class="sub-form">

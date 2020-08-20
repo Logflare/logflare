@@ -3,26 +3,50 @@
 }
 
 .card {
-  position: relative;
+  word-wrap: break-word;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  word-wrap: break-word;
   background-color: $brand-light-black;
   background-clip: border-box;
-  border: 1px solid rgba(0, 0, 0, 0.125);
-  border-radius: 0.25rem;
-  min-width: 200px;
+  border-radius: 1rem;
+  min-width: 250px;
+  border: 0px;
+}
+
+.card-header-min-height {
+  min-height: 6em;
+}
+
+.card-active-popular {
+  background: linear-gradient(0deg, #2A1057 0%, #9c59ff 100%);
+  color: white;
+  border: 0px;
+}
+
+.card-active-hover:hover {
+  background: linear-gradient(0deg, #2A1057 0%, #9c59ff 100%);
+  color: white;
+  border: 0px;
 }
 
 .min-pricing-width {
   min-width: 1500px;
 }
 
+.absolute-right {
+  right: 15px;
+}
+
 .scrolling-wrapper {
   overflow-x: scroll;
   overflow-y: hidden;
-  white-space: nowrap;
-
   -webkit-overflow-scrolling: touch;
+}
+
+hr {
+  height: 1px;
+  width: 100%;
+  border-color: rgba(255, 255, 255, 0.07);
+  margin-top: 5px;
+  margin-bottom: 5px;
 }

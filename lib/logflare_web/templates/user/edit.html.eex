@@ -3,7 +3,7 @@
     <h5>~/account/edit</h5>
     <div class="log-settings">
       <ul>
-        <%= if @user.billing_enabled? do %><li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %><li><% end %>
+        <%= if @user.billing_enabled? do %><li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %></li><% end %>
         <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
