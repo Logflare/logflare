@@ -38,7 +38,14 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         |> halt()
 
       is_nil(conn.assigns[:user]) ->
-        referer = conn.request_path
+        referer =
+          case conn.query_string do
+            "" ->
+              conn.request_path
+
+            qs ->
+              conn.request_path <> "?" <> qs
+          end
 
         conn
         |> put_flash(:error, "You must be logged in.")
