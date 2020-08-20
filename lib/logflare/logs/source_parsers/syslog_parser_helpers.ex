@@ -120,6 +120,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
   def message_text(c \\ empty()) do
     c
     |> utf8_string([], min: 1)
+    |> reduce(:clean_message)
     |> reduce(:maybe_parse_json)
     |> label("msg_text")
   end
@@ -148,52 +149,54 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     |> label("separator")
   end
 
-  @spec decode_facility(integer) :: atom
+  @spec decode_facility(integer) :: binary()
   defp decode_facility(facility) do
     case facility do
-      0 -> :kernel
-      1 -> :user
-      2 -> :mail
-      3 -> :system
-      4 -> :auth
-      5 -> :syslogd
-      6 -> :line_printer
-      7 -> :network_news
-      8 -> :uucp
-      9 -> :clock
-      10 -> :auth
-      11 -> :ftp
-      12 -> :ntp
-      13 -> :log_audit
-      14 -> :log_alert
-      15 -> :clock
-      16 -> :local0
-      17 -> :local1
-      18 -> :local2
-      19 -> :local3
-      20 -> :local4
-      21 -> :local5
-      22 -> :local6
-      23 -> :local7
+      0 -> "kernel"
+      1 -> "user"
+      2 -> "mail"
+      3 -> "system"
+      4 -> "auth"
+      5 -> "syslogd"
+      6 -> "line_printer"
+      7 -> "network_news"
+      8 -> "uucp"
+      9 -> "clock"
+      10 -> "auth"
+      11 -> "ftp"
+      12 -> "ntp"
+      13 -> "log_audit"
+      14 -> "log_alert"
+      15 -> "clock"
+      16 -> "local0"
+      17 -> "local1"
+      18 -> "local2"
+      19 -> "local3"
+      20 -> "local4"
+      21 -> "local5"
+      22 -> "local6"
+      23 -> "local7"
     end
   end
 
-  @spec decode_severity(integer) :: atom
+  @spec decode_severity(integer) :: binary()
   defp decode_severity(severity) do
     case severity do
-      0 -> :emergency
-      1 -> :alert
-      2 -> :critical
-      3 -> :error
-      4 -> :warning
-      5 -> :notice
-      6 -> :info
-      7 -> :debug
+      0 -> "emergency"
+      1 -> "alert"
+      2 -> "critical"
+      3 -> "error"
+      4 -> "warning"
+      5 -> "notice"
+      6 -> "info"
+      7 -> "debug"
     end
   end
 
   def parse_timestamp([timestamp]) do
-    case Timex.parse(timestamp, "{ISO:Extended}") do
+    timestamp
+    |> Timex.parse("{ISO:Extended}")
+    |> case do
       {:ok, %DateTime{time_zone: "Etc/UTC"} = dt} ->
         dt
 
@@ -203,17 +206,21 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
       {:error, _} = errtup ->
         errtup
     end
+    |> DateTime.to_iso8601()
   end
 
   def maybe_parse_json([msg_text]) do
-    json_regex = ~r/([^{]*)(?<maybe_json>{.+})([^}]*)/
-
-    with %{"maybe_json" => maybe_json} <- Regex.named_captures(json_regex, msg_text),
-         {:ok, data} <- JSON.decode(maybe_json) do
-      [message_json: data, msg_text: msg_text]
-    else
+    msg_text
+    |> String.trim()
+    |> JSON.decode()
+    |> case do
+      {:ok, data} -> [msg_json: data, msg_text: msg_text]
       _ -> [msg_text: msg_text]
     end
+  end
+
+  def clean_message([msg_text]) do
+    String.replace(msg_text, "\e", "")
   end
 
   # ?\ => 10

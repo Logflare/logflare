@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.SyslogParser do
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
-  alias Logflare.Syslog
+  alias Logflare.Logs.SyslogMessage
 
   defparsec(
     :do_parse,
@@ -40,7 +40,7 @@ defmodule Logflare.Logs.SyslogParser do
     |> concat(priority())
     |> concat(version())
     |> ignore(sp())
-    |> concat(maybe(timestamp()))
+    |> concat(maybe(timestamp()))f
     |> ignore(sp())
     |> concat(maybe(hostname()))
     |> ignore(sp())
@@ -80,59 +80,59 @@ defmodule Logflare.Logs.SyslogParser do
       map =
         tokens
         |> List.flatten()
-        |> maybe_merge_sd_elements()
+        |> merge_syslog_sd()
+        |> merge_json()
         |> Map.new()
         |> Map.merge(%{message_raw: messagestr})
         |> rename_fields()
-        |> merge_structured_data()
 
-      syslog_message = struct(Syslog.Message, map)
+      syslog_message = struct(SyslogMessage, map)
       {:ok, syslog_message}
     else
-      err -> err
+      {:error, error, _, _, _, _} -> {:error, error}
     end
   end
 
-  defp merge_structured_data(%{sd_elements: sd_elements} = m) when length(sd_elements) > 0 do
-    sd_names =
-      sd_elements
-      |> Enum.map(&hd/1)
-      |> Enum.map(fn {:sd_name, sd_name} -> sd_name end)
+  defp merge_json(tokens) when is_list(tokens) do
+    case Keyword.pop_values(tokens, :msg_json) do
+      {[msg_json], new_tokens} ->
+        data = Map.put(msg_json, "id", "json")
+        Keyword.update(new_tokens, :sd, [data], &[data | &1])
 
-    sd =
-      sd_elements
-      |> Enum.flat_map(fn [sd_name | rest] -> rest end)
-      |> Enum.map(fn [param_name: k, param_value: v] ->
-        {k, v}
-      end)
-      |> Map.new()
-
-    Map.merge(m, %{data: sd, data_ids: sd_names})
+      _ ->
+        tokens
+    end
   end
 
-  defp merge_structured_data(m), do: m
+  defp merge_syslog_sd(tokens) when is_list(tokens) do
+    {sd_element_values, new_tokens} = Keyword.pop_values(tokens, :sd_element)
+
+    if length(sd_element_values) > 0 do
+      sd =
+        sd_element_values
+        |> Enum.map(fn sd_element ->
+          Enum.reduce(sd_element, %{}, fn
+            {:sd_name, sd_name}, acc -> Map.put(acc, "id", sd_name)
+            [param_name: k, param_value: v], acc -> Map.put(acc, k, v)
+          end)
+        end)
+
+      new_tokens ++ [sd: sd]
+    else
+      tokens
+    end
+  end
 
   defp rename_fields(map) do
     map
     |> Enum.map(fn {k, v} ->
       {case k do
          :proc_id -> :process_id
-         :appname -> :app_name
-         :hostname -> :host_name
          :msg_text -> :message
+         :msg_id -> :message_id
          _ -> k
        end, v}
     end)
     |> Map.new()
-  end
-
-  defp maybe_merge_sd_elements(tokens) do
-    {sd_element_values, new_tokens} = Keyword.pop_values(tokens, :sd_element)
-
-    if sd_element_values do
-      Keyword.put(new_tokens, :sd_elements, sd_element_values)
-    else
-      tokens
-    end
   end
 end

@@ -445,6 +445,121 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "Syslog payloads" do
+    test "syslog body", %{conn: conn, users: [u | _], sources: [s | _]} do
+      body = """
+      182 <190>1 2020-08-09T13:30:36.316601+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m13:30:36.314 request_id=b4f92e4a104759b02593c34c41d2f0ce [info] Sent 200 in 1ms
+      169 <190>1 2020-08-09T13:30:36.576402+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m13:30:36.575 [info] CONNECTED TO Phoenix.LiveView.Socket in 202µs
+      126 <190>1 2020-08-09T13:30:36.576423+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m  Transport: :websocket
+      149 <190>1 2020-08-09T13:30:36.576424+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m  Serializer: Phoenix.Socket.V2.JSONSerializer
+      443 <190>1 2020-08-09T13:30:36.576426+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m  Parameters: %{\"_csrf_token\" => \"Rg1gVgJWUjkVCjISGmQKew0kZRYpYBwwpe00D78ZtsQqqUI9gK6zQReD\", \"_mounts\" => \"0\", \"_track_static\" => %{\"0\" => \"https://phx-limit.gigalixirapp.com/css/app-5e472e0beb5f275dce8c669b8ba7c47e.css?vsn=d\", \"1\" => \"https://phx-limit.gigalixirapp.com/js/app-13b608e49f856a3afa3085d9ce96d5fe.js?vsn=d\"}, \"vsn\" => \"2.0.0\"}
+      """
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", u.api_key)
+        |> put_req_header("content-type", "application/logplex-1")
+        |> post(
+          log_path(conn, :syslog, source: s.token),
+          body
+        )
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert SourceBuffer.get_count(s.token) == 5
+      [le1, le2, le3, le4, le5] = SourceBuffer.get_log_events(s.token)
+
+      sname = s.name
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message:
+                 "[36mweb.1  | [0m  Parameters: %{\"_csrf_token\" => \"Rg1gVgJWUjkVCjISGmQKew0kZRYpYBwwpe00D78ZtsQqqUI9gK6zQReD\", \"_mounts\" => \"0\", \"_track_static\" => %{\"0\" => \"https://phx-limit.gigalixirapp.com/css/app-5e472e0beb5f275dce8c669b8ba7c47e.css?vsn=d\", \"1\" => \"https://phx-limit.gigalixirapp.com/js/app-13b608e49f856a3afa3085d9ce96d5fe.js?vsn=d\"}, \"vsn\" => \"2.0.0\"}",
+               metadata: %{
+                 "appname" => "phx-limit",
+                 "facility" => "local7",
+                 "hostname" => "host",
+                 "level" => "info",
+                 "message_raw" =>
+                   "443 <190>1 2020-08-09T13:30:36.576426+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m  Parameters: %{\"_csrf_token\" => \"Rg1gVgJWUjkVCjISGmQKew0kZRYpYBwwpe00D78ZtsQqqUI9gK6zQReD\", \"_mounts\" => \"0\", \"_track_static\" => %{\"0\" => \"https://phx-limit.gigalixirapp.com/css/app-5e472e0beb5f275dce8c669b8ba7c47e.css?vsn=d\", \"1\" => \"https://phx-limit.gigalixirapp.com/js/app-13b608e49f856a3afa3085d9ce96d5fe.js?vsn=d\"}, \"vsn\" => \"2.0.0\"}",
+                 "priority" => 190,
+                 "process_id" => "phx-limit-5885669966-287kp",
+                 "severity" => "info"
+               },
+               timestamp: 1_596_979_836_576_426
+             } = le1.body
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message: "[36mweb.1  | [0m  Serializer: Phoenix.Socket.V2.JSONSerializer",
+               metadata: %{
+                 "appname" => "phx-limit",
+                 "facility" => "local7",
+                 "hostname" => "host",
+                 "level" => "info",
+                 "message_raw" =>
+                   "149 <190>1 2020-08-09T13:30:36.576424+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m  Serializer: Phoenix.Socket.V2.JSONSerializer",
+                 "priority" => 190,
+                 "process_id" => "phx-limit-5885669966-287kp",
+                 "severity" => "info"
+               },
+               timestamp: 1_596_979_836_576_424
+             } = le2.body
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message: "[36mweb.1  | [0m  Transport: :websocket",
+               metadata: %{
+                 "appname" => "phx-limit",
+                 "facility" => "local7",
+                 "hostname" => "host",
+                 "level" => "info",
+                 "message_raw" =>
+                   "126 <190>1 2020-08-09T13:30:36.576423+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m  Transport: :websocket",
+                 "priority" => 190,
+                 "process_id" => "phx-limit-5885669966-287kp",
+                 "severity" => "info"
+               },
+               timestamp: 1_596_979_836_576_423
+             } = le3.body
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message:
+                 "[36mweb.1  | [0m13:30:36.575 [info] CONNECTED TO Phoenix.LiveView.Socket in 202µs",
+               metadata: %{
+                 "appname" => "phx-limit",
+                 "facility" => "local7",
+                 "hostname" => "host",
+                 "level" => "info",
+                 "message_raw" =>
+                   "169 <190>1 2020-08-09T13:30:36.576402+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m13:30:36.575 [info] CONNECTED TO Phoenix.LiveView.Socket in 202µs",
+                 "priority" => 190,
+                 "process_id" => "phx-limit-5885669966-287kp",
+                 "severity" => "info"
+               },
+               timestamp: 1_596_979_836_576_402
+             } = le4.body
+
+      assert %Logflare.LogEvent.Body{
+               created_at: nil,
+               message:
+                 "[36mweb.1  | [0m13:30:36.314 request_id=b4f92e4a104759b02593c34c41d2f0ce [info] Sent 200 in 1ms",
+               metadata: %{
+                 "appname" => "phx-limit",
+                 "facility" => "local7",
+                 "hostname" => "host",
+                 "level" => "info",
+                 "message_raw" =>
+                   "182 <190>1 2020-08-09T13:30:36.316601+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m13:30:36.314 request_id=b4f92e4a104759b02593c34c41d2f0ce [info] Sent 200 in 1ms",
+                 "priority" => 190,
+                 "process_id" => "phx-limit-5885669966-287kp",
+                 "severity" => "info"
+               },
+               timestamp: 1_596_979_836_316_601
+             } = le5.body
+    end
+  end
+
   def metadata() do
     %{
       "datacenter" => "aws",
