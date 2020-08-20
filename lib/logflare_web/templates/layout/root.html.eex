@@ -98,15 +98,23 @@
         </li>
         <% end %>
       </ul>
+      <%= if @user do %>
       <ul class="navbar-nav ml-auto">
-        <%= if @user && @user.billing_enabled? do %>
-        <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
-        <li class="nav-item active">
-          <%= link "❤️ Upgrade ❤️", to: Routes.billing_path(@conn, :edit), class: "nav-link" %>
-        </li>
-        <% end %>
+        <%= if @user.billing_enabled? do %>
+          <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
+          <li class="nav-item active">
+            <%= link "❤️ Upgrade ❤️", to: Routes.billing_path(@conn, :edit), class: "nav-link" %>
+          </li>
+          <% end %>
         <% end %>
       </ul>
+      <% else %>
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item active">
+          <%= link "Sign in", to: Routes.auth_path(@conn, :login), class: "nav-link btn btn-dark text-white", style: "min-width: 8em;" %>
+        </li>
+      </ul>
+      <% end %>
     </div>
   </nav>
   <%= @inner_content %>
