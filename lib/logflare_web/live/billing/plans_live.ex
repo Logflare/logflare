@@ -222,12 +222,12 @@ defmodule LogflareWeb.BillingPlansLive do
   def sub_button(plan, socket, plans, period, plan_name) do
     cond do
       is_nil(plan) ->
-        link("Subscribe",
+        link("Start trial",
           to:
             Routes.billing_path(socket, :confirm_subscription, %{
               "stripe_id" => Plans.find_plan(plans, period, plan_name).stripe_id
             }),
-          class: "btn btn-primary form-button btn w-75 mr-0 mb-1"
+          class: "btn btn-dark text-white form-button btn w-75 mr-0 mb-1"
         )
 
       plan.name == "Free" || plan.name == "Legacy" ->
