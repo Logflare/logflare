@@ -13,6 +13,8 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Cluster
+  alias Logflare.Source.Bigquery
+  alias Logflare.Source.Bigquery.Schema
 
   import Ecto.Query, only: [from: 2]
 
@@ -203,6 +205,19 @@ defmodule Logflare.Source.Supervisor do
     |> Sources.update_source_schema(%{
       bigquery_schema: SchemaBuilder.initial_table_schema()
     })
+  end
+
+  def sync_persisted_schema_with_bq(source_token) when is_atom(source_token) do
+    {:ok, %{schema: schema}} = Bigquery.get_table(source_token)
+    Schema.update(source_token, schema)
+
+    %{schema: schema, type_map: type_map, field_count: field_count} =
+      Schema.get_state(source_token)
+
+    Schema.update_cluster(source_token, schema, type_map, field_count)
+    source = Sources.get(source_token)
+    source_schema = Sources.get_source_schema_by(source_id: source.id)
+    {:ok, _} = Sources.update_source_schema(source_schema, %{bigquery_schema: schema})
   end
 
   defp init_table(source_id) do

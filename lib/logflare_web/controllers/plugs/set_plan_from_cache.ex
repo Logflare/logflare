@@ -25,7 +25,13 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
 
         billing_account ->
           {:ok, stripe_plan} = BillingAccounts.get_billing_account_stripe_plan(billing_account)
-          plan = Plans.Cache.get_plan_by(stripe_id: stripe_plan["id"])
+
+          plan =
+            if stripe_plan do
+              Plans.Cache.get_plan_by(stripe_id: stripe_plan["id"])
+            else
+              Plans.Cache.get_plan_by(name: "Free")
+            end
 
           conn
           |> assign(:plan, plan)
