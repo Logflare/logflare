@@ -120,10 +120,10 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Up to 100</li>
             <hr />
             <li class="p-2">7 days || Unlimited</li>
-            <li class="p-2">Unlimited<sub>2</sub></li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
             <hr />
-            <li class="p-2">25 per second</li>
-            <li class="p-2">1,500</li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
           </ul>
           <div class="py-4">
             <h2 class="text-white mb-1"><span class="price"><%= Plans.find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h2>
@@ -157,8 +157,8 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">30 days || Unlimited</li>
             <li class="p-2">Unlimited<sup>2</sup></li>
             <hr />
-            <li class="p-2">25 per second</li>
-            <li class="p-2">1,500</li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
           </ul>
           <div class="py-4">
             <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
@@ -192,8 +192,8 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">60 days || Unlimited</li>
             <li class="p-2">Unlimited<sup>2</sup></li>
             <hr />
-            <li class="p-2">25 per second</li>
-            <li class="p-2">1,500</li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">Unlimited<sup>2</sup></li>
           </ul>
           <div class="py-4">
             <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
