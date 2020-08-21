@@ -36,9 +36,14 @@ defmodule Plug.Parsers.SYSLOG do
         body |> String.split("\n", trim: true)
       end
 
+    opts = case conn.request_path do
+      "/logs/syslog" -> []
+      "/logs/logplex" -> [dialect: :heroku]
+    end
+
     batch =
       for syslog_message_string <- body do
-        case SyslogParser.parse(syslog_message_string, dialect: :heroku) do
+        case SyslogParser.parse(syslog_message_string, opts)  do
           {:ok, syslog_message} ->
             to_log_params(syslog_message)
 
