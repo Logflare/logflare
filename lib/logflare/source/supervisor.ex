@@ -13,6 +13,8 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Cluster
+  alias Logflare.Source.Bigquery
+  alias Logflare.Source.Bigquery.Schema
 
   import Ecto.Query, only: [from: 2]
 
