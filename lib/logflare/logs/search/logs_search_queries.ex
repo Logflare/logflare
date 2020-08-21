@@ -164,13 +164,24 @@ defmodule Logflare.Logs.SearchQueries do
             "debug",
             "info",
             "warn",
-            "error"
+            "warning",
+            "error",
+            "notice",
+            "critical",
+            "alert",
+            "emergency"
           ],
           t.level
         ),
+      level_notice: fragment("COUNTIF(? = ?) as level_notice", t.level, "notice"),
+      level_critical: fragment("COUNTIF(? = ?) as level_critical", t.level, "critical"),
+      level_alert: fragment("COUNTIF(? = ?) as level_alert", t.level, "alert"),
+      level_emergency: fragment("COUNTIF(? = ?) as level_emergency", t.level, "emergency"),
       level_debug: fragment("COUNTIF(? = ?) as level_debug", t.level, "debug"),
       level_info: fragment("COUNTIF(? = ?) as level_info", t.level, "info"),
-      level_warn: fragment("COUNTIF(? = ?) as level_warn", t.level, "warn"),
+      # FIXME
+      level_warn:
+        fragment("COUNTIF(? = ? OR ? = ?) as level_warn", t.level, "warn", t.level, "warning"),
       level_error: fragment("COUNTIF(? = ?) as level_error", t.level, "error")
     })
     |> select_merge_total()

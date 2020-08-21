@@ -526,8 +526,12 @@ defmodule Logflare.Lql.Parser.Helpers do
     choice([
       string("debug") |> replace(0),
       string("info") |> replace(1),
-      string("warning") |> replace(2),
-      string("error") |> replace(3)
+      string("notice") |> replace(2),
+      string("warning") |> replace(3),
+      string("error") |> replace(4),
+      string("critical") |> replace(5),
+      string("alert") |> replace(6),
+      string("emergency") |> replace(7)
     ])
   end
 
@@ -539,7 +543,16 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:to_rule)
   end
 
-  @level_orders %{0 => "debug", 1 => "info", 2 => "warning", 3 => "error"}
+  @level_orders %{
+    0 => "debug",
+    1 => "info",
+    2 => "notice",
+    3 => "warning",
+    4 => "error",
+    5 => "critical",
+    6 => "alert",
+    7 => "emergency"
+  }
   def to_rule(metadata_level_clause: ["metadata.level", {:range_operator, [left, right]}]) do
     left..right
     |> Enum.map(&Map.get(@level_orders, &1))

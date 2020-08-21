@@ -1168,19 +1168,33 @@ defmodule Logflare.LqlParserTest do
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "info"
+                 shorthand: nil,
+                 value: "info",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "warning"
+                 shorthand: nil,
+                 value: "notice",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "error"
+                 shorthand: nil,
+                 value: "warning",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "error",
+                 values: nil
                }
              ]
 
@@ -1195,19 +1209,33 @@ defmodule Logflare.LqlParserTest do
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "debug"
+                 shorthand: nil,
+                 value: "debug",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "info"
+                 shorthand: nil,
+                 value: "info",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "warning"
+                 shorthand: nil,
+                 value: "notice",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "warning",
+                 values: nil
                }
              ]
 
@@ -1224,25 +1252,123 @@ defmodule Logflare.LqlParserTest do
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "debug"
+                 shorthand: nil,
+                 value: "debug",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "info"
+                 shorthand: nil,
+                 value: "info",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "warning"
+                 shorthand: nil,
+                 value: "notice",
+                 values: nil
                },
                %Logflare.Lql.FilterRule{
                  modifiers: %{},
                  operator: :=,
                  path: "metadata.level",
-                 value: "error"
+                 shorthand: nil,
+                 value: "warning",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "error",
+                 values: nil
+               }
+             ]
+
+      str = ~S|
+         metadata.level:debug..critical
+       |
+
+      {:ok, lql_rules} = Parser.parse(str, @schema)
+
+      assert lql_rules == [
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "debug",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "info",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "notice",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "warning",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "error",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "critical",
+                 values: nil
+               }
+             ]
+
+      str = ~S|
+         metadata.level:notice..warning
+       |
+
+      {:ok, lql_rules} = Parser.parse(str, @schema)
+
+      assert lql_rules == [
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "notice",
+                 values: nil
+               },
+               %Logflare.Lql.FilterRule{
+                 modifiers: %{},
+                 operator: :=,
+                 path: "metadata.level",
+                 shorthand: nil,
+                 value: "warning",
+                 values: nil
                }
              ]
 
