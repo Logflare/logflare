@@ -120,8 +120,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
   def message_text(c \\ empty()) do
     c
     |> utf8_string([], min: 1)
-    |> reduce(:clean_message)
-    |> reduce(:maybe_parse_json)
+    |> reduce(:clean_maybe_parse_json)
     |> label("msg_text")
   end
 
@@ -209,18 +208,22 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     |> DateTime.to_iso8601()
   end
 
-  def maybe_parse_json([msg_text]) do
+  def clean_maybe_parse_json([msg_text]) do
     msg_text
     |> String.trim()
     |> JSON.decode()
     |> case do
-      {:ok, data} -> [msg_json: data, msg_text: msg_text]
-      _ -> [msg_text: msg_text]
+      {:ok, data} ->
+        [msg_json: data, message: msg_text, message_text: clean_message_text(msg_text)]
+
+      _ ->
+        [message: msg_text, message_text: clean_message_text(msg_text)]
     end
   end
 
-  def clean_message([msg_text]) do
-    String.replace(msg_text, "\e", "")
+  @spec clean_message_text(binary) :: binary
+  def clean_message_text(msg_text) do
+    String.replace(msg_text, ~r/\e\[[0-9;]*m(?:\e\[K)?/, "")
   end
 
   # ?\ => 10

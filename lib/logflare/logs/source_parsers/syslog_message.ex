@@ -17,6 +17,7 @@ defmodule Logflare.Logs.SyslogMessage do
     field :message, binary()
     field :message_id, binary()
     field :message_raw, binary()
+    field :message_text, binary()
 
     field :timestamp, NaiveDateTime.t()
   end
