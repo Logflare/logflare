@@ -300,7 +300,10 @@ defmodule LogflareWeb.Router do
     post "/vercel", LogController, :vercel_ingest
     post "/elixir/logger", LogController, :elixir_logger
     post "/typecasts", LogController, :create_with_typecasts
-    post "/syslog", LogController, :syslog
     post "/logplex", LogController, :syslog
+    post "/syslogs", LogController, :syslog
+
+    # Deprecate after September 1, 2020
+    post "/syslog", LogController, :syslog
   end
 end
