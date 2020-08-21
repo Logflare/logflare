@@ -209,19 +209,13 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
   end
 
   def clean_maybe_parse_json([msg_text]) do
-    msg_text
-    |> String.trim()
-    |> JSON.decode()
-    |> case do
-      {:ok, data} ->
-        # Parse ANSI into HTML here
-        # [msg_json: data, message: msg_text, message_text: clean_message_text(msg_text)]
-        [msg_json: data, message: clean_message_text(msg_text), message_text: msg_text]
+    json_regex = ~r/([^{]*)(?<maybe_json>{.+})([^}]*)/
 
-      _ ->
-        # Parse ANSI into HTML here
-        # [message: msg_text, message_text: clean_message_text(msg_text)]
-        [message: clean_message_text(msg_text), message_text: msg_text]
+    with %{"maybe_json" => maybe_json} <- Regex.named_captures(json_regex, msg_text),
+         {:ok, data} <- JSON.decode(maybe_json) do
+      [msg_json: data, message_text: msg_text, message: clean_message_text(msg_text)]
+    else
+      _ -> [message_text: msg_text, message: clean_message_text(msg_text)]
     end
   end
 
