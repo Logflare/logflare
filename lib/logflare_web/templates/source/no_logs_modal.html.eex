@@ -24,11 +24,25 @@
         <p>If you're hosted on Vercel setup our Vercel integration!</p>
         <%= link "Install the Vercel integration", to: "https://vercel.com/integrations/logflare", class: "btn btn-primary form-button", target: "_blank" %>
 
+        <h5 class="header-margin">Gigalixir</h5>
+        <p>Install the Gigalixir command line tool, and navigate to your project directory.</p>
+        <pre class="pre-scrollable">
+          <code>
+    gigalixir drains:add https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+        </pre>
+
         <h5 class="header-margin">With the Cloudflare App</h5>
         <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
         <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no"
           frameborder="0" style="height: 48px; width: 180px">
         </iframe>
+
+        <h5 class="header-margin">Heroku</h5>
+        <p>Add our log drain with a simple command.</p>
+        <pre class="pre-scrollable">
+          <code>
+    heroku drains:add https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %> -a YOUR_APP</code>
+        </pre>
 
         <h5 class="header-margin">With Elixir Logger</h5>
         <p>Using Elixir? Use our Logger backend to send your structured logs.</p>
