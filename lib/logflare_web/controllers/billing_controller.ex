@@ -6,7 +6,7 @@ defmodule LogflareWeb.BillingController do
   alias Logflare.BillingAccounts
   alias Logflare.Plans
   alias Logflare.Source
-  alias Logflare.User
+  alias Logflare.{User, Users}
   alias Logflare.BillingAccounts.Stripe
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
@@ -65,6 +65,28 @@ defmodule LogflareWeb.BillingController do
       |> redirect(to: Routes.user_path(conn, :edit))
     else
       err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        conn
+        |> put_flash(:error, @default_error_message)
+        |> redirect(to: Routes.user_path(conn, :edit))
+    end
+  end
+
+  def confirm_subscription(
+        %{assigns: %{user: %User{billing_account: nil} = user}} = conn,
+        %{"stripe_id" => _stripe_id} = params
+      ) do
+    with {:ok, customer} <- Stripe.create_customer(user),
+         {:ok, _billing_account} <-
+           BillingAccounts.create_billing_account(user, %{stripe_customer: customer.id}) do
+      user = Users.get(user.id) |> Users.preload_billing_account() |> Users.preload_sources()
+
+      conn
+      |> assign(:user, user)
+      |> confirm_subscription(params)
+    else
+      {err, customer} ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         conn
