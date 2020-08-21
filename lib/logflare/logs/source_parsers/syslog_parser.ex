@@ -40,7 +40,7 @@ defmodule Logflare.Logs.SyslogParser do
     |> concat(priority())
     |> concat(version())
     |> ignore(sp())
-    |> concat(maybe(timestamp()))f
+    |> concat(maybe(timestamp()))
     |> ignore(sp())
     |> concat(maybe(hostname()))
     |> ignore(sp())
@@ -62,9 +62,6 @@ defmodule Logflare.Logs.SyslogParser do
       )
     )
   )
-
-  def parse("") do
-  end
 
   @doc """
   Parses incoming message string into Logflare.Syslog.Message struct.

@@ -43,11 +43,16 @@ defmodule Plug.Parsers.SYSLOG do
             to_log_params(syslog_message)
 
           {:error, error} ->
-            Logger.warn("Syslog message parsing error: #{error}",
-              log_params_syslog_message: syslog_message_string
+            Logger.warn(
+              "Syslog message parsing error: #{error}, message: |#{syslog_message_string}|, source: #{
+                conn.params["source"]
+              }"
             )
+
+            nil
         end
       end
+      |> Enum.reject(&is_nil(&1))
 
     {:ok, %{"batch" => batch}, conn}
   rescue
