@@ -28,7 +28,7 @@
         <p>Install the Gigalixir command line tool, and navigate to your project directory.</p>
         <pre class="pre-scrollable">
           <code>
-    gigalixir drains:add https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+    gigalixir drains:add "https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
         <h5 class="header-margin">With the Cloudflare App</h5>
@@ -41,7 +41,7 @@
         <p>Add our log drain with a simple command.</p>
         <pre class="pre-scrollable">
           <code>
-    heroku drains:add https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %> -a YOUR_APP</code>
+    heroku drains:add "https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
         <h5 class="header-margin">With Elixir Logger</h5>
