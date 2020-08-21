@@ -96,7 +96,8 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), {:update, schema}, @timeout)
   end
 
-  def update_cluster(source_token, schema, type_map, field_count) do
+  @spec update_cluster(atom(), map(), map(), non_neg_integer()) :: atom
+  def update_cluster(source_token, schema, type_map, field_count) when is_atom(source_token) do
     GenServer.abcast(
       Node.list(),
       name(source_token),

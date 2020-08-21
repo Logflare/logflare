@@ -19,12 +19,6 @@ defmodule Logflare.EnumDeepUpdate do
     Enum.map(data, &update_in_enum(&1, keys, fun))
   end
 
-  def deep_update(data, keys, fun) do
-  end
-
-  def deep_update_keys(data, keys, fun) do
-  end
-
   def update_all_keys_deep(data, fun) when is_map(data) do
     data
     |> Enum.map(fn
@@ -42,4 +36,24 @@ defmodule Logflare.EnumDeepUpdate do
   end
 
   def update_all_keys_deep(data, _), do: data
+
+  def update_all_values_deep(data, fun) when is_list(data) do
+    Enum.map(data, &update_all_values_deep(&1, fun))
+  end
+
+  def update_all_values_deep(data, fun) when is_map(data) do
+    data
+    |> Enum.map(fn
+      {k, v} when is_map(v) or is_list(v) ->
+        {k, update_all_values_deep(v, fun)}
+
+      {k, v} ->
+        {k, fun.(v)}
+    end)
+    |> Map.new()
+  end
+
+  def update_all_values_deep(data, fun) do
+    fun.(data)
+  end
 end

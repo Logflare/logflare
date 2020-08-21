@@ -28,7 +28,7 @@ defmodule LogflareWeb.LogController do
   def create(%{assigns: %{source: source}} = conn, log_params) do
     batch =
       log_params
-      |> Map.take(~w[log_entry metadata timestamp])
+      |> Map.take(~w[log_entry metadata timestamp @logflareTransformDirectives])
       |> List.wrap()
 
     ingest_and_render(conn, batch, source)
@@ -48,10 +48,6 @@ defmodule LogflareWeb.LogController do
   end
 
   def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
-    batch =
-      batch
-      |> Logs.Syslog.handle_batch()
-
     ingest_and_render(conn, batch, source)
   end
 
