@@ -214,10 +214,14 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     |> JSON.decode()
     |> case do
       {:ok, data} ->
-        [msg_json: data, message: msg_text, message_text: clean_message_text(msg_text)]
+        # Parse ANSI into HTML here
+        # [msg_json: data, message: msg_text, message_text: clean_message_text(msg_text)]
+        [msg_json: data, message: clean_message_text(msg_text), message_text: msg_text]
 
       _ ->
-        [message: msg_text, message_text: clean_message_text(msg_text)]
+        # Parse ANSI into HTML here
+        # [message: msg_text, message_text: clean_message_text(msg_text)]
+        [message: clean_message_text(msg_text), message_text: msg_text]
     end
   end
 
