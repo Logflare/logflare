@@ -26,6 +26,27 @@ defmodule Logflare.BillingAccounts.Stripe do
     Stripe.Session.create(params)
   end
 
+  def create_payment_session(
+        %User{
+          sources: sources,
+          billing_account: %BillingAccount{stripe_customer: stripe_customer_id}
+        } = _user,
+        %Plan{stripe_id: stripe_id} = _plan
+      ) do
+    params = %{
+      customer: stripe_customer_id,
+      mode: "payment",
+      payment_method_types: ["card"],
+      success_url: Routes.billing_url(Endpoint, :success),
+      cancel_url: Routes.billing_url(Endpoint, :abandoned),
+      line_items: [
+        %{price: stripe_id, quantity: 1}
+      ]
+    }
+
+    Stripe.Session.create(params)
+  end
+
   def create_customer_session(
         %User{
           sources: sources,

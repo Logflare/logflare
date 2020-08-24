@@ -15,32 +15,37 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
   def call(conn, _opts), do: conn
 
   defp set_plan(%{assigns: %{user: user}} = conn, _opts) do
-    if user.billing_enabled? do
-      case BillingAccounts.Cache.get_billing_account_by(user_id: user.id) do
-        nil ->
-          plan = Plans.Cache.get_plan_by(name: "Free")
+    plan = get_plan(user)
 
-          conn
-          |> assign(:plan, plan)
+    conn
+    |> assign(:plan, plan)
+  end
+
+  defp get_plan(user) do
+    if user.billing_enabled? do
+      ba = BillingAccounts.Cache.get_billing_account_by(user_id: user.id)
+
+      case ba do
+        nil ->
+          Plans.Cache.get_plan_by(name: "Free")
+
+        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
+          Plans.Cache.get_plan_by(name: "Free")
+
+        %BillingAccounts.BillingAccount{lifetime_plan?: true} ->
+          Plans.Cache.get_plan_by(name: "Lifetime")
 
         billing_account ->
-          {:ok, stripe_plan} = BillingAccounts.get_billing_account_stripe_plan(billing_account)
-
-          plan =
-            if stripe_plan do
-              Plans.Cache.get_plan_by(stripe_id: stripe_plan["id"])
-            else
+          case BillingAccounts.Cache.get_billing_account_stripe_plan(billing_account) do
+            {:ok, nil} ->
               Plans.Cache.get_plan_by(name: "Free")
-            end
 
-          conn
-          |> assign(:plan, plan)
+            {:ok, stripe_plan} ->
+              Plans.Cache.get_plan_by(stripe_id: stripe_plan["id"])
+          end
       end
     else
-      plan = Plans.legacy_plan()
-
-      conn
-      |> assign(:plan, plan)
+      Plans.legacy_plan()
     end
   end
 end
