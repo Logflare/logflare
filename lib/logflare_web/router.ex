@@ -40,7 +40,8 @@ defmodule LogflareWeb.Router do
   pipeline :require_ingest_api_auth do
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetVerifySource
-    plug LogflareWeb.Plugs.EnsureSourceStarted
+    # We are ensuring source start in Logs.ingest
+    # plug LogflareWeb.Plugs.EnsureSourceStarted
     plug LogflareWeb.Plugs.SetPlanFromCache
     plug LogflareWeb.Plugs.RateLimiter
   end

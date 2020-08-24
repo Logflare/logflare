@@ -9,6 +9,7 @@ defmodule Logflare.Logs do
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
+  alias Logflare.Source.Supervisor
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
@@ -42,6 +43,8 @@ defmodule Logflare.Logs do
 
   def ingest(%LE{source: %Source{} = source} = le) do
     # indvididual source genservers
+    {:ok, _} = Supervisor.ensure_started(source.token)
+
     :ok = RecentLogsServer.push(le)
     :ok = Buffer.push(le)
 
