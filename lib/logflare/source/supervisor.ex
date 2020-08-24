@@ -150,21 +150,21 @@ defmodule Logflare.Source.Supervisor do
     # Double check source is in the database before starting
     # Can be removed when manager fns move into their own genserver
     if Sources.get_by(token: source_id) do
-      GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:create, source_id})
+      GenServer.abcast(__MODULE__, {:create, source_id})
     else
       Logger.warn("Attempted to start a source not found in the database.", source_id: source_id)
     end
   end
 
   def delete_source(source_id) do
-    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:delete, source_id})
+    GenServer.abcast(__MODULE__, {:delete, source_id})
     BigQuery.delete_table(source_id)
 
     {:ok, source_id}
   end
 
   def reset_source(source_id) do
-    GenServer.abcast(Cluster.Utils.node_list_all(), __MODULE__, {:restart, source_id})
+    GenServer.abcast(__MODULE__, {:restart, source_id})
 
     {:ok, source_id}
   end
@@ -218,6 +218,24 @@ defmodule Logflare.Source.Supervisor do
     source = Sources.get(source_token)
     source_schema = Sources.get_source_schema_by(source_id: source.id)
     {:ok, _} = Sources.update_source_schema(source_schema, %{bigquery_schema: schema})
+  end
+
+  def ensure_started(source_id) do
+    case Process.whereis(source_id) do
+      nil ->
+        Logger.info("Source process not found, starting...", source_id: source_id)
+
+        start_source(source_id)
+
+        # Probably eventually don't want to do this. Could slow down an ingest N * rule count if those rules are no started.
+        # Obv slow down source in question on ingest if not started.
+        Process.sleep(500)
+
+        {:ok, :started}
+
+      _else ->
+        {:ok, :already_started}
+    end
   end
 
   defp init_table(source_id) do
