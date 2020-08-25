@@ -129,6 +129,7 @@ defmodule Logflare.User do
 
   def default_validations(changeset, user) do
     changeset
+    |> add_provider_uid_if_nil(user)
     |> validate_required([:email, :provider, :token, :provider_uid])
     |> update_change(:email, &String.downcase/1)
     |> update_change(:email_preferred, fn
@@ -154,6 +155,15 @@ defmodule Logflare.User do
 
       u ->
         u
+    end
+  end
+
+  def add_provider_uid_if_nil(changeset, user) do
+    if is_nil(user.provider_uid) do
+      changeset
+      |> put_change(:provider_uid, user.email)
+    else
+      changeset
     end
   end
 
