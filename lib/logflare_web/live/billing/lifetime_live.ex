@@ -77,12 +77,12 @@ defmodule LogflareWeb.LifetimeLive do
       </div>
       <div class="card-body p-5">
         <h5><strong>Get 10 Business level sources for life for a one-time payment of $500.</strong></h5>
-        <p><strong><u>Limited availablity. Only <%= @lifetime_left %> left!</u></strong></p>
+        <p><strong><u>Limited availability. Only <%= @lifetime_left %> left!</u></strong></p>
         <div class="progress my-5">
           <div class="progress-bar progress-bar-striped" role="progressbar" style="width: <%= @lifetime_count %>%"
             aria-valuenow="<%= @lifetime_count %>" aria-valuemin="0" aria-valuemax="100"></div>
         </div>
-        <p>🤙 We're celbrating the official launch of Logflare v1! For a one time payment of $500 you get access to Logflare
+        <p>🤙 We're celebrating the official launch of Logflare v1! For a one time payment of $500 you get access to Logflare
           for life. This deal is limited to the first 100 customers who opt for the Logflare for Life plan.</p>
         <p><strong>Included per source:</strong></p>
         <div class="d-flex flex-wrap">
@@ -99,7 +99,7 @@ defmodule LogflareWeb.LifetimeLive do
             <p><i class="fas fa-check mr-2"></i>BYOB BigQuery tables</p>
           </div>
           <div class="mx-4">
-            <p><i class="fas fa-check mr-2"></i>500 fiels per source</p>
+            <p><i class="fas fa-check mr-2"></i>500 fields per source</p>
           </div>
           <div class="mx-4">
             <p><i class="fas fa-check mr-2"></i>60 days of history included</p>
