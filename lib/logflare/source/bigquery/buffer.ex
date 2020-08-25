@@ -59,10 +59,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
         #   log_event_id: log_event_id
         # )
 
-        {:reply, {:error, :not_found}, state}
+        {:error, :not_found}
 
       {:ok, %LE{} = log_event} ->
-        {:reply, {:ok, log_event}, state}
+        {:ok, log_event}
     end
   end
 
