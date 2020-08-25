@@ -140,7 +140,7 @@ defmodule LogflareWeb.LifetimeLive do
                       "stripe_id" => Plans.find_plan(@plans, @period, "Lifetime").stripe_id,
                       "mode" => "payment"
                     }),
-                  class: "btn btn-light px-4 py-2 my-4"
+                  class: "btn btn-pink px-4 py-2 my-4"
                 )
                 %>
         <% end %>
@@ -152,7 +152,7 @@ defmodule LogflareWeb.LifetimeLive do
                       "stripe_id" => Plans.find_plan(@plans, @period, "Lifetime").stripe_id,
                       "mode" => "payment"
                     }),
-                  class: "btn btn-light px-4 py-2 my-4"
+                  class: "btn btn-pink px-4 py-2 my-4"
                 )
                 %>
         <% end %>
