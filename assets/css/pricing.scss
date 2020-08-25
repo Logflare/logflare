@@ -2,6 +2,16 @@
   background-color: $brand-green !important;
 }
 
+.progress-bar {
+  background-color: #e45b8c;
+}
+
+.btn-pink:focus, .btn-pink, .btn-pink:hover, .btn-pink:active, .btn-pink:not(:disabled):not(.disabled):active {
+  color: white;
+  background-color: #e45b8c;
+  border-color: #ff91b8;
+}
+
 .card {
   word-wrap: break-word;
   display: flex;

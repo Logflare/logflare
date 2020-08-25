@@ -16,16 +16,26 @@
   <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
   <div class="sub-form">
     <%= section_header("Summary") %>
-    <%= if @user.billing_account.stripe_subscriptions["data"] do %>
-      <%= if @plan.name != "Free" do %>
-        <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= count_for_billing(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
-        <p><small><sup>1</sup> Minimum 1 source required for billing.</small></p>
-      <% else %>
+    <%= if @user.billing_account.lifetime_plan? do %>
+      <p>You're currently on the <u><%= @plan.name %> plan</u>. Thank you!</p>
+    <% else %>
+      <%= if @user.billing_account.stripe_subscriptions["data"] do %>
+        <%= if @plan.name != "Free" do %>
+          <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= count_for_billing(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
+          <p><small><sup>1</sup> Minimum 1 source required for billing.</small></p>
+        <% else %>
+        <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
+        <% end %>
+    <% else %>
         <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
       <% end %>
-    <% else %>
-      <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
     <% end %>
+  </div>
+  <div class="sub-form">
+    <p>We appreciate our early adopters.</p>
+    <p>This deal is limited to the first 100 customers who opt for the Logflare for Life plan.</p>
+    <%= section_header("Logflare for Life") %>
+    <%= live_render(@conn, LogflareWeb.LifetimeLive) %>
   </div>
   <div class="sub-form">
     <%= section_header("Pricing") %>
@@ -85,7 +95,7 @@
     </div>
   </div>
   <div class="sub-form">
-    <%= section_header("Invoices") %>
+    <%= section_header("Subscription Invoices") %>
     <p>View and download your invoices!</p>
     <div class="table-responsive">
       <table class="table table-dark">

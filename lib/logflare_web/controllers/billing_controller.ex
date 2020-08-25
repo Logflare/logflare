@@ -97,6 +97,27 @@ defmodule LogflareWeb.BillingController do
 
   def confirm_subscription(
         %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
+        %{"stripe_id" => stripe_id, "mode" => "payment"}
+      ) do
+    with plan <- Plans.get_plan_by(stripe_id: stripe_id),
+         false <- billing_accoount_has_subscription?(billing_account),
+         {:ok, session} <- Stripe.create_payment_session(user, plan) do
+      conn
+      |> put_session(:stripe_session, session)
+      |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
+    else
+      true ->
+        error_and_redirect(conn, "Please delete your current subscription first!")
+
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn, @default_error_message)
+    end
+  end
+
+  def confirm_subscription(
+        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id}
       ) do
     with plan <- Plans.get_plan_by(stripe_id: stripe_id),
@@ -124,8 +145,6 @@ defmodule LogflareWeb.BillingController do
     with plan <- Plans.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <- Stripe.change_subscription(billing_account, sources, plan) do
-      Source.Supervisor.reset_all_user_sources(user)
-
       success_and_redirect(conn, "Plan successfully changed!")
     else
       false ->
@@ -181,8 +200,6 @@ defmodule LogflareWeb.BillingController do
            get_billing_account_subscription(billing_account, stripe_subscription_id),
          {:ok, _response} <- Stripe.delete_subscription(subscription["id"]),
          {:ok, _billing_account} <- BillingAccounts.sync_subscriptions(billing_account) do
-      Source.Supervisor.reset_all_user_sources(user)
-
       success_and_redirect(conn, "Subscription deleted!")
     else
       {:error, :subscription_not_found} ->
@@ -226,14 +243,13 @@ defmodule LogflareWeb.BillingController do
         _params
       ) do
     stripe_session = get_session(conn, :stripe_session)
-    billing_params = %{latest_successful_stripe_session: stripe_session}
 
-    with {:ok, _stripe_session} <-
+    with {:ok, session} <-
            Stripe.find_completed_session(stripe_session.id),
          {:ok, _billing_account} <-
-           BillingAccounts.update_billing_account(billing_account, billing_params) do
-      Source.Supervisor.reset_all_user_sources(user)
-
+           BillingAccounts.update_billing_account(billing_account, %{
+             latest_successful_stripe_session: session
+           }) do
       success_and_redirect(conn, "Subscription created!")
     else
       err ->

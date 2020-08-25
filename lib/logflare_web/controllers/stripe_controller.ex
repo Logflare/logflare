@@ -4,12 +4,19 @@ defmodule LogflareWeb.StripeController do
   require Logger
 
   alias Logflare.BillingAccounts
+  alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.Users
+  alias Logflare.Source
 
-  def event(conn, %{"type" => type, "data" => %{"object" => %{"customer" => customer}}}) do
+  def event(
+        conn,
+        %{"type" => type, "data" => %{"object" => %{"customer" => customer} = object}} = event
+      ) do
     case type do
       "invoice." <> _sub_type ->
-        with billing_account <- BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, _billing_account} <- BillingAccounts.sync_invoices(billing_account) do
+        with %BillingAccount{} = ba <-
+               BillingAccounts.get_billing_account_by(stripe_customer: customer),
+             {:ok, _billing_account} <- BillingAccounts.sync_invoices(ba) do
           ok(conn)
         else
           err ->
@@ -20,9 +27,38 @@ defmodule LogflareWeb.StripeController do
             conflict(conn)
         end
 
-      "customer.subscription." <> _sub_type ->
-        with billing_account <- BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, _billing_account} <- BillingAccounts.sync_subscriptions(billing_account) do
+      "charge.succeeded" ->
+        with %BillingAccount{} = ba <-
+               BillingAccounts.get_billing_account_by(stripe_customer: customer),
+             {:ok, ba} <-
+               BillingAccounts.update_billing_account(ba, %{
+                 lifetime_plan?: true,
+                 lifetime_plan_invoice: object["receipt_url"]
+               }) do
+          Users.get(ba.user_id)
+          |> Source.Supervisor.reset_all_user_sources()
+
+          Logger.info("Lifetime customer created. Event id: #{event["id"]}")
+
+          ok(conn)
+        else
+          err ->
+            Logger.error("Stripe webhook error: #{type}", %{
+              billing: %{webhook_type: type, error_string: inspect(err)}
+            })
+
+            conflict(conn)
+        end
+
+      "customer.subscription" <> sub_type ->
+        with %BillingAccount{} = ba <-
+               BillingAccounts.get_billing_account_by(stripe_customer: customer),
+             {:ok, ba} <- BillingAccounts.sync_subscriptions(ba) do
+          Users.get(ba.user_id)
+          |> Source.Supervisor.reset_all_user_sources()
+
+          Logger.info("Subscription customer #{sub_type}. Event id: #{event["id"]}")
+
           ok(conn)
         else
           err ->

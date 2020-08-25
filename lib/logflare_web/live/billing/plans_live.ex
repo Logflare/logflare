@@ -230,6 +230,12 @@ defmodule LogflareWeb.BillingPlansLive do
           class: "btn btn-dark text-white form-button btn w-75 mr-0 mb-1"
         )
 
+      plan.name == "Lifetime" ->
+        link("Contact us",
+          to: Routes.contact_path(socket, :contact),
+          class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
+        )
+
       plan.name == "Free" || plan.name == "Legacy" ->
         link("Subscribe",
           to:
