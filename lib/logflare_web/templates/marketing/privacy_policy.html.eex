@@ -11,7 +11,7 @@
 <div class="container-fluid contentguidepage">
 	<div class="container">
 		<div class="row">
-			
+
       <div class="col-lg-3 hide-on-mobile">
 				<div class="forfixed">
 					<div class="contentmenu">
@@ -34,7 +34,7 @@
           <p>Any information that we collect is collected as part of our business practices in order to identify demographic information relative to users who access our site, assessing the number and type of user accessing various sections of our site, helping us determine what content and business concepts are working for us and/or are of interest to our visitors, determining technical design features and specifications and helping us assess systems performance. We also use such information in statistical form to assist us in business and marketing strategies and programs. We utilize software programs to create summary statistics which we utilize for the above purposes.</p>
 
           <h2 class="menu3cont" id="data-ownership">Data Ownership</h2>
-          <p>Logflare uses third party vendors and hosting partners to provide the necessary hardware, software, networking, storage, and related technology required to run Logflare. All data collected through Logflare is owned by Logflare and licensed to its customers on an as-needed basis.</p>
+          <p>Logflare uses third party vendors and hosting partners to provide the necessary hardware, software, networking, storage, and related technology required to run Logflare.</p>
 
           <h2 class="menu4cont" id="disclosure">Disclosure</h2>
           <p>Personal information Logflare collects is not shared with or sold to other organizations for commercial purposes, except to provide products or services you’ve requested, when we have your permission, or under the following circumstances:</p>
