@@ -87,7 +87,7 @@ defmodule LogflareWeb.LifetimeLive do
         <p><strong>Included per source:</strong></p>
         <div class="d-flex flex-wrap">
           <div class="mx-4">
-            <p><i class="fas fa-check mr-2"></i>10 saved searches</p>
+            <p><i class="fas fa-check mr-2"></i>8 saved searches</p>
           </div>
           <div class="mx-4">
             <p><i class="fas fa-check mr-2"></i>1 minute alert frequency</p>
