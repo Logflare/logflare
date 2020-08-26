@@ -24,6 +24,7 @@
           <th scope="col">Saved Searches</th>
           <th scope="col">Team Users</th>
           <th scope="col">Source Fields</th>
+          <th scope="col">Source TTL</th>
           <th scope="col"></th>
         </tr>
       </thead>
@@ -42,6 +43,7 @@
           <td><%= p.limit_saved_search_limit %></td>
           <td><%= p.limit_team_users_limit %></td>
           <td><%= p.limit_source_fields_limit %></td>
+          <td><%= p.limit_source_ttl %></td>
           <td><%= link "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm" %></td>
         </tr>
         <% end %>

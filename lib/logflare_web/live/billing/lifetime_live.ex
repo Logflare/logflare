@@ -126,7 +126,7 @@ defmodule LogflareWeb.LifetimeLive do
             <p><i class="fas fa-check mr-2"></i>14-day money-back guarantee</p>
           </div>
         </div>
-        <%= if @user do %>
+        <%= if @user && @user.billing_account do %>
         <%= if @user.billing_account.lifetime_plan? do %>
         <%= link("Lifetime plan invoice",
                     to: @user.billing_account.lifetime_plan_invoice,
