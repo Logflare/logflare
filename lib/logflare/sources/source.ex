@@ -7,7 +7,7 @@ defmodule Logflare.Source do
   alias Logflare.Plans
   alias Logflare.Users
 
-  @default_source_api_quota 50
+  @default_source_api_quota 25
   @derive {Jason.Encoder,
            only: [
              :name,

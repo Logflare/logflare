@@ -343,7 +343,6 @@ defmodule LogflareWeb.SourceController do
 
     case Repo.update(changeset) do
       {:ok, source} ->
-        IO.inspect(source)
         ttl = source.bigquery_table_ttl
 
         if ttl do
