@@ -35,9 +35,6 @@ defmodule LogflareWeb.StripeController do
                  lifetime_plan?: true,
                  lifetime_plan_invoice: object["receipt_url"]
                }) do
-          Users.get(ba.user_id)
-          |> Source.Supervisor.reset_all_user_sources()
-
           Logger.info("Lifetime customer created. Event id: #{event["id"]}")
 
           ok(conn)
@@ -54,9 +51,6 @@ defmodule LogflareWeb.StripeController do
         with %BillingAccount{} = ba <-
                BillingAccounts.get_billing_account_by(stripe_customer: customer),
              {:ok, ba} <- BillingAccounts.sync_subscriptions(ba) do
-          Users.get(ba.user_id)
-          |> Source.Supervisor.reset_all_user_sources()
-
           Logger.info("Subscription customer #{sub_type}. Event id: #{event["id"]}")
 
           ok(conn)
