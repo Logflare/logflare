@@ -49,8 +49,6 @@ defmodule LogflareWeb.AdminPlanController do
         |> redirect(to: Routes.admin_plan_path(conn, :index))
 
       {:error, changeset} ->
-        IO.inspect(changeset)
-
         conn
         |> put_flash(:error, "Something went wrong!")
         |> render("edit.html", changeset: changeset, plan: plan)

@@ -1,8 +1,13 @@
 defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
+
   import Ecto.Changeset
-  @default_source_api_quota 50
+
+  alias Logflare.Plans
+  alias Logflare.Users
+
+  @default_source_api_quota 25
   @derive {Jason.Encoder,
            only: [
              :name,
@@ -142,7 +147,7 @@ defmodule Logflare.Source do
       :notifications_every
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
-    |> default_validations()
+    |> default_validations(source)
   end
 
   def update_by_user_changeset(source, attrs) do
@@ -159,15 +164,36 @@ defmodule Logflare.Source do
       :notifications_every
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
-    |> default_validations()
+    |> default_validations(source)
   end
 
-  def default_validations(changeset) do
+  def default_validations(changeset, source) do
     changeset
     |> validate_required([:name, :token])
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)
+    |> validate_source_ttl(source)
+  end
+
+  def validate_source_ttl(changeset, source) do
+    if source.user_id do
+      plan =
+        Users.get(source.user_id)
+        |> Plans.get_plan_by_user()
+
+      validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->
+        days = round(plan.limit_source_ttl / :timer.hours(24))
+
+        if ttl > days do
+          [bigquery_table_ttl: "ttl is over your plan limit"]
+        else
+          []
+        end
+      end)
+    else
+      changeset
+    end
   end
 
   def generate_bq_table_id(%__MODULE__{} = source) do

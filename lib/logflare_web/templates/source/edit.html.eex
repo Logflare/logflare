@@ -163,11 +163,11 @@
 <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
 <% end %>
 <%= section_header("Backend TTL") %>
-<%= if @conn.assigns.user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] do %>
-  <p>Set how long to keep data in your custom backend.</p>
+<%= if @conn.assigns.user.billing_enabled? do %>
+  <p>Set how long to keep data in your backend.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
   <div class="form-group">
-    <%= text_input e, :bigquery_table_ttl, placeholder: "7", class: "form-control form-control-margin" %>
+    <%= text_input e, :bigquery_table_ttl, placeholder: "3", class: "form-control form-control-margin" %>
     <%= error_tag e, :bigquery_table_ttl %>
     <small class="form-text text-muted">
       Days to keep data.
