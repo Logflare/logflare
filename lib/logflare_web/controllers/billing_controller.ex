@@ -200,6 +200,8 @@ defmodule LogflareWeb.BillingController do
            get_billing_account_subscription(billing_account, stripe_subscription_id),
          {:ok, _response} <- Stripe.delete_subscription(subscription["id"]),
          {:ok, _billing_account} <- BillingAccounts.sync_subscriptions(billing_account) do
+      Source.Supervisor.reset_all_user_sources(user)
+
       success_and_redirect(conn, "Subscription deleted!")
     else
       {:error, :subscription_not_found} ->
@@ -250,7 +252,7 @@ defmodule LogflareWeb.BillingController do
            BillingAccounts.update_billing_account(billing_account, %{
              latest_successful_stripe_session: session
            }) do
-      Source.Superviser.reset_all_user_sources(user)
+      Source.Supervisor.reset_all_user_sources(user)
 
       success_and_redirect(conn, "Subscription created!")
     else
