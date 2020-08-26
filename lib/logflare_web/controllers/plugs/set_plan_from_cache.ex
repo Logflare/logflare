@@ -29,11 +29,11 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
         nil ->
           Plans.Cache.get_plan_by(name: "Free")
 
-        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
-          Plans.Cache.get_plan_by(name: "Free")
-
         %BillingAccounts.BillingAccount{lifetime_plan?: true} ->
           Plans.Cache.get_plan_by(name: "Lifetime")
+
+        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
+          Plans.Cache.get_plan_by(name: "Free")
 
         billing_account ->
           case BillingAccounts.Cache.get_billing_account_stripe_plan(billing_account) do
