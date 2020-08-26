@@ -10,6 +10,50 @@ defmodule Logflare.LqlParserTest do
   @default_schema Logflare.BigQuery.TableSchema.SchemaBuilderHelpers.schemas().initial
 
   describe "LQL parsing" do
+    test "word string regexp with special characters" do
+      schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
+      str = ~S|~\d\d ~^ ~^error$ ~up|
+      {:ok, result} = Parser.parse(str, schema)
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :"~",
+          path: "event_message",
+          shorthand: nil,
+          value: "\\d\\d",
+          values: nil
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :"~",
+          path: "event_message",
+          shorthand: nil,
+          value: "^",
+          values: nil
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :"~",
+          path: "event_message",
+          shorthand: nil,
+          value: "^error$",
+          values: nil
+        },
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :"~",
+          path: "event_message",
+          shorthand: nil,
+          value: "up",
+          values: nil
+        }
+      ]
+
+      assert Utils.get_filter_rules(result) == lql_rules
+      assert Lql.encode!(lql_rules) == str
+    end
+
     test "word string regexp" do
       schema = SchemaBuilder.build_table_schema(%{}, @default_schema)
       str = ~S|~user ~sign ~up|
