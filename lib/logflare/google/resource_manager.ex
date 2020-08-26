@@ -225,6 +225,9 @@ defmodule Logflare.Google.CloudResourceManager do
           %Plans.Plan{name: "Legacy"} ->
             true
 
+          %Plans.Plan{name: "Lifetime"} ->
+            true
+
           _plan ->
             true
         end

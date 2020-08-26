@@ -8,6 +8,7 @@ defmodule Logflare.BillingAccounts do
   import Ecto.Query, warn: false
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Users
   alias Logflare.Source
   alias __MODULE__
   alias Logflare.BillingAccounts.BillingAccount
@@ -77,6 +78,9 @@ defmodule Logflare.BillingAccounts do
     |> Repo.insert()
     |> case do
       {:ok, _user} = response ->
+        # move this to be the default on user create after launch
+        Users.update_user_all_fields(user, %{billing_enabled?: true})
+
         Source.Supervisor.reset_all_user_sources(user)
 
         response

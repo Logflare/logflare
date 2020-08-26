@@ -51,11 +51,11 @@ defmodule Logflare.Plans do
         nil ->
           get_plan_by(name: "Free")
 
-        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
-          get_plan_by(name: "Free")
-
         %BillingAccounts.BillingAccount{lifetime_plan?: true} ->
           get_plan_by(name: "Lifetime")
+
+        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
+          get_plan_by(name: "Free")
 
         billing_account ->
           case BillingAccounts.get_billing_account_stripe_plan(billing_account) do
