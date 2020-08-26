@@ -250,6 +250,8 @@ defmodule LogflareWeb.BillingController do
            BillingAccounts.update_billing_account(billing_account, %{
              latest_successful_stripe_session: session
            }) do
+      Source.Superviser.reset_all_user_sources(user)
+
       success_and_redirect(conn, "Subscription created!")
     else
       err ->
