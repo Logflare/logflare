@@ -177,9 +177,12 @@ defmodule Logflare.Lql.Encoder do
         if lv == 0 and rv == 0 do
           {"", ""}
         else
-          lv = String.pad_leading("#{lv}", 6, "0")
-          rv = String.pad_leading("#{rv}", 6, "0")
-          {lv, rv}
+          [lv, rv]
+          |> Enum.map(&to_string/1)
+          |> Enum.map(&String.pad_leading(&1, 6, "0"))
+          |> Enum.map(&String.trim_trailing(&1, "0"))
+          |> Enum.map(&if &1 == "", do: "0", else: &1)
+          |> List.to_tuple()
         end
       end
 

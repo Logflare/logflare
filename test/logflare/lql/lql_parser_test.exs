@@ -1735,6 +1735,107 @@ defmodule Logflare.LqlParserTest do
 
       assert qs == Lql.encode!(lql_rules)
     end
+    test "timestamp filter with leading zero microseconds" do
+      qs = "t:>2020-01-01T13:14:15.000500"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :>,
+          path: "timestamp",
+          shorthand: nil,
+          value: ~N[2020-01-01 13:14:15.000500],
+          values: nil
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+    end
+
+    test "timestamp microsecond ranges" do
+      qs = "t:2020-01-01T13:14:15.{0..515}"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [
+            ~N[2020-01-01 13:14:15.000000],
+            ~N[2020-01-01 13:14:15.515000]
+          ]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+
+      qs = "t:2020-01-01T13:14:15.{0101..3555}"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [
+            ~N[2020-01-01 13:14:15.010100],
+            ~N[2020-01-01 13:14:15.355500]
+          ]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+
+      qs = "t:2020-01-01T13:14:15.{1..7}"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [
+            ~N[2020-01-01 13:14:15.100000],
+            ~N[2020-01-01 13:14:15.700000]
+          ]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+
+      qs = "t:2020-01-01T13:14:15.{005001..100000}"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [
+            ~N[2020-01-01 13:14:15.005001],
+            ~N[2020-01-01 13:14:15.100000]
+          ]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert "t:2020-01-01T13:14:15.{005001..1}" == Lql.encode!(lql_rules)
+    end
+
     test "simple case" do
       qs = "t:2020-{01..02}-01T00:{00..50}:00"
 

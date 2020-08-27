@@ -319,7 +319,13 @@ defmodule Logflare.Lql.Parser.Helpers do
       end)
       |> Enum.map(fn
         %{second: _, minute: _, hour: _} = dt ->
-          dt = Map.update(dt, :microsecond, {0, 0}, &{&1, 6})
+          dt =
+            Map.update(dt, :microsecond, {0, 0}, fn us ->
+              {float, ""} = Float.parse("0." <> us)
+
+              {round(float * 1_000_000), 6}
+            end)
+
           struct!(NaiveDateTime, dt)
 
         d ->
@@ -448,7 +454,14 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> optional(ignore(string(".")))
     |> concat(
       optional(
-        integer_with_range(6)
+        choice([
+          ignore(string("{"))
+          |> ascii_string([?0..?9], min: 1, max: 6)
+          |> ignore(string(".."))
+          |> ascii_string([?0..?9], min: 1, max: 6)
+          |> ignore(string("}")),
+          ascii_string([?0..?9], min: 1, max: 6)
+        ])
         |> tag(:microsecond)
       )
     )
