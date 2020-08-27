@@ -407,7 +407,7 @@ defmodule Logflare.LqlParserTest do
 
       assert Utils.get_filter_rules(result) == lql_rules
 
-      assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
+      assert Lql.encode!(lql_rules) == "t:2019-{01..02}-01"
     end
 
     test "nested fields filter 2" do
@@ -614,7 +614,7 @@ defmodule Logflare.LqlParserTest do
 
       assert Utils.get_filter_rules(result) == lql_rules
 
-      assert Lql.encode!(lql_rules) == clean_and_trim_lql_string(str)
+      assert Lql.encode!(lql_rules) == "t:2019-{01..02}-01"
     end
 
     @schema SchemaBuilder.build_table_schema(
@@ -1700,6 +1700,41 @@ defmodule Logflare.LqlParserTest do
   end
 
   describe "LQL parser for timestamp range shorthand" do
+    test "month/day range" do
+      qs = "t:2020-{05..07}-01"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [~D[2020-05-01], ~D[2020-07-01]]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+
+      qs = "t:2020-05-{01..02}"
+
+      lql_rules = [
+        %Logflare.Lql.FilterRule{
+          modifiers: %{},
+          operator: :range,
+          path: "timestamp",
+          shorthand: nil,
+          value: nil,
+          values: [~D[2020-05-01], ~D[2020-05-02]]
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+
+      assert qs == Lql.encode!(lql_rules)
+    end
     test "simple case" do
       qs = "t:2020-{01..02}-01T00:{00..50}:00"
 

@@ -59,7 +59,8 @@ defmodule Logflare.Lql.Encoder do
        }) do
     dtstring =
       if match?(%Date{}, lv) do
-        "#{lv}..#{rv}"
+        to_datetime_with_range(lv, rv)
+        # "#{lv}..#{rv}"
       else
         to_datetime_with_range(lv, rv)
       end
@@ -134,40 +135,19 @@ defmodule Logflare.Lql.Encoder do
     Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
 
+  def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
+    date_periods = [:year, :month, :day]
+
+    mapper = fn period -> timestamp_mapper(ldt, rdt, period) end
+    date_periods |> Enum.map(mapper) |> Enum.join("-")
+  end
+
   def to_datetime_with_range(ldt, rdt) do
     date_periods = [:year, :month, :day]
     time_periods = [:hour, :minute, :second]
     us = [:microsecond]
 
-    mapper = fn
-      period ->
-        {lv, rv} =
-          if period != :microsecond do
-            lv = Map.get(ldt, period)
-            rv = Map.get(rdt, period)
-
-            lv = String.pad_leading("#{lv}", 2, "0")
-            rv = String.pad_leading("#{rv}", 2, "0")
-            {lv, rv}
-          else
-            {lv, _} = Map.get(ldt, period)
-            {rv, _} = Map.get(rdt, period)
-
-            if lv == 0 and rv == 0 do
-              {"", ""}
-            else
-              lv = String.pad_leading("#{lv}", 6, "0")
-              rv = String.pad_leading("#{rv}", 6, "0")
-              {lv, rv}
-            end
-          end
-
-        if lv == rv do
-          "#{lv}"
-        else
-          "{#{lv}..#{rv}}"
-        end
-    end
+    mapper = fn period -> timestamp_mapper(ldt, rdt, period) end
 
     date_string = date_periods |> Enum.map(mapper) |> Enum.join("-")
     time_string = time_periods |> Enum.map(mapper) |> Enum.join(":")
@@ -178,6 +158,35 @@ defmodule Logflare.Lql.Encoder do
       datetime_string <> "." <> maybe_us_string
     else
       datetime_string
+    end
+  end
+
+  defp timestamp_mapper(ldt, rdt, period) do
+    {lv, rv} =
+      if period != :microsecond do
+        lv = Map.get(ldt, period)
+        rv = Map.get(rdt, period)
+
+        lv = String.pad_leading("#{lv}", 2, "0")
+        rv = String.pad_leading("#{rv}", 2, "0")
+        {lv, rv}
+      else
+        {lv, _} = Map.get(ldt, period)
+        {rv, _} = Map.get(rdt, period)
+
+        if lv == 0 and rv == 0 do
+          {"", ""}
+        else
+          lv = String.pad_leading("#{lv}", 6, "0")
+          rv = String.pad_leading("#{rv}", 6, "0")
+          {lv, rv}
+        end
+      end
+
+    if lv == rv do
+      "#{lv}"
+    else
+      "{#{lv}..#{rv}}"
     end
   end
 end
