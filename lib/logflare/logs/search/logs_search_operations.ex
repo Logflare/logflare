@@ -307,11 +307,19 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
+    chart_period = hd(so.chart_rules).period
+
     query =
       query
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
-      |> select_timestamp(hd(so.chart_rules).period)
       |> order_by([t, ...], desc: 1)
+
+    query =
+      if chart_period == :day and so.use_local_time and so.user_local_timezone do
+        select_timestamp(query, chart_period, so.user_local_timezone)
+      else
+        select_timestamp(query, chart_period)
+      end
 
     query =
       case chart_rules do
