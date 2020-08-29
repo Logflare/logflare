@@ -126,8 +126,13 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Unlimited<sup>2</sup></li>
           </ul>
           <div class="py-4">
-            <h2 class="text-white mb-1"><span class="price"><%= Plans.find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></span></h2>
-            <small class="text-muted">per <%= @period %> / per source</small>
+            <%= if @period == "year" do %>
+              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Hobby").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
+            <% else %>
+              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
+            <% end %>
+            <small class="text-muted">per month / per source</small></br>
+            <small class="text-muted">paid <%= @period %>ly</small>
           </div>
           <div class="py-4">
             <div>
@@ -161,8 +166,13 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Unlimited<sup>2</sup></li>
           </ul>
           <div class="py-4">
-            <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
-            <small class="text-muted">per <%= @period %> / per source</small>
+            <%= if @period == "year" do %>
+              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
+            <% else %>
+              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
+            <% end %>
+            <small class="text-muted">per month / per source</small></br>
+            <small class="text-muted">paid <%= @period %>ly</small>
           </div>
           <div class="py-4">
             <div>
@@ -196,8 +206,13 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Unlimited<sup>2</sup></li>
           </ul>
           <div class="py-4">
-            <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
-            <small class="text-muted">per <%= @period %> / per source</small>
+            <%= if @period == "year" do %>
+              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
+            <% else %>
+              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
+            <% end %>
+            <small class="text-muted">per month / per source</small></br>
+            <small class="text-muted">paid <%= @period %>ly</small>
           </div>
           <div class="py-4">
             <div>
