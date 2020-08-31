@@ -22,7 +22,7 @@ defmodule LogflareWeb.Source.SearchLV do
   require Logger
 
   @tail_search_interval 500
-  @user_idle_interval 300_000
+  @user_idle_interval :timer.minutes(5)
   @default_qs "c:count(*) c:group_by(t::minute)"
   @default_assigns [
     log_events: [],
@@ -151,12 +151,6 @@ defmodule LogflareWeb.Source.SearchLV do
     else
       redirect(socket, to: "/")
     end
-  end
-
-  defp get_source_for_param(source_id) do
-    Sources.get_by_and_preload(id: source_id)
-    |> Sources.preload_saved_searches()
-    |> Sources.put_bq_table_data()
   end
 
   def mount_connected(
@@ -423,18 +417,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("user_idle" = ev, _, socket) do
-    %{token: stoken} = source = socket.assigns.source
-    log_lv_received_event(ev, source)
-
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
-
-    socket = assign_notifications(socket, :warning, "Live search paused due to user inactivity.")
-
-    {:noreply, socket}
-  end
-
   def handle_event("save_search" = ev, _, socket) do
     %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?, user: user} =
       socket.assigns
@@ -479,41 +461,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:lql_rules, lql_rules)
 
     {:noreply, socket}
-  end
-
-  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
-    %{querystring: qs, tailing?: tailing?} = params
-
-    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
-      lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
-      qs = Lql.encode!(lql_rules)
-
-      socket
-      |> assign(:loading, true)
-      |> assign(:tailing_initial?, true)
-      |> assign_notifications(:warning, nil)
-      |> assign_notifications(:error, nil)
-      |> assign(:lql_rules, lql_rules)
-      |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
-    else
-      {:error, error} ->
-        socket
-        |> assign(:tailing?, false)
-        |> assign(:log_aggregates, [])
-        |> assign(:log_events, [])
-        |> assign_notifications(:error, error)
-    end
-  end
-
-  def push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
-    path =
-      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
-        querystring: querystring,
-        tailing?: tailing?
-      })
-
-    push_patch(socket, to: path, replace: false)
   end
 
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
@@ -636,6 +583,41 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
+    %{querystring: qs, tailing?: tailing?} = params
+
+    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
+      lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+      qs = Lql.encode!(lql_rules)
+
+      socket
+      |> assign(:loading, true)
+      |> assign(:tailing_initial?, true)
+      |> assign_notifications(:warning, nil)
+      |> assign_notifications(:error, nil)
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, qs)
+      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
+    else
+      {:error, error} ->
+        socket
+        |> assign(:tailing?, false)
+        |> assign(:log_aggregates, [])
+        |> assign(:log_events, [])
+        |> assign_notifications(:error, error)
+    end
+  end
+
+  defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
+    path =
+      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
+        querystring: querystring,
+        tailing?: tailing?
+      })
+
+    push_patch(socket, to: path, replace: false)
+  end
+
   defp warning_message(assigns, search_op) do
     tailing? = assigns.tailing?
     querystring = assigns.querystring
@@ -666,6 +648,12 @@ defmodule LogflareWeb.Source.SearchLV do
   defp kickoff_queries(source_token, assigns) do
     SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
     SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
+  end
+
+  defp get_source_for_param(source_id) do
+    Sources.get_by_and_preload(id: source_id)
+    |> Sources.preload_saved_searches()
+    |> Sources.put_bq_table_data()
   end
 
   defp period_to_ms(:second), do: :timer.seconds(1)
