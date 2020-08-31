@@ -79,7 +79,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
 
-        SearchQueryExecutor.maybe_execute_query(socket.assigns.source.token, socket.assigns)
+        kickoff_queries(socket.assigns.source.token, socket.assigns)
 
         socket
       else
@@ -302,7 +302,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:tailing_paused?, nil)
           |> assign(:tailing?, true)
 
-        SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
+        SearchQueryExecutor.maybe_execute_events_query(stoken, socket.assigns)
 
         socket
       else
@@ -516,32 +516,8 @@ defmodule LogflareWeb.Source.SearchLV do
     push_patch(socket, to: path, replace: false)
   end
 
-  def handle_info({:search_result, search_result}, socket) do
+  def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
-
-    tailing_timer =
-      if socket.assigns.tailing? do
-        log_lv(socket.assigns.source, "is scheduling tail search")
-        Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
-      else
-        nil
-      end
-
-    warning =
-      cond do
-        match?({:warning, _}, search_result.aggregates.status) ->
-          {:warning, message} = search_result.aggregates.status
-          message
-
-        match?({:warning, _}, search_result.events.status) ->
-          {:warning, message} = search_result.events.status
-          message
-
-        true ->
-          warning_message(socket.assigns, search_result)
-      end
-
-    log_events = search_result.events.rows
 
     timezone =
       if socket.assigns.use_local_time do
@@ -561,14 +537,53 @@ defmodule LogflareWeb.Source.SearchLV do
         )
       end)
 
+    if socket.assigns.tailing? do
+      log_lv(socket.assigns.source, "is scheduling tail aggregate")
+
+      %ChartRule{period: period} =
+        socket.assigns.lql_rules
+        |> Enum.find(fn x -> Map.has_key?(x, :period) end)
+
+      Process.send_after(self(), :schedule_tail_agg, period_to_ms(period))
+    end
+
+    socket =
+      socket
+      |> assign(:log_aggregates, log_aggregates)
+      |> assign(:search_op_log_aggregates, search_result.aggregates)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:search_result, %{events: _events} = search_result}, socket) do
+    log_lv_received_event("search_result", socket.assigns.source)
+
+    tailing_timer =
+      if socket.assigns.tailing? do
+        log_lv(socket.assigns.source, "is scheduling tail search")
+        Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
+      else
+        nil
+      end
+
+    warning =
+      cond do
+        match?({:warning, _}, search_result.events.status) ->
+          {:warning, message} = search_result.events.status
+          message
+
+        true ->
+          warning_message(socket.assigns, search_result)
+      end
+
+    log_events = search_result.events.rows
+
     socket =
       socket
       |> assign(:log_events, log_events)
-      |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_result, search_result.events)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
-      |> assign(:search_op_log_aggregates, search_result.aggregates)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
@@ -606,7 +621,16 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, assigns.source)
-      SearchQueryExecutor.maybe_execute_query(assigns.source.token, assigns)
+      SearchQueryExecutor.maybe_execute_events_query(assigns.source.token, assigns)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
+    if socket.assigns.tailing? do
+      log_lv_received_info(msg, assigns.source)
+      SearchQueryExecutor.maybe_execute_agg_query(assigns.source.token, assigns)
     end
 
     {:noreply, socket}
@@ -638,4 +662,14 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Map.get(:value_type)
     |> Kernel.in([:integer, :float])
   end
+
+  defp kickoff_queries(source_token, assigns) do
+    SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
+    SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
+  end
+
+  defp period_to_ms(:second), do: :timer.seconds(1)
+  defp period_to_ms(:minute), do: :timer.minutes(1)
+  defp perdio_to_ms(:hour), do: :timer.hours(1)
+  defp perdio_to_ms(:day), do: :timer.hours(24)
 end
