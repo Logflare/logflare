@@ -55,7 +55,7 @@
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component(
     "Components.LogEventsChart",
-    %{data: @log_aggregates, loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
+    %{data: @log_aggregates, loading: @chart_loading?, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
     [container: [id: "log-events-chart"]]
     ) %>
   </div>

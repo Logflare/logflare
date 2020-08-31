@@ -28,6 +28,7 @@ defmodule LogflareWeb.Source.SearchLV do
     log_events: [],
     log_aggregates: [],
     loading: false,
+    chart_loading?: true,
     tailing_paused?: nil,
     tailing_timer: nil,
     notifications: %{},
@@ -73,6 +74,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket =
           socket
           |> assign(:loading, true)
+          |> assign(:chart_loading?, true)
           |> assign(:tailing_initial?, true)
           |> assign(:log_events, stale_log_events)
           |> assign(:log_aggregates, [])
@@ -118,10 +120,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(@default_assigns)
       |> assign(
         source: source,
-        loading: false,
         tailing?: tailing?,
         user: user,
         loading: true,
+        chart_loading: true,
         notifications: %{},
         search_tip: gen_search_tip(),
         use_local_time: true,
@@ -176,10 +178,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(@default_assigns)
       |> assign(
         source: source,
-        loading: false,
         tailing?: tailing?,
         tailing_initial?: true,
         loading: true,
+        chart_loading?: true,
         user: user,
         notifications: %{},
         search_tip: gen_search_tip(),
@@ -339,6 +341,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:lql_rules, lql_rules)
         |> assign(:log_aggregates, [])
         |> assign(:loading, true)
+        |> assign(:chart_loading?, true)
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
         socket
@@ -498,6 +501,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_op_log_aggregates, search_result.aggregates)
+      |> assign(:chart_loading?, false)
 
     {:noreply, socket}
   end
@@ -592,6 +596,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
       socket
       |> assign(:loading, true)
+      |> assign(:chart_loading, true)
       |> assign(:tailing_initial?, true)
       |> assign_notifications(:warning, nil)
       |> assign_notifications(:error, nil)
