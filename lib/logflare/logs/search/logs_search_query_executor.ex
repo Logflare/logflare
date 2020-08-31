@@ -23,7 +23,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   typedstruct do
     field :source_id, atom, enforce: true
     field :user, User.t(), enforce: true
-    field :query_tasks, map, enforce: true
+    field :event_tasks, map, enforce: true
+    field :agg_tasks, map, enforce: true
   end
 
   # API
@@ -51,7 +52,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     end
   end
 
-  def maybe_execute_query(source_token, params) when is_atom(source_token) do
+  def maybe_execute_events_query(source_token, params) when is_atom(source_token) do
     Task.start_link(fn ->
       update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
     end)
@@ -61,6 +62,17 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     |> Process.whereis()
     |> if do
       :ok = query(params)
+    else
+      Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+    end
+  end
+
+  def maybe_execute_agg_query(source_token, params) when is_atom(source_token) do
+    source_token
+    |> name()
+    |> Process.whereis()
+    |> if do
+      :ok = query_agg(params)
     else
       Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
     end
@@ -85,6 +97,10 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     GenServer.call(name(params.source.token), {:query, params}, @query_timeout)
   end
 
+  def query_agg(params) do
+    GenServer.call(name(params.source.token), {:query_agg, params}, @query_timeout)
+  end
+
   def cancel_query(source_token) when is_atom(source_token) do
     GenServer.call(name(source_token), :cancel_query, @query_timeout)
   end
@@ -105,7 +121,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   def handle_continue(:after_init, state) do
     state = %__MODULE__{
       user: Users.get_by_source(state.source_id),
-      query_tasks: %{},
+      agg_tasks: %{},
+      event_tasks: %{},
       source_id: state.source_id
     }
 
@@ -124,7 +141,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
         _ -> state
       end
 
-    current_lv_task_params = state.query_tasks[lv_pid]
+    current_lv_task_params = state.event_tasks[lv_pid]
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.info(
@@ -134,18 +151,34 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
     end
 
-    query_tasks =
-      Map.put(state.query_tasks, lv_pid, %{
-        task: start_task(lv_pid, params),
+    event_tasks =
+      Map.put(state.event_tasks, lv_pid, %{
+        task: start_search_task(lv_pid, params),
         params: params
       })
 
-    {:reply, :ok, %{state | query_tasks: query_tasks}}
+    {:reply, :ok, %{state | event_tasks: event_tasks}}
+  end
+
+  def handle_call({:query_agg, params}, {lv_pid, _ref}, %State{} = state) do
+    current_lv_task_params = state.agg_tasks[lv_pid]
+
+    if current_lv_task_params && current_lv_task_params[:task] do
+      Task.shutdown(current_lv_task_params.task, :brutal_kill)
+    end
+
+    agg_tasks =
+      Map.put(state.agg_tasks, lv_pid, %{
+        task: start_aggs_task(lv_pid, params),
+        params: params
+      })
+
+    {:reply, :ok, %{state | agg_tasks: agg_tasks}}
   end
 
   @impl true
   def handle_call(:cancel_query, {lv_pid, _ref}, state) do
-    current_lv_task_params = state.query_tasks[lv_pid]
+    current_lv_task_params = state.event_tasks[lv_pid]
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.info(
@@ -155,22 +188,20 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
     end
 
-    query_tasks = Map.put(state.query_tasks, lv_pid, %{})
+    event_tasks = Map.put(state.event_tasks, lv_pid, %{})
 
-    {:reply, :ok, %{state | query_tasks: query_tasks}}
+    {:reply, :ok, %{state | event_tasks: event_tasks}}
   end
 
   @impl true
-  def handle_info({_ref, {:search_result, lv_pid, result}}, state) do
+  def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
     Logger.info(
       "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
         state.source_id
       } source..."
     )
 
-    %{events: events_so, aggregates: aggregates_so} = result
-
-    {%{params: params}, new_query_tasks} = Map.pop(state.query_tasks, lv_pid)
+    {%{params: params}, new_event_tasks} = Map.pop(state.event_tasks, lv_pid)
 
     rows = Enum.map(events_so.rows, &LogEvent.make_from_db(&1, %{source: params.source}))
 
@@ -188,13 +219,32 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       lv_pid,
       {:search_result,
        %{
-         events: %{events_so | rows: log_events},
+         events: %{events_so | rows: log_events}
+       }}
+    )
+
+    {:noreply, %{state | event_tasks: new_event_tasks}}
+  end
+
+  @impl true
+  def handle_info({_ref, {:search_result, lv_pid, %{aggregates: aggregates_so}}}, state) do
+    Logger.info(
+      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
+        state.source_id
+      } source..."
+    )
+
+    {_, new_agg_tasks} = Map.pop(state.agg_tasks, lv_pid)
+
+    maybe_send(
+      lv_pid,
+      {:search_result,
+       %{
          aggregates: aggregates_so
        }}
     )
 
-    state = %{state | query_tasks: new_query_tasks}
-    {:noreply, state}
+    {:noreply, %{state | agg_tasks: new_agg_tasks}}
   end
 
   @impl true
@@ -226,30 +276,32 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     end
   end
 
-  def start_task(lv_pid, params) do
+  def start_search_task(lv_pid, params) do
     so = SO.new(params)
 
     if so.tailing? do
       start_cache_streaming_buffer_task(so.source)
     end
 
-    start_search_and_aggs_task(so, lv_pid)
-  end
-
-  def process_search_response(tup, lv_pid, type) when type in ~w(events aggregates)a do
-    case tup do
-      {:ok, search_op} ->
-        {:search_result, type, lv_pid, search_op}
-
-      {:error, err} ->
-        {:search_error, type, lv_pid, err}
-    end
-  end
-
-  def start_search_and_aggs_task(%SO{} = so, lv_pid) do
     Task.async(fn ->
       so
-      |> Search.search_and_aggs()
+      |> Search.search()
+      |> case do
+        {:ok, result} ->
+          {:search_result, lv_pid, result}
+
+        {:error, result} ->
+          {:search_error, lv_pid, result}
+      end
+    end)
+  end
+
+  def start_aggs_task(lv_pid, params) do
+    so = SO.new(params)
+
+    Task.async(fn ->
+      so
+      |> Search.aggs()
       |> case do
         {:ok, result} ->
           {:search_result, lv_pid, result}

@@ -9,9 +9,37 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Google.BigQuery.GCPConfig
   import Ecto.Query
 
-  def search_and_aggs(%SO{} = so) do
+  def search(%SO{} = so) do
     tasks = [
-      Task.async(fn -> search_events(so) end),
+      Task.async(fn -> search_events(so) end)
+    ]
+
+    tasks_with_results = Task.yield_many(tasks, 30_000)
+
+    results =
+      tasks_with_results
+      |> Enum.map(fn {task, res} ->
+        res || Task.shutdown(task, :brutal_kill)
+      end)
+
+    [event_result] = results
+
+    with {:ok, {:ok, events_so}} <- event_result do
+      {:ok, %{events: events_so}}
+    else
+      {:ok, {:error, result_so}} ->
+        {:error, result_so}
+
+      {:error, result_so} ->
+        {:error, result_so}
+
+      nil ->
+        {:error, "Search task timeout"}
+    end
+  end
+
+  def aggs(%SO{} = so) do
+    tasks = [
       Task.async(fn -> search_result_aggregates(so) end)
     ]
 
@@ -23,11 +51,11 @@ defmodule Logflare.Logs.Search do
         res || Task.shutdown(task, :brutal_kill)
       end)
 
-    [event_result, agg_result] = results
+    [agg_result] = results
 
-    with {:ok, {:ok, events_so}} <- event_result,
-         {:ok, {:ok, agg_so}} <- agg_result do
-      {:ok, %{events: events_so, aggregates: agg_so}}
+    with {:ok, {:ok, agg_so}} <-
+           agg_result do
+      {:ok, %{aggregates: agg_so}}
     else
       {:ok, {:error, result_so}} ->
         {:error, result_so}

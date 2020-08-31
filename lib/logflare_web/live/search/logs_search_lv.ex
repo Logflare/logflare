@@ -22,12 +22,13 @@ defmodule LogflareWeb.Source.SearchLV do
   require Logger
 
   @tail_search_interval 500
-  @user_idle_interval 300_000
+  @user_idle_interval :timer.minutes(5)
   @default_qs "c:count(*) c:group_by(t::minute)"
   @default_assigns [
     log_events: [],
     log_aggregates: [],
     loading: false,
+    chart_loading?: true,
     tailing_paused?: nil,
     tailing_timer: nil,
     notifications: %{},
@@ -73,13 +74,14 @@ defmodule LogflareWeb.Source.SearchLV do
         socket =
           socket
           |> assign(:loading, true)
+          |> assign(:chart_loading?, true)
           |> assign(:tailing_initial?, true)
           |> assign(:log_events, stale_log_events)
           |> assign(:log_aggregates, [])
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
 
-        SearchQueryExecutor.maybe_execute_query(socket.assigns.source.token, socket.assigns)
+        kickoff_queries(socket.assigns.source.token, socket.assigns)
 
         socket
       else
@@ -118,10 +120,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(@default_assigns)
       |> assign(
         source: source,
-        loading: false,
         tailing?: tailing?,
         user: user,
         loading: true,
+        chart_loading: true,
         notifications: %{},
         search_tip: gen_search_tip(),
         use_local_time: true,
@@ -153,12 +155,6 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp get_source_for_param(source_id) do
-    Sources.get_by_and_preload(id: source_id)
-    |> Sources.preload_saved_searches()
-    |> Sources.put_bq_table_data()
-  end
-
   def mount_connected(
         %{"source_id" => source_id} = params,
         %{"user_id" => user_id} = _session,
@@ -182,10 +178,10 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(@default_assigns)
       |> assign(
         source: source,
-        loading: false,
         tailing?: tailing?,
         tailing_initial?: true,
         loading: true,
+        chart_loading?: true,
         user: user,
         notifications: %{},
         search_tip: gen_search_tip(),
@@ -302,7 +298,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:tailing_paused?, nil)
           |> assign(:tailing?, true)
 
-        SearchQueryExecutor.maybe_execute_query(stoken, socket.assigns)
+        SearchQueryExecutor.maybe_execute_events_query(stoken, socket.assigns)
 
         socket
       else
@@ -345,6 +341,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:lql_rules, lql_rules)
         |> assign(:log_aggregates, [])
         |> assign(:loading, true)
+        |> assign(:chart_loading?, true)
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
         socket
@@ -423,18 +420,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("user_idle" = ev, _, socket) do
-    %{token: stoken} = source = socket.assigns.source
-    log_lv_received_event(ev, source)
-
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
-
-    socket = assign_notifications(socket, :warning, "Live search paused due to user inactivity.")
-
-    {:noreply, socket}
-  end
-
   def handle_event("save_search" = ev, _, socket) do
     %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?, user: user} =
       socket.assigns
@@ -481,67 +466,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
-    %{querystring: qs, tailing?: tailing?} = params
-
-    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
-      lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
-      qs = Lql.encode!(lql_rules)
-
-      socket
-      |> assign(:loading, true)
-      |> assign(:tailing_initial?, true)
-      |> assign_notifications(:warning, nil)
-      |> assign_notifications(:error, nil)
-      |> assign(:lql_rules, lql_rules)
-      |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
-    else
-      {:error, error} ->
-        socket
-        |> assign(:tailing?, false)
-        |> assign(:log_aggregates, [])
-        |> assign(:log_events, [])
-        |> assign_notifications(:error, error)
-    end
-  end
-
-  def push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
-    path =
-      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
-        querystring: querystring,
-        tailing?: tailing?
-      })
-
-    push_patch(socket, to: path, replace: false)
-  end
-
-  def handle_info({:search_result, search_result}, socket) do
+  def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
-
-    tailing_timer =
-      if socket.assigns.tailing? do
-        log_lv(socket.assigns.source, "is scheduling tail search")
-        Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
-      else
-        nil
-      end
-
-    warning =
-      cond do
-        match?({:warning, _}, search_result.aggregates.status) ->
-          {:warning, message} = search_result.aggregates.status
-          message
-
-        match?({:warning, _}, search_result.events.status) ->
-          {:warning, message} = search_result.events.status
-          message
-
-        true ->
-          warning_message(socket.assigns, search_result)
-      end
-
-    log_events = search_result.events.rows
 
     timezone =
       if socket.assigns.use_local_time do
@@ -561,14 +487,54 @@ defmodule LogflareWeb.Source.SearchLV do
         )
       end)
 
+    if socket.assigns.tailing? do
+      log_lv(socket.assigns.source, "is scheduling tail aggregate")
+
+      %ChartRule{period: period} =
+        socket.assigns.lql_rules
+        |> Enum.find(fn x -> Map.has_key?(x, :period) end)
+
+      Process.send_after(self(), :schedule_tail_agg, period_to_ms(period))
+    end
+
+    socket =
+      socket
+      |> assign(:log_aggregates, log_aggregates)
+      |> assign(:search_op_log_aggregates, search_result.aggregates)
+      |> assign(:chart_loading?, false)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:search_result, %{events: _events} = search_result}, socket) do
+    log_lv_received_event("search_result", socket.assigns.source)
+
+    tailing_timer =
+      if socket.assigns.tailing? do
+        log_lv(socket.assigns.source, "is scheduling tail search")
+        Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
+      else
+        nil
+      end
+
+    warning =
+      cond do
+        match?({:warning, _}, search_result.events.status) ->
+          {:warning, message} = search_result.events.status
+          message
+
+        true ->
+          warning_message(socket.assigns, search_result)
+      end
+
+    log_events = search_result.events.rows
+
     socket =
       socket
       |> assign(:log_events, log_events)
-      |> assign(:log_aggregates, log_aggregates)
       |> assign(:search_result, search_result.events)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
-      |> assign(:search_op_log_aggregates, search_result.aggregates)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
@@ -606,10 +572,55 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, assigns.source)
-      SearchQueryExecutor.maybe_execute_query(assigns.source.token, assigns)
+      SearchQueryExecutor.maybe_execute_events_query(assigns.source.token, assigns)
     end
 
     {:noreply, socket}
+  end
+
+  def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
+    if socket.assigns.tailing? do
+      log_lv_received_info(msg, assigns.source)
+      SearchQueryExecutor.maybe_execute_agg_query(assigns.source.token, assigns)
+    end
+
+    {:noreply, socket}
+  end
+
+  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
+    %{querystring: qs, tailing?: tailing?} = params
+
+    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
+      lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+      qs = Lql.encode!(lql_rules)
+
+      socket
+      |> assign(:loading, true)
+      |> assign(:chart_loading, true)
+      |> assign(:tailing_initial?, true)
+      |> assign_notifications(:warning, nil)
+      |> assign_notifications(:error, nil)
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, qs)
+      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
+    else
+      {:error, error} ->
+        socket
+        |> assign(:tailing?, false)
+        |> assign(:log_aggregates, [])
+        |> assign(:log_events, [])
+        |> assign_notifications(:error, error)
+    end
+  end
+
+  defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
+    path =
+      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
+        querystring: querystring,
+        tailing?: tailing?
+      })
+
+    push_patch(socket, to: path, replace: false)
   end
 
   defp warning_message(assigns, search_op) do
@@ -638,4 +649,20 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Map.get(:value_type)
     |> Kernel.in([:integer, :float])
   end
+
+  defp kickoff_queries(source_token, assigns) do
+    SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
+    SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
+  end
+
+  defp get_source_for_param(source_id) do
+    Sources.get_by_and_preload(id: source_id)
+    |> Sources.preload_saved_searches()
+    |> Sources.put_bq_table_data()
+  end
+
+  defp period_to_ms(:second), do: :timer.seconds(1)
+  defp period_to_ms(:minute), do: :timer.minutes(1)
+  defp period_to_ms(:hour), do: :timer.hours(1)
+  defp period_to_ms(:day), do: :timer.hours(24)
 end
