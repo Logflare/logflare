@@ -670,6 +670,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp period_to_ms(:second), do: :timer.seconds(1)
   defp period_to_ms(:minute), do: :timer.minutes(1)
-  defp perdio_to_ms(:hour), do: :timer.hours(1)
-  defp perdio_to_ms(:day), do: :timer.hours(24)
+  defp period_to_ms(:hour), do: :timer.hours(1)
+  defp period_to_ms(:day), do: :timer.hours(24)
 end
