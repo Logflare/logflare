@@ -45,13 +45,13 @@
   <%= render("flash.html", flash: %{info: get_flash(@conn, :info), error: get_flash(@conn, :error)}) %>
   <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
     <%= if @user do %>
-    <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
-    <i class="fas fa-stream"></i> Logflare <small
-      class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small>
-    <% end %>
+      <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
+        <%= render("logo.html") %>
+      <% end %>
     <% else %>
-    <a href="/" class="navbar-brand"><i class="fas fa-stream"></i> Logflare <small
-        class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small></a>
+      <a href="/" class="navbar-brand">
+        <%= render("logo.html") %>
+      </a>
     <% end %>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
       aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -103,7 +103,7 @@
         <%= if @user.billing_enabled? do %>
           <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
           <li class="nav-item active">
-            <%= link "❤️ Upgrade ❤️", to: Routes.billing_path(@conn, :edit), class: "nav-link" %>
+            <%= link "Upgrade", to: Routes.billing_path(@conn, :edit), class: "nav-link btn btn-dark text-white", style: "min-width: 8em;" %>
           </li>
           <% end %>
         <% end %>
