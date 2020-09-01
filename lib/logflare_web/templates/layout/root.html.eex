@@ -103,7 +103,7 @@
         <%= if @user.billing_enabled? do %>
           <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
           <li class="nav-item active">
-            <%= link "❤️ Upgrade ❤️", to: Routes.billing_path(@conn, :edit), class: "nav-link" %>
+            <%= link "Upgrade", to: Routes.billing_path(@conn, :edit), class: "nav-link btn btn-dark text-white", style: "min-width: 8em;" %>
           </li>
           <% end %>
         <% end %>
