@@ -16,7 +16,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   describe "Schema GenServer" do
     test "start_link/1", %{sources: [s1 | _]} do
       sid = s1.token
-      rls = %RLS{source_id: sid}
+      rls = %RLS{source_id: sid, plan: %{limit_source_fields_limit: 500}}
 
       {:ok, _pid} = Schema.start_link(rls)
 
@@ -60,7 +60,8 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
                  id: %{t: :string},
                  timestamp: %{t: :datetime}
                },
-               next_update: :placeholder
+               next_update: :placeholder,
+               field_count_limit: 500
              }
     end
   end

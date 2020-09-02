@@ -19,6 +19,7 @@ defmodule Logflare.LogsTest do
   alias Logflare.SystemMetricsSup
   alias Logflare.Lql
   @test_dataset_location "us-east4"
+  @plan %{limit_source_fields_limit: 500}
 
   describe "log event ingest for source with regex rules" do
     setup do
@@ -31,9 +32,9 @@ defmodule Logflare.LogsTest do
 
       s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
 
-      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
-      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
-      BigQuerySchemaGS.start_link(%RLS{source_id: sink2.token})
+      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token, plan: @plan})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token, plan: @plan})
+      BigQuerySchemaGS.start_link(%RLS{source_id: sink2.token, plan: @plan})
 
       project_id = GenUtils.get_project_id(s1.token)
       dataset_id = User.generate_bq_dataset_id(u)
@@ -141,9 +142,17 @@ defmodule Logflare.LogsTest do
         project_id
       )
 
-      BigQuerySchemaGS.start_link(%RLS{source_id: s1.token})
-      BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token})
-      Source.BigQuery.Schema.start_link(%RLS{source_id: sink2.token})
+      BigQuerySchemaGS.start_link(%RLS{
+        source_id: s1.token,
+        plan: %{limit_source_fields_limit: 500}
+      })
+
+      BigQuerySchemaGS.start_link(%RLS{
+        source_id: sink1.token,
+        plan: %{limit_source_fields_limit: 500}
+      })
+
+      Source.BigQuery.Schema.start_link(%RLS{source_id: sink2.token, plan: @plan})
 
       BigQuery.create_table(s1.token, dataset_id, project_id, 300_000)
 

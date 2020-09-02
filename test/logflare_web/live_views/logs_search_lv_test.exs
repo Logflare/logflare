@@ -367,22 +367,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
                ~S|id="user-local-timezone"|
     end
 
-    test "user_idle", %{conn: conn, source: [s | _], user: [u | _]} do
-      conn =
-        conn
-        |> assign(:user, u)
-        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
-        |> live("/sources/#{s.id}/search")
-
-      {:ok, view, _html} = conn
-
-      assert render_click(view, "user_idle", %{}) =~
-               "Live search paused due to user inactivity."
-
-      refute render_click(view, "remove_notifications", %{"notifications_key" => "warning"}) =~
-               "Live search paused due to user inactivity."
-    end
-
     test "activate_modal/deactivate_modal", %{conn: conn, source: [s | _], user: [u | _]} do
       conn =
         conn
