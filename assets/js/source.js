@@ -17,7 +17,7 @@ export async function main({ scrollTracker }, { avgEventsPerSecond }) {
     joinSourceChannel(sourceToken)
   }
 
-  if (logs.length === 0) {
+  if (window.location.href.indexOf('new=true') > 0) {
     $("#sourceHelpModal").modal()
   } else {
     scrollBottom()
