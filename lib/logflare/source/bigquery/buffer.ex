@@ -102,7 +102,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   def handle_call(:get_count, _from, state) do
-    count = :queue.len(state.buffer) |> IO.inspect()
+    count = :queue.len(state.buffer)
     {:reply, count, state}
   end
 

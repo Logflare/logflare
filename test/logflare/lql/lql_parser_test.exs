@@ -1735,6 +1735,7 @@ defmodule Logflare.LqlParserTest do
 
       assert qs == Lql.encode!(lql_rules)
     end
+
     test "timestamp filter with leading zero microseconds" do
       qs = "t:>2020-01-01T13:14:15.000500"
 
