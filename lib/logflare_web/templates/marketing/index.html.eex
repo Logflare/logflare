@@ -86,6 +86,40 @@
     </div>
   </div>
 </div>
+<div class="container">
+  <div class="my-5">
+  <h2 class="text-white text-center mb-4">Ingest</h2>
+  <div class="d-flex justify-content-around align-items-center flex-wrap">
+    <div class="m-4"><img src="images/logos/cloudflare-white.svg" height="50" alt="Cloudflare"></div>
+    <div class="m-4"><img src="images/logos/vercel-white.svg" height="50" alt="Vercel"></div>
+    <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/elixir-dark.png" height="50" alt="Elixir"></div>
+    <div class="m-4"><img src="images/logos/javascript-logo.png" height="50" alt="Javascript"></div>
+    <div class="m-4"><img src="images/logos/heroku-logotype-horizontal-white.svg" height="50" alt="Heroku"></div>
+    <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/gigalixir_logo.svg" height="50" alt="Gigalixir"></div>
+    <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/fluent-bit-logo.png" height="50" alt="FluentBit"></div>
+    <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
+  </div>
+  </div>
+  <div class="my-5">
+  <h2 class="text-white text-center mb-4">Stream, Query & Dashboard</h2>
+  <div class="d-flex justify-content-around">
+    <div class="text-white m-4" style="font-size: 1.25em;"><%= render LogflareWeb.SharedView, "logo.html", assigns %></div>
+    <div class="m-4"><img src="images/logos/google-bigquery-logo.svg" height="50" alt="Google BigQuery"></div>
+    <div class="m-4"><img src="images/logos/google-data-studio.svg" height="50" alt="Google BigQuery"></div>
+  </div>
+  </div>
+  <div class="my-5">
+  <div class="line">
+  <h2 class="text-white text-center mb-4">Alert</h2>
+  <div class="d-flex justify-content-around flex-wrap">
+    <div class="m-4"><img src="images/logos/slack-new-logo.svg" height="50" alt="Slack"></div>
+    <div class="m-4"><img src="images/logos/discord-logo-1.svg" height="50" alt="Discord"></div>
+    <div class="m-4"><img src="images/logos/sms-solid.svg" height="50" alt="SMS"></div>
+    <div class="m-4"><img src="images/logos/gmail-icon.svg" height="50" alt="Email"></div>
+    <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
+  </div>
+  </div>
+</div>
 <div class="catchimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
 <div class="container-fluid catch">
   <div class="container-fluid">
