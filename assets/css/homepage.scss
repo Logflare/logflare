@@ -228,13 +228,14 @@ body {
 @media (max-width: 768px) {}
 
 .hero {
-  min-height: 2000px;
+  
   background: url("/images/marketing/homepage/bgDesktopTop-4x.png") no-repeat center;
   background-size: cover;
   padding-bottom: 20px;
   padding-top: 230px;
   position: relative;
   overflow: hidden;
+  margin-bottom: 7em;
 }
 
 .hero .ifreamfordiagram {
