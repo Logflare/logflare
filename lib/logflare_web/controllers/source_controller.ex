@@ -84,7 +84,7 @@ defmodule LogflareWeb.SourceController do
         else
           conn
           |> put_flash(:info, "Source created!")
-          |> redirect(to: Routes.source_path(conn, :show, source.id))
+          |> redirect(to: Routes.source_path(conn, :show, source.id, new: true))
         end
 
       {:error, changeset} ->

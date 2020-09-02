@@ -30,6 +30,11 @@ body {
   display: none;
 }
 
+.inner-shadow-box {
+  box-shadow: inset 1px 1px 9px 2px #0000005c;
+  border-radius: 3px;
+}
+
 @media screen and (max-width: 1200px) {
 
   /*
@@ -223,13 +228,14 @@ body {
 @media (max-width: 768px) {}
 
 .hero {
-  min-height: 2000px;
+  
   background: url("/images/marketing/homepage/bgDesktopTop-4x.png") no-repeat center;
   background-size: cover;
   padding-bottom: 20px;
   padding-top: 230px;
   position: relative;
   overflow: hidden;
+  margin-bottom: 7em;
 }
 
 .hero .ifreamfordiagram {

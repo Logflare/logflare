@@ -12,7 +12,11 @@ defmodule Logflare.SourcesTest do
   setup do
     u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
-    Source.BigQuery.Schema.start_link(%RLS{source_id: s.token})
+
+    Source.BigQuery.Schema.start_link(%RLS{
+      source_id: s.token,
+      plan: %{limit_source_fields_limit: 500}
+    })
 
     {:ok, sources: [s], users: [u]}
   end

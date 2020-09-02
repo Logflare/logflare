@@ -16,13 +16,13 @@
     <tbody>
       <tr>
         <th scope="row">Log message</th>
-        <td>match continuous string</td>
+        <td>match exact string</td>
         <td>word</td>
         <td><kbd>error</kbd></td>
       </tr>
       <tr>
         <th scope="row">Log message</th>
-        <td>match phrases</td>
+        <td>match exact string with spaces</td>
         <td>double quoted string</td>
         <td><kbd>"staging error"</kbd></td>
       </tr>
@@ -30,7 +30,13 @@
         <th scope="row">Log message</th>
         <td>match regex</td>
         <td>regex string</td>
-        <td><kbd>server-\d\d</kbd></td>
+        <td><kbd>~server_\d</kbd></td>
+      </tr>
+      <tr>
+        <th scope="row">Log message</th>
+        <td>match regex with spaces</td>
+        <td>double quoted regex string</td>
+        <td><kbd>~"log message \d\d"</kbd></td>
       </tr>
     </tbody>
   </table>
@@ -120,18 +126,41 @@
           <tbody>
             <tr>
               <th scope="row">Timestamp</th>
+              <td>today, yesterday</td>
+              <td><kbd>t:today</kbd> <kbd>t:yesterday</kbd></td>
+            </tr>
+            <tr>
+              <th scope="row">Timestamp</th>
+              <td>last X time periods</td>
+              <td><kbd>t:last@100hours</kbd> <kbd>t:last@7days</kbd> <kbd>t:last@30minutes</kbd></td>
+            </tr>
+            <tr>
+              <th scope="row">Timestamp</th>
+              <td>this calendar time period</td>
+              <td><kbd>t:this@week</kbd> <kbd>t:this@day</kbd> <kbd>t:this@month</kbd></td>
+            </tr>
+            <tr>
+              <th scope="row">Timestamp</th>
               <td>date range</td>
-              <td><kbd>error</kbd> <kbd>t:2020-04-{07..09}T00:00:00</kbd></td>
+              <td><kbd>t:2020-04-{07..09}</kbd></td>
             </tr>
             <tr>
               <th scope="row">Timestamp</th>
-              <td>microsecond range</td>
-              <td><kbd>t:2020-04-08T07:40:02.{000001..999999}</kbd></td>
+              <td>datetime range</td>
+              <td><kbd>t:2020-04-{07..09}T00:{00..40}:00</kbd></td>
             </tr>
             <tr>
               <th scope="row">Timestamp</th>
-              <td>minute range</td>
-              <td><kbd>t:2020-04-08T07:{40..45}:02</kbd></td>
+              <td>datetime range with subseconds</td>
+              <td><kbd>t:>2020-04-20T00:00:00.314</kbd></td>
+            </tr>
+            <tr>
+              <th scope="row">Timestamp</th>
+              <td>subsecond range (up to microsecond precision) </td>
+              <td>
+                  <kbd>t:2020-04-08T07:40:02.{000001..999999} </kbd>
+                  <kbd>t:2020-04-08T07:40:02.{001..5} </kbd>
+              </td>
             </tr>
           </tbody>
         </thead>

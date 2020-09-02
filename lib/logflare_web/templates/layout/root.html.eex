@@ -46,11 +46,11 @@
   <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
     <%= if @user do %>
       <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
-        <%= render("logo.html") %>
+        <%= render LogflareWeb.SharedView, "logo.html", assigns %>
       <% end %>
     <% else %>
       <a href="/" class="navbar-brand">
-        <%= render("logo.html") %>
+        <%= render LogflareWeb.SharedView, "logo.html", assigns %>
       </a>
     <% end %>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
@@ -66,12 +66,16 @@
         <li class="nav-item">
           <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
         </li>
+        <%= if Map.get(@conn.assigns, :team_user) do %>
         <li class="nav-item">
           <%= link "Profile", to: Routes.team_user_path(@conn, :edit), class: "nav-link" %>
         </li>
+        <% else %>
         <li class="nav-item">
           <%= link "Account", to: Routes.user_path(@conn, :edit), class: "nav-link" %>
         </li>
+        <% end %>
+
         <li class="nav-item">
           <%= link "Sign out", to: Routes.auth_path(@conn, :logout), class: "nav-link" %>
         </li>
@@ -88,6 +92,9 @@
           <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
         </li>
         <li class="nav-item">
+          <%= link "Pricing", to: Routes.marketing_path(@conn, :pricing), class: "nav-link" %>
+        </li>
+        <li class="nav-item">
           <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "nav-link" %>
         </li>
         <li class="nav-item">
@@ -100,12 +107,12 @@
       </ul>
       <%= if @user do %>
       <ul class="navbar-nav ml-auto">
-        <%= if @user.billing_enabled? do %>
+
           <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
           <li class="nav-item active">
             <%= link "Upgrade", to: Routes.billing_path(@conn, :edit), class: "nav-link btn btn-dark text-white", style: "min-width: 8em;" %>
           </li>
-          <% end %>
+
         <% end %>
       </ul>
       <% else %>

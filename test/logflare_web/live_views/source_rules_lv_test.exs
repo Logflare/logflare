@@ -26,16 +26,19 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      {:ok, _} = Sources.Counters.start_link()
-      {:ok, _pid} = RLS.start_link(%RLS{source_id: source.token})
+      rls = %RLS{source_id: source.token, source: source}
 
-      Process.sleep(2000)
+      {:ok, _} = Sources.Counters.start_link()
+      {:ok, _pid} = RLS.start_link(rls)
+
+      Process.sleep(300)
       %{sources: [source, sink], user: [user]}
     end
 
     test "mount with source owner user", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
       conn =
         conn
+        |> Plug.Test.init_test_session(%{user_id: u.id})
         |> assign(:user, u)
         |> get("/sources/#{s.id}/rules")
 
@@ -71,6 +74,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
       conn =
         conn
+        |> Plug.Test.init_test_session(%{user_id: u.id})
         |> assign(:user, user)
         |> get("/sources/#{s.id}/rules")
 
@@ -94,6 +98,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
       {:ok, view, _html} =
         conn
         |> assign(:user, u)
+        |> Plug.Test.init_test_session(%{user_id: u.id})
         |> get("/sources/#{s.id}/rules")
         |> live()
 
@@ -111,11 +116,28 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
       source = Sources.get_by_and_preload(token: s.token)
       assert length(source.rules) == 2
-      html = render_click(view, "delete_rule", %{"rule_id" => to_string(hd(source.rules).id)})
 
-      refute html =~ "123infostring"
+      rule_id =
+        source.rules
+        |> Enum.find(&(&1.lql_string == "123infostring"))
+        |> Map.get(:id)
+        |> to_string()
+
+      html = render_click(view, "delete_rule", %{"rule_id" => rule_id})
+
+      refute html =~ rule_id
       source = Sources.get_by_and_preload(token: s.token)
       assert length(source.rules) == 1
+    end
+
+    test "mount with non-existing source", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{user_id: u.id})
+        |> assign(:user, u)
+        |> get("/sources/#{s.id + 1000}/rules")
+
+      assert html_response(conn, 404) =~ "404"
     end
   end
 
@@ -166,9 +188,10 @@ defmodule LogflareWeb.Source.RulesLqlTest do
       %{sources: [source, sink, sink2, sink3], user: [user]}
     end
 
-    test "is successfull", %{sources: [source | _], user: [user]} do
+    test "is successfull", %{sources: [source | _], user: [user], conn: conn} do
       conn =
         conn
+        |> Plug.Test.init_test_session(%{user_id: user.id})
         |> assign(:user, user)
         |> get("/sources/#{source.id}/rules")
 
@@ -184,21 +207,23 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                %Logflare.Rule{
                  lql_filters: [
                    %Logflare.Lql.FilterRule{
-                     modifiers: %{},
-                     operator: :"~",
+                     modifiers: %{quoted_string: true},
+                     operator: :string_contains,
                      path: "event_message",
-                     value: ~S"\w+"
+                     value: "100",
+                     shorthand: nil,
+                     values: nil
                    }
                  ],
-                 lql_string: ~S|"\w+"|,
-                 regex: ~S"\w+",
-                 regex_struct: ~r/\w+/
+                 lql_string: ~S|"100"|,
+                 regex: "100",
+                 regex_struct: ~r/100/
                },
                %Logflare.Rule{
                  lql_filters: [
                    %Logflare.Lql.FilterRule{
                      modifiers: %{},
-                     operator: :"~",
+                     operator: :string_contains,
                      path: "event_message",
                      value: ~S"\d\d"
                    }
@@ -211,14 +236,14 @@ defmodule LogflareWeb.Source.RulesLqlTest do
                  lql_filters: [
                    %Logflare.Lql.FilterRule{
                      modifiers: %{},
-                     operator: :"~",
+                     operator: :string_contains,
                      path: "event_message",
-                     value: "100"
+                     value: ~S"\w+"
                    }
                  ],
-                 lql_string: ~S|"100"|,
-                 regex: "100",
-                 regex_struct: ~r/100/
+                 lql_string: ~S|"\w+"|,
+                 regex: ~S"\w+",
+                 regex_struct: ~r/\w+/
                }
              ] = Sources.get_by_and_preload(id: source.id).rules
 

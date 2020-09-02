@@ -86,6 +86,105 @@
     </div>
   </div>
 </div>
+
+<div class="container">
+  <div class="my-5">
+    <h2 class="text-white text-center mb-4">Ingest</h2>
+    <div class="d-flex justify-content-around align-items-center flex-wrap">
+      <div class="m-4"><img src="images/logos/cloudflare-white.svg" height="50" alt="Cloudflare"></div>
+      <div class="m-4"><img src="images/logos/vercel-white.svg" height="50" alt="Vercel"></div>
+      <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/elixir-dark.png" height="50" alt="Elixir">
+      </div>
+      <div class="m-4"><img src="images/logos/javascript-logo.png" height="50" alt="Javascript"></div>
+      <div class="m-4"><img src="images/logos/heroku-logotype-horizontal-white.svg" height="50" alt="Heroku"></div>
+      <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/gigalixir_logo.svg" height="50"
+          alt="Gigalixir"></div>
+      <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/fluent-bit-logo.png" height="50"
+          alt="FluentBit"></div>
+      <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
+    </div>
+  </div>
+  <div class="my-5">
+    <h2 class="text-white text-center mb-4">Stream, Query & Dashboard</h2>
+    <div class="d-flex justify-content-around">
+      <div class="text-white m-4" style="font-size: 1.25em;"><%= render LogflareWeb.SharedView, "logo.html", assigns %>
+      </div>
+      <div class="m-4"><img src="images/logos/google-bigquery-logo.svg" height="50" alt="Google BigQuery"></div>
+      <div class="m-4"><img src="images/logos/google-data-studio.svg" height="50" alt="Google BigQuery"></div>
+    </div>
+  </div>
+  <div class="my-5">
+    <h2 class="text-white text-center mb-4">Alert</h2>
+    <div class="d-flex justify-content-around flex-wrap">
+      <div class="m-4"><img src="images/logos/slack-new-logo.svg" height="50" alt="Slack"></div>
+      <div class="m-4"><img src="images/logos/discord-logo-1.svg" height="50" alt="Discord"></div>
+      <div class="m-4"><img src="images/logos/sms-solid.svg" height="50" alt="SMS"></div>
+      <div class="m-4"><img src="images/logos/gmail-icon.svg" height="50" alt="Email"></div>
+      <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="container container-fluid pt-5">
+  <div class="row">
+    <div class="col-lg">
+      <div class="d-flex" style="background-image: url(images/marketing/homepage/bgoftable.png)">
+        <div class="m-4">
+          <h5>Compare</h5>
+          <p>Plan</p>
+          <hr>
+          <p>Exceptions</p>
+          <p>Transactions (events)</p>
+          <p>Data retention</p>
+          <p>Dashboards</p>
+          <p>Simple Query Lang</p>
+          <p>Team members</p>
+          <hr>
+          <p><strong>Price</strong></p>
+        </div>
+        <div class="m-4">
+          <h5>Logflare</h5>
+          <p>Pro</p>
+          <hr>
+          <p>Unlimited<sup>1</sup></p>
+          <p>Unlimited<sup>1</sup></p>
+          <p>30 days</p>
+          <p>Google Data Studio</p>
+          <p>Logflare QL</p>
+          <p>4 additional</p>
+          <hr>
+          <p><strong>$8 </strong><small>per month</small></p>
+        </div>
+        <div class="m-4">
+          <h5>Sentry</h5>
+          <p>Team</p>
+          <hr>
+          <p>50,000</p>
+          <p>10,000,000</p>
+          <p>90 days</p>
+          <p>None</p>
+          <p>None</p>
+          <p>Unlimited</p>
+          <hr>
+          <p><strong>$520 </strong><small>per month</small></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg m-4">
+      <h3 class="text-white mb-4">Typically Expensive</h3>
+      <p>Costs escalates quickly with typical based log management solutions. To setup long term analytics on
+        events you need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored
+        data warehouse.</p>
+      <p>With Logflare and BigQuery there is no setup for long term analytics. You can ingest immediately, query in
+        seconds and store data for years.</p>
+      <%= link "See plans & pricing", to: Routes.marketing_path(@conn, :pricing), class: "btn btn-pink mt-4", role: "button" %>
+      <p class="mt-3"><small><sup>1</sup> Unlimited is subject to our fair use policy.</small></p>
+    </div>
+  </div>
+</div>
+</div>
+
 <div class="catchimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
 <div class="container-fluid catch">
   <div class="container-fluid">
@@ -107,8 +206,10 @@
               <p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App
                 worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare
                 asynchronously after passing
-                your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead. We
-                batch logs and use <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %>
+                your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead.
+                We
+                batch logs and use
+                <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %>
                 to keep payload size and
                 serialization load low.</p>
             </div>
@@ -119,78 +220,7 @@
     </div>
   </div>
 </div>
-<div class="catchimgbtn"><img src="images/marketing/homepage/bgbtn.png" alt=""></div>
-<div class="container-fluid scale">
-  <div class="container">
-    <div class="row">
-      <div class="col-lg-10 order-lg-1">
-        <div class="row">
-          <div class="col-md-6">
-          </div>
-          <div class="col-md-6">
-            <h4>Elastic is expensive</h4>
-          </div>
-        </div>
-        <div class="row tablescalerow">
-          <div class="col-md-6">
-            <img src="images/marketing/homepage/bgoftable.png" class="bgoftable" alt="">
-            <div class="tablescale">
-              <div class="col1">
-                <h2>Brief comparison</h2>
-                <h3>Storage type</h3>
-                <h3>BYO Backend™</h3>
-                <h3>Searchable (hot)</h3>
-                <h3 class="lastone">Direct data access</h3>
-                <h3>Price per month</h3>
-                <h3>50 GB of logs</h3>
-                <h3>1,000 GB of logs</h3>
-              </div>
-              <a href="">
-                <div class="col2">
-                  <h2>Logflare</h2>
-                  <h3>BigQuery</h3>
-                  <h3><i class="fa fa-check"></i></h3>
-                  <h3>Unlimited</h3>
-                  <h3 class="lastone"><i class="fa fa-check"></i></h3>
-                  <h3 class="nothing">.</h3>
-                  <h3 class="money">$90</h3>
-                  <h3 class="money">$1,160</h3>
-                </div>
-              </a>
-              <a href="">
-                <div class="col3">
-                  <h2>Papertrail</h2>
-                  <h3>Elastic</h3>
-                  <h3><i class="fa fa-times"></i></h3>
-                  <h3>7 days</h3>
-                  <h3 class="lastone"><i class="fa fa-times"></i></h3>
-                  <h3 class="nothing">.</h3>
-                  <h3 class="money">$350</h3>
-                  <h3 class="money">$2,450</h3>
-                </div>
-              </a>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <p>Costs escalates quickly with typical Elastic based log management solutions. To setup long term analytics
-              on events you need to archive to a CSV and setup another data pipeline to ingest events into a custom
-              tailored data warehouse.
-              </br> </br> <u>With Logflare and BigQuery there is no setup for long term analytics.</u> You can ingest
-              immediately, query in seconds and store data for years.</p>
-            <center><%= link "More pricing coming soon", to: "#", class: "btn btn-secondary", role: "button" %></center>
-            <p class="spanp">Event size based on an average of 1 kilobyte per event. Pricing based on Papertrail's
-              <%= link "publicly available pricing", to: "https://papertrailapp.com/plans/large", target: "_blank" %>.
-              At 1 kilobyte per event you
-              get 50,000,000 events for 50 GB of storage.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-lg-1">
-      </div>
-    </div>
-  </div>
-</div>
-<div class="stepsimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
+
 <div class="container-fluid steps">
   <div class="container">
     <div class="row">
@@ -200,7 +230,8 @@
             <i class="fas fa-history"></i>
           </div>
           <h2>Unlimited event history</h2>
-          <p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those there
+          <p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those
+            there
             for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
         </div>
       </div>
@@ -230,7 +261,8 @@
             <i class="far fa-bell"></i>
           </div>
           <h2>Email & SMS alerts</h2>
-          <p>Never miss an important event with realtime alerts via email or text message. Add multiple email addresses
+          <p>Never miss an important event with realtime alerts via email or text message. Add multiple email
+            addresses
             to alert everyone.</p>
         </div>
       </div>
@@ -240,7 +272,8 @@
             <i class="fas fa-users"></i>
           </div>
           <h2>Sharing via public URL</h2>
-          <p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a login.
+          <p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a
+            login.
             Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
         </div>
       </div>
@@ -250,7 +283,8 @@
             <i class="fas fa-code"></i>
           </div>
           <h2>Add metadata and query it</h2>
-          <p>Include metadata with your event for logging structured data. Query this structured data with standard SQL
+          <p>Include metadata with your event for logging structured data. Query this structured data with standard
+            SQL
             in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
         </div>
       </div>
@@ -264,7 +298,6 @@
         <h3>Other features</h3>
         <ul>
           <li>Realtime stream of events</li>
-          <li>Up to 100 sources per account</li>
           <li>Display timestamps in local time & UTC</li>
         </ul>
       </div>
@@ -282,7 +315,8 @@
           </div>
         </div>
         <p>
-          For an app like experience install our Progressive Web App. Add to your homescreen on Android and iOS. Install
+          For an app like experience install our Progressive Web App. Add to your homescreen on Android and iOS.
+          Install
           Logflare on Chrome desktop.
         </p>
       </div>
@@ -308,7 +342,8 @@
           <p lang="en" dir="ltr">Big shoutout and 🙏 to <a
               href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> for his super cool <a
               href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a
-              href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug in
+              href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug
+            in
             our latest app release that my team couldn&#39;t figure out. They introduced a small change that created
             recursive (infinite) API
             calls</p>
@@ -318,7 +353,8 @@
       </div>
       <div class="col-md-6">
         <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en">
-          <p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses CloudFlare
+          <p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses
+            CloudFlare
             to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a
               href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>
           &mdash; 🍌 John 🍌 (@JohnMu) <a
@@ -331,7 +367,8 @@
         <blockquote class="twitter-tweet" data-lang="en">
           <p lang="en" dir="ltr">Been using the great (and free!) <a
               href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a
-              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your requests
+              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your
+            requests
             and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a>
             Apps! Great job!</p>
           &mdash; Matteo Manfredi (@itsmatteomanf) <a
@@ -340,11 +377,13 @@
       </div>
       <div class="col-md-6">
         <blockquote class="twitter-tweet" data-lang="en">
-          <p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack of
+          <p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack
+            of
             logs on the free tier is annoying when debugging a specific problem. Enter Logflare! <a
               href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>
           &mdash; Bryan Ross (@bryanrossUK) <a
-            href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18, 2019</a>
+            href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18,
+            2019</a>
         </blockquote>
       </div>
     </div>
@@ -353,7 +392,8 @@
         <blockquote class="twitter-tweet">
           <p lang="en" dir="ltr">Logflare by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> is
             the missing link that every <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a>
-            customer should be using! Logflare has provided us with unprecedented visibility in monitoring and debugging
+            customer should be using! Logflare has provided us with unprecedented visibility in monitoring and
+            debugging
             our service. Check it out: <a href="https://t.co/jweR1rFFwq">https://t.co/jweR1rFFwq</a></p>
           &mdash; TicketSource (@TicketSource) <a
             href="https://twitter.com/TicketSource/status/1174614196803330049?ref_src=twsrc%5Etfw">September 19,
@@ -362,7 +402,8 @@
       </div>
       <div class="col-md-6">
         <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr">Hoorah. I finally managed to get Logflare going with Cloudflare and Data Studio to pipe
+          <p lang="en" dir="ltr">Hoorah. I finally managed to get Logflare going with Cloudflare and Data Studio to
+            pipe
             server log files to Logflare. 🎉🎉🎉🎉🎉</p>
           &mdash; Dawn Anderson (@dawnieando) <a
             href="https://twitter.com/dawnieando/status/1167551594549977089?ref_src=twsrc%5Etfw">August 30, 2019</a>
@@ -375,9 +416,10 @@
           <p lang="en" dir="ltr">I&#39;m so much in love with <a
               href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a> right now. What a
             fantastic way to do log analysis for SEO. What a tremendous tool and <a
-              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> you must be proud of this. Thanks for
-            helping me set up and remind me to add a billing info 😄</p>&mdash; Suganthan Mohanadasan (@Suganthanmn) <a
-            href="https://twitter.com/Suganthanmn/status/1262421056360505345?ref_src=twsrc%5Etfw">May 18, 2020</a>
+              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> you must be proud of this. Thanks
+            for
+            helping me set up and remind me to add a billing info 😄</p>&mdash; Suganthan Mohanadasan (@Suganthanmn)
+          <a href="https://twitter.com/Suganthanmn/status/1262421056360505345?ref_src=twsrc%5Etfw">May 18, 2020</a>
         </blockquote>
       </div>
       <div class="col-md-6">

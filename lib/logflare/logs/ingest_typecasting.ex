@@ -6,29 +6,30 @@ defmodule Logflare.Logs.IngestTypecasting do
   @transform_directives_key "@logflareTransformDirectives"
 
   @spec maybe_apply_transform_directives(map()) :: map()
-  def maybe_apply_transform_directives(log_params) do
-    {tr_dirs, log_params} = pop_transform_directives(log_params)
+  def maybe_apply_transform_directives(log_params)
+      when is_map_key(log_params, @transform_directives_key) do
+    {tr_dirs, log_params} = Map.pop(log_params, @transform_directives_key)
 
     tr_dirs
     |> Enum.reduce(log_params, fn
       {"numbersToFloats", true}, acc ->
-        update_all_values_deep(acc, fn
-          n when is_integer(n) -> n * 1.0
-          n when is_float(n) -> n
-          n -> n
-        end)
+        metadata =
+          acc
+          |> Map.get("metadata")
+          |> update_all_values_deep(fn
+            n when is_integer(n) -> n * 1.0
+            n when is_float(n) -> n
+            n -> n
+          end)
+
+        %{acc | "metadata" => metadata}
 
       _, acc ->
         acc
     end)
   end
 
-  @spec pop_transform_directives(map()) :: {map(), map()}
-  def pop_transform_directives(log_params) do
-    {tr_dirs, new_log_params} = Map.pop(log_params, @transform_directives_key)
-
-    {tr_dirs || %{}, new_log_params}
-  end
+  def maybe_apply_transform_directives(log_params), do: log_params
 
   def maybe_cast_batch(batch) do
     Enum.map(batch, &maybe_cast_log_params/1)
