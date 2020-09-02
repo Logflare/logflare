@@ -96,6 +96,34 @@ defmodule Logflare.Logs.SourceRoutingTest do
       assert SourceRouting.route_with_lql_rules?(le, rule)
     end
 
+    test "string_contains operator 1" do
+      source = build(:source, token: Faker.UUID.v4(), rules: [])
+
+      build_filter = fn value ->
+        %Rule{
+          lql_string: "",
+          lql_filters: [
+            %Logflare.Lql.FilterRule{
+              modifiers: %{},
+              operator: :string_contains,
+              path: "event_message",
+              shorthand: nil,
+              value: "ten",
+              values: nil
+            }
+          ]
+        }
+      end
+
+      rule = build_filter.(0)
+
+      params = %{"log_entry" => "ten three", "metadata" => %{"statusCode" => 200}}
+
+      le = Logflare.LogEvent.make(params, %{source: source})
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
     test "regex match operator" do
       source = build(:source, token: Faker.UUID.v4(), rules: [])
 

@@ -14,7 +14,10 @@ defmodule Logflare.Lql.Parser.Helpers do
       |> unwrap_and_tag(:operator)
     )
     |> concat(
-      ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9, ?!, ?%, ?$], min: 1)
+      ascii_string(
+        [?a..?z, ?A..?Z, ?., ?_, ?0..?9, ?!, ?%, ?$, ?^, ?\\, ?+, ?[, ?], ??, ?!, ?(, ?), ?{, ?}],
+        min: 1
+      )
       |> unwrap_and_tag(:word)
     )
     |> label("word filter")
@@ -314,10 +317,20 @@ defmodule Logflare.Lql.Parser.Helpers do
 
           [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
       end)
-      |> Enum.map(fn x ->
-        Map.update(x, :microsecond, {0, 0}, &{&1, 6})
+      |> Enum.map(fn
+        %{second: _, minute: _, hour: _} = dt ->
+          dt =
+            Map.update(dt, :microsecond, {0, 0}, fn us ->
+              {float, ""} = Float.parse("0." <> us)
+
+              {round(float * 1_000_000), 6}
+            end)
+
+          struct!(NaiveDateTime, dt)
+
+        d ->
+          struct!(Date, d)
       end)
-      |> Enum.map(&struct!(NaiveDateTime, &1))
 
     if lv == rv do
       [lv]
@@ -414,7 +427,15 @@ defmodule Logflare.Lql.Parser.Helpers do
       integer_with_range(2)
       |> tag(:day)
     )
-    |> ignore(string("T"))
+    |> optional(time_with_range())
+    |> lookahead_not(string(".."))
+    |> label("ISO8601 datetime with range")
+    |> reduce(:parse_date_or_datetime_with_range)
+    |> tag(:datetime_with_range)
+  end
+
+  def time_with_range() do
+    ignore(string("T"))
     |> concat(
       integer_with_range(2)
       |> tag(:hour)
@@ -433,7 +454,14 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> optional(ignore(string(".")))
     |> concat(
       optional(
-        integer_with_range(6)
+        choice([
+          ignore(string("{"))
+          |> ascii_string([?0..?9], min: 1, max: 6)
+          |> ignore(string(".."))
+          |> ascii_string([?0..?9], min: 1, max: 6)
+          |> ignore(string("}")),
+          ascii_string([?0..?9], min: 1, max: 6)
+        ])
         |> tag(:microsecond)
       )
     )
@@ -450,14 +478,10 @@ defmodule Logflare.Lql.Parser.Helpers do
         # |> tag(:timezone)
       )
     )
-    |> lookahead_not(string(".."))
-    |> label("ISO8601 datetime with range")
-    |> reduce(:parse_date_or_datetime_with_range)
-    |> tag(:datetime_with_range)
   end
 
   def date_or_datetime do
-    [datetime_with_range(), datetime(), date()]
+    [datetime(), date()]
     |> choice()
     |> label("date or datetime value")
   end
@@ -473,6 +497,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   def timestamp_value() do
     choice([
       range_operator(date_or_datetime()),
+      datetime_with_range(),
       date_or_datetime(),
       timestamp_shorthand_value(),
       invalid_match_all_value()

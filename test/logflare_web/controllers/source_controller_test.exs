@@ -380,6 +380,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   def login_user(conn, u) do
     conn
+    |> Plug.Test.init_test_session(%{user_id: u.id})
     |> assign(:user, u)
   end
 

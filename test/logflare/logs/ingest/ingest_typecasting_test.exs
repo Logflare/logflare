@@ -3,6 +3,69 @@ defmodule Logflare.Logs.IngestTypecastingTest do
   use ExUnit.Case
   import Logflare.Logs.IngestTypecasting
 
+  describe "transform directives" do
+    @metadata %{
+      "field12" => [%{"field2" => [1, 1, 1.0, "1"]}],
+      "field1" => %{
+        "field2" => %{
+          "number1" => 1.0,
+          "number2" => 1
+        }
+      }
+    }
+
+    test "numbersToFloats" do
+      log_params = %{
+        "metadata" => @metadata,
+        "message" => "test message",
+        "timestamp" => 1_577_836_800_000,
+        "@logflareTransformDirectives" => %{
+          "numbersToFloats" => true
+        }
+      }
+
+      assert maybe_apply_transform_directives(log_params) == %{
+               "message" => "test message",
+               "metadata" => %{
+                 "field12" => [%{"field2" => [1.0, 1.0, 1.0, "1"]}],
+                 "field1" => %{"field2" => %{"number1" => 1.0, "number2" => 1.0}}
+               },
+               "timestamp" => 1_577_836_800_000
+             }
+    end
+
+    test "numbersToFloats with no directives" do
+      log_params = %{
+        "metadata" => @metadata,
+        "message" => "test message",
+        "timestamp" => 1_577_836_800_000
+      }
+
+      assert maybe_apply_transform_directives(log_params) == %{
+               "metadata" => @metadata,
+               "message" => "test message",
+               "timestamp" => 1_577_836_800_000
+             }
+    end
+
+    test "numbersToFloats with empty metadata" do
+      log_params = %{
+        "metadata" => %{},
+        "message" => "test message",
+        "timestamp" => 1_577_836_800_000,
+        "@logflareTransformDirectives" => %{
+          "numbersToFloats" => true
+        }
+      }
+
+      assert maybe_apply_transform_directives(log_params) == %{
+               "message" => "test message",
+               "metadata" => %{},
+               "timestamp" => 1_577_836_800_000
+             }
+    end
+  end
+
   describe "maybe cast batch" do
     test "batch 1" do
       typecasts = [

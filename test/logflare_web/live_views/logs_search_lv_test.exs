@@ -276,19 +276,31 @@ defmodule LogflareWeb.Source.SearchLVTest do
       u = %{u | id: u.id - 1}
       conn = assign(conn, :user, u)
 
-      assert {:error, {:redirect, %{to: "/"}}} =
+      assert conn =
                conn
                |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
-               |> live("/sources/#{s.id}/search")
+               |> get("/sources/#{s.id}/search")
+
+      assert html_response(conn, 403) =~ "Forbidden"
+      assert conn.private.phoenix_template == "403_page.html"
     end
 
     test "redirected for anonymous user", %{conn: conn, source: [s | _]} do
-      conn = assign(conn, :user, nil)
+      conn =
+        conn
+        |> Map.update!(:private, &Map.drop(&1, [:plug_session]))
+        |> Plug.Test.init_test_session(%{})
+        |> assign(:user, nil)
 
-      assert {:error, {:redirect, %{to: "/"}}} =
-               conn
-               |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
-               |> live("/sources/#{s.id}/search")
+      conn =
+        conn
+        |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
+        |> get("/sources/#{s.id}/search")
+
+      assert get_flash(conn, "error") == "You must be logged in."
+
+      assert html_response(conn, 302) ==
+               ~S|<html><body>You are being <a href="/auth/login">redirected</a>.</body></html>|
     end
   end
 
@@ -390,7 +402,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   defp assign_user_source(_context) do
     if is_nil(Process.whereis(@test_token)) do
-      {:ok, _} = RLS.start_link(%RLS{source_id: @test_token})
+      source = Sources.get_by(token: @test_token)
+      {:ok, _} = RLS.start_link(%RLS{source_id: @test_token, source: source})
       Process.sleep(2500)
     end
 
@@ -401,6 +414,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     conn =
       build_conn()
+      |> Plug.Test.init_test_session(%{user_id: user.id})
       |> assign(:user, user)
 
     %{source: [source], user: [user], conn: conn}

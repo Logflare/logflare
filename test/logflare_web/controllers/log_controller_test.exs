@@ -420,8 +420,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       sname = s.name
 
-      assert is_nil(le.body["@logflareTransformDirectives"])
-
       assert %Logflare.LogEvent.Body{
                created_at: nil,
                message: "info message",
@@ -460,7 +458,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("x-api-key", u.api_key)
         |> put_req_header("content-type", "application/logplex-1")
         |> post(
-          log_path(conn, :syslog, source: s.token),
+          "/logs/logplex?source=#{s.token}",
           body
         )
 
