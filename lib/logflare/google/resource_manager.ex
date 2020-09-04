@@ -241,7 +241,7 @@ defmodule Logflare.Google.CloudResourceManager do
       |> List.flatten()
 
     (paid_users ++ paid_users_team_members)
-    |> Enum.sort_by(& &1.updated_at, :desc)
+    |> Enum.sort_by(& &1.updated_at, {:desc, Date})
     |> Enum.take(1450)
     |> Enum.map(&("user:" <> &1.email))
   end
