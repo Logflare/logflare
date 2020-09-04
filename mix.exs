@@ -172,7 +172,7 @@ defmodule Logflare.Mixfile do
 
       # Utils
       {:recase, "~> 0.6.0"},
-      {:lens, "~> 0.9.0"},
+      {:lens, "~> 1.0.0"},
 
       # Code quality
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
