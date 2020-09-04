@@ -193,18 +193,26 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp reset_persisted_schema(source_id) do
-    source = Sources.get_by(token: source_id)
-
     # Everything crashed because this got a nil for the get_source_schema_by
     # Create a source then reset it before schema has had a chance to save it to PG
 
     # Put management fns in a manager genserver so bad changes don't accidentally crash all the log servers
     # Require source schema when creating source
+    case Sources.get_by(token: source_id) do
+      nil ->
+        :noop
 
-    Sources.get_source_schema_by(source_id: source.id)
-    |> Sources.update_source_schema(%{
-      bigquery_schema: SchemaBuilder.initial_table_schema()
-    })
+      source ->
+        case Sources.get_source_schema_by(source_id: source.id) do
+          nil ->
+            :noop
+
+          schema ->
+            Sources.update_source_schema(schema, %{
+              bigquery_schema: SchemaBuilder.initial_table_schema()
+            })
+        end
+    end
   end
 
   def sync_persisted_schema_with_bq(source_token) when is_atom(source_token) do
