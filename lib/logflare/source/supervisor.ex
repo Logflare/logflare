@@ -12,7 +12,6 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Google.BigQuery
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Cluster
   alias Logflare.Source.Bigquery
   alias Logflare.Source.Bigquery.Schema
 
