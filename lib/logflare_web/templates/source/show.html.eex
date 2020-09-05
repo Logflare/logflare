@@ -22,7 +22,7 @@
   </div>
 </div>
 <div class="container mx-auto console-text">
-  <ul id="logs-list" class="list-unstyled console-text-list">
+  <ul id="logs-list" class="list-unstyled console-text-list" hidden>
     <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>
       <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>">
