@@ -32,7 +32,8 @@ defmodule Logflare.Source.RateCounterServer do
     field :buckets, map,
       default: %{
         @default_bucket_width => %{
-          queue: LQueue.new(@default_bucket_width),
+          queue:
+            List.duplicate(0, @default_bucket_width) |> LQueue.from_list(@default_bucket_width),
           average: 0,
           sum: 0,
           duration: @default_bucket_width
