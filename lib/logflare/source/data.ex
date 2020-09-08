@@ -1,7 +1,6 @@
 defmodule Logflare.Source.Data do
   @moduledoc false
   alias Logflare.Sources.Counters
-  alias Logflare.Cluster
   alias Logflare.Google.BigQuery
   alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}
 
@@ -33,30 +32,9 @@ defmodule Logflare.Source.Data do
     end
   end
 
-  @spec get_ets_count(atom) :: non_neg_integer
-  def get_ets_count(source_id) when is_atom(source_id) do
-    log_table_info = :ets.info(source_id)
-
-    case log_table_info do
-      :undefined ->
-        0
-
-      _ ->
-        log_table_info[:size]
-    end
-  end
-
   @spec get_total_inserts(atom) :: non_neg_integer
   def get_total_inserts(source_id) when is_atom(source_id) do
-    log_table_info = :ets.info(source_id)
-
-    case log_table_info do
-      :undefined ->
-        0
-
-      _ ->
-        get_node_inserts(source_id) + get_bq_inserts(source_id)
-    end
+    get_node_inserts(source_id) + get_bq_inserts(source_id)
   end
 
   def get_node_inserts(source_id) do
@@ -73,126 +51,29 @@ defmodule Logflare.Source.Data do
   def get_rate(%{id: _id, name: _name, token: source_token}) do
     {:ok, source_id} = Ecto.UUID.Atom.load(source_token)
 
-    get_rate_int(source_id)
+    RateCounterServer.get_rate(source_id)
   end
 
   @spec get_rate(atom) :: non_neg_integer
   def get_rate(source_id) when is_atom(source_id) do
-    get_rate_int(source_id)
-  end
-
-  @spec get_logs(atom) :: list(term)
-  def get_logs(source_id) when is_atom(source_id) do
-    case :ets.info(source_id) do
-      :undefined ->
-        []
-
-      _ ->
-        List.flatten(:ets.match(source_id, {:_, :"$1"}))
-    end
-  end
-
-  def get_logs_across_cluster(source_id) when is_atom(source_id) do
-    nodes = Cluster.Utils.node_list_all()
-
-    task =
-      Task.async(fn ->
-        for n <- nodes do
-          Task.Supervisor.async(
-            {Logflare.TaskSupervisor, n},
-            __MODULE__,
-            :get_logs,
-            [source_id]
-          )
-        end
-        |> Task.yield_many()
-        |> Enum.map(fn {%Task{pid: pid}, res} ->
-          res || Task.Supervisor.terminate_child(Logflare.TaskSupervisor, pid)
-        end)
-      end)
-
-    case Task.yield(task, 5_000) || Task.shutdown(task) do
-      {:ok, results} ->
-        for {:ok, events} <- results do
-          events
-        end
-        |> List.flatten()
-        |> Enum.sort_by(& &1.body.timestamp, &<=/2)
-        |> Enum.take(-100)
-
-      _else ->
-        get_logs(source_id)
-    end
+    RateCounterServer.get_rate(source_id)
   end
 
   @spec get_avg_rate(map) :: non_neg_integer
   def get_avg_rate(%{id: _id, name: _name, token: source_token}) do
     {:ok, source_id} = Ecto.UUID.Atom.load(source_token)
 
-    case :ets.info(source_id) do
-      :undefined ->
-        0
-
-      _ ->
-        RateCounterServer.get_avg_rate(source_id)
-    end
+    RateCounterServer.get_avg_rate(source_id)
   end
 
   @spec get_avg_rate(atom) :: non_neg_integer
   def get_avg_rate(source_id) when is_atom(source_id) do
-    case :ets.info(source_id) do
-      :undefined ->
-        0
-
-      _ ->
-        RateCounterServer.get_avg_rate(source_id)
-    end
+    RateCounterServer.get_avg_rate(source_id)
   end
 
   @spec get_max_rate(atom) :: integer
   def get_max_rate(source_id) do
-    case :ets.info(source_id) do
-      :undefined ->
-        0
-
-      _ ->
-        RateCounterServer.get_max_rate(source_id)
-    end
-  end
-
-  @spec get_latest_date(atom) :: any
-  def get_latest_date(source_id, fallback \\ 0) when is_atom(source_id) do
-    case :ets.info(source_id) do
-      :undefined ->
-        fallback
-
-      _ ->
-        case :ets.last(source_id) do
-          :"$end_of_table" ->
-            fallback
-
-          {timestamp, _unique_int, _monotime} ->
-            timestamp
-        end
-    end
-  end
-
-  def get_latest_log_event(source_id, fallback \\ nil) when is_atom(source_id) do
-    case :ets.info(source_id) do
-      :undefined ->
-        fallback
-
-      _ ->
-        case :ets.last(source_id) do
-          :"$end_of_table" ->
-            fallback
-
-          log_event ->
-            :ets.match(source_id, {log_event, :"$1"})
-            |> List.flatten()
-            |> hd
-        end
-    end
+    RateCounterServer.get_max_rate(source_id)
   end
 
   @spec get_buffer(atom, integer) :: integer
@@ -214,17 +95,6 @@ defmodule Logflare.Source.Data do
 
       _ ->
         Schema.get_state(source.token).field_count
-    end
-  end
-
-  @spec get_rate_int(atom) :: non_neg_integer
-  defp get_rate_int(source_id) do
-    case :ets.info(source_id) do
-      :undefined ->
-        0
-
-      _ ->
-        RateCounterServer.get_rate(source_id)
     end
   end
 end
