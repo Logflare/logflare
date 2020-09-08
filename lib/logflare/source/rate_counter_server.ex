@@ -63,6 +63,9 @@ defmodule Logflare.Source.RateCounterServer do
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
 
+    get_data_from_ets(source_id)
+    |> broadcast()
+
     {:noreply, source_id}
   end
 
