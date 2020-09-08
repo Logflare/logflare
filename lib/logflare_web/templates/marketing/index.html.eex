@@ -126,11 +126,11 @@
 </div>
 </div>
 
-<div class="container container-fluid pt-5">
-  <div class="row">
-    <div class="col-lg">
+<div class="container-fluid pt-5">
+<div class="container-fluid">
+  <div class="container d-flex flex-wrap">
       <div class="d-flex" style="background-image: url(images/marketing/homepage/bgoftable.png)">
-        <div class="m-4">
+        <div class="m-1">
           <h5>Compare</h5>
           <p>Plan</p>
           <hr>
@@ -143,7 +143,7 @@
           <hr>
           <p><strong>Price</strong></p>
         </div>
-        <div class="m-4">
+        <div class="m-1">
           <h5>Logflare</h5>
           <p>Pro</p>
           <hr>
@@ -156,7 +156,7 @@
           <hr>
           <p><strong>$8 </strong><small>per month</small></p>
         </div>
-        <div class="m-4">
+        <div class="m-1">
           <h5>Sentry</h5>
           <p>Team</p>
           <hr>
@@ -169,7 +169,7 @@
           <hr>
           <p><strong>$520 </strong><small>per month</small></p>
         </div>
-      </div>
+
     </div>
     <div class="col-lg m-4">
       <h3 class="text-white mb-4">Typically Expensive</h3>
@@ -181,6 +181,7 @@
       <%= link "See plans & pricing", to: Routes.marketing_path(@conn, :pricing), class: "btn btn-pink mt-4", role: "button" %>
       <p class="mt-3"><small><sup>1</sup> Unlimited is subject to our fair use policy.</small></p>
     </div>
+  </div>
   </div>
 </div>
 </div>
