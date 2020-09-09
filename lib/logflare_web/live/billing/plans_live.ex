@@ -8,8 +8,6 @@ defmodule LogflareWeb.BillingPlansLive do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  import LogflareWeb.Helpers.Forms
-
   def mount(_params, %{"user_id" => user_id}, socket) do
     user =
       Users.get(user_id)

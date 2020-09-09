@@ -86,7 +86,7 @@ defmodule LogflareWeb.BillingController do
       |> assign(:user, user)
       |> confirm_subscription(params)
     else
-      {err, customer} ->
+      {err, _customer} ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         conn
@@ -138,7 +138,7 @@ defmodule LogflareWeb.BillingController do
   end
 
   def change_subscription(
-        %{assigns: %{user: %User{billing_account: billing_account, sources: sources} = user}} =
+        %{assigns: %{user: %User{billing_account: billing_account, sources: sources} = _user}} =
           conn,
         %{"plan" => plan_id}
       ) do
@@ -284,12 +284,6 @@ defmodule LogflareWeb.BillingController do
     conn
     |> put_flash(:info, "Success! #{message}")
     |> redirect(to: Routes.billing_path(conn, :edit))
-  end
-
-  defp success_and_render(conn, message) do
-    conn
-    |> put_flash(:info, "Success! #{message}")
-    |> render("edit.html")
   end
 
   defp error_and_redirect(conn, message \\ @default_error_message) do

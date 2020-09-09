@@ -4,7 +4,8 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.JSON
   alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans}
-  alias Logflare.Source.{Supervisor, Data, WebhookNotificationServer, SlackHookServer}
+  alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
+  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
 
@@ -470,7 +471,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    log_events = Data.get_logs_across_cluster(source.token)
+    log_events = RLS.list_for_cluster(source.token)
 
     for le <- log_events, le do
       le =

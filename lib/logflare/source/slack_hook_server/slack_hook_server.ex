@@ -15,7 +15,7 @@ defmodule Logflare.Source.SlackHookServer do
   end
 
   def test_post(source) do
-    recent_events = Data.get_logs(source.token)
+    recent_events = RLS.list(source.token)
 
     SHS.Client.new()
     |> SHS.Client.post(source, source.metrics.rate, recent_events)
@@ -38,7 +38,7 @@ defmodule Logflare.Source.SlackHookServer do
     case rate > 0 do
       true ->
         if source.slack_hook_url do
-          recent_events = Data.get_logs(rls.source_id)
+          recent_events = RLS.list(rls.source_id)
 
           SHS.Client.new()
           |> SHS.Client.post(source, rate, recent_events)
