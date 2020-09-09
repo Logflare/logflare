@@ -173,7 +173,7 @@
     </div>
     <div class="col-lg m-4">
       <h3 class="text-white mb-4">Typically Expensive</h3>
-      <p>Costs escalates quickly with typical based log management solutions. To setup long term analytics on
+      <p>Costs escalates quickly with typical log management solutions. To setup long term analytics on
         events you need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored
         data warehouse.</p>
       <p>With Logflare and BigQuery there is no setup for long term analytics. You can ingest immediately, query in
