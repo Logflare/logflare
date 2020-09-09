@@ -199,7 +199,7 @@ defmodule LogflareWeb.SourceController do
     |> redirect(to: Routes.source_path(conn, :show, source.id))
   end
 
-  def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => public_token}) do
+  def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => _public_token}) do
     avg_rate = source.metrics.avg
     render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
@@ -251,14 +251,6 @@ defmodule LogflareWeb.SourceController do
       {:error, response} ->
         conn
         |> put_flash(:error, "Webhook test failed! Error response: #{response}")
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-      _else ->
-        conn
-        |> put_flash(
-          :error,
-          "Webhook test failed! Unknown error. Please contact support if this continues."
-        )
         |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
   end
@@ -373,42 +365,28 @@ defmodule LogflareWeb.SourceController do
   end
 
   def delete(%{assigns: %{source: source}} = conn, params) do
-    token = source.token
+    now = DateTime.utc_now()
 
-    cond do
-      :ets.info(token) == :undefined ->
-        del_source_and_redirect(conn, params)
+    {:ok, timestamp} = RLS.get_latest_date(source.token) |> DateTime.from_unix(:microsecond)
 
-      :ets.first(token) == :"$end_of_table" ->
-        del_source_and_redirect(conn, params)
+    if DateTime.diff(now, timestamp, :millisecond) > :timer.hours(24) do
+      del_source_and_redirect(conn, params)
+    else
+      message = [
+        "Failed! Recent events are less than 24 hours old. ",
+        Phoenix.HTML.Link.link("Force delete",
+          to: "#{Routes.source_path(conn, :del_source_and_redirect, source.id)}",
+          method: :delete
+        ),
+        " this source."
+      ]
 
-      {timestamp, _unique_int, _monotime} = :ets.first(token) ->
-        now = System.os_time(:microsecond)
-
-        if now - timestamp > 3_600_000_000 do
-          del_source_and_redirect(conn, params)
-        else
-          message = [
-            "Failed! Recent events are less than 24 hours old. ",
-            Phoenix.HTML.Link.link("Force delete",
-              to: "#{Routes.source_path(conn, :del_source_and_redirect, source.id)}",
-              method: :delete
-            ),
-            " this source."
-          ]
-
-          put_flash_and_redirect_to_dashboard(conn, :error, message)
-        end
-
-      true ->
-        del_source_and_redirect(conn, params)
+      put_flash_and_redirect_to_dashboard(conn, :error, message)
     end
   end
 
   def del_source_and_redirect(%{assigns: %{source: source}} = conn, _params) do
-    if :ets.info(source.token) != :undefined do
-      Supervisor.delete_source(source.token)
-    end
+    Supervisor.delete_source(source.token)
 
     case Sources.delete_source(source) do
       {:ok, _response} ->
