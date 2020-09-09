@@ -32,7 +32,8 @@ defmodule Logflare.Source.RateCounterServer do
     field :buckets, map,
       default: %{
         @default_bucket_width => %{
-          queue: LQueue.new(@default_bucket_width),
+          queue:
+            List.duplicate(0, @default_bucket_width) |> LQueue.from_list(@default_bucket_width),
           average: 0,
           sum: 0,
           duration: @default_bucket_width
@@ -61,6 +62,9 @@ defmodule Logflare.Source.RateCounterServer do
     put_current_rate()
     bigquery_project_id = GenUtils.get_project_id(source_id)
     init_counters(source_id, bigquery_project_id)
+
+    get_data_from_ets(source_id)
+    |> broadcast()
 
     {:noreply, source_id}
   end

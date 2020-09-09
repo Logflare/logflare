@@ -435,6 +435,8 @@ defmodule LogflareWeb.Source.SearchLV do
             assign_notifications(socket, :warning, "Search saved!")
             |> assign(:source, get_source_for_param(source.id))
 
+          IO.inspect(socket.assigns.notifications)
+
           {:noreply, socket}
 
         {:error, changeset} ->
@@ -527,11 +529,11 @@ defmodule LogflareWeb.Source.SearchLV do
           warning_message(socket.assigns, search_result)
       end
 
-    log_events = search_result.events.rows
+    socket = if warning, do: assign_notifications(socket, :warning, warning), else: socket
 
     socket =
       socket
-      |> assign(:log_events, log_events)
+      |> assign(:log_events, search_result.events.rows)
       |> assign(:search_result, search_result.events)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
@@ -539,7 +541,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
       |> assign(:last_query_completed_at, Timex.now())
-      |> assign_notifications(:warning, warning)
 
     {:noreply, socket}
   end

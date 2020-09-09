@@ -12,7 +12,6 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Google.BigQuery
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Cluster
   alias Logflare.Source.Bigquery
   alias Logflare.Source.Bigquery.Schema
 
@@ -144,7 +143,7 @@ defmodule Logflare.Source.Supervisor do
 
   ## Public Functions
 
-  def start_source(source_id) do
+  def start_source(source_id) when is_atom(source_id) do
     # Calling this server doing boot times out due to dealing with bigquery in init_table()
 
     # Double check source is in the database before starting
@@ -237,7 +236,10 @@ defmodule Logflare.Source.Supervisor do
 
         # Probably eventually don't want to do this. Could slow down an ingest N * rule count if those rules are no started.
         # Obv slow down source in question on ingest if not started.
-        Process.sleep(500)
+
+        # I was doing this to get node started messages showing up in the source when you cleared the cache but it seems to disrucpt things when all sources for an account are getting restarted.
+
+        # Process.sleep(500)
 
         {:ok, :started}
 
@@ -246,7 +248,7 @@ defmodule Logflare.Source.Supervisor do
     end
   end
 
-  defp init_table(source_id) do
+  def init_table(source_id) do
     %{
       user_id: user_id,
       bigquery_table_ttl: bigquery_table_ttl,

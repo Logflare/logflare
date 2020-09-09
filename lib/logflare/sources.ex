@@ -223,9 +223,9 @@ defmodule Logflare.Sources do
   end
 
   def refresh_source_metrics(%Source{token: token} = source) do
-    import Logflare.Source.Data
     alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
+    alias Logflare.Source.RecentLogsServer, as: RLS
 
     rates = PubSubRates.Cache.get_cluster_rates(token)
     buffer = PubSubRates.Cache.get_cluster_buffers(token)
@@ -233,8 +233,8 @@ defmodule Logflare.Sources do
     inserts_string = Delimit.number_to_delimited(inserts)
 
     rejected_count = RejectedLogEvents.count(source)
-    latest = get_latest_date(token)
-    recent = get_ets_count(token)
+    latest = RLS.get_latest_date(token)
+    recent = Enum.count(RLS.list(token))
     fields = 0
 
     metrics = %Source.Metrics{

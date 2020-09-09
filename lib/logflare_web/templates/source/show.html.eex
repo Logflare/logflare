@@ -48,11 +48,7 @@
 </ul>
 </div>
 <div class="container mx-auto">
-  <%= if @logs == [] do %>
-    <div id="no-logs-warning">
-      <h4>No logs ... add some logs!</h4>
-    </div>
-  <% else %>
+
     <div>
       <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
       <div class="form-group form-text">
@@ -67,7 +63,7 @@
       <% end %>
     <% end %>
   </div>
-<% end %>
+
 </div>
 <!-- Modal -->
 <%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source) %>

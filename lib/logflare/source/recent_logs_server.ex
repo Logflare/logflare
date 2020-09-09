@@ -16,15 +16,14 @@ defmodule Logflare.Source.RecentLogsServer do
     field :user, struct()
     field :plan, struct()
     field :total_cluster_inserts, integer(), default: 0
+    field :recent, list(), default: LQueue.new(100)
   end
 
   use GenServer
 
-  alias Logflare.Sources.Counters
   alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
 
   alias Logflare.Source.{
-    Data,
     EmailNotificationServer,
     TextNotificationServer,
     WebhookNotificationServer,
@@ -39,12 +38,12 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Sources
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.PubSubRates
+  alias Logflare.Cluster
   alias __MODULE__, as: RLS
 
   require Logger
 
-  @prune_timer 1_000
-  @touch_timer 60_000
+  @touch_timer :timer.seconds(60)
   @broadcast_every 250
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
@@ -56,7 +55,6 @@ defmodule Logflare.Source.RecentLogsServer do
   def init(rls) do
     Process.flag(:trap_exit, true)
 
-    prune()
     touch()
     broadcast()
 
@@ -72,24 +70,63 @@ defmodule Logflare.Source.RecentLogsServer do
     GenServer.cast(source_id, {:push, source_id, log_event})
   end
 
+  def list(source_id) when is_atom(source_id) do
+    case Process.whereis(source_id) do
+      nil ->
+        []
+
+      pid ->
+        {:ok, logs} = GenServer.call(pid, :list)
+        logs
+    end
+  end
+
+  def list_for_cluster(source_id) when is_atom(source_id) do
+    nodes = Cluster.Utils.node_list_all()
+
+    task =
+      Task.async(fn ->
+        for n <- nodes do
+          Task.Supervisor.async(
+            {Logflare.TaskSupervisor, n},
+            __MODULE__,
+            :list,
+            [source_id]
+          )
+        end
+        |> Task.yield_many()
+        |> Enum.map(fn {%Task{pid: pid}, res} ->
+          res || Task.Supervisor.terminate_child(Logflare.TaskSupervisor, pid)
+        end)
+      end)
+
+    case Task.yield(task, 5_000) || Task.shutdown(task) do
+      {:ok, results} ->
+        for {:ok, events} <- results do
+          events
+        end
+        |> List.flatten()
+        |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+        |> Enum.take(-100)
+
+      _else ->
+        list(source_id)
+    end
+  end
+
+  def get_latest_date(source_id) when is_atom(source_id) do
+    case RLS.list(source_id) |> Enum.at(0) do
+      nil -> 0
+      le -> le.body.timestamp
+    end
+  end
+
   ## Server
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
       when is_atom(source_id) do
     user = Users.get(source.user_id) |> Users.maybe_preload_bigquery_defaults()
     plan = Plans.get_plan_by_user(user)
-
-    :ets.new(source_id, [
-      :named_table,
-      :ordered_set,
-      :public,
-      write_concurrency: true,
-      read_concurrency: true
-      # This should be the default with OTP 23
-      # decentralized_counters: true
-    ])
-
-    load_init_log_message(source_id, user.bigquery_project_id)
 
     rls = %{
       rls
@@ -114,13 +151,27 @@ defmodule Logflare.Source.RecentLogsServer do
 
     Supervisor.start_link(children, strategy: :one_for_one)
 
+    load_init_log_message(source_id)
+
     Logger.info("RecentLogsServer started: #{source_id}")
     {:noreply, rls}
   end
 
-  def handle_cast({:push, source_id, %LE{ingested_at: inj_at, sys_uint: sys_uint} = le}, state) do
-    timestamp = inj_at |> Timex.to_datetime() |> DateTime.to_unix(:microsecond)
-    :ets.insert(source_id, {{timestamp, sys_uint, 0}, le})
+  def handle_call(:list, _from, state) do
+    recent = Enum.into(state.recent, [])
+    {:reply, {:ok, recent}, state}
+  end
+
+  def handle_cast({:push, _source_id, %LE{} = le}, state) do
+    log_events = LQueue.push(state.recent, le)
+    {:noreply, %{state | recent: log_events}}
+  end
+
+  def handle_info(
+        {:EXIT, _, {:shutdown, {:failed_to_start_child, _child, {:already_started, _}}}},
+        state
+      ) do
+    Logger.warn("Failed to start child!", source_id: state.source_id)
     {:noreply, state}
   end
 
@@ -128,8 +179,8 @@ defmodule Logflare.Source.RecentLogsServer do
     {:stop, reason, state}
   end
 
-  def handle_info(:broadcast, %{source_id: source_id} = state) do
-    if Source.Data.get_ets_count(source_id) > 1 do
+  def handle_info(:broadcast, state) do
+    if Enum.count(state.recent) > 1 do
       {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
       broadcast()
 
@@ -145,32 +196,15 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
-  def handle_info(:prune, %__MODULE__{source_id: source_id} = state) do
-    count = Data.get_ets_count(source_id)
-
-    if count > 100 do
-      for _log <- 101..count do
-        log = :ets.first(source_id)
-
-        :ets.delete(source_id, log)
-        Counters.decriment(source_id)
-      end
-
-      prune()
-      {:noreply, state}
-    else
-      prune()
-      {:noreply, state}
-    end
-  end
-
   def handle_info(:touch, %__MODULE__{source_id: source_id} = state) do
-    case Source.Data.get_latest_log_event(source_id) do
-      %Logflare.LogEvent{params: %{"is_system_log_event?" => true}} ->
+    case Enum.into(state.recent, []) do
+      [%Logflare.LogEvent{params: %{"is_system_log_event?" => true}}] ->
         touch()
         {:noreply, state}
 
-      log_event ->
+      log_events ->
+        log_event = Enum.reverse(log_events) |> hd()
+
         now = NaiveDateTime.utc_now()
 
         if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
@@ -218,22 +252,24 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, cluster_inserts, node_inserts}
   end
 
-  defp load_init_log_message(source_id, _bigquery_project_id) do
+  defp load_init_log_message(source_id) do
     message =
       "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 
     log_event =
-      LE.make(%{"message" => message, "is_system_log_event?" => true}, %{
-        source: %Source{token: source_id}
-      })
+      LE.make(
+        %{
+          "message" => message,
+          "is_system_log_event?" => true
+        },
+        %{
+          source: %Source{token: source_id}
+        }
+      )
 
     push(source_id, log_event)
 
     Source.ChannelTopics.broadcast_new(log_event)
-  end
-
-  defp prune() do
-    Process.send_after(self(), :prune, @prune_timer)
   end
 
   defp touch() do
