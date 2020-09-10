@@ -4,10 +4,7 @@ defmodule LogflareWeb.Logs.LV do
   """
   use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
 
-  alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.Lql
   alias LogflareWeb.LogView
-  alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Logs.LogEvents
   alias Logflare.LogEvent, as: LE
   alias LogflareWeb.Helpers.BqSchema
@@ -18,12 +15,29 @@ defmodule LogflareWeb.Logs.LV do
 
   require Logger
 
-  def mount(%{"source_id" => source_id, "uuid" => log_id}, _session, socket) do
+  def mount(%{"source_id" => source_id} = params, _session, socket) do
     source = Sources.get_source_for_lv_param(source_id)
-    socket = assign(socket, :source, source)
-    socket = assign(socket, :id_param, log_id)
+    token = source.token
 
-    le = LogEvents.Cache.get!(source.token, "uuid:#{log_id}")
+    {log_id, cache_key, task_fn} =
+      case params do
+        %{"uuid" => log_id} ->
+          {log_id, "uuid:#{log_id}",
+           fn -> {:uuid, LogEvents.fetch_event_by_id(token, log_id)} end}
+
+        %{"vercel_id" => log_id} ->
+          {log_id, "vercel:#{log_id}",
+           fn ->
+             {:vercel, LogEvents.fetch_event_by_path(token, "metadata.id", log_id)}
+           end}
+      end
+
+    socket =
+      socket
+      |> assign(:source, source)
+      |> assign(:id_param, log_id)
+
+    le = LogEvents.Cache.get!(source.token, cache_key)
 
     socket =
       cond do
@@ -34,38 +48,7 @@ defmodule LogflareWeb.Logs.LV do
           assign_log_event(socket, le)
 
         is_nil(le) and connected?(socket) ->
-          Task.async(fn ->
-            {:uuid, LogEvents.fetch_event_by_id(source.token, log_id)}
-          end)
-
-          assign(socket, :loading, true)
-
-        true ->
-          assign(socket, :loading, true)
-      end
-
-    {:ok, socket}
-  end
-
-  @vercel_id_path "metadata.id"
-  def mount(%{"source_id" => source_id, "vercel_id" => log_id}, _session, socket) do
-    source = Sources.get_source_for_lv_param(source_id)
-    socket = assign(socket, :source, source)
-    socket = assign(socket, :id_param, log_id)
-    le = LogEvents.Cache.get!(source.token, "vercel:#{log_id}")
-
-    socket =
-      cond do
-        socket.assigns[:log_event] ->
-          socket
-
-        match?(%LE{}, le) ->
-          assign_log_event(socket, le)
-
-        connected?(socket) ->
-          Task.async(fn ->
-            {:vercel, LogEvents.fetch_event_by_path(source.token, "metadata.id", log_id)}
-          end)
+          Task.async(task_fn)
 
           assign(socket, :loading, true)
 
@@ -85,7 +68,6 @@ defmodule LogflareWeb.Logs.LV do
       |> assign_new(:metadata, fn -> nil end)
       |> assign_new(:timestamp, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
-      |> assign_new(:log_event, fn -> nil end)
       |> assign_new(:loading, fn -> false end)
 
     {:noreply, socket}
@@ -96,6 +78,8 @@ defmodule LogflareWeb.Logs.LV do
   end
 
   def handle_info({_ref, {origin, msg}}, socket) do
+    token = socket.assigns.source.token
+
     socket =
       case msg do
         nil ->
@@ -107,14 +91,14 @@ defmodule LogflareWeb.Logs.LV do
           case origin do
             :vercel ->
               LogEvents.Cache.put(
-                socket.assigns.source.token,
+                token,
                 "vercel:#{le.body.metadata.id}",
                 le
               )
 
             :uuid ->
               LogEvents.Cache.put(
-                socket.assigns.source.token,
+                token,
                 "uuid:#{le.id}",
                 le
               )
@@ -123,24 +107,27 @@ defmodule LogflareWeb.Logs.LV do
           assign_log_event(socket, le)
 
         {:error, error} ->
-          assign(socket, :error, error)
+          Logger.error("Log event event query error: #{inspect(error)}")
+
+          socket
+          |> assign(:loading, false)
+          |> assign(:error, error)
       end
 
     {:noreply, socket}
   end
 
+  # handling task DOWN message
   def handle_info({:DOWN, _, _, _, _}, socket), do: {:noreply, socket}
 
-  def assign_log_event(socket, %LE{} = le) do
+  @spec assign_log_event(Phoenix.LiveView.Socket.t(), LE.t()) :: Phoenix.LiveView.Socket.t()
+  defp assign_log_event(socket, %LE{body: %{metadata: m, message: msg, timestamp: ts}} = le) do
     socket
-    |> assign(:metadata, le.body.metadata)
-    |> assign(:fmt_metadata, BqSchema.encode_metadata(le.body.metadata))
-    |> assign(:message, le.body.message)
+    |> assign(:metadata, m)
+    |> assign(:fmt_metadata, BqSchema.encode_metadata(m))
+    |> assign(:message, msg)
     |> assign(:id, le.id)
-    |> assign(:timestamp, Timex.from_unix(le.body.timestamp, :microsecond))
-    # |> assign(:error, nil)
+    |> assign(:timestamp, Timex.from_unix(ts, :microsecond))
     |> assign(:loading, false)
   end
-
-  # handling task DOWN message
 end
