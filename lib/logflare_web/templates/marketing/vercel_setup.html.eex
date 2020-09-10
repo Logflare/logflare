@@ -25,7 +25,8 @@
             <%= link "Example Searches", to: "#example-searches", class: "scrollmenu menu5" %>
             <%= link "Example Dashboard", to: "#example-dashboard", class: "scrollmenu menu6" %>
             <%= link "Custom JSON Object", to: "#json-log", class: "scrollmenu menu7" %>
-            <%= link "Production vs Preview", to: "#prod-vs-preview", class: "scrollmenu menu8" %>
+            <%= link "Isomorphic Logging", to: "#browser-client-logs", class: "scrollmenu menu8" %>
+            <%= link "Production vs Preview", to: "#prod-vs-preview", class: "scrollmenu menu9" %>
           </div>
         </div>
       </div>
@@ -40,11 +41,16 @@
             stringified JSON object and we'll automatically parse that into a JSON object on our end which enables
             all the powerful streaming, searching, alerting and dashboaring features for each individual field of that
             object.</p>
+          <p>You can also setup <code>pino-logflare</code> to automatically log to Logflare from the client or server
+            using the same logger interface. See the <%= link "Isomorphic Logging", to: "#browser-client-logs" %>
+            section.</p>
+
           <h2 id="install-integration">Install the Integration</h2>
           <p>Visit the Logflare integration page and click `add`. This will walk you through the Logflare sign up
             process. You will create a Logflare source during that process. A `source` is where your Vercel logs will
             go.</p>
           <%= link "Install the Logflare Vercel integration", to: "https://vercel.co/integrations/logflare", class: "btn btn-primary", role: "button", target: "_blank" %>
+
           <h2 id="log-drain">Setup a Log Drain</h2>
           <p>After installing the integation you'll navigate to the installed integration configuration page in your
             Vercel account. Now you need to add a log drain. This is what tells Vercel to send all your logs to
@@ -63,6 +69,7 @@
           <p>Once you've successfully added your log drain you should be able to immediately see logs start streaming
             into your Logflare account. Try visiting your Vercel deployment url then check your Logflare dashboard!</p>
           <%= link "Visit your Logflare dashboard", to: Routes.source_path(@conn, :dashboard), class: "btn btn-primary", role: "button", target: "_blank" %>
+
           <h2 id="log-type">Build vs Static vs Lambda Logs</h2>
           <p>Vercel gives us three main kinds of logs: <code>build</code>, <code>static</code> and <code>lambda</code>.
           </p>
@@ -84,6 +91,7 @@
             from their CDN or their serverless infrastructure. You can setup different rules for these as well but you
             probably will want these in the
             same source so you can have them on the same dashboard later.</p>
+
           <h2 id="example-searches">Example Searches</h2>
           <p>Here are some searches you might find useful with your Vercel deployment. It doesn't take long for your
             events to be searchable by Logflare.</p>
@@ -101,12 +109,14 @@
           <p>To see all lambda requests with a response time greater than 1,000 ms:
             <code>m.parsedLambdaMessage.report.duration_ms:>1000</code>
           </p>
+
           <h2 id="example-dashboard">Example Dashboard</h2>
           <p>
             <iframe width="600" height="450"
               src="https://datastudio.google.com/embed/reporting/1NBEAsKFph8DP3OXapa1ZXRR7fTwZKHEY/page/5O0IB"
               frameborder="0" style="border:0" allowfullscreen></iframe>
           </p>
+
           <h2 id="json-log">Logging a Custom JSON Object</h2>
           <p>To enable even more insights from your Vercel deployment you can log any JSON object and we'll parse
             that accordingly.
@@ -120,6 +130,12 @@
             into columns for you automatically. Specifically, a column name must contain only letters (a-z,
             A-Z),
             numbers (0-9), or underscores (_), and it must start with a letter or underscore.</p>
+          <p><i class="fas fa-exclamation-circle"></i> When logging numbers from Javascript it's a good idea to force
+            all numbers you plan on logging to integers. Logflare automatically manages your table schema for you, and
+            it detects the schema based on the first time it sees a field value pair. If you log a number and it's an
+            integer, and you log the same number later and it's a float, that event will be rejected as it didn't
+            typematch.
+          </p>
           <p>For example, in a Next.js project you can use
             <%= link "Pino", to: "http://getpino.io/", target: "_blank" %> to log an object.</p>
           <pre class="scrollable">
@@ -140,6 +156,28 @@
             </div>
             <img class="imgf img-fluid guide-img" src="/images/marketing/guides/vercel-setup/custom-object-search.png">
           </div>
+
+          <h2 id="browser-client-logs">Isomorphic Logging with Vercel, Pino and Logflare</h2>
+          <p>Using <code>pino-logflare</code> you can automatically log from the browser and the server using the same
+            logger interface.</p>
+          <p>When using <code>pino-logflare</code> with Vercel be sure to intsantiate your logger with the config
+            described in the <code>pino-logflare</code> repo.</p>
+          <%= link "Vercel pino-logflare config example", to: "https://github.com/Logflare/pino-logflare/blob/master/docs/VERCEL.md", class: "btn btn-primary", target: "_blank" %>
+          <p>This sets up your server side logs to be logged to stdout which Vercel picks up and forwards to Logflare
+            via the Vercel Logflare integration. It also sets up the browser client to send logs to Logflare via an HTTP
+            request. When configured as such, your logs will automatically be handled appropriately, depending on where
+            the log statement appears in your code.</p>
+          <p>If you have browser logs going to the same source as server logs you can easily filter out your browser
+            logs
+            with the LQL query <code>m.browser:true</code> because all browser logs from <code>pino-logflare</code> have
+            the key-value pair <code>browser: true</code> in the metadata.</p>
+          <div class="minimg">
+            <div class="purplebox">
+            </div>
+            <img class="imgf img-fluid guide-img"
+              src="/images/marketing/guides/vercel-setup/browser-log-web-vitals-vercel-pino-logflare.png">
+          </div>
+
           <h2 id="prod-vs-preview">Production vs Preview vs Development</h2>
           <p>When logging a custom JSON object with Pino you should separate your production logs from everything else.
             Environment variables make this easy.
