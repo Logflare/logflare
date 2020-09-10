@@ -13,7 +13,9 @@
     "bootstrap-select": "^1.13.12",
     "clipboard": "^2.0.4",
     "date-fns": "^2.0.0-beta.2",
+    "elliptic": "^6.5.3",
     "jquery": "^3.4.1",
+    "json-formatter-js": "^2.3.4",
     "localforage": "^1.7.3",
     "lodash": "^4.17.19",
     "luxon": "^1.17.1",
@@ -24,8 +26,8 @@
     "react": "^16.11.0",
     "react-dom": "^16.11.0",
     "react-spinners": "^0.8.0",
-    "sql-formatter": "^2.3.3",
-    "elliptic": "^6.5.3",
+    "serialize-javascript": "^3.1.0",
+    "sql-formatter": "^2.3.3"
     "serialize-javascript": "^3.1.0"
   },
   "devDependencies": {

@@ -8,12 +8,12 @@
     <%= cond do %>
       <% @error ->  %>
       <div id="log-event-error">
-        Event query error: <%= @error %>
+        Log event query error: <%= @error %>
         The error was logged and we were notified.
       </div>
       <% is_nil(@id) ->  %>
       <div id="log-event-not-found">
-        <h1>Event not found. </h1>
+        <h1>Event not found </h1>
         <p>Either there is no event with <%= @id_param %> or event was ingested more than 72hrs ago. <a href="/" target="_blank">to homepage</a></p>
       </div>
       <% @id -> %>
@@ -36,11 +36,25 @@
         </ul>
         <ul class="list-group">
           <li class="list-group-item">
-            <h6 class="header-margin"> Metadata </h6>
-            <pre class="pre-metadata"><code><%= @fmt_metadata %></code></pre>
-          </li>
-        </ul>
-      </div>
-    <% end %>
-  </div>
-<% end %>
+            <ul class="nav" id="metadata-nav" role="tablist">
+              <li class="nav-item">
+                <a class="nav-link active" id="metadata-viewer-link" data-toggle="tab" href="#metadata-viewer" role="tab" >Metadata</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" data-toggle="tab" href="#metadata-raw" role="tab" >Raw JSON</a>
+              </li>
+            </ul>
+            <ul class="list-group list-group-horizontal">
+              <div class="tab-content">
+                <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
+                </div>
+                <div class="tab-pane" id="metadata-raw" role="tabpanel">
+                  <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code><%= @fmt_metadata %></code></pre>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
