@@ -422,4 +422,10 @@ defmodule Logflare.Sources do
 
     if count == 0, do: 1, else: count
   end
+
+  def get_source_for_lv_param(source_id) when is_binary(source_id) do
+    get_by_and_preload(id: source_id)
+    |> preload_saved_searches()
+    |> put_bq_table_data()
+  end
 end

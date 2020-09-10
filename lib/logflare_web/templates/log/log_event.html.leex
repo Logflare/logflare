@@ -1,0 +1,46 @@
+<%= if @loading do %>
+  <div id="log-event-loading" class="blurred list-unstyled console-text-list">
+    <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
+    <%= live_react_component("Components.Loader", %{}, [container: [id: "log-event-loader"]]) %>
+  </div>
+<% else %>
+  <div class="container">
+    <%= cond do %>
+      <% @error ->  %>
+      <div id="log-event-error">
+        Event query error: <%= @error %>
+        The error was logged and we were notified.
+      </div>
+      <% is_nil(@id) ->  %>
+      <div id="log-event-not-found">
+        <h1>Event not found. </h1>
+        <p>Either there is no event with <%= @id_param %> or event was ingested more than 72hrs ago. <a href="/" target="_blank">to homepage</a></p>
+      </div>
+      <% @id -> %>
+      <div id="log-event" class="blurred list-unstyled console-text-list">
+        <ul class="list-group list-group-horizontal">
+          <li class="list-group-item flex-fill">
+            <h6 class="header-margin"> Timestamp </h6>
+            <%= @timestamp %>
+          </li>
+          <li class="list-group-item flex-fill">
+            <h6 class="header-margin"> UUID </h6>
+            <%= @id %>
+          </li>
+        </ul>
+        <ul class="list-group">
+          <li class="list-group-item flex-fill">
+            <h6 class="header-margin"> Message </h6>
+            <%= @message %>
+          </li>
+        </ul>
+        <ul class="list-group">
+          <li class="list-group-item">
+            <h6 class="header-margin"> Metadata </h6>
+            <pre class="pre-metadata"><code><%= @fmt_metadata %></code></pre>
+          </li>
+        </ul>
+      </div>
+    <% end %>
+  </div>
+<% end %>
