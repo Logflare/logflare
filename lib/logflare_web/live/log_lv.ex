@@ -56,6 +56,18 @@ defmodule LogflareWeb.Logs.LV do
           assign(socket, :loading, true)
       end
 
+    socket =
+      if connected?(socket) do
+        user_timezone =
+          socket
+          |> get_connect_params()
+          |> Map.get("user_timezone")
+
+        assign(socket, :user_local_timezone, user_timezone)
+      else
+        socket
+      end
+
     {:ok, socket}
   end
 
@@ -69,6 +81,7 @@ defmodule LogflareWeb.Logs.LV do
       |> assign_new(:timestamp, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
       |> assign_new(:loading, fn -> false end)
+      |> assign_new(:user_local_timezone, fn -> false end)
 
     {:noreply, socket}
   end
