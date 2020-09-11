@@ -4,9 +4,9 @@ defmodule Logflare.LogEvent do
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Source
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange}
+  alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
 
-  @validators [EqDeepFieldTypes, BigQuerySchemaSpec, BigQuerySchemaChange]
+  @validators [EqDeepFieldTypes, BigQuerySchemaChange]
 
   defmodule Body do
     @moduledoc false

@@ -9,12 +9,14 @@ defmodule Logflare.Logs do
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
+  alias Logflare.Logs.IngestTransformers
   alias Logflare.Source.Supervisor
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
     log_params_batch
     |> Enum.map(&IngestTypecasting.maybe_apply_transform_directives/1)
+    |> Enum.map(&IngestTransformers.transform(&1, :to_bigquery_column_spec))
     |> Enum.map(&maybe_customize_event_message(&1, source))
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
