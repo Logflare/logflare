@@ -4,7 +4,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   """
   use Phoenix.LiveComponent
   alias LogflareWeb.Helpers.BqSchema
-  alias LogflareWeb.SharedView
+  alias LogflareWeb.{SharedView, LogView}
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Sources
   alias Logflare.Logs.LogEvents
@@ -31,12 +31,16 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   end
 
   def render(%{active_modal: "metadataModal:" <> _, metadata_modal_log_event: le}) do
-    fmt_metadata = BqSchema.encode_metadata(le.body.metadata)
+    m = le.body.metadata
 
     body =
-      SharedView.render("metadata_modal_body.html",
-        log_event: le,
-        fmt_metadata: fmt_metadata
+      LogView.render("log_event_body.html",
+        metadata: m,
+        fmt_metadata: BqSchema.encode_metadata(m),
+        message: le.body.message,
+        id: le.id,
+        timestamp: Timex.from_unix(le.body.timestamp, :microsecond),
+        user_local_timezone: nil
       )
 
     SharedView.render("modal.html",
