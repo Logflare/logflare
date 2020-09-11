@@ -92,5 +92,9 @@ config :logflare, LogflareWeb.Auth.VercelAuth,
 config :goth,
   json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
 
+config :logflare,
+  recaptcha_site_key: "6LerPsoUAAAAAMPNe7nb4dBMDDN4w6tGtmQXn8bh",
+  recaptcha_secret: "6LerPsoUAAAAAM2MP18GAsePKntkjBiANAV35Z1z"
+
 import_config "dev.secret.exs"
 import_config "telemetry.exs"

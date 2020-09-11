@@ -4,7 +4,6 @@ defmodule LogflareWeb.Plugs.SetPlan do
   """
   import Plug.Conn
 
-  alias Logflare.BillingAccounts
   alias Logflare.User
   alias Logflare.Plans
 

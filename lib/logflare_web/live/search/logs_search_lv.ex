@@ -435,7 +435,7 @@ defmodule LogflareWeb.Source.SearchLV do
             assign_notifications(socket, :warning, "Search saved!")
             |> assign(:source, get_source_for_param(source.id))
 
-          IO.inspect(socket.assigns.notifications)
+          socket.assigns.notifications
 
           {:noreply, socket}
 
