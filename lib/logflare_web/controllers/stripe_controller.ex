@@ -5,8 +5,6 @@ defmodule LogflareWeb.StripeController do
 
   alias Logflare.BillingAccounts
   alias Logflare.BillingAccounts.BillingAccount
-  alias Logflare.Users
-  alias Logflare.Source
 
   def event(
         conn,
