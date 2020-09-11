@@ -5,11 +5,14 @@
         <div class="col-md-12">
           <h1>Let's Structure Your Logs</h1>
           <h2>About Us</h2>
-          <p class="paragraph">Logflare was built to provide customers with affordable log management and analytics. Developers can get the data they need in real-time and analysts can store data to build insights over the long term.</p>
+          <p class="paragraph">Logflare was built to provide customers with affordable log management and analytics.
+            Developers can get the data they need in real-time and analysts can store data to build insights over the
+            long term.</p>
           <div class="boxforcontact">
             <h3>Send message</h3>
             <%= form_for @changeset, Routes.contact_path(@conn, :new), fn f -> %>
             <div class="form-group">
+              <%= hidden_input f, :recaptcha_token, type: "hidden", id: "recaptcha_token" %>
               <%= text_input f, :name, placeholder: "Your name", class: "form-control form-control-margin" %>
               <%= error_tag f, :name %>
               <%= text_input f, :email, placeholder: "you@company.com", class: "form-control form-control-margin" %>
@@ -21,21 +24,37 @@
               <div class="leftside">
                 <h4>Support</h4>
                 <p>Contact us at: </p>
-                <p><span><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top">support@logflare.app</a></span></p>
-                <p class="lastone">Generally you can expect responses from 8:00 am to 5:00 pm Mountain Standard Time.</p>
-              </br>
-              <h4>Office</h4>
-              <p>Logflare is based in Phoenix, AZ and built worldwide.</p>
+                <p><span><a href="mailto:support@logflare.app?Subject=Logflare%20Help"
+                      target="_top">support@logflare.app</a></span></p>
+                <p class="lastone">Generally you can expect responses from 8:00 am to 5:00 pm Mountain Standard Time.
+                </p>
+                </br>
+                <h4>Office</h4>
+                <p>Logflare is based in Phoenix, AZ and built worldwide.</p>
+              </div>
             </div>
+
+            <%= submit "Submit", id: "submit", class: "btn btn-primary form-button", disabled: true %>
+            <% end %>
           </div>
-          <%= submit "Submit", class: "btn btn-primary form-button" %>
-        <% end %>
+          </form>
+        </div>
       </div>
-    </form>
+    </div>
   </div>
 </div>
-</div>
-</div>
-</div>
-</div>
+
 <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+
+<script src='https://www.google.com/recaptcha/api.js?render=<%= @config.recaptcha_site_key %>'></script>
+<!-- for reCAPTCHA v3 -->
+<script>
+  grecaptcha.ready(function () {
+    grecaptcha.execute('<%= @config.recaptcha_site_key %>', {
+      action: 'sample'
+    }).then(function (token) {
+      document.getElementById("recaptcha_token").value = token;
+      document.getElementById("submit").disabled = false;
+    });
+  });
+</script>
