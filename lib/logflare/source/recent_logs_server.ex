@@ -167,14 +167,6 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, %{state | recent: log_events}}
   end
 
-  def handle_info(
-        {:EXIT, _, {:shutdown, {:failed_to_start_child, _child, {:already_started, _}}}},
-        state
-      ) do
-    Logger.warn("Failed to start child!", source_id: state.source_id)
-    {:noreply, state}
-  end
-
   def handle_info({:stop_please, reason}, state) do
     {:stop, reason, state}
   end
@@ -267,9 +259,13 @@ defmodule Logflare.Source.RecentLogsServer do
         }
       )
 
-    push(source_id, log_event)
+    Task.start(fn ->
+      Process.sleep(1_000)
 
-    Source.ChannelTopics.broadcast_new(log_event)
+      push(source_id, log_event)
+
+      Source.ChannelTopics.broadcast_new(log_event)
+    end)
   end
 
   defp touch() do
