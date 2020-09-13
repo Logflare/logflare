@@ -172,20 +172,16 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:broadcast, state) do
-    if Enum.count(state.recent) > 1 do
-      {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
-      broadcast()
+    {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
 
-      {:noreply,
-       %{
-         state
-         | total_cluster_inserts: total_cluster_inserts,
-           inserts_since_boot: inserts_since_boot
-       }}
-    else
-      broadcast()
-      {:noreply, state}
-    end
+    broadcast()
+
+    {:noreply,
+     %{
+       state
+       | total_cluster_inserts: total_cluster_inserts,
+         inserts_since_boot: inserts_since_boot
+     }}
   end
 
   def handle_info(:touch, %__MODULE__{source_id: source_id} = state) do
