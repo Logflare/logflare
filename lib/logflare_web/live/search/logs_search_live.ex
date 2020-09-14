@@ -2,7 +2,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
-  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+  use LogflareWeb, :live_view
 
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql
@@ -81,7 +81,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
 
-        kickoff_queries(socket.assigns.source.token, socket.assigns)
+        kickoff_queries(source.token, socket.assigns)
 
         socket
       else
@@ -651,7 +651,7 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Kernel.in([:integer, :float])
   end
 
-  defp kickoff_queries(source_token, assigns) do
+  defp kickoff_queries(source_token, assigns) when is_atom(source_token) do
     SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
     SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
   end

@@ -2,9 +2,9 @@ defmodule LogflareWeb.Logs.LV do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
-  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+  use LogflareWeb, :live_view
 
-  alias LogflareWeb.LogView
+  # alias LogflareWeb.LogView
   alias Logflare.Logs.LogEvents
   alias Logflare.LogEvent, as: LE
   alias LogflareWeb.Helpers.BqSchema
@@ -87,7 +87,7 @@ defmodule LogflareWeb.Logs.LV do
   end
 
   def render(assigns) do
-    LogView.render("log_event.html", assigns)
+    LogflareWeb.LogView.render("log_event.html", assigns)
   end
 
   def handle_info({_ref, {origin, msg}}, socket) do

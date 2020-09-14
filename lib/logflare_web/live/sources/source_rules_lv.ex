@@ -3,7 +3,7 @@ defmodule LogflareWeb.Sources.RulesLV do
   Source Rule LV form edit
   """
   require Logger
-  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+  use LogflareWeb, :live_view
 
   alias LogflareWeb.RuleView
   alias Logflare.{Sources, Users}
