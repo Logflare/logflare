@@ -131,7 +131,7 @@ defmodule Logflare.Mixfile do
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.29.0"},
-      {:google_api_big_query, "~> 0.38.0"},
+      {:google_api_big_query, "~> 0.46.0"},
       {:goth, "~> 1.2.0"},
 
       # Ecto
