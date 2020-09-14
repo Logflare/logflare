@@ -27,7 +27,7 @@ defmodule Logflare.AccountEmail do
 
     1) Keeping data forever in your own BigQuery tables. Optionally Bring Your Own BigQuery tables and keep your data around for ultimately half the price of S3: https://logflare.app/guides/bigquery-setup
 
-    2) Enable realtime Google Data Studio reporting when your data pipeline is built with Logflare: https://www.loom.com/share/dc5226d8ab1744ff916e9631010b52ee
+    2) Enable realtime Google Data Studio reporting when your data pipeline is built with Logflare: https://www.loom.com/share/4e916a4fba9c4aada7b8c10de9f573fb
 
     3) With the same simple yet powerful query language you can quickly search your logs and build alerts: https://www.loom.com/share/961f3392e20941929ee24393bf01b43c
 
