@@ -1,28 +1,39 @@
 defmodule Logflare.Logs.IngestTransformers do
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
-  @spec transform(map, atom | list(atom)) :: list(map)
+  @spec transform(map, list(atom)) :: map
   def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
     transform(log_params, [
       :alphanumeric_only,
       :strip_bq_prefixes,
       :dashes_to_underscores,
-      :alter_leading_numbers
+      :alter_leading_numbers,
+      {:field_length, max: 128}
     ])
   end
 
   def transform(log_params, rules) when is_map(log_params) and is_list(rules) do
-    Enum.reduce(rules, log_params, &transform(&2, &1))
+    Map.update(log_params, "metadata", %{}, fn m ->
+      Enum.reduce(rules, m, &do_transform(&2, &1))
+    end)
   end
 
-  def transform(log_params, :alphanumeric_only) when is_map(log_params) do
+  @spec do_transform(map, atom) :: map
+  defp do_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
+    update_all_keys_deep(log_params, fn
+      key when is_binary(key) and byte_size(key) > max -> String.slice(key, 0..(max - 1))
+      key -> key
+    end)
+  end
+
+  defp do_transform(log_params, :alphanumeric_only) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) -> String.replace(key, ~r/\W/, "")
       key -> key
     end)
   end
 
-  def transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
+  defp do_transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       "_TABLE_" <> rest -> rest
       "_FILE_" <> rest -> rest
@@ -31,7 +42,7 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  def transform(log_params, :dashes_to_underscores) when is_map(log_params) do
+  defp do_transform(log_params, :dashes_to_underscores) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) ->
         String.replace(key, "-", "_")
@@ -41,7 +52,7 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  def transform(log_params, :alter_leading_numbers) when is_map(log_params) do
+  defp do_transform(log_params, :alter_leading_numbers) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       "0" <> rest ->
         "zero" <> rest
