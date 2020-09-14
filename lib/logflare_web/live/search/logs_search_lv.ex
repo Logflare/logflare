@@ -110,7 +110,7 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"user_id" => user_id} = _session,
         socket
       ) do
-    source = get_source_for_param(source_id)
+    source = Sources.Cache.get_source_for_lv_param(source_id)
     user = Users.get_by_and_preload(id: user_id)
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
@@ -169,7 +169,8 @@ defmodule LogflareWeb.Source.SearchLV do
         "Etc/UTC"
       end
 
-    source = get_source_for_param(source_id)
+    source = Sources.Cache.get_source_for_lv_param(source_id)
+
     user = Users.get_by_and_preload(id: user_id)
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
@@ -433,7 +434,7 @@ defmodule LogflareWeb.Source.SearchLV do
         {:ok, _saved_search} ->
           socket =
             assign_notifications(socket, :warning, "Search saved!")
-            |> assign(:source, get_source_for_param(source.id))
+            |> assign(:source, Sources.Cache.get_source_for_lv_param(source.id))
 
           {:noreply, socket}
 
@@ -653,12 +654,6 @@ defmodule LogflareWeb.Source.SearchLV do
   defp kickoff_queries(source_token, assigns) do
     SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
     SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
-  end
-
-  defp get_source_for_param(source_id) do
-    Sources.get_by_and_preload(id: source_id)
-    |> Sources.preload_saved_searches()
-    |> Sources.put_bq_table_data()
   end
 
   defp period_to_ms(:second), do: :timer.seconds(1)
