@@ -397,14 +397,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
   defp assign_user_source(_context) do
     if is_nil(Process.whereis(@test_token)) do
       source = Sources.get_by(token: @test_token)
-      {:ok, _} = RLS.start_link(%RLS{source_id: @test_token, source: source})
-      Process.sleep(2500)
+
+      try do
+        RLS.start_link(%RLS{source_id: @test_token, source: source})
+      rescue
+        _ ->
+          nil
+      end
+
+      Process.sleep(1000)
     end
 
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
-    Sources.Cache.put_bq_schema(@test_token, PredefinedTestUser.table_schema())
     source = Sources.get_by(token: @test_token)
+    Schema.update(source.token, PredefinedTestUser.table_schema())
 
     conn =
       build_conn()
