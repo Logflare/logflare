@@ -237,9 +237,9 @@ defmodule Logflare.Source.Supervisor do
         # Probably eventually don't want to do this. Could slow down an ingest N * rule count if those rules are no started.
         # Obv slow down source in question on ingest if not started.
 
-        # I was doing this to get node started messages showing up in the source when you cleared the cache but it seems to disrucpt things when all sources for an account are getting restarted.
+        # Without this sleep we get errors on the logs search page sometimes when the search server isn't started yet. Definitely a better way to do this.
 
-        # Process.sleep(500)
+        Process.sleep(500)
 
         {:ok, :started}
 
