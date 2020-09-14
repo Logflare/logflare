@@ -60,7 +60,7 @@ defmodule Logflare.User do
     field :email_preferred, :string
     field :name, :string
     field :image, :string
-    field :email_me_product, :boolean, default: true
+    field :email_me_product, :boolean, default: false
     field :admin, :boolean, default: false
     field :phone, :string
     field :bigquery_project_id, :string

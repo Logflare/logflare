@@ -6,17 +6,50 @@ defmodule Logflare.AccountEmail do
   alias Logflare.{Auth, User, TeamUsers.TeamUser}
 
   def welcome(user) do
-    account_edit_link = Routes.user_url(Endpoint, :edit)
-
     new()
     |> to(user.email)
     |> from({"Logflare", "support@logflare.app"})
     |> subject("Welcome to Logflare!")
-    |> text_body(
-      "Heya!\n\nThanks for checking out Logflare! Let us know if you have any issues :)\n\nYou can always delete your account here: #{
-        account_edit_link
-      }\n\nSetup Google Data Studio: https://logflare.app/guides/data-studio-setup\nBring your own BigQuery backend: https://logflare.app/guides/bigquery-setup"
-    )
+    |> text_body("""
+    Hey stranger!
+
+    Thanks for checking out Logflare! Please Let us know if you have any issues. A few things to note...
+
+    You'll only get account related emails from us. If you want to hear more, please subscribe to product updates: #{
+      Routes.user_url(Endpoint, :edit) <> "#contact-information"
+    }
+
+    Need to cancel your account? No need to contact us. You can always delete your account here: #{
+      Routes.user_url(Endpoint, :edit) <> "#delete-your-account"
+    }
+
+    It's a good idea to take some time to learn about Logflare. Logflare is simple on the surface but enables some powerful things like:
+
+    1) Keeping data forever in your own BigQuery tables. Optionally Bring Your Own BigQuery tables and keep your data around for ultimately half the price of S3: https://logflare.app/guides/bigquery-setup
+
+    2) Enable realtime Google Data Studio reporting when your data pipeline is built with Logflare: https://www.loom.com/share/4e916a4fba9c4aada7b8c10de9f573fb
+
+    3) With the same simple yet powerful query language you can quickly search your logs and build alerts: https://www.loom.com/share/961f3392e20941929ee24393bf01b43c
+
+    And so much more. Our guides provide some good info: #{
+      Routes.marketing_url(Endpoint, :guides)
+    }
+
+    We have a little Loom library if you prefer video: https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e
+
+    But please, if you have any questions just reach out. If you *think* something is possible with Logflare, it probably is!
+
+    --
+
+    Logger.info("Email sent", %{
+      from: %{
+        name: "Chase Granberry",
+        domain: "logflare.app",
+        email: "chase@logflare.app"
+      }
+    })
+
+    """)
   end
 
   def source_notification(%User{} = user, rate, source) do
