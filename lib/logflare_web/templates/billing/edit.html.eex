@@ -47,12 +47,6 @@
     <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "btn btn-primary form-button" %>
   </div>
   <div class="sub-form">
-    <%= section_header("Fair Use Policy") %>
-    <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of 1,500 log events ingested in a single second. As an example, if you're doing 5 requests a second you'd be able to burst up to 1200 requests in a second (1500 - (5 * 60) = 1200).</p>
-    <p>If you require more throughput please contact us about our Enterprise plans & support.</p>
-    <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of Logflare that is feasible for both parties long term. However, if you're consistently hitting our fair use limits we reserve the right to delete your account without notice.</p>
-  </div>
-  <div class="sub-form">
     <%= section_header("Payment Method") %>
     <p>Update your credit card on file.</p>
     <%= link "Update payment method", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>

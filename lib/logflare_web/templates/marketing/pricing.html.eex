@@ -16,6 +16,7 @@
         <div id="plans">
             <h2>Standard Plans</h2>
             <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
+
         </div>
     </div>
 
@@ -94,7 +95,10 @@
                 <p>Logflare is a semi-schema'd service. We support schema'd backends, as BigQuery requires a schema. However, we detect and automatically update your schema for you based on the shape of your log events. Never worry about running a migration before adding a new field. Logflare does that automatically. We'll warn you about data type mismatches.</p>
                 <h1 id="rate-limit">What happens when I'm rate limited?</h1>
                 <p>If you're constantly hitting your rate limits we'll likely contact you about upgrading to a custom enterprise plan. If you hit your rate limit rarely it's not a big deal. You'll be warned when you hit your rate limit and log events won't be ingested. </p>
-
+                <h1 id="fair-use">What is considered fair use?</h1>
+                <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of 1,500 log events ingested in a single second. As an example, if you're doing 5 requests a second you'd be able to burst up to 1200 requests in a second (1500 - (5 * 60) = 1200).</p>
+                <p>If you require more throughput please <%= link "contact us", to: Routes.contact_path(@conn, :new) %> about our Enterprise plans & support.</p>
+                <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of Logflare that is feasible for both parties long term. However, we reserve the right to delete your account without notice.</p>
             </div>
         </div>
     </div>
