@@ -64,7 +64,7 @@ defmodule Logflare.Logs.LogEvents do
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
 
-    base_query = SearchQueries.source_log_event_by_path(bq_table_id, path, value) |> IO.inspect()
+    base_query = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
 
     params = [bq_project_id, base_query, dataset_id]
     apply(&fetch_streaming_buffer/3, params) || apply(&fetch_last_3d/3, params)

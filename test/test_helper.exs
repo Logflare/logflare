@@ -5,6 +5,8 @@ Faker.start()
 Mimic.copy(Logflare.Logs.LogEvents)
 Mimic.copy(Logflare.Logs.SearchQueryExecutor)
 Mimic.copy(Logflare.Lql)
+Mimic.copy(Logflare.Plans)
+Mimic.copy(Logflare.Plans.Cache)
 
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)

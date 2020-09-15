@@ -10,7 +10,7 @@ defmodule LogflareWeb.Plugs.SetPlan do
 
   def init(_), do: nil
 
-  def call(%{assigns: %{user: %User{}}} = conn, opts), do: set_plan(conn, opts)
+  def call(%{assigns: %{user: %User{}}} = conn, opts \\ []), do: set_plan(conn, opts)
 
   def call(conn, _opts), do: conn
 
