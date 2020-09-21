@@ -21,6 +21,7 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
     {:noreply, put_data(socket)}
   end
 
+  @spec put_data(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp put_data(socket) do
     import AllLogsLogged.Poller
 

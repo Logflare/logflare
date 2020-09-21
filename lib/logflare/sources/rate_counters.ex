@@ -7,8 +7,8 @@ defmodule Logflare.Sources.RateCounters do
 
   @ets_table_name :rate_counters
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(args \\ []) do
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def init(state) do

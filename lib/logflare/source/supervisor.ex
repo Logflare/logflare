@@ -20,8 +20,8 @@ defmodule Logflare.Source.Supervisor do
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(args \\ []) do
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def init(source_ids) do

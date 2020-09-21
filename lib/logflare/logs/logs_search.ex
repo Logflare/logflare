@@ -9,6 +9,7 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Google.BigQuery.GCPConfig
   import Ecto.Query
 
+  @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
     tasks = [
       Task.async(fn -> search_events(so) end)

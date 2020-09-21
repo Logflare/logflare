@@ -23,7 +23,7 @@ defmodule LogflareWeb.LogControllerTest do
     s = Sources.get_by_and_preload(id: s.id)
 
     SystemMetricsSup.start_link()
-    Sources.Counters.start_link()
+    {:ok, _} = Sources.Counters.start_link()
     Sources.RateCounters.start_link()
 
     Source.RateCounterServer.start_link(%RLS{source_id: s.token})

@@ -10,7 +10,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
   setup_all do
-    Logflare.Sources.Counters.start_link()
+    Sources.Counters.start_link()
     :ok
   end
 

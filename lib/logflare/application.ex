@@ -39,8 +39,8 @@ defmodule Logflare.Application do
           ]
         ]
       ),
-      supervisor(Logflare.Repo, []),
-      supervisor(LogflareWeb.Endpoint, []),
+      Logflare.Repo,
+      LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
 
@@ -49,7 +49,7 @@ defmodule Logflare.Application do
     dev_prod_children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
-      supervisor(Logflare.Repo, []),
+      Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,

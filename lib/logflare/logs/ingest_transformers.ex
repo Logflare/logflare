@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.IngestTransformers do
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
-  @spec transform(map, list(atom)) :: map
+  @spec transform(map, list(atom) | atom) :: map
   def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
     transform(log_params, [
       :alphanumeric_only,

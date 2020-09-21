@@ -1,7 +1,7 @@
 <%= if @loading do %>
   <div id="log-event-loading" class="blurred list-unstyled console-text-list">
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
-    <%= live_react_component("Components.Loader", %{}, [container: [id: "log-event-loader"]]) %>
+    <%= live_react_component("Components.Loader", %{}, [id: "log-event-loader"]) %>
   </div>
 <% else %>
   <%= cond do %>

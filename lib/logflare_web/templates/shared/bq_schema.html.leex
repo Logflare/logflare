@@ -1,4 +1,4 @@
-<div class="table-responsive" phx-hook="SourceSchemaModalTable">
+<div id="source-schema-modal-table" class="table-responsive" phx-hook="SourceSchemaModalTable">
   <table class="table table-dark show-source-schema">
     <thead>
       <td scope="col"><strong>Field path</strong></td>
@@ -6,43 +6,43 @@
     </thead>
     <tbody>
       <%= for {field, type} <- @fields_and_types do %>
-      <%= case field do %>
-      <% "event_message" -> %>
-      <tr>
-        <td class="metadata-field">
-          <kbd><%= field %></kbd> <small>Required. The human readable event message.</small>
-        </td>
-        <td><%= type %></td>
-      </tr>
-      <% "id" -> %>
-      <tr>
-        <td class="metadata-field">
-          <kbd><%= field %></kbd> <small>Required. The UUID of a specific event.</small>
-        </td>
-        <td><%= type %></td>
-      </tr>
-      <% "timestamp" -> %>
-      <tr>
-        <td class="metadata-field">
-          <kbd><%= field %></kbd> <small>Required. The ingest date time of an event.</small>
-        </td>
-        <td><%= type %></td>
-      </tr>
-      <% _field -> %>
-      <tr>
-        <td class="metadata-field">
-          <span class="pointer-cursor" style="text-decoration: none">
-            <span class="copy-metadata-field" data-trigger="hover focus" data-delay="0" data-toggle="tooltip"
+        <%= case field do %>
+          <% "event_message" -> %>
+          <tr>
+            <td class="metadata-field">
+              <kbd><%= field %></kbd> <small>Required. The human readable event message.</small>
+            </td>
+            <td><%= type %></td>
+          </tr>
+          <% "id" -> %>
+          <tr>
+            <td class="metadata-field">
+              <kbd><%= field %></kbd> <small>Required. The UUID of a specific event.</small>
+            </td>
+            <td><%= type %></td>
+          </tr>
+          <% "timestamp" -> %>
+          <tr>
+            <td class="metadata-field">
+              <kbd><%= field %></kbd> <small>Required. The ingest date time of an event.</small>
+            </td>
+            <td><%= type %></td>
+          </tr>
+          <% _field -> %>
+          <tr>
+            <td class="metadata-field">
+              <span class="pointer-cursor" style="text-decoration: none">
+                <span class="copy-metadata-field" data-trigger="hover focus" data-delay="0" data-toggle="tooltip"
               data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy this</span>"
-              data-clipboard-text="<%= field %>">
-              <span class="metadata-field-value"><kbd><%= field %></kbd></span> <i class="fas fa-copy"></i>
+                data-clipboard-text="<%= field %>">
+                <span class="metadata-field-value"><kbd><%= field %></kbd></span> <i class="fas fa-copy"></i>
+              </span>
             </span>
-          </span>
-        </td>
-        <td><%= type %></td>
-      </tr>
+          </td>
+          <td><%= type %></td>
+        </tr>
       <% end %>
-      <% end %>
-    </tbody>
-  </table>
+    <% end %>
+  </tbody>
+</table>
 </div>

@@ -23,7 +23,7 @@ defmodule Logflare.Source.RecentLogsServerTest do
 
       allow Data.get_log_count(s1.token, "project-id"), return: log_count
 
-      RLS.load_init_log_message(s1.token, "project-id")
+      RLS.load_init_log_message(s1.token)
 
       event = "source:#{s1.token}:new"
 

@@ -1,5 +1,5 @@
 defmodule Logflare.Plans.Plan do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
   schema "plans" do

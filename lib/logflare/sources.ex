@@ -94,11 +94,13 @@ defmodule Logflare.Sources do
     end
   end
 
+  @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
     Source
     |> Repo.get_by(kw)
   end
 
+  @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
     Source
     |> Repo.get_by(kw)

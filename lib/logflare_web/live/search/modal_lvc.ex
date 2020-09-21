@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Sources
   alias Logflare.Logs.LogEvents
+  alias LogflareWeb.LogView
   require Logger
 
   @query_debug_modals ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal)
