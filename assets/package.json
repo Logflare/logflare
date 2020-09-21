@@ -7,8 +7,8 @@
   },
   "dependencies": {
     "@babel/polyfill": "^7.4.4",
-    "@nivo/bar": "^0.61.1",
-    "@nivo/core": "^0.61.0",
+    "@nivo/bar": "^0.62.0",
+    "@nivo/core": "^0.62.0",
     "bootstrap": "^4.3.1",
     "bootstrap-select": "^1.13.12",
     "clipboard": "^2.0.4",
@@ -25,10 +25,9 @@
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "react": "^16.11.0",
     "react-dom": "^16.11.0",
-    "react-spinners": "^0.8.0",
-    "serialize-javascript": "^3.1.0",
+    "react-spinners": "^0.9.0",
+    "serialize-javascript": "^5.0.1",
     "sql-formatter": "^2.3.3"
-    "serialize-javascript": "^3.1.0"
   },
   "devDependencies": {
     "@babel/core": "^7.5.5",
@@ -40,7 +39,7 @@
     "babel-loader": "^8.0.6",
     "copy-webpack-plugin": "^5.0.3",
     "css-loader": "^3.4.2",
-    "eslint": "^6.8.0",
+    "eslint": "^7.9.0",
     "eslint-plugin-react": "^7.16.0",
     "file-loader": "^5.0.2",
     "fstream": "^1.0.12",
