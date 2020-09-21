@@ -10,6 +10,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql
+  alias Logflare.Source.BigQuery.Schema
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
   setup_all do
@@ -70,6 +71,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
           }
         })
 
+      refute get_view_assigns(view).notifications[:error]
       lql_rules = get_view_assigns(view).lql_rules
       assert Lql.Utils.get_chart_rule(lql_rules).aggregate == :count
 
@@ -89,6 +91,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
           }
         })
 
+      refute get_view_assigns(view).notifications[:error]
       assert find_querystring(html) == "error crash c:count(*) c:group_by(t::day)"
 
       assert_patched(
@@ -110,6 +113,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
             "querystring" => "c:sum(m.int_field_1) c:group_by(t::minute) error crash"
           }
         })
+
+      refute get_view_assigns(view).notifications[:error]
 
       assert find_querystring(html) ==
                "error crash c:sum(m.int_field_1) c:group_by(t::minute)"
@@ -138,9 +143,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       html =
         render_change(view, :timestamp_and_chart_update, %{
-          "querystring" => "t:2020-01-01T01:10:00..2020-02-01T10:22:20"
+          "querystring" => "t:2020-01-01T01:10:00..2020-01-01T01:22:20"
         })
 
+      refute get_view_assigns(view).notifications[:error]
       lql_rules = get_view_assigns(view).lql_rules
 
       assert Lql.Utils.get_ts_filters(lql_rules) == [
@@ -150,15 +156,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
                  path: "timestamp",
                  shorthand: nil,
                  value: nil,
-                 values: [~N[2020-01-01 01:10:00], ~N[2020-02-01 10:22:20]]
+                 values: [
+                   ~N[2020-01-01 01:10:00],
+                   ~N[2020-01-01 01:22:20]
+                 ]
                }
              ]
 
       assert get_view_assigns(view).querystring ==
-               "error crash t:2020-{01..02}-01T{01..10}:{10..22}:{00..20} c:sum(m.int_field_1) c:group_by(t::minute)"
+               "error crash t:2020-01-01T01:{10..22}:{00..20} c:sum(m.int_field_1) c:group_by(t::minute)"
 
       assert find_querystring(html) ==
-               "error crash t:2020-{01..02}-01T{01..10}:{10..22}:{00..20} c:sum(m.int_field_1) c:group_by(t::minute)"
+               "error crash t:2020-01-01T01:{10..22}:{00..20} c:sum(m.int_field_1) c:group_by(t::minute)"
 
       lql_rules = get_view_assigns(view).lql_rules
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
@@ -175,6 +184,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
           }
         })
 
+      refute get_view_assigns(view).notifications[:error]
       lql_rules = get_view_assigns(view).lql_rules
       chart_rule = Lql.Utils.get_chart_rule(lql_rules)
       assert chart_rule.aggregate == :avg
@@ -387,14 +397,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
   defp assign_user_source(_context) do
     if is_nil(Process.whereis(@test_token)) do
       source = Sources.get_by(token: @test_token)
-      {:ok, _} = RLS.start_link(%RLS{source_id: @test_token, source: source})
-      Process.sleep(2500)
+
+      try do
+        RLS.start_link(%RLS{source_id: @test_token, source: source})
+      rescue
+        _ ->
+          nil
+      end
+
+      Process.sleep(1000)
     end
 
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
-    Sources.Cache.put_bq_schema(@test_token, PredefinedTestUser.table_schema())
     source = Sources.get_by(token: @test_token)
+    Schema.update(source.token, PredefinedTestUser.table_schema())
 
     conn =
       build_conn()

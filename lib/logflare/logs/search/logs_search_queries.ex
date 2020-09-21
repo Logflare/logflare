@@ -227,6 +227,32 @@ defmodule Logflare.Logs.SearchQueries do
     end
   end
 
+  def source_log_event_by_path(bq_table_id, path, value)
+      when is_binary(bq_table_id) and is_binary(path) do
+    last_column = String.split(path, ".") |> List.last() |> String.to_atom()
+
+    from(bq_table_id)
+    |> select([t], %{
+      metadata: t.metadata,
+      id: t.id,
+      timestamp: t.timestamp,
+      message: t.event_message
+    })
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, path)
+    |> where([..., t1], field(t1, ^last_column) == ^value)
+  end
+
+  def source_log_event_id(bq_table_id, id) when is_binary(bq_table_id) when is_binary(id) do
+    from(bq_table_id)
+    |> where([t], t.id == ^id)
+    |> select([t], %{
+      metadata: t.metadata,
+      id: t.id,
+      timestamp: t.timestamp,
+      message: t.event_message
+    })
+  end
+
   def select_default_fields(query, :events) do
     select(query, [:timestamp, :id, :event_message])
   end
@@ -235,5 +261,9 @@ defmodule Logflare.Logs.SearchQueries do
     from(bq_table_id)
     |> select([:id, :metadata, :timestamp, :event_message])
     |> where(in_streaming_buffer())
+  end
+
+  def where_log_id(q, id) do
+    where(q, [t], t.id == ^id)
   end
 end

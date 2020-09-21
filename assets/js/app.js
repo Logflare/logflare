@@ -14,6 +14,7 @@ import LiveSocket from "phoenix_live_view"
 import LiveReact, { initLiveReact } from "phoenix_live_react"
 
 import sourceLiveViewHooks from "./source_lv_hooks"
+import logsLiveViewHooks from "./logs_lv_hooks"
 
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
@@ -28,7 +29,7 @@ window.Source = Source
 window.User = User
 window.ClipboardJS = ClipboardJS
 
-const hooks = Object.assign(liveReactHooks, sourceLiveViewHooks)
+const hooks = {...liveReactHooks, ...sourceLiveViewHooks, ...logsLiveViewHooks}
 
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks,

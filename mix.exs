@@ -65,7 +65,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
-      {:phoenix_live_view, "~> 0.13.0"},
+      {:phoenix_live_view, "~> 0.14.0"},
       {:phoenix_live_dashboard, "~> 0.1"},
       {:cors_plug, "~> 2.0"},
 
@@ -123,6 +123,7 @@ defmodule Logflare.Mixfile do
       {:mox, "~> 0.5", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:faker, "~> 0.12", only: :test},
+      {:mimic, "~> 1.0", only: :test},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
@@ -161,7 +162,7 @@ defmodule Logflare.Mixfile do
       {:rustler, "~> 0.21.0", override: true},
 
       # Frontend
-      {:phoenix_live_react, "~> 0.2"},
+      {:phoenix_live_react, "~> 0.4"},
 
       # Dev
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},

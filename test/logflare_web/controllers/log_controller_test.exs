@@ -6,6 +6,9 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   alias Logflare.SystemMetricsSup
+  alias Logflare.Plans
+  alias Logflare.Plans.Plan
+  use Mimic
 
   setup do
     import Logflare.Factory
@@ -30,6 +33,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "/logs/cloudflare POST request fails" do
+    setup [:mock_plan_cache]
+
     test "without an API token", %{conn: conn, users: _} do
       conn = post(conn, log_path(conn, :create), %{"log_entry" => "valid log entry"})
       assert json_response(conn, 401) == %{"message" => "Error: please set ingest API key"}
@@ -177,6 +182,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "/logs/cloudflare POST request succeeds" do
+    setup [:expect_plan_cache]
+
     test "succeeds with source_name", %{conn: conn, users: [u | _], sources: [s]} do
       conn =
         conn
@@ -213,6 +220,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "/logs/elixir/logger POST request succeeds" do
+    setup [:expect_plan_cache]
+
     test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
       log_params = build_log_params()
 
@@ -248,6 +257,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "ZEIT log params ingest" do
+    setup [:mock_plan_cache]
+
     test "with valid batch", %{conn: conn, users: [u | _], sources: [s | _]} do
       log_param = %{
         "buildId" => "identifier of build only on build logs",
@@ -316,6 +327,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "SetVerifySource for HTML routes" do
+    @tag :skip
     test "without a valid source", %{conn: conn, users: [u | _], sources: [_s | _]} do
       conn =
         conn
@@ -328,6 +340,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "typecasting endpoint" do
+    setup [:expect_plan_cache]
+
     test "works correctly", %{conn: conn, users: [u | _], sources: [s]} do
       params = %{
         "batch" => [
@@ -378,6 +392,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "Log params with transforms directives" do
+    setup [:expect_plan_cache]
+
     test "numbers to floats typecasted correctly", %{conn: conn, users: [u | _], sources: [s | _]} do
       params = %{
         "source" => Atom.to_string(s.token),
@@ -444,6 +460,8 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "Syslog payloads" do
+    setup [:expect_plan_cache]
+
     test "syslog body", %{conn: conn, users: [u | _], sources: [s | _]} do
       body = """
       182 <190>1 2020-08-09T13:30:36.316601+00:00 host phx-limit phx-limit-5885669966-287kp - [36mweb.1  | [0m13:30:36.314 request_id=b4f92e4a104759b02593c34c41d2f0ce [info] Sent 200 in 1ms
@@ -592,5 +610,25 @@ defmodule LogflareWeb.LogControllerTest do
       "metadata" => %{},
       "timestamp" => System.system_time(:microsecond)
     }
+  end
+
+  def expect_plan_cache(_ctx) do
+    expect(Plans.Cache, :get_plan_by, fn _ ->
+      %Plan{
+        stripe_id: "31415"
+      }
+    end)
+
+    :ok
+  end
+
+  def mock_plan_cache(_ctx) do
+    stub(Plans.Cache, :get_plan_by, fn _ ->
+      %Plan{
+        stripe_id: "31415"
+      }
+    end)
+
+    :ok
   end
 end

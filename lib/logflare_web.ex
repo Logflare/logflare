@@ -20,47 +20,64 @@ defmodule LogflareWeb do
   def controller do
     quote do
       use Phoenix.Controller, namespace: LogflareWeb
-      import Plug.Conn
-      alias LogflareWeb.Router.Helpers, as: Routes
-      import LogflareWeb.Gettext
 
-      import Phoenix.LiveView.Controller, only: [live_render: 3]
+      import LogflareWeb.Gettext
+      import Plug.Conn
+      import Phoenix.LiveView.Controller
+
+      alias LogflareWeb.Router.Helpers, as: Routes
     end
   end
 
   def view do
     quote do
+      alias Logflare.JSON
+
       use Phoenix.View,
         root: "lib/logflare_web/templates",
         namespace: LogflareWeb
 
       # Import convenience functions from controllers
-      import Phoenix.Controller, only: [get_flash: 2, view_module: 1]
+      import Phoenix.Controller,
+        only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
 
-      import Phoenix.LiveView.Helpers,
-        only: [
-          live_render: 2,
-          live_render: 3,
-          live_flash: 2,
-          live_patch: 2,
-          live_component: 4,
-          live_component: 3
-        ]
+      # Use all HTML functionality (forms, tags, etc)
+      unquote(view_helpers())
+    end
+  end
 
-      import Phoenix.LiveView,
-        only: [
-          push_patch: 2
-        ]
+  defp view_helpers do
+    quote do
+      use Phoenix.HTML
+
+      import Phoenix.LiveView.Helpers
+      import LogflareWeb.LiveHelpers
+      import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
+
+      import Phoenix.View
+
+      import LogflareWeb.ErrorHelpers
+      import LogflareWeb.Gettext
+      alias LogflareWeb.Router.Helpers, as: Routes
+    end
+  end
+
+  def live_view do
+    quote do
+      use Phoenix.LiveView,
+        layout: {LogflareWeb.LayoutView, "live.html"}
 
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
 
-      # Use all HTML functionality (forms, tags, etc)
-      use Phoenix.HTML
+      unquote(view_helpers())
+    end
+  end
 
-      alias LogflareWeb.Router.Helpers, as: Routes
-      import LogflareWeb.ErrorHelpers
-      import LogflareWeb.Gettext
-      alias Logflare.JSON
+  def live_component do
+    quote do
+      use Phoenix.LiveComponent
+
+      unquote(view_helpers())
     end
   end
 

@@ -601,7 +601,10 @@ defmodule Logflare.Logs.SourceRoutingTest do
         params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
 
-      Schema.start_link(%RLS{source_id: s1.token})
+      Schema.start_link(%RLS{
+        source_id: s1.token,
+        plan: %{limit_source_fields_limit: 500}
+      })
 
       {:ok, sink} =
         params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
@@ -616,13 +619,6 @@ defmodule Logflare.Logs.SourceRoutingTest do
         )
 
       Schema.update(s1.token, schema)
-      # {:ok, _} =
-      #   BigQuery.patch_table(
-      #     s1.token,
-      #     schema,
-      #     u.bigquery_dataset_id,
-      #     u.bigquery_project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
-      #   )
 
       Process.sleep(1_000)
 
