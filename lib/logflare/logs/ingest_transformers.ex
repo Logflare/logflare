@@ -54,35 +54,8 @@ defmodule Logflare.Logs.IngestTransformers do
 
   defp do_transform(log_params, :alter_leading_numbers) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      "0" <> rest ->
-        "zero" <> rest
-
-      "1" <> rest ->
-        "one" <> rest
-
-      "2" <> rest ->
-        "two" <> rest
-
-      "3" <> rest ->
-        "three" <> rest
-
-      "4" <> rest ->
-        "four" <> rest
-
-      "5" <> rest ->
-        "five" <> rest
-
-      "6" <> rest ->
-        "six" <> rest
-
-      "7" <> rest ->
-        "seven" <> rest
-
-      "8" <> rest ->
-        "eight" <> rest
-
-      "9" <> rest ->
-        "nine" <> rest
+      <<symbol::binary-size(1), rest::binary>> when symbol in ~w(0 1 2 3 4 5 6 7 8 9) ->
+        "_" <> symbol <> rest
 
       key ->
         key

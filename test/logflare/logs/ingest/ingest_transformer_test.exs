@@ -95,7 +95,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
             %{
               "2level" => %{
                 "311level_key" => "value",
-                3 => "value"
+                "312level_key" => "value"
               }
             }
           ]
@@ -104,37 +104,22 @@ defmodule Logflare.Logs.IngestTransformerTest do
     ]
     test "alter leading numbers" do
       assert Enum.map(@batch, &transform(&1, [:alter_leading_numbers])) == [
-               %{
-                 "metadata" => %{
-                   "onelevel_key" => %{
-                     "twolevel_key" => %{"threelevel_key" => "value"}
-                   }
-                 }
-               },
-               %{
-                 "metadata" => %{
-                   "onelevel_key" => [
-                     %{
-                       "twolevel_key" => %{
-                         "threelevel_key" => "value"
-                       }
-                     }
-                   ]
-                 }
-               },
-               %{
-                 "metadata" => %{
-                   "onelevel" => [
-                     %{
-                       "twolevel" => %{
-                         3 => "value",
-                         "three11level_key" => "value"
-                       }
-                     }
-                   ]
-                 }
-               }
-             ]
+        %{
+          "metadata" => %{
+            "_1level_key" => %{"_2level_key" => %{"_3level_key" => "value"}}
+          }
+        },
+        %{
+          "metadata" => %{
+            "_1level_key" => [%{"_2level_key" => %{"_3level_key" => "value"}}]
+          }
+        },
+        %{
+          "metadata" => %{
+            "_1level" => [%{"_2level" => %{"_311level_key" => "value", "_312level_key" => "value"}}]
+          }
+        }
+      ]
     end
 
     @batch [
