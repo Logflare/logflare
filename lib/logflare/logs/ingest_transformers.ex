@@ -4,10 +4,10 @@ defmodule Logflare.Logs.IngestTransformers do
   @spec transform(map, list(atom) | atom) :: map
   def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
     transform(log_params, [
-      :alphanumeric_only,
       :strip_bq_prefixes,
       :dashes_to_underscores,
       :alter_leading_numbers,
+      :alphanumeric_only,
       {:field_length, max: 128}
     ])
   end

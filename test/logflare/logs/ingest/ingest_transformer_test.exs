@@ -4,6 +4,14 @@ defmodule Logflare.Logs.IngestTransformerTest do
   import Logflare.Logs.IngestTransformers
 
   describe "BQ spec transformations" do
+    test "transformations order is correct" do
+      log_params = %{"metadata" => %{"level1" => %{"level2" => %{"status-code" => 200}}}}
+
+      assert transform(log_params, :to_bigquery_column_spec) == %{
+               "metadata" => %{"level1" => %{"level2" => %{"status_code" => 200}}}
+             }
+    end
+
     @batch [
       %{
         "metadata" => %{
