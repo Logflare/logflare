@@ -105,7 +105,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
         if is_atom(k) do
           k
         else
-          String.to_existing_atom(k)
+          String.to_atom(k)
         end
 
       {k, v}
