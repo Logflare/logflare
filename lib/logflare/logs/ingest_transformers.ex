@@ -21,31 +21,43 @@ defmodule Logflare.Logs.IngestTransformers do
   @spec do_transform(map, atom) :: map
   defp do_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      key when is_binary(key) and byte_size(key) > max -> String.slice(key, 0..(max - 1))
-      key -> key
+      key when is_binary(key) and byte_size(key) > max ->
+        "_" <> String.slice(key, 0..(max - 1))
+
+      key ->
+        key
     end)
   end
 
   defp do_transform(log_params, :alphanumeric_only) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      key when is_binary(key) -> String.replace(key, ~r/\W/, "")
-      key -> key
+      key when is_binary(key) ->
+        case Regex.match?(~r/\W/, key) do
+          true -> "_" <> String.replace(key, ~r/\W/, "_")
+          false -> key
+        end
+
+      key ->
+        key
     end)
   end
 
   defp do_transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      "_TABLE_" <> rest -> rest
-      "_FILE_" <> rest -> rest
-      "_PARTITION_" <> rest -> rest
-      x -> x
+      "_TABLE_" <> _rest = key -> "_" <> key
+      "_FILE_" <> _rest = key -> "_" <> key
+      "_PARTITION_" <> _rest = key -> "_" <> key
+      key -> key
     end)
   end
 
   defp do_transform(log_params, :dashes_to_underscores) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) ->
-        String.replace(key, "-", "_")
+        case String.contains?(key, "-") do
+          true -> "_" <> String.replace(key, "-", "_")
+          false -> key
+        end
 
       key ->
         key
