@@ -31,24 +31,33 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     )
   end
 
-  def render(%{active_modal: "metadataModal:" <> _, metadata_modal_log_event: le}) do
-    m = le.body.metadata
+  def render(
+        %{active_modal: "metadataModal:" <> id_and_timestamp, metadata_modal_log_event: le} =
+          assigns
+      ) do
+    [id, _timestamp] = String.split(id_and_timestamp, "|")
 
-    body =
-      LogView.render("log_event_body.html",
-        metadata: m,
-        fmt_metadata: BqSchema.encode_metadata(m),
-        message: le.body.message,
-        id: le.id,
-        timestamp: Timex.from_unix(le.body.timestamp, :microsecond),
-        user_local_timezone: nil
+    if is_nil(le) or le.id != id do
+      render(Map.delete(assigns, :metadata_modal_log_event))
+    else
+      m = le.body.metadata
+
+      body =
+        LogView.render("log_event_body.html",
+          metadata: m,
+          fmt_metadata: BqSchema.encode_metadata(m),
+          message: le.body.message,
+          id: le.id,
+          timestamp: Timex.from_unix(le.body.timestamp, :microsecond),
+          user_local_timezone: nil
+        )
+
+      SharedView.render("modal.html",
+        title: "Metadata",
+        body: body,
+        type: "metadata-modal"
       )
-
-    SharedView.render("modal.html",
-      title: "Metadata",
-      body: body,
-      type: "metadata-modal"
-    )
+    end
   end
 
   def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
