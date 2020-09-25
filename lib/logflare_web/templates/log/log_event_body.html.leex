@@ -19,7 +19,7 @@
     <%= @message %>
   </li>
 </ul>
-<ul class="list-group">
+<ul class="list-group" id="log-event-metadata">
   <li class="list-group-item">
     <ul class="nav" id="metadata-nav" role="tablist">
       <li class="nav-item">
@@ -29,12 +29,12 @@
         <a class="nav-link" data-toggle="tab" href="#metadata-raw" role="tab" >Raw JSON</a>
       </li>
     </ul>
-    <ul class="list-group list-group-horizontal">
+    <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
       <div class="tab-content">
         <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
         </div>
         <div class="tab-pane" id="metadata-raw" role="tabpanel">
-          <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code><%= @fmt_metadata %></code></pre>
+          <pre d="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code><%= @fmt_metadata %></code></pre>
         </div>
       </div>
     </li>
