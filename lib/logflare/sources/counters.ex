@@ -9,8 +9,8 @@ defmodule Logflare.Sources.Counters do
   @ets_table_name :table_counters
   @type success_tuple :: {:ok, atom}
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(args \\ []) do
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def init(state) do

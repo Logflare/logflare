@@ -6,20 +6,13 @@ defmodule Logflare.Logs.GenericJson do
   end
 
   def handle_event(params) when is_map(params) do
-    report = handle_json(params)
-
     %{
-      "message" => message(report),
-      "metadata" => report
+      "message" => message(params),
+      "metadata" => params
     }
   end
 
-  def message(report) do
-    inspect(report)
+  def message(params) do
+    inspect(params)
   end
-
-  # Maybe handle a timestamp here and put in with message and metadata.
-  def handle_json(json) when is_map(json), do: json
-
-  def handle_json(value), do: value
 end

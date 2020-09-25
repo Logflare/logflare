@@ -33,7 +33,6 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
   @doc """
     As a team user I should not be able to switch to an account owner who is not me.
   """
-
   def call(
         %{
           assigns: %{user: _user, team_user: team_user, team: _team},

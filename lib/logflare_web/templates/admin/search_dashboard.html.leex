@@ -10,13 +10,13 @@
     <div class="col-6">
       <h3> Active sources (at least 1 search) </h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @source_timeseries, keys: ["count"]}, [container: [id: "active-sources-chart"]]) %>
+        <%= live_react_component("Components.AdminChart", %{data: @source_timeseries, keys: ["count"]}, [id: "active-sources-chart"]) %>
       </div>
     </div>
     <div class="col-6">
       <h3> Active users (at least 1 search) </h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @user_timeseries, keys: ["count"]}, [container: [id: "active-users-chart"]]) %>
+        <%= live_react_component("Components.AdminChart", %{data: @user_timeseries, keys: ["count"]}, [id: "active-users-chart"]) %>
       </div>
     </div>
   </div>
@@ -24,14 +24,14 @@
     <div class="col-6">
       <h3>Daily tailing searches count</h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["tailing_count"]}, [container: [id: "daily-tailing-searches-chart"]]
+        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["tailing_count"]}, [id: "daily-tailing-searches-chart"]
         ) %>
       </div>
     </div>
     <div class="col-6">
       <h3>Daily non-tailing searches count</h3>
       <div>
-        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["non_tailing_count"]}, [container: [id: "daily-non-tailing-searches-chart"]]) %>
+        <%= live_react_component("Components.AdminChart", %{data: @search_timeseries, keys: ["non_tailing_count"]}, [id: "daily-non-tailing-searches-chart"]) %>
       </div>
     </div>
   </div>

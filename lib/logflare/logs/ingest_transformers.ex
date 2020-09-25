@@ -1,69 +1,73 @@
 defmodule Logflare.Logs.IngestTransformers do
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
-  def transform(batch, rules) do
-    for log_params <- batch do
-      Enum.reduce(rules, log_params, &do_transform(&2, &1))
-    end
+  @spec transform(map, list(atom) | atom) :: map
+  def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
+    transform(log_params, [
+      :strip_bq_prefixes,
+      :dashes_to_underscores,
+      :alter_leading_numbers,
+      :alphanumeric_only,
+      {:field_length, max: 128}
+    ])
   end
 
-  defp do_transform(log_params, :alphanumeric_only) do
-    update_all_keys_deep(log_params, fn
-      key when is_binary(key) -> String.replace(key, ~r/\W/, "")
-      key -> key
+  def transform(log_params, rules) when is_map(log_params) and is_list(rules) do
+    Map.update(log_params, "metadata", %{}, fn m ->
+      Enum.reduce(rules, m, &do_transform(&2, &1))
     end)
   end
 
-  defp do_transform(log_params, :strip_bq_prefixes) do
+  @spec do_transform(map, atom) :: map
+  defp do_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      "_TABLE_" <> rest -> rest
-      "_FILE_" <> rest -> rest
-      "_PARTITION_" <> rest -> rest
-      x -> x
-    end)
-  end
-
-  defp do_transform(log_params, :dashes_to_underscores) do
-    update_all_keys_deep(log_params, fn
-      key when is_binary(key) ->
-        String.replace(key, "-", "_")
+      key when is_binary(key) and byte_size(key) > max ->
+        "_" <> String.slice(key, 0..(max - 1))
 
       key ->
         key
     end)
   end
 
-  defp do_transform(log_params, :alter_leading_numbers) do
+  defp do_transform(log_params, :alphanumeric_only) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      "0" <> rest ->
-        "zero" <> rest
+      key when is_binary(key) ->
+        case Regex.match?(~r/\W/, key) do
+          true -> "_" <> String.replace(key, ~r/\W/, "_")
+          false -> key
+        end
 
-      "1" <> rest ->
-        "one" <> rest
+      key ->
+        key
+    end)
+  end
 
-      "2" <> rest ->
-        "two" <> rest
+  defp do_transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
+    update_all_keys_deep(log_params, fn
+      "_TABLE_" <> _rest = key -> "_" <> key
+      "_FILE_" <> _rest = key -> "_" <> key
+      "_PARTITION_" <> _rest = key -> "_" <> key
+      key -> key
+    end)
+  end
 
-      "3" <> rest ->
-        "three" <> rest
+  defp do_transform(log_params, :dashes_to_underscores) when is_map(log_params) do
+    update_all_keys_deep(log_params, fn
+      key when is_binary(key) ->
+        case String.contains?(key, "-") do
+          true -> "_" <> String.replace(key, "-", "_")
+          false -> key
+        end
 
-      "4" <> rest ->
-        "four" <> rest
+      key ->
+        key
+    end)
+  end
 
-      "5" <> rest ->
-        "five" <> rest
-
-      "6" <> rest ->
-        "six" <> rest
-
-      "7" <> rest ->
-        "seven" <> rest
-
-      "8" <> rest ->
-        "eight" <> rest
-
-      "9" <> rest ->
-        "nine" <> rest
+  defp do_transform(log_params, :alter_leading_numbers) when is_map(log_params) do
+    update_all_keys_deep(log_params, fn
+      <<symbol::binary-size(1), rest::binary>> when symbol in ~w(0 1 2 3 4 5 6 7 8 9) ->
+        "_" <> symbol <> rest
 
       key ->
         key

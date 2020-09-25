@@ -1,0 +1,41 @@
+<ul class="list-group list-group-horizontal">
+  <li class="list-group-item flex-fill">
+    <div >
+      <h6 class="header-margin"> Timestamp  </h6>
+      <%= @timestamp |> to_string() |> String.trim_trailing("Z") |> String.trim_trailing("0")  %> (UTC)
+    </div>
+    <%= if @user_local_timezone do %>
+      <%= Timex.to_datetime(@timestamp, @user_local_timezone) |> to_string() |> String.replace(~r/\+\d\d:\d\d.+$/, "") |> String.trim_trailing("0") %> (<%= @user_local_timezone %>)
+    <% end %>
+  </li>
+  <li class="list-group-item flex-fill">
+    <h6 class="header-margin"> UUID </h6>
+    <%= @id %>
+  </li>
+</ul>
+<ul class="list-group">
+  <li class="list-group-item flex-fill">
+    <h6 class="header-margin"> Message </h6>
+    <%= @message %>
+  </li>
+</ul>
+<ul class="list-group" id="log-event-metadata">
+  <li class="list-group-item">
+    <ul class="nav" id="metadata-nav" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link active" id="metadata-viewer-link" data-toggle="tab" href="#metadata-viewer" role="tab" >Metadata</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-toggle="tab" href="#metadata-raw" role="tab" >Raw JSON</a>
+      </li>
+    </ul>
+    <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
+      <div class="tab-content">
+        <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
+        </div>
+        <div class="tab-pane" id="metadata-raw" role="tabpanel">
+          <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code><%= @fmt_metadata %></code></pre>
+        </div>
+      </div>
+    </li>
+  </ul>

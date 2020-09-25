@@ -26,29 +26,33 @@ defmodule LogflareWeb.StripeController do
         end
 
       "charge.succeeded" ->
-        with %BillingAccount{} = ba <-
-               BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, ba} <-
-               BillingAccounts.update_billing_account(ba, %{
-                 lifetime_plan?: true,
-                 lifetime_plan_invoice: object["receipt_url"]
-               }) do
-          Logger.info("Lifetime customer created. Event id: #{event["id"]}")
+        if lifetime_plan_charge?(event) do
+          with %BillingAccount{} = ba <-
+                 BillingAccounts.get_billing_account_by(stripe_customer: customer),
+               {:ok, _ba} <-
+                 BillingAccounts.update_billing_account(ba, %{
+                   lifetime_plan?: true,
+                   lifetime_plan_invoice: object["receipt_url"]
+                 }) do
+            Logger.info("Lifetime customer created. Event id: #{event["id"]}")
 
-          ok(conn)
+            ok(conn)
+          else
+            err ->
+              Logger.error("Stripe webhook error: #{type}", %{
+                billing: %{webhook_type: type, error_string: inspect(err)}
+              })
+
+              conflict(conn)
+          end
         else
-          err ->
-            Logger.error("Stripe webhook error: #{type}", %{
-              billing: %{webhook_type: type, error_string: inspect(err)}
-            })
-
-            conflict(conn)
+          not_implimented(conn)
         end
 
       "customer.subscription" <> sub_type ->
         with %BillingAccount{} = ba <-
                BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, ba} <- BillingAccounts.sync_subscriptions(ba) do
+             {:ok, _ba} <- BillingAccounts.sync_subscriptions(ba) do
           Logger.info("Subscription customer #{sub_type}. Event id: #{event["id"]}")
 
           ok(conn)
@@ -85,5 +89,9 @@ defmodule LogflareWeb.StripeController do
     conn
     |> put_status(202)
     |> json(%{message: "event type not implimented"})
+  end
+
+  defp lifetime_plan_charge?(event) do
+    event["data"]["object"]["amount"] == 50000
   end
 end

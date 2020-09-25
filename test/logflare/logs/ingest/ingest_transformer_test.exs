@@ -4,6 +4,14 @@ defmodule Logflare.Logs.IngestTransformerTest do
   import Logflare.Logs.IngestTransformers
 
   describe "BQ spec transformations" do
+    test "transformations order is correct" do
+      log_params = %{"metadata" => %{"level1" => %{"level2" => %{"status-code" => 200}}}}
+
+      assert transform(log_params, :to_bigquery_column_spec) == %{
+               "metadata" => %{"level1" => %{"level2" => %{"status_code" => 200}}}
+             }
+    end
+
     @batch [
       %{
         "metadata" => %{
@@ -39,7 +47,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
       }
     ]
     test "dashes to underscores" do
-      assert transform(@batch, [:dashes_to_underscores]) == [
+      assert Enum.map(@batch, &transform(&1, [:dashes_to_underscores])) == [
                %{
                  "metadata" => %{
                    "level_1_dashed_key" => "value",
@@ -87,7 +95,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
             %{
               "2level" => %{
                 "311level_key" => "value",
-                3 => "value"
+                "312level_key" => "value"
               }
             }
           ]
@@ -95,38 +103,23 @@ defmodule Logflare.Logs.IngestTransformerTest do
       }
     ]
     test "alter leading numbers" do
-      assert transform(@batch, [:alter_leading_numbers]) == [
-               %{
-                 "metadata" => %{
-                   "onelevel_key" => %{
-                     "twolevel_key" => %{"threelevel_key" => "value"}
-                   }
-                 }
-               },
-               %{
-                 "metadata" => %{
-                   "onelevel_key" => [
-                     %{
-                       "twolevel_key" => %{
-                         "threelevel_key" => "value"
-                       }
-                     }
-                   ]
-                 }
-               },
-               %{
-                 "metadata" => %{
-                   "onelevel" => [
-                     %{
-                       "twolevel" => %{
-                         3 => "value",
-                         "three11level_key" => "value"
-                       }
-                     }
-                   ]
-                 }
-               }
-             ]
+      assert Enum.map(@batch, &transform(&1, [:alter_leading_numbers])) == [
+        %{
+          "metadata" => %{
+            "_1level_key" => %{"_2level_key" => %{"_3level_key" => "value"}}
+          }
+        },
+        %{
+          "metadata" => %{
+            "_1level_key" => [%{"_2level_key" => %{"_3level_key" => "value"}}]
+          }
+        },
+        %{
+          "metadata" => %{
+            "_1level" => [%{"_2level" => %{"_311level_key" => "value", "_312level_key" => "value"}}]
+          }
+        }
+      ]
     end
 
     @batch [
@@ -161,7 +154,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
       }
     ]
     test "alphanumeric only" do
-      assert transform(@batch, [:alphanumeric_only]) == [
+      assert Enum.map(@batch, &transform(&1, [:alphanumeric_only])) == [
                %{
                  "metadata" => %{
                    "level_1_key_" => %{
@@ -210,7 +203,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
       }
     ]
     test "strip bq prefixes" do
-      assert transform(@batch, [:strip_bq_prefixes]) == [
+      assert Enum.map(@batch, &transform(&1, [:strip_bq_prefixes])) == [
                %{
                  "metadata" => %{
                    "level_1_key_" => %{
@@ -227,6 +220,46 @@ defmodule Logflare.Logs.IngestTransformerTest do
                  "metadata" => %{
                    "1level" => [%{"2level" => %{"3level_key" => "value"}}]
                  }
+               }
+             ]
+    end
+
+    @batch [
+      %{
+        "metadata" => %{
+          "123456789" => %{
+            "12345678901234" => %{"12345" => "value"}
+          }
+        }
+      },
+      %{
+        "metadata" => %{
+          "123456789" => %{
+            "12345678901234" => %{"12345" => "value"}
+          }
+        }
+      },
+      %{
+        "metadata" => %{
+          "123456789" => [
+            %{
+              "12345678901234" => %{"12345" => "value"}
+            }
+          ]
+        }
+      }
+    ]
+
+    test "max length" do
+      assert Enum.map(@batch, &transform(&1, [{:field_length, max: 5}])) == [
+               %{
+                 "metadata" => %{"12345" => %{"12345" => %{"12345" => "value"}}}
+               },
+               %{
+                 "metadata" => %{"12345" => %{"12345" => %{"12345" => "value"}}}
+               },
+               %{
+                 "metadata" => %{"12345" => [%{"12345" => %{"12345" => "value"}}]}
                }
              ]
     end

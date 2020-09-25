@@ -2,7 +2,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
-  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+  use LogflareWeb, :live_view
 
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql
@@ -81,7 +81,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
 
-        kickoff_queries(socket.assigns.source.token, socket.assigns)
+        kickoff_queries(source.token, socket.assigns)
 
         socket
       else
@@ -110,7 +110,7 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"user_id" => user_id} = _session,
         socket
       ) do
-    source = get_source_for_param(source_id)
+    source = Sources.Cache.get_source_for_lv_param(source_id)
     user = Users.get_by_and_preload(id: user_id)
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
@@ -169,7 +169,8 @@ defmodule LogflareWeb.Source.SearchLV do
         "Etc/UTC"
       end
 
-    source = get_source_for_param(source_id)
+    source = Sources.Cache.get_source_for_lv_param(source_id)
+
     user = Users.get_by_and_preload(id: user_id)
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
@@ -433,7 +434,7 @@ defmodule LogflareWeb.Source.SearchLV do
         {:ok, _saved_search} ->
           socket =
             assign_notifications(socket, :warning, "Search saved!")
-            |> assign(:source, get_source_for_param(source.id))
+            |> assign(:source, Sources.Cache.get_source_for_lv_param(source.id))
 
           socket.assigns.notifications
 
@@ -651,15 +652,9 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Kernel.in([:integer, :float])
   end
 
-  defp kickoff_queries(source_token, assigns) do
+  defp kickoff_queries(source_token, assigns) when is_atom(source_token) do
     SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
     SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
-  end
-
-  defp get_source_for_param(source_id) do
-    Sources.get_by_and_preload(id: source_id)
-    |> Sources.preload_saved_searches()
-    |> Sources.put_bq_table_data()
   end
 
   defp period_to_ms(:second), do: :timer.seconds(1)

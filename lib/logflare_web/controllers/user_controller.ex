@@ -4,7 +4,7 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo, Users, Source.Supervisor}
+  alias Logflare.{User, Repo, Users, Source.Supervisor, BillingAccounts.Stripe}
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
@@ -64,16 +64,22 @@ defmodule LogflareWeb.UserController do
     end
   end
 
-  def delete(%{assigns: %{user: user}} = conn, _params) do
-    case Users.delete_user(user) do
-      {:ok, _user} ->
+  def delete(
+        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
+        _params
+      ) do
+    with {:ok, _user} <- Users.delete_user(user),
+         {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer) do
+      conn
+      |> configure_session(drop: true)
+      |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
+    else
+      _err ->
         conn
-        |> configure_session(drop: true)
-        |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
-
-      {:error, _reason} ->
-        conn
-        |> put_flash(:error, "Something went wrong! See below for errors.")
+        |> put_flash(
+          :error,
+          "Something went wrong! Please try again and contact support if this continues."
+        )
         |> render("edit.html")
     end
   end

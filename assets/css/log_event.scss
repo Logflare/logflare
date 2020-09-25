@@ -1,0 +1,25 @@
+#log-event #metadata-nav a {
+  text-decoration: underline;
+  outline: unset;
+}
+
+#log-event #metadata-nav a#metadata-viewer-link {
+  padding-left: 0px;
+}
+
+#logflare-modal #metadata-nav a#metadata-viewer-link {
+  padding-left: 0px;
+}
+
+#log-event #metadata-nav {
+  margin-bottom: 1rem;
+}
+
+#log-event-metadata #metadata-viewer-tabs {
+  overflow-x: auto;
+}
+
+#metadata-viewer {
+  padding: 20px;
+  margin-top: 1rem;
+}

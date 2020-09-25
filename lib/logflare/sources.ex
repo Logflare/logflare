@@ -94,11 +94,13 @@ defmodule Logflare.Sources do
     end
   end
 
+  @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
     Source
     |> Repo.get_by(kw)
   end
 
+  @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
     Source
     |> Repo.get_by(kw)
@@ -421,5 +423,12 @@ defmodule Logflare.Sources do
     count = Enum.count(sources)
 
     if count == 0, do: 1, else: count
+  end
+
+  @spec get_source_for_lv_param(binary) :: Logflare.Source.t()
+  def get_source_for_lv_param(source_id) when is_binary(source_id) do
+    get_by_and_preload(id: source_id)
+    |> preload_saved_searches()
+    |> put_bq_table_data()
   end
 end

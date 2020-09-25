@@ -65,7 +65,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
-      {:phoenix_live_view, "~> 0.13.0"},
+      {:phoenix_live_view, "~> 0.14.0"},
       {:phoenix_live_dashboard, "~> 0.1"},
       {:cors_plug, "~> 2.0"},
 
@@ -109,7 +109,7 @@ defmodule Logflare.Mixfile do
       {:mint, "~> 1.0"},
       # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
-      {:poison, "~> 3.1"},
+      {:poison, "~> 4.0"},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.3.0"},
@@ -123,6 +123,7 @@ defmodule Logflare.Mixfile do
       {:mox, "~> 0.5", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:faker, "~> 0.12", only: :test},
+      {:mimic, "~> 1.0", only: :test},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
@@ -130,8 +131,8 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.29.0"},
-      {:google_api_big_query, "~> 0.38.0"},
+      {:google_api_cloud_resource_manager, "~> 0.34.0"},
+      {:google_api_big_query, "~> 0.46.0"},
       {:goth, "~> 1.2.0"},
 
       # Ecto
@@ -155,13 +156,13 @@ defmodule Logflare.Mixfile do
       {:statistex, "~> 1.0.0"},
 
       # HTML
-      {:floki, "~> 0.26.0"},
+      {:floki, "~> 0.28.0"},
 
       # Rust NIFs
       {:rustler, "~> 0.21.0", override: true},
 
       # Frontend
-      {:phoenix_live_react, "~> 0.2"},
+      {:phoenix_live_react, "~> 0.4"},
 
       # Dev
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},

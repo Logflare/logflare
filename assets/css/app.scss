@@ -21,6 +21,7 @@
 @import "pricing";
 @import "errors";
 @import "marketing_pricing";
+@import "log_event.scss";
 
 /* Try this for zooming on iPhone */
 button,
@@ -28,15 +29,15 @@ select,
 textarea,
 input {
   font-size: 16px !important;
-} 
+}
 
 #logo-box {
-  padding-left: .4em;
-    padding-top: .1em;
-    border-style: solid;
-    width: 2em;
-    height: 2em;
-    margin-right: .4em;
+  padding-left: 0.4em;
+  padding-top: 0.1em;
+  border-style: solid;
+  width: 2em;
+  height: 2em;
+  margin-right: 0.4em;
 }
 
 body {
@@ -188,7 +189,7 @@ code {
 .log-settings {
   display: flex;
   justify-content: flex-end;
-  }
+}
 
 .log-settings a,
 .log-settings a:hover {

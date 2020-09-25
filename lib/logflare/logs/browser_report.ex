@@ -6,23 +6,13 @@ defmodule Logflare.Logs.BrowserReport do
   end
 
   def handle_event(params) when is_map(params) do
-    report = handle_json(params)
-
     %{
-      "message" => message(report),
-      "metadata" => report
+      "message" => message(params),
+      "metadata" => params
     }
   end
 
-  def message(report) do
-    inspect(report)
+  def message(params) do
+    inspect(params)
   end
-
-  def handle_json(json) when is_map(json) do
-    for {key, val} <- json,
-        into: %{},
-        do: {String.replace(key, "-", "_"), handle_json(val)}
-  end
-
-  def handle_json(value), do: value
 end

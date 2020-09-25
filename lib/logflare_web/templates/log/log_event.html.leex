@@ -1,0 +1,23 @@
+<%= if @loading do %>
+  <div id="log-event-loading" class="blurred list-unstyled console-text-list">
+    <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
+    <%= live_react_component("Components.Loader", %{}, [id: "log-event-loader"]) %>
+  </div>
+<% else %>
+  <%= cond do %>
+    <% @error ->  %>
+    <div class="container" id="log-event-error">
+      Log event query error: <%= @error %>
+      The error was logged and we were notified.
+    </div>
+    <% is_nil(@id) ->  %>
+    <div class="container" id="log-event-not-found">
+      <h1>Event not found </h1>
+      <p>Either there is no event with <%= @id_param %> or event was ingested more than 72hrs ago. <a href="/" target="_blank">to homepage</a></p>
+    </div>
+    <% @id -> %>
+    <div class="container" id="log-event" class="blurred list-unstyled console-text-list">
+      <%= render("log_event_body.html", assigns) %>
+    </div>
+  <% end %>
+<% end %>

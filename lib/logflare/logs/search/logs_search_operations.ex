@@ -21,6 +21,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchOperation, as: SO
 
   @type chart_period :: :day | :hour | :minute | :second
+  @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()
 
   @default_limit 100
   @default_max_n_chart_ticks 1_000
@@ -285,7 +286,8 @@ defmodule Logflare.Logs.SearchOperations do
             values =
               for value <- values do
                 value
-                |> Timex.to_datetime(so.user_local_timezone)
+                # FIXME: user local timezone is needed during disconnected mount
+                |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
                 |> Timex.Timezone.convert("Etc/UTC")
               end
 
@@ -294,7 +296,8 @@ defmodule Logflare.Logs.SearchOperations do
           %{path: "timestamp", value: value} = pvo ->
             value =
               value
-              |> Timex.to_datetime(so.user_local_timezone)
+              # FIXME: user local timezone is needed during disconnected mount
+              |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
               |> Timex.Timezone.convert("Etc/UTC")
 
             %{pvo | value: value}
@@ -368,29 +371,20 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
+  @spec intersperse_missing_range_timestamps(list(map), dt_or_ndt, dt_or_ndt, chart_period) ::
+          list(map)
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
     use Timex
 
-    {step_period, from, until} =
-      case chart_period do
-        :day ->
-          {:days, DateTimeUtils.truncate(min, :day), DateTimeUtils.truncate(max, :day)}
+    step_period = String.to_existing_atom("#{chart_period}s")
+    from = DateTimeUtils.truncate(min, chart_period)
+    until = DateTimeUtils.truncate(max, chart_period)
 
-        :hour ->
-          {:hours, DateTimeUtils.truncate(min, :hour), DateTimeUtils.truncate(max, :hour)}
-
-        :minute ->
-          {:minutes, DateTimeUtils.truncate(min, :minute), DateTimeUtils.truncate(max, :minute)}
-
-        :second ->
-          min = DateTimeUtils.truncate(min, :second)
-          max = DateTimeUtils.truncate(max, :second)
-
-          if min == max do
-            {:seconds, min, Timex.shift(max, seconds: 1)}
-          else
-            {:seconds, min, max}
-          end
+    until =
+      if from == until and step_period == :seconds do
+        Timex.shift(until, seconds: 1)
+      else
+        until
       end
 
     empty_aggs =

@@ -4,6 +4,7 @@ defmodule Logflare.Factory do
   """
   use ExMachina.Ecto, repo: Logflare.Repo
   alias Logflare.{User, Source, Rule, LogEvent}
+  alias Logflare.Plans.Plan
 
   def user_factory do
     %User{
@@ -41,5 +42,11 @@ defmodule Logflare.Factory do
     }
 
     LogEvent.make(params, %{source: source})
+  end
+
+  def plan_factory() do
+    %Plan{
+      stripe_id: "31415"
+    }
   end
 end

@@ -1,5 +1,5 @@
 defmodule LogflareWeb.AdminSearchDashboardLive do
-  use Phoenix.LiveView, layout: {LogflareWeb.LayoutView, "live.html"}
+  use LogflareWeb, :live_view
   alias LogflareWeb.AdminView
   alias Logflare.SavedSearches.Analytics
   use LogflareWeb.LiveViewUtils

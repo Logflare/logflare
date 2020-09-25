@@ -9,11 +9,10 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Google.BigQuery
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.Bigquery
-  alias Logflare.Source.Bigquery.Schema
+  alias Logflare.Source.BigQuery.Schema
 
   import Ecto.Query, only: [from: 2]
 
@@ -21,8 +20,8 @@ defmodule Logflare.Source.Supervisor do
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
 
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(args \\ []) do
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def init(source_ids) do
@@ -215,7 +214,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def sync_persisted_schema_with_bq(source_token) when is_atom(source_token) do
-    {:ok, %{schema: schema}} = Bigquery.get_table(source_token)
+    {:ok, %{schema: schema}} = BigQuery.get_table(source_token)
     Schema.update(source_token, schema)
 
     %{schema: schema, type_map: type_map, field_count: field_count} =

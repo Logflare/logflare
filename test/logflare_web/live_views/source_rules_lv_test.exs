@@ -11,27 +11,32 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   alias Logflare.Users
   @endpoint LogflareWeb.Endpoint
   import Logflare.Factory
+  alias Logflare.Plans
+  alias Logflare.Plans.Plan
   use Placebo
+  use Mimic
 
   describe "LQL rules" do
     setup do
+      stub(Plans, :get_plan_by_user, fn _ -> %Plan{} end)
       user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
       user = Users.get(user.id)
 
       source = params_for(:source)
       {:ok, source} = Sources.create_source(source, user)
+      Sources.Cache.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
 
       {:ok, sink} =
         :source
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      rls = %RLS{source_id: source.token, source: source}
+      rls = %RLS{source_id: source.token, source: source, plan: %{limit_source_fields_limit: 500}}
 
       {:ok, _} = Sources.Counters.start_link()
       {:ok, _pid} = RLS.start_link(rls)
 
-      Process.sleep(300)
+      Process.sleep(100)
       %{sources: [source, sink], user: [user]}
     end
 
