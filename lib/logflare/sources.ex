@@ -40,11 +40,12 @@ defmodule Logflare.Sources do
     end
   end
 
+  @spec get(atom | integer) :: Source.t() | nil
   def get(source_id) when is_atom(source_id) do
     get_by(token: source_id)
   end
 
-  def get(source_id) do
+  def get(source_id) when is_integer(source_id) do
     Source
     |> Repo.get(source_id)
   end

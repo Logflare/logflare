@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Source.RulesLqlTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  @endpoint LogflareWeb.Endpoint
   import Phoenix.LiveViewTest
   alias Logflare.Sources
   alias Logflare.Lql.FilterRule
@@ -9,16 +10,22 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Rule
   alias Logflare.Users
-  @endpoint LogflareWeb.Endpoint
   import Logflare.Factory
   alias Logflare.Plans
   alias Logflare.Plans.Plan
-  use Placebo
   use Mimic
+  
+
+  setup_all do
+    Sources.Counters.start_link()
+    :ok
+  end
 
   describe "LQL rules" do
+    setup :set_mimic_global
+
     setup do
-      stub(Plans, :get_plan_by_user, fn _ -> %Plan{} end)
+      stub(Plans, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
       user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
       user = Users.get(user.id)
 
@@ -31,9 +38,8 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      rls = %RLS{source_id: source.token, source: source, plan: %{limit_source_fields_limit: 500}}
+      rls = %RLS{source_id: source.token, source: source}
 
-      {:ok, _} = Sources.Counters.start_link()
       {:ok, _pid} = RLS.start_link(rls)
 
       Process.sleep(100)

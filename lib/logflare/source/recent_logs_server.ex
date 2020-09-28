@@ -5,6 +5,7 @@ defmodule Logflare.Source.RecentLogsServer do
   """
   use Publicist
   use TypedStruct
+  alias Logflare.Plans.Plan
 
   typedstruct do
     field :source_id, atom(), enforce: true
@@ -14,7 +15,7 @@ defmodule Logflare.Source.RecentLogsServer do
     field :bigquery_dataset_id, binary()
     field :source, struct()
     field :user, struct()
-    field :plan, struct()
+    field :plan, Plan.t()
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
   end
