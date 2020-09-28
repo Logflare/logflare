@@ -1,12 +1,15 @@
 ExUnit.start()
 Faker.start()
+alias Logflare.{Lql, Plans, Logs, Sources}
 
 # Mimick mocks setup
-Mimic.copy(Logflare.Logs.LogEvents)
-Mimic.copy(Logflare.Logs.SearchQueryExecutor)
-Mimic.copy(Logflare.Lql)
-Mimic.copy(Logflare.Plans)
-Mimic.copy(Logflare.Plans.Cache)
+Mimic.copy(Logs.LogEvents)
+Mimic.copy(Logs.SearchQueryExecutor)
+Mimic.copy(Lql)
+Mimic.copy(Plans)
+Mimic.copy(Plans.Cache)
+Mimic.copy(Sources.Counters)
+Mimic.copy(Sources.Cache)
 
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)

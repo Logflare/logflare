@@ -10,6 +10,11 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Plans.Plan
   use Mimic
 
+  setup_all do
+    {:ok, _} = Sources.Counters.start_link()
+    :ok
+  end
+
   setup do
     import Logflare.Factory
 
@@ -23,7 +28,6 @@ defmodule LogflareWeb.LogControllerTest do
     s = Sources.get_by_and_preload(id: s.id)
 
     SystemMetricsSup.start_link()
-    {:ok, _} = Sources.Counters.start_link()
     Sources.RateCounters.start_link()
 
     Source.RateCounterServer.start_link(%RLS{source_id: s.token})
