@@ -8,7 +8,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
       log_params = %{"metadata" => %{"level1" => %{"level2" => %{"status-code" => 200}}}}
 
       assert transform(log_params, :to_bigquery_column_spec) == %{
-               "metadata" => %{"level1" => %{"level2" => %{"status_code" => 200}}}
+               "metadata" => %{"level1" => %{"level2" => %{"_status_code" => 200}}}
              }
     end
 
@@ -50,18 +50,18 @@ defmodule Logflare.Logs.IngestTransformerTest do
       assert Enum.map(@batch, &transform(&1, [:dashes_to_underscores])) == [
                %{
                  "metadata" => %{
-                   "level_1_dashed_key" => "value",
-                   "level1" => %{"level2" => %{"dashed_key" => "value"}}
+                   "level1" => %{"level2" => %{"_dashed_key" => "value"}},
+                   "_level_1_dashed_key" => "value"
                  }
                },
                %{
                  "metadata" => %{
-                   "level1" => [%{"level2" => %{"dashed_key_more_dashes" => "value"}}]
+                   "level1" => [%{"level2" => %{"_dashed_key_more_dashes" => "value"}}]
                  }
                },
                %{
                  "metadata" => %{
-                   "level1" => [%{"level2" => %{"dashed_key_more_dashes" => "value"}}]
+                   "level1" => [%{"level2" => %{"_dashed_key_more_dashes" => "value"}}]
                  }
                }
              ]
@@ -104,22 +104,24 @@ defmodule Logflare.Logs.IngestTransformerTest do
     ]
     test "alter leading numbers" do
       assert Enum.map(@batch, &transform(&1, [:alter_leading_numbers])) == [
-        %{
-          "metadata" => %{
-            "_1level_key" => %{"_2level_key" => %{"_3level_key" => "value"}}
-          }
-        },
-        %{
-          "metadata" => %{
-            "_1level_key" => [%{"_2level_key" => %{"_3level_key" => "value"}}]
-          }
-        },
-        %{
-          "metadata" => %{
-            "_1level" => [%{"_2level" => %{"_311level_key" => "value", "_312level_key" => "value"}}]
-          }
-        }
-      ]
+               %{
+                 "metadata" => %{
+                   "_1level_key" => %{"_2level_key" => %{"_3level_key" => "value"}}
+                 }
+               },
+               %{
+                 "metadata" => %{
+                   "_1level_key" => [%{"_2level_key" => %{"_3level_key" => "value"}}]
+                 }
+               },
+               %{
+                 "metadata" => %{
+                   "_1level" => [
+                     %{"_2level" => %{"_311level_key" => "value", "_312level_key" => "value"}}
+                   ]
+                 }
+               }
+             ]
     end
 
     @batch [
@@ -157,25 +159,17 @@ defmodule Logflare.Logs.IngestTransformerTest do
       assert Enum.map(@batch, &transform(&1, [:alphanumeric_only])) == [
                %{
                  "metadata" => %{
-                   "level_1_key_" => %{
-                     "level_2_key" => %{"threelevel_key" => "value"}
+                   "_level_1_key___________" => %{
+                     "_level_2_key_________" => %{"threelevel_key" => "value"}
                    }
                  }
                },
                %{
                  "metadata" => %{
-                   "1level_key" => [
-                     %{"2level_key" => %{"3level_key" => "value"}}
-                   ]
+                   "1level_key" => [%{"2level_key" => %{"_3level_key____" => "value"}}]
                  }
                },
-               %{
-                 "metadata" => %{
-                   "1level" => [
-                     %{"2level" => %{"3level_key" => "value"}}
-                   ]
-                 }
-               }
+               %{"metadata" => %{"1level" => [%{"2level" => %{"_3__level_key" => "value"}}]}}
              ]
     end
 
@@ -207,20 +201,18 @@ defmodule Logflare.Logs.IngestTransformerTest do
                %{
                  "metadata" => %{
                    "level_1_key_" => %{
-                     "level_2_key_FILE_" => %{"threelevel_key" => "value"}
+                     "__FILE_level_2_key_FILE_" => %{"threelevel_key" => "value"}
                    }
                  }
                },
                %{
                  "metadata" => %{
-                   "1level_key" => [%{"2level_key_PARTITION_" => %{"3level_key" => "value"}}]
+                   "__PARTITION_1level_key" => [
+                     %{"__FILE_2level_key_PARTITION_" => %{"3level_key" => "value"}}
+                   ]
                  }
                },
-               %{
-                 "metadata" => %{
-                   "1level" => [%{"2level" => %{"3level_key" => "value"}}]
-                 }
-               }
+               %{"metadata" => %{"__TABLE_1level" => [%{"2level" => %{"3level_key" => "value"}}]}}
              ]
     end
 
@@ -252,15 +244,9 @@ defmodule Logflare.Logs.IngestTransformerTest do
 
     test "max length" do
       assert Enum.map(@batch, &transform(&1, [{:field_length, max: 5}])) == [
-               %{
-                 "metadata" => %{"12345" => %{"12345" => %{"12345" => "value"}}}
-               },
-               %{
-                 "metadata" => %{"12345" => %{"12345" => %{"12345" => "value"}}}
-               },
-               %{
-                 "metadata" => %{"12345" => [%{"12345" => %{"12345" => "value"}}]}
-               }
+               %{"metadata" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
+               %{"metadata" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
+               %{"metadata" => %{"_12345" => [%{"_12345" => %{"12345" => "value"}}]}}
              ]
     end
   end

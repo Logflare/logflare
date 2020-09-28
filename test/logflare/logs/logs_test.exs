@@ -1,7 +1,6 @@
 defmodule Logflare.LogsTest do
   @moduledoc false
   use Logflare.DataCase
-  use Placebo
   import Logflare.Factory
   alias Logflare.Logs
   alias Logflare.Rules
@@ -20,6 +19,12 @@ defmodule Logflare.LogsTest do
   alias Logflare.Lql
   @test_dataset_location "us-east4"
   @plan %{limit_source_fields_limit: 500}
+  @moduletag :this
+
+  setup_all do
+    Counters.start_link() |> IO.inspect()
+    :ok
+  end
 
   describe "log event ingest for source with regex rules" do
     setup do

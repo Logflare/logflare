@@ -115,7 +115,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   end
 
   def render(assigns) do
-    ~L""
+    ~L"<div></div>"
   end
 
   def update(assigns, socket) do

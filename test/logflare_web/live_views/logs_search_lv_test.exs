@@ -1,20 +1,27 @@
 defmodule LogflareWeb.Source.SearchLVTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  import Phoenix.LiveViewTest
-  alias Logflare.Sources
-  alias Logflare.Users
   @endpoint LogflareWeb.Endpoint
-  use Placebo
+  import Phoenix.LiveViewTest
+  alias Logflare.{Sources, Users}
   alias Logflare.BigQuery.PredefinedTestUser
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql
   alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Repo
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
+  @moduletag :this
 
   setup_all do
-    Logflare.Sources.Counters.start_link()
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    Sources.Counters.start_link()
+
+    source = Sources.get_by(token: @test_token)
+
+    {:ok, pid} = RLS.start_link(%RLS{source_id: @test_token, source: source})
+    Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+
     :ok
   end
 
@@ -251,7 +258,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
         |> live("/sources/#{s.id}/search")
 
-      assert {:ok, view, html} = conn
+      assert {:ok, view, _html} = conn
 
       assert get_view_assigns(view).lql_rules == [
                %ChartRule{
@@ -272,7 +279,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
         |> live("/sources/#{s.id}/search?q=t:20020")
 
-      assert {:ok, view, html} = conn
+      assert {:ok, view, _html} = conn
 
       assert get_view_assigns(view).notifications == %{
                error:
@@ -395,19 +402,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp assign_user_source(_context) do
-    if is_nil(Process.whereis(@test_token)) do
-      source = Sources.get_by(token: @test_token)
-
-      try do
-        RLS.start_link(%RLS{source_id: @test_token, source: source})
-      rescue
-        _ ->
-          nil
-      end
-
-      Process.sleep(1000)
-    end
-
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
     source = Sources.get_by(token: @test_token)
