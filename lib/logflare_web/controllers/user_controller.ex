@@ -65,11 +65,28 @@ defmodule LogflareWeb.UserController do
   end
 
   def delete(
-        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
+        %{assigns: %{user: %User{billing_account: %{stripe_customer: stripe_customer}} = user}} =
+          conn,
         _params
       ) do
     with {:ok, _user} <- Users.delete_user(user),
-         {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer) do
+         {:ok, _response} <- Stripe.delete_customer(stripe_customer) do
+      conn
+      |> configure_session(drop: true)
+      |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
+    else
+      _err ->
+        conn
+        |> put_flash(
+          :error,
+          "Something went wrong! Please try again and contact support if this continues."
+        )
+        |> render("edit.html")
+    end
+  end
+
+  def delete(%{assigns: %{user: user}} = conn, _params) do
+    with {:ok, _user} <- Users.delete_user(user) do
       conn
       |> configure_session(drop: true)
       |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
