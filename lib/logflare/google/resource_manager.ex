@@ -233,7 +233,11 @@ defmodule Logflare.Google.CloudResourceManager do
     paid_users_team_members =
       Enum.map(all_paid_users, fn x ->
         TeamUsers.list_team_users_by(team_id: x.team.id)
-        |> Enum.filter(&(&1.valid_google_account == true or is_nil(&1.valid_google_account)))
+        |> Enum.filter(
+          &(&1.provider == "google" and
+              (&1.valid_google_account == true or
+                 is_nil(&1.valid_google_account)))
+        )
       end)
       |> List.flatten()
 
