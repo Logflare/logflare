@@ -11,7 +11,6 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.User
   alias Logflare.TeamUsers
-  alias Logflare.TeamUsers.TeamUser
   alias Logflare.Plans
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
@@ -209,13 +208,11 @@ defmodule Logflare.Google.CloudResourceManager do
     query =
       from(u in User,
         join: t in assoc(u, :team),
-        where: u.provider == "google",
-        where: u.valid_google_account == true or is_nil(u.valid_google_account),
         preload: [team: t],
         select: u
       )
 
-    paid_users =
+    all_paid_users =
       Repo.all(query)
       |> Enum.filter(fn x ->
         case Plans.get_plan_by_user(x) do
@@ -234,13 +231,21 @@ defmodule Logflare.Google.CloudResourceManager do
       end)
 
     paid_users_team_members =
-      Enum.map(paid_users, fn x ->
+      Enum.map(all_paid_users, fn x ->
         TeamUsers.list_team_users_by(team_id: x.team.id)
         |> Enum.filter(&(&1.valid_google_account == true or is_nil(&1.valid_google_account)))
       end)
       |> List.flatten()
 
-    (paid_users ++ paid_users_team_members)
+    valid_paid_users =
+      Enum.filter(all_paid_users, fn x ->
+        x.provider == "google" and
+          (x.valid_google_account == true or
+             is_nil(x.valid_google_account))
+      end)
+      |> List.flatten()
+
+    (valid_paid_users ++ paid_users_team_members)
     |> Enum.sort_by(& &1.updated_at, {:desc, Date})
     |> Enum.take(1450)
     |> Enum.map(&("user:" <> &1.email))
