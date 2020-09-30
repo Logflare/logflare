@@ -2,10 +2,10 @@
   <li class="list-group-item flex-fill">
     <div >
       <h6 class="header-margin"> Timestamp  </h6>
-      <%= @timestamp |> to_string() |> String.trim_trailing("Z") |> String.trim_trailing("0")  %> (UTC)
+      <%= Timex.to_datetime(@timestamp) %> UTC
     </div>
     <%= if @user_local_timezone do %>
-      <%= Timex.to_datetime(@timestamp, @user_local_timezone) |> to_string() |> String.replace(~r/\+\d\d:\d\d.+$/, "") |> String.trim_trailing("0") %> (<%= @user_local_timezone %>)
+      <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
     <% end %>
   </li>
   <li class="list-group-item flex-fill">
