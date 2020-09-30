@@ -44,6 +44,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
 
       body =
         LogView.render("log_event_body.html",
+          source: assigns.source,
           metadata: m,
           fmt_metadata: BqSchema.encode_metadata(m),
           message: le.body.message,
