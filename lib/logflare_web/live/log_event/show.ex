@@ -137,7 +137,7 @@ defmodule LogflareWeb.LogEventLive.Show do
     {"uuid", id}
   end
 
-  defp params_to_cache_key(%{"path" => path, "value" => value}) when path == "metadata.id" do
+  defp params_to_cache_key(%{"path" => path, "value" => value}) do
     {path, value}
   end
 end
