@@ -14,7 +14,7 @@ import LiveSocket from "phoenix_live_view"
 import LiveReact, {initLiveReact} from "phoenix_live_react"
 
 import sourceLiveViewHooks from "./source_lv_hooks"
-import logsLiveViewHooks from "./logs_lv_hooks"
+import logsLiveViewHooks from "./log_event_live_hooks"
 
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")

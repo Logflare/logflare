@@ -21,7 +21,8 @@
 @import "pricing";
 @import "errors";
 @import "marketing_pricing";
-@import "log_event.scss";
+@import "log_event";
+@import "json_formatter_logflare";
 
 /* Try this for zooming on iPhone */
 button,

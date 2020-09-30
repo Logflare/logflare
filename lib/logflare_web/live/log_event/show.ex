@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Logs.LV do
+defmodule LogflareWeb.LogEventLive.Show do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
@@ -19,25 +19,15 @@ defmodule LogflareWeb.Logs.LV do
     source = Sources.get_source_for_lv_param(source_id)
     token = source.token
 
-    {log_id, cache_key, task_fn} =
-      case params do
-        %{"uuid" => log_id} ->
-          {log_id, "uuid:#{log_id}",
-           fn -> {:uuid, LogEvents.fetch_event_by_id(token, log_id)} end}
-
-        %{"vercel_id" => log_id} ->
-          {log_id, "vercel:#{log_id}",
-           fn ->
-             {:vercel, LogEvents.fetch_event_by_path(token, "metadata.id", log_id)}
-           end}
-      end
+    {path, log_id} = cache_key = params_to_cache_key(params)
 
     socket =
       socket
       |> assign(:source, source)
+      |> assign(:origin, params["origin"])
       |> assign(:id_param, log_id)
 
-    le = LogEvents.Cache.get!(source.token, cache_key)
+    le = LogEvents.Cache.get!(token, cache_key)
 
     socket =
       cond do
@@ -48,6 +38,14 @@ defmodule LogflareWeb.Logs.LV do
           assign_log_event(socket, le)
 
         is_nil(le) and connected?(socket) ->
+          task_fn = fn ->
+            {cache_key,
+             case path do
+               "uuid" -> LogEvents.fetch_event_by_id(token, log_id)
+               "metadata." <> _ -> LogEvents.fetch_event_by_path(token, path, log_id)
+             end}
+          end
+
           Task.async(task_fn)
 
           assign(socket, :loading, true)
@@ -90,7 +88,7 @@ defmodule LogflareWeb.Logs.LV do
     LogflareWeb.LogView.render("log_event.html", assigns)
   end
 
-  def handle_info({_ref, {origin, msg}}, socket) do
+  def handle_info({_ref, {cache_key, msg}}, socket) do
     token = socket.assigns.source.token
 
     socket =
@@ -101,21 +99,11 @@ defmodule LogflareWeb.Logs.LV do
         bq_row when is_map(bq_row) ->
           le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
 
-          case origin do
-            :vercel ->
-              LogEvents.Cache.put(
-                token,
-                "vercel:#{le.body.metadata.id}",
-                le
-              )
-
-            :uuid ->
-              LogEvents.Cache.put(
-                token,
-                "uuid:#{le.id}",
-                le
-              )
-          end
+          LogEvents.Cache.put(
+            token,
+            cache_key,
+            le
+          )
 
           assign_log_event(socket, le)
 
@@ -142,5 +130,14 @@ defmodule LogflareWeb.Logs.LV do
     |> assign(:id, le.id)
     |> assign(:timestamp, Timex.from_unix(ts, :microsecond))
     |> assign(:loading, false)
+  end
+
+  @spec params_to_cache_key(map()) :: {String.t(), String.t()}
+  defp params_to_cache_key(%{"uuid" => id}) do
+    {"uuid", id}
+  end
+
+  defp params_to_cache_key(%{"path" => path, "value" => value}) do
+    {path, value}
   end
 end

@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Logs.LogLVTest do
+defmodule LogflareWeb.LogEventLive.ShowTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   import Phoenix.LiveViewTest
@@ -6,12 +6,15 @@ defmodule LogflareWeb.Logs.LogLVTest do
   alias Logflare.Repo
   alias Logflare.User
   @endpoint LogflareWeb.Endpoint
+  @moduletag :this
+
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.LogEvents
   import Ecto.Query
   use Mimic
 
-  setup do
+  setup_all do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
     email = System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM")
     source_token = "2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
@@ -23,7 +26,6 @@ defmodule LogflareWeb.Logs.LogLVTest do
     source = Sources.get_by(token: source_token)
     Logflare.Sources.Counters.start_link()
     {:ok, _} = RLS.start_link(%RLS{source_id: String.to_atom(source_token), source: source})
-    Process.sleep(1000)
 
     %{user: user, source: [source]}
   end
@@ -51,7 +53,7 @@ defmodule LogflareWeb.Logs.LogLVTest do
 
       html = render(view)
 
-      le_cached = LogEvents.Cache.get!(s.token, "uuid:#{uuid}")
+      le_cached = LogEvents.Cache.get!(s.token, {"uuid", uuid})
       assert not is_nil(le_cached)
 
       assert html =~ ~s|id="log-event"|
@@ -63,13 +65,13 @@ defmodule LogflareWeb.Logs.LogLVTest do
     test "mounted, event cached", %{conn: conn, source: [s | _], user: user} do
       ev = generate_log_event()
 
+      uuid = ev.id
+
       LogEvents.Cache.put(
         s.token,
-        "uuid:#{ev.id}",
+        {"uuid", uuid},
         ev
       )
-
-      uuid = ev.id
 
       conn =
         conn
@@ -125,11 +127,12 @@ defmodule LogflareWeb.Logs.LogLVTest do
       user: user
     } do
       vercel_id = bq_row() |> Map.get(:metadata) |> hd |> Map.get(:id)
+      path = "metadata.id"
 
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?vercel_id=#{vercel_id}")
+        |> get("/sources/#{s.id}/log_event?path=#{path}&value=#{vercel_id}")
 
       html = html_response(conn, 200)
 
@@ -146,7 +149,7 @@ defmodule LogflareWeb.Logs.LogLVTest do
 
       html = render(view)
 
-      le_cached = LogEvents.Cache.get!(s.token, "vercel:#{vercel_id}")
+      le_cached = LogEvents.Cache.get!(s.token, {"metadata.id", vercel_id})
       assert not is_nil(le_cached)
 
       assert html =~ ~s|id="log-event"|
@@ -157,17 +160,19 @@ defmodule LogflareWeb.Logs.LogLVTest do
 
     test "mounted with cached log event", %{conn: conn, source: [s | _], user: user} do
       ev = generate_log_event()
+      path = "metadata.id"
+      vercel_id = bq_row() |> Map.get(:metadata) |> hd |> Map.get(:id)
 
       LogEvents.Cache.put(
         s.token,
-        "vercel:#{ev.body.metadata.id}",
+        {"metadata.id", vercel_id},
         ev
       )
 
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?vercel_id=#{ev.body.metadata.id}")
+        |> get("/sources/#{s.id}/log_event?path=#{path}&value=#{vercel_id}")
 
       html = html_response(conn, 200)
       assert not (html =~ ~s|id="log-event-loading"|)
@@ -177,11 +182,12 @@ defmodule LogflareWeb.Logs.LogLVTest do
 
     test "mounted, query returned error", %{conn: conn, source: [s | _], user: user} do
       vercel_id = bq_row() |> Map.get(:metadata) |> hd |> Map.get(:id)
+      path = "metadata.id"
 
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?vercel_id=#{vercel_id}")
+        |> get("/sources/#{s.id}/log_event?path=#{path}&value=#{vercel_id}")
 
       html = html_response(conn, 200)
       assert html =~ ~s|id="log-event-loading"|

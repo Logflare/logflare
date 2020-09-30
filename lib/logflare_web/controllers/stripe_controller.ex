@@ -17,9 +17,23 @@ defmodule LogflareWeb.StripeController do
              {:ok, _billing_account} <- BillingAccounts.sync_invoices(ba) do
           ok(conn)
         else
+          nil = err ->
+            message = "customer not found: #{customer}"
+
+            Logger.error("Stripe webhook error: #{type}", %{
+              billing: %{
+                webhook_type: type,
+                error_string: inspect(err),
+                customer: customer,
+                message: message
+              }
+            })
+
+            conflict(conn, message)
+
           err ->
             Logger.error("Stripe webhook error: #{type}", %{
-              billing: %{webhook_type: type, error_string: inspect(err)}
+              billing: %{webhook_type: type, error_string: inspect(err), customer: customer}
             })
 
             conflict(conn)
@@ -38,9 +52,23 @@ defmodule LogflareWeb.StripeController do
 
             ok(conn)
           else
+            nil = err ->
+              message = "customer not found: #{customer}"
+
+              Logger.error("Stripe webhook error: #{type}", %{
+                billing: %{
+                  webhook_type: type,
+                  error_string: inspect(err),
+                  customer: customer,
+                  message: message
+                }
+              })
+
+              conflict(conn, message)
+
             err ->
               Logger.error("Stripe webhook error: #{type}", %{
-                billing: %{webhook_type: type, error_string: inspect(err)}
+                billing: %{webhook_type: type, error_string: inspect(err), customer: customer}
               })
 
               conflict(conn)
@@ -57,9 +85,23 @@ defmodule LogflareWeb.StripeController do
 
           ok(conn)
         else
+          nil = err ->
+            message = "customer not found: #{customer}"
+
+            Logger.error("Stripe webhook error: #{type}", %{
+              billing: %{
+                webhook_type: type,
+                error_string: inspect(err),
+                customer: customer,
+                message: message
+              }
+            })
+
+            conflict(conn, message)
+
           err ->
             Logger.error("Stripe webhook error: #{type}", %{
-              billing: %{webhook_type: type, error_string: inspect(err)}
+              billing: %{webhook_type: type, error_string: inspect(err), customer: customer}
             })
 
             conflict(conn)
@@ -79,10 +121,10 @@ defmodule LogflareWeb.StripeController do
     |> json(%{message: "ok"})
   end
 
-  defp conflict(conn) do
+  defp conflict(conn, message \\ "conflict") do
     conn
     |> put_status(409)
-    |> json(%{message: "conflict"})
+    |> json(%{message: message})
   end
 
   defp not_implimented(conn) do
