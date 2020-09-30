@@ -20,6 +20,10 @@
 }
 
 #metadata-viewer {
-  padding: 20px;
-  margin-top: 1rem;
+  padding-top: 20px;
+}
+
+pre#metadata-raw-json {
+  padding: 0;
+  font-size: 0.875em;
 }
