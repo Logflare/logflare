@@ -19,7 +19,7 @@ hooks.MetadataJsonViewer = {
     $("#log-event-uri").tooltip()
 
     const json = JSON.parse(this.el.innerText)
-    const formatter = new JSONFormatter(json, 3, { theme: "logflare" })
+    const formatter = new JSONFormatter(json, Infinity, { theme: "logflare" })
     document.getElementById("metadata-viewer").appendChild(formatter.render())
   },
 }
