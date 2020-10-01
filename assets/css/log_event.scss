@@ -1,6 +1,11 @@
 #log-event #metadata-nav a {
-  text-decoration: underline;
+  text-decoration: none;
   outline: unset;
+}
+
+#log-event #metadata-nav a:hover {
+  text-decoration: underline;
+  
 }
 
 #log-event #metadata-nav a#metadata-viewer-link {
