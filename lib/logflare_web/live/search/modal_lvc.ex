@@ -32,74 +32,32 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     )
   end
 
-  def render(
-        %{active_modal: "metadataModal:" <> id_and_timestamp, metadata_modal_log_event: le} =
-          assigns
-      ) do
-    [id, _timestamp] = String.split(id_and_timestamp, "|")
-
-    if is_nil(le) or le.id != id do
-      render(Map.delete(assigns, :metadata_modal_log_event))
-    else
-      m = le.body.metadata
-
-      body =
-        LogView.render("log_event_body.html",
-          source: assigns.source,
-          metadata: m,
-          fmt_metadata: BqSchema.encode_metadata(m),
-          message: le.body.message,
-          id: le.id,
-          timestamp: Timex.from_unix(le.body.timestamp, :microsecond),
-          user_local_timezone: nil
-        )
-
-      SharedView.render("modal.html",
-        title: "Metadata",
-        body: body,
-        type: "metadata-modal"
-      )
-    end
-  end
-
-  def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
-    [id, _timestamp] = String.split(id_and_timestamp, "|")
-    token = assigns.source.token
-
-    pid = self()
-
-    Task.start(fn ->
-      token
-      |> LogEvents.fetch_event_by_id(id)
-      |> case do
-        %{} = bq_row ->
-          le = LE.make_from_db(bq_row, %{source: assigns.source})
-
-          LogEvents.Cache.put(
-            token,
-            {"uuid", id},
-            le
-          )
-
-          send(
-            pid,
-            {:phoenix, :send_update, {__MODULE__, :active_modal, %{metadata_modal_log_event: le}}}
-          )
-
-        {:error, error} ->
-          case error do
-            :not_found ->
-              Logger.error("Log event not found for id #{id}")
-
-            e ->
-              Logger.error("Error: #{inspect(e)}")
-          end
-      end
-    end)
-
+  def render(%{active_modal: "metadataModal:" <> _, metadata_modal_log_event: nil}) do
     SharedView.render("modal.html",
       title: "Metadata",
       body: SharedView.render("loader.html"),
+      type: "metadata-modal"
+    )
+  end
+
+  def render(%{active_modal: "metadataModal:" <> _, metadata_modal_log_event: le} = assigns)
+      when not is_nil(le) do
+    m = le.body.metadata
+
+    body =
+      LogView.render("log_event_body.html",
+        source: assigns.source,
+        metadata: m,
+        fmt_metadata: BqSchema.encode_metadata(m),
+        message: le.body.message,
+        id: le.id,
+        timestamp: Timex.from_unix(le.body.timestamp, :microsecond),
+        user_local_timezone: nil
+      )
+
+    SharedView.render("modal.html",
+      title: "Metadata",
+      body: body,
       type: "metadata-modal"
     )
   end
@@ -123,6 +81,54 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
 
   def render(assigns) do
     ~L"<div></div>"
+  end
+
+  def update(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns, socket) do
+    [id, _timestamp] = String.split(id_and_timestamp, "|")
+
+    token = assigns.source.token
+    le = LogEvents.Cache.get!(token, {"uuid", id})
+
+    pid = self()
+
+    if is_nil(le) do
+      Task.start(fn ->
+        token
+        |> LogEvents.fetch_event_by_id(id)
+        |> case do
+          %{} = bq_row ->
+            le = LE.make_from_db(bq_row, %{source: assigns.source})
+
+            LogEvents.Cache.put(
+              token,
+              {"uuid", id},
+              le
+            )
+
+            send(
+              pid,
+              {:phoenix, :send_update,
+               {__MODULE__, :active_modal, %{metadata_modal_log_event: le}}}
+            )
+
+          {:error, error} ->
+            case error do
+              :not_found ->
+                Logger.error("Log event not found for id #{id}")
+
+              e ->
+                Logger.error("Error: #{inspect(e)}")
+            end
+        end
+      end)
+    end
+
+    socket =
+      socket
+      |> assign(assigns)
+      |> assign(:metadata_modal_log_event, le)
+
+    {:ok, socket}
   end
 
   def update(assigns, socket) do
