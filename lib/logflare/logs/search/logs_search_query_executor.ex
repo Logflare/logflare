@@ -323,9 +323,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
           for row <- rows do
             le = LogEvent.make_from_db(row, %{source: source})
 
-            Logs.LogEvents.Cache.put_event_with_id_and_timestamp(
+            Logs.LogEvents.Cache.put(
               source.token,
-              [id: le.id, timestamp: DateTime.from_unix!(le.body.timestamp, :microsecond)],
+              {"uuid", le.id},
               le
             )
           end

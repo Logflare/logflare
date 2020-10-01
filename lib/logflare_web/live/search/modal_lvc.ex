@@ -9,6 +9,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   alias Logflare.Sources
   alias Logflare.Logs.LogEvents
   alias LogflareWeb.LogView
+  alias Logflare.LogEvent, as: LE
   require Logger
 
   @query_debug_modals ~w(queryDebugEventsModal queryDebugErrorModal queryDebugAggregatesModal)
@@ -62,28 +63,33 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   end
 
   def render(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns) do
-    [id, timestamp] = String.split(id_and_timestamp, "|")
-
-    timestamp = timestamp |> String.to_integer() |> DateTime.from_unix!(:microsecond)
+    [id, _timestamp] = String.split(id_and_timestamp, "|")
+    token = assigns.source.token
 
     pid = self()
 
     Task.start(fn ->
-      with {:ok, log_event} <-
-             LogEvents.Cache.fetch_event_by_id_and_timestamp(assigns.source.token,
-               id: id,
-               timestamp: timestamp
-             ) do
-        send(
-          pid,
-          {:phoenix, :send_update,
-           {__MODULE__, :active_modal, %{metadata_modal_log_event: log_event}}}
-        )
-      else
+      token
+      |> LogEvents.fetch_event_by_id(id)
+      |> case do
+        %{} = bq_row ->
+          le = LE.make_from_db(bq_row, %{source: assigns.source})
+
+          LogEvents.Cache.put(
+            token,
+            {"uuid", id},
+            le
+          )
+
+          send(
+            pid,
+            {:phoenix, :send_update, {__MODULE__, :active_modal, %{metadata_modal_log_event: le}}}
+          )
+
         {:error, error} ->
           case error do
             :not_found ->
-              Logger.error("Log event not found for id #{id} and timestamp #{timestamp}")
+              Logger.error("Log event not found for id #{id}")
 
             e ->
               Logger.error("Error: #{inspect(e)}")
