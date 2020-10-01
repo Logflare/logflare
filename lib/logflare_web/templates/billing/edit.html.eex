@@ -31,12 +31,14 @@
       <% end %>
     <% end %>
   </div>
+  <!--
   <div class="sub-form">
     <%= section_header("Logflare for Life") %>
     <p>We appreciate our early adopters.</p>
     <p>This deal is limited to the first 100 customers who opt for the Logflare for Life plan.</p>
     <%= live_render(@conn, LogflareWeb.LifetimeLive) %>
   </div>
+  -->
   <div class="sub-form">
     <%= section_header("Pricing") %>
     <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>

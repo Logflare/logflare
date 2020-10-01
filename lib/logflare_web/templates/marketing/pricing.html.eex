@@ -10,9 +10,11 @@
                 </div>
             </div>
         </div>
+        <!--
         <div class="my-5">
         <%= live_render(@conn, LogflareWeb.LifetimeLive) %>
         </div>
+        -->
         <div id="plans">
             <h2>Standard Plans</h2>
             <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
