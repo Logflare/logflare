@@ -2,7 +2,7 @@
   <li class="list-group-item flex-fill">
     <div >
       <h6 class="header-margin"> Timestamp  </h6>
-      <%= Timex.to_datetime(@timestamp) %> UTC
+      <%= Timex.to_datetime(@timestamp) %>
     </div>
     <%= if @user_local_timezone do %>
       <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
@@ -33,7 +33,7 @@
           <span class="pointer-cursor logflare-tooltip"
           data-trigger="hover focus" data-delay="0" data-toggle="tooltip"
           data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Click to copy</span>">
-           <i class="fas fa-copy"></i>
+          <i class="fas fa-copy"></i>
         </span>
       </a>
     </li>
