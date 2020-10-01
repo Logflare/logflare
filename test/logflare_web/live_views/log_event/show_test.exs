@@ -39,7 +39,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?uuid=#{uuid}")
+        |> get("/sources/#{s.id}/event?uuid=#{uuid}")
 
       html = html_response(conn, 200)
       assert html =~ ~s|id="log-event-loading"|
@@ -76,7 +76,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?uuid=#{uuid}")
+        |> get("/sources/#{s.id}/event?uuid=#{uuid}")
 
       html = html_response(conn, 200)
       assert html =~ ~s|id="log-event"|
@@ -91,7 +91,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?uuid=#{uuid}")
+        |> get("/sources/#{s.id}/event?uuid=#{uuid}")
 
       html = html_response(conn, 200)
       assert html =~ ~s|id="log-event-loading"|
@@ -132,7 +132,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?path=#{path}&value=#{vercel_id}")
+        |> get("/sources/#{s.id}/event?path=#{path}&value=#{vercel_id}")
 
       html = html_response(conn, 200)
 
@@ -172,7 +172,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?path=#{path}&value=#{vercel_id}")
+        |> get("/sources/#{s.id}/event?path=#{path}&value=#{vercel_id}")
 
       html = html_response(conn, 200)
       assert not (html =~ ~s|id="log-event-loading"|)
@@ -187,7 +187,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
-        |> get("/sources/#{s.id}/log_event?path=#{path}&value=#{vercel_id}")
+        |> get("/sources/#{s.id}/event?path=#{path}&value=#{vercel_id}")
 
       html = html_response(conn, 200)
       assert html =~ ~s|id="log-event-loading"|

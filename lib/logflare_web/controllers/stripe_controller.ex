@@ -8,8 +8,17 @@ defmodule LogflareWeb.StripeController do
 
   def event(
         conn,
-        %{"type" => type, "data" => %{"object" => %{"customer" => customer} = object}} = event
+        %{"id" => id, "type" => type, "data" => %{"object" => %{"customer" => customer} = object}} =
+          event
       ) do
+    LogflareLogger.context(%{
+      billing: %{
+        event_id: id,
+        customer: customer,
+        webhook_type: type
+      }
+    })
+
     case type do
       "invoice." <> _sub_type ->
         with %BillingAccount{} = ba <-
@@ -22,10 +31,7 @@ defmodule LogflareWeb.StripeController do
 
             Logger.error("Stripe webhook error: #{type}", %{
               billing: %{
-                webhook_type: type,
-                error_string: inspect(err),
-                customer: customer,
-                message: message
+                error_string: inspect(err)
               }
             })
 
@@ -33,12 +39,13 @@ defmodule LogflareWeb.StripeController do
 
           err ->
             Logger.error("Stripe webhook error: #{type}", %{
-              billing: %{webhook_type: type, error_string: inspect(err), customer: customer}
+              billing: %{error_string: inspect(err)}
             })
 
             conflict(conn)
         end
 
+      # Lifetime plan deprecated as of October 1, 2020
       "charge.succeeded" ->
         if lifetime_plan_charge?(event) do
           with %BillingAccount{} = ba <-
@@ -57,10 +64,7 @@ defmodule LogflareWeb.StripeController do
 
               Logger.error("Stripe webhook error: #{type}", %{
                 billing: %{
-                  webhook_type: type,
-                  error_string: inspect(err),
-                  customer: customer,
-                  message: message
+                  error_string: inspect(err)
                 }
               })
 
@@ -68,7 +72,9 @@ defmodule LogflareWeb.StripeController do
 
             err ->
               Logger.error("Stripe webhook error: #{type}", %{
-                billing: %{webhook_type: type, error_string: inspect(err), customer: customer}
+                billing: %{
+                  error_string: inspect(err)
+                }
               })
 
               conflict(conn)
@@ -77,11 +83,11 @@ defmodule LogflareWeb.StripeController do
           not_implimented(conn)
         end
 
-      "customer.subscription" <> sub_type ->
+      "customer.subscription" <> _sub_type = sub ->
         with %BillingAccount{} = ba <-
                BillingAccounts.get_billing_account_by(stripe_customer: customer),
              {:ok, _ba} <- BillingAccounts.sync_subscriptions(ba) do
-          Logger.info("Subscription customer #{sub_type}. Event id: #{event["id"]}")
+          Logger.info("Stripe subscription: #{sub}")
 
           ok(conn)
         else
@@ -90,10 +96,7 @@ defmodule LogflareWeb.StripeController do
 
             Logger.error("Stripe webhook error: #{type}", %{
               billing: %{
-                webhook_type: type,
-                error_string: inspect(err),
-                customer: customer,
-                message: message
+                error_string: inspect(err)
               }
             })
 
@@ -101,7 +104,9 @@ defmodule LogflareWeb.StripeController do
 
           err ->
             Logger.error("Stripe webhook error: #{type}", %{
-              billing: %{webhook_type: type, error_string: inspect(err), customer: customer}
+              billing: %{
+                error_string: inspect(err)
+              }
             })
 
             conflict(conn)
@@ -123,7 +128,7 @@ defmodule LogflareWeb.StripeController do
 
   defp conflict(conn, message \\ "conflict") do
     conn
-    |> put_status(409)
+    |> put_status(202)
     |> json(%{message: message})
   end
 

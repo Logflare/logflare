@@ -216,7 +216,7 @@
 .json-formatter-logflare.json-formatter-row,
 .json-formatter-logflare.json-formatter-row a,
 .json-formatter-logflare.json-formatter-row a:hover {
-  color: #9a9a9a;
+  color: white;
   text-decoration: none;
 }
 .json-formatter-logflare.json-formatter-row .json-formatter-row {
@@ -249,7 +249,7 @@
   color: #c7a1ff;
 }
 .json-formatter-logflare.json-formatter-row .json-formatter-boolean {
-  color: #e35b8d;
+  color: #fff86c;
 }
 .json-formatter-logflare.json-formatter-row .json-formatter-null {
   color: #eec97d;
@@ -264,8 +264,8 @@
   background-color: rgba(154, 154, 154, 0.05);
 }
 .json-formatter-logflare.json-formatter-row .json-formatter-url {
-  text-decoration: underline;
-  color: #027bff;
+  text-decoration: none;
+  color: #e35b8d;
   cursor: pointer;
 }
 .json-formatter-logflare.json-formatter-row .json-formatter-bracket {

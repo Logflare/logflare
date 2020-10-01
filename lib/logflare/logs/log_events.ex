@@ -43,7 +43,7 @@ defmodule Logflare.Logs.LogEvents do
     end
   end
 
-  @spec fetch_event_by_id(atom(), binary()) :: {:ok, map() | nil} | {:error, any()}
+  @spec fetch_event_by_id(atom(), binary()) :: map() | {:error, any()}
   def fetch_event_by_id(source_token, id) when is_atom(source_token) and is_binary(id) do
     source = Sources.Cache.get_by_id_and_preload(source_token)
     bq_table_id = source.bq_table_id
