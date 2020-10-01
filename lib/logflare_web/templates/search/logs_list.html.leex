@@ -8,11 +8,11 @@
         <%= for log <- @log_events do %>
           <li id="log-event_<%= log.id || log.body.timestamp %>">
             <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>
-            <mark class="log-datestamp" data-timestamp="<%= timestamp %>">
-              <%= if @use_local_time do %>
-                <%= format_timestamp(timestamp, @user_local_timezone) %>
-              <% else %>
-                <%= format_timestamp(timestamp) <> " UTC"%><% end %></mark>
+            <%= if @use_local_time do %>
+              <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp, @user_local_timezone) %></mark>
+            <% else %>
+              <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp) <> " UTC"%></mark>
+            <% end %>
             <%= message %>
             <a class="metadata-link"
                 phx-click="activate_modal"
