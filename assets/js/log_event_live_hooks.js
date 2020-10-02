@@ -23,7 +23,7 @@ hooks.MetadataJsonViewer = {
     )
 
     const formatter = new JSONFormatter(json, Infinity, {theme: "logflare"})
-    document.getElementById("metadata-viewer").appendChild(formatter.render())
+    $("#metadata-viewer").html(formatter.render())
   },
 }
 
