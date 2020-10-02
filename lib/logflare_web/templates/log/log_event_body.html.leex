@@ -2,11 +2,15 @@
   <li class="list-group-item flex-fill">
     <div >
       <h6 class="header-margin"> Timestamp  </h6>
-      <%= Timex.to_datetime(@timestamp) %>
+      <div><%= Timex.to_datetime(@timestamp) %></div>
+      <div>
+        <%= if @user_local_timezone do %>
+          <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
+        <% else %>
+          <br/>
+        <% end %>
+      </div>
     </div>
-    <%= if @user_local_timezone do %>
-      <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
-    <% end %>
   </li>
   <li class="list-group-item flex-fill">
     <h6 class="header-margin"> UUID </h6>
@@ -41,6 +45,7 @@
   <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
     <div class="tab-content">
       <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
+        <pre class="blurred"></code><%= String.replace(@fmt_metadata, ~r/[\{\}]/, "") %></code></pre>
       </div>
       <div class="tab-pane" id="metadata-raw" role="tabpanel">
         <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code id="metadata-raw-json-code"><%= @fmt_metadata %></code></pre>
