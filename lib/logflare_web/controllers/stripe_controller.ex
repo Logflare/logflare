@@ -61,11 +61,11 @@ defmodule LogflareWeb.StripeController do
           not_implimented(conn)
         end
 
-      "customer.subscription" <> _sub_type = sub ->
+      "customer.subscription" <> _sub_type ->
         with %BillingAccount{} = ba <-
                BillingAccounts.get_billing_account_by(stripe_customer: customer),
              {:ok, _ba} <- BillingAccounts.sync_subscriptions(ba) do
-          Logger.info("Stripe subscription: #{sub}")
+          Logger.info("Stripe webhook: #{type}")
 
           ok(conn)
         else
@@ -110,7 +110,10 @@ defmodule LogflareWeb.StripeController do
 
   defp customer_not_found(conn) do
     customer = LogflareLogger.context().billing.customer
+    type = LogflareLogger.context().billing.webhook_type
     message = "customer not found: #{customer}"
+
+    Logger.warn("Stripe webhook: #{type}")
 
     ok(conn, message)
   end
