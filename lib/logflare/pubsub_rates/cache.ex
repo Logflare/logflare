@@ -3,15 +3,10 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Source
 
-  import Cachex.Spec
-
   @default_bucket_width 60
-  @ttl 300_000
 
   def child_spec(_) do
-    cachex_opts = [
-      expiration: expiration(default: @ttl)
-    ]
+    cachex_opts = []
 
     %{
       id: __MODULE__,

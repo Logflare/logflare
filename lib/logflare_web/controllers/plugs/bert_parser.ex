@@ -36,7 +36,7 @@ defmodule Plug.Parsers.BERT do
     {:ok, body, conn}
   rescue
     e ->
-      reraise Plug.Parsers.ParseError, exception: e
+      reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
   end
 
   def decode({:more, _, conn}) do
