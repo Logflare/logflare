@@ -72,7 +72,7 @@ defmodule Logflare.Sources do
     |> Repo.update()
   end
 
-  def update_source_by_user(source, plan, %{"notifications_every" => ""} = attrs) do
+  def update_source_by_user(_source, _plan, %{"notifications_every" => ""}) do
     {:error, :select_frequency}
   end
 
