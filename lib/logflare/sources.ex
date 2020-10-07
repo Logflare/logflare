@@ -72,6 +72,10 @@ defmodule Logflare.Sources do
     |> Repo.update()
   end
 
+  def update_source_by_user(source, plan, %{"notifications_every" => ""} = attrs) do
+    {:error, :select_frequency}
+  end
+
   def update_source_by_user(source, plan, %{"notifications_every" => freq} = attrs) do
     freq = String.to_integer(freq)
     limit = plan.limit_alert_freq
