@@ -20,7 +20,7 @@ defmodule Logflare.PubSubRates.Cache do
       val -> {:commit, Map.merge(val, rates)}
     end)
 
-    Cachex.refresh(__MODULE__, {source_id, "rates"})
+    Cachex.expire(__MODULE__, {source_id, "rates"}, :timer.seconds(5))
   end
 
   def cache_inserts(source_id, inserts) do
@@ -28,8 +28,6 @@ defmodule Logflare.PubSubRates.Cache do
       nil -> {:commit, inserts}
       val -> {:commit, Map.merge(val, inserts)}
     end)
-
-    Cachex.refresh(__MODULE__, {source_id, "inserts"})
   end
 
   def cache_buffers(source_id, buffers) do
@@ -37,8 +35,6 @@ defmodule Logflare.PubSubRates.Cache do
       nil -> {:commit, buffers}
       val -> {:commit, Map.merge(val, buffers)}
     end)
-
-    Cachex.refresh(__MODULE__, {source_id, "inserts"})
   end
 
   def get_buffers(source_id) do
