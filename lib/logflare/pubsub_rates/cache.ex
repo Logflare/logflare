@@ -14,7 +14,7 @@ defmodule Logflare.PubSubRates.Cache do
     }
   end
 
-  def cache_rates(source_id, rates) do
+  def cache_rates(source_id, rates) when is_atom(source_id) do
     Cachex.get_and_update(__MODULE__, {source_id, "rates"}, fn
       nil -> {:commit, rates}
       val -> {:commit, Map.merge(val, rates)}
@@ -23,25 +23,25 @@ defmodule Logflare.PubSubRates.Cache do
     Cachex.expire(__MODULE__, {source_id, "rates"}, :timer.seconds(5))
   end
 
-  def cache_inserts(source_id, inserts) do
+  def cache_inserts(source_id, inserts) when is_atom(source_id) do
     Cachex.get_and_update(__MODULE__, {source_id, "inserts"}, fn
       nil -> {:commit, inserts}
       val -> {:commit, Map.merge(val, inserts)}
     end)
   end
 
-  def cache_buffers(source_id, buffers) do
+  def cache_buffers(source_id, buffers) when is_atom(source_id) do
     Cachex.get_and_update(__MODULE__, {source_id, "buffers"}, fn
       nil -> {:commit, buffers}
       val -> {:commit, Map.merge(val, buffers)}
     end)
   end
 
-  def get_buffers(source_id) do
+  def get_buffers(source_id) when is_atom(source_id) do
     Cachex.get(__MODULE__, {source_id, "buffers"})
   end
 
-  def get_cluster_buffers(source_id) do
+  def get_cluster_buffers(source_id) when is_atom(source_id) do
     case get_buffers(source_id) do
       {:ok, nil} ->
         0
@@ -54,11 +54,11 @@ defmodule Logflare.PubSubRates.Cache do
     end
   end
 
-  def get_rates(source_id) do
+  def get_rates(source_id) when is_atom(source_id) do
     Cachex.get(__MODULE__, {source_id, "rates"})
   end
 
-  def get_cluster_rates(source_id) do
+  def get_cluster_rates(source_id) when is_atom(source_id) do
     case get_rates(source_id) do
       {:ok, nil} ->
         # This should be data from the node RCS * the cluster size, otherwise we're effectively not rate limiting until cluster rates get cached.
@@ -83,11 +83,11 @@ defmodule Logflare.PubSubRates.Cache do
     end
   end
 
-  def get_inserts(source_id) do
+  def get_inserts(source_id) when is_atom(source_id) do
     Cachex.get(__MODULE__, {source_id, "inserts"})
   end
 
-  def get_cluster_inserts(source_id) do
+  def get_cluster_inserts(source_id) when is_atom(source_id) do
     case get_inserts(source_id) do
       {:ok, nil} ->
         Source.Data.get_total_inserts(source_id)
