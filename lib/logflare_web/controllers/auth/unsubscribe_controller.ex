@@ -6,42 +6,39 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
 
   @max_age 86_400
 
-  def unsubscribe(conn, %{"id" => source_id, "token" => token}) do
+  def unsubscribe(conn, %{"id" => source_id, "token" => token, "data" => data}) do
+    data = Jason.decode!(data) |> IO.inspect()
+
     case Auth.verify_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
-        source = Sources.get(source_id)
+        source = Sources.get(String.to_integer(source_id))
 
-        changeset =
-          Source.update_by_user_changeset(source, %{
-            notifications: %{user_email_notifications: false}
-          })
+        changeset = Source.update_by_user_changeset(source, data)
 
         update_source(conn, changeset)
 
       {:error, :expired} ->
         conn
         |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, :invalid} ->
         conn
         |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 
-  def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "schema"}) do
-    IO.puts("BLAH")
-
+  def unsubscribe(conn, %{"id" => source_id, "token" => token}) do
     case Auth.verify_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
-        source = Sources.get(source_id)
+        source = Sources.get(String.to_integer(source_id))
 
         changeset =
           Source.update_by_user_changeset(source, %{
-            notifications: %{user_schema_update_notifications: false}
+            notifications: %{user_email_notifications: false}
           })
 
         update_source(conn, changeset)
@@ -62,7 +59,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
-        source = Sources.get(source_id)
+        source = Sources.get(String.to_integer(source_id))
 
         changeset =
           Source.update_by_user_changeset(source, %{
@@ -77,12 +74,12 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
       {:error, :expired} ->
         conn
         |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, :invalid} ->
         conn
         |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 
@@ -90,7 +87,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->
         team_user = TeamUsers.get_team_user_by(email: email)
-        source = Sources.get(source_id)
+        source = Sources.get(String.to_integer(source_id))
 
         team_user_ids_for_email =
           Enum.filter(source.notifications.team_user_ids_for_email, fn x ->
@@ -107,12 +104,12 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
       {:error, :expired} ->
         conn
         |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, :invalid} ->
         conn
         |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 
@@ -121,12 +118,12 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Unsubscribed!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, _changeset} ->
         conn
         |> put_flash(:error, "Something went wrong!")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 

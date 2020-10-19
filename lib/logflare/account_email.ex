@@ -108,15 +108,42 @@ defmodule Logflare.AccountEmail do
   end
 
   def schema_updated(
-        %Source{user: %User{email_preferred: email}} = source,
+        %User{email_preferred: email},
+        %Source{} = source,
         new_schema,
         old_schema
-      ) do
-    source_link = Routes.source_url(Endpoint, :show, source.id)
-    signature = Auth.gen_token(email)
+      ),
+      do: schema_updated(email, source, new_schema, old_schema)
 
-    unsubscribe_link =
-      Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature, type: "schema")
+  def schema_updated(
+        %TeamUser{email_preferred: email},
+        %Source{} = source,
+        new_schema,
+        old_schema
+      ),
+      do: schema_updated(email, source, new_schema, old_schema)
+
+  def schema_updated(
+        email,
+        %Source{} = source,
+        new_schema,
+        old_schema
+      )
+      when is_binary(email) do
+    source_link = Routes.source_url(Endpoint, :show, source.id)
+
+    manage_schema_notifications_link =
+      Routes.source_url(Endpoint, :edit, source.id) <> "#schema-change-alerts"
+
+    # signature = Auth.gen_token(email)
+
+    # unsubscribe_link =
+    #   Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature,
+    #     data:
+    #       Jason.encode!(%{
+    #         notifications: %{user_schema_update_notifications: false}
+    #       })
+    #   )
 
     formatted_new = BqSchema.format_bq_schema(new_schema, type: :text)
     formatted_old = BqSchema.format_bq_schema(old_schema, type: :text)
@@ -151,7 +178,7 @@ defmodule Logflare.AccountEmail do
     """
 
     unsuscribe_part = """
-    Unsubscribe: #{unsubscribe_link}
+    Manage schema change alerts: #{manage_schema_notifications_link}
     """
 
     new()
