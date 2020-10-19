@@ -70,7 +70,9 @@ defmodule Logflare.Source do
                :team_user_ids_for_sms,
                :other_email_notifications,
                :user_email_notifications,
-               :user_text_notifications
+               :user_text_notifications,
+               :user_schema_update_notifications,
+               :team_user_ids_for_schema_updates
              ]}
 
     embedded_schema do
@@ -79,6 +81,8 @@ defmodule Logflare.Source do
       field :other_email_notifications, :string
       field :user_email_notifications, :boolean, default: false
       field :user_text_notifications, :boolean, default: false
+      field :user_schema_update_notifications, :boolean, default: true
+      field :team_user_ids_for_schema_updates, {:array, :string}, default: [], nullable: false
     end
 
     def changeset(notifications, attrs) do
@@ -88,7 +92,9 @@ defmodule Logflare.Source do
         :team_user_ids_for_sms,
         :other_email_notifications,
         :user_email_notifications,
-        :user_text_notifications
+        :user_text_notifications,
+        :user_schema_update_notifications,
+        :team_user_ids_for_schema_updates
       ])
     end
   end

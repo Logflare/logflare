@@ -67,6 +67,7 @@
 <% end %>
 <%= submit "Reset email preferences", class: "btn btn-sm btn-secondary form-button" %>
 <% end %>
+
 <%= section_header("SMS Alerts") %>
 <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most you will get one text message per minute.</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
@@ -123,6 +124,41 @@
 <%= if @source.webhook_notification_url do %>
   <%= link "Test webhook", to: Routes.source_path(@conn, :test_alerts, @source), class: "btn btn-primary form-button", role: "button" %>
 <% end %>
+
+<%= section_header("Schema Change Alerts") %>
+<p>We automatically update your source schema based on the incoming metadata payload. Get an email when the source schema is updated.</p>
+<%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn b -> %>
+<div class="form-group">
+  <%= inputs_for b, :notifications, fn bn -> %>
+
+  <div class="form-control-margin">
+    <%= label bn, :user_schema_update_notifications, "Send email alerts to the account owner ", class: "" %>
+    <%= if is_nil(@user.email_preferred) do %>
+      <%= link " (add a preferred email)", to: Routes.user_path(@conn, :edit), class: "label-padding"%>
+    <% else %>
+      <%= link " (#{@user.email_preferred})", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
+    <% end %>
+    <%= checkbox bn, :user_schema_update_notifications %>
+    <%= error_tag bn, :user_schema_update_notifications %>
+  </div>
+  <%= label bn, :team_user_ids_for_schema_updates, "Select some team members to alert", class: "label-padding" %></br>
+<%= multiple_select bn, :team_user_ids_for_schema_updates, Enum.map(@team.team_users, fn x -> {"#{x.name || x.email} (#{x.email})", x.id} end), selected: @source.notifications.team_user_ids_for_email, class: "form-control form-control-margin selectpicker", data: [width: "65%"] %>
+<small class="form-text text-muted">
+  Reset preferences to clear this list.
+</small>
+<% end %>
+</div>
+<%= submit "Update schema change notifications", class: "btn btn-primary form-button" %>
+<% end %>
+<%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn clear_b -> %>
+<%= inputs_for clear_b, :notifications, fn bn -> %>
+<%= hidden_input(bn, :user_schema_update_notifications, value: "true") %>
+<%= hidden_input(bn, :team_user_ids_for_schema_updates, value: []) %>
+<%= hidden_input(bn, :other_email_notifications, value: "") %>
+<% end %>
+<%= submit "Reset", class: "btn btn-sm btn-secondary form-button" %>
+<% end %>
+
 <%= section_header("Custom Event Message") %>
 <p>Comma separated list of metadata keys to customize the event message.</p>
 <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>

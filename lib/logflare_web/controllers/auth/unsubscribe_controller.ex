@@ -31,6 +31,33 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     end
   end
 
+  def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "schema"}) do
+    IO.puts("BLAH")
+
+    case Auth.verify_token(token, @max_age) do
+      {:ok, _email} ->
+        # We don't have the source in the assigns because we don't require auth to unsubscribe
+        source = Sources.get(source_id)
+
+        changeset =
+          Source.update_by_user_changeset(source, %{
+            notifications: %{user_schema_update_notifications: false}
+          })
+
+        update_source(conn, changeset)
+
+      {:error, :expired} ->
+        conn
+        |> put_flash(:error, "That link is expired!")
+        |> redirect(to: Routes.auth_path(conn, :login))
+
+      {:error, :invalid} ->
+        conn
+        |> put_flash(:error, "Bad link!")
+        |> redirect(to: Routes.auth_path(conn, :login))
+    end
+  end
+
   def unsubscribe_stranger(conn, %{"id" => source_id, "token" => token}) do
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->

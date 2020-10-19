@@ -13,6 +13,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.LogEvent
+  alias Logflare.AccountEmail
+  alias Logflare.Mailer
 
   @persist_every 60_000
   @timeout 60_000
@@ -147,6 +149,10 @@ defmodule Logflare.Source.BigQuery.Schema do
           Logger.info("Source schema updated from log_event!")
 
           Sources.Cache.put_bq_schema(state.source_token, schema)
+
+          Sources.Cache.get_by_and_preload(token: state.source_token)
+          |> AccountEmail.schema_updated(schema, state.schema)
+          |> Mailer.deliver()
 
           {:reply, :ok,
            %{
