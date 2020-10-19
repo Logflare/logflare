@@ -51,7 +51,7 @@
   <div class="sub-form">
     <%= section_header("Payment Method") %>
     <p>Update your credit card on file.</p>
-    <%= link "Update payment method", to: Routes.billing_path(@conn, :change_subscription), class: "btn btn-primary form-button" %>
+    <%= link "Update payment method", to: Routes.billing_path(@conn, :update_payment_details), class: "btn btn-primary form-button" %>
   </div>
   <div class="sub-form">
     <%= section_header("Subscriptions") %>
