@@ -5,28 +5,50 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   alias Logflare.Auth
 
   @max_age 86_400
+  def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "team_user"}) do
+    case Auth.verify_token(token, @max_age) do
+      {:ok, email} ->
+        team_user = TeamUsers.get_team_user_by(email: email)
+        source = Sources.get(String.to_integer(source_id))
 
-  def unsubscribe(conn, %{"id" => source_id, "token" => token, "data" => data}) do
-    data = Jason.decode!(data) |> IO.inspect()
+        ids =
+          Enum.filter(source.notifications.team_user_ids_for_schema_updates, fn x ->
+            x != to_string(team_user.id)
+          end)
 
+        changeset =
+          Source.update_by_user_changeset(source, %{
+            notifications: %{team_user_ids_for_schema_updates: ids}
+          })
+
+        update_source(conn, changeset)
+
+      {:error, :expired} ->
+        error_and_redirect(conn, "That link is expired!")
+
+      {:error, :invalid} ->
+        error_and_redirect(conn, "Bad link!")
+    end
+  end
+
+  def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "user"}) do
     case Auth.verify_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
         source = Sources.get(String.to_integer(source_id))
 
-        changeset = Source.update_by_user_changeset(source, data)
+        changeset =
+          Source.update_by_user_changeset(source, %{
+            notifications: %{user_schema_update_notifications: false}
+          })
 
         update_source(conn, changeset)
 
       {:error, :expired} ->
-        conn
-        |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "That link is expired!")
 
       {:error, :invalid} ->
-        conn
-        |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "Bad link!")
     end
   end
 
@@ -44,14 +66,10 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
         update_source(conn, changeset)
 
       {:error, :expired} ->
-        conn
-        |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "That link is expired!")
 
       {:error, :invalid} ->
-        conn
-        |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "Bad link!")
     end
   end
 
@@ -72,14 +90,10 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
         update_source(conn, changeset)
 
       {:error, :expired} ->
-        conn
-        |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "That link is expired!")
 
       {:error, :invalid} ->
-        conn
-        |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "Bad link!")
     end
   end
 
@@ -102,14 +116,10 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
         update_source(conn, changeset)
 
       {:error, :expired} ->
-        conn
-        |> put_flash(:error, "That link is expired!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "That link is expired!")
 
       {:error, :invalid} ->
-        conn
-        |> put_flash(:error, "Bad link!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(conn, "Bad link!")
     end
   end
 
@@ -121,10 +131,17 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
         |> redirect(to: Routes.auth_path(conn, :login))
 
       {:error, _changeset} ->
-        conn
-        |> put_flash(:error, "Something went wrong!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        error_and_redirect(
+          conn,
+          "Something went wrong! Please contact support if this continues."
+        )
     end
+  end
+
+  defp error_and_redirect(conn, message) do
+    conn
+    |> put_flash(:error, message)
+    |> redirect(to: Routes.auth_path(conn, :login))
   end
 
   defp filter_email(_email, other_emails) when is_nil(other_emails), do: nil
