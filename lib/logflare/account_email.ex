@@ -161,7 +161,7 @@ defmodule Logflare.AccountEmail do
       |> concat_and_join()
 
     part_one = """
-    Your source schema has been updated. Based on the incoming payload we've detected some new fields. Note: if you've recently cleared the source cache you may see these emails when the schema cache is updated.
+    Your source schema has been updated. Based on the incoming payload we've detected some new fields. Note: if you've recently cleared the source cache you may see these emails when the schema cache is rebuilt.
 
     Source:
     #{source_link}
