@@ -359,18 +359,16 @@ defmodule Logflare.Sources do
     |> Repo.insert()
   end
 
-  def create_or_update_source_schema(source, attrs \\ %{}) do
-    case create_source_schema(source, attrs) do
-      {:ok, _schema} = resp ->
-        resp
+  def find_or_create_source_schema(source) do
+    default = %{bigquery_schema: SchemaBuilder.initial_table_schema()}
 
-      {:error, _changeset} ->
-        get_source_schema_by(source_id: source.id)
-        |> update_source_schema(attrs)
+    case get_source_schema_by(source_id: source.id) do
+      nil -> create_source_schema(source, default)
+      schema -> {:ok, schema}
     end
   end
 
-  def find_or_create_source_schema(source, attrs) do
+  def create_or_update_source_schema(source, attrs) do
     case get_source_schema_by(source_id: source.id) do
       nil -> create_source_schema(source, attrs)
       source_schema -> update_source_schema(source_schema, attrs)
