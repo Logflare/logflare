@@ -132,7 +132,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/sources", LogflareWeb do
-    pipe_through [:browser, :set_source]
+    pipe_through [:browser]
 
     get "/:id/unsubscribe/:token", Auth.UnsubscribeController, :unsubscribe
     get "/:id/unsubscribe/stranger/:token", Auth.UnsubscribeController, :unsubscribe_stranger

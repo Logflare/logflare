@@ -3,7 +3,8 @@ defmodule Logflare.AccountEmail do
 
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-  alias Logflare.{Auth, User, TeamUsers.TeamUser}
+  alias LogflareWeb.Helpers.BqSchema
+  alias Logflare.{Auth, User, Source, TeamUsers.TeamUser}
 
   def welcome(user) do
     new()
@@ -57,7 +58,7 @@ defmodule Logflare.AccountEmail do
     source_link = Routes.source_url(Endpoint, :show, source.id)
     unsubscribe_link = Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature)
 
-    unsubscribe_email(
+    notification_email(
       user.email_preferred,
       rate,
       source.name,
@@ -73,7 +74,7 @@ defmodule Logflare.AccountEmail do
     unsubscribe_link =
       Routes.unsubscribe_url(Endpoint, :unsubscribe_team_user, source.id, signature)
 
-    unsubscribe_email(
+    notification_email(
       user.email_preferred,
       rate,
       source.name,
@@ -89,7 +90,7 @@ defmodule Logflare.AccountEmail do
     unsubscribe_link =
       Routes.unsubscribe_url(Endpoint, :unsubscribe_stranger, source.id, signature)
 
-    unsubscribe_email(email, rate, source.name, source_link, unsubscribe_link)
+    notification_email(email, rate, source.name, source_link, unsubscribe_link)
   end
 
   def backend_disconnected(user, reason) do
@@ -99,22 +100,125 @@ defmodule Logflare.AccountEmail do
     |> to(user.email)
     |> from({"Logflare", "support@logflare.app"})
     |> subject("Logflare BigQuery Backend Disabled")
-    |> text_body(
-      "Hey!\n\nWe had some issues inserting log events into your backend. The reason:\n\n#{reason}\n\nIf this continues please reply to this email and let us know!\n\nSetup your backend again: #{
-        account_edit_link
-      }"
-    )
+    |> text_body("""
+    We had some issues inserting log events into your backend.
+
+    The reason:
+    #{reason}
+
+    If this continues please reply to this email and let us know!
+
+    Setup your backend again:
+    #{account_edit_link}
+    """)
   end
 
-  defp unsubscribe_email(email, rate, source_name, source_link, unsubscribe_link) do
+  def schema_updated(
+        %User{email_preferred: email},
+        %Source{} = source,
+        new_schema,
+        old_schema
+      ),
+      do: schema_updated(email, source, new_schema, old_schema, type: :user)
+
+  def schema_updated(
+        %TeamUser{email_preferred: email},
+        %Source{} = source,
+        new_schema,
+        old_schema
+      ),
+      do: schema_updated(email, source, new_schema, old_schema, type: :team_user)
+
+  def schema_updated(
+        email,
+        %Source{} = source,
+        new_schema,
+        old_schema,
+        opts
+      )
+      when is_binary(email) do
+    [type: type] = opts
+    source_link = Routes.source_url(Endpoint, :show, source.id)
+
+    manage_schema_notifications_link =
+      Routes.source_url(Endpoint, :edit, source.id) <> "#schema-change-alerts"
+
+    signature = Auth.gen_token(email)
+
+    unsubscribe_link =
+      Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature, type: type)
+
+    formatted_new = BqSchema.format_bq_schema(new_schema, type: :text)
+    formatted_old = BqSchema.format_bq_schema(old_schema, type: :text)
+
+    new =
+      formatted_new
+      |> schema_to_list()
+      |> concat_and_join()
+
+    new_fields =
+      diff_schema(schema_to_list(formatted_new), schema_to_list(formatted_old))
+      |> concat_and_join()
+
+    part_one = """
+    Your source schema has been updated. Based on the incoming payload we've detected some new fields. Note: if you've recently cleared the source cache you may see these emails when the schema cache is rebuilt.
+
+    Source:
+    #{source_link}
+
+    New fields:
+    #{new_fields}
+    """
+
+    part_two = """
+    Full schema:
+    #{new}
+    """
+
+    unsuscribe_part = """
+    Manage schema change alerts:
+    #{manage_schema_notifications_link}
+
+    Unsubscribe:
+    #{unsubscribe_link}
+    """
+
     new()
     |> to(email)
     |> from({"Logflare", "support@logflare.app"})
-    |> subject("#{rate} New Logflare Event(s) for #{source_name}!")
-    |> text_body(
-      "Source #{source_name} has #{rate} new event(s).\n\nSee them here: #{source_link}\n\nUnsubscribe: #{
-        unsubscribe_link
-      }"
-    )
+    |> subject("New Fields Found for Logflare Source #{source.name}")
+    |> text_body(part_one <> part_two <> unsuscribe_part)
+  end
+
+  defp notification_email(email, rate, source_name, source_link, unsubscribe_link) do
+    new()
+    |> to(email)
+    |> from({"Logflare", "support@logflare.app"})
+    |> subject("#{rate} New Logflare Event(s) for #{source_name}")
+    |> text_body("""
+    Source #{source_name} has #{rate} new event(s).
+
+    Source:
+    #{source_link}
+
+    Unsubscribe:
+    #{unsubscribe_link}
+    """)
+  end
+
+  defp schema_to_list(schema) do
+    for {field, type} <- schema do
+      [field, ": ", type, "\n"]
+    end
+  end
+
+  defp diff_schema(new_schema_list, old_schema_list) do
+    new_schema_list -- old_schema_list
+  end
+
+  defp concat_and_join(list) do
+    list
+    |> Enum.concat()
+    |> Enum.join()
   end
 end
