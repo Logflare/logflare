@@ -233,14 +233,17 @@ defmodule LogflareWeb.Router do
     get "/dashboard", AdminController, :dashboard
     get "/sources", AdminController, :sources
     get "/accounts", AdminController, :accounts
-    delete "/accounts/:id", AdminController, :delete_account
     live "/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
     get "/cluster", AdminClusterController, :index
+
     get "/plans", AdminPlanController, :index
     get "/plans/new", AdminPlanController, :new
     post "/plans/new", AdminPlanController, :create
     get "/plans/:id/edit", AdminPlanController, :edit
     put "/plans/:id/edit", AdminPlanController, :update
+
+    delete "/accounts/:id", AdminController, :delete_account
+    get "/accounts/:id/become", AdminController, :become_account
   end
 
   scope "/install", LogflareWeb do

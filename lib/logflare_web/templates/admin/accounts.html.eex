@@ -33,7 +33,8 @@
       <%= for account <- @accounts do %>
       <li class="list-group-item">
         <div class="float-right">
-          <small><%= link "delete", to: Routes.admin_path(@conn, :delete_account, account.id), method: :delete, class: "btn btn-danger btn-sm" %></small>
+          <small><%= link "become", to: Routes.admin_path(@conn, :become_account, account.id), class: "btn btn-danger btn-sm" %></small>
+
         </div>
         <div><%= account.email %></div>
         <div><small>Inserted at: <%= account.inserted_at %> Updated at: <%= account.updated_at %></small></div>

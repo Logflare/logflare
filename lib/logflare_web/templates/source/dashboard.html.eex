@@ -13,8 +13,13 @@
 
 </div>
 </div>
+
+<div class="container d-flex justify-content-center flex-column mb-4">
+  <p class="text-center mb-0">📈 📊 We've refreshed <%= link "our Vercel Data Studio template", to: "https://datastudio.google.com/reporting/1NBEAsKFph8DP3OXapa1ZXRR7fTwZKHEY", target: "_blank"%> to match Vercel's new analytics.</p>
+  <small class="text-center">Setup a Data Studio data source (paid Logflare account required) and copy this report to use it with your data.</small>
+  </div>
+
 <div class="dashboard container mx-auto" hidden>
-  <div id="explore-dashboard"><center><%= link "🌲🎉 Our Pino transport has been updated! Upgrade for easy isomorphic logging in your Javascript app.", to: "https://github.com/Logflare/pino-logflare/releases", target: "_blank" %></center></div>
   <div id="saved-searches" class="">
     <h5 class="header-margin">Saved Searches</h5>
     <ul class="list-unstyled">
