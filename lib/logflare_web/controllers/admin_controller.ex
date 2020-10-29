@@ -3,6 +3,7 @@ defmodule LogflareWeb.AdminController do
   import Ecto.Query, only: [from: 2]
 
   alias Logflare.{Repo, Source, Sources, User, Users}
+  alias LogflareWeb.AuthController
 
   @page_size 50
 
@@ -23,6 +24,22 @@ defmodule LogflareWeb.AdminController do
     |> assign(:accounts, accounts)
     |> assign(:sort_options, sort_options)
     |> render("accounts.html")
+  end
+
+  def become_account(conn, %{"id" => id}) do
+    user = Users.get(id)
+
+    auth_params = %{
+      token: user.token,
+      email: user.email,
+      email_preferred: user.email_preferred,
+      provider: user.provider,
+      image: user.image,
+      name: user.name,
+      provider_uid: user.provider_uid
+    }
+
+    AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 
   def delete_account(%{assigns: %{user: %User{email: "chase@logflare.app"}}} = conn, %{
