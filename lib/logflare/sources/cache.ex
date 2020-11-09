@@ -38,7 +38,7 @@ defmodule Logflare.Sources.Cache do
   def get_by_pk_and_preload(arg), do: get_by_and_preload(id: arg)
   def get_by_public_token_and_preload(arg), do: get_by_and_preload(public_token: arg)
 
-  def get_source_for_lv_param(source_id) when is_binary(source_id) do
+  def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
     apply_repo_fun(__ENV__.function, [source_id])
   end
 
