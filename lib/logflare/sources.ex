@@ -428,6 +428,7 @@ defmodule Logflare.Sources do
     if count == 0, do: 1, else: count
   end
 
+  @spec get_source_for_lv_param(binary | integer) :: Logflare.Source.t()
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
     get_by_and_preload(id: source_id)
     |> preload_saved_searches()
