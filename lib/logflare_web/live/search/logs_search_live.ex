@@ -86,9 +86,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
       else
         {:error, error} ->
-          socket
-          |> assign(:log_events, [])
-          |> assign_notifications(:error, error)
+          error_socket(socket, error)
       end
 
     {:noreply, socket}
@@ -142,10 +140,7 @@ defmodule LogflareWeb.Source.SearchLV do
         {:error, error} ->
           maybe_cancel_tailing_timer(socket)
 
-          socket
-          |> assign(:querystring, querystring)
-          |> assign(:tailing?, false)
-          |> assign_notifications(:error, error)
+          error_socket(socket, error)
       end
 
     if user && (user.admin or source.user_id == user.id) do
@@ -205,10 +200,7 @@ defmodule LogflareWeb.Source.SearchLV do
         maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(source.token)
 
-        socket
-        |> assign(:querystring, querystring)
-        |> assign(:tailing?, false)
-        |> assign_notifications(:error, error)
+        error_socket(socket, error)
     end
   end
 
@@ -607,11 +599,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
     else
       {:error, error} ->
-        socket
-        |> assign(:tailing?, false)
-        |> assign(:log_aggregates, [])
-        |> assign(:log_events, [])
-        |> assign_notifications(:error, error)
+        error_socket(socket, error)
     end
   end
 
@@ -661,4 +649,14 @@ defmodule LogflareWeb.Source.SearchLV do
   defp period_to_ms(:minute), do: :timer.minutes(1)
   defp period_to_ms(:hour), do: :timer.hours(1)
   defp period_to_ms(:day), do: :timer.hours(24)
+
+  defp error_socket(socket, error) do
+    socket
+    |> assign(:log_events, [])
+    |> assign(:log_aggregates, [])
+    |> assign(:tailing?, false)
+    |> assign(:loading, false)
+    |> assign(:chart_loading?, false)
+    |> assign_notifications(:error, error)
+  end
 end
