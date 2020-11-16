@@ -29,7 +29,7 @@ defmodule LogflareWeb.Source.SearchLV do
     log_aggregates: [],
     loading: false,
     chart_loading?: true,
-    tailing?: true,
+    tailing_paused?: nil,
     tailing_timer: nil,
     notifications: %{},
     search_op: nil,
@@ -37,6 +37,7 @@ defmodule LogflareWeb.Source.SearchLV do
     search_op_log_events: nil,
     search_op_log_aggregates: nil,
     chart_aggregate_enabled?: nil,
+    tailing_timer: nil,
     user_idle_interval: @user_idle_interval,
     active_modal: nil,
     user_local_timezone: nil,
@@ -265,12 +266,13 @@ defmodule LogflareWeb.Source.SearchLV do
     log_lv_received_event(ev, source)
 
     socket =
-      if prev_assigns.tailing? do
+      if prev_assigns.tailing? and !prev_assigns.tailing_paused? do
         maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(stoken)
 
         socket
         |> assign(:tailing?, false)
+        |> assign(:tailing_paused?, true)
       else
         socket
       end
@@ -283,9 +285,10 @@ defmodule LogflareWeb.Source.SearchLV do
     log_lv_received_event(ev, source)
 
     socket =
-      if prev_assigns.tailing? do
+      if prev_assigns.tailing_paused? do
         socket =
           socket
+          |> assign(:tailing_paused?, nil)
           |> assign(:tailing?, true)
 
         SearchQueryExecutor.maybe_execute_events_query(stoken, socket.assigns)
