@@ -84,7 +84,10 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   end
 
   def update(%{active_modal: "metadataModal:" <> id_and_timestamp} = assigns, socket) do
-    [id, _timestamp] = String.split(id_and_timestamp, "|")
+    [id, timestamp] = String.split(id_and_timestamp, "|")
+    d = String.to_integer(timestamp) |> Timex.from_unix(:microsecond) |> Timex.to_date()
+    dminus1 = Timex.shift(d, days: -1)
+    dplus1 = Timex.shift(d, days: +1)
 
     token = assigns.source.token
     le = LogEvents.Cache.get!(token, {"uuid", id})
@@ -94,7 +97,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     if is_nil(le) do
       Task.start(fn ->
         token
-        |> LogEvents.fetch_event_by_id(id)
+        |> LogEvents.fetch_event_by_id(id, partitions_range: [dminus1, dplus1])
         |> case do
           %{} = bq_row ->
             le = LE.make_from_db(bq_row, %{source: assigns.source})
@@ -114,7 +117,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
           {:error, error} ->
             case error do
               :not_found ->
-                Logger.error("Log event not found for id #{id}")
+                Logger.error("Log event with id #{id} not found")
 
               e ->
                 Logger.error("Error: #{inspect(e)}")

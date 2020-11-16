@@ -43,8 +43,10 @@ defmodule Logflare.Logs.LogEvents do
     end
   end
 
-  @spec fetch_event_by_id(atom(), binary()) :: map() | {:error, any()}
-  def fetch_event_by_id(source_token, id) when is_atom(source_token) and is_binary(id) do
+  @spec fetch_event_by_id(atom(), binary(), Keyword.t()) :: map() | {:error, any()}
+  def fetch_event_by_id(source_token, id, opts)
+      when is_list(opts) and is_atom(source_token) and is_binary(id) do
+    partitions_range = Keyword.get(opts, :partitions_range, [])
     source = Sources.Cache.get_by_id_and_preload(source_token)
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
@@ -52,8 +54,9 @@ defmodule Logflare.Logs.LogEvents do
 
     base_query = SearchQueries.source_log_event_id(bq_table_id, id)
 
-    params = [bq_project_id, base_query, dataset_id]
-    apply(&fetch_streaming_buffer/3, params) || apply(&fetch_last_3d/3, params)
+    fetch_streaming_buffer(bq_project_id, base_query, dataset_id) ||
+      fetch_with_partitions_range(bq_project_id, base_query, dataset_id, partitions_range) ||
+      {:error, :not_found}
   end
 
   @spec fetch_event_by_path(atom(), binary(), term()) :: {:ok, map() | nil} | {:error, any()}
@@ -79,6 +82,20 @@ defmodule Logflare.Logs.LogEvents do
   def fetch_last_3d(bq_project_id, query, dataset_id) do
     bq_project_id
     |> BqRepo.query(where_last_3d_q(query), dataset_id: dataset_id)
+    |> process()
+  end
+
+  def fetch_with_partitions_range(bq_project_id, query, dataset_id, []) do
+    bq_project_id
+    |> BqRepo.query(query, dataset_id: dataset_id)
+    |> process()
+  end
+
+  def fetch_with_partitions_range(bq_project_id, query, dataset_id, [min, max]) do
+    query = SearchQueries.where_partitiondate_between(query, min, max)
+
+    bq_project_id
+    |> BqRepo.query(query, dataset_id: dataset_id)
     |> process()
   end
 
