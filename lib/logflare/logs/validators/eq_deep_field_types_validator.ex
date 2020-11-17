@@ -1,5 +1,6 @@
 defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   alias Logflare.LogEvent, as: LE
+  require Logger
 
   @moduledoc """
   Validates that types of values for the same field path are the same
@@ -12,6 +13,22 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     else
       {:error, message()}
     end
+  rescue
+    e ->
+      Logger.warn("Unexpected error at #{__MODULE__}: #{Exception.message(e)}")
+      {:error, "Log event payload validation error"}
+  catch
+    :type_error ->
+      {:error, message()}
+
+    {:type_error, v} when is_tuple(v) ->
+      {:error, tuple_error_message(v)}
+
+    {:type_error, [tup | _]} when is_tuple(tup) ->
+      {:error, tuple_error_message(tup)}
+
+    {:type_error, _} ->
+      {:error, message()}
   end
 
   def validate(%{log_event: %{body: _}}) do
@@ -21,19 +38,24 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   @spec valid?(map()) :: boolean()
   def valid?(map) when is_map(map) do
     map
-    |> Iteraptor.map(fn {k, v} ->
-      {k, type_of(v)}
+    |> Iteraptor.map(fn
+      {_, v} when is_tuple(v) ->
+        throw({:type_error, v})
+
+      {k, v} ->
+        {k, type_of(v)}
     end)
     |> deep_merge_enums()
     |> deep_validate_lists_are_homogenous()
     |> is_map
-  catch
-    _e ->
-      false
   end
 
   def message do
     "Metadata validation error: values with the same field path must have the same type."
+  end
+
+  def tuple_error_message(v) do
+    "Encountered a tuple: '#{inspect(v)}'. Payloads with Elixir tuples are not supported by Logflare API."
   end
 
   # Private
@@ -57,7 +79,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
             :noop
 
           not is_homogenous_list(v) ->
-            throw("typeerror")
+            throw({:type_error, v})
         end
 
       _ ->
@@ -68,7 +90,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   end
 
   @spec deep_merge_enums(list(map) | map) :: map
-  defp deep_merge_enums(map) when is_map(map) do
+  def deep_merge_enums(map) when is_map(map) do
     for {k, v} <- map, into: Map.new() do
       v = if is_list(v) and is_list_of_enums(v), do: deep_merge_enums(v), else: v
 
@@ -76,10 +98,10 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     end
   end
 
-  defp deep_merge_enums(maps) do
+  def deep_merge_enums(maps) do
     resolver = fn
       _, original, override when is_list(original) and is_list(override) ->
-        merged = original ++ override
+        merged = (original ++ override) |> Enum.uniq()
 
         cond do
           is_list_of_enums(merged) ->
@@ -92,12 +114,12 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
             {:list, hd(merged)}
 
           not is_homogenous_list(merged) ->
-            throw("typeerror")
+            throw(:type_error)
         end
 
       _, original, override when is_atom(original) or is_atom(override) ->
         if original != override do
-          throw("typeerror")
+          throw(:type_error)
         else
           original
         end

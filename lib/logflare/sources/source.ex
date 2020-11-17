@@ -184,17 +184,21 @@ defmodule Logflare.Source do
 
   def validate_source_ttl(changeset, source) do
     if source.user_id do
-      plan =
-        Users.get(source.user_id)
-        |> Plans.get_plan_by_user()
+      user = Users.get(source.user_id)
+      plan = Plans.get_plan_by_user(user)
 
       validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
-        if ttl > days do
-          [bigquery_table_ttl: "ttl is over your plan limit"]
-        else
-          []
+        cond do
+          user.bigquery_project_id ->
+            []
+
+          ttl > days ->
+            [bigquery_table_ttl: "ttl is over your plan limit"]
+
+          true ->
+            []
         end
       end)
     else

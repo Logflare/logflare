@@ -38,11 +38,18 @@ defmodule LogflareWeb.LogEventLive.Show do
           assign_log_event(socket, le)
 
         is_nil(le) and connected?(socket) ->
+          d = Date.utc_today()
+          dminus3 = Timex.shift(d, days: -3)
+          dplus1 = Timex.shift(d, days: 1)
+
           task_fn = fn ->
             {cache_key,
              case path do
-               "uuid" -> LogEvents.fetch_event_by_id(token, log_id)
-               "metadata." <> _ -> LogEvents.fetch_event_by_path(token, path, log_id)
+               "uuid" ->
+                 LogEvents.fetch_event_by_id(token, log_id, partitions_range: [dminus3, dplus1])
+
+               "metadata." <> _ ->
+                 LogEvents.fetch_event_by_path(token, path, log_id)
              end}
           end
 
