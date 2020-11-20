@@ -118,7 +118,7 @@
       <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
       <p>👋 Let's build a dashboard!</p>
       <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of Logflare.</p>
-      <p>I built Logflare to provide insights at scale over the long-term for you website or app at an affordable price.
+      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.
       </p>
       <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
       <p>If you'd rather not jump on a Zoom, you can learn more about Logflare by watching some of our videos.</p>
