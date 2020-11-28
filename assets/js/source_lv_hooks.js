@@ -164,7 +164,7 @@ hooks.SourceLogsSearch = {
     $("#search-uri-query").tooltip()
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("pause_live_search", {})
+      hook.pushEvent("stop_live_search", {})
     })
   },
   reconnected() { },
