@@ -7,6 +7,7 @@ defmodule Logflare.Logs.SearchOperation do
 
   typedstruct do
     field :source, Source.t()
+    field :partition_by, :pseudo | :timestamp, enforce: true
     field :querystring, String.t(), enforce: true
     field :query, Ecto.Query.t()
     field :query_result, term()

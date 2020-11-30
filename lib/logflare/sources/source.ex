@@ -114,6 +114,7 @@ defmodule Logflare.Source do
     field :bq_dataset_id, :string, virtual: true
     field :bq_table_schema, :any, virtual: true
     field :bq_table_typemap, :any, virtual: true
+    field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
     field :notifications_every, :integer, default: :timer.hours(4), nullable: false

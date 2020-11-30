@@ -5,12 +5,15 @@ defmodule Logflare.Logs.Search do
   import Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.BqRepo
   alias Logflare.Google.BigQuery.GCPConfig
   import Ecto.Query
 
   @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
+    so = get_and_put_partition_by(so)
+
     tasks = [
       Task.async(fn -> search_events(so) end)
     ]
@@ -40,6 +43,8 @@ defmodule Logflare.Logs.Search do
   end
 
   def aggs(%SO{} = so) do
+    so = get_and_put_partition_by(so)
+
     tasks = [
       Task.async(fn -> search_result_aggregates(so) end)
     ]
@@ -116,5 +121,9 @@ defmodule Logflare.Logs.Search do
 
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     BqRepo.query(bq_project_id, q)
+  end
+
+  def get_and_put_partition_by(%SO{} = so) do
+    %{so | partition_by: Sources.get_table_partition_type(so.source)}
   end
 end

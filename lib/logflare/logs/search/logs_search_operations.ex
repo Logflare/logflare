@@ -191,26 +191,56 @@ defmodule Logflare.Logs.SearchOperations do
     q =
       cond do
         t? and !ti? ->
-          query
-          |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
-          |> where([t, ...], in_streaming_buffer())
+          case so.partition_by do
+            :pseudo ->
+              query
+              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> where([t, ...], in_streaming_buffer())
+
+            :timestamp ->
+              query
+              |> where(
+                [t, ...],
+                t.timestamp >= lf_timestamp_sub(^DateTime.utc_now(), 30, "MINUTE")
+              )
+          end
 
         (t? and ti?) || Enum.empty?(ts_filters) ->
-          query
-          |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
-          |> where(
-            partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
-          )
+          case so.partition_by do
+            :timestamp ->
+              query
+              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+
+            :pseudo ->
+              query
+              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> where(
+                partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
+              )
+          end
 
         not Enum.empty?(ts_filters) ->
           %{min: min, max: max} = get_min_max_filter_timestamps(ts_filters, chart_period)
 
-          query
-          |> where(
-            partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
-          )
-          |> or_where(in_streaming_buffer())
-          |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+          case so.partition_by do
+            :timestamp ->
+              query
+              |> where(
+                [t],
+                fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^Timex.to_date(min) and
+                  fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^Timex.to_date(max)
+              )
+              |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+
+            :pseudo ->
+              query
+              |> where(
+                partition_date() >= ^Timex.to_date(min) and
+                  partition_date() <= ^Timex.to_date(max)
+              )
+              |> or_where(in_streaming_buffer())
+              |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
+          end
       end
 
     %{so | query: q}
@@ -238,22 +268,41 @@ defmodule Logflare.Logs.SearchOperations do
 
     q =
       if t? or Enum.empty?(ts_filters) do
-        query
-        |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
-        |> where(
-          partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
-            in_streaming_buffer()
-        )
-        |> limit([t], ^tick_count)
+        query =
+          query
+          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
+          |> limit([t], ^tick_count)
+
+        case so.partition_by do
+          :pseudo ->
+            where(
+              query,
+              partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
+                in_streaming_buffer()
+            )
+
+          :timestamp ->
+            query
+        end
       else
         %{min: min, max: max} =
           get_min_max_filter_timestamps(ts_filters, hd(so.chart_rules).period)
 
+        query =
+          case so.partition_by do
+            :pseudo ->
+              query
+              |> where(
+                partition_date() >= ^Timex.to_date(min) and
+                  partition_date() <= ^Timex.to_date(max)
+              )
+              |> or_where(in_streaming_buffer())
+
+            :timestamp ->
+              query
+          end
+
         query
-        |> where(
-          partition_date() >= ^Timex.to_date(min) and partition_date() <= ^Timex.to_date(max)
-        )
-        |> or_where(in_streaming_buffer())
         |> Lql.EctoHelpers.apply_filter_rules_to_query(ts_filters)
       end
 

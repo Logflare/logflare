@@ -434,4 +434,12 @@ defmodule Logflare.Sources do
     |> preload_saved_searches()
     |> put_bq_table_data()
   end
+
+  @spec get_table_partition_type(Source.t()) :: :timestamp | :pseudo
+  def get_table_partition_type(%Source{} = source) do
+    case source.bq_table_partition_type do
+      nil -> :pseudo
+      x -> x
+    end
+  end
 end
