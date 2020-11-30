@@ -65,7 +65,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
-      {:phoenix_live_view, "~> 0.14", override: true},
+      {:phoenix_live_view, "~> 0.14.8", override: true},
       {:phoenix_live_dashboard, "~> 0.1"},
       {:cors_plug, "~> 2.0"},
 
