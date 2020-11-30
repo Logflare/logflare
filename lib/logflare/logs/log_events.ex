@@ -92,7 +92,7 @@ defmodule Logflare.Logs.LogEvents do
     nil
   end
 
-  defp fetch_streaming_buffer(bq_project_id, query, dataset_id) do
+  defp fetch_streaming_buffer(bq_project_id, query, dataset_id, :pseudo) do
     bq_project_id
     |> BqRepo.query(SearchQueries.where_streaming_buffer(query), dataset_id: dataset_id)
     |> process()
