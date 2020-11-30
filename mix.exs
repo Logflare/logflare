@@ -42,8 +42,7 @@ defmodule Logflare.Mixfile do
         :ueberauth_github,
         :edeliver,
         :ueberauth_google,
-        :ssl,
-        :ueberauth_slack
+        :ssl
       ]
     ]
   end
@@ -72,7 +71,7 @@ defmodule Logflare.Mixfile do
       # Oauth
       {:ueberauth_google, "~> 0.8"},
       {:ueberauth_github, github: "Logflare/ueberauth_github"},
-      {:ueberauth_slack, "~> 0.6"},
+      {:ueberauth_slack_v2, "~> 1.0"},
       {:oauth2, "~> 2.0.0", override: true},
 
       # Oauth2 provider

@@ -25,7 +25,12 @@ config :ueberauth, Ueberauth,
   providers: [
     github: {Ueberauth.Strategy.Github, [default_scope: "user:email"]},
     google: {Ueberauth.Strategy.Google, []},
-    slack: {Ueberauth.Strategy.Slack, [default_scope: "identity.basic,identity.email"]}
+    slack:
+      {Ueberauth.Strategy.SlackV2,
+       [
+         default_scope: "app_mentions:read",
+         default_user_scope: "identity.basic,identity.avatar,identity.email,identity.team"
+       ]}
   ],
   json_library: Jason
 

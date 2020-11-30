@@ -40,7 +40,7 @@
           <% end %>
         </li>
         <li class="list-group-item">
-          <%= link to: Routes.oauth_path(@conn, :request, "slack"), class: "nav-link" do %>
+          <%= link to: ~s(https://slack.com/oauth/v2/authorize?client_id=#{Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id]}&install_redirect=update-to-granular-scopes&scope=&user_scope=identity.basic,identity.avatar,identity.email,identity.team&redirect_uri=#{LogflareWeb.Endpoint.url() <> "/auth/slack/callback"}&state=), class: "nav-link" do %>
           <span class="login-icon"><i class="fab fa-slack"></span></i> Continue with Slack
           <% end %>
         </li>
