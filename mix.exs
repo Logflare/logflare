@@ -65,7 +65,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
-      {:phoenix_live_view, "~> 0.14.0"},
+      {:phoenix_live_view, "~> 0.14", override: true},
       {:phoenix_live_dashboard, "~> 0.1"},
       {:cors_plug, "~> 2.0"},
 
@@ -132,7 +132,7 @@ defmodule Logflare.Mixfile do
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
-      {:google_api_big_query, "~> 0.46.0"},
+      {:google_api_big_query, "~> 0.52.0"},
       {:goth, "~> 1.2.0"},
 
       # Ecto
@@ -142,8 +142,8 @@ defmodule Logflare.Mixfile do
 
       # Telemetry & logging
       {:telemetry, "~> 0.4.0"},
-      {:telemetry_poller, "0.4.0"},
-      {:telemetry_metrics, "~> 0.4.0"},
+      {:telemetry_poller, "0.5.0"},
+      {:telemetry_metrics, "~> 0.6.0", override: true},
       {:logflare_logger_backend, "~> 0.7.6"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
 
@@ -179,6 +179,9 @@ defmodule Logflare.Mixfile do
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
       {:excoveralls, "~> 0.11", only: :test, runtime: false}
+
+      # Telemetry
+      # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
     ]
   end
 
