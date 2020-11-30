@@ -136,8 +136,8 @@ defmodule Logflare.Mixfile do
       {:goth, "~> 1.2.0"},
 
       # Ecto
-      {:ecto, "~> 3.3", override: true},
-      {:ecto_sql, "~> 3.2"},
+      {:ecto, "~> 3.5", override: true},
+      {:ecto_sql, "~> 3.5"},
       {:typed_ecto_schema, "~> 0.1.0"},
 
       # Telemetry & logging
