@@ -53,9 +53,21 @@ defmodule Logflare.Logs.LogEvents do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
 
     base_query = SearchQueries.source_log_event_id(bq_table_id, id)
+    partition_type = Sources.get_table_partition_type(source)
 
-    fetch_streaming_buffer(bq_project_id, base_query, dataset_id) ||
-      fetch_with_partitions_range(bq_project_id, base_query, dataset_id, partitions_range) ||
+    fetch_streaming_buffer(
+      bq_project_id,
+      base_query,
+      dataset_id,
+      partition_type
+    ) ||
+      fetch_with_partitions_range(
+        bq_project_id,
+        base_query,
+        dataset_id,
+        partitions_range,
+        partition_type
+      ) ||
       {:error, :not_found}
   end
 
@@ -68,30 +80,64 @@ defmodule Logflare.Logs.LogEvents do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
 
     base_query = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
+    partition_type = Sources.get_table_partition_type(source)
 
-    params = [bq_project_id, base_query, dataset_id]
-    apply(&fetch_streaming_buffer/3, params) || apply(&fetch_last_3d/3, params)
+    params = [bq_project_id, base_query, dataset_id, partition_type]
+
+    apply(&fetch_streaming_buffer/4, params) || apply(&fetch_last_3d/4, params) ||
+      {:error, :not_found}
   end
 
-  def fetch_streaming_buffer(bq_project_id, query, dataset_id) do
+  defp fetch_streaming_buffer(_, _, _, :timestamp) do
+    nil
+  end
+
+  defp fetch_streaming_buffer(bq_project_id, query, dataset_id, :pseudo) do
     bq_project_id
     |> BqRepo.query(SearchQueries.where_streaming_buffer(query), dataset_id: dataset_id)
     |> process()
   end
 
-  def fetch_last_3d(bq_project_id, query, dataset_id) do
-    bq_project_id
-    |> BqRepo.query(where_last_3d_q(query), dataset_id: dataset_id)
-    |> process()
-  end
+  defp fetch_last_3d(bq_project_id, query, dataset_id, :timestamp) do
+    import Ecto.Query
+    from_utc = Timex.shift(Timex.today(), days: -3)
 
-  def fetch_with_partitions_range(bq_project_id, query, dataset_id, []) do
+    query =
+      query
+      |> where([t], t.timestamp >= ^from_utc)
+      |> where([t], t.timestamp <= ^Date.utc_today())
+
     bq_project_id
     |> BqRepo.query(query, dataset_id: dataset_id)
     |> process()
   end
 
-  def fetch_with_partitions_range(bq_project_id, query, dataset_id, [min, max]) do
+  defp fetch_last_3d(bq_project_id, query, dataset_id, :pseudo) do
+    bq_project_id
+    |> BqRepo.query(where_last_3d_q(query), dataset_id: dataset_id)
+    |> process()
+  end
+
+  defp fetch_with_partitions_range(bq_project_id, query, dataset_id, [], _) do
+    bq_project_id
+    |> BqRepo.query(query, dataset_id: dataset_id)
+    |> process()
+  end
+
+  defp fetch_with_partitions_range(bq_project_id, query, dataset_id, [min, max], :timestamp) do
+    import Ecto.Query
+
+    query =
+      query
+      |> where([t], t.timestamp >= ^min)
+      |> where([t], t.timestamp <= ^max)
+
+    bq_project_id
+    |> BqRepo.query(query, dataset_id: dataset_id)
+    |> process()
+  end
+
+  defp fetch_with_partitions_range(bq_project_id, query, dataset_id, [min, max], :pseudo) do
     query = SearchQueries.where_partitiondate_between(query, min, max)
 
     bq_project_id
@@ -116,7 +162,7 @@ defmodule Logflare.Logs.LogEvents do
   end
 
   @spec where_last_3d_q(any) :: Ecto.Query.t()
-  def where_last_3d_q(q) do
+  defp where_last_3d_q(q) do
     from_utc = Timex.shift(Timex.today(), days: -3)
     SearchQueries.where_partitiondate_between(q, from_utc, Timex.today())
   end

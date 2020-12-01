@@ -95,7 +95,7 @@ defmodule Logflare.Google.BigQuery do
 
     partitioning = %Model.TimePartitioning{
       requirePartitionFilter: true,
-      # field: "timestamp",
+      field: "timestamp",
       type: "DAY",
       expirationMs: table_ttl
     }
@@ -111,6 +111,7 @@ defmodule Logflare.Google.BigQuery do
       body: %Model.Table{
         schema: schema,
         tableReference: reference,
+        requirePartitionFilter: true,
         timePartitioning: partitioning,
         clustering: clustering,
         description: "Managed by Logflare",
