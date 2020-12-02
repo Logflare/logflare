@@ -87,6 +87,9 @@ defmodule LogflareWeb.Source.SearchLV do
       else
         {:error, error} ->
           error_socket(socket, error)
+
+        {:error, :field_not_found = type, suggested_querystring, error} ->
+          error_socket(socket, type, suggested_querystring, error)
       end
 
     {:noreply, socket}
@@ -141,6 +144,9 @@ defmodule LogflareWeb.Source.SearchLV do
           maybe_cancel_tailing_timer(socket)
 
           error_socket(socket, error)
+
+        {:error, :field_not_found = type, suggested_querystring, error} ->
+          error_socket(socket, type, suggested_querystring, error)
       end
 
     if user && (user.admin or source.user_id == user.id) do
@@ -201,6 +207,9 @@ defmodule LogflareWeb.Source.SearchLV do
         SearchQueryExecutor.maybe_cancel_query(source.token)
 
         error_socket(socket, error)
+
+      {:error, :field_not_found = type, suggested_querystring, error} ->
+        error_socket(socket, type, suggested_querystring, error)
     end
   end
 
@@ -600,6 +609,9 @@ defmodule LogflareWeb.Source.SearchLV do
     else
       {:error, error} ->
         error_socket(socket, error)
+
+      {:error, :field_not_found = type, suggested_querystring, error} ->
+        error_socket(socket, type, suggested_querystring, error)
     end
   end
 
@@ -649,6 +661,21 @@ defmodule LogflareWeb.Source.SearchLV do
   defp period_to_ms(:minute), do: :timer.minutes(1)
   defp period_to_ms(:hour), do: :timer.hours(1)
   defp period_to_ms(:day), do: :timer.hours(24)
+
+  defp error_socket(socket, :field_not_found, suggested_querystring, [head, replace, tail]) do
+    replace =
+      live_redirect(replace,
+        to:
+          Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
+            querystring: suggested_querystring,
+            tailing?: true
+          )
+      )
+
+    error = [head, replace, tail]
+
+    error_socket(socket, error)
+  end
 
   defp error_socket(socket, error) do
     socket

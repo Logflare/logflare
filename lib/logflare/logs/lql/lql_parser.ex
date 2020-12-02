@@ -53,7 +53,8 @@ defmodule Logflare.Lql.Parser do
               {:chart, fields}, acc -> Map.merge(acc, Map.new(fields))
             end)
 
-          chart_rule = Map.put(chart_rule, :value_type, get_path_type(typemap, chart_rule.path))
+          chart_rule =
+            Map.put(chart_rule, :value_type, get_path_type(typemap, chart_rule.path, querystring))
 
           struct!(ChartRule, chart_rule)
         end
@@ -61,7 +62,7 @@ defmodule Logflare.Lql.Parser do
       rules =
         Enum.map(other_rules, fn
           %FilterRule{path: path} = rule ->
-            type = get_path_type(typemap, path)
+            type = get_path_type(typemap, path, querystring)
             maybe_cast_value(rule, type)
         end)
 
@@ -82,22 +83,31 @@ defmodule Logflare.Lql.Parser do
         {:error, err}
     end
   catch
-    e ->
-      {:error, e}
+    {suggested_querystring, err} ->
+      {:error, :field_not_found, suggested_querystring, err}
+
+    err ->
+      {:error, err}
   end
 
-  defp get_path_type(typemap, path) do
+  defp get_path_type(typemap, path, querystring) do
     type = Map.get(typemap, path)
 
     if type do
       type
     else
       maybe_this = get_most_similar_path(typemap, path)
+      "metadata." <> maybe_rest_of_path = maybe_this
+      "metadata." <> rest_of_path = path
+      suggested_querystring = String.replace(querystring, rest_of_path, maybe_rest_of_path)
 
       throw(
-        "LQL Parser error: path '#{path}' not present in source schema. Did you mean '#{
-          maybe_this
-        }'?"
+        {suggested_querystring,
+         [
+           "LQL Parser error: path '#{path}' not present in source schema. Did you mean '",
+           maybe_this,
+           "'?"
+         ]}
       )
     end
   end
