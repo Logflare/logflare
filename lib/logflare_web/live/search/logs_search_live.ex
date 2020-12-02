@@ -86,10 +86,14 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
       else
         {:error, error} ->
-          error_socket(socket, error)
+          socket
+          |> assign(:querystring, qs)
+          |> error_socket(error)
 
         {:error, :field_not_found = type, suggested_querystring, error} ->
-          error_socket(socket, type, suggested_querystring, error)
+          socket
+          |> assign(:querystring, qs)
+          |> error_socket(type, suggested_querystring, error)
       end
 
     {:noreply, socket}
@@ -674,7 +678,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
     error = [head, replace, tail]
 
-    error_socket(socket, error)
+    socket
+    |> assign(querystring: socket.assigns.querystring)
+    |> error_socket(error)
   end
 
   defp error_socket(socket, error) do
