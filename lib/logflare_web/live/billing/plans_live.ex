@@ -60,7 +60,7 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Backend <%= link to: Routes.marketing_path(@socket, :pricing) <> "#backend", class: "position-absolute absolute-right" do %><i class="fas fa-info-circle"></i><% end %></li>
             <li class="p-2">Fields <%= link to: Routes.marketing_path(@socket, :pricing) <> "#fields", class: "position-absolute absolute-right" do %><i class="fas fa-info-circle"></i><% end %></li>
             <hr />
-            <li class="p-2">Event Retention</li>
+            <li class="p-2">Event Retention <%= link to: Routes.marketing_path(@socket, :pricing) <> "#retention", class: "position-absolute absolute-right" do %><i class="fas fa-info-circle"></i><% end %></li>
             <li class="p-2">Events per month</li>
             <hr />
             <li class="p-2">Rate limit <%= link to: Routes.marketing_path(@socket, :pricing) <> "#rate-limit", class: "position-absolute absolute-right" do %><i class="fas fa-info-circle"></i><% end %></li>
@@ -118,10 +118,10 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Up to 100</li>
             <hr />
             <li class="p-2">7 days || Unlimited</li>
-            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">64,800,000</li>
             <hr />
-            <li class="p-2">Unlimited<sup>2</sup></li>
-            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">25 per second</li>
+            <li class="p-2">1,500</li>
           </ul>
           <div class="py-4">
             <%= if @period == "year" do %>
@@ -158,10 +158,10 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Up to 250</li>
             <hr />
             <li class="p-2">30 days || Unlimited</li>
-            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">64,800,000</li>
             <hr />
-            <li class="p-2">Unlimited<sup>2</sup></li>
-            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">25 per second</li>
+            <li class="p-2">1,500</li>
           </ul>
           <div class="py-4">
             <%= if @period == "year" do %>
@@ -198,10 +198,10 @@ defmodule LogflareWeb.BillingPlansLive do
             <li class="p-2">Up to 500</li>
             <hr />
             <li class="p-2">60 days || Unlimited</li>
-            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">64,800,000</li>
             <hr />
-            <li class="p-2">Unlimited<sup>2</sup></li>
-            <li class="p-2">Unlimited<sup>2</sup></li>
+            <li class="p-2">25 per second</li>
+            <li class="p-2">1,500</li>
           </ul>
           <div class="py-4">
             <%= if @period == "year" do %>
@@ -227,7 +227,7 @@ defmodule LogflareWeb.BillingPlansLive do
     </div>
     <div class="">
             <p class="nam-consectetur-an"><sup>1</sup> Bring Your Own Backend™ to use with Logflare. Give our service account access to your Google Cloud Platform account and all reads and writes from Logflare will be performed directly on your BigQuery tables. Never archive to object storage again.</p>
-            <p class="nam-consectetur-an"><sup>2</sup> Unlimited log events is subject to our <%= link "fair use", to: Routes.marketing_path(@socket, :pricing) <> "#fair-use" %> policy.</p>
+            <p class="nam-consectetur-an"><sup>2</sup> Rate limited plans are subject to our <%= link "fair use", to: Routes.marketing_path(@socket, :pricing) <> "#fair-use" %> policy.</p>
     </div>
     """
   end
