@@ -108,7 +108,10 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
     {"us-central1-a", "logflare-prod-us-central1-a-preempt"},
     {"us-central1-b", "logflare-prod-us-central1-b"},
     {"us-central1-c", "logflare-prod-us-central1-c"},
-    {"us-central1-f", "logflare-prod-us-central1-f"}
+    {"us-central1-f", "logflare-prod-us-central1-f"},
+    {"europe-west3-a", "logflare-prod-eu-west3-a"},
+    {"europe-west3-b", "logflare-prod-eu-west3-b"},
+    {"europe-west3-c", "logflare-prod-eu-west3-c"}
   ]
 
 config :logflare, Logflare.Tracker, pool_size: 5
