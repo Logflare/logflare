@@ -10,5 +10,9 @@ export MY_POD_IP=$(curl \
     -s "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip" \
     -H "Metadata-Flavor: Google")
 
+./cloud_sql_proxy -instances=logflare-232118:us-central1:logflare-prod-20201208-global=tcp:5432 &
+
+sleep 10
+
 mix ecto.migrate && \
 /logflare/_build/prod/rel/logflare/bin/logflare start

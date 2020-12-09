@@ -31,7 +31,6 @@ config :phoenix, :serve_endpoints, true
 
 config :logflare, Logflare.Repo,
   pool_size: 90,
-  ssl: true,
   prepare: :unnamed,
   timeout: 30_000,
   queue_target: 5_000,

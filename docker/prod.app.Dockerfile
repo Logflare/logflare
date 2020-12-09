@@ -3,8 +3,12 @@ FROM gcr.io/logflare-232118/logflare_base:latest
 ARG MAGIC_COOKIE
 ENV MAGIC_COOKIE=$MAGIC_COOKIE
 
+
 COPY ./ /logflare
 WORKDIR /logflare
+
+RUN wget https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 -O cloud_sql_proxy
+RUN chmod +x cloud_sql_proxy
 
 ENV MIX_ENV prod
 
