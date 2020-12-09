@@ -200,13 +200,6 @@ defmodule Logflare.Google.CloudResourceManager do
           "serviceAccount:#{@source_repo_sa}"
         ],
         role: "roles/sourcerepo.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: [
-          "serviceAccount:#{@service_account}"
-        ],
-        role: "roles/cloudsql.client"
       }
     ]
   end

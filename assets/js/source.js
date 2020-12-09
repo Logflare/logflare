@@ -101,10 +101,12 @@ async function logTemplate(e) {
     : ""
 
   return `<li>
-    <mark class="log-datestamp" data-timestamp="${body.timestamp
-    }">${formattedDatetime}</mark> ${_.escape(body.message)}
+    <mark class="log-datestamp" data-timestamp="${
+    body.timestamp
+    }">${formattedDatetime}</mark> ${body.message}
     ${metadataElement}
-    ${via_rule
+    ${
+    via_rule
       ? `<span
     data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
     <i class="fa fa-code-branch" style="font-size: 1em;"></i>
