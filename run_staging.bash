@@ -11,8 +11,9 @@ export MY_POD_IP=$(curl \
     -H "Metadata-Flavor: Google")
 
 # run gcloud sql proxy 
-./cloud_sql_proxy -instances=logflare-staging:us-central1:logflare-staging=tcp:5432
-  -credential_file=/logflare/gcloud.json &
+./cloud_sql_proxy -instances=logflare-staging:us-central1:logflare-staging=tcp:5432 &
+
+sleep 10
 
 mix ecto.migrate && \
 /logflare/_build/staging/rel/logflare/bin/logflare start
