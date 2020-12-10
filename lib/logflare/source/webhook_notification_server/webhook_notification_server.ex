@@ -6,7 +6,6 @@ defmodule Logflare.Source.WebhookNotificationServer do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Source.Data
   alias __MODULE__, as: WNS
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
@@ -73,6 +72,14 @@ defmodule Logflare.Source.WebhookNotificationServer do
   defp post(uri, source, rate, recent_events) do
     case URI.parse(uri) do
       %URI{host: "discordapp.com"} ->
+        WNS.DiscordClient.new()
+        |> WNS.DiscordClient.post(source, rate, recent_events)
+
+      %URI{host: "ptb.discord.com"} = uri ->
+        WNS.DiscordClient.new()
+        |> WNS.DiscordClient.post(source, rate, recent_events)
+
+      %URI{host: "discord.com"} = uri ->
         WNS.DiscordClient.new()
         |> WNS.DiscordClient.post(source, rate, recent_events)
 
