@@ -138,7 +138,7 @@ defmodule LogflareWeb.AuthController do
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Error signing in.")
-        |> redirect(to: Routes.marketing_path(conn, :index))
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 
