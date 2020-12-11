@@ -22,11 +22,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
             |> halt()
           else
             conn
-            |> put_resp_cookie(
-              "_logflare_last_provider",
-              user.provider,
-              max_age: 2_592_000
-            )
+            |> put_last_provider_cookie()
             |> put_session(:user_id, user_id)
           end
         end
@@ -53,5 +49,23 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         |> redirect(to: Routes.auth_path(conn, :login))
         |> halt()
     end
+  end
+
+  defp put_last_provider_cookie(%{assigns: %{user: _user, team_user: team_user}} = conn) do
+    put_resp_cookie(
+      conn,
+      "_logflare_last_provider",
+      team_user.provider,
+      max_age: 2_592_000
+    )
+  end
+
+  defp put_last_provider_cookie(%{assigns: %{user: user}} = conn) do
+    put_resp_cookie(
+      conn,
+      "_logflare_last_provider",
+      user.provider,
+      max_age: 2_592_000
+    )
   end
 end
