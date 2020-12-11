@@ -74,7 +74,7 @@ defmodule LogflareWeb.TeamUserController do
     |> put_session(:team_user_id, team_user_id)
     |> put_resp_cookie("_logflare_user_id", user_id)
     |> put_resp_cookie("_logflare_team_user_id", team_user_id)
-    |> put_flash(:info, "Team changed!")
+    |> put_flash(:info, "Welcome to this Logflare team!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
@@ -86,7 +86,7 @@ defmodule LogflareWeb.TeamUserController do
     |> delete_session(:team_user_id)
     |> delete_resp_cookie("_logflare_user_id")
     |> delete_resp_cookie("_logflare_team_user_id")
-    |> put_flash(:info, "Team changed!")
+    |> put_flash(:info, "Welcome to this Logflare team!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 
@@ -99,7 +99,7 @@ defmodule LogflareWeb.TeamUserController do
     |> put_session(:team_user_id, team_user_id)
     |> put_resp_cookie("_logflare_user_id", user_id)
     |> put_resp_cookie("_logflare_team_user_id", team_user_id)
-    |> put_flash(:info, "Team changed!")
+    |> put_flash(:info, "Welcome to this Logflare team!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
   end
 end
