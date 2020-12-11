@@ -128,7 +128,7 @@ defmodule LogflareWeb.AuthController do
             conn
             |> put_flash(:info, "Welcome back!")
             |> put_session(:user_id, user.id)
-            |> redirect(to: Routes.source_path(conn, :dashboard))
+            |> maybe_redirect_team_user()
 
           false ->
             conn
@@ -157,6 +157,23 @@ defmodule LogflareWeb.AuthController do
           scope: oauth_params["scope"]
         )
     )
+  end
+
+  defp maybe_redirect_team_user(conn) do
+    team_user_id = conn.cookies["_logflare_team_user_id"]
+    user_id = conn.cookies["_logflare_user_id"]
+
+    if team_user_id && user_id do
+      redirect(conn,
+        to:
+          Routes.team_user_path(conn, :change_team, %{
+            "user_id" => user_id,
+            "team_user_id" => team_user_id
+          })
+      )
+    else
+      redirect(conn, to: Routes.source_path(conn, :dashboard))
+    end
   end
 
   defp maybe_flash_account_deleted(conn) do
