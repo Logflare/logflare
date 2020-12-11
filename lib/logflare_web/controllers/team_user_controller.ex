@@ -65,15 +65,15 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def change_team(%{assigns: %{team_user: _team_user, user: _user}} = conn, %{
+  def change_team(%{assigns: %{team_user: team_user, user: _user}} = conn, %{
         "user_id" => user_id,
         "team_user_id" => team_user_id
       }) do
     conn
     |> put_session(:user_id, user_id)
     |> put_session(:team_user_id, team_user_id)
-    |> put_resp_cookie("_logflare_user_id", user_id)
-    |> put_resp_cookie("_logflare_team_user_id", team_user_id)
+    |> put_resp_cookie("_logflare_user_id", user_id, max_age: 2_592_000)
+    |> put_resp_cookie("_logflare_team_user_id", team_user_id, max_age: 2_592_000)
     |> put_flash(:info, "Welcome to this Logflare team!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
   end
@@ -97,8 +97,8 @@ defmodule LogflareWeb.TeamUserController do
     conn
     |> put_session(:user_id, user_id)
     |> put_session(:team_user_id, team_user_id)
-    |> put_resp_cookie("_logflare_user_id", user_id)
-    |> put_resp_cookie("_logflare_team_user_id", team_user_id)
+    |> put_resp_cookie("_logflare_user_id", user_id, max_age: 2_592_000)
+    |> put_resp_cookie("_logflare_team_user_id", team_user_id, max_age: 2_592_000)
     |> put_flash(:info, "Welcome to this Logflare team!")
     |> redirect(to: Routes.source_path(conn, :dashboard))
   end
