@@ -413,7 +413,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("set_local_time" = ev, metadata, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+    source = socket.assigns.source
+    log_lv_received_event(ev, source)
 
     use_local_time =
       metadata
@@ -421,7 +422,16 @@ defmodule LogflareWeb.Source.SearchLV do
       |> String.to_existing_atom()
       |> Kernel.not()
 
-    socket = assign(socket, :use_local_time, use_local_time)
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.maybe_cancel_query(source.token)
+
+    socket =
+      socket
+      |> assign(:use_local_time, use_local_time)
+      |> assign_new_search_with_qs(
+        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
+        socket.assigns.source.bq_table_schema
+      )
 
     {:noreply, socket}
   end
