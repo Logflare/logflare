@@ -1,6 +1,8 @@
 defmodule Logflare.TeamUsers.TeamUser do
   use Ecto.Schema
   import Ecto.Changeset
+  alias Users.UserPreferences
+  alias Logflare.Teams.Team
 
   schema "team_users" do
     field :email, :string
@@ -13,7 +15,10 @@ defmodule Logflare.TeamUsers.TeamUser do
     field :provider_uid, :string
     field :token, :string
     field :valid_google_account, :boolean
-    belongs_to :team, Logflare.Teams.Team
+
+    embeds_one :preferences, UserPreferences
+
+    belongs_to :team, Team
 
     timestamps()
   end
