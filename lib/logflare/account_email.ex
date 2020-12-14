@@ -151,13 +151,22 @@ defmodule Logflare.AccountEmail do
     formatted_new = BqSchema.format_bq_schema(new_schema, type: :text)
     formatted_old = BqSchema.format_bq_schema(old_schema, type: :text)
 
+    diff = diff_schema(schema_to_list(formatted_new), schema_to_list(formatted_old))
+
+    if diff == [] do
+      Logger.error("Schema update email send with no new fields.",
+        source_id: source.token,
+        account_email: %{new_schema: inspect(new_schema), old_schema: inspect(old_schema)}
+      )
+    end
+
     new =
       formatted_new
       |> schema_to_list()
       |> concat_and_join()
 
     new_fields =
-      diff_schema(schema_to_list(formatted_new), schema_to_list(formatted_old))
+      diff
       |> concat_and_join()
 
     part_one = """
