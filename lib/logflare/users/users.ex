@@ -1,5 +1,6 @@
 defmodule Logflare.Users do
   alias Logflare.{User, Repo, Sources, Users}
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.Users.UserPreferences
   alias Logflare.Repo
   alias Logflare.Sources

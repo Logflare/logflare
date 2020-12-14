@@ -4,6 +4,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   """
   alias Logflare.Users
   alias Logflare.Users.UserPreferences
+  alias Logflare.TeamUsers.TeamUser
   alias LogflareWeb.SearchView
   use LogflareWeb, :live_component
   import LogflareWeb.LiveViewUtils
@@ -11,7 +12,37 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
 
   @impl true
   def mount(socket) do
-    tzos = for t <- Timex.timezones(), do: {String.to_atom(t), t}
+    tzos =
+      Timex.timezones()
+      |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
+      |> Enum.sort_by(& &1[:offset])
+      |> Enum.map(fn [offset: offset, t: t] ->
+        {hours, minutes, _, _} =
+          offset
+          |> Timex.Duration.from_seconds()
+          |> Timex.Duration.to_clock()
+
+        hours =
+          case "#{hours}" do
+            "-" <> rest when abs(hours) < 10 -> "-0" <> rest
+            rest when abs(hours) < 10 -> "+0" <> rest
+            x when hours >= 10 -> "+" <> x
+            x when hours <= 10 -> x
+          end
+
+        minutes_prefix =
+          if abs(minutes) < 10 do
+            "0"
+          else
+            ""
+          end
+
+        minutes = "#{minutes_prefix}#{minutes}"
+
+        hoursstring = "(#{hours}:#{minutes})"
+
+        {String.to_atom("#{t} #{hoursstring}"), t}
+      end)
 
     socket =
       socket
@@ -22,7 +53,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   end
 
   @impl true
-  def update(%{team_user: user} = assigns, socket) when user do
+  def update(%{team_user: %TeamUser{} = user} = assigns, socket) do
     user_prefs =
       if user.preferences do
         Users.change_user_preferences(user.preferences)
@@ -46,8 +77,6 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
 
   @impl true
   def update(%{user: user} = assigns, socket) do
-    IO.inspect("hit")
-
     user_prefs =
       if user.preferences do
         Users.change_user_preferences(user.preferences)
@@ -72,7 +101,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   @impl true
   def handle_event(
         "update-preferences",
-        %{"user_preferences" => user_preferences} = meta,
+        %{"user_preferences" => user_preferences},
         socket
       ) do
     socket =
@@ -90,8 +119,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
           socket
           |> put_flash(:error, "Something went wrong")
       end
-
-    # |> push_patch(to: socket.assigns.return_to)
+      |> push_patch(to: socket.assigns.return_to)
 
     {:noreply, socket}
   end

@@ -1,8 +1,8 @@
 <%= if @user_type == :team_user do %>
-  <div>Set the local timezone as a user <%= @team_user.team.name %></div>
+  <div>Set the local timezone for your team <%= @team_user.team.name %> account</div>
 <% end %>
 <%= if @user_type == :user do %>
-  <div>Set your local timezone</div>
+  <div>Set your local timezone for your account <%= @user.email %> </div>
 <% end %>
 <%= f = form_for @user_preferences, "#",
   id: "user-tz-form",

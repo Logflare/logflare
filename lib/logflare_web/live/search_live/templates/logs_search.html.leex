@@ -4,7 +4,7 @@
     title: "Preferences",
     user: @user,
     team_user: @team_user,
-    return_to: @uri.path %>
+    return_to: @uri.path <> "?" <> @uri.query  %>
 <% end %>
 <div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
@@ -31,7 +31,9 @@
           </a>
         </li>
         <li>
-          <%= link "TZ settings", to: "#", phx_click: :"activate-user-preferences", id: "activate-user-preferences" %>
+          <%= link to: "#", phx_click: :"activate-user-preferences", id: "activate-user-preferences" do %>
+            <i class="fas fa-globe"></i>
+          <% end %>
         </li>
         <li>
           <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">

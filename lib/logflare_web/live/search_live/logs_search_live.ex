@@ -9,6 +9,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
   alias Logflare.{Sources, Users, Plans, TeamUsers}
+  alias Logflare.User
+  alias Logflare.TeamUsers.TeamUser
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -65,6 +67,21 @@ defmodule LogflareWeb.Source.SearchLV do
     source = socket.assigns.source
 
     socket =
+      socket
+      |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
+      |> assign(:activate_user_preferences, false)
+      |> assign(uri: URI.parse(uri))
+
+    socket =
+      if team_user = socket.assigns[:team_user] do
+        assign(socket, :team_user, TeamUsers.get_team_user_and_preload(team_user.id))
+      else
+        socket
+      end
+
+    socket = assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
+
+    socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema) do
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
         qs = Lql.encode!(lql_rules)
@@ -97,21 +114,10 @@ defmodule LogflareWeb.Source.SearchLV do
           |> error_socket(type, suggested_querystring, error)
       end
 
-    socket =
-      socket
-      |> assign(:activate_user_preferences, false)
-      |> assign(uri: URI.parse(uri))
-
     {:noreply, socket}
   end
 
-  def handle_params(_params, uri, socket) do
-    socket =
-      socket
-      |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
-      |> assign(:activate_user_preferences, false)
-      |> assign(uri: URI.parse(uri))
-
+  def handle_params(_params, _uri, socket) do
     {:noreply, socket}
   end
 
@@ -177,25 +183,18 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"user_id" => user_id} = session,
         socket
       ) do
-    user_timezone = get_connect_params(socket)["user_timezone"]
-
-    user_timezone =
-      if Timex.Timezone.exists?(user_timezone) do
-        user_timezone
-      else
-        "Etc/UTC"
-      end
-
-    source = Sources.Cache.get_source_for_lv_param(source_id)
-
     user = Users.get_by_and_preload(id: user_id)
 
     team_user =
       if team_user_id = session["team_user_id"] do
-        TeamUsers.get_team_user(team_user_id)
+        TeamUsers.get_team_user_and_preload(team_user_id)
       else
         nil
       end
+
+    socket = assign_new_user_timezone(socket, team_user, user)
+
+    source = Sources.Cache.get_source_for_lv_param(source_id)
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
@@ -211,7 +210,6 @@ defmodule LogflareWeb.Source.SearchLV do
         user: user,
         notifications: %{},
         search_tip: gen_search_tip(),
-        user_local_timezone: user_timezone,
         use_local_time: true,
         team_user: team_user
       )
@@ -652,6 +650,28 @@ defmodule LogflareWeb.Source.SearchLV do
       {:error, :field_not_found = type, suggested_querystring, error} ->
         error_socket(socket, type, suggested_querystring, error)
     end
+  end
+
+  defp assign_new_user_timezone(socket, team_user, %User{} = user) do
+    user_local_timezone =
+      cond do
+        team_user && team_user.preferences ->
+          team_user.preferences.timezone
+
+        user.preferences ->
+          user.preferences.timezone
+
+        true ->
+          tz = get_connect_params(socket)["user_timezone"]
+
+          if Timex.Timezone.exists?(tz) do
+            tz
+          else
+            "Etc/UTC"
+          end
+      end
+
+    assign(socket, :user_local_timezone, user_local_timezone)
   end
 
   defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do

@@ -1,7 +1,7 @@
 defmodule Logflare.TeamUsers.TeamUser do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Users.UserPreferences
+  alias Logflare.Users.UserPreferences
   alias Logflare.Teams.Team
 
   schema "team_users" do
