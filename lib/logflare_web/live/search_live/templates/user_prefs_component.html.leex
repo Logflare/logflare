@@ -1,0 +1,18 @@
+<%= if @user_type == :team_user do %>
+  <div>Set the local timezone as a user <%= @team_user.team.name %></div>
+<% end %>
+<%= if @user_type == :user do %>
+  <div>Set your local timezone</div>
+<% end %>
+<%= f = form_for @user_preferences, "#",
+  id: "user-tz-form",
+  phx_submit: "update-preferences",
+  phx_target: @myself %>
+<div class="form-group">
+  <%= hidden_input f, :id %>
+  <%= label f, :timezone, "Timezone", class: "col-form-label" %>
+  <%= select f,
+    :timezone, @timezones_form_options, class: "form-control" %>
+  <%= error_tag f, :timezone %>
+</div>
+<%= submit "Update", phx_disable_with: "Updating...", class: "btn btn-primary" %>

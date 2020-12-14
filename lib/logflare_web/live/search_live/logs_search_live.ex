@@ -8,7 +8,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
-  alias Logflare.{Sources, Users, Plans}
+  alias Logflare.{Sources, Users, Plans, TeamUsers}
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -42,6 +42,7 @@ defmodule LogflareWeb.Source.SearchLV do
     active_modal: nil,
     user_local_timezone: nil,
     use_local_time: true,
+    activate_user_preferences: nil,
     last_query_completed_at: nil,
     lql_rules: [],
     querystring: ""
@@ -60,7 +61,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:ok, socket}
   end
 
-  def handle_params(%{"querystring" => qs}, _uri, socket) do
+  def handle_params(%{"querystring" => qs}, uri, socket) do
     source = socket.assigns.source
 
     socket =
@@ -96,10 +97,21 @@ defmodule LogflareWeb.Source.SearchLV do
           |> error_socket(type, suggested_querystring, error)
       end
 
+    socket =
+      socket
+      |> assign(:activate_user_preferences, false)
+      |> assign(uri: URI.parse(uri))
+
     {:noreply, socket}
   end
 
-  def handle_params(_params, _uri, socket) do
+  def handle_params(_params, uri, socket) do
+    socket =
+      socket
+      |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
+      |> assign(:activate_user_preferences, false)
+      |> assign(uri: URI.parse(uri))
+
     {:noreply, socket}
   end
 
@@ -162,7 +174,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_connected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = _session,
+        %{"user_id" => user_id} = session,
         socket
       ) do
     user_timezone = get_connect_params(socket)["user_timezone"]
@@ -177,6 +189,14 @@ defmodule LogflareWeb.Source.SearchLV do
     source = Sources.Cache.get_source_for_lv_param(source_id)
 
     user = Users.get_by_and_preload(id: user_id)
+
+    team_user =
+      if team_user_id = session["team_user_id"] do
+        TeamUsers.get_team_user(team_user_id)
+      else
+        nil
+      end
+
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
     socket =
@@ -192,7 +212,8 @@ defmodule LogflareWeb.Source.SearchLV do
         notifications: %{},
         search_tip: gen_search_tip(),
         user_local_timezone: user_timezone,
-        use_local_time: true
+        use_local_time: true,
+        team_user: team_user
       )
 
     with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
@@ -410,6 +431,10 @@ defmodule LogflareWeb.Source.SearchLV do
       )
 
     {:noreply, socket}
+  end
+
+  def handle_event("activate-user-preferences", _metadata, socket) do
+    {:noreply, assign(socket, :activate_user_preferences, true)}
   end
 
   def handle_event("set_local_time" = ev, metadata, socket) do
