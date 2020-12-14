@@ -627,6 +627,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_info({:clear_flash, key}, socket) when is_atom(key) do
+    {:noreply, clear_flash(socket, key)}
+  end
+
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 

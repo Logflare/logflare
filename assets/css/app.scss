@@ -160,6 +160,16 @@ main.app {
   max-width: 800px;
 }
 
+.alert-live {
+  @extend .d-flex;
+  @extend .justify-content-between;
+  @extend .align-items-center;
+
+  a {
+    padding-left: 1em;
+  }
+}
+
 .alert-info a {
   color: white;
   text-shadow: 0;
