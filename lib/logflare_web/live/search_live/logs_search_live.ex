@@ -468,7 +468,7 @@ defmodule LogflareWeb.Source.SearchLV do
         {:ok, _saved_search} ->
           socket =
             socket
-            |> put_flash(:warning, "Search saved!")
+            |> put_flash(:info, "Search saved!")
             |> assign(:source, Sources.Cache.get_source_for_lv_param(source.id))
 
           {:noreply, socket}
