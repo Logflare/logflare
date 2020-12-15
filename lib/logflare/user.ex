@@ -10,6 +10,7 @@ defmodule Logflare.User do
   alias Logflare.Teams.Team
   alias Logflare.BillingAccounts.BillingAccount
   alias Logflare.Google.BigQuery
+  alias Logflare.Users.UserPreferences
 
   @derive {Jason.Encoder,
            only: [
@@ -73,6 +74,7 @@ defmodule Logflare.User do
     field :provider_uid, :string
     field :company, :string
     field :billing_enabled?, :boolean, default: true, null: false
+    embeds_one :preferences, UserPreferences
 
     has_many :sources, Source
 
@@ -126,6 +128,12 @@ defmodule Logflare.User do
     |> cast(attrs, @fields)
     |> cast_assoc(:team)
     |> default_validations(user)
+  end
+
+  def preferences_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:preferences])
+    |> cast_embed([:preferences])
   end
 
   def default_validations(changeset, user) do

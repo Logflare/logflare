@@ -1,3 +1,11 @@
+<%= if @activate_user_preferences do %>
+  <%= live_modal @socket, LogflareWeb.Search.UserPreferencesComponent,
+    id: :user_preferences,
+    title: "Preferences",
+    user: @user,
+    team_user: @team_user,
+    return_to: @uri.path <> "?" <> @uri.query  %>
+<% end %>
 <div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
@@ -21,6 +29,14 @@
             </span>
             <span class="hide-on-mobile">local time</span>
           </a>
+        </li>
+        <li>
+          <%= link to: "#", phx_click: :"activate-user-preferences", id: "activate-user-preferences" do %>
+            <i class="fas fa-globe"></i>
+            <span class="hide-on-mobile">
+              Timezone
+            </span>
+          <% end %>
         </li>
         <li>
           <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
@@ -145,7 +161,6 @@
     </div>
   </form>
 </div>
-<%= render_notifications(@notifications) %>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 <%= live_component @socket, ModalLVC, id: :active_modal, active_modal: @active_modal, source: @source, log_events: @log_events, user: @user, search_op_log_events: @search_op_log_events, search_op_log_aggregates: @search_op_log_aggregates, search_op_error: @search_op_error %>
 </div>

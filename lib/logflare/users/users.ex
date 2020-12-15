@@ -1,5 +1,7 @@
 defmodule Logflare.Users do
   alias Logflare.{User, Repo, Sources, Users}
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.Users.UserPreferences
   alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Google.BigQuery
@@ -133,5 +135,19 @@ defmodule Logflare.Users do
       {:error, changeset} ->
         {:error, changeset}
     end
+  end
+
+  def change_user_preferences(user_preferences, attrs \\ %{}) do
+    (user_preferences || %UserPreferences{})
+    |> UserPreferences.changeset(attrs)
+  end
+
+  # def update_user_with_preferences(%{preferences: nil} = user_or_team_user, attrs)
+  def update_user_with_preferences(user_or_team_user, attrs)
+      when user_or_team_user.__struct__ in [User, TeamUser] do
+    user_or_team_user
+    |> Ecto.Changeset.cast(attrs, [])
+    |> Ecto.Changeset.cast_embed(:preferences, required: true)
+    |> Repo.update()
   end
 end

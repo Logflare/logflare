@@ -8,7 +8,9 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
-  alias Logflare.{Sources, Users, Plans}
+  alias Logflare.{Sources, Users, Plans, TeamUsers}
+  alias Logflare.User
+  alias Logflare.TeamUsers.TeamUser
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -16,7 +18,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
 
-  use LogflareWeb.LiveViewUtils
   use LogflareWeb.ModalsLVHelpers
 
   require Logger
@@ -31,7 +32,6 @@ defmodule LogflareWeb.Source.SearchLV do
     chart_loading?: true,
     tailing_paused?: nil,
     tailing_timer: nil,
-    notifications: %{},
     search_op: nil,
     search_op_error: nil,
     search_op_log_events: nil,
@@ -42,6 +42,7 @@ defmodule LogflareWeb.Source.SearchLV do
     active_modal: nil,
     user_local_timezone: nil,
     use_local_time: true,
+    activate_user_preferences: nil,
     last_query_completed_at: nil,
     lql_rules: [],
     querystring: ""
@@ -60,8 +61,23 @@ defmodule LogflareWeb.Source.SearchLV do
     {:ok, socket}
   end
 
-  def handle_params(%{"querystring" => qs}, _uri, socket) do
+  def handle_params(%{"querystring" => qs}, uri, socket) do
     source = socket.assigns.source
+
+    socket =
+      socket
+      |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
+      |> assign(:activate_user_preferences, false)
+      |> assign(uri: URI.parse(uri))
+
+    socket =
+      if team_user = socket.assigns[:team_user] do
+        assign(socket, :team_user, TeamUsers.get_team_user_and_preload(team_user.id))
+      else
+        socket
+      end
+
+    socket = assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema) do
@@ -129,7 +145,6 @@ defmodule LogflareWeb.Source.SearchLV do
         user: user,
         loading: true,
         chart_loading: true,
-        notifications: %{},
         search_tip: gen_search_tip(),
         use_local_time: true,
         querystring: querystring
@@ -162,21 +177,22 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_connected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = _session,
+        %{"user_id" => user_id} = session,
         socket
       ) do
-    user_timezone = get_connect_params(socket)["user_timezone"]
+    user = Users.get_by_and_preload(id: user_id)
 
-    user_timezone =
-      if Timex.Timezone.exists?(user_timezone) do
-        user_timezone
+    team_user =
+      if team_user_id = session["team_user_id"] do
+        TeamUsers.get_team_user_and_preload(team_user_id)
       else
-        "Etc/UTC"
+        nil
       end
+
+    socket = assign_new_user_timezone(socket, team_user, user)
 
     source = Sources.Cache.get_source_for_lv_param(source_id)
 
-    user = Users.get_by_and_preload(id: user_id)
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
     socket =
@@ -189,10 +205,9 @@ defmodule LogflareWeb.Source.SearchLV do
         loading: true,
         chart_loading?: true,
         user: user,
-        notifications: %{},
         search_tip: gen_search_tip(),
-        user_local_timezone: user_timezone,
-        use_local_time: true
+        use_local_time: true,
+        team_user: team_user
       )
 
     with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
@@ -412,8 +427,13 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_event("activate-user-preferences", _metadata, socket) do
+    {:noreply, assign(socket, :activate_user_preferences, true)}
+  end
+
   def handle_event("set_local_time" = ev, metadata, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+    source = socket.assigns.source
+    log_lv_received_event(ev, source)
 
     use_local_time =
       metadata
@@ -421,7 +441,16 @@ defmodule LogflareWeb.Source.SearchLV do
       |> String.to_existing_atom()
       |> Kernel.not()
 
-    socket = assign(socket, :use_local_time, use_local_time)
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.maybe_cancel_query(source.token)
+
+    socket =
+      socket
+      |> assign(:use_local_time, use_local_time)
+      |> assign_new_search_with_qs(
+        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
+        socket.assigns.source.bq_table_schema
+      )
 
     {:noreply, socket}
   end
@@ -438,21 +467,20 @@ defmodule LogflareWeb.Source.SearchLV do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
         {:ok, _saved_search} ->
           socket =
-            assign_notifications(socket, :warning, "Search saved!")
+            socket
+            |> put_flash(:warning, "Search saved!")
             |> assign(:source, Sources.Cache.get_source_for_lv_param(source.id))
-
-          socket.assigns.notifications
 
           {:noreply, socket}
 
         {:error, changeset} ->
           {message, _} = changeset.errors[:querystring]
-          socket = assign_notifications(socket, :warning, "Save search error: #{message}")
+          socket = put_flash(socket, :warning, "Save search error: #{message}")
           {:noreply, socket}
       end
     else
       socket =
-        assign_notifications(
+        put_flash(
           socket,
           :warning,
           "You've reached your saved search limit for this source. Delete one or upgrade first!"
@@ -535,7 +563,7 @@ defmodule LogflareWeb.Source.SearchLV do
           warning_message(socket.assigns, search_result)
       end
 
-    socket = if warning, do: assign_notifications(socket, :warning, warning), else: socket
+    socket = if warning, do: put_flash(socket, :warning, warning), else: socket
 
     socket =
       socket
@@ -569,7 +597,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_op_error, search_op)
       |> assign(:search_op_log_events, nil)
       |> assign(:search_op_log_aggregates, nil)
-      |> assign_notifications(:error, error_notificaton)
+      |> put_flash(:error, error_notificaton)
       |> assign(:tailing?, false)
       |> assign(:loading, false)
 
@@ -605,8 +633,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, true)
       |> assign(:chart_loading, true)
       |> assign(:tailing_initial?, true)
-      |> assign_notifications(:warning, nil)
-      |> assign_notifications(:error, nil)
+      |> clear_flash(:warning)
+      |> clear_flash(:error)
       |> assign(:lql_rules, lql_rules)
       |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
@@ -617,6 +645,28 @@ defmodule LogflareWeb.Source.SearchLV do
       {:error, :field_not_found = type, suggested_querystring, error} ->
         error_socket(socket, type, suggested_querystring, error)
     end
+  end
+
+  defp assign_new_user_timezone(socket, team_user, %User{} = user) do
+    user_local_timezone =
+      cond do
+        team_user && team_user.preferences ->
+          team_user.preferences.timezone
+
+        user.preferences ->
+          user.preferences.timezone
+
+        true ->
+          tz = get_connect_params(socket)["user_timezone"]
+
+          if Timex.Timezone.exists?(tz) do
+            tz
+          else
+            "Etc/UTC"
+          end
+      end
+
+    assign(socket, :user_local_timezone, user_local_timezone)
   end
 
   defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
@@ -690,6 +740,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:tailing?, false)
     |> assign(:loading, false)
     |> assign(:chart_loading?, false)
-    |> assign_notifications(:error, error)
+    |> put_flash(:error, error)
   end
 end
