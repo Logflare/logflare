@@ -134,6 +134,26 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
 
       assert valid?(metadata, schema)
     end
+
+    test "correctly handles invalid utf8 / valid latin1 fields" do
+      schema = SchemaFactory.build(:schema, variant: :third_with_lists)
+      metadata = SchemaFactory.build(:metadata, variant: :third_with_lists)
+
+      metadata =
+        put_in(
+          metadata,
+          ["user", "address"],
+          %{
+            <<95, 67, 195, 95, 100, 105, 103, 111, 95, 100, 101, 95, 82, 97, 115, 116, 114, 101,
+              105, 111>> => "valid",
+            "field2" =>
+              <<95, 67, 195, 95, 100, 105, 103, 111, 95, 100, 101, 95, 82, 97, 115, 116, 114, 101,
+                105, 111>>
+          }
+        )
+
+      assert valid?(metadata, schema)
+    end
   end
 
   def typemap_for_third() do

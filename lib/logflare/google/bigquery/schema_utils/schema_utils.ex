@@ -103,13 +103,31 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
         end
 
       k =
-        if is_atom(k) do
-          k
-        else
-          String.to_atom(k)
+        cond do
+          is_atom(k) -> k
+          String.valid?(k) -> String.to_atom(k)
+          true -> decode_until_valid!(k)
         end
 
       {k, v}
+    end
+  end
+
+  defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
+
+  defp decode_until_valid!(k, []) do
+    raise("Incoming field #{inspect(k)} is not a valid string")
+  end
+
+  defp decode_until_valid!(k, [encoding | encodings]) when is_binary(k) do
+    case :unicode.characters_to_binary(k, encoding) do
+      {:error, _, _} ->
+        decode_until_valid!(k, encodings)
+
+      k ->
+        k
+        |> Unicode.unaccent()
+        |> String.to_atom()
     end
   end
 
