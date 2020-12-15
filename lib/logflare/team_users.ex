@@ -87,6 +87,19 @@ defmodule Logflare.TeamUsers do
     end
   end
 
+  def update_team_user_on_change_team(user, team_user_id) do
+    team_user = get_team_user(team_user_id)
+
+    {:ok, _team_user} =
+      update_team_user(team_user, %{
+        provider: user.provider,
+        valid_google_account: user.valid_google_account || false,
+        token: user.token,
+        image: user.image,
+        provider_uid: user.provider_uid
+      })
+  end
+
   def get_team_user!(id), do: Repo.get!(TeamUser, id)
 
   def get_team_user(id), do: Repo.get(TeamUser, id)
