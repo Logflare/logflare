@@ -38,7 +38,7 @@ npm-debug.log
 
 gcloud.json
 gcloud_staging.json
-
+gcloud_prod.json
 # IDEs
 
 /.elixir_ls/
@@ -47,3 +47,4 @@ gcloud_staging.json
 
 # Project exclude paths
 /cover/
+/node_modules/
