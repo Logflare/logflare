@@ -11,41 +11,9 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
 
   @impl true
   def mount(socket) do
-    tzos =
-      Timex.timezones()
-      |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
-      |> Enum.sort_by(& &1[:offset])
-      |> Enum.map(fn [offset: offset, t: t] ->
-        {hours, minutes, _, _} =
-          offset
-          |> Timex.Duration.from_seconds()
-          |> Timex.Duration.to_clock()
-
-        hours =
-          case "#{hours}" do
-            "-" <> rest when abs(hours) < 10 -> "-0" <> rest
-            rest when abs(hours) < 10 -> "+0" <> rest
-            x when hours >= 10 -> "+" <> x
-            x when hours <= 10 -> x
-          end
-
-        minutes_prefix =
-          if abs(minutes) < 10 do
-            "0"
-          else
-            ""
-          end
-
-        minutes = "#{minutes_prefix}#{minutes}"
-
-        hoursstring = "(#{hours}:#{minutes})"
-
-        {String.to_atom("#{t} #{hoursstring}"), t}
-      end)
-
     socket =
       socket
-      |> assign(:timezones_form_options, tzos)
+      |> assign(:timezones_form_options, build_timezones_select_form_options())
       |> assign(:title, "User preferences")
 
     {:ok, socket}
@@ -111,7 +79,6 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
           socket
           |> assign(:user_or_team_user, user)
           |> assign(:user_preferences, Users.change_user_preferences(user.preferences))
-          |> assign_notifications(:warning, "Search saved!")
           |> put_flash(:success, "Local timezone updated to #{user.preferences.timezone}")
 
         {:error, _error} ->
@@ -126,5 +93,38 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   @impl true
   def render(assigns) do
     SearchView.render("user_prefs_component.html", assigns)
+  end
+
+  def build_timezones_select_form_options() do
+    Timex.timezones()
+    |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
+    |> Enum.sort_by(& &1[:offset])
+    |> Enum.map(fn [offset: offset, t: t] ->
+      {hours, minutes, _, _} =
+        offset
+        |> Timex.Duration.from_seconds()
+        |> Timex.Duration.to_clock()
+
+      hours =
+        case "#{hours}" do
+          "-" <> rest when abs(hours) < 10 -> "-0" <> rest
+          rest when abs(hours) < 10 -> "+0" <> rest
+          x when hours >= 10 -> "+" <> x
+          x when hours <= 10 -> x
+        end
+
+      minutes_prefix =
+        if abs(minutes) < 10 do
+          "0"
+        else
+          ""
+        end
+
+      minutes = "#{minutes_prefix}#{minutes}"
+
+      hoursstring = "(#{hours}:#{minutes})"
+
+      {String.to_atom("#{t} #{hoursstring}"), t}
+    end)
   end
 end

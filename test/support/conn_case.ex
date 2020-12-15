@@ -17,10 +17,12 @@ defmodule LogflareWeb.ConnCase do
 
   using do
     quote do
-      # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
       import LogflareWeb.Router.Helpers
+      alias LogflareWeb.Router.Helpers, as: Routes
+      import Logflare.Factory
+      import Phoenix.LiveViewTest
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint

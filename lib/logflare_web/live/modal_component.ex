@@ -4,26 +4,27 @@ defmodule LogflareWeb.ModalComponent do
   @impl true
   def render(assigns) do
     ~L"""
-    <div id="<%= @id %>" class="modal fade show"
-      phx-capture-click="close"
-      phx-window-keydown="close"
-      phx-key="escape"
-      phx-target="#<%= @id %>"
-      phx-page-loading
-      style="display: block;"
-      >
-
+    <div id="logflare-modal-content">
+      <div id="<%= @id %>" class="modal fade show"
+          phx-capture-click="close"
+          phx-window-keydown="close"
+          phx-key="escape"
+          phx-target="#<%= @id %>"
+          phx-page-loading
+          style="display: block;"
+          >
       <div class="modal-dialog">
-      <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><%= @title %> </h5>
-        <%= live_patch raw("&times;"), to: @return_to, class: "phx-modal-close" %>
-      </div>
-      <div class="modal-body">
-        <div class="container">
-           <%= live_component @socket, @component, @opts %>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title"><%= @title %> </h5>
+            <%= live_patch raw("&times;"), to: @return_to, class: "phx-modal-close" %>
+          </div>
+          <div class="modal-body">
+            <div class="container">
+              <%= live_component @socket, @component, @opts %>
+            </div>
+          </div>
         </div>
-      </div>
       </div>
       </div>
     </div>

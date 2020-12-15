@@ -4,6 +4,7 @@ defmodule Logflare.Factory do
   """
   use ExMachina.Ecto, repo: Logflare.Repo
   alias Logflare.{User, Source, Rule, LogEvent}
+  alias Logflare.Users.UserPreferences
   alias Logflare.Plans.Plan
 
   def user_factory do
@@ -47,6 +48,12 @@ defmodule Logflare.Factory do
   def plan_factory() do
     %Plan{
       stripe_id: "31415"
+    }
+  end
+
+  def user_preferences_factory() do
+    %UserPreferences{
+      timezone: "Phoenix/Arizona"
     }
   end
 end
