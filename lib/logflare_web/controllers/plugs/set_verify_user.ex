@@ -80,15 +80,18 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
     api_key =
       conn.req_headers
       |> Enum.into(%{})
-      |> Map.get("x-api-key") || conn.params["api_key"]
+      |> Map.get("x-api-key", conn.params["api_key"])
 
     case api_key && Users.Cache.get_by_and_preload(api_key: api_key) do
       %User{} = user ->
         assign(conn, :user, user)
 
-      _ ->
+      api_key when is_binary(api_key) ->
         message = "Error: please set ingest API key"
+        put_401(conn, message)
 
+      nil ->
+        message = "Error: user not found"
         put_401(conn, message)
     end
   end
