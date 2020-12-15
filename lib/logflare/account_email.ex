@@ -1,6 +1,8 @@
 defmodule Logflare.AccountEmail do
   import Swoosh.Email
 
+  require Logger
+
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
   alias LogflareWeb.Helpers.BqSchema
