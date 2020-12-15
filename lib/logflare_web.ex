@@ -60,6 +60,33 @@ defmodule LogflareWeb do
       import Phoenix.LiveView, only: [connected?: 1]
       # Use all HTML functionality (forms, tags, etc)
       unquote(view_helpers())
+      unquote(live_view_helpers())
+    end
+  end
+
+  def live_view do
+    quote do
+      use Phoenix.LiveView,
+        layout: {LogflareWeb.LayoutView, "live.html"}
+
+      import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
+
+      unquote(view_helpers())
+      unquote(live_view_helpers())
+    end
+  end
+
+  def live_component do
+    quote do
+      use Phoenix.LiveComponent
+
+      unquote(view_helpers())
+    end
+  end
+
+  defp live_view_helpers do
+    quote do
+      use LogflareWeb.LiveCommons
     end
   end
 
@@ -76,25 +103,6 @@ defmodule LogflareWeb do
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
       alias LogflareWeb.Router.Helpers, as: Routes
-    end
-  end
-
-  def live_view do
-    quote do
-      use Phoenix.LiveView,
-        layout: {LogflareWeb.LayoutView, "live.html"}
-
-      import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
-
-      unquote(view_helpers())
-    end
-  end
-
-  def live_component do
-    quote do
-      use Phoenix.LiveComponent
-
-      unquote(view_helpers())
     end
   end
 

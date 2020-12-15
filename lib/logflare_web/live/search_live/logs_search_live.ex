@@ -18,7 +18,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
 
-  use LogflareWeb.LiveViewUtils
   use LogflareWeb.ModalsLVHelpers
 
   require Logger
@@ -33,7 +32,6 @@ defmodule LogflareWeb.Source.SearchLV do
     chart_loading?: true,
     tailing_paused?: nil,
     tailing_timer: nil,
-    notifications: %{},
     search_op: nil,
     search_op_error: nil,
     search_op_log_events: nil,
@@ -147,7 +145,6 @@ defmodule LogflareWeb.Source.SearchLV do
         user: user,
         loading: true,
         chart_loading: true,
-        notifications: %{},
         search_tip: gen_search_tip(),
         use_local_time: true,
         querystring: querystring
@@ -208,7 +205,6 @@ defmodule LogflareWeb.Source.SearchLV do
         loading: true,
         chart_loading?: true,
         user: user,
-        notifications: %{},
         search_tip: gen_search_tip(),
         use_local_time: true,
         team_user: team_user
@@ -471,21 +467,20 @@ defmodule LogflareWeb.Source.SearchLV do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
         {:ok, _saved_search} ->
           socket =
-            assign_notifications(socket, :warning, "Search saved!")
+            socket
+            |> put_flash(:warning, "Search saved!")
             |> assign(:source, Sources.Cache.get_source_for_lv_param(source.id))
-
-          socket.assigns.notifications
 
           {:noreply, socket}
 
         {:error, changeset} ->
           {message, _} = changeset.errors[:querystring]
-          socket = assign_notifications(socket, :warning, "Save search error: #{message}")
+          socket = put_flash(socket, :warning, "Save search error: #{message}")
           {:noreply, socket}
       end
     else
       socket =
-        assign_notifications(
+        put_flash(
           socket,
           :warning,
           "You've reached your saved search limit for this source. Delete one or upgrade first!"
@@ -568,7 +563,7 @@ defmodule LogflareWeb.Source.SearchLV do
           warning_message(socket.assigns, search_result)
       end
 
-    socket = if warning, do: assign_notifications(socket, :warning, warning), else: socket
+    socket = if warning, do: put_flash(socket, :warning, warning), else: socket
 
     socket =
       socket
@@ -602,7 +597,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_op_error, search_op)
       |> assign(:search_op_log_events, nil)
       |> assign(:search_op_log_aggregates, nil)
-      |> assign_notifications(:error, error_notificaton)
+      |> put_flash(:error, error_notificaton)
       |> assign(:tailing?, false)
       |> assign(:loading, false)
 
@@ -627,10 +622,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:clear_flash, key}, socket) when is_atom(key) do
-    {:noreply, clear_flash(socket, key)}
-  end
-
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 
@@ -642,8 +633,8 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, true)
       |> assign(:chart_loading, true)
       |> assign(:tailing_initial?, true)
-      |> assign_notifications(:warning, nil)
-      |> assign_notifications(:error, nil)
+      |> clear_flash(:warning)
+      |> clear_flash(:error)
       |> assign(:lql_rules, lql_rules)
       |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
@@ -749,6 +740,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:tailing?, false)
     |> assign(:loading, false)
     |> assign(:chart_loading?, false)
-    |> assign_notifications(:error, error)
+    |> put_flash(:error, error)
   end
 end

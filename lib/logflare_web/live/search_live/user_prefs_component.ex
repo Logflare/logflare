@@ -7,7 +7,6 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   alias Logflare.TeamUsers.TeamUser
   alias LogflareWeb.SearchView
   use LogflareWeb, :live_component
-  import LogflareWeb.LiveViewUtils
   @default_timezone "Etc/UTC"
 
   @impl true
