@@ -30,7 +30,7 @@
   </small>
   <small class="source-details">
     <%= if @source.metrics.fields > @conn.assigns.plan.limit_source_fields_limit do %>
-      fields: <span class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Max 500 fields per source! Data in new fields are ignored."><%= @source.metrics.fields %></span>
+      fields: <span class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Max <%= @conn.assigns.plan.limit_source_fields_limit %> fields per source! Data in new fields are ignored."><%= @source.metrics.fields %></span>
     <% else %>
       fields: <span><%= @source.metrics.fields %></span>
     <% end %>
