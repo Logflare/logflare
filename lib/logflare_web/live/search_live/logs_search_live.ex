@@ -659,7 +659,7 @@ defmodule LogflareWeb.Source.SearchLV do
         true ->
           tz = get_connect_params(socket)["user_timezone"]
 
-          if Timex.Timezone.exists?(tz) do
+          if tz && Timex.Timezone.exists?(tz) do
             tz
           else
             "Etc/UTC"
