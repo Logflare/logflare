@@ -94,16 +94,7 @@ defmodule LogflareWeb.TeamUserController do
         "user_id" => user_id,
         "team_user_id" => team_user_id
       }) do
-    team_user = TeamUsers.get_team_user(team_user_id)
-
-    {:ok, _team_user} =
-      TeamUsers.update_team_user(team_user, %{
-        provider: user.provider,
-        valid_google_account: user.valid_google_account,
-        token: user.token,
-        image: user.image,
-        provider_uid: user.provider_uid
-      })
+    {:ok, _team_user} = TeamUsers.update_team_user_on_change_team(user, team_user_id)
 
     conn
     |> put_session(:user_id, user_id)
