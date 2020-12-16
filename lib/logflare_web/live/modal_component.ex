@@ -15,9 +15,11 @@ defmodule LogflareWeb.ModalComponent do
           >
         <div class="modal-dialog modal-xl" role="document">
           <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header lf-modal-header">
               <h5 class="modal-title"><%= @title %> </h5>
-              <%= live_patch raw("&times;"), to: @return_to, class: "phx-modal-close" %>
+              <button type="button" class="close" aria-label="Close">
+                <span> <%= live_patch raw("&times;"), to: @return_to, class: "phx-modal-close" %> </span>
+              </button>
             </div>
             <div class="modal-body">
               <div class="container">

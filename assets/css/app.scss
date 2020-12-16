@@ -251,6 +251,14 @@ a {
   color: #e35b8d;
 }
 
+.lf-modal-header {
+  @extend .align-items-center;
+}
+
+a.phx-modal-close {
+  color: black;
+}
+
 a:hover {
   color: white;
   text-decoration: underline;
