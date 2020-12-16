@@ -31,7 +31,7 @@
     gigalixir drains:add "https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
-        <h5 class="header-margin">With the Cloudflare App</h5>
+        <h5 class="header-margin">Cloudflare App</h5>
         <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
         <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowtransparency="true" scroll="no"
           frameborder="0" style="height: 48px; width: 180px">
@@ -44,19 +44,23 @@
     heroku drains:add "https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
-        <h5 class="header-margin">With Elixir Logger</h5>
+        <h5 class="header-margin">Elixir Logger</h5>
         <p>Using Elixir? Use our Logger backend to send your structured logs.</p>
         <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-primary form-button", target: "_blank" %>
 
-        <h5 class="header-margin">With the Elixir Agent</h5>
+        <h5 class="header-margin">Elixir Agent</h5>
         <p>Watch log files on a server with our Elixir agent.</p>
         <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button", target: "_blank" %>
 
-        <h5 class="header-margin">For Javascript Projects</h5>
+        <h5 class="header-margin">Javascript</h5>
         <p>Use our official Pino transport to send log events from your Javascript project.</p>
         <%= link "Setup the Pino transport", to: "https://github.com/Logflare/pino-logflare", class: "btn btn-primary form-button", target: "_blank" %>
 
-        <h5 class="header-margin">With Fluent Bit</h5>
+        <h5 class="header-margin">Github Action</h5>
+        <p>Use our Github Action (thanks <%= link "@gr2m", to: "https://twitter.com/gr2m" %>) to easily log events coming from your repositories.</p>
+        <%= link "Setup the Github Action", to: "https://github.com/marketplace/actions/logflare-log", class: "btn btn-primary form-button", target: "_blank" %>
+
+        <h5 class="header-margin">Fluent Bit</h5>
         <p>Watch log files on a server with this <%= link "Fluent Bit", to: "https://fluentbit.io/", target: "_blank" %> output config.</p>
         <pre class="pre-scrollable">
           <code>
@@ -78,7 +82,7 @@
           </code>
         </pre>
 
-        <h5 class="header-margin">From a Generic Webhook</h5>
+        <h5 class="header-margin">Generic Webhook</h5>
         <p>Use the generic JSON ingest endpoint to generate log events from an external webhook.</p>
         <p>e.g. you can set a Github webhook to send events to:</p>
         <pre class="pre-scrollable">
@@ -88,8 +92,9 @@
         <p>Or send generic JSON events yourself.</p>
         <pre class="pre-scrollable">
           <code>
-    curl -X "POST" "https://api.logflare.app/logs/json?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>" \
+    curl -X "POST" "https://api.logflare.app/logs/json?api_key=&source=<%= @source.token %>" \
          -H 'Content-Type: application/json; charset=utf-8' \
+         -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
          -d $'[
       {
         "yellow": true,
@@ -110,13 +115,14 @@
           </code>
         </pre>
 
-        <h5 class="header-margin">With an API Request</h5>
+        <h5 class="header-margin">Custom API Request</h5>
         <p>Send logs via an HTTP request. This request body payload lets you send over a human readable event message in
           the <code>log_entry</code> field.</p>
         <pre class="pre-scrollable">
           <code>
-    curl -X "POST" "https://api.logflare.app/logs?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>" \
+    curl -X "POST" "https://api.logflare.app/logs?api_key=&source=<%= @source.token %>" \
     -H 'Content-Type: application/json' \
+    -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
     -d $'{
       "log_entry": "This is another log message.",
       "metadata": {
@@ -144,7 +150,7 @@
           </code>
         </pre>
 
-        <h5 class="header-margin">With a Custom Cloudflare Worker</h5>
+        <h5 class="header-margin">Custom Cloudflare Worker</h5>
         <p>Customize the Cloudflare worker using the template below.</p>
         <pre class="pre-scrollable">
           <code>
