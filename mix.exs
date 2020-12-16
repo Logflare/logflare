@@ -40,7 +40,6 @@ defmodule Logflare.Mixfile do
         :logger,
         :runtime_tools,
         :ueberauth_github,
-        :edeliver,
         :ueberauth_google,
         :ssl
       ]
@@ -65,7 +64,7 @@ defmodule Logflare.Mixfile do
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
       {:phoenix_live_view, "~> 0.14.8", override: true},
-      {:phoenix_live_dashboard, "~> 0.1"},
+      {:phoenix_live_dashboard, "~> 0.3.0"},
       {:cors_plug, "~> 2.0"},
 
       # Oauth
@@ -82,8 +81,6 @@ defmodule Logflare.Mixfile do
       {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
-      {:distillery, "~> 2.1.0"},
-      {:edeliver, ">= 1.7.0"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
@@ -101,7 +98,7 @@ defmodule Logflare.Mixfile do
 
       # Parsing
       {:bertex, ">= 0.0.0"},
-      {:nimble_parsec, "~> 0.6.0"},
+      {:nimble_parsec, "~> 1.0"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
@@ -114,11 +111,11 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.3.0"},
 
       # Concurrency and pipelines
-      {:broadway, "~> 0.5.0"},
-      {:flow, "~> 0.14"},
+      {:broadway, "~> 0.6.0"},
+      {:flow, "~> 1.0"},
 
       # Test
-      {:placebo, "2.0.0-rc.2"},
+      {:placebo, "~> 2.0"},
       {:mox, "~> 0.5", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:faker, "~> 0.12", only: :test},
@@ -155,7 +152,7 @@ defmodule Logflare.Mixfile do
       {:statistex, "~> 1.0.0"},
 
       # HTML
-      {:floki, "~> 0.28.0"},
+      {:floki, "~> 0.29.0"},
 
       # Rust NIFs
       {:rustler, "~> 0.21.0", override: true},
@@ -171,7 +168,7 @@ defmodule Logflare.Mixfile do
       {:money, "~> 1.7"},
 
       # Utils
-      {:recase, "~> 0.6.0"},
+      {:recase, "~> 0.7.0"},
       {:ex_unicode, "~> 1.0"},
 
       # Code quality
