@@ -78,7 +78,7 @@ defmodule LogflareWeb.Sources.RulesLV do
           put_flash(socket, :error, error)
 
         {:warnings, warning} ->
-          put_flash(socket, :warning, warning)
+          put_flash(socket, :info, warning)
       end
 
     {:noreply, socket}

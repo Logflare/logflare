@@ -5,6 +5,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   alias Logflare.Users
   alias Logflare.Users.UserPreferences
   alias Logflare.TeamUsers.TeamUser
+  alias Logflare.DateTimeUtils
   alias LogflareWeb.SearchView
   use LogflareWeb, :live_component
   @default_timezone "Etc/UTC"
@@ -79,7 +80,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
           socket
           |> assign(:user_or_team_user, user)
           |> assign(:user_preferences, Users.change_user_preferences(user.preferences))
-          |> put_flash(:success, "Local timezone updated to #{user.preferences.timezone}")
+          |> put_flash(:info, "Local timezone updated to #{user.preferences.timezone}")
 
         {:error, _error} ->
           socket
@@ -100,29 +101,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
     |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
     |> Enum.sort_by(& &1[:offset])
     |> Enum.map(fn [offset: offset, t: t] ->
-      {hours, minutes, _, _} =
-        offset
-        |> Timex.Duration.from_seconds()
-        |> Timex.Duration.to_clock()
-
-      hours =
-        case "#{hours}" do
-          "-" <> rest when abs(hours) < 10 -> "-0" <> rest
-          rest when abs(hours) < 10 -> "+0" <> rest
-          x when hours >= 10 -> "+" <> x
-          x when hours <= 10 -> x
-        end
-
-      minutes_prefix =
-        if abs(minutes) < 10 do
-          "0"
-        else
-          ""
-        end
-
-      minutes = "#{minutes_prefix}#{minutes}"
-
-      hoursstring = "(#{hours}:#{minutes})"
+      hoursstring = DateTimeUtils.humanize_timezone_offset(offset)
 
       {String.to_atom("#{t} #{hoursstring}"), t}
     end)

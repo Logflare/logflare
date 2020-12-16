@@ -4,7 +4,7 @@
     title: "Preferences",
     user: @user,
     team_user: @team_user,
-    return_to: @uri.path <> "?" <> @uri.query  %>
+    return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)" %>
 <% end %>
 <div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
@@ -34,8 +34,12 @@
           <%= link to: "#", phx_click: :"activate-user-preferences", id: "activate-user-preferences" do %>
             <i class="fas fa-globe"></i>
             <span class="hide-on-mobile">
-              Timezone
+              timezone
+              <%= if @user_local_timezone do %>
+                <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@user_local_timezone).offset_utc)  %>
+              <% end %>
             </span>
+            <div id="user-preferences" data-user-local-timezone="<%= @user_local_timezone %>"></div>
           <% end %>
         </li>
         <li>

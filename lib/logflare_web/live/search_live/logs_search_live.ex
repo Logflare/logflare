@@ -10,6 +10,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.SavedSearches
   alias Logflare.{Sources, Users, Plans, TeamUsers}
   alias Logflare.User
+  alias Logflare.LogEvent
   alias Logflare.TeamUsers.TeamUser
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
@@ -77,7 +78,12 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
       end
 
-    socket = assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
+    socket =
+      if connected?(socket) do
+        assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
+      else
+        socket
+      end
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema) do
@@ -180,7 +186,16 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"user_id" => user_id} = session,
         socket
       ) do
+    source = Sources.Cache.get_source_for_lv_param(source_id)
+    socket = assign(socket, :source, source)
     user = Users.get_by_and_preload(id: user_id)
+
+    socket =
+      assign(
+        socket,
+        :user_timezone_from_connect_params,
+        Map.get(get_connect_params(socket), "user_timezone")
+      )
 
     team_user =
       if team_user_id = session["team_user_id"] do
@@ -191,15 +206,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket = assign_new_user_timezone(socket, team_user, user)
 
-    source = Sources.Cache.get_source_for_lv_param(source_id)
-
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
     socket =
       socket
       |> assign(@default_assigns)
       |> assign(
-        source: source,
         tailing?: tailing?,
         tailing_initial?: true,
         loading: true,
@@ -475,7 +487,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
         {:error, changeset} ->
           {message, _} = changeset.errors[:querystring]
-          socket = put_flash(socket, :warning, "Save search error: #{message}")
+          socket = put_flash(socket, :info, "Save search error: #{message}")
           {:noreply, socket}
       end
     else
@@ -490,16 +502,17 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("reset_search", _, %{assigns: assigns} = socket) do
+  def handle_event("reset_search", _, socket) do
+    {:noreply, reset_search(socket)}
+  end
+
+  defp reset_search(%{assigns: assigns} = socket) do
     lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
     qs = Lql.encode!(lql_rules)
 
-    socket =
-      socket
-      |> assign(:querystring, qs)
-      |> assign(:lql_rules, lql_rules)
-
-    {:noreply, socket}
+    socket
+    |> assign(:querystring, qs)
+    |> assign(:lql_rules, lql_rules)
   end
 
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
@@ -553,18 +566,6 @@ defmodule LogflareWeb.Source.SearchLV do
         nil
       end
 
-    warning =
-      cond do
-        match?({:warning, _}, search_result.events.status) ->
-          {:warning, message} = search_result.events.status
-          message
-
-        true ->
-          warning_message(socket.assigns, search_result)
-      end
-
-    socket = if warning, do: put_flash(socket, :warning, warning), else: socket
-
     socket =
       socket
       |> assign(:log_events, search_result.events.rows)
@@ -575,6 +576,31 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
       |> assign(:last_query_completed_at, Timex.now())
+
+    socket =
+      cond do
+        match?({:warning, _}, search_result.events.status) ->
+          {:warning, message} = search_result.events.status
+          put_flash(socket, :info, message)
+
+        msg = warning_message(socket.assigns, search_result) ->
+          le =
+            LogEvent.make(
+              %{
+                event_message: msg,
+                timestamp: DateTime.utc_now() |> DateTime.to_unix(),
+                ephemeral?: true
+              },
+              %{
+                source: socket.assigns.source
+              }
+            )
+
+          assign(socket, :log_events, [le])
+
+        true ->
+          socket
+      end
 
     {:noreply, socket}
   end
@@ -648,25 +674,46 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp assign_new_user_timezone(socket, team_user, %User{} = user) do
-    user_local_timezone =
-      cond do
-        team_user && team_user.preferences ->
-          team_user.preferences.timezone
+    tz_connect = socket.assigns.user_timezone_from_connect_params
 
-        user.preferences ->
-          user.preferences.timezone
-
-        true ->
-          tz = get_connect_params(socket)["user_timezone"]
-
-          if tz && Timex.Timezone.exists?(tz) do
-            tz
-          else
-            "Etc/UTC"
-          end
+    tz_connect =
+      if tz_connect && Timex.Timezone.exists?(tz_connect) do
+        tz_connect
+      else
+        "Etc/UTC"
       end
 
-    assign(socket, :user_local_timezone, user_local_timezone)
+    cond do
+      team_user && team_user.preferences ->
+        assign(socket, :user_local_timezone, team_user.preferences.timezone)
+
+      team_user && is_nil(team_user.preferences) ->
+        {:ok, team_user} =
+          Users.update_user_with_preferences(team_user, %{preferences: %{timezone: tz_connect}})
+
+        socket
+        |> assign(:team_user, team_user)
+        |> assign(:user_local_timezone, tz_connect)
+        |> put_flash(
+          :info,
+          "Your timezone setting for team #{team_user.team.name} sources was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
+        )
+
+      user.preferences ->
+        assign(socket, :user_local_timezone, user.preferences.timezone)
+
+      is_nil(user.preferences) ->
+        {:ok, user} =
+          Users.update_user_with_preferences(user, %{preferences: %{timezone: tz_connect}})
+
+        socket
+        |> assign(:user_local_timezone, tz_connect)
+        |> assign(:user, user)
+        |> put_flash(
+          :info,
+          "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
+        )
+    end
   end
 
   defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do

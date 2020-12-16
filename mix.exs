@@ -178,7 +178,6 @@ defmodule Logflare.Mixfile do
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
       {:excoveralls, "~> 0.11", only: :test, runtime: false}
-      {:unidecode, "~> 0.0.2"}
 
       # Telemetry
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}

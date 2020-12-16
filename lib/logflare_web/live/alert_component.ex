@@ -4,8 +4,8 @@ defmodule LogflareWeb.AlertComponent do
   @impl true
   def render(assigns) do
     ~L"""
-      <div class="message">
-        <div class="alert alert-<%= @alert_class %> alert-live" role="alert">
+    <div class="message">
+        <div class="inner-message alert alert-<%= @alert_class %>" role="alert">
           <span><%= @value %></span>
           <a href="#" phx-click="close"
                 phx-target="<%= @myself %>"
@@ -15,8 +15,8 @@ defmodule LogflareWeb.AlertComponent do
               &times;
             </button>
           </a>
-        </div>
       </div>
+    </div>
     """
   end
 

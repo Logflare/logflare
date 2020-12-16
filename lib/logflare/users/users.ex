@@ -142,7 +142,6 @@ defmodule Logflare.Users do
     |> UserPreferences.changeset(attrs)
   end
 
-  # def update_user_with_preferences(%{preferences: nil} = user_or_team_user, attrs)
   def update_user_with_preferences(user_or_team_user, attrs)
       when user_or_team_user.__struct__ in [User, TeamUser] do
     user_or_team_user
