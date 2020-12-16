@@ -88,8 +88,9 @@
         <p>Or send generic JSON events yourself.</p>
         <pre class="pre-scrollable">
           <code>
-    curl -X "POST" "https://api.logflare.app/logs/json?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>" \
+    curl -X "POST" "https://api.logflare.app/logs/json?api_key=&source=<%= @source.token %>" \
          -H 'Content-Type: application/json; charset=utf-8' \
+         -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
          -d $'[
       {
         "yellow": true,
@@ -115,8 +116,9 @@
           the <code>log_entry</code> field.</p>
         <pre class="pre-scrollable">
           <code>
-    curl -X "POST" "https://api.logflare.app/logs?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>" \
+    curl -X "POST" "https://api.logflare.app/logs?api_key=&source=<%= @source.token %>" \
     -H 'Content-Type: application/json' \
+    -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
     -d $'{
       "log_entry": "This is another log message.",
       "metadata": {
