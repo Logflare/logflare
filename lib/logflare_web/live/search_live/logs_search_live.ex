@@ -12,6 +12,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.User
   alias Logflare.LogEvent
   alias Logflare.TeamUsers.TeamUser
+  alias Logflare.Users.UserPreferences
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -134,11 +135,31 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount_disconnected(
         %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = _session,
+        %{"user_id" => user_id} = session,
         socket
       ) do
     source = Sources.Cache.get_source_for_lv_param(source_id)
     user = Users.get_by_and_preload(id: user_id)
+
+    team_user =
+      if team_user_id = session["team_user_id"] do
+        TeamUsers.get_team_user_and_preload(team_user_id)
+      else
+        nil
+      end
+
+    use_local_time =
+      cond do
+        team_user && team_user.preferences &&
+            not is_nil(team_user.preferences.search_use_local_time) ->
+          team_user.preferences.search_use_local_time
+
+        user.preferences && not is_nil(user.preferences.search_use_local_time) ->
+          user.preferences.search_use_local_time
+
+        true ->
+          true
+      end
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
@@ -152,7 +173,7 @@ defmodule LogflareWeb.Source.SearchLV do
         loading: true,
         chart_loading: true,
         search_tip: gen_search_tip(),
-        use_local_time: true,
+        use_local_time: use_local_time,
         querystring: querystring
       )
 
@@ -208,6 +229,19 @@ defmodule LogflareWeb.Source.SearchLV do
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
 
+    use_local_time =
+      cond do
+        team_user && team_user.preferences &&
+            not is_nil(team_user.preferences.search_use_local_time) ->
+          team_user.preferences.search_use_local_time
+
+        user.preferences && not is_nil(user.preferences.search_use_local_time) ->
+          user.preferences.search_use_local_time
+
+        true ->
+          true
+      end
+
     socket =
       socket
       |> assign(@default_assigns)
@@ -218,7 +252,7 @@ defmodule LogflareWeb.Source.SearchLV do
         chart_loading?: true,
         user: user,
         search_tip: gen_search_tip(),
-        use_local_time: true,
+        use_local_time: use_local_time,
         team_user: team_user
       )
 
@@ -452,6 +486,28 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Map.get("use_local_time")
       |> String.to_existing_atom()
       |> Kernel.not()
+
+    socket =
+      if team_user = socket.assigns.team_user do
+        {:ok, team_user} =
+          Users.update_user_with_preferences(team_user, %{
+            preferences:
+              %{team_user.preferences | search_use_local_time: use_local_time}
+              |> Map.from_struct()
+          })
+
+        assign(socket, :team_user, team_user)
+      else
+        user = socket.assigns.user
+
+        {:ok, user} =
+          Users.update_user_with_preferences(user, %{
+            preferences:
+              %{user.preferences | search_use_local_time: use_local_time} |> Map.from_struct()
+          })
+
+        assign(socket, :user, user)
+      end
 
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(source.token)
@@ -688,8 +744,12 @@ defmodule LogflareWeb.Source.SearchLV do
         assign(socket, :user_local_timezone, team_user.preferences.timezone)
 
       team_user && is_nil(team_user.preferences) ->
+        prev_preferences = team_user.preferences || %UserPreferences{}
+
         {:ok, team_user} =
-          Users.update_user_with_preferences(team_user, %{preferences: %{timezone: tz_connect}})
+          Users.update_user_with_preferences(team_user, %{
+            preferences: %{prev_preferences | timezone: tz_connect} |> Map.from_struct()
+          })
 
         socket
         |> assign(:team_user, team_user)
@@ -703,8 +763,12 @@ defmodule LogflareWeb.Source.SearchLV do
         assign(socket, :user_local_timezone, user.preferences.timezone)
 
       is_nil(user.preferences) ->
+        prev_preferences = user.preferences || %UserPreferences{}
+
         {:ok, user} =
-          Users.update_user_with_preferences(user, %{preferences: %{timezone: tz_connect}})
+          Users.update_user_with_preferences(user, %{
+            preferences: %{prev_preferences | timezone: tz_connect} |> Map.from_struct()
+          })
 
         socket
         |> assign(:user_local_timezone, tz_connect)
