@@ -34,4 +34,30 @@ defmodule Logflare.DateTimeUtils do
   defp do_truncate(%NaiveDateTime{} = dt, gr) when gr in ~w(second millisecond microsecond)a do
     NaiveDateTime.truncate(dt, gr)
   end
+
+  def humanize_timezone_offset(offset) do
+    {hours, minutes, _, _} =
+      offset
+      |> Timex.Duration.from_seconds()
+      |> Timex.Duration.to_clock()
+
+    hours =
+      case "#{hours}" do
+        "-" <> rest when abs(hours) < 10 -> "-0" <> rest
+        rest when abs(hours) < 10 -> "+0" <> rest
+        x when hours >= 10 -> "+" <> x
+        x when hours <= 10 -> x
+      end
+
+    minutes_prefix =
+      if abs(minutes) < 10 do
+        "0"
+      else
+        ""
+      end
+
+    minutes = "#{minutes_prefix}#{minutes}"
+
+    "(#{hours}:#{minutes})"
+  end
 end

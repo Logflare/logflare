@@ -9,8 +9,6 @@ defmodule LogflareWeb.Sources.RulesLV do
   alias Logflare.{Sources, Users}
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
-  use LogflareWeb.LiveViewUtils
-  use LogflareWeb.ModalsLVHelpers
 
   @lql_dialect :routing
   @lql_string ""
@@ -47,7 +45,7 @@ defmodule LogflareWeb.Sources.RulesLV do
       |> assign(:active_modal, nil)
       |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
-      |> assign_notifications(:warning, nil)
+      |> clear_flash(:warning)
 
     {:ok, socket}
   end
@@ -69,18 +67,18 @@ defmodule LogflareWeb.Sources.RulesLV do
             socket
             |> assign(:has_regex_rules, Rules.has_regex_rules?(source.rules))
             |> assign(:rules, [rule | rules])
-            |> assign_notifications(:warning, "LQL source routing rule created successfully!")
+            |> put_flash(:info, "LQL source routing rule created successfully!")
 
           {:error, changeset} ->
             error_message = Rule.changeset_error_to_string(changeset)
-            assign_notifications(socket, :error, error_message)
+            put_flash(socket, :error, error_message)
         end
       else
         {:error, error} ->
-          assign_notifications(socket, :error, error)
+          put_flash(socket, :error, error)
 
         {:warnings, warning} ->
-          assign_notifications(socket, :warning, warning)
+          put_flash(socket, :info, warning)
       end
 
     {:noreply, socket}
@@ -113,11 +111,11 @@ defmodule LogflareWeb.Sources.RulesLV do
           socket
           |> assign(:source, source)
           |> assign(:rules, source.rules)
-          |> assign_notifications(:warning, "Upgrade successfull!")
+          |> put_flash(:info, "Upgrade successfull!")
 
         {:error, changeset} ->
           error_message = Rule.changeset_error_to_string(changeset)
-          assign_notifications(socket, :error, error_message)
+          put_flash(socket, :error, error_message)
       end
 
     {:noreply, socket}

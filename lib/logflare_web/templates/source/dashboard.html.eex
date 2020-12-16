@@ -17,13 +17,9 @@
 </div>
 
 <div class="container d-flex justify-content-center flex-column mb-4">
-  <p class="text-center mb-0">📈 📊 We've refreshed
-    <%= link "our Vercel Data Studio template", to: "https://datastudio.google.com/reporting/1NBEAsKFph8DP3OXapa1ZXRR7fTwZKHEY", target: "_blank"%>
-    to match Vercel's new analytics.</p>
-  <small class="text-center">Setup a Data Studio data source (paid Logflare account required) and copy this report to
-    use it with your data.</small>
+  <p class="text-center mb-0">🛎️ 🙏 We have a <%= link "new Github Action", to: "https://github.com/marketplace/actions/logflare-log", target: "_blank" %> thanks to <%= link "@gr2m", to: "https://twitter.com/gr2m" %>.</p>
+  <small class="text-center">If there is a libraray or integration you'd like to see for Logflare, we'd love to work with you on it.</small>
 </div>
-
 
 <div class="dashboard container mx-auto" hidden>
   <div class="row justify-content-md-center">
@@ -118,13 +114,11 @@
       <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
       <p>👋 Let's build a dashboard!</p>
       <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of Logflare.</p>
-      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.
-      </p>
+      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.</p>
       <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
-      <p>If you'd rather not jump on a Zoom, you can learn more about Logflare by watching some of our videos.</p>
+      <p>Schedule a call or learn more about Logflare by watching <%= link "some of our videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>.</p>
 
       <%= link "Schedule a call", to: "https://savvycal.com/logflare/build", class: "btn btn-primary btn-sm mb-3 mr-3", target: "_blank" %>
-      <%= link "Watch videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank", class: "btn btn-secondary btn-sm mb-3" %>
 
     </div>
   </div>

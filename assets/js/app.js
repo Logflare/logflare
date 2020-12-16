@@ -7,6 +7,7 @@ import * as Dashboard from "./dashboard"
 import * as Source from "./source"
 import * as Logs from "./logs"
 import * as User from "./user"
+import LiveModalHooks from "./live_modal"
 import {LogEventsChart} from "./source_log_chart.jsx"
 import Chart from "./admin_dashboard_charts.jsx"
 import Loader from "./loader.jsx"
@@ -29,7 +30,12 @@ window.Source = Source
 window.User = User
 window.ClipboardJS = ClipboardJS
 
-const hooks = {...liveReactHooks, ...sourceLiveViewHooks, ...logsLiveViewHooks}
+const hooks = {
+  ...liveReactHooks,
+  ...sourceLiveViewHooks,
+  ...logsLiveViewHooks,
+  ...LiveModalHooks,
+}
 
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks,

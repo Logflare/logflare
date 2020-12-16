@@ -10,7 +10,6 @@ defmodule LogflareWeb.LogEventLive.Show do
   alias LogflareWeb.Helpers.BqSchema
   alias Logflare.Sources
 
-  use LogflareWeb.LiveViewUtils
   use LogflareWeb.ModalsLVHelpers
 
   require Logger

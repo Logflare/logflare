@@ -46,6 +46,50 @@ defmodule LogflareWeb do
     end
   end
 
+  def live_view_with_templates(params) do
+    quote do
+      use Phoenix.View,
+        root: unquote(params[:root]),
+        path: unquote(params[:path]),
+        namespace: LogflareWeb
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller,
+        only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
+
+      import Phoenix.LiveView, only: [connected?: 1]
+      # Use all HTML functionality (forms, tags, etc)
+      unquote(view_helpers())
+      unquote(live_view_helpers())
+    end
+  end
+
+  def live_view do
+    quote do
+      use Phoenix.LiveView,
+        layout: {LogflareWeb.LayoutView, "live.html"}
+
+      import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
+
+      unquote(view_helpers())
+      unquote(live_view_helpers())
+    end
+  end
+
+  def live_component do
+    quote do
+      use Phoenix.LiveComponent
+
+      unquote(view_helpers())
+    end
+  end
+
+  defp live_view_helpers do
+    quote do
+      use LogflareWeb.LiveCommons
+    end
+  end
+
   defp view_helpers do
     quote do
       use Phoenix.HTML
@@ -59,25 +103,6 @@ defmodule LogflareWeb do
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
       alias LogflareWeb.Router.Helpers, as: Routes
-    end
-  end
-
-  def live_view do
-    quote do
-      use Phoenix.LiveView,
-        layout: {LogflareWeb.LayoutView, "live.html"}
-
-      import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
-
-      unquote(view_helpers())
-    end
-  end
-
-  def live_component do
-    quote do
-      use Phoenix.LiveComponent
-
-      unquote(view_helpers())
     end
   end
 
@@ -99,6 +124,20 @@ defmodule LogflareWeb do
   @doc """
   When used, dispatch to the appropriate controller/view/etc.
   """
+
+  defmacro __using__(:live_view_with_templates = which) do
+    module_path =
+      __CALLER__.module
+      |> Module.split()
+      |> List.last()
+      |> String.trim_trailing("View")
+      |> String.downcase()
+
+    apply(__MODULE__, which, [
+      [root: "lib/logflare_web/live", path: "#{module_path}_live/templates/"]
+    ])
+  end
+
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])
   end

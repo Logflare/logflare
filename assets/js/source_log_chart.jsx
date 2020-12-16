@@ -199,7 +199,14 @@ const LogEventsChart = ({
   const onClick = (event) => {
     window.stopLiveSearch()
     const utcDatetime = event.data.datetime
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    let tz
+
+    if (JSON.parse($("#user-preferences").attr("data-use-local-time"))) {
+      tz = $("#user-preferences").attr("data-user-local-timezone")
+    } else {
+      tz = "Etc/UTC"
+    }
+
     const start = DateTime.fromISO(utcDatetime, {zone: tz}).toISO({
       includeOffset: false,
       suppressMilliseconds: true,

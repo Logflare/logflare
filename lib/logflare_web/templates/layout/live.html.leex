@@ -1,3 +1,8 @@
+<%= for {k, alert_class} <- [success: "success", info: "info", error: "danger", warning: "warning"] do %>
+  <%= if v = live_flash @flash, k do %>
+    <%= live_alert @socket, [key: k, value: v, alert_class: alert_class] %>
+  <% end %>
+<% end %>
 <main role="main" class="app">
   <%= @inner_content %>
 </main>

@@ -2,7 +2,6 @@ defmodule LogflareWeb.AdminSearchDashboardLive do
   use LogflareWeb, :live_view
   alias LogflareWeb.AdminView
   alias Logflare.SavedSearches.Analytics
-  use LogflareWeb.LiveViewUtils
 
   def mount(_params, _session, socket) do
     socket =
