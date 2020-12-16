@@ -1,5 +1,4 @@
 import {DateTime} from "luxon"
-import $ from "jquery"
 import {format, formatDistance} from "date-fns"
 
 import * as userConfig from "./user-config-storage"
@@ -16,7 +15,7 @@ export const timestampNsToAgo = (ns) =>
   `${formatDistance(ns / 1000, new Date())} ago`
 
 export const userSelectedFormatter = async () => {
-  const useLocalTime = $("#source-show-user-preferences").data("use_local_time")
+  const useLocalTime = await userConfig.useLocalTime()
   if (useLocalTime) {
     return timestampNsToLocalDate
   } else {
