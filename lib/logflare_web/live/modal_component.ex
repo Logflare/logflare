@@ -21,7 +21,11 @@ defmodule LogflareWeb.ModalComponent do
             </div>
             <div class="modal-body">
               <div class="container">
-                <%= live_component @socket, @component, @opts %>
+                <%= if @is_template? do %>
+                  <%= @view.render(@template, assigns) %>
+                <% else %>
+                  <%= live_component @socket, @component, @opts %>
+                <% end %>
               </div>
             </div>
           </div>

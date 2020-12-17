@@ -10,10 +10,37 @@ defmodule LogflareWeb.LiveHelpers do
     live_component(socket, LogflareWeb.AlertComponent, opts)
   end
 
+  def live_modal(socket, template, opts) when is_binary(template) do
+    path = Keyword.fetch!(opts, :return_to)
+    title = Keyword.fetch!(opts, :title)
+    view = Keyword.fetch!(opts, :view)
+
+    modal_opts = [
+      id: :modal,
+      return_to: path,
+      template: template,
+      opts: opts,
+      title: title,
+      view: view,
+      is_template?: true
+    ]
+
+    live_component(socket, LogflareWeb.ModalComponent, modal_opts)
+  end
+
   def live_modal(socket, component, opts) do
     path = Keyword.fetch!(opts, :return_to)
     title = Keyword.fetch!(opts, :title)
-    modal_opts = [id: :modal, return_to: path, component: component, opts: opts, title: title]
+
+    modal_opts = [
+      id: :modal,
+      return_to: path,
+      component: component,
+      opts: opts,
+      title: title,
+      is_template?: false
+    ]
+
     live_component(socket, LogflareWeb.ModalComponent, modal_opts)
   end
 end
