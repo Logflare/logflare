@@ -1,10 +1,25 @@
+<%= if @modal_active? do %>
+  <%= live_modal @socket, @modal_template_or_component,
+  source: @source,
+  title: @modal_title,
+  view: SharedView,
+  return_to: Routes.source_live_path(LogflareWeb.Endpoint, LogflareWeb.Sources.RulesLV, @source.id) %>
+<% end %>
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/rules</h5>
     <div class="log-settings">
       <ul>
-        <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
-        <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
+        <li>
+          <%= link to: "#", phx_click: "activate-modal", phx_value_modal_template: "lql_help" do %>
+            <i class="fas fa-code"></i><span> LQL </span>
+          <% end %>
+        </li>
+        <li>
+          <%= link to: "#", phx_click: "activate-modal", phx_value_modal_template: "schema" do %>
+            <i class="fas fa-database"></i><span> schema </span>
+          <% end %>
+        </li>
       </ul>
     </div>
   </div>
@@ -59,5 +74,4 @@
     <% end %>
   </div>
 </form>
-<%= live_component @socket, Source.SearchLV.ModalLVC, active_modal: @active_modal, source: @source %>
 </div>

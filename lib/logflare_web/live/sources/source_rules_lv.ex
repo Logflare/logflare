@@ -9,14 +9,17 @@ defmodule LogflareWeb.Sources.RulesLV do
   alias Logflare.{Sources, Users}
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
+  alias LogflareWeb.Sources.BqSchemaLive
 
   @lql_dialect :routing
   @lql_string ""
 
+  @impl true
   def render(assigns) do
     RuleView.render("source_rules.html", assigns)
   end
 
+  @impl true
   def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
     user = Users.Cache.get_by_and_preload(id: user_id)
     source = Sources.get_by_and_preload(id: source_id)
@@ -45,11 +48,18 @@ defmodule LogflareWeb.Sources.RulesLV do
       |> assign(:active_modal, nil)
       |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
+      |> assign(:modal_active?, nil)
       |> clear_flash(:warning)
 
     {:ok, socket}
   end
 
+  @impl true
+  def handle_params(_params, _uri, socket) do
+    {:noreply, assign(socket, :modal_active?, false)}
+  end
+
+  @impl true
   def handle_event("fsubmit", %{"rule" => rule_params}, socket) do
     %{source: source, rules: rules} = socket.assigns
 
@@ -117,6 +127,24 @@ defmodule LogflareWeb.Sources.RulesLV do
           error_message = Rule.changeset_error_to_string(changeset)
           put_flash(socket, :error, error_message)
       end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("activate-modal", %{"modal-template" => modal_template}, socket) do
+    assigns =
+      case modal_template do
+        "lql_help" ->
+          [modal_template_or_component: "lql_help.html", modal_title: "Logflare Query Language"]
+
+        "schema" ->
+          [modal_template_or_component: BqSchemaLive, modal_title: "Source Schema"]
+      end
+
+    socket =
+      socket
+      |> assign(:modal_active?, true)
+      |> assign(assigns)
 
     {:noreply, socket}
   end
