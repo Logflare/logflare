@@ -22,9 +22,13 @@ defmodule LogflareWeb.ModalComponent do
             <div class="modal-body">
               <div class="container">
                 <%= if @is_template? do %>
-                  <%= @view.render(@template, assigns) %>
+                  <%= render(@view, @template, assigns) %>
                 <% else %>
-                  <%= live_component @socket, @component, @opts %>
+                  <%= if assigns[:live_view] do %>
+                    <%= live_render @socket, @live_view, @opts %>
+                  <% else %>
+                    <%= live_component @socket, @component, @opts %>
+                  <% end %>
                 <% end %>
               </div>
             </div>
@@ -36,11 +40,18 @@ defmodule LogflareWeb.ModalComponent do
   end
 
   @impl true
-  def handle_event("close", _, socket) do
+  def handle_event("close", _, %{assigns: %{return_to: return_to}} = socket)
+      when is_binary(return_to) do
     socket =
       socket
       |> push_patch(to: socket.assigns.return_to)
 
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("close", _, %{assigns: %{return_to: _}} = socket) do
+    send(self(), :hide_modal)
     {:noreply, socket}
   end
 end
