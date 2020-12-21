@@ -21,11 +21,6 @@ defmodule LogflareWeb.LiveHelpers do
     {type, module_or_template} =
       Enum.find(opts, &match?({k, _} when k in [:component, :live_view, :template], &1))
 
-    if type == :component or type == :live_view do
-      IO.inspect(Module.concat(:"Elixir", module_or_template).__info__(:attributes))
-      IO.inspect(Module.concat(:"Elixir", module_or_template).__info__(:macros))
-    end
-
     id = Keyword.fetch!(opts, :id)
     title = Keyword.fetch!(opts, :title)
     view = Keyword.get(opts, :view)

@@ -43,7 +43,7 @@ defmodule LogflareWeb.Source.SearchLV do
     active_modal: nil,
     user_local_timezone: nil,
     use_local_time: true,
-    activate_user_preferences: nil,
+    show_modal: nil,
     last_query_completed_at: nil,
     lql_rules: [],
     querystring: ""
@@ -68,7 +68,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
-      |> assign(:activate_user_preferences, false)
+      |> assign(:show_modal, false)
       |> assign(uri: URI.parse(uri))
 
     socket =
@@ -437,10 +437,6 @@ defmodule LogflareWeb.Source.SearchLV do
       )
 
     {:noreply, socket}
-  end
-
-  def handle_event("activate-user-preferences", _metadata, socket) do
-    {:noreply, assign(socket, :activate_user_preferences, true)}
   end
 
   def handle_event("set_local_time" = ev, metadata, socket) do
