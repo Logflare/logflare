@@ -18,7 +18,7 @@
             <h2>Content</h2>
             <%= link "Overview", to: "#overview", class: "scrollmenu menu1 activecon" %>
             <%= link "Information Gathering and Usage", to: "#info-usage", class: "scrollmenu menu2" %>
-            <%= link "Data Ownership", to: "#data-ownership", class: "scrollmenu menu3" %>
+            <%= link "Data Ownership & Management", to: "#data-ownership", class: "scrollmenu menu3" %>
             <%= link "Disclosure", to: "#disclosure", class: "scrollmenu menu4" %>
             <%= link "Changes", to: "#changes", class: "scrollmenu menu5" %>
           </div>
@@ -33,8 +33,11 @@
           <h2 class="menu2cont" id="info-usage">Information Gathering and Usage</h2>
           <p>Any information that we collect is collected as part of our business practices in order to identify demographic information relative to users who access our site, assessing the number and type of user accessing various sections of our site, helping us determine what content and business concepts are working for us and/or are of interest to our visitors, determining technical design features and specifications and helping us assess systems performance. We also use such information in statistical form to assist us in business and marketing strategies and programs. We utilize software programs to create summary statistics which we utilize for the above purposes.</p>
 
-          <h2 class="menu3cont" id="data-ownership">Data Ownership</h2>
+          <h2 class="menu3cont" id="data-ownership">Data Ownership & Management</h2>
           <p>Logflare uses third party vendors and hosting partners to provide the necessary hardware, software, networking, storage, and related technology required to run Logflare.</p>
+          <p>Logflare retains data as long as is needed by our users. If and when a user requests to delete data, all associated data is immediatly deleted from our servers and delete requests are then forwarded onto our partners.</p>
+          <p>User may request to delete thier Logflare account, in which case all information pertaining to that user, and all data said user has sent Logflare, is subsequently and immediately delted.</p>
+          <p>User may request to delete specific log event data sent to Logflare. For example, a user may request to delete all data associated with an IP address or User Agent user sent to Logflare. We can delete data with any SQL or LQL query against user Sources.</p>
 
           <h2 class="menu4cont" id="disclosure">Disclosure</h2>
           <p>Personal information Logflare collects is not shared with or sold to other organizations for commercial purposes, except to provide products or services you’ve requested, when we have your permission, or under the following circumstances:</p>
