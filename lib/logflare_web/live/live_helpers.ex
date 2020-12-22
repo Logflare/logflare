@@ -21,7 +21,7 @@ defmodule LogflareWeb.LiveHelpers do
     {type, module_or_template} =
       Enum.find(opts, &match?({k, _} when k in [:component, :live_view, :template], &1))
 
-    id = Keyword.fetch!(opts, :id)
+    id = Keyword.fetch!(opts, :modal_id)
     title = Keyword.fetch!(opts, :title)
     view = Keyword.get(opts, :view)
 
@@ -37,24 +37,6 @@ defmodule LogflareWeb.LiveHelpers do
       ] ++ opts
 
     link(contents, opts)
-  end
-
-  def live_modal(socket, {:live_view, lv}, opts) do
-    path = Keyword.fetch!(opts, :return_to)
-    title = Keyword.fetch!(opts, :title)
-    session = Keyword.fetch!(opts, :session)
-
-    modal_opts = [
-      id: :modal,
-      return_to: path,
-      opts: opts,
-      title: title,
-      lv: lv,
-      session: session,
-      live_view: lv
-    ]
-
-    live_component(socket, LogflareWeb.ModalComponent, modal_opts)
   end
 
   def live_modal(socket, template, opts)
@@ -80,7 +62,7 @@ defmodule LogflareWeb.LiveHelpers do
     title = Keyword.fetch!(opts, :title)
 
     modal_opts = [
-      id: :modal,
+      id: :"logflare-modal",
       return_to: path,
       component: component,
       opts: opts,

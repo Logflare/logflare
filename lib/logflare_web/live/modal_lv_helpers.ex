@@ -7,19 +7,6 @@ defmodule LogflareWeb.ModalsLVHelpers do
 
   defmacro __using__(_context) do
     quote do
-      def handle_event("activate_modal" = ev, metadata, socket) do
-        log_lv_received_event(ev, socket.assigns.source)
-        modal_id = metadata["modal_id"]
-
-        {:noreply, assign(socket, :active_modal, modal_id)}
-      end
-
-      def handle_event("deactivate_modal" = ev, _metadata, socket) do
-        log_lv_received_event(ev, socket.assigns.source)
-
-        {:noreply, assign(socket, :active_modal, nil)}
-      end
-
       def handle_info(:hide_modal, socket) do
         {:noreply, assign(socket, :show_modal, false)}
       end
@@ -65,7 +52,8 @@ defmodule LogflareWeb.ModalsLVHelpers do
               title: title,
               id: id,
               return_to: params["return-to"]
-            }
+            },
+            params: params
           })
 
         {:noreply, socket}

@@ -4,8 +4,7 @@ defmodule LogflareWeb.ModalComponent do
   @impl true
   def render(assigns) do
     ~L"""
-    <div id="logflare-modal" phx-hook="LiveModal">
-      <div id="<%= @id %>" class="modal fade show"
+      <div id="<%= @id %>" class="modal fade show" phx-hook="LiveModal"
           phx-capture-click="close"
           phx-window-keydown="close"
           phx-key="escape"
@@ -17,7 +16,7 @@ defmodule LogflareWeb.ModalComponent do
           <div class="modal-content">
             <div class="modal-header lf-modal-header">
               <h5 class="modal-title"><%= @title %> </h5>
-              <span> <%= live_patch raw("&times;"), to: @return_to, class: "phx-modal-close" %> </span>
+              <span> <%= live_patch raw("&times;"), to: @return_to || "#", class: "phx-modal-close" %> </span>
             </div>
             <div class="modal-body">
               <div class="container">
@@ -35,7 +34,6 @@ defmodule LogflareWeb.ModalComponent do
           </div>
         </div>
       </div>
-    </div>
     """
   end
 
@@ -50,7 +48,9 @@ defmodule LogflareWeb.ModalComponent do
   end
 
   @impl true
-  def handle_event("close", _, %{assigns: %{return_to: _}} = socket) do
+  def handle_event("close", _, %{assigns: %{return_to: rt}} = socket)
+      when is_nil(rt)
+      when rt == false do
     send(self(), :hide_modal)
     {:noreply, socket}
   end

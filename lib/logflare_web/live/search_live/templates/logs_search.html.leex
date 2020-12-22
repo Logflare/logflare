@@ -3,6 +3,7 @@
     id: @modal.body.id,
     title: @modal.body.title,
     user: @user,
+    params: @modal.params,
     view: @modal.body[:view],
     source: @source,
     search_op_log_events: @search_op_log_events,
@@ -23,12 +24,12 @@ data-use-local-time="<%= @use_local_time %>"
         <li><a href="javascript:Source.scrollOverflowBottom();">
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li>
-          <%= live_modal_show_link(template: "lql_help.html", view: SharedView, id: :lql_help_link, title: "Logflare Query Language") do %>
+          <%= live_modal_show_link(template: "lql_help.html", view: SharedView, modal_id: :lql_help_link, title: "Logflare Query Language") do %>
             <i class="fas fa-code"></i><span> LQL </span>
           <% end %>
         </li>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, id: :bq_schema_link, title: "Source Schema") do %>
+          <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, modal_id: :bq_schema_link, title: "Source Schema") do %>
             <i class="fas fa-database"></i><span> schema </span>
           <% end %>
         </li>
@@ -48,7 +49,7 @@ data-use-local-time="<%= @use_local_time %>"
           </a>
         </li>
         <li>
-          <%= live_modal_show_link( component: Search.UserPreferencesComponent, id: :user_preferences, title: "Preferences") do %>
+          <%= live_modal_show_link( component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences") do %>
             <i class="fas fa-globe"></i>
             <span class="hide-on-mobile">
               timezone
@@ -71,18 +72,18 @@ data-use-local-time="<%= @use_local_time %>"
       </li>
       <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, id: :modal_debug_error_link, title: "Query Debugging") do %>
+          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_error_link, title: "Query Debugging") do %>
             <i class="fas fa-bug"></i><span> debug error </span>
           <% end %>
         </li>
       <% else %>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, id: :modal_debug_log_events_link, title: "Query Debugging") do %>
+          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_events_link, title: "Query Debugging") do %>
             <i class="fas fa-bug"></i><span> events query </span>
           <% end %>
         </li>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
+          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
             <i class="fas fa-bug"></i><span> aggregate query </span>
           <% end %>
         </li>
