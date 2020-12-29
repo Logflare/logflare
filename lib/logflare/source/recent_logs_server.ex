@@ -28,7 +28,8 @@ defmodule Logflare.Source.RecentLogsServer do
     EmailNotificationServer,
     TextNotificationServer,
     WebhookNotificationServer,
-    SlackHookServer
+    SlackHookServer,
+    BillingWriter
   }
 
   alias Logflare.Source.RateCounterServer, as: RCS
@@ -147,7 +148,8 @@ defmodule Logflare.Source.RecentLogsServer do
       {Buffer, rls},
       {Schema, rls},
       {Pipeline, rls},
-      {SearchQueryExecutor, rls}
+      {SearchQueryExecutor, rls},
+      {BillingWriter, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one)

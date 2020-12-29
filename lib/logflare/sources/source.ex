@@ -123,9 +123,13 @@ defmodule Logflare.Source do
     # field :bigquery_schema, Ecto.Term
 
     belongs_to :user, Logflare.User
+
     has_many :rules, Logflare.Rule
     has_many :saved_searches, Logflare.SavedSearch
+    has_many :billing_counts, Logflare.BillingCounts.BillingCount
+
     embeds_one :notifications, Notifications, on_replace: :update
+
     has_one :source_schema, Logflare.Sources.SourceSchema
 
     timestamps()
