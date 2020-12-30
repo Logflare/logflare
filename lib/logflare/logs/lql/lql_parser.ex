@@ -96,19 +96,30 @@ defmodule Logflare.Lql.Parser do
     if type do
       type
     else
-      maybe_this = get_most_similar_path(typemap, path)
-      "metadata." <> maybe_rest_of_path = maybe_this
-      "metadata." <> rest_of_path = path
-      suggested_querystring = String.replace(querystring, rest_of_path, maybe_rest_of_path)
+      case get_most_similar_path(typemap, path) do
+        "metadata." <> maybe_rest_of_path = maybe_this ->
+          "metadata." <> rest_of_path = path
+          suggested_querystring = String.replace(querystring, rest_of_path, maybe_rest_of_path)
 
-      throw(
-        {suggested_querystring,
-         [
-           "LQL Parser error: path '#{path}' not present in source schema. Did you mean '",
-           maybe_this,
-           "'?"
-         ]}
-      )
+          throw(
+            {suggested_querystring,
+             [
+               "LQL Parser error: path '#{path}' not present in source schema. Did you mean '",
+               maybe_this,
+               "'?"
+             ]}
+          )
+
+        _ ->
+          throw(
+            {"",
+             [
+               "No metadata fields found to match your query. See this source schema for queryable fields.",
+               "",
+               ""
+             ]}
+          )
+      end
     end
   end
 
