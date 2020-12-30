@@ -34,7 +34,7 @@
 
   <div class="sub-form">
     <%= section_header("Pricing") %>
-    <%= # live_render(@socket, LogflareWeb.BillingPlansLive) %>
+    <%= live_render(@socket, LogflareWeb.BillingPlansLive, id: :plans) %>
   </div>
   <div class="sub-form">
     <%= section_header("Enterprise Plans & Support") %>
