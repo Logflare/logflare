@@ -114,7 +114,7 @@ defmodule Logflare.Lql.Parser do
           throw(
             {"",
              [
-               "No metadata fields found to match your query. See this source schema for queryable fields.",
+               "No fields found to match `#{path}` your query. See this source schema for queryable fields.",
                "",
                ""
              ]}
