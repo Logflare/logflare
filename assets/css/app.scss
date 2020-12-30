@@ -23,6 +23,7 @@
 @import "marketing_pricing";
 @import "log_event";
 @import "json_formatter_logflare";
+@import "alerts";
 
 /* Try this for zooming on iPhone */
 button,
@@ -150,6 +151,7 @@ main.app {
 .textarea-container {
   overflow-y: scroll;
 }
+
 /*
 .col-lg-4 {
   padding: 1em 1.5em;
@@ -160,20 +162,7 @@ main.app {
   max-width: 800px;
 }
 
-.alert-info a {
-  color: white;
-  text-shadow: 0;
-}
 
-.alert-warning a {
-  color: $brand-fuscia;
-  text-shadow: 0;
-}
-
-.alert-warning a:hover {
-  color: $brand-fuscia;
-  text-shadow: 0;
-}
 
 code {
   color: #e35b8d;
@@ -202,20 +191,7 @@ code {
   scroll-margin-top: 150px;
 }
 
-.alert {
-  border-radius: 0.25rem;
-  margin-bottom: 0;
-}
 
-.alert-warning {
-  background-color: $brand-yellow;
-  border-width: 0;
-}
-
-.alert-info {
-  background-color: $brand-light-purple;
-  border-width: 0;
-}
 
 pre {
   background-color: #1d1d1d;
@@ -303,8 +279,7 @@ mark {
   flex-direction: column-reverse; */
 }
 
-.console-text-list {
-}
+.console-text-list {}
 
 .container {
   max-width: 95%;
@@ -327,48 +302,48 @@ mark {
   -o-animation: fadeIn ease 1s;
   -ms-animation: fadeIn ease 1s;
 }
+
 @keyframes fadeIn {
   0% {
     background-color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-moz-keyframes fadeIn {
   0% {
     color: white;
     background-color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-webkit-keyframes fadeIn {
   0% {
     background-color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-o-keyframes fadeIn {
   0% {
     color: white;
     background-color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-ms-keyframes fadeIn {
   0% {
     color: white;
     background-color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
 
 .flash-text {
@@ -378,43 +353,43 @@ mark {
   -o-animation: flashText ease 1s;
   -ms-animation: flashText ease 1s;
 }
+
 @keyframes flashText {
   0% {
     color: #2a6cce;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-moz-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-webkit-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-o-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
+
 @-ms-keyframes flashText {
   0% {
     color: #3787ff;
   }
 
-  100% {
-  }
+  100% {}
 }
