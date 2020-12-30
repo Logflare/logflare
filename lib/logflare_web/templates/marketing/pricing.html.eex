@@ -86,26 +86,52 @@
         <div class="col-md-12">
             <div class="trialwork">
                 <h1>How do I sign up for an Enterprise plan?</h1>
-                <p><%= link "Contact us", to: Routes.contact_path(@conn, :new) %> to learn more about our Enterprise plans and support options. We can handle any event volume required. Need to ingest directly to the EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you do just about anything you need with your data pipeline so please reach out.</p>
+                <p><%= link "Contact us", to: Routes.contact_path(@conn, :new) %> to learn more about our Enterprise
+                    plans and support options. We can handle any event volume required. Need to ingest directly to the
+                    EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you
+                    do just about anything you need with your data pipeline so please reach out.</p>
                 <h1>How does the trial work?</h1>
-                <p>Start your trial with Logflare and you get 14 days to try it out. After 14 days your credit card will be charged, and you'll be charged monthly or yearly depending on your plan.</p>
+                <p>Start your trial with Logflare and you get 14 days to try it out. After 14 days your credit card will
+                    be charged, and you'll be charged monthly or yearly depending on your plan.</p>
                 <h1 class="scroll-margin" id="sources">What is a source?</h1>
-                <p>A source is where your log events go. If you use Cloudflare you'll have a source for your Cloudflare logs. If you're sending log files from a server with our FluentBit config, you'll have a source for those.</p>
+                <p>A source is where your log events go. If you use Cloudflare you'll have a source for your Cloudflare
+                    logs. If you're sending log files from a server with our FluentBit config, you'll have a source for
+                    those.</p>
                 <h1 class="scroll-margin" id="dashboards">How do you do dashboards?</h1>
-                <p>Because of our tight integration with BigQuery we get Google Data Studio for free. Like Logflare, Google Data Studio balances power and simplicity. You don't have to read the manual to start creating dashboards and you can do 98% of what any other enterprise level BI tool can do. And because we're built on BigQuery, you can always fallback to custom SQL queries when needed.</p>
+                <p>Because of our tight integration with BigQuery we get Google Data Studio for free. Like Logflare,
+                    Google Data Studio balances power and simplicity. You don't have to read the manual to start
+                    creating dashboards and you can do 98% of what any other enterprise level BI tool can do. And
+                    because we're built on BigQuery, you can always fallback to custom SQL queries when needed.</p>
                 <h1 class="scroll-margin" id="backend">What is a backend?</h1>
-                <p>A backend is where we store your log events. We always store them in BigQuery, you can let us keep your log events in our Google Cloud Platform account, or you can give our service account access to your GCP account and we'll use your BigQuery tables to read and write from. Need another backend? Please let us know.</p>
+                <p>A backend is where we store your log events. We always store them in BigQuery, you can let us keep
+                    your log events in our Google Cloud Platform account, or you can give our service account access to
+                    your GCP account and we'll use your BigQuery tables to read and write from. Need another backend?
+                    Please let us know.</p>
                 <h1 class="scroll-margin" id="fields">How do I add fields?</h1>
-                <p>Logflare is a semi-schema'd service. We support schema'd backends, as BigQuery requires a schema. However, we detect and automatically update your schema for you based on the shape of your log events. Never worry about running a migration before adding a new field. Logflare does that automatically. We'll warn you about data type mismatches.</p>
+                <p>Logflare is a semi-schema'd service. We support schema'd backends, as BigQuery requires a schema.
+                    However, we detect and automatically update your schema for you based on the shape of your log
+                    events. Never worry about running a migration before adding a new field. Logflare does that
+                    automatically. We'll warn you about data type mismatches.</p>
                 <h1 class="scroll-margin" id="retention">How long do you keep data for?</h1>
-                <p>Logflare includes some data storage with a paid plan so you don't have to think about what you might spend using your own BigQuery credentials. However, you can Bring Your Own BigQuery tables and keep data forever. Since we're backed by BigQuery you can set your table TTLs to as long as you want.</p>
-                <p>With this storage setup there is no need to archive log data to object storage where it will never be used again. Log event data is stored at object storage pricing and ready to query immediately.</p>
+                <p>Logflare includes some data storage with a paid plan so you don't have to think about what you might
+                    spend using your own BigQuery credentials. However, you can Bring Your Own BigQuery tables and keep
+                    data forever. Since we're backed by BigQuery you can set your table TTLs to as long as you want.</p>
+                <p>With this storage setup there is no need to archive log data to object storage where it will never be
+                    used again. Log event data is stored at object storage pricing and ready to query immediately.</p>
                 <h1 class="scroll-margin" id="rate-limit">What happens when I'm rate limited?</h1>
-                <p>If you're constantly hitting your rate limits we'll likely contact you about upgrading to a custom enterprise plan. If you hit your rate limit rarely it's not a big deal. You'll be warned when you hit your rate limit and log events won't be ingested. </p>
+                <p>If you're constantly hitting your rate limits we'll likely contact you about upgrading to a custom
+                    enterprise plan. If you hit your rate limit rarely it's not a big deal. You'll be warned when you
+                    hit your rate limit and log events won't be ingested. </p>
                 <h1 class="scroll-margin" id="fair-use">What is considered fair use?</h1>
-                <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of 1,500 log events ingested in a single second. As an example, if you're doing 5 requests a second you'd be able to burst up to 1200 requests in a second (1500 - (5 * 60) = 1200).</p>
-                <p>If you require more throughput please <%= link "contact us", to: Routes.contact_path(@conn, :new) %> about our Enterprise plans & support.</p>
-                <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of Logflare that is feasible for both parties long term. However, we reserve the right to delete your account without notice.</p>
+                <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over
+                    the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of
+                    1,500 log events ingested in a single second. As an example, if you're doing 5 requests a second
+                    you'd be able to burst up to 1200 requests in a second (1500 - (5 * 60) = 1200).</p>
+                <p>If you require more throughput please <%= link "contact us", to: Routes.contact_path(@conn, :new) %>
+                    about our Enterprise plans & support.</p>
+                <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of
+                    Logflare that is feasible for both parties long term. However, we reserve the right to delete your
+                    account without notice.</p>
             </div>
         </div>
     </div>
