@@ -2,12 +2,12 @@
   <div class="container mx-auto">
     <div class="log-settings float-right">
       <ul>
-        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %>
+        <li><%= link to: Routes.billing_account_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %>
           <li>
             <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
           </ul>
         </div>
-        <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/<%= link "billing", to: Routes.billing_path(@conn, :edit), class: "text-primary" %>/subscription/confirm</h5>
+        <h5>~/<%= link "account", to: Routes.user_path(@conn, :edit), class: "text-primary" %>/<%= link "billing", to: Routes.billing_account_path(@conn, :edit), class: "text-primary" %>/subscription/confirm</h5>
       </div>
     </div>
     <div class="container mx-auto">
@@ -18,11 +18,11 @@
     <script src="https://js.stripe.com/v3/"></script>
     <script>
       checkout();
-      
+
       function checkout() {
-      
+
           var stripe = Stripe('<%= @stripe_key %>');
-      
+
           stripe.redirectToCheckout({
               sessionId: '<%= @stripe_session.id %>'
           }).then(function (result) {
@@ -31,6 +31,6 @@
               // using `result.error.message`.
               consol.log("failed")
           });
-      
+
           }
     </script>
