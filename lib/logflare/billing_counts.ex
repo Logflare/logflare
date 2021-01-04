@@ -9,6 +9,22 @@ defmodule Logflare.BillingCounts do
   alias Logflare.Repo
   alias Logflare.BillingCounts.BillingCount
 
+  def latest_by(node: name, source_id: source_id) when is_atom(name) do
+    latest_by(node: Atom.to_string(name), source_id: source_id)
+  end
+
+  def latest_by(node: name) when is_atom(name) do
+    latest_by(node: Atom.to_string(name))
+  end
+
+  def latest_by(kv) do
+    BillingCount
+    |> where(^kv)
+    |> order_by(desc: :inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
   def list_by(kv) do
     BillingCount
     |> where(^kv)
