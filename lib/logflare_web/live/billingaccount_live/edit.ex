@@ -47,6 +47,12 @@ defmodule LogflareWeb.BillingAccountLive do
     {:noreply, socket}
   end
 
+  def handle_info({:chart_tick, counter}, socket) do
+    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
+
+    {:noreply, socket}
+  end
+
   @impl true
   def render(assigns) do
     BillingAccountView.render("edit.html", assigns)

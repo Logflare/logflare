@@ -174,10 +174,13 @@ defmodule Logflare.Mixfile do
       # Code quality
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
-      {:excoveralls, "~> 0.11", only: :test, runtime: false}
+      {:excoveralls, "~> 0.11", only: :test, runtime: false},
 
       # Telemetry
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
+
+      # Charting
+      {:contex, "~> 0.3.0"}
     ]
   end
 

@@ -1,4 +1,4 @@
-defmodule LogflareWeb.BillingPlansLive do
+defmodule LogflareWeb.PlansLive do
   @moduledoc false
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, "live_widget.html"}
   use Phoenix.HTML
