@@ -18,6 +18,7 @@ defmodule Logflare.Source.RecentLogsServer do
     field :plan, Plan.t()
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
+    field :billing_last_node_count, integer(), default: 0
   end
 
   use GenServer
@@ -28,7 +29,8 @@ defmodule Logflare.Source.RecentLogsServer do
     EmailNotificationServer,
     TextNotificationServer,
     WebhookNotificationServer,
-    SlackHookServer
+    SlackHookServer,
+    BillingWriter
   }
 
   alias Logflare.Source.RateCounterServer, as: RCS
@@ -147,7 +149,8 @@ defmodule Logflare.Source.RecentLogsServer do
       {Buffer, rls},
       {Schema, rls},
       {Pipeline, rls},
-      {SearchQueryExecutor, rls}
+      {SearchQueryExecutor, rls},
+      {BillingWriter, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one)

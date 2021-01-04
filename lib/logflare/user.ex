@@ -76,6 +76,7 @@ defmodule Logflare.User do
     field :billing_enabled?, :boolean, default: true, null: false
     embeds_one :preferences, UserPreferences
 
+    has_many :billing_counts, Logflare.BillingCounts.BillingCount
     has_many :sources, Source
 
     has_one :team, Team
