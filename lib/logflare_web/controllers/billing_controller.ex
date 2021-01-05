@@ -3,10 +3,6 @@ defmodule LogflareWeb.BillingController do
 
   require Logger
 
-  alias Logflare.BillingAccounts
-  alias Logflare.Plans
-  alias Logflare.Source
-  alias Logflare.{User, Users}
   alias Logflare.BillingAccounts.Stripe
 
   plug LogflareWeb.Plugs.AuthMustBeOwner

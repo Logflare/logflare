@@ -1,8 +1,7 @@
 defmodule Logflare.TeamUsers.TeamUser do
   use Ecto.Schema
+  use Logflare.Commons
   import Ecto.Changeset
-  alias Logflare.Users.UserPreferences
-  alias Logflare.Teams.Team
 
   schema "team_users" do
     field :email, :string

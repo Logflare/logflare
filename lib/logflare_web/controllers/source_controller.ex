@@ -2,10 +2,8 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
 
-  alias Logflare.JSON
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans}
+  alias Logflare.Google.BigQuery
   alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
 

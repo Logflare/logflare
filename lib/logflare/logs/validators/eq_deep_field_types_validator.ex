@@ -1,5 +1,5 @@
 defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   require Logger
 
   @moduledoc """

@@ -1,9 +1,6 @@
 defmodule LogflareWeb.CloudflareController do
   use LogflareWeb, :controller
 
-  alias Logflare.JSON
-  alias Logflare.Repo
-  alias Logflare.User
   alias Logflare.OauthAccessTokens.OauthAccessToken
 
   def event(conn, params) do

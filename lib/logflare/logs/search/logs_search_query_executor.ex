@@ -1,17 +1,11 @@
 defmodule Logflare.Logs.SearchQueryExecutor do
   use GenServer
   alias __MODULE__, as: State
-  alias Logflare.Logs.Search
-  alias Logflare.Logs.SearchOperation, as: SO
+  use Logflare.Commons
+  alias Logs.Search
+  alias Logs.SearchOperation, as: SO
   import LogflareWeb.SearchLV.Utils
-  alias Logflare.LogEvent
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.User.BigQueryUDFs
-  alias Logflare.{Users, User}
-  alias Logflare.Logs
-  alias Logflare.Source
-  alias Logflare.SavedSearches
-  alias Logflare.Lql
   use TypedStruct
   require Logger
   @query_timeout 60_000

@@ -1,7 +1,6 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
-  alias Logflare.LogEvent, as: LE
-  alias Logflare.{Source, Sources}
+  use Logflare.Commons
   import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}

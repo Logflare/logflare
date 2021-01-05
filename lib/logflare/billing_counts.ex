@@ -6,8 +6,7 @@ defmodule Logflare.BillingCounts do
   require Logger
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
-  alias Logflare.BillingCounts.BillingCount
+  use Logflare.Commons
 
   def latest_by(node: name, source_id: source_id) when is_atom(name) do
     latest_by(node: Atom.to_string(name), source_id: source_id)

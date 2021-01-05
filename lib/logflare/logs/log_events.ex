@@ -1,11 +1,9 @@
 defmodule Logflare.Logs.LogEvents do
   @moduledoc false
+  use Logflare.Commons
   alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Sources
-  alias Logflare.LogEvent
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
-  alias Logflare.BqRepo
   alias Logflare.Google.BigQuery.GenUtils
   # import Logflare.Ecto.BQQueryAPI
 

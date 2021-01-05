@@ -4,10 +4,7 @@ defmodule Logflare.TeamUsers do
   """
   import Ecto.Query, warn: false
 
-  alias Logflare.Teams
-  alias Logflare.Plans
-  alias Logflare.Repo
-  alias Logflare.TeamUsers.TeamUser
+  use Logflare.Commons
 
   @doc """
   Returns the list of team_users.

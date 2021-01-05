@@ -8,14 +8,9 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   require Logger
 
+  use Logflare.Commons
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Sources
-  alias Logflare.Source
-  alias Logflare.LogEvent
-  alias Logflare.AccountEmail
-  alias Logflare.Mailer
 
   @persist_every 60_000
   @timeout 60_000

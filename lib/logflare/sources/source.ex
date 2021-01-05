@@ -1,11 +1,9 @@
 defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
+  use Logflare.Commons
 
   import Ecto.Changeset
-
-  alias Logflare.Plans
-  alias Logflare.Users
 
   @default_source_api_quota 25
   @derive {Jason.Encoder,

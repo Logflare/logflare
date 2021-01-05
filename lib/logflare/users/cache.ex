@@ -3,7 +3,7 @@ defmodule Logflare.Users.Cache do
   Cache for users.
   """
 
-  alias Logflare.{Users}
+  use Logflare.Commons
   import Cachex.Spec
   @ttl 5_000
 

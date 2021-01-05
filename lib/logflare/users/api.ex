@@ -1,6 +1,6 @@
 defmodule Logflare.Users.API do
   @moduledoc false
-  alias Logflare.{Sources, User, Users}
+  use Logflare.Commons
 
   @type api_rates_quotas :: %{
           message: String.t(),

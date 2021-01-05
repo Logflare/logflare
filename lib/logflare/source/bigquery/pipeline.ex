@@ -4,17 +4,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   require Logger
 
+  use Logflare.Commons
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
-  alias Logflare.{Source}
-  alias Logflare.{Users, Sources}
-  alias Logflare.Source.Supervisor
+  alias Source.Supervisor
   alias Logflare.{AccountEmail, Mailer}
-  alias Logflare.LogEvent, as: LE
-  alias Logflare.Source.RecentLogsServer, as: RLS
 
   def start_link(%RLS{source: source, plan: plan} = rls) do
     procs = calc_procs(source, plan)

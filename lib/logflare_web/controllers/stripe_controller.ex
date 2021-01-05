@@ -3,9 +3,6 @@ defmodule LogflareWeb.StripeController do
 
   require Logger
 
-  alias Logflare.BillingAccounts
-  alias Logflare.BillingAccounts.BillingAccount
-
   def event(
         conn,
         %{"id" => id, "type" => type, "data" => %{"object" => %{"customer" => customer} = object}} =

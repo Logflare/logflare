@@ -1,9 +1,6 @@
 defmodule Logflare.Logs.SourceRouting do
   @moduledoc false
-  alias Logflare.{Source, Sources}
-  alias Logflare.Rule
-  alias Logflare.Lql
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   import Logflare.Logs, only: [ingest: 1, broadcast: 1]
   require Logger
 

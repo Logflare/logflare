@@ -17,8 +17,6 @@ defmodule LogflareWeb.LogController do
        ]
        when action in [:browser_reports, :generic_json, :create]
 
-  alias Logflare.Logs
-
   @message "Logged!"
 
   def create(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do

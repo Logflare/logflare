@@ -1,8 +1,7 @@
 defmodule Logflare.Rule do
   @moduledoc false
   use TypedEctoSchema
-  alias Logflare.Source
-  alias Logflare.Lql
+  use Logflare.Commons
   import Ecto.Changeset
 
   typed_schema "rules" do

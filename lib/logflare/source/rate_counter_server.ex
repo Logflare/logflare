@@ -8,13 +8,10 @@ defmodule Logflare.Source.RateCounterServer do
 
   require Logger
   alias __MODULE__, as: RCS
+  use Logflare.Commons
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source
-  alias Logflare.Source.Data
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Sources
-  alias Logflare.Sources.Counters
-  alias Logflare.PubSubRates
+  alias Source.Data
+  alias Sources.Counters
 
   @default_bucket_width 60
   @ets_table_name :rate_counters

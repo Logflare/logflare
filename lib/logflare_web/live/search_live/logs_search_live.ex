@@ -4,14 +4,8 @@ defmodule LogflareWeb.Source.SearchLV do
   """
   use LogflareWeb, :live_view
 
-  alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.Lql
-  alias Logflare.Lql.ChartRule
-  alias Logflare.SavedSearches
-  alias Logflare.{Sources, Users, Plans, TeamUsers}
-  alias Logflare.User
-  alias Logflare.LogEvent
-  alias Logflare.TeamUsers.TeamUser
+  alias Logs.SearchQueryExecutor
+  alias Lql.ChartRule
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -585,7 +579,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
         msg = warning_message(socket.assigns, search_result) ->
           le =
-            LogEvent.make(
+            LE.make(
               %{
                 event_message: msg,
                 timestamp: DateTime.utc_now() |> DateTime.to_unix(),

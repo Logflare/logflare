@@ -6,9 +6,7 @@ defmodule Logflare.User do
 
   import Ecto.Changeset
 
-  alias Logflare.Source
-  alias Logflare.Teams.Team
-  alias Logflare.BillingAccounts.BillingAccount
+  use Logflare.Commons
   alias Logflare.Google.BigQuery
   alias Logflare.Users.UserPreferences
 

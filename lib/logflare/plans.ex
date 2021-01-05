@@ -4,10 +4,7 @@ defmodule Logflare.Plans do
   """
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
-  alias Logflare.BillingAccounts
-  alias Logflare.Plans.Plan
-  alias Logflare.User
+  use Logflare.Commons
 
   @doc """
   Returns the list of plans.

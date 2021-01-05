@@ -1,8 +1,6 @@
 defmodule LogflareWeb.AdminPlanController do
   use LogflareWeb, :controller
 
-  alias Logflare.Plans
-
   def index(conn, _params) do
     plans = Plans.list_plans() |> Enum.sort_by(& &1.id, :asc)
 

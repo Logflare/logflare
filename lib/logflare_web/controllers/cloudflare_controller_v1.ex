@@ -4,9 +4,6 @@ defmodule LogflareWeb.CloudflareControllerV1 do
   """
   use LogflareWeb, :controller
 
-  alias Logflare.JSON
-  alias Logflare.Repo
-  alias Logflare.User
   alias Logflare.OauthAccessTokens.OauthAccessToken
 
   @doc """

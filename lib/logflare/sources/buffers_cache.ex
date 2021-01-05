@@ -1,7 +1,7 @@
 defmodule Logflare.Sources.BuffersCache do
   @moduledoc false
   import Cachex.Spec
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
 
   @ttl :timer.hours(1)
   @cache __MODULE__

@@ -20,6 +20,7 @@ defmodule LogflareWeb do
   def controller do
     quote do
       use Phoenix.Controller, namespace: LogflareWeb
+      use Logflare.Commons
 
       import LogflareWeb.Gettext
       import Plug.Conn
@@ -37,6 +38,8 @@ defmodule LogflareWeb do
         root: "lib/logflare_web/templates",
         namespace: LogflareWeb
 
+      use Logflare.Commons
+
       # Import convenience functions from controllers
       import Phoenix.Controller,
         only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
@@ -53,6 +56,7 @@ defmodule LogflareWeb do
         path: unquote(params[:path]),
         namespace: LogflareWeb
 
+      use Logflare.Commons
       # Import convenience functions from controllers
       import Phoenix.Controller,
         only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
@@ -69,6 +73,7 @@ defmodule LogflareWeb do
       use Phoenix.LiveView,
         layout: {LogflareWeb.LayoutView, "live.html"}
 
+      use Logflare.Commons
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
 
       unquote(view_helpers())

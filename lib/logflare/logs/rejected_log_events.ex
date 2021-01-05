@@ -21,8 +21,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
     }'
   ```
   """
-  alias Logflare.{Source, User}
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   @cache __MODULE__
 
   def child_spec(_) do

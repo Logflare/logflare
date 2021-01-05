@@ -6,10 +6,7 @@ defmodule Logflare.BillingAccounts do
   require Logger
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.Users
-  alias Logflare.Source
+  use Logflare.Commons
   alias __MODULE__
   alias Logflare.BillingAccounts.BillingAccount
 

@@ -2,10 +2,8 @@ defmodule Logflare.Logs do
   @moduledoc false
   require Logger
   use Publicist
-
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   alias Logflare.Logs.{RejectedLogEvents}
-  alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting

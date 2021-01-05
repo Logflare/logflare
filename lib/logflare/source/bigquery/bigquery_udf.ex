@@ -2,9 +2,7 @@ defmodule Logflare.User.BigQueryUDFs do
   @moduledoc false
   alias __MODULE__.SearchFns, as: SFns
   require Logger
-  alias Logflare.BqRepo
-  alias Logflare.User
-  alias Logflare.Users
+  use Logflare.Commons
 
   def create_if_not_exists_udfs_for_user_dataset(
         %User{
