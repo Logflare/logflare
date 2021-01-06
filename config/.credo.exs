@@ -93,7 +93,7 @@
         #
         ## Readability Checks
         #
-        {Credo.Check.Readability.AliasOrder, false},
+        {Credo.Check.Readability.AliasOrder, []},
         {Credo.Check.Readability.FunctionNames, []},
         {Credo.Check.Readability.LargeNumbers, []},
         {Credo.Check.Readability.MaxLineLength, [priority: :low, max_length: 120]},
@@ -120,7 +120,7 @@
         {Credo.Check.Refactor.CyclomaticComplexity, []},
         {Credo.Check.Refactor.FunctionArity, []},
         {Credo.Check.Refactor.LongQuoteBlocks, []},
-        {Credo.Check.Refactor.MapInto, []},
+        # {Credo.Check.Refactor.MapInto, []},
         {Credo.Check.Refactor.MatchInCondition, []},
         {Credo.Check.Refactor.NegatedConditionsInUnless, []},
         {Credo.Check.Refactor.NegatedConditionsWithElse, []},
@@ -131,11 +131,12 @@
         #
         ## Warnings
         #
+        {Credo.Check.Warning.ApplicationConfigInModuleAttribute, []},
         {Credo.Check.Warning.BoolOperationOnSameValues, []},
         {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
         {Credo.Check.Warning.IExPry, []},
         {Credo.Check.Warning.IoInspect, []},
-        {Credo.Check.Warning.LazyLogging, []},
+        # {Credo.Check.Warning.LazyLogging, []},
         {Credo.Check.Warning.MixEnv, false},
         {Credo.Check.Warning.OperationOnSameValues, []},
         {Credo.Check.Warning.OperationWithConstantResult, []},
@@ -156,14 +157,17 @@
         #
         # Controversial and experimental checks (opt-in, just replace `false` with `[]`)
         #
-        {Credo.Check.Readability.StrictModuleLayout, false},
         {Credo.Check.Consistency.MultiAliasImportRequireUse, false},
         {Credo.Check.Consistency.UnusedVariableNames, false},
         {Credo.Check.Design.DuplicatedCode, false},
         {Credo.Check.Readability.AliasAs, false},
+        {Credo.Check.Readability.BlockPipe, false},
+        {Credo.Check.Readability.ImplTrue, false},
         {Credo.Check.Readability.MultiAlias, false},
-        {Credo.Check.Readability.Specs, false},
+        {Credo.Check.Readability.SeparateAliasRequire, false},
         {Credo.Check.Readability.SinglePipe, false},
+        {Credo.Check.Readability.Specs, false},
+        {Credo.Check.Readability.StrictModuleLayout, false},
         {Credo.Check.Readability.WithCustomTaggedTuple, false},
         {Credo.Check.Refactor.ABCSize, false},
         {Credo.Check.Refactor.AppendSingleItem, false},
