@@ -37,7 +37,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "dashboard" do
     setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
 
     test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, s2 | _]} do
       conn =
@@ -86,9 +85,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "update" do
     setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
 
-    @tag :skip
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
 
@@ -103,7 +100,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> patch("/sources/#{s1.id}", params)
+        |> patch(Routes.source_path(conn, :update, s1.id), params)
 
       s1_new = Sources.get_by(token: s1.token)
 
@@ -119,6 +116,16 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(source_path(conn, :edit, s1.id))
 
       assert conn.assigns.source.name == new_name
+
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "notifications_every" => "100"
+        }
+      }
+
+      s1_new = Sources.get_by(token: s1.token)
+      assert s1_new.notifications_every == 14_400_000
     end
 
     test "returns 406 with invalid params", %{
@@ -208,7 +215,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "show" do
     setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
 
     test "renders source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
@@ -254,7 +260,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "create" do
     setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = Faker.Name.name()
@@ -311,7 +316,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "favorite" do
     setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
 
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
@@ -382,11 +386,6 @@ defmodule LogflareWeb.SourceControllerTest do
       }
     end)
 
-    :ok
-  end
-
-  def assert_caches_not_called(_) do
-    reject(&Sources.Cache.get_by/1)
     :ok
   end
 end
