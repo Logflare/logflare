@@ -3,7 +3,7 @@
         <div class="heropr">
             <div class="row">
                 <div class="col-md-12">
-                    <h1>Rate limited plans for <u>your project</u> <br> Unlimited for <u>your enterprise</u></h1>
+                    <h1>Predictable pricing for <u>your project</u> <br> Unlimited for <u>your enterprise</u></h1>
                     <p class="paragraph">Logflare scales with you when you need to.</p>
                     <p class="sign-up"><a href="#plans">SIGN UP</a></p>
                     <p><span>Start 14-day trial</span></p>
@@ -16,7 +16,7 @@
         </div>
         -->
         <div id="plans">
-            <h2>Rate Limited Plans</h2>
+            <h2>Standard Plans</h2>
             <%= live_render(@conn, LogflareWeb.BillingPlansLive) %>
 
         </div>
