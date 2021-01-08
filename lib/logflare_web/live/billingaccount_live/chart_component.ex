@@ -48,35 +48,24 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   end
 
   def make_chart(data) do
-    options = plot_options()
+    plot_options = plot_options()
 
     content =
       Dataset.new(data)
       |> BarChart.new()
       |> BarChart.data_labels(false)
+      |> IO.inspect()
 
-    Plot.new(400, 125, content)
+    Plot.new(400, 75, content)
     |> Plot.axis_labels("", "")
     |> Plot.titles("", "")
+    |> IO.inspect()
+    |> Map.put(:margins, %{bottom: 20, left: 20, right: 10, top: 10})
     |> Plot.to_svg()
   end
 
   defp plot_options() do
-    [
-      axis_label_rotation: nil,
-      colour_palette: :default,
-      type: :line,
-      series: 1,
-      title: "Blah"
-      # dataset: term(),
-      # fill_scale: term(),
-      # height: term(),
-      # mapping: term(),
-      # transforms: term(),
-      # width: term(),
-      # x_scale: term(),
-      # y_scale: term()
-    ]
+    %{top_margin: 10, right_margin: 10, bottom_margin: 20, left_margin: 20}
   end
 
   defp timeseries() do
