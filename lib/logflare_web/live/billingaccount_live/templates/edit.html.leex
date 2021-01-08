@@ -35,7 +35,7 @@
   <div class="sub-form">
     <%= section_header("Usage") %>
     <p>Your total log event count per day for the last 30 days.</p>
-    <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, chart_data: LogflareWeb.BillingAccountLive.ChartComponent.make_test_data_for_preload(), chart_options: LogflareWeb.BillingAccountLive.ChartComponent.make_options(), counter: 0 %>
+    <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, chart_data: nil, counter: 0 %>
   </div>
 
   <div class="sub-form">
