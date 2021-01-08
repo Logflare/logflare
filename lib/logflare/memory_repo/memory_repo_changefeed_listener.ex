@@ -37,7 +37,7 @@ defmodule Logflare.Cache.InvalidationWorker do
 
     {:noreply, :event_handled}
   catch
-    _, error ->
+    huh, error ->
       Logger.error("Cache invalidation worker error: #{inspect(error)}")
       {:noreply, :event_error}
   end
@@ -46,18 +46,36 @@ defmodule Logflare.Cache.InvalidationWorker do
     {:noreply, :event_received}
   end
 
-  def invalidate_cache(%{"type" => type} = payload) when type in ["UPDATE", "DELETE"] do
+  def invalidate_cache(%{"type" => "DELETE"} = payload) do
     %{
       "id" => row_id,
-      "new" => _new_row_data,
+      "old" => old_row_data,
+      "table" => table,
+      "type" => _type
+    } = payload
+
+    # delete
+  end
+
+  def invalidate_cache(%{"type" => type} = payload) when type in ["UPDATE", "INSERT"] do
+    %{
+      "id" => row_id,
+      "new" => new_row_data,
       "old" => _old_row_data,
       "table" => table,
       "type" => _type
     } = payload
 
-    Cache.delete(table_to_schema(table), row_id)
+    # insert
   end
 
+  def invalidate_cache(_payload) do
+    :noop
+  end
+
+  defp table_to_schema("teams"), do: Team
+  defp table_to_schema("team_users"), do: TeamUser
+  defp table_to_schema("rules"), do: Rule
   defp table_to_schema("users"), do: User
   defp table_to_schema("sources"), do: Source
 end

@@ -178,6 +178,9 @@ defmodule Logflare.Mixfile do
 
       # Telemetry
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
+
+      # Cache
+      {:ecto3_mnesia, "~> 0.2"}
     ]
   end
 
