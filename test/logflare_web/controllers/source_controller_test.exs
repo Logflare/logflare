@@ -12,6 +12,8 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
+  @moduletag :this
+  @moduletag :unboxed
 
   setup_all do
     Sources.Counters.start_link()

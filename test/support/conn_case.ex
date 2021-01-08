@@ -30,10 +30,19 @@ defmodule LogflareWeb.ConnCase do
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    if tags[:unboxed] do
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
 
-    unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      on_exit(fn ->
+        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
+        Logflare.EctoSQLUnboxedHelpers.truncate_all()
+      end)
+    else
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+
+      unless tags[:async] do
+        Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      end
     end
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}

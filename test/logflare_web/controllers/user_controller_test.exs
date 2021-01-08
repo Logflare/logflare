@@ -2,11 +2,10 @@ defmodule LogflareWeb.UserControllerTest do
   @moduledoc false
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
-  use Mimic
+  @moduletag :unboxed
   @moduletag :this
+  use Mimic
 
-  alias Logflare.{Users}
-  alias Logflare.Source
   alias Logflare.Google.BigQuery
   import Logflare.Factory
 
@@ -43,7 +42,7 @@ defmodule LogflareWeb.UserControllerTest do
           }
         )
 
-      u1_new = Users.get_by(id: u1.id)
+      u1_new = Users.get_user_by(id: u1.id)
 
       refute conn.assigns[:changeset]
       refute u1_new.token == nope_token
@@ -64,12 +63,14 @@ defmodule LogflareWeb.UserControllerTest do
         |> put("/account/edit", %{"user" => user_params})
 
       u1_new =
-        Users.get_by(id: u1.id)
+        Users.get_user_by(id: u1.id)
         |> Map.from_struct()
 
       refute conn.assigns[:changeset]
       assert user_params = u1_new
       assert html_response(conn, 302) =~ user_path(conn, :edit)
+
+      u1_new = Users.get_user_by(id: u1.id)
 
       conn =
         conn
@@ -111,7 +112,7 @@ defmodule LogflareWeb.UserControllerTest do
         |> Plug.Test.init_test_session(%{user_id: u1.id})
         |> delete(user_path(conn, :delete))
 
-      u1_updated = Users.get_by(id: u1.id)
+      u1_updated = Users.get_user_by(id: u1.id)
       refute u1_updated
       assert redirected_to(conn, 302) == auth_path(conn, :login, user_deleted: true)
     end
