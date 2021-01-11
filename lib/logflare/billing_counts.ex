@@ -33,7 +33,7 @@ defmodule Logflare.BillingCounts do
   end
 
   def timeseries_to_ext(timeseries) do
-    Enum.map(timeseries, fn [x, y, z] -> [Date.to_string(DateTime.to_date(x)), y, z] end)
+    Enum.map(timeseries, fn [x, y, z] -> [Calendar.strftime(x, "%b %d"), y, z] end)
   end
 
   def list_by(kv) do

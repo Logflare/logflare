@@ -8,7 +8,6 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
 
   alias Contex.{Plot, Dataset, BarChart}
   alias Logflare.BillingCounts
-  alias Logflare.User
 
   require Logger
 
@@ -20,24 +19,22 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     {:ok, socket}
   end
 
-  def update(%{counter: counter} = _assigns, socket) do
-    days = :timer.hours(24 * 30)
+  def update(%{user: user, days: days} = _assigns, socket) do
+    days = :timer.hours(24 * days)
     end_date = DateTime.utc_now()
     start_date = DateTime.add(end_date, -days, :millisecond)
 
     socket =
       socket
-      |> assign(counter: counter)
-      |> assign(chart_data: timeseries(start_date, end_date))
+      |> assign(chart_data: timeseries(user, start_date, end_date))
 
     socket =
       case connected?(socket) do
         true ->
-          # Process.send_after(self(), {:chart_tick, counter + 1}, 100)
-          assign(socket, show_chart: true)
+          assign(socket, loading: false)
 
         false ->
-          assign(socket, show_chart: false)
+          assign(socket, loading: true)
       end
 
     {:ok, socket}
@@ -45,35 +42,36 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
 
   def render(assigns) do
     ~L"""
-    <div id="billing-chart">
-      <%= make_chart(@chart_data) %>
+    <div id="billing-chart" class="my-3">
+      <%= if @loading do %>
+        <div class="">
+        <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
+        <%= # live_react_component("Components.Loader", %{}, [id: "log-event-loader"]) %>
+        </div>
+      <% else %>
+        <%= make_chart(@chart_data) %>
+      <% end %>
     </div>
     """
   end
 
   def make_chart(data) do
-    plot_options = plot_options()
+    dataset = Dataset.new(data, ["x", "y", "category"])
 
     content =
-      Dataset.new(data)
-      |> BarChart.new()
+      BarChart.new(dataset)
       |> BarChart.data_labels(false)
-      |> IO.inspect()
+      |> BarChart.colours(["5eeb8f"])
 
     Plot.new(400, 75, content)
     |> Plot.axis_labels("", "")
     |> Plot.titles("", "")
-    |> IO.inspect()
     |> Map.put(:margins, %{bottom: 20, left: 20, right: 10, top: 10})
     |> Plot.to_svg()
   end
 
-  defp plot_options() do
-    %{top_margin: 10, right_margin: 10, bottom_margin: 20, left_margin: 20}
-  end
-
-  defp timeseries(start_date, end_date) do
-    BillingCounts.timeseries(%User{id: 36}, start_date, end_date)
+  defp timeseries(user, start_date, end_date) do
+    BillingCounts.timeseries(user, start_date, end_date)
     |> BillingCounts.timeseries_to_ext()
     |> Enum.reverse()
   end

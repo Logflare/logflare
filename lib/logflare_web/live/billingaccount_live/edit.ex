@@ -54,6 +54,20 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   @impl true
+  def handle_event("usage_picker", %{"usage" => %{"days" => days}}, socket)
+      when is_binary(days) do
+    user = socket.assigns.user
+
+    send_update(LogflareWeb.BillingAccountLive.ChartComponent,
+      id: :chart,
+      user: user,
+      days: String.to_integer(days)
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     BillingAccountView.render("edit.html", assigns)
   end
