@@ -10,11 +10,7 @@ defmodule Logflare.BillingCounts do
   alias Logflare.User
   alias Logflare.BillingCounts.BillingCount
 
-  def timeseries(%User{id: user_id}) do
-    days = :timer.hours(24 * 30)
-    end_date = DateTime.utc_now()
-    start_date = DateTime.add(end_date, -days, :millisecond)
-
+  def timeseries(%User{id: user_id}, start_date, end_date) do
     from(c in BillingCount,
       right_join:
         range in fragment(

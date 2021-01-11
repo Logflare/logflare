@@ -21,10 +21,14 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   end
 
   def update(%{counter: counter} = _assigns, socket) do
+    days = :timer.hours(24 * 30)
+    end_date = DateTime.utc_now()
+    start_date = DateTime.add(end_date, -days, :millisecond)
+
     socket =
       socket
       |> assign(counter: counter)
-      |> assign(chart_data: timeseries())
+      |> assign(chart_data: timeseries(start_date, end_date))
 
     socket =
       case connected?(socket) do
@@ -68,7 +72,9 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     %{top_margin: 10, right_margin: 10, bottom_margin: 20, left_margin: 20}
   end
 
-  defp timeseries() do
-    BillingCounts.timeseries(%User{id: 36}) |> BillingCounts.timeseries_to_ext() |> Enum.reverse()
+  defp timeseries(start_date, end_date) do
+    BillingCounts.timeseries(%User{id: 36}, start_date, end_date)
+    |> BillingCounts.timeseries_to_ext()
+    |> Enum.reverse()
   end
 end
