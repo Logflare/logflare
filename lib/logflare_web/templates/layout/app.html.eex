@@ -1,3 +1,4 @@
+<%= render("flash.html", flash: %{info: get_flash(@conn, :info), error: get_flash(@conn, :error)}) %>
 <main role="main" class="app">
   <%= @inner_content %>
 </main>

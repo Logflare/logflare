@@ -7,22 +7,33 @@ defmodule Logflare.BillingCounts do
 
   import Ecto.Query, warn: false
   alias Logflare.Repo
+  alias Logflare.User
   alias Logflare.BillingCounts.BillingCount
 
-  def latest_by(node: name, source_id: source_id) when is_atom(name) do
-    latest_by(node: Atom.to_string(name), source_id: source_id)
+  def timeseries(%User{id: user_id}, start_date, end_date) do
+    from(c in BillingCount,
+      right_join:
+        range in fragment(
+          "select generate_series(date(?), date(?), '1 day') AS day, true as is_zero",
+          ^start_date,
+          ^end_date
+        ),
+      on: fragment("date(?)", range.day) == fragment("date(?)", c.inserted_at),
+      where: range.day >= ^start_date and range.day <= ^end_date,
+      where: c.user_id == ^user_id or range.is_zero,
+      group_by: range.day,
+      order_by: [desc: range.day],
+      select: [
+        range.day,
+        coalesce(sum(c.count), 0),
+        "Log Events"
+      ]
+    )
+    |> Repo.all()
   end
 
-  def latest_by(node: name) when is_atom(name) do
-    latest_by(node: Atom.to_string(name))
-  end
-
-  def latest_by(kv) do
-    BillingCount
-    |> where(^kv)
-    |> order_by(desc: :inserted_at)
-    |> limit(1)
-    |> Repo.one()
+  def timeseries_to_ext(timeseries) do
+    Enum.map(timeseries, fn [x, y, z] -> [Calendar.strftime(x, "%b %d"), y, z] end)
   end
 
   def list_by(kv) do
