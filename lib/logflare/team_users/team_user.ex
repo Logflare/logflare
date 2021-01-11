@@ -39,5 +39,25 @@ defmodule Logflare.TeamUsers.TeamUser do
       :provider_uid
     ])
     |> validate_required([:email, :provider, :token, :provider_uid])
+    |> downcase_emails()
+    |> downcase_email_provider_uid(team_user)
+  end
+
+  def downcase_emails(changeset) do
+    changeset
+    |> update_change(:email, &String.downcase/1)
+    |> update_change(:email_preferred, fn
+      nil -> nil
+      x when is_binary(x) -> String.downcase(x)
+    end)
+  end
+
+  def downcase_email_provider_uid(changeset, team_user) do
+    if team_user.provider == "email" do
+      changeset
+      |> update_change(:provider_uid, &String.downcase/1)
+    else
+      changeset
+    end
   end
 end

@@ -18,6 +18,7 @@ defmodule Logflare.Source.RecentLogsServer do
     field :plan, Plan.t()
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
+    field :billing_last_node_count, integer(), default: 0
   end
 
   use GenServer

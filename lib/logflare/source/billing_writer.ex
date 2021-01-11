@@ -19,12 +19,14 @@ defmodule Logflare.Source.BillingWriter do
   end
 
   def handle_info(:write_count, rls) do
-    count = Data.get_node_inserts(rls.source.token)
+    last_count = rls.billing_last_node_count
+    node_count = Data.get_node_inserts(rls.source.token)
+    count = node_count - last_count
 
     if count > 0 do
       BillingCounts.insert(rls.user, rls.source, %{
         node: Atom.to_string(Node.self()),
-        count: 1
+        count: count
       })
       |> case do
         {:ok, _resp} ->
@@ -36,7 +38,7 @@ defmodule Logflare.Source.BillingWriter do
     end
 
     write()
-    {:noreply, rls}
+    {:noreply, %{rls | billing_last_node_count: node_count}}
   end
 
   def terminate(reason, state) do
