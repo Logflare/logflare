@@ -1,55 +1,57 @@
-<ul class="list-group list-group-horizontal">
-  <li class="list-group-item flex-fill">
-    <div >
-      <h6 class="header-margin"> Timestamp  </h6>
-      <div><%= Timex.to_datetime(@timestamp) %></div>
-      <div>
-        <%= if @user_local_timezone do %>
-          <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
-        <% else %>
-          <br/>
-        <% end %>
+<div id="log-event-viewer">
+  <ul class="list-group list-group-horizontal">
+    <li class="list-group-item flex-fill">
+      <div >
+        <h6 class="header-margin"> Timestamp  </h6>
+        <div><%= Timex.to_datetime(@timestamp) %></div>
+        <div>
+          <%= if @user_local_timezone do %>
+            <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
+          <% else %>
+            <br/>
+          <% end %>
+        </div>
       </div>
-    </div>
-  </li>
-  <li class="list-group-item flex-fill">
-    <h6 class="header-margin"> UUID </h6>
-    <%= link @id, to: Routes.log_event_show_path(LogflareWeb.Endpoint, :show, @source, uuid: @id) %>
-  </li>
-</ul>
-<ul class="list-group">
-  <li class="list-group-item flex-fill">
-    <h6 class="header-margin"> Message </h6>
-    <%= @message %>
-  </li>
-</ul>
-<ul class="list-group" id="log-event-metadata">
-  <li class="list-group-item">
-    <ul class="nav d-flex" id="metadata-nav" role="tablist">
-      <li class="nav-item">
-        <a class="nav-link active" id="metadata-viewer-link" data-toggle="tab" href="#metadata-viewer" role="tab" >Metadata</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" data-toggle="tab" href="#metadata-raw" role="tab" >Raw JSON</a>
-      </li>
-      <li class="nav-item ml-auto">
-        <a class="nav-link fas-copy" href="#" id="copy-metadata-raw" >
-          <span class="pointer-cursor logflare-tooltip"
-          data-trigger="hover focus" data-delay="0" data-toggle="tooltip"
-          data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Click to copy</span>">
-          <i class="fas fa-copy"></i>
-        </span>
-      </a>
+    </li>
+    <li class="list-group-item flex-fill">
+      <h6 class="header-margin"> UUID </h6>
+      <%= link @id, to: Routes.log_event_show_path(LogflareWeb.Endpoint, :show, @source, uuid: @id) %>
     </li>
   </ul>
-  <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
-    <div class="tab-content">
-      <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
-        <pre class="blurred"></code><%= String.replace(@fmt_metadata, ~r/[\{\}]/, "") %></code></pre>
+  <ul class="list-group">
+    <li class="list-group-item flex-fill">
+      <h6 class="header-margin"> Message </h6>
+      <%= @message %>
+    </li>
+  </ul>
+  <ul class="list-group" id="log-event-metadata">
+    <li class="list-group-item">
+      <ul class="nav d-flex" id="metadata-nav" role="tablist">
+        <li class="nav-item">
+          <a class="nav-link active" id="metadata-viewer-link" data-toggle="tab" href="#metadata-viewer" role="tab" >Metadata</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" data-toggle="tab" href="#metadata-raw" role="tab" >Raw JSON</a>
+        </li>
+        <li class="nav-item ml-auto">
+          <a class="nav-link fas-copy" href="#" id="copy-metadata-raw" >
+            <span class="pointer-cursor logflare-tooltip"
+          data-trigger="hover focus" data-delay="0" data-toggle="tooltip"
+          data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Click to copy</span>">
+            <i class="fas fa-copy"></i>
+          </span>
+        </a>
+      </li>
+    </ul>
+    <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
+      <div class="tab-content">
+        <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
+          <pre class="blurred"></code><%= String.replace(@fmt_metadata, ~r/[\{\}]/, "") %></code></pre>
+        </div>
+        <div class="tab-pane" id="metadata-raw" role="tabpanel">
+          <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code id="metadata-raw-json-code"><%= @fmt_metadata %></code></pre>
+        </div>
       </div>
-      <div class="tab-pane" id="metadata-raw" role="tabpanel">
-        <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code id="metadata-raw-json-code"><%= @fmt_metadata %></code></pre>
-      </div>
-    </div>
-  </li>
-</ul>
+    </li>
+  </ul>
+</div>

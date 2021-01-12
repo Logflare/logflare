@@ -144,6 +144,25 @@ const buildTsClause = (start, end, label) => {
   return timestampFilter.join(" ")
 }
 
+hooks.BigQuerySqlQueryFormatter = {
+  mounted() {
+    this.formatSql()
+  },
+  updated() {
+    this.formatSql()
+  },
+  formatSql() {
+    const $this = $(this.el)
+    const $code = $this.find(`code#search-op-sql-string`)
+    const fmtSql = sqlFormatter.format($code.text())
+    // replace with formatted sql
+    $code.text(fmtSql)
+    $this.find("pre code").each((i, block) => {
+      hljs.highlightBlock(block)
+    })
+  },
+}
+
 hooks.SourceLogsSearch = {
   updated() {
     const hook = this

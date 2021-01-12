@@ -1,10 +1,16 @@
-<%= if @activate_user_preferences do %>
-  <%= live_modal @socket, LogflareWeb.Search.UserPreferencesComponent,
-    id: :user_preferences,
-    title: "Preferences",
+<%= if @show_modal do %>
+  <%= live_modal @socket, @modal.body.module_or_template,
+    id: @modal.body.id,
+    title: @modal.body.title,
     user: @user,
+    params: @modal.params,
+    view: @modal.body[:view],
+    source: @source,
+    search_op_log_events: @search_op_log_events,
+    search_op_log_aggregates: @search_op_log_aggregates,
+    search_op_error: @search_op_error,
     team_user: @team_user,
-    return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)" %>
+    return_to: @modal.body.return_to && @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)" %>
 <% end %>
 <div id="user-preferences"
 data-user-local-timezone="<%= @user_local_timezone %>"
@@ -17,8 +23,16 @@ data-use-local-time="<%= @use_local_time %>"
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();">
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
-        <li> <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> </li>
-        <li> <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> </li>
+        <li>
+          <%= live_modal_show_link(template: "lql_help.html", view: SharedView, modal_id: :lql_help_link, title: "Logflare Query Language") do %>
+            <i class="fas fa-code"></i><span> LQL </span>
+          <% end %>
+        </li>
+        <li>
+          <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, modal_id: :bq_schema_link, title: "Source Schema") do %>
+            <i class="fas fa-database"></i><span> schema </span>
+          <% end %>
+        </li>
         <li>
           <a href="#" phx-click="set_local_time"
             id="set_local_time"
@@ -35,7 +49,7 @@ data-use-local-time="<%= @use_local_time %>"
           </a>
         </li>
         <li>
-          <%= link to: "#", phx_click: :"activate-user-preferences", id: "activate-user-preferences" do %>
+          <%= live_modal_show_link( component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences") do %>
             <i class="fas fa-globe"></i>
             <span class="hide-on-mobile">
               timezone
@@ -57,10 +71,22 @@ data-use-local-time="<%= @use_local_time %>"
         </span>
       </li>
       <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
-        <li> <%= modal_link("queryDebugErrorModal", "fas fa-bug","debug error") %> </li>
+        <li>
+          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_error_link, title: "Query Debugging") do %>
+            <i class="fas fa-bug"></i><span> debug error </span>
+          <% end %>
+        </li>
       <% else %>
-        <li> <%= modal_link("queryDebugEventsModal", "fas fa-bug","events query") %> </li>
-        <li> <%= modal_link("queryDebugAggregatesModal", "fas fa-bug","aggregate query") %> </li>
+        <li>
+          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_events_link, title: "Query Debugging") do %>
+            <i class="fas fa-bug"></i><span> events query </span>
+          <% end %>
+        </li>
+        <li>
+          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
+            <i class="fas fa-bug"></i><span> aggregate query </span>
+          <% end %>
+        </li>
       <% end %>
     </ul>
   </div>
@@ -169,5 +195,4 @@ data-use-local-time="<%= @use_local_time %>"
   </form>
 </div>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
-<%= live_component @socket, ModalLVC, id: :active_modal, active_modal: @active_modal, source: @source, log_events: @log_events, user: @user, search_op_log_events: @search_op_log_events, search_op_log_aggregates: @search_op_log_aggregates, search_op_error: @search_op_error %>
 </div>
