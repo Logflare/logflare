@@ -14,15 +14,16 @@ defmodule Logflare.BillingCounts do
     from(c in BillingCount,
       right_join:
         range in fragment(
-          "select generate_series(date(?), date(?), '1 day') AS day, true as is_zero",
+          "select generate_series(date(?), date(?), '1 day') AS day, cast(? as bigint) as user_id",
           ^start_date,
-          ^end_date
+          ^end_date,
+          ^user_id
         ),
-      on: fragment("date(?)", range.day) == fragment("date(?)", c.inserted_at),
+      on: range.day == fragment("date(?)", c.inserted_at),
+      on: range.user_id == c.user_id,
       where: range.day >= ^start_date and range.day <= ^end_date,
-      where: c.user_id == ^user_id or range.is_zero,
       group_by: range.day,
-      order_by: [desc: range.day],
+      order_by: [asc: range.day],
       select: [
         range.day,
         coalesce(sum(c.count), 0),

@@ -73,6 +73,5 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   defp timeseries(user, start_date, end_date) do
     BillingCounts.timeseries(user, start_date, end_date)
     |> BillingCounts.timeseries_to_ext()
-    |> Enum.reverse()
   end
 end
