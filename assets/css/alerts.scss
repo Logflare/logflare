@@ -1,0 +1,50 @@
+.alert {
+    border-radius: 0.25rem;
+    margin-bottom: 0;
+}
+
+/* Info */
+
+.alert-info {
+    background-color: $brand-light-purple;
+    border-width: 0;
+}
+
+.alert-info a {
+    color: white;
+    text-shadow: 0;
+}
+
+/* Warning */
+
+.alert-warning {
+    background-color: $brand-yellow;
+    border-width: 0;
+}
+
+.alert-warning a {
+    color: $brand-fuscia;
+    text-shadow: 0;
+}
+
+.alert-warning a:hover {
+    color: $brand-fuscia;
+    text-shadow: 0;
+}
+
+/* Danger */
+
+.alert-danger {
+    background-color: $brand-yellow;
+    border-width: 0;
+}
+
+.alert-danger a {
+    color: $brand-fuscia;
+    text-shadow: 0;
+}
+
+.alert-danger a:hover {
+    color: $brand-fuscia;
+    text-shadow: 0;
+}

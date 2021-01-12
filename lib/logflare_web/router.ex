@@ -210,7 +210,7 @@ defmodule LogflareWeb.Router do
 
     post "/", BillingController, :create
     delete "/", BillingController, :delete
-    get "/edit", BillingController, :edit
+    live "/edit", BillingAccountLive, :edit
     get "/sync", BillingController, :sync
   end
 

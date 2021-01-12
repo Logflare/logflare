@@ -3,7 +3,7 @@
     <h5>~/account/edit</h5>
     <div class="log-settings">
       <ul>
-        <li><%= link to: Routes.billing_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %></li>
+        <li><%= link to: Routes.billing_account_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %></li>
         <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
@@ -55,7 +55,7 @@
 <div class="sub-form">
 <%= if @user.billing_account do %>
   <%= section_header("Edit Billing Account") %>
-  <%= link "Edit billing account", to: Routes.billing_path(@conn, :edit), class: "btn btn-primary form-button" %>
+  <%= link "Edit billing account", to: Routes.billing_account_path(@conn, :edit), class: "btn btn-primary form-button" %>
 <% else %>
   <%= section_header("Create a Billing Account") %>
   <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>

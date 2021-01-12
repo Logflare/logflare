@@ -277,19 +277,19 @@ defmodule LogflareWeb.BillingController do
   def abandoned(%{assigns: %{user: _user}} = conn, _params) do
     conn
     |> put_flash(:error, "Abandoned!")
-    |> redirect(to: Routes.billing_path(conn, :edit))
+    |> redirect(to: Routes.billing_account_path(conn, :edit))
   end
 
   defp success_and_redirect(conn, message) do
     conn
     |> put_flash(:info, "Success! #{message}")
-    |> redirect(to: Routes.billing_path(conn, :edit))
+    |> redirect(to: Routes.billing_account_path(conn, :edit))
   end
 
   defp error_and_redirect(conn, message \\ @default_error_message) do
     conn
     |> put_flash(:error, message)
-    |> redirect(to: Routes.billing_path(conn, :edit))
+    |> redirect(to: Routes.billing_account_path(conn, :edit))
   end
 
   defp get_billing_account_subscription(billing_account, stripe_subscription_id) do
