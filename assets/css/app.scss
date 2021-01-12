@@ -76,7 +76,9 @@ main.app {
   padding-top: 0;
 }
 
-
+.loading {
+  background-color: $brand-light-black;
+}
 
 .tooltip-inner {
   min-width: 100px;
