@@ -1,7 +1,15 @@
 <div class="form-group">
   <%= label @f, :lql_string do %>
     <div>
-      Use <%= modal_link("searchHelpModal", "fas fa-code","LQL") %> and source <%= modal_link("sourceSchemaModal", "fas fa-database","schema") %> to configure log event routing to sinks.
+      Use
+      <%= live_modal_show_link(template: "lql_help.html", view: SharedView, modal_id: :lql_help_link, title: "Logflare Query Language") do %>
+        <i class="fas fa-code"></i><span> LQL </span>
+      <% end %>
+      and source
+      <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, modal_id: :bq_schema_link, title: "Source Schema") do %>
+        <i class="fas fa-database"></i><span> schema </span>
+      <% end %>
+      to configure log event routing to sinks.
     </div>
   <% end %>
   <%= text_input @f, :lql_string, value: @lql_string, class: "form-control", disabled: @loading %>

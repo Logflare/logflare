@@ -1,9 +1,10 @@
-<%= if @modal_active? do %>
-  <%= live_modal @socket, @modal_template_or_component,
+<%= if @show_modal do %>
+  <%= live_modal @socket, @modal.body.module_or_template,
   source: @source,
-  title: @modal_title,
-  view: SharedView,
-  return_to: Routes.source_live_path(LogflareWeb.Endpoint, LogflareWeb.Sources.RulesLV, @source.id) %>
+  title: @modal.body.title,
+  view: @modal.body[:view],
+  return_to: false
+  %>
 <% end %>
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
@@ -11,12 +12,12 @@
     <div class="log-settings">
       <ul>
         <li>
-          <%= link to: "#", phx_click: "activate-modal", phx_value_modal_template: "lql_help" do %>
+          <%= live_modal_show_link(template: "lql_help.html", view: SharedView, modal_id: :lql_help_link, title: "Logflare Query Language") do %>
             <i class="fas fa-code"></i><span> LQL </span>
           <% end %>
         </li>
         <li>
-          <%= link to: "#", phx_click: "activate-modal", phx_value_modal_template: "schema" do %>
+          <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, modal_id: :bq_schema_link, title: "Source Schema") do %>
             <i class="fas fa-database"></i><span> schema </span>
           <% end %>
         </li>

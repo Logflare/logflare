@@ -4,6 +4,7 @@ defmodule LogflareWeb.Sources.RulesLV do
   """
   require Logger
   use LogflareWeb, :live_view
+  use LogflareWeb.ModalsLVHelpers
 
   alias LogflareWeb.RuleView
   alias Logflare.{Sources, Users}
@@ -49,6 +50,7 @@ defmodule LogflareWeb.Sources.RulesLV do
       |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
       |> assign(:modal_active?, nil)
+      |> assign(:show_modal, false)
       |> clear_flash(:warning)
 
     {:ok, socket}
