@@ -42,12 +42,9 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
 
   def render(assigns) do
     ~L"""
-    <div id="billing-chart" class="my-3">
+    <div id="billing-chart" class="my-3 w-auto">
       <%= if @loading do %>
-        <div class="">
-        <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
-        <%= # live_react_component("Components.Loader", %{}, [id: "log-event-loader"]) %>
-        </div>
+       <%= placeholder() %>
       <% else %>
         <%= make_chart(@chart_data) %>
       <% end %>
@@ -73,5 +70,9 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   defp timeseries(user, start_date, end_date) do
     BillingCounts.timeseries(user, start_date, end_date)
     |> BillingCounts.timeseries_to_ext()
+  end
+
+  defp placeholder() do
+    {:safe, [~s|<svg class="loading" viewBox="0 0 400 75" role="img"></svg>|]}
   end
 end
