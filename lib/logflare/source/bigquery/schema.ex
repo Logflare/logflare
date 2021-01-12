@@ -249,7 +249,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_info(:persist, state) do
-    source = Sources.Cache.get_by(token: state.source_token)
+    source = Sources.get_by(token: state.source_token)
 
     Sources.create_or_update_source_schema(source, %{bigquery_schema: state.schema})
 
@@ -302,7 +302,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp notify_maybe(source_token, new_schema, old_schema) do
-    %Source{user: user} = source = Sources.Cache.get_by_and_preload(token: source_token)
+    %Source{user: user} = source = Sources.get_by_and_preload(token: source_token)
 
     if source.notifications.user_schema_update_notifications do
       AccountEmail.schema_updated(user, source, new_schema, old_schema)

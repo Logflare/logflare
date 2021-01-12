@@ -105,7 +105,7 @@ defmodule Logflare.Rules do
       source =
         rule.source_id
         |> Sources.get()
-        |> Sources.put_bq_table_schema()
+        |> Sources.Cache.put_bq_table_schema()
 
       with {:ok, lql_filters} <- Lql.decode(rule.lql_string, source.bq_table_schema) do
         if lql_filters != rule.lql_filters do

@@ -11,6 +11,7 @@ defmodule Logflare.Sources do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.PubSubRates
+  alias Logflare.Cluster
 
   require Logger
 
@@ -21,7 +22,7 @@ defmodule Logflare.Sources do
     user
     |> Ecto.build_assoc(:sources)
     |> Source.update_by_user_changeset(source_params)
-    |> Repo.insert()
+    |> RepoWithCache.insert()
     |> case do
       {:ok, source} ->
         {:ok, _source_schema} =
@@ -42,8 +43,7 @@ defmodule Logflare.Sources do
   end
 
   def get(source_id) when is_integer(source_id) do
-    Source
-    |> Repo.get(source_id)
+    get_by(id: source_id)
   end
 
   def get_sources_by_user(%User{id: id}) do
@@ -51,21 +51,16 @@ defmodule Logflare.Sources do
       where: s.user_id == ^id,
       select: s
     )
-    |> Repo.all()
+    |> RepoWithCache.all()
   end
 
   def update_source(changeset) do
-    Repo.update(changeset)
+    RepoWithCache.update(changeset)
   end
 
   def update_source(source, attrs) do
     Source.changeset(source, attrs)
-    |> Repo.update()
-  end
-
-  def update_source_by_user(source, attrs) do
-    Source.update_by_user_changeset(source, attrs)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   def update_source_by_user(_source, _plan, %{"notifications_every" => ""}) do
@@ -76,35 +71,40 @@ defmodule Logflare.Sources do
     freq = String.to_integer(freq)
     limit = plan.limit_alert_freq
 
-    case freq < limit do
-      true ->
-        {:error, :upgrade}
+    if freq < limit do
+      {:error, :upgrade}
+    else
+      Source.update_by_user_changeset(source, attrs)
+      |> RepoWithCache.update()
+      |> case do
+        {:ok, source} = response ->
+          Source.Supervisor.reset_source(source.token)
 
-      false ->
-        Source.update_by_user_changeset(source, attrs)
-        |> Repo.update()
-        |> case do
-          {:ok, source} = response ->
-            Source.Supervisor.reset_source(source.token)
+          response
 
-            response
-
-          response ->
-            response
-        end
+        response ->
+          response
+      end
     end
   end
 
   @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
-    Source
-    |> Repo.get_by(kw)
+    RepoWithCache.get_by(Source, kw)
+  end
+
+  def get_by_id_and_preload(id) when is_integer(id) do
+    get_by_and_preload(id: id)
+  end
+
+  def get_by_id_and_preload(token) when is_atom(token) do
+    get_by_and_preload(token: token)
   end
 
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
     Source
-    |> Repo.get_by(kw)
+    |> RepoWithCache.get_by(kw)
     |> case do
       nil ->
         nil
@@ -126,7 +126,7 @@ defmodule Logflare.Sources do
   end
 
   def delete_source(source) do
-    case Repo.delete(source) do
+    case RepoWithCache.delete(source) do
       {:ok, response} ->
         {:ok, response}
 
@@ -162,8 +162,8 @@ defmodule Logflare.Sources do
 
   def preload_defaults(source) do
     source
-    |> Repo.preload(:user)
-    |> Repo.preload(:rules)
+    |> RepoWithCache.preload(:user)
+    |> RepoWithCache.preload(:rules)
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
     |> put_bq_table_id()
@@ -182,12 +182,12 @@ defmodule Logflare.Sources do
 
     Repo.preload(
       source,
-      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user)
+      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user == true)
     )
   end
 
   def preload_source_schema(source) do
-    Repo.preload(source, :source_schema)
+    RepoWithCache.preload(source, :source_schema)
   end
 
   # """
@@ -274,7 +274,7 @@ defmodule Logflare.Sources do
   def delete_slack_hook_url(source) do
     source
     |> Source.changeset(%{slack_hook_url: nil})
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   @spec put_bq_table_id(Source.t()) :: Source.t()
@@ -315,7 +315,7 @@ defmodule Logflare.Sources do
 
   """
   def list_source_schemas do
-    Repo.all(SourceSchema)
+    RepoWithCache.all(SourceSchema)
   end
 
   @doc """
@@ -332,9 +332,9 @@ defmodule Logflare.Sources do
       ** (Ecto.NoResultsError)
 
   """
-  def get_source_schema!(id), do: Repo.get!(SourceSchema, id)
+  def get_source_schema!(id), do: RepoWithCache.get!(SourceSchema, id)
 
-  def get_source_schema_by(kv), do: SourceSchema |> Repo.get_by(kv)
+  def get_source_schema_by(kv), do: SourceSchema |> RepoWithCache.get_by(kv)
 
   @doc """
   Creates a source_schema.
@@ -352,7 +352,7 @@ defmodule Logflare.Sources do
     source
     |> Ecto.build_assoc(:source_schema)
     |> SourceSchema.changeset(attrs)
-    |> Repo.insert()
+    |> RepoWithCache.insert()
   end
 
   def find_or_create_source_schema(source) do
@@ -386,7 +386,7 @@ defmodule Logflare.Sources do
   def update_source_schema(%SourceSchema{} = source_schema, attrs) do
     source_schema
     |> SourceSchema.changeset(attrs)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   @doc """
@@ -402,7 +402,7 @@ defmodule Logflare.Sources do
 
   """
   def delete_source_schema(%SourceSchema{} = source_schema) do
-    Repo.delete(source_schema)
+    RepoWithCache.delete(source_schema)
   end
 
   @doc """

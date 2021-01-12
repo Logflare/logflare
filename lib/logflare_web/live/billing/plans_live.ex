@@ -10,7 +10,7 @@ defmodule LogflareWeb.BillingPlansLive do
 
   def mount(_params, %{"user_id" => user_id}, socket) do
     user =
-      Users.get(user_id)
+      Users.get_user(user_id)
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 

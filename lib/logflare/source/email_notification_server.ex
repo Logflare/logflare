@@ -27,8 +27,8 @@ defmodule Logflare.Source.EmailNotificationServer do
       true ->
         check_rate(rls.notifications_every)
 
-        source = Sources.Cache.get_by_id(rls.source_id)
-        user = Users.Cache.get_by(id: source.user_id)
+        source = Sources.get_by_id(rls.source_id)
+        user = Users.get_by(id: source.user_id)
 
         if source.notifications.user_email_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->

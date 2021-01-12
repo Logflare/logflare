@@ -18,4 +18,8 @@ defmodule Logflare.Sources.SourceSchema do
     |> foreign_key_constraint(:source_id)
     |> unique_constraint(:source_id, name: "source_schemas_source_id_index")
   end
+
+  def changefeed_changeset(attrs) do
+    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
+  end
 end

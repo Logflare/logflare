@@ -42,6 +42,10 @@ defmodule Logflare.TeamUsers.TeamUser do
     |> downcase_email_provider_uid(team_user)
   end
 
+  def changefeed_changeset(attrs) do
+    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
+  end
+
   def downcase_emails(changeset) do
     changeset
     |> update_change(:email, &String.downcase/1)

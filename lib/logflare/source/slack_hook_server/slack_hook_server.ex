@@ -33,7 +33,7 @@ defmodule Logflare.Source.SlackHookServer do
   def handle_info(:check_rate, rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
-    source = Sources.Cache.get_by_id(rls.source_id)
+    source = Sources.get_by_id(rls.source_id)
 
     case rate > 0 do
       true ->

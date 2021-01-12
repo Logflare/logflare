@@ -27,7 +27,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   def become_account(conn, %{"id" => id}) do
-    user = Users.get(id)
+    user = Users.get_user(id)
 
     auth_params = %{
       token: user.token,
@@ -45,7 +45,7 @@ defmodule LogflareWeb.AdminController do
   def delete_account(%{assigns: %{user: %User{email: "chase@logflare.app"}}} = conn, %{
         "id" => user_id
       }) do
-    user = Users.get(user_id)
+    user = Users.get_user(user_id)
 
     case Users.delete_user(user) do
       {:ok, _user} ->

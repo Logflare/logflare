@@ -39,7 +39,7 @@ defmodule Logflare.Teams do
   def get_team_by(keyword), do: Repo.get_by(Team, keyword)
 
   def get_home_team!(%TeamUser{email: email} = _team_user) do
-    case Users.get_by(email: email) |> Users.preload_team() do
+    case Users.get_user_by(email: email) |> Users.preload_team() do
       nil ->
         nil
 

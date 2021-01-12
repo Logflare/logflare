@@ -20,7 +20,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     is_browser_path = not is_api_path
 
     token =
-      if is_browser_path || Sources.Cache.valid_source_token_param?(token) do
+      if is_browser_path || Sources.valid_source_token_param?(token) do
         token
       else
         nil
@@ -29,10 +29,10 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     source =
       cond do
         token && is_api_path ->
-          Sources.Cache.get_by_and_preload(token: token)
+          Sources.get_by_and_preload(token: token)
 
         name && is_api_path ->
-          Sources.Cache.get_by_and_preload(name: name)
+          Sources.get_by_and_preload(name: name)
 
         id && is_browser_path ->
           Sources.get_by_and_preload(id: id)
@@ -90,7 +90,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
   end
 
   defp set_source_for_public(public_token, conn, opts) do
-    case Sources.Cache.get_by_and_preload(public_token: public_token) do
+    case Sources.get_by_and_preload(public_token: public_token) do
       nil ->
         conn
         |> put_status(404)

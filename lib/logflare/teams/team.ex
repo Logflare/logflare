@@ -16,4 +16,8 @@ defmodule Logflare.Teams.Team do
     |> cast(attrs, [:name])
     |> validate_required([:name])
   end
+
+  def changefeed_changeset(attrs) do
+    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
+  end
 end

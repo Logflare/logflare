@@ -4,7 +4,8 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo, Users, Source.Supervisor, BillingAccounts.Stripe}
+  use Logflare.Commons
+  alias BillingAccounts.Stripe
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
@@ -46,7 +47,7 @@ defmodule LogflareWeb.UserController do
     |> case do
       {:ok, updated_user} ->
         if updated_user.bigquery_project_id != user.bigquery_project_id,
-          do: Supervisor.reset_all_user_sources(user)
+          do: Source.Supervisor.reset_all_user_sources(user)
 
         conn
         |> put_flash(:info, "Account updated!")

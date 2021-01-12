@@ -16,7 +16,7 @@
   <p>Manage your subscription, update credit card info and download your Logflare invoices all in one place.</p>
   <div class="sub-form">
     <%= section_header("Summary") %>
-    <%= if @user.billing_account.lifetime_plan? do %>
+    <%= if @user.billing_account.lifetime_plan do %>
       <p>You're currently on the <u><%= @plan.name %> plan</u>. Thank you!</p>
     <% else %>
       <%= if @user.billing_account.stripe_subscriptions["data"] do %>

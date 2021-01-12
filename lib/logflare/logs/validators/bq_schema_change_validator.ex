@@ -5,7 +5,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
-    schema = Sources.Cache.get_bq_schema(source)
+    {:ok, schema} = Sources.get_bq_schema(source)
 
     if valid?(body.metadata, schema) do
       :ok

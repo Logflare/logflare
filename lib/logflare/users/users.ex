@@ -6,19 +6,17 @@ defmodule Logflare.Users do
 
   @moduledoc false
 
-  def get(user_id) do
-    User
-    |> Repo.get(user_id)
+  def get_user(user_id) do
+    get_by(User, id: user_id)
   end
 
-  def get_by(keyword) do
-    User
-    |> Repo.get_by(keyword)
+  def get_user_by(keyword) do
+    get_by(User, keyword)
   end
 
   def get_by_and_preload(keyword) do
     User
-    |> Repo.get_by(keyword)
+    |> RepoWithCache.get_by(keyword)
     |> case do
       %User{} = u -> preload_defaults(u)
       nil -> nil
@@ -27,12 +25,12 @@ defmodule Logflare.Users do
 
   def preload_team(user) do
     user
-    |> Repo.preload(:team)
+    |> RepoWithCache.preload(:team)
   end
 
   def preload_billing_account(user) do
     user
-    |> Repo.preload(:billing_account)
+    |> RepoWithCache.preload(:billing_account)
   end
 
   def preload_defaults(user) do
@@ -43,7 +41,7 @@ defmodule Logflare.Users do
 
   def preload_sources(user) do
     user
-    |> Repo.preload(:sources)
+    |> RepoWithCache.preload(:sources)
   end
 
   def maybe_preload_bigquery_defaults(user) do
@@ -69,21 +67,21 @@ defmodule Logflare.Users do
   def update_user_all_fields(user, params) do
     user
     |> User.changeset(params)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   def update_user_allowed(user, params) do
     user
     |> User.user_allowed_changeset(params)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   def insert_or_update_user(auth_params) do
     cond do
-      user = Repo.get_by(User, provider_uid: auth_params.provider_uid) ->
+      user = RepoWithCache.get_by(User, provider_uid: auth_params.provider_uid) ->
         update_user_by_provider_id(user, auth_params)
 
-      user = Repo.get_by(User, email: auth_params.email) ->
+      user = RepoWithCache.get_by(User, email: auth_params.email) ->
         update_user_by_email(user, auth_params)
 
       true ->
@@ -91,14 +89,14 @@ defmodule Logflare.Users do
         auth_params = Map.put(auth_params, :api_key, api_key)
 
         changeset = User.changeset(%User{}, auth_params)
-        Repo.insert(changeset)
+        RepoWithCache.insert(changeset)
     end
   end
 
   def delete_user(user) do
     Supervisor.delete_all_user_sources(user)
 
-    case Repo.delete(user) do
+    case RepoWithCache.delete(user) do
       {:ok, _user} = response ->
         BigQuery.delete_dataset(user)
         CloudResourceManager.set_iam_policy()
@@ -112,7 +110,7 @@ defmodule Logflare.Users do
   defp update_user_by_email(user, auth_params) do
     updated_changeset = User.changeset(user, auth_params)
 
-    case Repo.update(updated_changeset) do
+    case RepoWithCache.update(updated_changeset) do
       {:ok, user} ->
         {:ok_found_user, user}
 
@@ -124,7 +122,7 @@ defmodule Logflare.Users do
   defp update_user_by_provider_id(user, auth_params) do
     updated_changeset = User.changeset(user, auth_params)
 
-    case Repo.update(updated_changeset) do
+    case RepoWithCache.update(updated_changeset) do
       {:ok, user} ->
         {:ok_found_user, user}
 
@@ -143,6 +141,10 @@ defmodule Logflare.Users do
     user_or_team_user
     |> Ecto.Changeset.cast(attrs, [])
     |> Ecto.Changeset.cast_embed(:preferences, required: true)
-    |> Repo.update()
+    |> RepoWithCache.update()
+  end
+
+  defp get_by(schema, kw) do
+    RepoWithCache.get_by(schema, kw)
   end
 end

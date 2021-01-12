@@ -43,12 +43,12 @@ defmodule Logflare.Plans do
   def get_plan_by(kw), do: Repo.get_by(Plan, kw)
 
   def get_plan_by_user(%User{} = user) do
-    if user.billing_enabled? do
+    if user.billing_enabled do
       case BillingAccounts.get_billing_account_by(user_id: user.id) do
         nil ->
           get_plan_by(name: "Free")
 
-        %BillingAccounts.BillingAccount{lifetime_plan?: true} ->
+        %BillingAccounts.BillingAccount{lifetime_plan: true} ->
           get_plan_by(name: "Lifetime")
 
         %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->

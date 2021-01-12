@@ -127,10 +127,8 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def put_chart_data_shape_id(%SO{} = so) do
-    flat_type_map =
-      so.source
-      |> Sources.Cache.get_bq_schema()
-      |> SchemaUtils.bq_schema_to_flat_typemap()
+    {:ok, bq_schema} = Sources.get_bq_schema(so.source)
+    flat_type_map = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
 
     [%{path: path}] = so.chart_rules
     path_is_timestamp? = path == "timestamp"

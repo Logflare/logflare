@@ -3,6 +3,8 @@ defmodule Logflare.Commons do
     quote do
       alias Logflare.Repo
       alias Logflare.BqRepo
+      alias Logflare.MemoryRepo
+      alias Logflare.RepoWithCache
 
       alias Logflare.Source
       alias Logflare.Sources
@@ -13,6 +15,7 @@ defmodule Logflare.Commons do
 
       alias Logflare.Teams
       alias Logflare.Teams.Team
+      alias Logflare.TeamUsers
       alias Logflare.TeamUsers.TeamUser
 
       alias Logflare.BillingAccounts
@@ -22,12 +25,11 @@ defmodule Logflare.Commons do
       alias Logflare.Plans
       alias Logflare.Plans.Plan
 
-      alias Logflare.Cluster
-
       alias Logflare.Rule
 
       alias Logflare.Lql
 
+      alias Logflare.SavedSearches
       alias Logflare.SavedSearch
 
       alias Logflare.Sources.SourceSchema
@@ -36,6 +38,7 @@ defmodule Logflare.Commons do
       alias Logflare.Logs
       alias Logflare.Logs.LogEvents.SearchResult
       alias Logflare.Logs.LogEvents
+      alias Logflare.LogEvent
       alias Logflare.LogEvent, as: LE
 
       alias Logflare.SystemMetrics
@@ -52,6 +55,11 @@ defmodule Logflare.Commons do
       alias Logflare.Mailer
 
       alias Logflare.JSON
+
+      alias Logflare.Tracker
+
+      alias Logflare.EctoSchemaReflection
+      alias Logflare.EctoChangesetExtras
     end
   end
 end

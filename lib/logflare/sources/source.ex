@@ -133,6 +133,12 @@ defmodule Logflare.Source do
     timestamps()
   end
 
+  def changefeed_changeset(attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields(%__MODULE__{}, attrs)
+
+    cast_embed(chgst, :notifications, with: &Notifications.changeset/2)
+  end
+
   def no_casting_changeset(source) do
     source
     |> cast(%{}, [])
@@ -187,7 +193,7 @@ defmodule Logflare.Source do
 
   def validate_source_ttl(changeset, source) do
     if source.user_id do
-      user = Users.get(source.user_id)
+      user = Users.get_user(source.user_id)
       plan = Plans.get_plan_by_user(user)
 
       validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->

@@ -1,12 +1,29 @@
-defmodule Logflare.Cache.InvalidationWorker do
+defmodule Logflare.MemoryRepo.ChangefeedsListener do
   use Logflare.Commons
   use GenServer
   require Logger
+  import Ecto.Query
+
+  defmodule ChangefeedEvent do
+    use TypedStruct
+
+    typedstruct do
+      field :id, term()
+      field :old, map()
+      field :new, map()
+      field :table, String.t()
+      field :type, String.t()
+    end
+
+    def build(attrs) do
+      struct!(__MODULE__, for({k, v} <- attrs, do: {String.to_atom(k), v}))
+    end
+  end
 
   def child_spec(args) do
     %{
       id: __MODULE__,
-      start: {__MODULE__, :start_link, [args]}
+      start: {__MODULE__, :start_link, args}
     }
   end
 
@@ -33,7 +50,7 @@ defmodule Logflare.Cache.InvalidationWorker do
   def handle_info({:notification, _pid, _ref, _channel_name, payload}, _state) do
     payload
     |> Jason.decode!()
-    |> invalidate_cache()
+    |> process_notification()
 
     {:noreply, :event_handled}
   catch
@@ -46,36 +63,28 @@ defmodule Logflare.Cache.InvalidationWorker do
     {:noreply, :event_received}
   end
 
-  def invalidate_cache(%{"type" => "DELETE"} = payload) do
-    %{
-      "id" => row_id,
-      "old" => old_row_data,
-      "table" => table,
-      "type" => _type
-    } = payload
+  def process_notification(%{"type" => "DELETE"} = payload) do
+    chfd_event = ChangefeedEvent.build(payload)
 
-    # delete
+    schema = MemoryRepo.table_to_schema(chfd_event.table)
+
+    {1, nil} = MemoryRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
-  def invalidate_cache(%{"type" => type} = payload) when type in ["UPDATE", "INSERT"] do
-    %{
-      "id" => row_id,
-      "new" => new_row_data,
-      "old" => _old_row_data,
-      "table" => table,
-      "type" => _type
-    } = payload
+  def process_notification(%{"type" => type} = payload) when type in ["UPDATE", "INSERT"] do
+    chfd_event = ChangefeedEvent.build(payload)
 
-    # insert
+    schema = MemoryRepo.table_to_schema(chfd_event.table)
+    changeset = to_changeset(schema, chfd_event)
+
+    {:ok, _} =
+      MemoryRepo.insert(changeset,
+        on_conflict: :replace_all,
+        conflict_target: :id
+      )
   end
 
-  def invalidate_cache(_payload) do
-    :noop
+  def to_changeset(schema, chfd_event) do
+    schema.changefeed_changeset(chfd_event.new)
   end
-
-  defp table_to_schema("teams"), do: Team
-  defp table_to_schema("team_users"), do: TeamUser
-  defp table_to_schema("rules"), do: Rule
-  defp table_to_schema("users"), do: User
-  defp table_to_schema("sources"), do: Source
 end

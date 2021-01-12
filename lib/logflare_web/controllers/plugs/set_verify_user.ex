@@ -70,7 +70,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
 
       true ->
         oauth_access_token = AccessTokens.get_by_token(bearer, @oauth_config)
-        user = Users.Cache.get_by_and_preload(id: oauth_access_token.resource_owner_id)
+        user = Users.get_by_and_preload(id: oauth_access_token.resource_owner_id)
 
         assign(conn, :user, user)
     end
@@ -82,7 +82,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       |> Enum.into(%{})
       |> Map.get("x-api-key", conn.params["api_key"])
 
-    case api_key && Users.Cache.get_by_and_preload(api_key: api_key) do
+    case api_key && Users.get_by_and_preload(api_key: api_key) do
       %User{} = user ->
         assign(conn, :user, user)
 

@@ -89,4 +89,17 @@ config :logflare,
 
   sigterm_shutdown_grace_period_ms: 300_000
 
+config :logflare, Logflare.MemoryRepo,
+  tables: [
+    {"users", User},
+    {"teams", Teams.Team},
+    {"team_users", TeamUsers.TeamUser},
+    {"sources", Source},
+    {"source_schemas", Sources.SourceSchema},
+    {"saved_searches", SavedSearch},
+    {"rules", Rule},
+    {"billing_counts", BillingCounts.BillingCount},
+    {"billing_accounts", BillingAccounts.BillingAccount}
+  ]
+
 import_config "#{Mix.env()}.exs"

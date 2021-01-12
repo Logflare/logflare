@@ -20,4 +20,8 @@ defmodule Logflare.BillingCounts.BillingCount do
     |> cast(attrs, [:node, :count])
     |> validate_required([:node, :count])
   end
+
+  def changefeed_changeset(attrs) do
+    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
+  end
 end

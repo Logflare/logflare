@@ -11,7 +11,7 @@ defmodule LogflareWeb.LifetimeLive do
 
   def mount(_params, %{"user_id" => user_id}, socket) do
     user =
-      Users.get(user_id)
+      Users.get_user(user_id)
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 
@@ -127,7 +127,7 @@ defmodule LogflareWeb.LifetimeLive do
           </div>
         </div>
         <%= if @user && @user.billing_account do %>
-        <%= if @user.billing_account.lifetime_plan? do %>
+        <%= if @user.billing_account.lifetime_plan do %>
         <%= link("Lifetime plan invoice",
                     to: @user.billing_account.lifetime_plan_invoice,
                     class: "btn btn-light px-4 py-2 my-4"
@@ -164,6 +164,6 @@ defmodule LogflareWeb.LifetimeLive do
 
   defp count_billing_accounts() do
     BillingAccounts.list_billing_accounts()
-    |> Enum.count(fn ba -> ba.lifetime_plan? == true end)
+    |> Enum.count(fn ba -> ba.lifetime_plan == true end)
   end
 end

@@ -131,7 +131,7 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"user_id" => user_id} = _session,
         socket
       ) do
-    source = Sources.Cache.get_source_for_lv_param(source_id)
+    source = Sources.get_source_for_lv_param(source_id)
     user = Users.get_by_and_preload(id: user_id)
 
     %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
@@ -180,7 +180,7 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"user_id" => user_id} = session,
         socket
       ) do
-    source = Sources.Cache.get_source_for_lv_param(source_id)
+    source = Sources.get_source_for_lv_param(source_id)
     socket = assign(socket, :source, source)
     user = Users.get_by_and_preload(id: user_id)
 
@@ -475,7 +475,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket =
             socket
             |> put_flash(:info, "Search saved!")
-            |> assign(:source, Sources.Cache.get_source_for_lv_param(source.id))
+            |> assign(:source, Sources.get_source_for_lv_param(source.id))
 
           {:noreply, socket}
 

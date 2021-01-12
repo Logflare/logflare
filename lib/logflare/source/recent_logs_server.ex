@@ -128,7 +128,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
       when is_atom(source_id) do
-    user = Users.get(source.user_id) |> Users.maybe_preload_bigquery_defaults()
+    user = Users.get_user(source.user_id) |> Users.maybe_preload_bigquery_defaults()
     plan = Plans.get_plan_by_user(user)
 
     rls = %{
@@ -200,7 +200,7 @@ defmodule Logflare.Source.RecentLogsServer do
         now = NaiveDateTime.utc_now()
 
         if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
-          Sources.Cache.get_by(token: source_id)
+          Sources.get_by(token: source_id)
           |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
         end
 

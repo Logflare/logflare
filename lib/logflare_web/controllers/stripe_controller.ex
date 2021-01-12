@@ -39,7 +39,7 @@ defmodule LogflareWeb.StripeController do
                  BillingAccounts.get_billing_account_by(stripe_customer: customer),
                {:ok, _ba} <-
                  BillingAccounts.update_billing_account(ba, %{
-                   lifetime_plan?: true,
+                   lifetime_plan: true,
                    lifetime_plan_invoice: object["receipt_url"]
                  }) do
             Logger.info("Lifetime customer created. Event id: #{event["id"]}")

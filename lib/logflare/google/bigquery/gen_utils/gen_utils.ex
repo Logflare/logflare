@@ -16,7 +16,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
     %Source{user_id: user_id} = Sources.get_by(token: source_id)
-    %User{bigquery_project_id: project_id} = Users.get_by(id: user_id)
+    %User{bigquery_project_id: project_id} = Users.get_user_by(id: user_id)
 
     project_id || @project_id
   end
@@ -31,7 +31,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       bigquery_project_id: project_id,
       bigquery_dataset_location: dataset_location,
       bigquery_dataset_id: dataset_id
-    } = Users.get_by(id: user_id)
+    } = Users.get_user_by(id: user_id)
 
     new_ttl =
       cond do

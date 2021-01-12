@@ -208,7 +208,7 @@ defmodule Logflare.Google.BigQuery do
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
 
-    %Logflare.User{email: email, provider: provider} = Users.get_by(id: user_id)
+    %Logflare.User{email: email, provider: provider} = Users.get_user_by(id: user_id)
 
     reference = %Model.DatasetReference{
       datasetId: dataset_id,

@@ -36,12 +36,25 @@ defmodule Logflare.MemoryRepo.Sync do
   end
 
   def sync_table(schema) do
-    for x <- Repo.all(schema) do
+    for x <- Repo.all(schema) |> replace_assocs_with_nils(schema) do
       {:ok, _} = MemoryRepo.insert(x)
     end
 
     Logger.debug("Synced repo for #{schema} schema")
 
     :ok
+  end
+
+  def replace_assocs_with_nils(xs, schema) do
+    for x <- xs do
+      for af <- EctoSchemaReflection.associations(schema), reduce: x do
+        acc ->
+          case schema.__schema__(:association, af) do
+            %Ecto.Association.BelongsTo{cardinality: :one} -> Map.replace!(acc, af, nil)
+            %Ecto.Association.Has{cardinality: :one} -> Map.replace!(acc, af, nil)
+            %Ecto.Association.Has{cardinality: :many} -> Map.replace!(acc, af, [])
+          end
+      end
+    end
   end
 end

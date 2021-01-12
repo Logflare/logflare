@@ -7,7 +7,7 @@ defmodule Logflare.BillingAccounts.BillingAccount do
     field :stripe_customer, :string
     field :stripe_subscriptions, :map
     field :stripe_invoices, :map
-    field :lifetime_plan?, :boolean, default: false, nullable: false
+    field :lifetime_plan, :boolean, default: false, nullable: false
     field :lifetime_plan_invoice, :string
     belongs_to :user, Logflare.User
 
@@ -22,10 +22,14 @@ defmodule Logflare.BillingAccounts.BillingAccount do
       :stripe_customer,
       :stripe_subscriptions,
       :stripe_invoices,
-      :lifetime_plan?,
+      :lifetime_plan,
       :lifetime_plan_invoice
     ])
     |> validate_required([:user_id, :stripe_customer])
     |> unique_constraint(:user_id)
+  end
+
+  def changefeed_changeset(attrs) do
+    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
   end
 end
