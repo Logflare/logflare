@@ -90,7 +90,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
     dplus1 = Timex.shift(d, days: +1)
 
     token = assigns.source.token
-    le = LogEvents.Cache.get!(token, {"uuid", id})
+    le = LogEvents.get_log_event(id)
 
     pid = self()
 
@@ -101,12 +101,6 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
         |> case do
           %{} = bq_row ->
             le = LE.make_from_db(bq_row, %{source: assigns.source})
-
-            LogEvents.Cache.put(
-              token,
-              {"uuid", id},
-              le
-            )
 
             send(
               pid,

@@ -7,6 +7,30 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Google.BigQuery.GenUtils
   # import Logflare.Ecto.BQQueryAPI
 
+
+  def create_log_event(%LE{} = le) do
+    MemoryRepo.insert(le)
+  end
+
+  def get_log_event(id) do
+    RepoWithCache.get!(LogEvent, id)
+  end
+
+  def get_log_event!(id) do
+    RepoWithCache.get!(LogEvent, id)
+  end
+
+  def get_log_event_with_source_and_partitions(id,
+        source: source,
+        partitions_range: partitions_range
+      ) do
+    if le = RepoWithCache.get(LogEvent, id) do
+      le
+    else
+      fetch_event_by_id(source.token, id, partitions_range: partitions_range)
+    end
+  end
+
   @spec fetch_event_by_id_and_timestamp(atom, keyword) :: {:ok, map()} | {:error, map()}
   def fetch_event_by_id_and_timestamp(source_token, kw) when is_atom(source_token) do
     id = kw[:id]

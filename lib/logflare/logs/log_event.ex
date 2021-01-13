@@ -22,18 +22,18 @@ defmodule Logflare.LogEvent do
   end
 
   @primary_key {:id, :binary_id, []}
-  typed_embedded_schema do
+  typed_schema "log_events" do
     embeds_one :body, Body
-    embeds_one :source, Source
-    field :valid?, :boolean
-    field :is_from_stale_query?, :boolean
-    field :validation_error, {:array, :string}
+    belongs_to :source, Source
+    field :valid, :boolean
+    field :is_from_stale_query, :boolean, virtual: true
+    field :validation_error, {:array, :string}, virtual: true
     field :ingested_at, :utc_datetime_usec
-    field :sys_uint, :integer
-    field :params, :map
-    field :origin_source_id, Ecto.UUID.Atom
+    field :sys_uint, :integer, virtual: true
+    field :params, :map, virtual: true
+    field :origin_source_id, Ecto.UUID.Atom, virtual: true
     field :via_rule, :map
-    field :ephemeral?, :boolean
+    field :ephemeral, :boolean, virtual: true
   end
 
   def mapper(params) do
@@ -73,7 +73,7 @@ defmodule Logflare.LogEvent do
         "timestamp" => timestamp
       },
       "id" => id,
-      "ephemeral?" => params[:ephemeral?]
+      "ephemeral" => params[:ephemeral]
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
@@ -90,9 +90,9 @@ defmodule Logflare.LogEvent do
 
     changes =
       %__MODULE__{}
-      |> cast(params, [:valid?, :validation_error, :id])
+      |> cast(params, [:valid, :validation_error, :id])
       |> cast_embed(:body, with: &make_body/2)
-      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+      |> cast_assoc(:source, with: &Source.no_casting_changeset/1)
       |> Map.get(:changes)
 
     body = struct!(Body, changes.body.changes)
@@ -106,8 +106,8 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:valid?, :validation_error, :ephemeral?])
-      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+      |> cast(mapper(params), [:valid, :validation_error, :ephemeral])
+      |> cast_assoc(:source, with: &Source.no_casting_changeset/1)
       |> cast_embed(:body, with: &make_body/2)
       |> validate_required([:body])
 
@@ -119,9 +119,9 @@ defmodule Logflare.LogEvent do
       |> Map.put(:validation_error, changeset_error_to_string(changeset))
       |> Map.put(:source, source)
       |> Map.put(:origin_source_id, source.token)
-      |> Map.put(:valid?, changeset.valid?)
+      |> Map.put(:valid, changeset.valid?)
       |> Map.put(:params, params)
-      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
+      |> Map.put(:ingested_at, DateTime.utc_now())
       |> Map.put(:id, Ecto.UUID.generate())
       |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
 
@@ -142,17 +142,17 @@ defmodule Logflare.LogEvent do
   end
 
   @spec validate(LE.t()) :: LE.t()
-  def validate(%LE{valid?: false} = le), do: le
+  def validate(%LE{valid: false} = le), do: le
 
-  def validate(%LE{valid?: true} = le) do
+  def validate(%LE{valid: true} = le) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do
         :ok ->
-          {:cont, %{le | valid?: true}}
+          {:cont, %{le | valid: true}}
 
         {:error, message} ->
-          {:halt, %{le | valid?: false, validation_error: message}}
+          {:halt, %{le | valid: false, validation_error: message}}
       end
     end)
   end

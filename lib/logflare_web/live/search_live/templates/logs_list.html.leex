@@ -13,7 +13,7 @@
               <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp) <> " UTC"%></mark>
             <% end %>
             <%= message %>
-            <%= unless log.ephemeral? do %>
+            <%= unless log.ephemeral do %>
               <a class="metadata-link"
                 phx-click="activate_modal"
                 phx-value-modal_id="metadataModal:<%= to_string(log.id) <> "|" <> to_string(log.body.timestamp) %>"

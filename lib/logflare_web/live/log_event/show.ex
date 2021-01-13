@@ -26,7 +26,7 @@ defmodule LogflareWeb.LogEventLive.Show do
       |> assign(:origin, params["origin"])
       |> assign(:id_param, log_id)
 
-    le = LogEvents.Cache.get!(token, cache_key)
+    le = LogEvents.get_log_event(log_id)
 
     socket =
       cond do
@@ -105,12 +105,7 @@ defmodule LogflareWeb.LogEventLive.Show do
         bq_row when is_map(bq_row) ->
           le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
 
-          LogEvents.Cache.put(
-            token,
-            cache_key,
-            le
-          )
-
+          LogEvents.create_log_event(le)
           assign_log_event(socket, le)
 
         {:error, error} ->

@@ -9,6 +9,12 @@ defmodule Logflare.MemoryRepo do
     end
   end
 
+  def tables_no_sync() do
+    for {k, v} <- Application.get_env(:logflare, Logflare.MemoryRepo)[:tables_no_sync] do
+      {k, Module.concat(Logflare, v)}
+    end
+  end
+
   def table_to_schema(table) do
     Map.fetch!(Enum.into(tables, Map.new), table)
   end

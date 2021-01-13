@@ -3,7 +3,7 @@ defmodule Logflare.MemoryRepo.Migrations do
   alias Logflare.EctoSchemaReflection
 
   def run() do
-    for {table, schema} <- MemoryRepo.tables() do
+    for {table, schema} <- MemoryRepo.tables() ++ MemoryRepo.tables_no_sync() do
       create_table_from_schema(:"#{table}", schema)
     end
   end
