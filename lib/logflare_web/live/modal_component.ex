@@ -16,7 +16,7 @@ defmodule LogflareWeb.ModalComponent do
           <div class="modal-content">
             <div class="modal-header lf-modal-header">
               <h5 class="modal-title"><%= @title %> </h5>
-              <span> <%= live_patch raw("&times;"), to: @return_to || "#", class: "phx-modal-close" %> </span>
+              <span> <%= link raw("&times;"), to: "#", class: "phx-modal-close", phx_click: "close", phx_target: "##{@id}" %> </span>
             </div>
             <div class="modal-body">
               <div class="container">

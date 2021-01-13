@@ -4,7 +4,7 @@ defmodule LogflareWeb.Sources.RulesLV do
   """
   require Logger
   use LogflareWeb, :live_view
-  use LogflareWeb.ModalsLVHelpers
+  use LogflareWeb.ModalLiveHelpers
 
   alias LogflareWeb.RuleView
   alias Logflare.{Sources, Users}
@@ -49,7 +49,6 @@ defmodule LogflareWeb.Sources.RulesLV do
       |> assign(:active_modal, nil)
       |> assign(:lql_string, @lql_string)
       |> assign(:error_message, nil)
-      |> assign(:modal_active?, nil)
       |> assign(:show_modal, false)
       |> clear_flash(:warning)
 
@@ -58,7 +57,7 @@ defmodule LogflareWeb.Sources.RulesLV do
 
   @impl true
   def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, :modal_active?, false)}
+    {:noreply, socket}
   end
 
   @impl true
@@ -129,24 +128,6 @@ defmodule LogflareWeb.Sources.RulesLV do
           error_message = Rule.changeset_error_to_string(changeset)
           put_flash(socket, :error, error_message)
       end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("activate-modal", %{"modal-template" => modal_template}, socket) do
-    assigns =
-      case modal_template do
-        "lql_help" ->
-          [modal_template_or_component: "lql_help.html", modal_title: "Logflare Query Language"]
-
-        "schema" ->
-          [modal_template_or_component: BqSchemaLive, modal_title: "Source Schema"]
-      end
-
-    socket =
-      socket
-      |> assign(:modal_active?, true)
-      |> assign(assigns)
 
     {:noreply, socket}
   end

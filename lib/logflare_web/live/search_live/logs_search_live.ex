@@ -19,8 +19,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
 
-  use LogflareWeb.ModalsLVHelpers
-
   require Logger
 
   @tail_search_interval 500
@@ -40,7 +38,6 @@ defmodule LogflareWeb.Source.SearchLV do
     chart_aggregate_enabled?: nil,
     tailing_timer: nil,
     user_idle_interval: @user_idle_interval,
-    active_modal: nil,
     user_local_timezone: nil,
     use_local_time: true,
     show_modal: nil,

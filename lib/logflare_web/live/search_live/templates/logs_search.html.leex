@@ -10,7 +10,7 @@
     search_op_log_aggregates: @search_op_log_aggregates,
     search_op_error: @search_op_error,
     team_user: @team_user,
-    return_to: @modal.body.return_to && @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)" %>
+    return_to: @modal.body.return_to  %>
 <% end %>
 <div id="user-preferences"
 data-user-local-timezone="<%= @user_local_timezone %>"
@@ -24,14 +24,10 @@ data-use-local-time="<%= @use_local_time %>"
         <li><a href="javascript:Source.scrollOverflowBottom();">
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
         <li>
-          <%= live_modal_show_link(template: "lql_help.html", view: SharedView, modal_id: :lql_help_link, title: "Logflare Query Language") do %>
-            <i class="fas fa-code"></i><span> LQL </span>
-          <% end %>
+          <%= LqlHelpers.lql_help_modal_link() %>
         </li>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, modal_id: :bq_schema_link, title: "Source Schema") do %>
-            <i class="fas fa-database"></i><span> schema </span>
-          <% end %>
+          <%= LqlHelpers.bq_source_schema_modal_link() %>
         </li>
         <li>
           <a href="#" phx-click="set_local_time"
@@ -49,7 +45,7 @@ data-use-local-time="<%= @use_local_time %>"
           </a>
         </li>
         <li>
-          <%= live_modal_show_link( component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences") do %>
+          <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)") do %>
             <i class="fas fa-globe"></i>
             <span class="hide-on-mobile">
               timezone

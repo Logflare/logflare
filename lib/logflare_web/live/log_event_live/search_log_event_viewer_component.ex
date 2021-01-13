@@ -20,6 +20,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     )
   end
 
+  @impl true
   def render(assigns) do
     SharedView.render("loader.html")
   end
@@ -65,12 +66,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       start_task(uuid: id, partitions_range: [dminus1, dplus1], source: assigns.source)
     end
 
-    socket =
-      socket
-      |> assign(assigns)
-      |> assign(:metadata_modal_log_event, le)
-
-    {:ok, socket}
+    {:ok, assign(socket, assigns)}
   end
 
   @spec params_to_cache_key(map()) :: {String.t(), String.t()}
@@ -115,7 +111,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
         {:error, error} ->
           error =
-            case(error) do
+            case error do
               :not_found ->
                 [from, to] = params.partitions_range
 
@@ -126,7 +122,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
               e ->
                 Logger.error("Error: #{inspect(e)}")
 
-                err = "Oops, something went wrong!"
+                "Oops, something went wrong!"
             end
 
           send_update(pid, __MODULE__, error: error, id: :log_event_viewer)

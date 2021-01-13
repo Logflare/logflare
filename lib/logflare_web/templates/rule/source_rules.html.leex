@@ -12,14 +12,10 @@
     <div class="log-settings">
       <ul>
         <li>
-          <%= live_modal_show_link(template: "lql_help.html", view: SharedView, modal_id: :lql_help_link, title: "Logflare Query Language") do %>
-            <i class="fas fa-code"></i><span> LQL </span>
-          <% end %>
+          <%= LqlHelpers.lql_help_modal_link() %>
         </li>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.SourceBqSchemaComponent, modal_id: :bq_schema_link, title: "Source Schema") do %>
-            <i class="fas fa-database"></i><span> schema </span>
-          <% end %>
+          <%= LqlHelpers.bq_source_schema_modal_link() %>
         </li>
       </ul>
     </div>

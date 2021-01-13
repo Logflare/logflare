@@ -10,8 +10,6 @@ defmodule LogflareWeb.LogEventLive.Show do
   alias LogflareWeb.Helpers.BqSchema
   alias Logflare.Sources
 
-  use LogflareWeb.ModalsLVHelpers
-
   require Logger
 
   def mount(%{"source_id" => source_id} = params, _session, socket) do
