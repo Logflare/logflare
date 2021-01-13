@@ -22,17 +22,70 @@ defmodule Logflare.MemoryRepo.Sync do
   @impl true
   def init(init_arg) do
     MemoryRepo.Migrations.run()
-    run()
+    validate_all_triggers_exist()
+    validate_all_changefeed_changesets_exists()
+    sync_all()
     {:ok, init_arg}
   end
 
-  def run() do
-    sync_table(Team)
-    sync_table(TeamUser)
-    sync_table(User)
-    sync_table(Source)
-    sync_table(Rule)
-    sync_table(SavedSearch)
+  def validate_all_changefeed_changesets_exists() do
+    for {table, schema} <- MemoryRepo.tables() do
+      unless schema.__info__(:functions)[:changefeed_changeset] do
+        throw("Module #{schema} doesn't implement changefeed_changeset")
+      end
+    end
+  end
+
+  def validate_all_triggers_exist() do
+    %{rows: rows} =
+      Repo.query!("""
+      SELECT
+        event_object_table                                              AS table_name,
+        trigger_name                                                    AS trigger_name,
+        string_agg(event_manipulation, ',' ORDER BY event_manipulation) AS event,
+        action_timing                                                   AS timing,
+        action_statement                                                AS definition
+      FROM information_schema.triggers
+      WHERE event_object_schema = 'public'
+      AND trigger_schema = 'public'
+      GROUP BY 1, 2, 4, 5
+      """)
+
+    result =
+      for [table_name, trigger_name, event, timing, definition] <- rows do
+        %{
+          "definition" => definition,
+          "event" => event,
+          "table_name" => table_name,
+          "timing" => timing,
+          "trigger_name" => trigger_name
+        }
+      end
+      |> Enum.sort()
+
+    expected =
+      for {table, _schema} <- MemoryRepo.tables() do
+        %{
+          "definition" => "EXECUTE FUNCTION changefeed_notify()",
+          "event" => "DELETE,INSERT,UPDATE",
+          "table_name" => table,
+          "timing" => "AFTER",
+          "trigger_name" => table <> "_changefeed_trigger"
+        }
+      end
+      |> Enum.sort()
+
+    compared = result -- expected
+
+    unless Enum.empty?(compared) do
+      throw("Not all changefeed triggers exist: #{inspect(compared)}")
+    end
+  end
+
+  def sync_all() do
+    for {_table, schema} <- MemoryRepo.tables() do
+      sync_table(schema)
+    end
   end
 
   def sync_table(schema) do
