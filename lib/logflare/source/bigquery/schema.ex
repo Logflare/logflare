@@ -49,7 +49,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
     case Sources.get_source_schema_by(source_id: source.id) do
       nil ->
-        Sources.Cache.put_bq_schema(state.source_token, state.schema)
+        Sources.put_bq_schema(state.source_token, state.schema)
 
         Logger.info("Nil schema: #{state.source_token}")
 
@@ -60,7 +60,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         type_map = BigQuery.SchemaUtils.to_typemap(schema)
         field_count = count_fields(type_map)
 
-        Sources.Cache.put_bq_schema(state.source_token, schema)
+        Sources.put_bq_schema(state.source_token, schema)
 
         {:noreply,
          %{
@@ -85,7 +85,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), :get)
   end
 
-  def update(source_token, %LogEvent{} = log_event) do
+  def update(source_token, %LE{} = log_event) do
     GenServer.call(name(source_token), {:update, log_event}, @timeout)
   end
 
@@ -116,14 +116,14 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_call(
-        {:update, %LogEvent{}},
+        {:update, %LE{}},
         _from,
         %{field_count: fc, field_count_limit: limit} = state
       )
       when fc > limit,
       do: {:reply, :ok, state}
 
-  def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
+  def handle_call({:update, %LE{body: body, id: event_id}}, _from, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
     schema = try_schema_update(body.metadata, state.schema)
@@ -144,7 +144,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           Logger.info("Source schema updated from log_event!")
 
-          Sources.Cache.put_bq_schema(state.source_token, schema)
+          Sources.put_bq_schema(state.source_token, schema)
 
           notify_maybe(state.source_token, schema, state.schema)
 
@@ -178,7 +178,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       Logger.info("Source schema updated from BigQuery!")
 
-                      Sources.Cache.put_bq_schema(state.source_token, schema)
+                      Sources.put_bq_schema(state.source_token, schema)
 
                       {:reply, :ok,
                        %{
@@ -223,7 +223,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     type_map = BigQuery.SchemaUtils.to_typemap(sorted)
     field_count = count_fields(type_map)
 
-    Sources.Cache.put_bq_schema(state.source_token, sorted)
+    Sources.put_bq_schema(state.source_token, sorted)
 
     {:reply, :ok,
      %{
@@ -236,7 +236,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_cast({:update, schema, type_map, field_count}, state) do
-    Sources.Cache.put_bq_schema(state.source_token, schema)
+    Sources.put_bq_schema(state.source_token, schema)
 
     {:noreply,
      %{

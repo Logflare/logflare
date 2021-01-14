@@ -160,6 +160,12 @@ defmodule Logflare.Sources do
     end
   end
 
+  def put_bq_schema(source_token, bigquery_schema) when is_atom(source_token) do
+    source = RepoWithCache.get_by(Source, token: source_token)
+    source_schema = RepoWithCache.get_by(SourceSchema, source_id: source.id)
+    update_source_schema(source_schema, %{bigquery_schema: bigquery_schema})
+  end
+
   def preload_defaults(source) do
     source
     |> RepoWithCache.preload(:user)

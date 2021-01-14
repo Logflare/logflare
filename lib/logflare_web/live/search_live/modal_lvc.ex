@@ -23,7 +23,7 @@ defmodule LogflareWeb.Source.SearchLV.ModalLVC do
   end
 
   def render(%{active_modal: "sourceSchemaModal"} = assigns) do
-    bq_schema = Sources.Cache.get_bq_schema(assigns.source)
+    {:ok, bq_schema} = Sources.get_bq_schema(assigns.source)
 
     SharedView.render("modal.html",
       title: "Source Schema",

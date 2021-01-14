@@ -31,7 +31,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
       source = params_for(:source)
       {:ok, source} = Sources.create_source(source, user)
-      Sources.Cache.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
+      Source.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
 
       {:ok, sink} =
         :source
