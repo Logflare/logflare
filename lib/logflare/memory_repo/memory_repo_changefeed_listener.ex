@@ -1,4 +1,4 @@
-defmodule Logflare.MemoryRepo.ChangefeedsListener do
+defmodule Logflare.MemoryRepo.ChangefeedListener do
   use Logflare.Commons
   use GenServer
   require Logger
@@ -22,7 +22,7 @@ defmodule Logflare.MemoryRepo.ChangefeedsListener do
 
   def child_spec(args) do
     %{
-      id: __MODULE__,
+      id: :"changefeed_listener_#{hd(args).changefeed}",
       start: {__MODULE__, :start_link, args}
     }
   end
@@ -32,21 +32,18 @@ defmodule Logflare.MemoryRepo.ChangefeedsListener do
     GenServer.start_link(__MODULE__, args, opts)
   end
 
-  def init(channels) do
-    results =
-      for channel <- channels do
-        Logger.debug("Starting #{__MODULE__} with channel subscription: #{channel}")
-        {:ok, pid} = Postgrex.Notifications.start_link(Repo.config())
-        {:ok, ref} = Postgrex.Notifications.listen(pid, channel)
-        {pid, channel, ref}
-      end
+  @impl true
+  def init(%{notifications_pid: pid, changefeed: changefeed}) do
+    Logger.debug("Starting #{__MODULE__} with channel subscription: #{changefeed}")
+    {:ok, _ref} = Postgrex.Notifications.listen(pid, changefeed)
 
-    {:ok, results}
+    {:ok, changefeed}
   end
 
   @doc """
   Handle changefeed notification
   """
+  @impl true
   def handle_info({:notification, _pid, _ref, _channel_name, payload}, _state) do
     payload
     |> Jason.decode!()
