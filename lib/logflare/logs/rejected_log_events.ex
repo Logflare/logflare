@@ -22,59 +22,57 @@ defmodule Logflare.Logs.RejectedLogEvents do
   ```
   """
   use Logflare.Commons
-  @cache __MODULE__
+  alias RejectedLogEvent, as: RLE
+  import Ecto.Query
 
-  def child_spec(_) do
-    %{id: @cache, start: {Cachex, :start_link, [@cache, []]}}
-  end
-
-  @spec get_by_user(Logflare.User.t()) :: %{atom => list(LE.t())}
-  def get_by_user(%User{sources: sources}) do
+  @spec get_for_user(Logflare.User.t()) :: %{atom => list(RLE.t())}
+  def get_for_user(%User{sources: sources}) do
     for source <- sources, into: Map.new() do
-      {source.token, get_by_source(source)}
+      {source.token, get_for_source(source)}
     end
   end
 
-  @spec get_by_source(Source.t()) :: list(LE.t())
-  def get_by_source(%Source{token: token}) do
-    get!(token).log_events
-    |> Enum.reverse()
+  @spec get_for_source(Source.t()) :: list(RLE.t())
+  def get_for_source(%Source{token: token}) do
+    get!(token)
   end
 
   def count(%Source{} = s) do
-    s.token
-    |> get!()
-    |> Map.get(:count, 0)
+    RepoWithCache.aggregate(
+      from(RejectedLogEvent) |> where([rle], rle.source_id == ^s.id),
+      :count,
+      :id
+    )
   end
 
   def delete_by_source(%Source{token: token}) do
-    {:ok, true} = Cachex.del(@cache, token)
+    s = Sources.get_by(token: token)
+
+    {_, _} =
+      RepoWithCache.delete_all(from(RejectedLogEvent) |> where([rle], rle.source_id == ^s.id))
+
+    {:ok, true}
   end
 
   @doc """
   Expected to be called only in Logs context
   """
   @spec ingest(LE.t()) :: :ok
-  def ingest(%LE{source: %Source{token: token}, valid?: false} = le) do
-    Cachex.get_and_update!(@cache, token, fn
-      %{log_events: les, count: c} ->
-        les =
-          [le | les]
-          |> List.flatten()
-          |> Enum.take(100)
-
-        %{log_events: les, count: c + 1}
-
-      _ ->
-        %{log_events: [le], count: 1}
-    end)
+  def ingest(%LE{source: %Source{id: id}, valid: false} = le) do
+    {:ok, _rle} =
+      RepoWithCache.insert(%RejectedLogEvent{
+        source_id: id,
+        params: le.params,
+        ingested_at: DateTime.from_unix!(le.ingested_at, :microsecond),
+        validation_error: le.validation_error
+      })
 
     :ok
   end
 
-  @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}
-  defp get!(key) do
-    {:ok, val} = Cachex.get(@cache, key)
-    val || %{log_events: [], count: 0}
+  @spec get!(atom) :: list(RLE.t())
+  defp get!(token) do
+    s = Sources.get_by(token: token)
+    RepoWithCache.all(from(RejectedLogEvent) |> where([rle], rle.source_id == ^s.id))
   end
 end

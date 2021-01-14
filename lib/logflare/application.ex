@@ -17,10 +17,7 @@ defmodule Logflare.Application do
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     children = [
-      Sources.Cache,
       PubSubRates.Cache,
-      Logs.LogEvents.Cache,
-      Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
       worker(
         Tracker,
@@ -67,12 +64,9 @@ defmodule Logflare.Application do
         ]
       },
       # supervisor(LogflareTelemetry.Supervisor, []),
-      Sources.Cache,
       PubSubRates.Cache,
-      Logs.LogEvents.Cache,
       Sources.Buffers,
       Sources.BuffersCache,
-      Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
       supervisor(Sources.Counters, []),
       supervisor(Sources.RateCounters, []),

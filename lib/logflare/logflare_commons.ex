@@ -33,13 +33,14 @@ defmodule Logflare.Commons do
       alias Logflare.SavedSearch
 
       alias Logflare.Sources.SourceSchema
-      alias Logflare.Sources.SourceSchema
 
       alias Logflare.Logs
       alias Logflare.Logs.LogEvents.SearchResult
       alias Logflare.Logs.LogEvents
       alias Logflare.LogEvent
       alias Logflare.LogEvent, as: LE
+      alias Logflare.Logs.RejectedLogEvents
+      alias Logflare.RejectedLogEvent
 
       alias Logflare.SystemMetrics
 

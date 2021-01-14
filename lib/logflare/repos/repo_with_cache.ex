@@ -32,4 +32,7 @@ defmodule Logflare.RepoWithCache do
 
   defdelegate get!(queryable, id), to: MemoryRepo
   defdelegate get!(queryable, id, opts), to: MemoryRepo
+
+  defdelegate aggregate(queryable, aggregate, opts), to: MemoryRepo
+  defdelegate aggregate(queryable, aggregate, field, opts), to: MemoryRepo
 end
