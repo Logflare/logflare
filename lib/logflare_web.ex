@@ -57,7 +57,7 @@ defmodule LogflareWeb do
       import Phoenix.Controller,
         only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
 
-      import Phoenix.LiveView, only: [connected?: 1]
+      import Phoenix.LiveView, only: [connected?: 1, assign: 2, assign: 3]
       # Use all HTML functionality (forms, tags, etc)
       unquote(view_helpers())
       unquote(live_view_helpers())
@@ -81,12 +81,14 @@ defmodule LogflareWeb do
       use Phoenix.LiveComponent
 
       unquote(view_helpers())
+      unquote(live_view_helpers())
     end
   end
 
   defp live_view_helpers do
     quote do
       use LogflareWeb.LiveCommons
+      use LogflareWeb.ModalLiveHelpers
     end
   end
 
@@ -103,6 +105,8 @@ defmodule LogflareWeb do
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
       alias LogflareWeb.Router.Helpers, as: Routes
+
+      alias LogflareWeb.LqlHelpers
     end
   end
 

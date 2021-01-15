@@ -25,6 +25,7 @@
 @import "json_formatter_logflare";
 @import "alerts";
 @import "billing";
+@import "modal";
 
 /* Try this for zooming on iPhone */
 button,
@@ -167,8 +168,6 @@ main.app {
   max-width: 800px;
 }
 
-
-
 code {
   color: #e35b8d;
 }
@@ -195,8 +194,6 @@ code {
 .scroll-margin {
   scroll-margin-top: 150px;
 }
-
-
 
 pre {
   background-color: #1d1d1d;
@@ -284,7 +281,8 @@ mark {
   flex-direction: column-reverse; */
 }
 
-.console-text-list {}
+.console-text-list {
+}
 
 .container {
   max-width: 95%;
@@ -313,7 +311,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-moz-keyframes fadeIn {
@@ -322,7 +321,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-webkit-keyframes fadeIn {
@@ -330,7 +330,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-o-keyframes fadeIn {
@@ -339,7 +340,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-ms-keyframes fadeIn {
@@ -348,7 +350,8 @@ mark {
     background-color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 .flash-text {
@@ -364,7 +367,8 @@ mark {
     color: #2a6cce;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-moz-keyframes flashText {
@@ -372,7 +376,8 @@ mark {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-webkit-keyframes flashText {
@@ -380,7 +385,8 @@ mark {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-o-keyframes flashText {
@@ -388,7 +394,8 @@ mark {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }
 
 @-ms-keyframes flashText {
@@ -396,5 +403,6 @@ mark {
     color: #3787ff;
   }
 
-  100% {}
+  100% {
+  }
 }

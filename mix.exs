@@ -63,7 +63,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
-      {:phoenix_live_view, "~> 0.14.8", override: true},
+      {:phoenix_live_view, "~> 0.15.3", override: true},
       {:phoenix_live_dashboard, "~> 0.3.0"},
       {:cors_plug, "~> 2.0"},
 
@@ -105,7 +105,7 @@ defmodule Logflare.Mixfile do
       {:mint, "~> 1.0"},
       # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
-      {:poison, "~> 4.0"},
+      {:poison, "~> 4.0", override: true},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.3.0"},

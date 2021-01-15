@@ -14,12 +14,9 @@
             <% end %>
             <%= message %>
             <%= unless log.ephemeral? do %>
-              <a class="metadata-link"
-                phx-click="activate_modal"
-                phx-value-modal_id="metadataModal:<%= to_string(log.id) <> "|" <> to_string(log.body.timestamp) %>"
-                href="#" aria-expanded="false">
-                metadata
-              </a>
+              <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Query Debugging", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body.timestamp) do %>
+                <span>metadata</span>
+              <% end %>
             <% end %>
           </li>
         <% end %>

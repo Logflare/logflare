@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Sources.BqSchemaLive do
+defmodule LogflareWeb.SourceBqSchemaComponent do
   use LogflareWeb, :live_component
   alias LogflareWeb.Helpers.BqSchema
   alias Logflare.Sources
