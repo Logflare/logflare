@@ -64,16 +64,26 @@ defmodule Logflare.MemoryRepo.Sync do
       |> Enum.sort()
 
     expected =
-      for {table, _schema} <- MemoryRepo.tables() do
-        %{
-          "definition" => "EXECUTE FUNCTION changefeed_notify()",
-          "event" => "DELETE,INSERT,UPDATE",
-          "table_name" => table,
-          "timing" => "AFTER",
-          "trigger_name" => table <> "_changefeed_trigger"
-        }
-      end
-      |> Enum.sort()
+      MemoryRepo.tables()
+      |> Enum.map(fn
+        {table, _schema} ->
+          %{
+            "definition" => "EXECUTE FUNCTION changefeed_notify()",
+            "event" => "DELETE,INSERT,UPDATE",
+            "table_name" => table,
+            "timing" => "AFTER",
+            "trigger_name" => table <> "_changefeed_trigger"
+          }
+
+        {table, _schema, id_only: true} ->
+          %{
+            "definition" => "EXECUTE FUNCTION changefeed_id_only_notify()",
+            "event" => "DELETE,INSERT,UPDATE",
+            "table_name" => table,
+            "timing" => "AFTER",
+            "trigger_name" => table <> "_changefeed_id_only_trigger"
+          }
+      end)
 
     compared = result -- expected
 

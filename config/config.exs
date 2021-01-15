@@ -95,11 +95,13 @@ config :logflare, Logflare.MemoryRepo,
     {"teams", Teams.Team},
     {"team_users", TeamUsers.TeamUser},
     {"sources", Source},
-    {"source_schemas", Sources.SourceSchema},
+    {"source_schemas", Sources.SourceSchema, id_only: true},
     {"saved_searches", SavedSearch},
     {"rules", Rule},
     {"billing_counts", BillingCounts.BillingCount},
-    {"billing_accounts", BillingAccounts.BillingAccount}
+    {"billing_accounts", BillingAccounts.BillingAccount},
+    {"rejected_log_events", RejectedLogEvent}
+  ],
   ]
 
 import_config "#{Mix.env()}.exs"

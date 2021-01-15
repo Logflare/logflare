@@ -4,8 +4,11 @@ defmodule Logflare.MemoryRepo do
     adapter: Ecto.Adapters.Mnesia
 
   def tables() do
-    for {k, v} <- Application.get_env(:logflare, Logflare.MemoryRepo)[:tables] do
-      {k, Module.concat(Logflare, v)}
+    for config <- Application.get_env(:logflare, Logflare.MemoryRepo)[:tables] do
+      case config do
+        {k, v} -> {k, Module.concat(Logflare, v)}
+        {k, v, opts} -> {k, Module.concat(Logflare, v), opts}
+      end
     end
   end
 

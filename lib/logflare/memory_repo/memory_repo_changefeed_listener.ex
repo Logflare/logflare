@@ -4,6 +4,16 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
   require Logger
   import Ecto.Query
 
+  @id_only_changefeed_suffix "_id_only_changefeed"
+  @id_only_changefeed_suffix_byte_size byte_size(@id_only_changefeed_suffix)
+
+  defguardp changefeed_with_id_only?(channel)
+            when binary_part(
+                   channel,
+                   byte_size(channel) - @id_only_changefeed_suffix_byte_size,
+                   @id_only_changefeed_suffix_byte_size
+                 ) == "_id_only_changefeed"
+
   defmodule ChangefeedEvent do
     use TypedStruct
 
@@ -44,10 +54,8 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
   Handle changefeed notification
   """
   @impl true
-  def handle_info({:notification, _pid, _ref, _channel_name, payload}, _state) do
-    payload
-    |> Jason.decode!()
-    |> process_notification()
+  def handle_info({:notification, _pid, _ref, channel_name, payload}, _state) do
+    process_notification(channel_name, Jason.decode!(payload))
 
     {:noreply, :event_handled}
   catch
@@ -60,7 +68,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     {:noreply, :event_received}
   end
 
-  def process_notification(%{"type" => "DELETE"} = payload) do
+  def process_notification(_, %{"type" => "DELETE"} = payload) do
     chfd_event = ChangefeedEvent.build(payload)
 
     schema = MemoryRepo.table_to_schema(chfd_event.table)
@@ -68,7 +76,23 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     {1, nil} = MemoryRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
-  def process_notification(%{"type" => type} = payload) when type in ["UPDATE", "INSERT"] do
+  def process_notification(
+        channel_name,
+        %{"id" => id, "type" => type, "table" => table}
+      )
+      when type in ["UPDATE", "INSERT"] and changefeed_with_id_only?(channel_name) do
+    schema = MemoryRepo.table_to_schema(table)
+    struct = Repo.get(schema, String.to_integer(id))
+
+    {:ok, _} =
+      MemoryRepo.insert(struct,
+        on_conflict: :replace_all,
+        conflict_target: :id
+      )
+  end
+
+  def process_notification(_channel_name, %{"type" => type} = payload)
+      when type in ["UPDATE", "INSERT"] do
     chfd_event = ChangefeedEvent.build(payload)
 
     schema = MemoryRepo.table_to_schema(chfd_event.table)
