@@ -108,7 +108,7 @@ defmodule Logflare.Mixfile do
       {:poison, "~> 4.0", override: true},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.3.0"},
+      {:tesla, "~> 1.4.0"},
 
       # Concurrency and pipelines
       {:broadway, "~> 0.6.0"},
