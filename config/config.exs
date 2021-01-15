@@ -90,18 +90,20 @@ config :logflare,
   sigterm_shutdown_grace_period_ms: 300_000
 
 config :logflare, Logflare.MemoryRepo,
-  tables: [
-    {"users", User},
-    {"teams", Teams.Team},
-    {"team_users", TeamUsers.TeamUser},
-    {"sources", Source},
-    {"source_schemas", Sources.SourceSchema, id_only: true},
-    {"saved_searches", SavedSearch},
-    {"rules", Rule},
-    {"billing_counts", BillingCounts.BillingCount},
-    {"billing_accounts", BillingAccounts.BillingAccount},
-    {"rejected_log_events", RejectedLogEvent}
+  changefeed_subscriptions: [
+    User,
+    Teams.Team,
+    TeamUsers.TeamUser,
+    Source,
+    {Sources.SourceSchema, id_only: true},
+    SavedSearch,
+    Rule,
+    BillingCounts.BillingCount,
+    BillingAccounts.BillingAccount,
+    RejectedLogEvent
   ],
+  tables: [
+    LogEvent
   ]
 
 import_config "#{Mix.env()}.exs"

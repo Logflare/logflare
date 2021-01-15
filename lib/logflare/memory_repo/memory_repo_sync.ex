@@ -5,6 +5,8 @@ defmodule Logflare.MemoryRepo.Sync do
   use Logflare.Commons
   use GenServer
   alias Logflare.EctoSchemaReflection
+  alias Logflare.Changefeeds
+  alias Logflare.Changefeeds.ChangefeedSubscription
   import Ecto.Query, warn: false
   require Logger
 
@@ -24,86 +26,82 @@ defmodule Logflare.MemoryRepo.Sync do
     MemoryRepo.Migrations.run()
     validate_all_triggers_exist()
     validate_all_changefeed_changesets_exists()
-    sync_all()
+    sync_all_changefeed_tables()
     {:ok, init_arg}
   end
 
   def validate_all_changefeed_changesets_exists() do
-    for {table, schema} <- MemoryRepo.tables() do
-      unless schema.__info__(:functions)[:changefeed_changeset] do
-        throw("Module #{schema} doesn't implement changefeed_changeset")
+    for %{schema: schema} <- Changefeeds.list_changefeed_subscriptions() do
+      unless EctoSchemaReflection.changefeed_changeset_exists?(schema) do
+        throw("Error: #{schema} doesn't implement changefeed_changeset")
       end
     end
   end
 
   def validate_all_triggers_exist() do
-    %{rows: rows} =
-      Repo.query!("""
-      SELECT
-        event_object_table                                              AS table_name,
-        trigger_name                                                    AS trigger_name,
-        string_agg(event_manipulation, ',' ORDER BY event_manipulation) AS event,
-        action_timing                                                   AS timing,
-        action_statement                                                AS definition
-      FROM information_schema.triggers
-      WHERE event_object_schema = 'public'
-      AND trigger_schema = 'public'
-      GROUP BY 1, 2, 4, 5
-      """)
+    in_db_triggers =
+      from("information_schema.triggers")
+      |> where([t], t.event_object_schema == "public" and t.trigger_schema == "public")
+      |> select([t],
+        table_name: t.event_object_table,
+        trigger_name: t.trigger_name,
+        event:
+          fragment("string_agg(?, ',' ORDER BY ?)", t.event_manipulation, t.event_manipulation),
+        timing: t.action_timing,
+        definition: t.action_statement
+      )
+      |> group_by([t], [1, 2, 4, 5])
+      |> Repo.all()
 
-    result =
-      for [table_name, trigger_name, event, timing, definition] <- rows do
-        %{
-          "definition" => definition,
-          "event" => event,
-          "table_name" => table_name,
-          "timing" => timing,
-          "trigger_name" => trigger_name
-        }
-      end
-      |> Enum.sort()
+    events = "DELETE,INSERT,UPDATE"
+    timing = "AFTER"
 
     expected =
-      MemoryRepo.tables()
+      Changefeeds.list_changefeed_subscriptions()
       |> Enum.map(fn
-        {table, _schema} ->
-          %{
-            "definition" => "EXECUTE FUNCTION changefeed_notify()",
-            "event" => "DELETE,INSERT,UPDATE",
-            "table_name" => table,
-            "timing" => "AFTER",
-            "trigger_name" => table <> "_changefeed_trigger"
-          }
+        %ChangefeedSubscription{table: table, id_only: id_only} = chgsub ->
+          definition =
+            if id_only do
+              {"EXECUTE FUNCTION changefeed_id_only_notify()"}
+            else
+              {"EXECUTE FUNCTION changefeed_notify()"}
+            end
 
-        {table, _schema, id_only: true} ->
           %{
-            "definition" => "EXECUTE FUNCTION changefeed_id_only_notify()",
-            "event" => "DELETE,INSERT,UPDATE",
-            "table_name" => table,
-            "timing" => "AFTER",
-            "trigger_name" => table <> "_changefeed_id_only_trigger"
+            :definition => definition,
+            :event => events,
+            :table_name => table,
+            :timing => timing,
+            :trigger_name => Changefeeds.trigger_name(chgsub)
           }
       end)
 
-    compared = result -- expected
+    compared = expected -- in_db_triggers
 
     unless Enum.empty?(compared) do
-      throw("Not all changefeed triggers exist: #{inspect(compared)}")
+      compared_string =
+        for %{"table" => table, "trigger_name" => trigger_name} <- compared,
+            do: "#{trigger_name} for #{table} table \n"
+
+      throw("
+      The following triggers don't exist or their definition doesn't match the expected: \n
+      #{compared_string}
+      ")
     end
   end
 
-  def sync_all() do
-    for {_table, schema} <- MemoryRepo.tables() do
-      sync_table(schema)
+  def sync_all_changefeed_tables() do
+    for chgf <- Changefeeds.list_changefeed_subscriptions() do
+      sync_table(chgf)
     end
   end
 
-  def sync_table(schema) do
+  def sync_table(%ChangefeedSubscription{schema: schema}) do
     for x <- Repo.all(schema) |> replace_assocs_with_nils(schema) do
       {:ok, _} = MemoryRepo.insert(x)
     end
 
-    Logger.debug("Synced repo for #{schema} schema")
+    Logger.debug("Synced memory repo for #{schema} schema")
 
     :ok
   end

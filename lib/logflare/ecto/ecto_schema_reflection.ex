@@ -17,4 +17,16 @@ defmodule Logflare.EctoSchemaReflection do
 
   def columns() do
   end
+
+  def source(schema) do
+    get(schema, :source)
+  end
+
+  def functions(schema) do
+    get(schema, :functions)
+  end
+
+  def changefeed_changeset_exists?(schema) do
+    not is_nil(Map.get(functions(schema), :changefeed_changeset))
+  end
 end

@@ -18,15 +18,28 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     use TypedStruct
 
     typedstruct do
-      field :id, term()
+      field :id, term(), require: true
       field :old, map()
       field :new, map()
-      field :table, String.t()
-      field :type, String.t()
+      field :table, String.t(), require: true
+      field :type, String.t(), require: true
+      field :changefeed_subscription, Changefeeds.ChangefeedSubscription.t()
     end
 
     def build(attrs) do
-      struct!(__MODULE__, for({k, v} <- attrs, do: {String.to_atom(k), v}))
+      kvs =
+        for {k, v} <- attrs do
+          {String.to_atom(k), v}
+        end
+
+      struct!(
+        __MODULE__,
+        kvs ++
+          [
+            changefeed_subscription:
+              Changefeeds.get_changefeed_subscription_by_table([kvs[:table]])
+          ]
+      )
     end
   end
 
@@ -71,17 +84,19 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
   def process_notification(_, %{"type" => "DELETE"} = payload) do
     chfd_event = ChangefeedEvent.build(payload)
 
-    schema = MemoryRepo.table_to_schema(chfd_event.table)
+    schema = chfd_event.changefeed_subscription.schema
 
     {1, nil} = MemoryRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
   def process_notification(
         channel_name,
-        %{"id" => id, "type" => type, "table" => table}
+        %{"id" => id, "type" => type, "table" => table} = payload
       )
       when type in ["UPDATE", "INSERT"] and changefeed_with_id_only?(channel_name) do
-    schema = MemoryRepo.table_to_schema(table)
+    chfd_event = ChangefeedEvent.build(payload)
+
+    schema = chfd_event.changefeed_subscription.schema
     struct = Repo.get(schema, String.to_integer(id))
 
     {:ok, _} =
@@ -95,7 +110,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
       when type in ["UPDATE", "INSERT"] do
     chfd_event = ChangefeedEvent.build(payload)
 
-    schema = MemoryRepo.table_to_schema(chfd_event.table)
+    schema = chfd_event.changefeed_subscription.schema
     changeset = to_changeset(schema, chfd_event)
 
     {:ok, _} =
