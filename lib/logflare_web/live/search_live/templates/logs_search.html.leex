@@ -69,18 +69,18 @@ data-use-local-time="<%= @use_local_time %>"
       <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
         <li>
           <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_error_link, title: "Query Debugging") do %>
-            <i class="fas fa-bug"></i><span> debug error </span>
+            <i class="fas fa-bug"></i><span class="hide-on-mobile"> debug error </span>
           <% end %>
         </li>
       <% else %>
         <li>
           <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_events_link, title: "Query Debugging") do %>
-            <i class="fas fa-bug"></i><span> events query </span>
+            <i class="fas fa-bug"></i><span class="hide-on-mobile"> events </span>
           <% end %>
         </li>
         <li>
           <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
-            <i class="fas fa-bug"></i><span> aggregate query </span>
+            <i class="fas fa-bug"></i><span class="hide-on-mobile"> aggregate </span>
           <% end %>
         </li>
       <% end %>

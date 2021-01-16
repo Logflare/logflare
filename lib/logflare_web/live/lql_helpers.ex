@@ -11,7 +11,7 @@ defmodule LogflareWeb.LqlHelpers do
       title: "Logflare Query Language"
     ) do
       ~E"""
-      <i class="fas fa-code"></i><span> LQL </span>
+      <i class="fas fa-code"></i><span class="hide-on-mobile"> LQL </span>
       """
     end
   end
@@ -23,7 +23,7 @@ defmodule LogflareWeb.LqlHelpers do
       title: "Source Schema"
     ) do
       ~E"""
-      <i class="fas fa-database"></i><span> schema </span>
+      <i class="fas fa-database"></i><span class="hide-on-mobile"> schema </span>
       """
     end
   end
