@@ -49,11 +49,12 @@
     <%= section_header("Enterprise Plans & Support") %>
     <p>Contact us to learn more about our Enterprise plans and support options. We can handle any event volume required. Need to ingest directly to the EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you do just about anything you need with your data pipeline so please reach out.</p>
     <%= link "Contact us", to: Routes.contact_path(@socket, :contact), class: "btn btn-primary form-button" %>
+    <%= link("Enterprise metered billing plan", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => "price_1HaOGOLvvReWx3FxbV4xwjap"}), class: "btn btn-dark text-white form-button") %>
   </div>
   <div class="sub-form">
     <%= section_header("Payment Method") %>
     <p>Update your credit card on file.</p>
-    <%= link "Update payment method", to: Routes.billing_path(@socket, :update_payment_details), class: "btn btn-primary form-button" %>
+    <%= live_component @socket, LogflareWeb.BillingAccountLive.PaymentMethodComponent, id: :payment_method %>
   </div>
   <div class="sub-form">
     <%= section_header("Subscriptions") %>
@@ -133,3 +134,4 @@
     <%= link "Delete billing account", to: Routes.billing_path(@socket, :delete), method: :delete, class: "btn btn-danger form-button" %>
   </div>
 </div>
+<script src="https://js.stripe.com/v3/"></script>
