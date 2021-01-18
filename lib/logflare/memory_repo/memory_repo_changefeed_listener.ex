@@ -19,8 +19,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
 
     typedstruct do
       field :id, term(), require: true
-      field :old, map()
-      field :new, map()
+      field :changes, map()
       field :table, String.t(), require: true
       field :type, String.t(), require: true
       field :changefeed_subscription, Changefeeds.ChangefeedSubscription.t()
@@ -89,6 +88,25 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     {1, nil} = MemoryRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
+  def process_notification(_channel_name, %{"type" => "INSERT"} = payload) do
+    chfd_event = ChangefeedEvent.build(payload)
+
+    schema = chfd_event.changefeed_subscription.schema
+    changeset = to_changeset(schema, chfd_event)
+
+    {:ok, _} = MemoryRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
+  end
+
+  def process_notification(_channel_name, %{"type" => "UPDATE"} = payload) do
+    chfd_event = ChangefeedEvent.build(payload)
+
+    schema = chfd_event.changefeed_subscription.schema
+    struct = MemoRepo.get(schema, chfd_event.id)
+    changeset = to_changeset(struct, chfd_event)
+
+    {:ok, _} = MemoryRepo.update(changeset)
+  end
+
   def process_notification(
         channel_name,
         %{"id" => id, "type" => type, "table" => table} = payload
@@ -120,7 +138,11 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
       )
   end
 
-  def to_changeset(schema, chfd_event) do
-    schema.changefeed_changeset(chfd_event.new)
+  def to_changeset(chfd_event) do
+    chfd_event.schema.changefeed_changeset(chfd_event.changes)
+  end
+
+  def to_changeset(struct, chfd_event) do
+    chfd_event.schema.changefeed_changeset(struct, chfd_event.changes)
   end
 end
