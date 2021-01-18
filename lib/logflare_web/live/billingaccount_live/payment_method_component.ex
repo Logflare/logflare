@@ -6,9 +6,15 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   use LogflareWeb, :live_component
   use Phoenix.HTML
 
+  alias Logflare.BillingAccounts.Stripe
+
   require Logger
 
   @stripe_publishable_key Application.get_env(:stripity_stripe, :publishable_key)
+
+  def preload(assigns) when is_list(assigns) do
+    assigns
+  end
 
   def mount(socket) do
     payment_methods = []
@@ -17,15 +23,18 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       assign(socket, :stripe_key, @stripe_publishable_key)
       |> assign(:payment_methods, payment_methods)
 
-    IO.puts("BOOM")
-
     {:ok, socket}
   end
 
-  def update(%{params: _params} = assigns, socket) do
-    IO.puts("updated")
-
-    methods = [assigns | socket.assigns.payment_methods]
+  def update(
+        %{
+          id: :payment_method,
+          params: %{"customer_id" => cust_id, "id" => pm_id, "price_id" => price_id}
+        },
+        socket
+      ) do
+    method = Stripe.create_subscription(cust_id, pm_id, price_id)
+    methods = [method | socket.assigns.payment_methods]
 
     socket =
       socket
@@ -34,9 +43,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:ok, socket}
   end
 
-  def update(_assigns, socket) do
-    IO.puts("updated")
-
+  def update(%{user: user}, socket) do
     socket =
       case connected?(socket) do
         true ->
@@ -45,6 +52,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         false ->
           assign(socket, :loading, true)
       end
+      |> assign(:user, user)
 
     {:ok, socket}
   end
@@ -55,7 +63,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     <%= inspect(@payment_methods) %>
     </div>
     <p>Add a new payment method.</p>
-    <div id="payment-method-form" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" class="my-3 w-auto">
+    <div id="payment-method-form" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>" class="my-3 w-auto">
 
 
       <div id="stripe-elements-form" class="w-50 mt-4">

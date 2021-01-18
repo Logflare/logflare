@@ -54,7 +54,7 @@
   <div class="sub-form">
     <%= section_header("Payment Method") %>
     <p>Update your credit card on file.</p>
-    <%= live_component @socket, LogflareWeb.BillingAccountLive.PaymentMethodComponent, id: :payment_method %>
+    <%= live_component @socket, LogflareWeb.BillingAccountLive.PaymentMethodComponent, id: :payment_method, user: @user %>
   </div>
   <div class="sub-form">
     <%= section_header("Subscriptions") %>

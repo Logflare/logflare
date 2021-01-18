@@ -1,7 +1,7 @@
 let hooks = {}
 
 hooks.PaymentMethodForm = {
-    init(stripeKey, hook) {
+    init(stripeKey, stripeCustomer, hook) {
         let stripe = Stripe(stripeKey);
         let elements = stripe.elements();
 
@@ -37,7 +37,7 @@ hooks.PaymentMethodForm = {
         var form = document.getElementById('payment-form');
 
         form.addEventListener('submit', function (event) {
-            createPaymentMethod(card, 2, 'price_1HaODjLvvReWx3FxJLROGB9I')
+            createPaymentMethod(card, stripeCustomer, 'price_1HaODjLvvReWx3FxJLROGB9I')
         });
 
         function displayError(event) {
@@ -83,7 +83,7 @@ hooks.PaymentMethodForm = {
     mounted() {
         var el = this.el
         var hook = this
-        this.init(el.dataset.stripeKey, hook)
+        this.init(el.dataset.stripeKey, el.dataset.stripeCustomer, hook)
         console.log("mounted")
 
     },
@@ -91,7 +91,7 @@ hooks.PaymentMethodForm = {
     updated() {
         var el = this.el
         var hook = this
-        this.init(el.dataset.stripeKey, hook)
+        this.init(el.dataset.stripeKey, el.dataset.stripeCustomer, hook)
         console.log("updated")
     },
 

@@ -125,6 +125,30 @@ defmodule Logflare.BillingAccounts.Stripe do
     Stripe.Customer.delete(id)
   end
 
+  def create_subscription(id, pm_id, price_id) do
+    items = [%{price: price_id}]
+
+    response =
+      with {:ok, _response} <- attatch_payment_method(id, pm_id),
+           {:ok, response} <-
+             Stripe.Subscription.create(%{
+               customer: id,
+               default_payment_method: pm_id,
+               items: items
+             }) do
+        {:ok, response}
+      else
+        err -> err
+      end
+
+    response
+  end
+
+  def attatch_payment_method(id, pm_id) do
+    response = Stripe.PaymentMethod.attach(%{customer: id, payment_method: pm_id})
+    response
+  end
+
   def delete_subscription(id) do
     Stripe.Subscription.delete(id)
   end
