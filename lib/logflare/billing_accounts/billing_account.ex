@@ -1,6 +1,7 @@
 defmodule Logflare.BillingAccounts.BillingAccount do
   use Ecto.Schema
   import Ecto.Changeset
+  use Logflare.ChangefeedSchema
 
   schema "billing_accounts" do
     field :latest_successful_stripe_session, :map
@@ -27,9 +28,5 @@ defmodule Logflare.BillingAccounts.BillingAccount do
     ])
     |> validate_required([:user_id, :stripe_customer])
     |> unique_constraint(:user_id)
-  end
-
-  def changefeed_changeset(attrs) do
-    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
   end
 end

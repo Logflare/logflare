@@ -3,6 +3,7 @@ defmodule Logflare.Rule do
   use TypedEctoSchema
   use Logflare.Commons
   import Ecto.Changeset
+  use Logflare.ChangefeedSchema
 
   typed_schema "rules" do
     field :regex, :string
@@ -31,10 +32,6 @@ defmodule Logflare.Rule do
     |> cast(attrs, [:sink, :regex, :regex_struct])
     |> validate_required([:sink, :regex, :regex_struct])
     |> foreign_key_constraint(:source_id)
-  end
-
-  def changefeed_changeset(attrs) do
-    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
   end
 
   @deprecated "Delete when all source rules are upgraded to LQL"

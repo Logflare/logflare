@@ -8,7 +8,7 @@ defmodule Logflare.User do
 
   use Logflare.Commons
   alias Logflare.Google.BigQuery
-  alias Logflare.Users.UserPreferences
+  use Logflare.ChangefeedSchema
 
   @derive {Jason.Encoder,
            only: [

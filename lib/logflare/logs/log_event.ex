@@ -2,10 +2,12 @@ defmodule Logflare.LogEvent do
   use TypedEctoSchema
   import Ecto.Changeset
   alias Logflare.Logs.Ingest.MetadataCleaner
+
   alias Logflare.Source
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
 
+  use Logflare.ChangefeedSchema
   @validators [EqDeepFieldTypes, BigQuerySchemaChange]
 
   defmodule Body do

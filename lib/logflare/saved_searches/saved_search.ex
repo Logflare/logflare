@@ -3,6 +3,7 @@ defmodule Logflare.SavedSearch do
   alias Logflare.Source
   alias Logflare.EctoChangesetExtras
   import Ecto.Changeset
+  use Logflare.ChangefeedSchema
 
   typed_schema "saved_searches" do
     field :querystring, :string
@@ -20,9 +21,5 @@ defmodule Logflare.SavedSearch do
     |> cast(attrs, [:querystring, :lql_filters, :lql_charts, :saved_by_user, :tailing])
     |> validate_required([:querystring, :lql_filters, :lql_charts, :tailing])
     |> unique_constraint(:querystring, name: :saved_searches_querystring_source_id_index)
-  end
-
-  def changefeed_changeset(attrs) do
-    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
   end
 end

@@ -2,6 +2,7 @@ defmodule Logflare.TeamUsers.TeamUser do
   use Ecto.Schema
   use Logflare.Commons
   import Ecto.Changeset
+  use Logflare.ChangefeedSchema
 
   schema "team_users" do
     field :email, :string
@@ -43,7 +44,20 @@ defmodule Logflare.TeamUsers.TeamUser do
   end
 
   def changefeed_changeset(attrs) do
-    EctoChangesetExtras.cast_all_fields(struct(__MODULE__), attrs)
+    chgst = EctoChangesetExtras.cast_all_fields(%__MODULE__{}, attrs)
+
+    if prefs = attrs["preferences"] do
+      put_embed(
+        chgst,
+        :preferences,
+        UserPreferences.changeset(
+          %UserPreferences{id: prefs["id"]},
+          prefs
+        )
+      )
+    else
+      chgst
+    end
   end
 
   def downcase_emails(changeset) do
