@@ -27,9 +27,14 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
 
     def build(attrs) do
       kvs =
-        for {k, v} <- attrs do
+        attrs
+        |> Enum.map(fn {k, v} ->
           {String.to_atom(k), v}
-        end
+        end)
+        |> Enum.map(fn
+          {:id, v} -> {:id, String.to_integer(v)}
+          {k, v} -> {k, v}
+        end)
 
       struct!(
         __MODULE__,
@@ -97,11 +102,12 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     {:ok, _} = MemoryRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
   end
 
-  def process_notification(_channel_name, %{"type" => "UPDATE"} = payload) do
+  def process_notification(_channel_name, %{"type" => "UPDATE", "changes" => changes} = payload)
+      when not is_nil(changes) do
     chfd_event = ChangefeedEvent.build(payload)
 
     schema = chfd_event.changefeed_subscription.schema
-    struct = MemoRepo.get(schema, chfd_event.id)
+    struct = MemoryRepo.get(schema, chfd_event.id)
     changeset = to_changeset(struct, chfd_event)
 
     {:ok, struct} = MemoryRepo.update(changeset)
@@ -128,7 +134,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     chfd_event = ChangefeedEvent.build(payload)
 
     schema = chfd_event.changefeed_subscription.schema
-    struct = Repo.get(schema, String.to_integer(id))
+    struct = Repo.get(schema, id)
 
     {:ok, struct} =
       MemoryRepo.insert(struct,

@@ -23,7 +23,6 @@ defmodule Logflare.MemoryRepo.Sync do
 
   @impl true
   def init(init_arg) do
-    MemoryRepo.Migrations.run()
     validate_all_triggers_exist()
     validate_all_changefeed_changesets_exists()
     sync_all_changefeed_tables()
@@ -40,18 +39,21 @@ defmodule Logflare.MemoryRepo.Sync do
 
   def validate_all_triggers_exist() do
     in_db_triggers =
-      from("information_schema.triggers")
+      from("triggers")
       |> where([t], t.event_object_schema == "public" and t.trigger_schema == "public")
-      |> select([t],
-        table_name: t.event_object_table,
-        trigger_name: t.trigger_name,
-        event:
-          fragment("string_agg(?, ',' ORDER BY ?)", t.event_manipulation, t.event_manipulation),
-        timing: t.action_timing,
-        definition: t.action_statement
+      |> select(
+        [t],
+        %{
+          table_name: t.event_object_table,
+          trigger_name: t.trigger_name,
+          event:
+            fragment("string_agg(?, ',' ORDER BY ?)", t.event_manipulation, t.event_manipulation),
+          timing: t.action_timing,
+          definition: t.action_statement
+        }
       )
       |> group_by([t], [1, 2, 4, 5])
-      |> Repo.all()
+      |> Repo.all(prefix: "information_schema")
 
     events = "DELETE,INSERT,UPDATE"
     timing = "AFTER"
@@ -62,9 +64,9 @@ defmodule Logflare.MemoryRepo.Sync do
         %ChangefeedSubscription{table: table, id_only: id_only} = chgsub ->
           definition =
             if id_only do
-              {"EXECUTE FUNCTION changefeed_id_only_notify()"}
+              "EXECUTE FUNCTION changefeed_id_only_notify()"
             else
-              {"EXECUTE FUNCTION changefeed_notify()"}
+              "EXECUTE FUNCTION changefeed_notify()"
             end
 
           %{
@@ -80,13 +82,16 @@ defmodule Logflare.MemoryRepo.Sync do
 
     unless Enum.empty?(compared) do
       compared_string =
-        for %{"table" => table, "trigger_name" => trigger_name} <- compared,
+        for %{table_name: table, trigger_name: trigger_name} <- compared,
             do: "#{trigger_name} for #{table} table \n"
 
-      throw("
-      The following triggers don't exist or their definition doesn't match the expected: \n
+      Logger.error("""
+      The following triggers don't exist or their definition doesn't match the expected:
+
       #{compared_string}
-      ")
+      """)
+
+      throw("Some changefeed triggers do not exit!")
     end
   end
 

@@ -1,11 +1,6 @@
 defmodule Logflare.Changefeeds do
   use Logflare.Commons
 
-  @memory_repo_config Application.get_env(:logflare, Logflare.MemoryRepo)
-
-  @subscriptions @memory_repo_config[:changefeed_subscriptions]
-  @tables @memory_repo_config[:tables]
-
   alias Logflare.Changefeeds.ChangefeedSubscription
   use Logflare.Commons
 
@@ -20,14 +15,14 @@ defmodule Logflare.Changefeeds do
   end
 
   def list_changefeed_subscriptions() do
-    for config <- @subscriptions do
+    for config <- MemoryRepo.config(:changefeed_subscriptions) do
       case config do
         schema when is_atom(schema) ->
           source = EctoSchemaReflection.source(schema)
 
           %ChangefeedSubscription{
             table: source,
-            schema: Module.concat(Logflare, schema),
+            schema: schema,
             id_only: false
           }
 
@@ -36,7 +31,7 @@ defmodule Logflare.Changefeeds do
 
           %ChangefeedSubscription{
             table: source,
-            schema: Module.concat(Logflare, schema),
+            schema: schema,
             id_only: true
           }
       end
@@ -44,7 +39,7 @@ defmodule Logflare.Changefeeds do
   end
 
   def tables() do
-    for schema <- @tables do
+    for schema <- MemoryRepo.config(:tables) do
       {EctoSchemaReflection.source(schema), schema}
     end
   end
@@ -55,6 +50,7 @@ defmodule Logflare.Changefeeds do
     end
   end
 
+  @spec get_changefeed_subscription_by_table(String.t()) :: ChangefeedSubscription.t() | nil
   def get_changefeed_subscription_by_table(table) when is_binary(table) do
     Enum.find(list_changefeed_subscriptions(), &(&1.table == table))
   end
