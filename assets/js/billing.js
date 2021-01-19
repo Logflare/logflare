@@ -43,7 +43,6 @@ hooks.PaymentMethodForm = {
         function displayError(event) {
             let displayError = document.getElementById('card-element-errors');
             if (event.error) {
-
                 /*
                 hook.pushEvent("payment-method-error", {
                     message: event.error.message
@@ -70,7 +69,7 @@ hooks.PaymentMethodForm = {
                     if (result.error) {
                         displayError(result);
                     } else {
-                        hook.pushEvent("save-payment-and-subscribe", {
+                        hook.pushEventTo("#payment-method", "save-payment-method", {
                             id: result.paymentMethod.id,
                             customer_id: customerId,
                             price_id: priceId

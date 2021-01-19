@@ -55,16 +55,6 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   @impl true
-  def handle_event("save-payment-and-subscribe", params, socket) do
-    send_update(LogflareWeb.BillingAccountLive.PaymentMethodComponent,
-      id: :payment_method,
-      params: params
-    )
-
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_event("clear-flash", _params, socket) do
     socket = clear_flash(socket, :error)
 
@@ -79,7 +69,9 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   @impl true
-  def handle_event("subscribe", _params, socket) do
+  def handle_event("subscribe", params, socket) do
+    IO.inspect(params, label: "LV subscribe")
+
     {:noreply, socket}
   end
 
