@@ -28,5 +28,14 @@ defmodule Logflare.EctoSchemaReflection do
 
   def changefeed_changeset_exists?(schema) do
     not is_nil(Map.get(functions(schema), :changefeed_changeset))
+
+  def virtual_field_type(schema, field) when is_atom(field) do
+    Map.get(schema.__changeset__, field)
+  end
+
+  def virtual_fields(schema) do
+    schema.__changeset__
+    |> Map.drop(fields(schema) ++ associations(schema))
+    |> Map.keys()
   end
 end

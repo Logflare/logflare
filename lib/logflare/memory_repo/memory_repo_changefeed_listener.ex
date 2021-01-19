@@ -104,7 +104,20 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     struct = MemoRepo.get(schema, chfd_event.id)
     changeset = to_changeset(struct, chfd_event)
 
-    {:ok, _} = MemoryRepo.update(changeset)
+    {:ok, struct} = MemoryRepo.update(changeset)
+
+    virtual_schema = Module.concat(schema, Virtual)
+
+    if Code.ensure_loaded?(virtual_schema) do
+      virtual_struct =
+        struct(virtual_schema, %{
+          schema.compute_virtual_fields(struct)
+          | id: struct.id
+        })
+
+      {:ok, _} =
+        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
+    end
   end
 
   def process_notification(
@@ -117,11 +130,24 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     schema = chfd_event.changefeed_subscription.schema
     struct = Repo.get(schema, String.to_integer(id))
 
-    {:ok, _} =
+    {:ok, struct} =
       MemoryRepo.insert(struct,
         on_conflict: :replace_all,
         conflict_target: :id
       )
+
+    virtual_schema = Module.concat(schema, Virtual)
+
+    if Code.ensure_loaded?(virtual_schema) do
+      virtual_struct =
+        struct(virtual_schema, %{
+          schema.compute_virtual_fields(struct)
+          | id: struct.id
+        })
+
+      {:ok, _} =
+        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
+    end
   end
 
   def process_notification(_channel_name, %{"type" => type} = payload)
@@ -131,11 +157,24 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     schema = chfd_event.changefeed_subscription.schema
     changeset = to_changeset(schema, chfd_event)
 
-    {:ok, _} =
+    {:ok, struct} =
       MemoryRepo.insert(changeset,
         on_conflict: :replace_all,
         conflict_target: :id
       )
+
+    virtual_schema = Module.concat(schema, Virtual)
+
+    if Code.ensure_loaded?(virtual_schema) do
+      virtual_struct =
+        struct(virtual_schema, %{
+          schema.compute_virtual_fields(struct)
+          | id: struct.id
+        })
+
+      {:ok, _} =
+        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
+    end
   end
 
   def to_changeset(chfd_event) do

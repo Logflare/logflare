@@ -97,8 +97,22 @@ defmodule Logflare.MemoryRepo.Sync do
   end
 
   def sync_table(%ChangefeedSubscription{schema: schema}) do
+    virtual_schema = Module.concat(schema, Virtual)
+    loaded? = Code.ensure_loaded?(virtual_schema)
+
     for x <- Repo.all(schema) |> replace_assocs_with_nils(schema) do
-      {:ok, _} = MemoryRepo.insert(x)
+      {:ok, struct} = MemoryRepo.insert(x)
+
+      if loaded? do
+        virtual_struct =
+          struct(
+            virtual_schema,
+            %{schema.compute_virtual_fields(struct) | id: struct.id} |> Map.to_list()
+          )
+
+        {:ok, _} =
+          MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
+      end
     end
 
     Logger.debug("Synced memory repo for #{schema} schema")
