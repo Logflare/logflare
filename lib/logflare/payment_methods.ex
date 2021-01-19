@@ -29,7 +29,14 @@ defmodule Logflare.PaymentMethods do
       methods_list =
         Enum.map(payment_methods, fn x ->
           {:ok, payment_method} =
-            create_payment_method(%{stripe_id: x.id, customer_id: x.customer})
+            create_payment_method(%{
+              stripe_id: x.id,
+              customer_id: x.customer,
+              last_four: x.card.last4,
+              exp_month: x.card.exp_month,
+              exp_year: x.card.exp_year,
+              brand: x.card.brand
+            })
 
           payment_method
         end)
@@ -81,11 +88,13 @@ defmodule Logflare.PaymentMethods do
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_payment_method(customer_id, pm_id, price_id) do
+  def create_payment_method_with_stripe(
+        %{"customer_id" => cust_id, "stripe_id" => pm_id} = params
+      ) do
     with {:ok, _resp} <-
-           BillingAccounts.Stripe.attatch_payment_method(customer_id, pm_id),
+           BillingAccounts.Stripe.attatch_payment_method(cust_id, pm_id),
          {:ok, payment_method} <-
-           create_payment_method(%{customer_id: customer_id, stripe_id: pm_id, price_id: price_id}) do
+           create_payment_method(params) do
       {:ok, payment_method}
     else
       err -> err
@@ -129,7 +138,9 @@ defmodule Logflare.PaymentMethods do
 
   """
   def delete_payment_method(%PaymentMethod{} = payment_method) do
-    with {:ok, _respons} <-
+    with methods <- list_payment_methods_by(customer_id: payment_method.customer_id),
+         count when count > 1 <- Enum.count(methods),
+         {:ok, _respons} <-
            BillingAccounts.Stripe.detach_payment_method(payment_method.stripe_id),
          {:ok, response} <-
            Repo.delete(payment_method) do
@@ -137,6 +148,9 @@ defmodule Logflare.PaymentMethods do
     else
       {:error, %Stripe.Error{message: message}} ->
         {:error, message}
+
+      1 ->
+        {:error, "You need at least one payment method!"}
 
       err ->
         {:error, "Failed to delete payment method!"}

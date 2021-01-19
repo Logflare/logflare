@@ -41,14 +41,15 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:ok, socket}
   end
 
-  def handle_event(
-        "save",
-        %{"customer_id" => cust_id, "id" => pm_id, "price_id" => price_id},
-        socket
-      ) do
-    case PaymentMethods.create_payment_method(cust_id, pm_id, price_id) do
+  def handle_event("submit", _params, socket) do
+    socket = socket |> push_event("submit", %{})
+    {:noreply, socket}
+  end
+
+  def handle_event("save", params, socket) do
+    case PaymentMethods.create_payment_method_with_stripe(params) do
       {:ok, m} ->
-        methods = [m | socket.assigns.payment_methods]
+        methods = socket.assigns.payment_methods ++ [m]
 
         socket =
           socket
@@ -120,56 +121,37 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:noreply, socket}
   end
 
-  def handle_event("payment-method-error", %{"message" => message}, socket) do
-    socket =
-      socket
-      |> put_flash(:error, message)
-      |> push_patch(to: Routes.billing_account_path(socket, :edit))
-
-    {:noreply, socket}
-  end
-
-  def handle_event("clear-flash", _params, socket) do
-    socket =
-      socket
-      |> clear_flash()
-      |> push_patch(to: Routes.billing_account_path(socket, :edit))
-
-    {:noreply, socket}
-  end
-
   def render(assigns) do
     ~L"""
-    <ul>
+    <ul class="list-unstyled">
     <%= for p <- @payment_methods do %>
-    <li><%= p.stripe_id %> - <%= delete_link(p, @myself) %> - <%= if p.stripe_id == @user.billing_account.default_payment_method, do: nil, else: make_default(p, @myself) %></li>
+    <li><%= String.upcase(p.brand) %> ending in <%= p.last_four %> expires <%= p.exp_month %>/<%= p.exp_year %> <%= delete_link(p, @myself) %> <%= if p.stripe_id == @user.billing_account.default_payment_method, do: nil, else: make_default(p, @myself) %></li>
     <% end %>
     </ul>
-      <div id="stripe-elements-form" class="w-50 mt-4">
-        <form id="payment-form" action="#" phx-submit="add-payment-method" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>">
-          <div id="card-element">
-            <!-- Elements will create input elements here -->
-          </div>
-          <!-- We'll put the error messages in this element -->
-          <div id="card-element-errors" role="alert"></div>
-          <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">Add payment method</button>
-        </form>
-      </div>
+    <div id="stripe-elements-form" class="w-50 mt-4">
+      <form id="payment-form" action="#" phx-submit="submit" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>" phx-target="<%= @myself %>">
+        <div id="card-element">
+          <!-- Elements will create input elements here -->
+        </div>
+        <!-- We'll put the error messages in this element -->
+        <div id="card-element-errors" role="alert"></div>
+        <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">Add payment method</button>
+      </form>
+      <button phx-click="sync" phx-disable-with="Syncing..." phx-target="<%= @myself %>" class="btn btn-dark btn-sm">Sync payment methods</button>
+    </div>
 
-
-    <%= link "Sync payment methods", to: "#", phx_click: "sync", phx_target: @myself, class: "btn btn-primary btn-sm" %>
     """
   end
 
   defp delete_link(p, myself) do
     ~E"""
-    <%= link "delete", to: "#", phx_click: "delete", phx_value_id: p.id, phx_target: myself %>
+    <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id="<%= p.id %>" phx-target="<%= myself %>" class="btn btn-danger btn-sm m-3">Delete</button>
     """
   end
 
   defp make_default(p, myself) do
     ~E"""
-    <%= link "make default", to: "#", phx_click: "make-default", phx_value_stripe_id: p.stripe_id, phx_target: myself %>
+    <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</button>
     """
   end
 end

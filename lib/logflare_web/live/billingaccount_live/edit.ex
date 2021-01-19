@@ -55,13 +55,6 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   @impl true
-  def handle_event("add-payment-method", params, socket) do
-    IO.inspect(params, label: "LV subscribe")
-
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_event("usage_picker", %{"usage" => %{"days" => days}}, socket)
       when is_binary(days) do
     user = socket.assigns.user

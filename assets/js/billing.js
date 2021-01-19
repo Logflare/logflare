@@ -2,8 +2,8 @@ let hooks = {}
 
 hooks.PaymentMethodForm = {
     init(stripeKey, stripeCustomer, hook) {
-        let stripe = Stripe(stripeKey);
-        let elements = stripe.elements();
+        var stripe = Stripe(stripeKey);
+        var elements = stripe.elements();
 
         const style = {
             base: {
@@ -26,7 +26,7 @@ hooks.PaymentMethodForm = {
             }
         };
 
-        let card = elements.create('card', { style: style });
+        var card = elements.create('card', { style: style });
 
         card.mount('#card-element');
 
@@ -34,11 +34,7 @@ hooks.PaymentMethodForm = {
             displayError(event);
         });
 
-        var form = document.getElementById('payment-form');
-
-        form.addEventListener('submit', function (event) {
-            createPaymentMethod(card, stripeCustomer, 'price_1HaODjLvvReWx3FxJLROGB9I')
-        });
+        hook.handleEvent("submit", () => createPaymentMethod(card, stripeCustomer, 'price_1HaODjLvvReWx3FxJLROGB9I'))
 
         function displayError(event) {
             let displayError = document.getElementById('card-element-errors');
@@ -71,7 +67,11 @@ hooks.PaymentMethodForm = {
                         displayError(result);
                     } else {
                         hook.pushEventTo("#payment-form", "save", {
-                            id: result.paymentMethod.id,
+                            brand: result.paymentMethod.card.brand,
+                            last_four: result.paymentMethod.card.last4,
+                            exp_month: result.paymentMethod.card.exp_month,
+                            exp_year: result.paymentMethod.card.exp_year,
+                            stripe_id: result.paymentMethod.id,
                             customer_id: customerId,
                             price_id: priceId
                         })
