@@ -90,6 +90,13 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   @impl true
+  def handle_event(event, params, socket) do
+    IO.inspect(params, label: event)
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     BillingAccountView.render("edit.html", assigns)
   end

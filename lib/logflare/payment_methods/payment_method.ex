@@ -14,6 +14,6 @@ defmodule Logflare.PaymentMethods.PaymentMethod do
   def changeset(payment_method, attrs) do
     payment_method
     |> cast(attrs, [:stripe_id, :price_id, :customer_id])
-    |> validate_required([:stripe_id, :price_id, :customer_id])
+    |> validate_required([:stripe_id, :customer_id])
   end
 end

@@ -149,6 +149,16 @@ defmodule Logflare.BillingAccounts.Stripe do
     response
   end
 
+  def detach_payment_method(pm_id) do
+    response = Stripe.PaymentMethod.detach(%{payment_method: pm_id})
+    response
+  end
+
+  def list_payment_methods(id) do
+    response = Stripe.PaymentMethod.list(%{customer: id, type: :card})
+    response
+  end
+
   def delete_subscription(id) do
     Stripe.Subscription.delete(id)
   end

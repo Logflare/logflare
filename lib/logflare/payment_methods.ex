@@ -5,6 +5,7 @@ defmodule Logflare.PaymentMethods do
 
   import Ecto.Query, warn: false
   alias Logflare.Repo
+  alias Logflare.BillingAccounts
 
   alias Logflare.PaymentMethods.PaymentMethod
 
@@ -12,6 +13,31 @@ defmodule Logflare.PaymentMethods do
     PaymentMethod
     |> where(^kv)
     |> Repo.all()
+  end
+
+  def delete_all_payment_methods_by(kv) do
+    PaymentMethod
+    |> where(^kv)
+    |> Repo.delete_all()
+  end
+
+  def sync_payment_methods(customer_id) do
+    with {:ok, %Stripe.List{data: payment_methods}} <-
+           BillingAccounts.Stripe.list_payment_methods(customer_id),
+         {_count, _response} <-
+           delete_all_payment_methods_by(customer_id: customer_id) do
+      methods_list =
+        Enum.map(payment_methods, fn x ->
+          {:ok, payment_method} =
+            create_payment_method(%{stripe_id: x.id, customer_id: x.customer})
+
+          payment_method
+        end)
+
+      {:ok, methods_list}
+    else
+      err -> err
+    end
   end
 
   @doc """
@@ -55,7 +81,18 @@ defmodule Logflare.PaymentMethods do
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_payment_method(attrs \\ %{}) do
+  def create_payment_method(customer_id, pm_id, price_id) do
+    with {:ok, _resp} <-
+           BillingAccounts.Stripe.attatch_payment_method(customer_id, pm_id),
+         {:ok, payment_method} <-
+           create_payment_method(%{customer_id: customer_id, stripe_id: pm_id, price_id: price_id}) do
+      {:ok, payment_method}
+    else
+      err -> err
+    end
+  end
+
+  def create_payment_method(attrs \\ %{}) when is_map(attrs) do
     %PaymentMethod{}
     |> PaymentMethod.changeset(attrs)
     |> Repo.insert()
@@ -92,7 +129,18 @@ defmodule Logflare.PaymentMethods do
 
   """
   def delete_payment_method(%PaymentMethod{} = payment_method) do
-    Repo.delete(payment_method)
+    with {:ok, _respons} <-
+           BillingAccounts.Stripe.detach_payment_method(payment_method.stripe_id),
+         {:ok, response} <-
+           Repo.delete(payment_method) do
+      {:ok, response}
+    else
+      {:error, %Stripe.Error{message: message}} ->
+        {:error, message}
+
+      err ->
+        {:error, "Failed to delete payment method!"}
+    end
   end
 
   @doc """
