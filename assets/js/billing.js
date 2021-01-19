@@ -44,14 +44,15 @@ hooks.PaymentMethodForm = {
             let displayError = document.getElementById('card-element-errors');
             if (event.error) {
                 /*
-                hook.pushEvent("payment-method-error", {
+                hook.pushEventTo("#payment-form", "payment-method-error", {
                     message: event.error.message
                 })
                 */
+
                 displayError.textContent = event.error.message
             } else {
                 /*
-                hook.pushEvent("clear-flash", {
+                hook.pushEventTo("#payment-form", "clear-flash", {
 
                 })
                 */
@@ -69,7 +70,7 @@ hooks.PaymentMethodForm = {
                     if (result.error) {
                         displayError(result);
                     } else {
-                        hook.pushEventTo("#payment-method", "save-payment-method", {
+                        hook.pushEventTo("#payment-form", "save", {
                             id: result.paymentMethod.id,
                             customer_id: customerId,
                             price_id: priceId

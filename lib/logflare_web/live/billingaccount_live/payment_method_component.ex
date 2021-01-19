@@ -42,7 +42,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   end
 
   def handle_event(
-        "save-payment-method",
+        "save",
         %{"customer_id" => cust_id, "id" => pm_id, "price_id" => price_id},
         socket
       ) do
@@ -120,6 +120,24 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:noreply, socket}
   end
 
+  def handle_event("payment-method-error", %{"message" => message}, socket) do
+    socket =
+      socket
+      |> put_flash(:error, message)
+      |> push_patch(to: Routes.billing_account_path(socket, :edit))
+
+    {:noreply, socket}
+  end
+
+  def handle_event("clear-flash", _params, socket) do
+    socket =
+      socket
+      |> clear_flash()
+      |> push_patch(to: Routes.billing_account_path(socket, :edit))
+
+    {:noreply, socket}
+  end
+
   def render(assigns) do
     ~L"""
     <ul>
@@ -127,9 +145,8 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     <li><%= p.stripe_id %> - <%= delete_link(p, @myself) %> - <%= if p.stripe_id == @user.billing_account.default_payment_method, do: nil, else: make_default(p, @myself) %></li>
     <% end %>
     </ul>
-    <div id="payment-method"  class="my-3 w-auto">
       <div id="stripe-elements-form" class="w-50 mt-4">
-        <form id="payment-form" action="#" phx-submit="subscribe" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>">
+        <form id="payment-form" action="#" phx-submit="add-payment-method" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>">
           <div id="card-element">
             <!-- Elements will create input elements here -->
           </div>
@@ -138,8 +155,8 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">Add payment method</button>
         </form>
       </div>
-    <p>WTF</p>
-    </div>
+
+
     <%= link "Sync payment methods", to: "#", phx_click: "sync", phx_target: @myself, class: "btn btn-primary btn-sm" %>
     """
   end

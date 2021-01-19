@@ -55,21 +55,7 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   @impl true
-  def handle_event("clear-flash", _params, socket) do
-    socket = clear_flash(socket, :error)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("payment-method-error", %{"message" => message}, socket) do
-    socket = put_flash(socket, :error, message)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("subscribe", params, socket) do
+  def handle_event("add-payment-method", params, socket) do
     IO.inspect(params, label: "LV subscribe")
 
     {:noreply, socket}
