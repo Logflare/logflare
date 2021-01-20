@@ -107,11 +107,10 @@ defmodule Logflare.Source do
     field :webhook_notification_url, :string
     field :slack_hook_url, :string
     field :metrics, :map, virtual: true
-    field :has_rejected_events?, :boolean, default: false, virtual: true
+    field :has_rejected_events, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
-    field :bq_table_schema, :any, virtual: true
-    field :bq_table_typemap, :any, virtual: true
+    field :bq_table_typemap, :map, virtual: true
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
@@ -137,6 +136,46 @@ defmodule Logflare.Source do
     chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
 
     cast_embed(chgst, :notifications, with: &Notifications.changeset/2)
+  end
+
+  @default_table_name_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] ||
+                               ""
+
+  def compute_virtual_fields(source) do
+    fun = fn field ->
+      case field do
+        :bq_table_id ->
+          fn source ->
+            user = Users.get_user(source.user_id)
+            generate_bq_table_id(%{source | user: user})
+          end
+
+        :bq_dataset_id ->
+          fn source ->
+            user = Users.get_user(source.user_id)
+            user.bigquery_dataset_id || "#{source.user_id}" <> @default_table_name_append
+          end
+
+        # &Logflare.Google.BigQuery.GenUtils.get_bq_user_info(&1.token)
+
+        :has_rejected_events ->
+          fn _ -> false end
+
+        _ ->
+          fn _ -> nil end
+          # :bq_table_typemap ->
+          #   &Logflare.Google.BigQuery.SchemaUtils.to_typemap(&1.source_schema.bigquery_schema)
+      end
+    end
+
+    virtual_schema = Module.concat(__MODULE__, Virtual)
+
+    for field <- EctoSchemaReflection.virtual_fields(__MODULE__),
+        reduce: struct(virtual_schema) do
+      acc ->
+        compute_field = fun.(field)
+        %{acc | field => compute_field.(source)}
+    end
   end
 
   def no_casting_changeset(source) do
