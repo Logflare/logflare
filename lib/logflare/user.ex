@@ -129,17 +129,21 @@ defmodule Logflare.User do
     |> default_validations(user)
   end
 
-  def changefeed_changeset(attrs) do
-    chgst = EctoChangesetExtras.cast_all_fields(%__MODULE__{}, attrs)
+  def changefeed_changeset(struct, attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
 
-    put_embed(
-      chgst,
-      :preferences,
-      UserPreferences.changeset(
-        %UserPreferences{id: attrs["preferences"]["id"]},
-        attrs["preferences"]
+    if prefs = attrs["preferences"] do
+      put_embed(
+        chgst,
+        :preferences,
+        UserPreferences.changeset(
+          %UserPreferences{id: prefs["id"]},
+          prefs
+        )
       )
-    )
+    else
+      chgst
+    end
   end
 
   def preferences_changeset(user, attrs) do

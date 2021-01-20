@@ -133,8 +133,8 @@ defmodule Logflare.Source do
     timestamps()
   end
 
-  def changefeed_changeset(attrs) do
-    chgst = EctoChangesetExtras.cast_all_fields(%__MODULE__{}, attrs)
+  def changefeed_changeset(struct \\ struct(__MODULE__), attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
 
     cast_embed(chgst, :notifications, with: &Notifications.changeset/2)
   end

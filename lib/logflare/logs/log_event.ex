@@ -38,6 +38,13 @@ defmodule Logflare.LogEvent do
     field :ephemeral, :boolean, virtual: true
   end
 
+  def changefeed_changeset(struct, attrs) do
+    Logflare.EctoChangesetExtras.cast_all_fields(
+      struct,
+      attrs
+    )
+  end
+
   def mapper(params) do
     message =
       params["custom_message"] || params["log_entry"] || params["message"] ||

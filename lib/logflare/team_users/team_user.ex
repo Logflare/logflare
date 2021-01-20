@@ -43,8 +43,8 @@ defmodule Logflare.TeamUsers.TeamUser do
     |> downcase_email_provider_uid(team_user)
   end
 
-  def changefeed_changeset(attrs) do
-    chgst = EctoChangesetExtras.cast_all_fields(%__MODULE__{}, attrs)
+  def changefeed_changeset(struct, attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
 
     if prefs = attrs["preferences"] do
       put_embed(

@@ -3,6 +3,8 @@ defmodule Logflare.EctoSchemaReflection do
     get(schema, :embeds)
   end
 
+  def fields(schema), do: get(schema, :fields)
+
   def fields_no_embeds(schema) do
     get(schema, :fields) -- embeds(schema)
   end
@@ -15,9 +17,6 @@ defmodule Logflare.EctoSchemaReflection do
     schema.__schema__(key)
   end
 
-  def columns() do
-  end
-
   def source(schema) do
     get(schema, :source)
   end
@@ -27,7 +26,10 @@ defmodule Logflare.EctoSchemaReflection do
   end
 
   def changefeed_changeset_exists?(schema) do
-    not is_nil(Map.get(functions(schema), :changefeed_changeset))
+    functions = schema.__info__(:functions)
+
+    {:changefeed_changeset, 2} in functions
+  end
 
   def virtual_field_type(schema, field) when is_atom(field) do
     Map.get(schema.__changeset__, field)

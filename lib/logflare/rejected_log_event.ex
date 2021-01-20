@@ -9,4 +9,6 @@ defmodule Logflare.RejectedLogEvent do
     field :ingested_at, :utc_datetime_usec
     belongs_to :source, Source
   end
+
+  use Logflare.ChangefeedSchema
 end
