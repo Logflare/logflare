@@ -26,4 +26,11 @@ defmodule Logflare.MemoryRepo do
       end
     end
   end
+
+  def reset_mnesia() do
+    :stopped = :mnesia.stop()
+    :ok = :mnesia.delete_schema([Node.self()])
+    :ok = :mnesia.create_schema([Node.self()])
+    :ok = :mnesia.start()
+  end
 end

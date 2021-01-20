@@ -16,6 +16,8 @@ defmodule Logflare.Application do
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
+    MemoryRepo.reset_mnesia()
+
     children = [
       PubSubRates.Cache,
       {Phoenix.PubSub, name: Logflare.PubSub},
