@@ -2,6 +2,7 @@ defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
   use Logflare.Commons
+  use Logflare.ChangefeedSchema
 
   import Ecto.Changeset
 
@@ -19,7 +20,7 @@ defmodule Logflare.Source do
              :public_token,
              :bq_table_id,
              :bq_table_schema,
-             :has_rejected_events?,
+             :has_rejected_events,
              :metrics,
              :notifications,
              :custom_event_message_keys
@@ -127,7 +128,7 @@ defmodule Logflare.Source do
 
     embeds_one :notifications, Notifications, on_replace: :update
 
-    has_one :source_schema, Logflare.Sources.SourceSchema
+    has_one :source_schema, SourceSchema
 
     timestamps()
   end
@@ -254,7 +255,7 @@ defmodule Logflare.Source do
     end
   end
 
-  def generate_bq_table_id(%__MODULE__{} = source) do
+  def generate_bq_table_id(%__MODULE__{user: %User{} = user} = source) do
     default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
 
     bq_project_id = source.user.bigquery_project_id || default_project_id

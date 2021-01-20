@@ -1,10 +1,10 @@
 defmodule Logflare.Sources.SourceSchema do
   use Logflare.Commons
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   use Logflare.ChangefeedSchema
 
-  schema "source_schemas" do
+  typed_schema "source_schemas" do
     field :bigquery_schema, Ecto.Term
     field :field_count, :integer, default: 0, virtual: true
     field :type_map, Ecto.Term, default: %{}, virtual: true

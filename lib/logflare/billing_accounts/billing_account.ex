@@ -1,9 +1,9 @@
 defmodule Logflare.BillingAccounts.BillingAccount do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   use Logflare.ChangefeedSchema
 
-  schema "billing_accounts" do
+  typed_schema "billing_accounts" do
     field :latest_successful_stripe_session, :map
     field :stripe_customer, :string
     field :stripe_subscriptions, :map

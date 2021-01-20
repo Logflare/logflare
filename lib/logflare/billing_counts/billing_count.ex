@@ -1,9 +1,9 @@
 defmodule Logflare.BillingCounts.BillingCount do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   use Logflare.ChangefeedSchema
 
-  schema "billing_counts" do
+  typed_schema "billing_counts" do
     field :count, :integer
     field :node, :string
     belongs_to :user, Logflare.User

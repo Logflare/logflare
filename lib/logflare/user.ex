@@ -149,7 +149,7 @@ defmodule Logflare.User do
   def preferences_changeset(user, attrs) do
     user
     |> cast(attrs, [:preferences])
-    |> cast_embed([:preferences])
+    |> cast_embed(:preferences)
   end
 
   def default_validations(changeset, user) do
