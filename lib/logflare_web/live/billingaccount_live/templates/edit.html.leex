@@ -48,8 +48,8 @@
   <div class="sub-form">
     <%= section_header("Enterprise Plans & Support") %>
     <p>Contact us to learn more about our Enterprise plans and support options. We can handle any event volume required. Need to ingest directly to the EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you do just about anything you need with your data pipeline so please reach out.</p>
+    <%= link("Upgrade to Enterprise metered billing", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => "price_1IB4mjLvvReWx3FxtUoyGNnZ", "type" => "metered"}), class: "btn btn-dark text-white form-button") %>
     <%= link "Contact us", to: Routes.contact_path(@socket, :contact), class: "btn btn-primary form-button" %>
-    <%= link("Enterprise metered billing plan", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => "price_1HaOGOLvvReWx3FxbV4xwjap"}), class: "btn btn-dark text-white form-button") %>
   </div>
   <div class="sub-form">
     <%= section_header("Payment Method") %>
@@ -64,8 +64,8 @@
         <thead>
           <tr>
             <th scope="col">Id</th>
-            <th scope="col">Price per source</th>
-            <th scope="col">Sources</th>
+            <th scope="col">Price per unit</th>
+            <th scope="col">Units</th>
             <th scope="col">Next invoice</th>
             <th scope="col">Trial start</th>
             <th scope="col">Trial end</th>

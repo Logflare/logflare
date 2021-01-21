@@ -10,6 +10,8 @@ defmodule Logflare.BillingAccounts.Stripe do
   alias Logflare.User
   alias Logflare.Sources
 
+  @trial_days_default 15
+
   def create_add_credit_card_session(%BillingAccount{} = billing_account) do
     stripe_customer_id = billing_account.stripe_customer
     [subscription] = billing_account.stripe_subscriptions["data"]
@@ -66,6 +68,28 @@ defmodule Logflare.BillingAccounts.Stripe do
         %{price: stripe_id, quantity: count}
       ],
       subscription_data: %{trial_from_plan: true}
+    }
+
+    Stripe.Session.create(params)
+  end
+
+  def create_metered_customer_session(
+        %User{
+          sources: sources,
+          billing_account: %BillingAccount{stripe_customer: stripe_customer_id}
+        } = _user,
+        %Plan{stripe_id: stripe_id} = _plan
+      ) do
+    params = %{
+      customer: stripe_customer_id,
+      mode: "subscription",
+      payment_method_types: ["card"],
+      success_url: Routes.billing_url(Endpoint, :success),
+      cancel_url: Routes.billing_url(Endpoint, :abandoned),
+      line_items: [
+        %{price: stripe_id}
+      ],
+      subscription_data: %{trial_end: trial_end()}
     }
 
     Stripe.Session.create(params)
@@ -186,5 +210,11 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def update_subscription_item(id, params, opts \\ []) do
     Stripe.SubscriptionItem.update(id, params, opts)
+  end
+
+  def trial_end(days \\ @trial_days_default) do
+    DateTime.utc_now()
+    |> DateTime.add(:timer.hours(24) * days, :millisecond)
+    |> DateTime.to_unix()
   end
 end
