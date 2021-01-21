@@ -2,7 +2,9 @@ defmodule Logflare.Sources.SourceSchema do
   use Logflare.Commons
   use TypedEctoSchema
   import Ecto.Changeset
-  use Logflare.ChangefeedSchema
+
+  use Logflare.ChangefeedSchema, derive_virtual: [:type_map, :field_count]
+  @min_number_of_schema_fields 3
 
   typed_schema "source_schemas" do
     field :bigquery_schema, Ecto.Term
@@ -23,29 +25,18 @@ defmodule Logflare.Sources.SourceSchema do
     |> unique_constraint(:source_id, name: "source_schemas_source_id_index")
   end
 
-  def compute_virtual_fields(source_schema) do
-    fun = fn field ->
-      case field do
-        :type_map ->
-          &Logflare.Google.BigQuery.SchemaUtils.to_typemap(&1.bigquery_schema)
+  def derived_validations(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> validate_number(:field_count, greater_than_or_equal_to: @min_number_of_schema_fields)
+  end
 
-        :field_count ->
-          &(&1.type_map
-            |> Iteraptor.to_flatmap()
-            |> Enum.count())
+  def derive(:type_map, struct, _virtual_struct) do
+    Logflare.Google.BigQuery.SchemaUtils.to_typemap(struct.bigquery_schema)
+  end
 
-        _ ->
-          & &1
-      end
-    end
-
-    virtual_schema = Module.concat(__MODULE__, Virtual)
-
-    for field <- EctoSchemaReflection.virtual_fields(__MODULE__),
-        reduce: struct(virtual_schema) do
-      acc ->
-        compute_field = fun.(field)
-        %{acc | field => compute_field.(source_schema)}
-    end
+  def derive(:field_count, _struct, virtual_struct) do
+    virtual_struct.type_map
+    |> Iteraptor.to_flatmap()
+    |> Enum.count()
   end
 end
