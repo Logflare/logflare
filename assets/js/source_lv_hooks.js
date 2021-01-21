@@ -1,4 +1,6 @@
-import { activateClipboardForSelector } from "./utils"
+import {
+  activateClipboardForSelector
+} from "./utils"
 import sqlFormatter from "sql-formatter"
 import $ from "jquery"
 
@@ -40,7 +42,9 @@ hooks.SourceLogsSearchList = {
     }
   },
   mounted() {
-    $("html, body").animate({ scrollTop: document.body.scrollHeight })
+    $("html, body").animate({
+      scrollTop: document.body.scrollHeight
+    })
   },
 }
 
@@ -86,7 +90,9 @@ hooks.ModalHook = {
 
     formatModal($modal)
 
-    $modal.modal({ backdrop: "static" })
+    $modal.modal({
+      backdrop: "static"
+    })
   },
   destroyed() {
     const $body = $("body")
@@ -174,7 +180,14 @@ hooks.SourceLogsSearch = {
         picker.endDate,
         picker.chosenLabel
       )
-      hook.pushEvent("timestamp_and_chart_update", { querystring: tsClause })
+      hook.pushEvent("timestamp_and_chart_update", {
+        querystring: tsClause
+      })
+    })
+
+
+    $daterangepicker.on("cancel.daterangepicker", (e, picker) => {
+      hook.pushEvent("resume_live_search", {})
     })
 
     activateClipboardForSelector("#search-uri-query", {
@@ -197,7 +210,13 @@ hooks.SourceLogsSearch = {
         picker.endDate,
         picker.chosenLabel
       )
-      hook.pushEvent("timestamp_and_chart_update", { querystring: tsClause })
+      hook.pushEvent("timestamp_and_chart_update", {
+        querystring: tsClause
+      })
+    })
+
+    $daterangepicker.on("cancel.daterangepicker", (e, picker) => {
+      hook.pushEvent("resume_live_search", {})
     })
 
     window.stopLiveSearch = () => hook.pushEvent("stop_live_search", {})
