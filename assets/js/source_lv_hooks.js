@@ -32,14 +32,9 @@ const initSearchInViewObserver = (hook) => {
   observer.observe(target)
 }
 
-let sourceLogsSearchListLastUpdate
 hooks.SourceLogsSearchList = {
   updated() {
-    let currentUpdate = $(this.el).attr("data-last-query-completed-at")
-    if (sourceLogsSearchListLastUpdate !== currentUpdate) {
-      sourceLogsSearchListLastUpdate = currentUpdate
-      window.scrollTo(0, document.body.scrollHeight)
-    }
+    window.scrollTo(0, document.body.scrollHeight)
   },
   mounted() {
     $("html, body").animate({
