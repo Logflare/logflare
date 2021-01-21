@@ -5,6 +5,7 @@ defmodule LogflareWeb.StripeController do
 
   alias Logflare.BillingAccounts
   alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.PaymentMethods
 
   def event(
         conn,
@@ -72,6 +73,20 @@ defmodule LogflareWeb.StripeController do
           nil ->
             customer_not_found(conn)
 
+          err ->
+            log_error(err)
+
+            conflict(conn)
+        end
+
+      "payment_method" <> _sub_type ->
+        with {:ok, list} <- PaymentMethods.sync_payment_methods(customer) do
+          Phoenix.PubSub.broadcast(
+            Logflare.PubSub,
+            "billing",
+            {:update_payment_methods, list}
+          )
+        else
           err ->
             log_error(err)
 

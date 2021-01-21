@@ -11,6 +11,10 @@ defmodule LogflareWeb.BillingAccountLive do
 
   @impl true
   def mount(_params, %{"user_id" => user_id}, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "billing")
+    end
+
     user =
       Users.get(user_id)
       |> Users.preload_sources()
@@ -48,12 +52,6 @@ defmodule LogflareWeb.BillingAccountLive do
     {:noreply, socket}
   end
 
-  def handle_info({:chart_tick, counter}, socket) do
-    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
-
-    {:noreply, socket}
-  end
-
   @impl true
   def handle_event("usage_picker", %{"usage" => %{"days" => days}}, socket)
       when is_binary(days) do
@@ -68,9 +66,18 @@ defmodule LogflareWeb.BillingAccountLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event(event, params, socket) do
-    IO.inspect(params, label: event)
+  def handle_info({:chart_tick, counter}, socket) do
+    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:update_payment_methods, methods}, socket) do
+    send_update(
+      LogflareWeb.BillingAccountLive.PaymentMethodComponent,
+      id: :payment_method,
+      payment_methods: methods
+    )
 
     {:noreply, socket}
   end

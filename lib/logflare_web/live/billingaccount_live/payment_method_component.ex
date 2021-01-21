@@ -41,6 +41,10 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:ok, socket}
   end
 
+  def update(%{payment_methods: payment_methods}, socket) when is_list(payment_methods) do
+    {:ok, assign(socket, :payment_methods, payment_methods)}
+  end
+
   def handle_event("submit", _params, socket) do
     socket = socket |> push_event("submit", %{})
     {:noreply, socket}
@@ -64,27 +68,33 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    resp =
-      PaymentMethods.get_payment_method!(id)
-      |> PaymentMethods.delete_payment_method()
+    with payment_method <-
+           PaymentMethods.get_payment_method!(id),
+         {:ok, _resp} <-
+           PaymentMethods.delete_payment_method(payment_method) do
+      customer = socket.assigns.user.billing_account.stripe_customer
+      payment_methods = PaymentMethods.list_payment_methods_by(customer_id: customer)
 
-    case resp do
-      {:ok, _r} ->
-        customer = socket.assigns.user.billing_account.stripe_customer
-        payment_methods = PaymentMethods.list_payment_methods_by(customer_id: customer)
+      socket =
+        socket
+        |> assign(:payment_methods, payment_methods)
+        |> put_flash(:info, "Payment method deleted!")
+        |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
-        socket =
-          socket
-          |> assign(:payment_methods, payment_methods)
-          |> put_flash(:info, "Payment method deleted!")
-          |> push_patch(to: Routes.billing_account_path(socket, :edit))
-
-        {:noreply, socket}
-
+      {:noreply, socket}
+    else
       {:error, message} ->
         socket =
           socket
           |> put_flash(:error, message)
+          |> push_patch(to: Routes.billing_account_path(socket, :edit))
+
+        {:noreply, socket}
+
+      _err ->
+        socket =
+          socket
+          |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
           |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
         {:noreply, socket}
@@ -93,32 +103,47 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   def handle_event("sync", _params, socket) do
     customer = socket.assigns.user.billing_account.stripe_customer
-    {:ok, payment_methods} = PaymentMethods.sync_payment_methods(customer)
+    billing_account = socket.assigns.user.billing_account
+    user = socket.assigns.user
 
-    socket =
-      socket
-      |> assign(:payment_methods, payment_methods)
-      |> put_flash(:info, "Payment methods successfully synced!")
-      |> push_patch(to: Routes.billing_account_path(socket, :edit))
+    with {:ok, payment_methods} <- PaymentMethods.sync_payment_methods(customer),
+         {:ok, billing_account} <- BillingAccounts.sync_billing_account(billing_account) do
+      socket =
+        socket
+        |> assign(:user, Map.put(user, :billing_account, billing_account))
+        |> assign(:payment_methods, payment_methods)
+        |> put_flash(:info, "Payment methods successfully synced!")
+        |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_event("make-default", %{"stripe-id" => id}, socket) do
     billing_account = socket.assigns.user.billing_account
+    stripe_customer = billing_account.stripe_customer
+    user = socket.assigns.user
 
-    {:ok, billing_account} =
-      BillingAccounts.update_billing_account(billing_account, %{default_payment_method: id})
+    invoice_settings = %{
+      invoice_settings: %{
+        custom_fields: nil,
+        default_payment_method: id,
+        footer: nil
+      }
+    }
 
-    user = socket.assigns.user |> Map.put(:billing_account, billing_account)
+    with {:ok, billing_account} <-
+           BillingAccounts.update_billing_account(billing_account, %{default_payment_method: id}),
+         {:ok, _response} <-
+           BillingAccounts.Stripe.update_customer(stripe_customer, invoice_settings) do
+      socket =
+        socket
+        |> assign(:user, Map.put(user, :billing_account, billing_account))
+        |> put_flash(:info, "Default payment method updated!")
+        |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
-    socket =
-      socket
-      |> assign(:user, user)
-      |> put_flash(:info, "Default payment method updated!")
-      |> push_patch(to: Routes.billing_account_path(socket, :edit))
-
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def render(assigns) do

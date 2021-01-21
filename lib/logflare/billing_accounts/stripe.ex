@@ -149,6 +149,10 @@ defmodule Logflare.BillingAccounts.Stripe do
     Stripe.Customer.delete(id)
   end
 
+  def retrieve_customer(id) do
+    Stripe.Customer.retrieve(id)
+  end
+
   def create_subscription(id, pm_id, price_id) do
     items = [%{price: price_id}]
 
@@ -210,6 +214,17 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def update_subscription_item(id, params, opts \\ []) do
     Stripe.SubscriptionItem.update(id, params, opts)
+  end
+
+  def record_usage(subscription_item_id, usage) do
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+
+    params = %{
+      quantity: usage,
+      timestamp: timestamp
+    }
+
+    Stripe.SubscriptionItem.Usage.create(subscription_item_id, params)
   end
 
   def trial_end(days \\ @trial_days_default) do

@@ -152,7 +152,7 @@ defmodule Logflare.PaymentMethods do
       1 ->
         {:error, "You need at least one payment method!"}
 
-      err ->
+      _err ->
         {:error, "Failed to delete payment method!"}
     end
   end
