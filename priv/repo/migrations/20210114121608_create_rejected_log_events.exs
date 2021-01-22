@@ -10,12 +10,5 @@ defmodule Logflare.Repo.Migrations.CreateRejectedLogEvents do
       add :validation_error, :text
     end
 
-    execute("""
-    CREATE TRIGGER #{@table}_changefeed_trigger
-        AFTER INSERT OR UPDATE OR DELETE
-        ON #{@table}
-            FOR EACH ROW
-    EXECUTE PROCEDURE changefeed_notify();
-    """)
   end
 end

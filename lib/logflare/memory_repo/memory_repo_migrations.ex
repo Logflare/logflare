@@ -14,7 +14,9 @@ defmodule Logflare.MemoryRepo.Migrations do
   end
 
   def run() do
-    for %ChangefeedSubscription{schema: schema, table: table} <-
+    create_or_replace_pg_jsonb_object_changes!()
+    create_or_replace_pg_changefeed_notify!()
+    create_or_replace_pg_changefeed_notify_id_only!()
           Changefeeds.list_changefeed_subscriptions() do
       # delete_table_for_schema(schema)
       create_table_for_schema(schema)
@@ -64,5 +66,134 @@ defmodule Logflare.MemoryRepo.Migrations do
           type: :ordered_set
         )
     end
+  end
+
+  def create_or_replace_pg_jsonb_object_changes!() do
+    Repo.query!(
+      """
+        CREATE OR REPLACE FUNCTION jsonb_object_changes(old jsonb, new jsonb)
+          RETURNS jsonb
+          LANGUAGE sql
+          IMMUTABLE
+          STRICT
+        AS
+        $$
+        SELECT json_object_agg(key, new -> key)
+        FROM jsonb_object_keys(jsonb_concat(old, new)) AS key
+        WHERE old -> key <> new -> key
+          OR new -> key IS NULL
+          OR old -> key IS NULL
+        $$;
+      """,
+      [],
+      log: false
+    )
+  end
+
+  def create_or_replace_pg_changefeed_notify!() do
+    Repo.query!(
+      """
+        CREATE OR REPLACE FUNCTION changefeed_notify()
+          RETURNS trigger AS
+        $$
+        DECLARE
+          current_row RECORD;
+          changes     jsonb;
+        BEGIN
+          CASE
+            WHEN tg_op = 'INSERT' THEN
+              current_row := new;
+              changes := to_jsonb(current_row);
+            WHEN tg_op = 'UPDATE' THEN
+              current_row := new;
+              changes := jsonb_object_changes(to_jsonb(old), to_jsonb(new));
+            WHEN tg_op = 'DELETE' THEN
+              current_row := old;
+              changes = 'null'::jsonb;
+            ELSE
+              RAISE NOTICE 'TG_OP should never be anything then INSERT, UPDATE or DELETE';
+            END CASE;
+          PERFORM pg_notify(
+              tg_table_name || '_changefeed',
+              json_build_object(
+                  'table', tg_table_name,
+                  'type', tg_op,
+                  'id', current_row.id,
+                  'changes', changes
+                )::text
+            );
+          RETURN current_row;
+        END;
+        $$ LANGUAGE plpgsql;
+      """,
+      [],
+      log: false
+    )
+  end
+
+  def create_or_replace_pg_changefeed_notify_id_only!() do
+    Repo.query!(
+      """
+      CREATE OR REPLACE FUNCTION changefeed_id_only_notify()
+      RETURNS trigger AS
+      $$
+      DECLARE
+          current_row RECORD;
+      BEGIN
+          IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+              current_row := NEW;
+          ELSE
+              current_row := OLD;
+          END IF;
+          PERFORM pg_notify(
+                  TG_TABLE_NAME || '_id_only_changefeed',
+                  json_build_object(
+                          'table', TG_TABLE_NAME,
+                          'type', TG_OP,
+                          'id', current_row.id
+                      )::text
+              );
+          RETURN current_row;
+      END;
+      $$ LANGUAGE plpgsql;
+      """,
+      [],
+      log: false
+    )
+  end
+
+  def create_changefeed_trigger(%ChangefeedSubscription{id_only: id_only, table: table}) do
+    trigger = "#{table}_changefeed_trigger"
+
+    trigger =
+      if id_only do
+        trigger <> "_id_only"
+      else
+        trigger
+      end
+
+    Repo.query!(
+      """
+      DO $$
+      BEGIN
+        IF NOT EXISTS(SELECT *
+          FROM information_schema.triggers
+          WHERE event_object_table = '#{table}'
+          AND trigger_name = '#{trigger}'
+        )
+        THEN
+        CREATE TRIGGER #{trigger}
+            AFTER INSERT OR UPDATE OR DELETE
+            ON #{table}
+                FOR EACH ROW
+        EXECUTE PROCEDURE changefeed_notify();
+        END IF;
+      END;
+      $$
+
+      """,
+      [],
+      log: false
+    )
   end
 end
