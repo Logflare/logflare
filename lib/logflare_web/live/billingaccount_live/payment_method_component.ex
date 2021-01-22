@@ -82,6 +82,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
         socket =
           socket
+          |> clear_flash()
           |> put_flash(:info, "Payment method created!")
           |> assign(:payment_methods, methods)
 
@@ -103,6 +104,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       socket =
         socket
         |> assign(:payment_methods, payment_methods)
+        |> clear_flash()
         |> put_flash(:info, "Payment method deleted!")
         |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
@@ -111,6 +113,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       {:error, message} ->
         socket =
           socket
+          |> clear_flash()
           |> put_flash(:error, message)
           |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
@@ -119,6 +122,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       _err ->
         socket =
           socket
+          |> clear_flash()
           |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
           |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
@@ -137,6 +141,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         socket
         |> assign(:user, Map.put(user, :billing_account, billing_account))
         |> assign(:payment_methods, payment_methods)
+        |> clear_flash()
         |> put_flash(:info, "Payment methods successfully synced!")
         |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
@@ -164,6 +169,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       socket =
         socket
         |> assign(:user, Map.put(user, :billing_account, billing_account))
+        |> clear_flash()
         |> put_flash(:info, "Default payment method updated!")
         |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
