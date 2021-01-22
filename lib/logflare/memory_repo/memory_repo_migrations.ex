@@ -17,17 +17,22 @@ defmodule Logflare.MemoryRepo.Migrations do
     create_or_replace_pg_jsonb_object_changes!()
     create_or_replace_pg_changefeed_notify!()
     create_or_replace_pg_changefeed_notify_id_only!()
+
+    for %ChangefeedSubscription{schema: schema, table: table} = chg_sub <-
           Changefeeds.list_changefeed_subscriptions() do
       # delete_table_for_schema(schema)
-      create_table_for_schema(schema)
+      create_changefeed_trigger(chg_sub)
+      create_table_and_indexes(schema)
+
+      virtual_schema = Module.concat(schema, Virtual)
+
+      if Code.ensure_loaded?(virtual_schema) do
+        create_table_and_indexes(virtual_schema)
+      end
     end
 
     for {table, schema} <- Changefeeds.tables() do
-      create_table_for_schema(schema)
-    end
-
-    for %{schema: schema} <- Changefeeds.list_changefeed_subscriptions() do
-      create_table_for_schema_virtual_fields(schema)
+      create_table_and_indexes(schema)
     end
   end
 
@@ -35,37 +40,14 @@ defmodule Logflare.MemoryRepo.Migrations do
     :mnesia.delete_table(EctoSchemaReflection.source(schema))
   end
 
-  def create_table_for_schema(schema) do
+  def create_table_and_indexes(schema) do
     attributes =
-      EctoSchemaReflection.fields_no_embeds(schema) ++
-        EctoSchemaReflection.embeds(schema)
+      EctoSchemaReflection.fields_no_embeds(schema) ++ EctoSchemaReflection.embeds(schema)
 
     table = schema |> EctoSchemaReflection.source() |> String.to_atom()
 
-    {:atomic, :ok} =
-      :mnesia.create_table(table,
-        ram_copies: [node()],
-        record_name: schema,
-        attributes: attributes,
-        type: :ordered_set
-      )
-  end
-
-  def create_table_for_schema_virtual_fields(schema) do
-    attributes = EctoSchemaReflection.virtual_fields(schema)
-    virtual_schema = Module.concat(schema, Virtual)
-
-    if not Enum.empty?(attributes) do
-      table = :"#{EctoSchemaReflection.source(schema)}_virtual"
-
-      {:atomic, :ok} =
-        :mnesia.create_table(table,
-          ram_copies: [node()],
-          record_name: virtual_schema,
-          attributes: attributes ++ [:id],
-          type: :ordered_set
-        )
-    end
+    create_mnesia_table(table, schema, attributes)
+    create_mnesia_table_indexes(table, attributes)
   end
 
   def create_or_replace_pg_jsonb_object_changes!() do
@@ -195,5 +177,21 @@ defmodule Logflare.MemoryRepo.Migrations do
       [],
       log: false
     )
+  end
+
+  def create_mnesia_table(table, schema, attributes) do
+    {:atomic, :ok} =
+      :mnesia.create_table(table,
+        ram_copies: [node()],
+        record_name: schema,
+        attributes: attributes,
+        type: :ordered_set
+      )
+  end
+
+  def create_mnesia_table_indexes(table, attributes) do
+    for a <- attributes -- [:id] do
+      {:atomic, :ok} = :mnesia.add_table_index(table, a)
+    end
   end
 end
