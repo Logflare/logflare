@@ -178,7 +178,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     <li><%= String.upcase(p.brand) %> ending in <%= p.last_four %> expires <%= p.exp_month %>/<%= p.exp_year %> <%= delete_link(p, @myself) %> <%= if p.stripe_id == @user.billing_account.default_payment_method, do: nil, else: make_default(p, @myself) %></li>
     <% end %>
     </ul>
-    <div id="stripe-elements-form" class="w-50 mt-4">
+    <div id="stripe-elements-form" class="mt-4">
       <form id="payment-form" action="#" phx-submit="submit" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>" phx-target="<%= @myself %>">
         <div id="card-element">
           <!-- Elements will create input elements here -->
