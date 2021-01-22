@@ -89,6 +89,7 @@ defmodule LogflareWeb.StripeController do
           brand: object["card"]["brand"],
           exp_month: object["card"]["exp_month"],
           exp_year: object["card"]["exp_year"],
+          last_four: object["card"]["last4"],
           stripe_id: stripe_id
         }
 
