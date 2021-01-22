@@ -34,7 +34,7 @@ hooks.PaymentMethodForm = {
             displayError(event);
         });
 
-        hook.handleEvent("submit", () => createPaymentMethod(card, stripeCustomer, 'price_1HaODjLvvReWx3FxJLROGB9I'))
+        hook.handleEvent("submit", () => createPaymentMethod(card, stripeCustomer))
 
         function displayError(event) {
             let displayError = document.getElementById('card-element-errors');
@@ -56,7 +56,7 @@ hooks.PaymentMethodForm = {
             }
         };
 
-        function createPaymentMethod(cardElement, customerId, priceId) {
+        function createPaymentMethod(cardElement, customerId) {
             return stripe
                 .createPaymentMethod({
                     type: 'card',
@@ -72,8 +72,7 @@ hooks.PaymentMethodForm = {
                             exp_month: result.paymentMethod.card.exp_month,
                             exp_year: result.paymentMethod.card.exp_year,
                             stripe_id: result.paymentMethod.id,
-                            customer_id: customerId,
-                            price_id: priceId
+                            customer_id: customerId
                         })
                     }
                 });

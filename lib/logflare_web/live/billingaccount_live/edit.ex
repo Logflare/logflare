@@ -72,11 +72,22 @@ defmodule LogflareWeb.BillingAccountLive do
     {:noreply, socket}
   end
 
-  def handle_info({:update_payment_methods, methods}, socket) do
+  def handle_info({:update_payment_methods, callback, method}, socket) do
     send_update(
       LogflareWeb.BillingAccountLive.PaymentMethodComponent,
       id: :payment_method,
-      payment_methods: methods
+      callback: callback,
+      payment_methods: method
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:update_billing_account, ba}, socket) do
+    send_update(
+      LogflareWeb.BillingAccountLive.PaymentMethodComponent,
+      id: :payment_method,
+      billing_account: ba
     )
 
     {:noreply, socket}

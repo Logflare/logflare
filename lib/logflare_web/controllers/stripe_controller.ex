@@ -6,12 +6,14 @@ defmodule LogflareWeb.StripeController do
   alias Logflare.BillingAccounts
   alias Logflare.BillingAccounts.BillingAccount
   alias Logflare.PaymentMethods
+  alias Logflare.PaymentMethods.PaymentMethod
 
   def event(
         conn,
         %{"id" => id, "type" => type, "data" => %{"object" => %{"customer" => customer} = object}} =
           event
-      ) do
+      )
+      when is_binary(customer) do
     LogflareLogger.context(%{
       billing: %{
         event_id: id,
@@ -79,13 +81,120 @@ defmodule LogflareWeb.StripeController do
             conflict(conn)
         end
 
-      "payment_method" <> _sub_type ->
-        with {:ok, list} <- PaymentMethods.sync_payment_methods(customer) do
+      "payment_method.attached" ->
+        stripe_id = object["id"]
+
+        params = %{
+          customer_id: customer,
+          brand: object["card"]["brand"],
+          exp_month: object["card"]["exp_month"],
+          exp_year: object["card"]["exp_year"],
+          stripe_id: stripe_id
+        }
+
+        with nil <- PaymentMethods.get_payment_method_by(stripe_id: stripe_id),
+             {:ok, pm} <-
+               PaymentMethods.create_payment_method(params) do
           Phoenix.PubSub.broadcast(
             Logflare.PubSub,
             "billing",
-            {:update_payment_methods, list}
+            {:update_payment_methods, "attached", pm}
           )
+
+          ok(conn)
+        else
+          %PaymentMethod{} ->
+            conflict(conn)
+
+          err ->
+            log_error(err)
+
+            conflict(conn)
+        end
+
+      _else ->
+        not_implimented(conn)
+    end
+  end
+
+  def event(
+        conn,
+        %{
+          "id" => id,
+          "type" => type,
+          "data" => %{"object" => object, "previous_attributes" => %{"customer" => customer}}
+        } = _event
+      )
+      when is_binary(customer) do
+    LogflareLogger.context(%{
+      billing: %{
+        event_id: id,
+        customer: customer,
+        webhook_type: type
+      }
+    })
+
+    case type do
+      "payment_method.detached" ->
+        stripe_id = object["id"]
+
+        with %PaymentMethod{} = pm <- PaymentMethods.get_payment_method_by(stripe_id: stripe_id),
+             {:ok, _pm} <-
+               PaymentMethods.delete_payment_method(pm) do
+          Phoenix.PubSub.broadcast(
+            Logflare.PubSub,
+            "billing",
+            {:update_payment_methods, "detached", %PaymentMethod{stripe_id: stripe_id}}
+          )
+
+          ok(conn)
+        else
+          nil ->
+            conflict(conn)
+
+          err ->
+            log_error(err)
+
+            conflict(conn)
+        end
+
+      _else ->
+        not_implimented(conn)
+    end
+  end
+
+  def event(
+        conn,
+        %{
+          "id" => id,
+          "type" => type,
+          "data" => %{
+            "object" => %{"id" => customer, "invoice_settings" => invoice_settings} = _object
+          }
+        } = _event
+      )
+      when is_binary(customer) do
+    LogflareLogger.context(%{
+      billing: %{
+        event_id: id,
+        customer: customer,
+        webhook_type: type
+      }
+    })
+
+    case type do
+      "customer.updated" ->
+        with billing_account <-
+               BillingAccounts.get_billing_account_by(stripe_customer: customer),
+             {:ok, billing_account} <-
+               BillingAccounts.update_billing_account(billing_account, invoice_settings) do
+          Phoenix.PubSub.broadcast(
+            Logflare.PubSub,
+            "billing",
+            {:update_billing_account, billing_account}
+          )
+
+          ok(conn)
         else
           err ->
             log_error(err)

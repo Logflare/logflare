@@ -15,6 +15,11 @@ defmodule Logflare.PaymentMethods do
     |> Repo.all()
   end
 
+  def get_payment_method_by(kv) do
+    PaymentMethod
+    |> Repo.get_by(kv)
+  end
+
   def delete_all_payment_methods_by(kv) do
     PaymentMethod
     |> where(^kv)
@@ -137,7 +142,12 @@ defmodule Logflare.PaymentMethods do
       {:error, %Ecto.Changeset{}}
 
   """
+
   def delete_payment_method(%PaymentMethod{} = payment_method) do
+    Repo.delete(payment_method)
+  end
+
+  def delete_payment_method_with_stripe(%PaymentMethod{} = payment_method) do
     with methods <- list_payment_methods_by(customer_id: payment_method.customer_id),
          count when count > 1 <- Enum.count(methods),
          {:ok, _respons} <-

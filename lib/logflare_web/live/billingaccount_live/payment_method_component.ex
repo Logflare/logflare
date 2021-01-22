@@ -41,8 +41,33 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:ok, socket}
   end
 
-  def update(%{payment_methods: payment_methods}, socket) when is_list(payment_methods) do
-    {:ok, assign(socket, :payment_methods, payment_methods)}
+  def update(%{payment_methods: pm, callback: type}, socket) do
+    payment_methods = socket.assigns.payment_methods
+
+    methods =
+      case type do
+        "attached" ->
+          payment_methods ++ [pm]
+
+        "detached" ->
+          Enum.reject(payment_methods, fn x -> x.stripe_id == pm.stripe_id end)
+      end
+
+    socket =
+      socket
+      |> assign(:payment_methods, methods)
+
+    {:ok, socket}
+  end
+
+  def update(%{billing_account: ba}, socket) do
+    user = Map.put(socket.assigns.user, :billing_account, ba)
+
+    socket =
+      socket
+      |> assign(:user, user)
+
+    {:ok, socket}
   end
 
   def handle_event("submit", _params, socket) do
@@ -71,7 +96,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     with payment_method <-
            PaymentMethods.get_payment_method!(id),
          {:ok, _resp} <-
-           PaymentMethods.delete_payment_method(payment_method) do
+           PaymentMethods.delete_payment_method_with_stripe(payment_method) do
       customer = socket.assigns.user.billing_account.stripe_customer
       payment_methods = PaymentMethods.list_payment_methods_by(customer_id: customer)
 
