@@ -3,6 +3,7 @@ defmodule Logflare.Source.BillingWriter do
 
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.BillingCounts
+  alias Logflare.BillingAccounts
   alias Logflare.Source.Data
 
   require Logger
@@ -24,16 +25,10 @@ defmodule Logflare.Source.BillingWriter do
     count = node_count - last_count
 
     if count > 0 do
-      BillingCounts.insert(rls.user, rls.source, %{
-        node: Atom.to_string(Node.self()),
-        count: count
-      })
-      |> case do
-        {:ok, _resp} ->
-          :noop
+      record_to_db(rls, count)
 
-        {:error, _resp} ->
-          Logger.error("Error inserting billing count!", source_id: rls.source.token)
+      if rls.plan.type == "metered" do
+        record_to_stripe(rls, count)
       end
     end
 
@@ -54,5 +49,36 @@ defmodule Logflare.Source.BillingWriter do
 
   defp name(source_id) do
     String.to_atom("#{source_id}" <> "-bw")
+  end
+
+  defp record_to_stripe(rls, count) do
+    billing_account = rls.user.billing_account
+
+    with {:ok, si} <-
+           BillingAccounts.get_billing_account_stripe_subscription_item(billing_account),
+         {:ok, _response} <-
+           BillingAccounts.Stripe.record_usage(si["id"], count) do
+      :noop
+    else
+      {:error, _resp} ->
+        Logger.error("Error recording usage with Stripe",
+          source_id: rls.source.token
+        )
+    end
+  end
+
+  defp record_to_db(rls, count) do
+    with {:ok, _resp} <-
+           BillingCounts.insert(rls.user, rls.source, %{
+             node: Atom.to_string(Node.self()),
+             count: count
+           }) do
+      :noop
+    else
+      {:error, _resp} ->
+        Logger.error("Error inserting billing count!",
+          source_id: rls.source.token
+        )
+    end
   end
 end

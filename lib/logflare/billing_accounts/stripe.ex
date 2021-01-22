@@ -10,6 +10,8 @@ defmodule Logflare.BillingAccounts.Stripe do
   alias Logflare.User
   alias Logflare.Sources
 
+  @trial_days_default 15
+
   def create_add_credit_card_session(%BillingAccount{} = billing_account) do
     stripe_customer_id = billing_account.stripe_customer
     [subscription] = billing_account.stripe_subscriptions["data"]
@@ -71,6 +73,28 @@ defmodule Logflare.BillingAccounts.Stripe do
     Stripe.Session.create(params)
   end
 
+  def create_metered_customer_session(
+        %User{
+          sources: sources,
+          billing_account: %BillingAccount{stripe_customer: stripe_customer_id}
+        } = _user,
+        %Plan{stripe_id: stripe_id} = _plan
+      ) do
+    params = %{
+      customer: stripe_customer_id,
+      mode: "subscription",
+      payment_method_types: ["card"],
+      success_url: Routes.billing_url(Endpoint, :success),
+      cancel_url: Routes.billing_url(Endpoint, :abandoned),
+      line_items: [
+        %{price: stripe_id}
+      ],
+      subscription_data: %{trial_end: trial_end()}
+    }
+
+    Stripe.Session.create(params)
+  end
+
   def find_completed_session(session_id) do
     with {:ok, %Stripe.List{data: events}} <-
            list_stripe_events_by(%{type: "checkout.session.completed"}),
@@ -125,6 +149,44 @@ defmodule Logflare.BillingAccounts.Stripe do
     Stripe.Customer.delete(id)
   end
 
+  def retrieve_customer(id) do
+    Stripe.Customer.retrieve(id)
+  end
+
+  def create_subscription(id, pm_id, price_id) do
+    items = [%{price: price_id}]
+
+    response =
+      with {:ok, _response} <- attatch_payment_method(id, pm_id),
+           {:ok, response} <-
+             Stripe.Subscription.create(%{
+               customer: id,
+               default_payment_method: pm_id,
+               items: items
+             }) do
+        {:ok, response}
+      else
+        err -> err
+      end
+
+    response
+  end
+
+  def attatch_payment_method(id, pm_id) do
+    response = Stripe.PaymentMethod.attach(%{customer: id, payment_method: pm_id})
+    response
+  end
+
+  def detach_payment_method(pm_id) do
+    response = Stripe.PaymentMethod.detach(%{payment_method: pm_id})
+    response
+  end
+
+  def list_payment_methods(id) do
+    response = Stripe.PaymentMethod.list(%{customer: id, type: :card})
+    response
+  end
+
   def delete_subscription(id) do
     Stripe.Subscription.delete(id)
   end
@@ -152,5 +214,22 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def update_subscription_item(id, params, opts \\ []) do
     Stripe.SubscriptionItem.update(id, params, opts)
+  end
+
+  def record_usage(subscription_item_id, usage) do
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+
+    params = %{
+      quantity: usage,
+      timestamp: timestamp
+    }
+
+    Stripe.SubscriptionItem.Usage.create(subscription_item_id, params)
+  end
+
+  def trial_end(days \\ @trial_days_default) do
+    DateTime.utc_now()
+    |> DateTime.add(:timer.hours(24) * days, :millisecond)
+    |> DateTime.to_unix()
   end
 end

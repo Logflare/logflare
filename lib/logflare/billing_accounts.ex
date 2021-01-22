@@ -120,10 +120,12 @@ defmodule Logflare.BillingAccounts do
         attrs \\ %{}
       ) do
     with {:ok, subscriptions} <- BillingAccounts.Stripe.list_customer_subscriptions(customer_id),
-         {:ok, invoices} <- BillingAccounts.Stripe.list_customer_invoices(customer_id) do
+         {:ok, invoices} <- BillingAccounts.Stripe.list_customer_invoices(customer_id),
+         {:ok, customer} <- BillingAccounts.Stripe.retrieve_customer(customer_id) do
       attrs =
         Map.put(attrs, :stripe_subscriptions, subscriptions)
         |> Map.put(:stripe_invoices, invoices)
+        |> Map.put(:default_payment_method, customer.invoice_settings.default_payment_method)
 
       update_billing_account(billing_account, attrs)
     else
@@ -148,6 +150,11 @@ defmodule Logflare.BillingAccounts do
     billing_account
     |> BillingAccount.changeset(attrs)
     |> Repo.update()
+  end
+
+  def preload_payment_methods(billing_account) do
+    billing_account
+    |> Repo.preload(:payment_methods)
   end
 
   @doc """

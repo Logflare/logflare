@@ -128,7 +128,11 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
       when is_atom(source_id) do
-    user = Users.get(source.user_id) |> Users.maybe_preload_bigquery_defaults()
+    user =
+      Users.get(source.user_id)
+      |> Users.maybe_preload_bigquery_defaults()
+      |> Users.preload_billing_account()
+
     plan = Plans.get_plan_by_user(user)
 
     rls = %{

@@ -15,6 +15,7 @@ defmodule Logflare.Plans.Plan do
     field :limit_team_users_limit, :integer, default: 2
     field :limit_source_fields_limit, :integer, default: 500
     field :limit_source_ttl, :integer, default: :timer.hours(72)
+    field :type, :string, default: "standard", nullable: false
 
     timestamps()
   end
@@ -38,7 +39,8 @@ defmodule Logflare.Plans.Plan do
       :limit_saved_search_limit,
       :limit_team_users_limit,
       :limit_source_fields_limit,
-      :limit_source_ttl
+      :limit_source_ttl,
+      :type
     ])
     |> validate_required([
       :name,
@@ -51,7 +53,8 @@ defmodule Logflare.Plans.Plan do
       :limit_saved_search_limit,
       :limit_team_users_limit,
       :limit_source_fields_limit,
-      :limit_source_ttl
+      :limit_source_ttl,
+      :type
     ])
   end
 end
