@@ -118,6 +118,28 @@ defmodule LogflareWeb.BillingController do
 
   def confirm_subscription(
         %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
+        %{"stripe_id" => stripe_id, "type" => "metered"}
+      ) do
+    with plan <- Plans.get_plan_by(stripe_id: stripe_id),
+         false <- billing_accoount_has_subscription?(billing_account),
+         false <- billing_account.lifetime_plan?,
+         {:ok, session} <- Stripe.create_metered_customer_session(user, plan) do
+      conn
+      |> put_session(:stripe_session, session)
+      |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
+    else
+      true ->
+        error_and_redirect(conn, "Please delete your current subscription first!")
+
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn, @default_error_message)
+    end
+  end
+
+  def confirm_subscription(
+        %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id}
       ) do
     with plan <- Plans.get_plan_by(stripe_id: stripe_id),

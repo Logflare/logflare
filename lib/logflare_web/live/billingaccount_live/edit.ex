@@ -11,6 +11,10 @@ defmodule LogflareWeb.BillingAccountLive do
 
   @impl true
   def mount(_params, %{"user_id" => user_id}, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "billing")
+    end
+
     user =
       Users.get(user_id)
       |> Users.preload_sources()
@@ -37,6 +41,7 @@ defmodule LogflareWeb.BillingAccountLive do
           |> assign(:plans, Plans.list_plans())
           |> assign(:plan, plan)
           |> assign(:user, user)
+          |> assign(:payment_methods, [])
 
         {:ok, socket}
     end
@@ -44,12 +49,6 @@ defmodule LogflareWeb.BillingAccountLive do
 
   @impl true
   def handle_params(_params, _uri, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:chart_tick, counter}, socket) do
-    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
-
     {:noreply, socket}
   end
 
@@ -62,6 +61,33 @@ defmodule LogflareWeb.BillingAccountLive do
       id: :chart,
       user: user,
       days: String.to_integer(days)
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:chart_tick, counter}, socket) do
+    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:update_payment_methods, callback, method}, socket) do
+    send_update(
+      LogflareWeb.BillingAccountLive.PaymentMethodComponent,
+      id: :payment_method,
+      callback: callback,
+      payment_methods: method
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:update_billing_account, ba}, socket) do
+    send_update(
+      LogflareWeb.BillingAccountLive.PaymentMethodComponent,
+      id: :payment_method,
+      billing_account: ba
     )
 
     {:noreply, socket}

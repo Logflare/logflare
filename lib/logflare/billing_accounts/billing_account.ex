@@ -9,6 +9,7 @@ defmodule Logflare.BillingAccounts.BillingAccount do
     field :stripe_invoices, :map
     field :lifetime_plan?, :boolean, default: false, nullable: false
     field :lifetime_plan_invoice, :string
+    field :default_payment_method, :string
     belongs_to :user, Logflare.User
 
     timestamps()
@@ -23,7 +24,8 @@ defmodule Logflare.BillingAccounts.BillingAccount do
       :stripe_subscriptions,
       :stripe_invoices,
       :lifetime_plan?,
-      :lifetime_plan_invoice
+      :lifetime_plan_invoice,
+      :default_payment_method
     ])
     |> validate_required([:user_id, :stripe_customer])
     |> unique_constraint(:user_id)
