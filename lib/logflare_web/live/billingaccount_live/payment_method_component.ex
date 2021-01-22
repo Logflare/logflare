@@ -191,9 +191,9 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         </div>
         <!-- We'll put the error messages in this element -->
         <div id="card-element-errors" role="alert"></div>
-        <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">Add payment method</button>
+        <a type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">Add payment method</a>
       </form>
-      <button phx-click="sync" phx-disable-with="Syncing..." phx-target="<%= @myself %>" class="btn btn-dark btn-sm">Sync payment methods</button>
+      <a phx-click="sync" phx-disable-with="Syncing..." phx-target="<%= @myself %>" class="btn btn-dark btn-sm">Sync payment methods</a>
     </div>
 
     """
@@ -201,13 +201,13 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   defp delete_link(p, myself) do
     ~E"""
-    <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id="<%= p.id %>" phx-target="<%= myself %>" class="btn btn-danger btn-sm m-3">Delete</button>
+    <a phx-click="delete" phx-disable-with="Deleting..." phx-value-id="<%= p.id %>" phx-target="<%= myself %>" class="btn btn-danger btn-sm m-3">Delete</a>
     """
   end
 
   defp make_default(p, myself) do
     ~E"""
-    <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</button>
+    <a phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</a>
     """
   end
 end
