@@ -136,4 +136,5 @@
   "unidecode": {:hex, :unidecode, "0.0.2", "485fe257dd45081d5d8f376dfd7129994c3e383d52df96455c6367d3789e9171", [:mix], [{:con_cache, ">= 0.13.0", [hex: :con_cache, repo: "hexpm", optional: false]}], "hexpm", "ab7c0577a897e5651d57ed2fa9014eb60c60ac5f90847cb1ae8daf474494810d"},
   "unsafe": {:hex, :unsafe, "1.0.1", "a27e1874f72ee49312e0a9ec2e0b27924214a05e3ddac90e91727bc76f8613d8", [:mix], [], "hexpm", "6c7729a2d214806450d29766abc2afaa7a2cbecf415be64f36a6691afebb50e5"},
   "uri_query": {:hex, :uri_query, "0.1.2", "ae35b83b472f3568c2c159eee3f3ccf585375d8a94fb5382db1ea3589e75c3b4", [:mix], [], "hexpm", "e3bc81816c98502c36498b9b2f239b89c71ce5eadfff7ceb2d6c0a2e6ae2ea0c"},
+  "warpath": {:hex, :warpath, "0.5.0", "906ca2efe1bbd07f2dafc2159897e2cb3068e567210c81c2d9858addc172df50", [:mix], [{:jason, "~> 1.2", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "a9b4f518bfce91818fd52bc8e7656259844167436f14c0c1a01a6ca7e061f671"},
 }

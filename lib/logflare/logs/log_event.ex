@@ -40,7 +40,7 @@ defmodule Logflare.LogEvent do
   def mapper(params, source) do
     message = make_message(params, source)
     metadata = params["metadata"] || params[:metadata]
-    id = params["id"] || params[:id]
+    id = id(params)
 
     timestamp =
       case params["timestamp"] || params[:timestamp] do
@@ -177,6 +177,8 @@ defmodule Logflare.LogEvent do
         params["event_message"] ||
         params[:event_message]
 
+    id = id(params)
+
     if from == "ingest" && source.custom_event_message_keys do
       custom_message_keys =
         source.custom_event_message_keys
@@ -185,19 +187,36 @@ defmodule Logflare.LogEvent do
 
       Enum.map(custom_message_keys, fn x ->
         case x do
+          "id" ->
+            id
+
           "message" ->
             message
 
-          _ ->
-            path = x |> String.split(".")
+          "metadata." <> rest ->
+            query_json(params, "$.metadata.#{rest}")
 
-            get_in(params, path)
-            |> inspect()
+          "m." <> rest ->
+            query_json(params, "$.metadata.#{rest}")
         end
       end)
       |> Enum.join(" | ")
     else
       message
     end
+  end
+
+  defp query_json(params, query) do
+    case Warpath.query(params, query) do
+      {:ok, v} ->
+        inspect(v)
+
+      {:error, _} ->
+        "json_path_query_error"
+    end
+  end
+
+  defp id(params) do
+    params["id"] || params[:id]
   end
 end
