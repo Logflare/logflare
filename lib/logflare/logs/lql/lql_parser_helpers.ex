@@ -415,7 +415,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def datetime_with_range() do
-    integer(4)
+    integer_with_range(4)
     |> tag(:year)
     |> ignore(string("-"))
     |> concat(
