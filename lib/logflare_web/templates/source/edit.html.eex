@@ -173,7 +173,7 @@
   <% end %>
 
   <%= section_header("Custom Event Message") %>
-  <p>Comma separated list of metadata keys to customize the log event message. Use <code>message</code> to target the default log event message.</p>
+  <p>Comma separated list of metadata keys to customize the log event message. Use <code>message</code> to target the default log event message. Use JSONpath queries to target more complex nested data structures. The root (<code>$.</code>) is implied here.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
   <div class="form-group">
     <%= text_input aa, :custom_event_message_keys, placeholder: "metadata.field.key, metadata.field.another_key", class: "form-control form-control-margin" %>

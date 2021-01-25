@@ -99,6 +99,7 @@ defmodule Logflare.Mixfile do
       # Parsing
       {:bertex, ">= 0.0.0"},
       {:nimble_parsec, "~> 1.0"},
+      {:warpath, "~> 0.5.0"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
