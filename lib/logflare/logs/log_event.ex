@@ -34,14 +34,11 @@ defmodule Logflare.LogEvent do
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
     field :ephemeral?, :boolean
+    field :make_from, :string
   end
 
-  def mapper(params) do
-    message =
-      params["custom_message"] || params["log_entry"] || params["message"] ||
-        params["event_message"] ||
-        params[:event_message]
-
+  def mapper(params, source) do
+    message = make_message(params, source)
     metadata = params["metadata"] || params[:metadata]
     id = params["id"] || params[:id]
 
@@ -73,7 +70,8 @@ defmodule Logflare.LogEvent do
         "timestamp" => timestamp
       },
       "id" => id,
-      "ephemeral?" => params[:ephemeral?]
+      "ephemeral?" => params[:ephemeral?],
+      "make_from" => params[:make_from]
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
@@ -86,7 +84,7 @@ defmodule Logflare.LogEvent do
         [] -> %{}
         [metadata] -> metadata
       end)
-      |> mapper()
+      |> mapper(source)
 
     changes =
       %__MODULE__{}
@@ -107,7 +105,7 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:valid?, :validation_error, :ephemeral?])
+      |> cast(mapper(params, source), [:valid?, :validation_error, :ephemeral?, :make_from])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> cast_embed(:body, with: &make_body/2)
       |> validate_required([:body])
@@ -168,5 +166,37 @@ defmodule Logflare.LogEvent do
       joined_errors = inspect(v)
       "#{acc}#{k}: #{joined_errors}\n"
     end)
+  end
+
+  defp make_message(params, source) do
+    from = params[:make_from]
+
+    message =
+      params["log_entry"] || params["message"] ||
+        params["event_message"] ||
+        params[:event_message]
+
+    if from == "ingest" && source.custom_event_message_keys do
+      custom_message_keys =
+        source.custom_event_message_keys
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+
+      Enum.map(custom_message_keys, fn x ->
+        case x do
+          "message" ->
+            message
+
+          _ ->
+            path = x |> String.split(".")
+
+            get_in(params, path)
+            |> inspect()
+        end
+      end)
+      |> Enum.join(" | ")
+    else
+      message
+    end
   end
 end

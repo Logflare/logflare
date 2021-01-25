@@ -17,7 +17,7 @@ defmodule Logflare.Logs do
     log_params_batch
     |> Enum.map(&IngestTypecasting.maybe_apply_transform_directives/1)
     |> Enum.map(&IngestTransformers.transform(&1, :to_bigquery_column_spec))
-    |> Enum.map(&maybe_customize_event_message(&1, source))
+    |> Enum.map(&Map.put(&1, :make_from, "ingest"))
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
       if le.valid? do
@@ -62,24 +62,5 @@ defmodule Logflare.Logs do
     :ok = Source.ChannelTopics.broadcast_new(le)
 
     :ok
-  end
-
-  defp maybe_customize_event_message(event, source) do
-    if source.custom_event_message_keys do
-      custom_message_keys = source.custom_event_message_keys |> String.split(",", trim: true)
-
-      custom_message =
-        Enum.map(custom_message_keys, fn x ->
-          path = x |> String.trim() |> String.split(".")
-          value = get_in(event, path)
-
-          inspect(value)
-        end)
-        |> Enum.join(" | ")
-
-      Map.put(event, "custom_message", custom_message)
-    else
-      event
-    end
   end
 end
