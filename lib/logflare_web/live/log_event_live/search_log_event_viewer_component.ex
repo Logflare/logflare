@@ -46,11 +46,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     socket =
       if le do
         socket
-        |> assign(assigns)
+        |> assign(Map.delete(assigns, :flash))
         |> assign(:log_event, le)
       else
         start_task(path: path, value: log_id, partitions_range: [dminus3, dplus1], source: source)
-        assign(socket, assigns)
+        assign(socket, Map.delete(assigns, :flash))
       end
 
     socket = assign(socket, source: source)
@@ -71,11 +71,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     socket =
       if le do
         socket
-        |> assign(assigns)
+        |> assign(Map.delete(assigns, :flash))
         |> assign(:log_event, le)
       else
         start_task(uuid: id, partitions_range: [dminus1, dplus1], source: assigns.source)
-        assign(socket, assigns)
+        assign(socket, Map.delete(assigns, :flash))
       end
 
     {:ok, socket}
