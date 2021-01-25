@@ -84,11 +84,12 @@ defmodule Logflare.LogEvent do
         [] -> %{}
         [metadata] -> metadata
       end)
+      |> Map.put(:make_from, "db")
       |> mapper(source)
 
     changes =
       %__MODULE__{}
-      |> cast(params, [:valid?, :validation_error, :id])
+      |> cast(params, [:valid?, :validation_error, :id, :make_from])
       |> cast_embed(:body, with: &make_body/2)
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> Map.get(:changes)
