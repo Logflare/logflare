@@ -1146,6 +1146,33 @@ defmodule Logflare.LqlParserTest do
                   ]
                 }
               ]} == Parser.parse("timestamp:2020-05-01T14:00:05.{000001..460560}Z", @schema)
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [
+                    ~N[2020-12-24 00:00:00],
+                    ~N[2021-01-24 23:59:00]
+                  ]
+                }
+              ]} == Parser.parse("t:{2020..2021}-{12..01}-24T{00..23}:{00..59}:00", @schema)
+
+      assert {:ok,
+              [
+                %Logflare.Lql.FilterRule{
+                  modifiers: %{},
+                  operator: :range,
+                  path: "timestamp",
+                  shorthand: nil,
+                  value: nil,
+                  values: [~D[2020-12-24], ~D[2021-01-24]]
+                }
+              ]} == Parser.parse("t:{2020..2021}-{12..01}-24", @schema)
     end
 
     test "m,t shorthands" do
@@ -1675,10 +1702,17 @@ defmodule Logflare.LqlParserTest do
         metadata.user.id:1
        |
 
-      assert {
-               :error,
-               "LQL Parser error: path 'metadata.user.id' not present in source schema. Did you mean 'metadata.user.user_id'?"
-             } == Parser.parse(str, schema)
+      {
+        :error,
+        :field_not_found,
+        "\n        metadata.user.user_id:1\n       ",
+        [
+          "LQL Parser error: path 'metadata.user.id' not present in source schema. Did you mean '",
+          "metadata.user.user_id",
+          "'?"
+        ]
+      } ==
+        Parser.parse(str, schema)
     end
 
     test "returns human readable error for invalid query" do
