@@ -94,7 +94,7 @@
                 <% end %>
               </td>
               <td><%= if sub["trial_end"] do %>
-                  DateTime.from_unix!(sub["trial_end"])
+                  <%= DateTime.from_unix!(sub["trial_end"]) %>
                 <% end %>
               </td>
               <td>
