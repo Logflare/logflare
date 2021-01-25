@@ -1,1 +1,14 @@
-<%= live_component(@socket, LogflareWeb.Search.LogEventViewerComponent, Map.merge(assigns, %{id: :log_event_viewer, source: @source})) %>
+<div class="subhead subhead-fixed">
+    <div class="container mx-auto">
+        <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/event
+        </h5>
+        <div class="log-settings">
+            <ul>
+                <li></li>
+            </ul>
+        </div>
+    </div>
+</div>
+<div class="container">
+    <%= live_component(@socket, LogflareWeb.Search.LogEventViewerComponent, Map.merge(assigns, %{id: :log_event_viewer, source: @source})) %>
+</div>
