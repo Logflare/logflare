@@ -10,7 +10,18 @@ defmodule Logflare.DeriveVirtualDecorator do
       if is_struct(result) do
         [_, assoc | _] = unquote(args)
 
-        %{result | assoc => merge_virtual(Map.get(result, assoc))}
+        new_assoc =
+          case assoc do
+            [{k, %Ecto.Query{} = v} | _] = kw when is_list(kw) and is_atom(k) and is_struct(v) ->
+              kw
+
+            x when is_atom(x) ->
+              result
+              |> Map.get(assoc)
+              |> merge_virtual()
+          end
+
+        %{result | assoc => new_assoc}
       else
         result
       end
