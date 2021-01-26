@@ -37,8 +37,9 @@ defmodule Logflare.Application do
       ),
       Repo,
       MemoryRepo,
-      MemoryRepo.Sync,
-      {MemoryRepo.ChangefeedsListener, [MemoryRepo.list_changefeeds()]},
+      MemoryRepo.Migrations,
+      # MemoryRepo.Sync,
+      {MemoryRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -49,9 +50,10 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       Repo,
+      MemoryRepo.Migrations,
       MemoryRepo,
       MemoryRepo.Sync,
-      {MemoryRepo.ChangefeedsListener, [MemoryRepo.list_changefeeds()]},
+      {MemoryRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,

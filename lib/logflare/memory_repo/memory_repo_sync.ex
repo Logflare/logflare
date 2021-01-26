@@ -102,39 +102,14 @@ defmodule Logflare.MemoryRepo.Sync do
   end
 
   def sync_table(%ChangefeedSubscription{schema: schema}) do
-    virtual_schema = Module.concat(schema, Virtual)
-    loaded? = Code.ensure_loaded?(virtual_schema)
-
-    for x <- Repo.all(schema) |> replace_assocs_with_nils(schema) do
+    for x <- Repo.all(schema) |> Changefeeds.replace_assocs_with_nils(schema) do
       {:ok, struct} = MemoryRepo.insert(x)
 
-      if loaded? do
-        virtual_struct =
-          struct(
-            virtual_schema,
-            %{schema.compute_virtual_fields(struct) | id: struct.id} |> Map.to_list()
-          )
-
-        {:ok, _} =
-          MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
-      end
+      :ok = Changefeeds.maybe_insert_virtual(struct)
     end
 
     Logger.debug("Synced memory repo for #{schema} schema")
 
     :ok
-  end
-
-  def replace_assocs_with_nils(xs, schema) do
-    for x <- xs do
-      for af <- EctoSchemaReflection.associations(schema), reduce: x do
-        acc ->
-          case schema.__schema__(:association, af) do
-            %Ecto.Association.BelongsTo{cardinality: :one} -> Map.replace!(acc, af, nil)
-            %Ecto.Association.Has{cardinality: :one} -> Map.replace!(acc, af, nil)
-            %Ecto.Association.Has{cardinality: :many} -> Map.replace!(acc, af, [])
-          end
-      end
-    end
   end
 end

@@ -15,7 +15,8 @@ defmodule Logflare.MemoryRepo.ChangefeedsSupervisor do
 
     children =
       for changefeed <- changefeeds do
-        {MemoryRepo.ChangefeedListener, [%{notifications_pid: pid, changefeed: changefeed}]}
+        {MemoryRepo.ChangefeedListener,
+         [%{notifications_pid: pid, changefeed: changefeed}, [name: :"#{changefeed}_listener"]]}
       end
 
     Supervisor.init(children, strategy: :one_for_one)

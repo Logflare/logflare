@@ -32,7 +32,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
           {String.to_atom(k), v}
         end)
         |> Enum.map(fn
-          {:id, v} -> {:id, String.to_integer(v)}
+          {:id, v} -> {:id, v}
           {k, v} -> {k, v}
         end)
 
@@ -40,8 +40,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
         __MODULE__,
         kvs ++
           [
-            changefeed_subscription:
-              Changefeeds.get_changefeed_subscription_by_table([kvs[:table]])
+            changefeed_subscription: Changefeeds.get_changefeed_subscription_by_table(kvs[:table])
           ]
       )
     end
@@ -93,13 +92,15 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     {1, nil} = MemoryRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
-  def process_notification(_channel_name, %{"type" => "INSERT"} = payload) do
+  def process_notification(channel_name, %{"type" => "INSERT"} = payload)
+      when not changefeed_with_id_only?(channel_name) do
     chfd_event = ChangefeedEvent.build(payload)
 
-    schema = chfd_event.changefeed_subscription.schema
-    changeset = to_changeset(schema, chfd_event)
+    changeset = to_changeset(chfd_event)
 
-    {:ok, _} = MemoryRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
+    {:ok, struct} = MemoryRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
+
+    Changefeeds.maybe_insert_virtual(struct)
   end
 
   def process_notification(_channel_name, %{"type" => "UPDATE", "changes" => changes} = payload)
@@ -109,21 +110,12 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     schema = chfd_event.changefeed_subscription.schema
     struct = MemoryRepo.get(schema, chfd_event.id)
     changeset = to_changeset(struct, chfd_event)
+    changeset = Ecto.Changeset.force_change(changeset, :updated_at, struct.updated_at)
+    changeset = Ecto.Changeset.force_change(changeset, :inserted_at, struct.inserted_at)
 
     {:ok, struct} = MemoryRepo.update(changeset)
 
-    virtual_schema = Module.concat(schema, Virtual)
-
-    if Code.ensure_loaded?(virtual_schema) do
-      virtual_struct =
-        struct(virtual_schema, %{
-          schema.compute_virtual_fields(struct)
-          | id: struct.id
-        })
-
-      {:ok, _} =
-        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
-    end
+    Changefeeds.maybe_insert_virtual(struct)
   end
 
   def process_notification(
@@ -134,7 +126,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     chfd_event = ChangefeedEvent.build(payload)
 
     schema = chfd_event.changefeed_subscription.schema
-    struct = Repo.get(schema, id)
+    struct = Repo.get(schema, id) |> Changefeeds.replace_assocs_with_nils()
 
     {:ok, struct} =
       MemoryRepo.insert(struct,
@@ -142,26 +134,15 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
         conflict_target: :id
       )
 
-    virtual_schema = Module.concat(schema, Virtual)
-
-    if Code.ensure_loaded?(virtual_schema) do
-      virtual_struct =
-        struct(virtual_schema, %{
-          schema.compute_virtual_fields(struct)
-          | id: struct.id
-        })
-
-      {:ok, _} =
-        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
-    end
+    Changefeeds.maybe_insert_virtual(struct)
   end
 
   def process_notification(_channel_name, %{"type" => type} = payload)
       when type in ["UPDATE", "INSERT"] do
     chfd_event = ChangefeedEvent.build(payload)
 
-    schema = chfd_event.changefeed_subscription.schema
-    changeset = to_changeset(schema, chfd_event)
+    # schema = chfd_event.changefeed_subscription.schema
+    changeset = to_changeset(chfd_event)
 
     {:ok, struct} =
       MemoryRepo.insert(changeset,
@@ -169,25 +150,14 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
         conflict_target: :id
       )
 
-    virtual_schema = Module.concat(schema, Virtual)
-
-    if Code.ensure_loaded?(virtual_schema) do
-      virtual_struct =
-        struct(virtual_schema, %{
-          schema.compute_virtual_fields(struct)
-          | id: struct.id
-        })
-
-      {:ok, _} =
-        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
-    end
+    Changefeeds.maybe_insert_virtual(struct)
   end
 
   def to_changeset(chfd_event) do
-    chfd_event.schema.changefeed_changeset(chfd_event.changes)
+    chfd_event.changefeed_subscription.schema.changefeed_changeset(chfd_event.changes)
   end
 
   def to_changeset(struct, chfd_event) do
-    chfd_event.schema.changefeed_changeset(struct, chfd_event.changes)
+    chfd_event.changefeed_subscription.schema.changefeed_changeset(struct, chfd_event.changes)
   end
 end

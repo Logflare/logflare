@@ -62,6 +62,8 @@ defmodule Logflare.Commons do
 
       alias Logflare.EctoSchemaReflection
       alias Logflare.EctoChangesetExtras
+
+      alias Logflare.Changefeeds
     end
   end
 end
