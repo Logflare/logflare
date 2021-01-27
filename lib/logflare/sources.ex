@@ -59,7 +59,8 @@ defmodule Logflare.Sources do
   end
 
   def update_source(source, attrs) do
-    Source.changeset(source, attrs)
+    source
+    |> Source.changeset(attrs)
     |> RepoWithCache.update()
   end
 
@@ -103,15 +104,8 @@ defmodule Logflare.Sources do
 
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
-    Source
-    |> RepoWithCache.get_by(kw)
-    |> case do
-      nil ->
-        nil
-
-      s ->
-        preload_defaults(s)
-    end
+    get_by(kw)
+    |> preload_defaults()
   end
 
   def get_rate_limiter_metrics(source, bucket: :default) do
@@ -151,42 +145,36 @@ defmodule Logflare.Sources do
     |> Map.drop([:queue])
   end
 
-  def get_bq_schema(%Source{} = source) do
-    with %{schema: schema} <- Schema.get_state(source.token) do
-      schema = SchemaUtils.deep_sort_by_fields_name(schema)
-      {:ok, schema}
-    else
-      errtup -> errtup
-    end
+  @spec preload_sources_for_dashboard(Source.t() | [Source.t()]) :: Source.t() | [Source.t()]
+  def preload_sources_for_dashboard(sources) when is_list(sources) do
+    sources
+    |> Enum.map(&preload_sources_for_dashboard/1)
+    |> Enum.sort_by(& &1.name, &<=/2)
+    |> Enum.sort_by(& &1.favorite, &>=/2)
   end
 
-  def put_bq_schema(source_token, bigquery_schema) when is_atom(source_token) do
-    source = RepoWithCache.get_by(Source, token: source_token)
-    source_schema = RepoWithCache.get_by(SourceSchema, source_id: source.id)
-    update_source_schema(source_schema, %{bigquery_schema: bigquery_schema})
+  def preload_sources_for_dashboard(%Source{} = source) do
+    source
+    |> RepoWithCache.preload(:rules)
+    |> RepoWithCache.preload(:source_schema)
+    |> Sources.preload_saved_by_user_searches()
+    |> Sources.refresh_source_metrics()
   end
+
+  def preload_defaults(nil), do: nil
 
   def preload_defaults(source) do
     source
     |> RepoWithCache.preload(:user)
     |> RepoWithCache.preload(:rules)
-    |> refresh_source_metrics()
+    |> RepoWithCache.preload(:source_schema)
     |> maybe_compile_rule_regexes()
-    |> put_bq_table_id()
   end
 
-  def put_bq_table_data(source) do
-    source
-    |> put_bq_table_id()
-    |> put_bq_table_schema()
-    |> put_bq_table_typemap()
-    |> put_bq_dataset_id()
-  end
-
-  def preload_saved_searches(source) do
+  def preload_saved_by_user_searches(source) do
     import Ecto.Query
 
-    Repo.preload(
+    RepoWithCache.preload(
       source,
       saved_searches: from(SavedSearch) |> where([s], s.saved_by_user == true)
     )
@@ -259,13 +247,7 @@ defmodule Logflare.Sources do
       fields: fields
     }
 
-    %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
-  end
-
-  def put_schema_field_count(%Source{} = source) do
-    new_metrics = %{source.metrics | fields: Source.Data.get_schema_field_count(source)}
-
-    %{source | metrics: new_metrics}
+    %{source | metrics: metrics, has_rejected_events: rejected_count > 0}
   end
 
   def valid_source_token_param?(string) when is_binary(string) do
@@ -283,47 +265,6 @@ defmodule Logflare.Sources do
     |> RepoWithCache.update()
   end
 
-  @spec put_bq_table_id(Source.t()) :: Source.t()
-  def put_bq_table_id(%Source{} = source) do
-    %{source | bq_table_id: Source.generate_bq_table_id(source)}
-  end
-
-  @spec put_bq_table_schema(Source.t()) :: Source.t()
-  def put_bq_table_schema(%Source{} = source) do
-    bq_table_schema =
-      with {:ok, bq_table_schema} <- get_bq_schema(source) do
-        bq_table_schema
-      else
-        {:error, error} -> raise(error)
-      end
-
-    %{source | bq_table_schema: bq_table_schema}
-  end
-
-  @spec put_bq_table_typemap(Source.t()) :: Source.t()
-  def put_bq_table_typemap(%Source{} = source) do
-    bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
-    %{source | bq_table_typemap: bq_table_typemap}
-  end
-
-  def put_bq_dataset_id(%Source{} = source) do
-    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
-    %{source | bq_dataset_id: dataset_id}
-  end
-
-  @doc """
-  Returns the list of source_schemas.
-
-  ## Examples
-
-      iex> list_source_schemas()
-      [%SourceSchema{}, ...]
-
-  """
-  def list_source_schemas do
-    RepoWithCache.all(SourceSchema)
-  end
-
   def count_for_billing(sources) do
     count = Enum.count(sources)
 
@@ -332,9 +273,9 @@ defmodule Logflare.Sources do
 
   @spec get_source_for_lv_param(binary | integer) :: Logflare.Source.t()
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
-    get_by_and_preload(id: source_id)
-    |> preload_saved_searches()
-    |> put_bq_table_data()
+    [id: source_id]
+    |> get_by_and_preload()
+    |> preload_saved_by_user_searches()
   end
 
   @spec get_table_partition_type(Source.t()) :: :timestamp | :pseudo

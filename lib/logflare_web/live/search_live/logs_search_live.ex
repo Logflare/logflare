@@ -80,7 +80,7 @@ defmodule LogflareWeb.Source.SearchLV do
       end
 
     socket =
-      with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema) do
+      with {:ok, lql_rules} <- Lql.decode(qs, source.source_schema.bigquery_schema) do
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
         qs = Lql.encode!(lql_rules)
 
@@ -151,7 +151,7 @@ defmodule LogflareWeb.Source.SearchLV do
       )
 
     socket =
-      with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
+      with {:ok, lql_rules} <- Lql.decode(querystring, source.source_schema.bigquery_schema) do
         lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
         optimizedqs = Lql.encode!(lql_rules)
 
@@ -216,7 +216,7 @@ defmodule LogflareWeb.Source.SearchLV do
         team_user: team_user
       )
 
-    with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
+    with {:ok, lql_rules} <- Lql.decode(querystring, source.source_schema.bigquery_schema) do
       lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
       optimizedqs = Lql.encode!(lql_rules)
 
@@ -288,7 +288,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:tailing?, true)
         |> assign_new_search_with_qs(
           %{querystring: prev_assigns.querystring, tailing?: true},
-          source.bq_table_schema
+          source.source_schema.bigquery_schema
         )
       end
 
@@ -386,7 +386,7 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(socket.assigns.source.token)
 
-    {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
+    {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.source_schema.bigquery_schema)
 
     lql_list =
       assigns.lql_rules
@@ -418,7 +418,7 @@ defmodule LogflareWeb.Source.SearchLV do
       ) do
     %{id: _sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
-    bq_table_schema = prev_assigns.source.bq_table_schema
+    bq_table_schema = prev_assigns.source.source_schema.bigquery_schema
 
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(stoken)
@@ -455,7 +455,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:use_local_time, use_local_time)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        socket.assigns.source.bq_table_schema
+        socket.assigns.source.source_schema.bigquery_schema
       )
 
     {:noreply, socket}
@@ -501,7 +501,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp reset_search(%{assigns: assigns} = socket) do
-    lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
+    lql_rules = Lql.decode!(@default_qs, assigns.source.source_schema.bigquery_schema)
     qs = Lql.encode!(lql_rules)
 
     socket

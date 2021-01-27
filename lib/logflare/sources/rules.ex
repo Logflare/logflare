@@ -7,10 +7,9 @@ defmodule Logflare.Rules do
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
-    {:ok, bq_schema} = Sources.get_bq_schema(source)
     lql_string = params["lql_string"]
 
-    with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, bq_schema),
+    with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, source.source_schema.bigquery_schema),
          params = Map.put(params, "lql_filters", lql_filters),
          {:ok, rule} <- Rule.changeset(%Rule{source_id: source.id}, params) |> Repo.insert() do
       {:ok, rule}

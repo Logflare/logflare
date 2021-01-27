@@ -11,13 +11,13 @@ defmodule LogflareWeb.SourceController do
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   def api_index(%{assigns: %{user: user}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+    sources = Sources.preload_sources_for_dashboard(user.sources)
 
     conn |> json(sources)
   end
 
   def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+    sources = Sources.preload_sources_for_dashboard(user.sources)
 
     home_team = Teams.get_home_team!(team_user)
 
@@ -33,7 +33,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+    sources = Sources.preload_sources_for_dashboard(user.sources)
 
     home_team = team
 
@@ -95,6 +95,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def show(%{assigns: %{user: user, source: source}} = conn, _params) do
+    source = Sources.refresh_source_metrics(source)
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
@@ -435,15 +436,6 @@ defmodule LogflareWeb.SourceController do
   def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => _id}) do
     rejected_logs = RejectedLogEvents.get_by_source(source)
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
-  end
-
-  defp preload_sources_for_dashboard(sources) do
-    sources
-    |> Enum.map(&Sources.preload_defaults/1)
-    |> Enum.map(&Sources.preload_saved_searches/1)
-    |> Enum.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(& &1.name, &<=/2)
-    |> Enum.sort_by(& &1.favorite, &>=/2)
   end
 
   defp get_and_encode_logs(%Source{} = source) do

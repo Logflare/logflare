@@ -66,8 +66,7 @@ defmodule LogflareWeb.Sources.RulesLV do
     lqlstring = rule_params["lql_string"]
 
     socket =
-      with {:ok, schema} <- Sources.get_bq_schema(source),
-           {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
+      with {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, source.source_schema.bigquery_schema),
            {:warnings, nil} <-
              {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do
         rule_params = Map.put(rule_params, "lql_filters", lql_rules)
