@@ -90,15 +90,4 @@ defmodule Logflare.Source.Data do
         Buffer.get_count(source_id)
     end
   end
-
-  @spec get_schema_field_count(struct()) :: non_neg_integer
-  def get_schema_field_count(source) do
-    case Process.whereis(String.to_atom("#{source.token}-schema")) do
-      nil ->
-        0
-
-      _ ->
-        Schema.get_state(source.token).field_count
-    end
-  end
 end
