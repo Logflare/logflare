@@ -13,7 +13,6 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
   @moduletag :this
-  @moduletag :unboxed
 
   setup_all do
     Sources.Counters.start_link()
@@ -21,14 +20,16 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   setup do
-    u1 = insert(:user)
-    u2 = insert(:user)
+    {:ok, u1} = Users.insert_or_update_user(params_for(:user))
+    {:ok, u2} = Users.insert_or_update_user(params_for(:user))
     Teams.create_team(u1, %{name: "u1 team"})
     Teams.create_team(u2, %{name: "u2 team"})
 
-    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
-    s2 = insert(:source, user_id: u1.id)
-    s3 = insert(:source, user_id: u2.id)
+    {:ok, s1} =
+      Sources.create_source(params_for(:source, public_token: Faker.String.base64(16)), u1)
+
+    {:ok, s2} = Sources.create_source(params_for(:source), u1)
+    {:ok, s3} = Sources.create_source(params_for(:source), u2)
 
     users = Repo.preload([u1, u2], :sources)
 
@@ -63,7 +64,7 @@ defmodule LogflareWeb.SourceControllerTest do
         validation_error: Validators.EqDeepFieldTypes.message(),
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
-        valid?: false,
+        valid: false,
         ingested_at: NaiveDateTime.utc_now()
       })
 

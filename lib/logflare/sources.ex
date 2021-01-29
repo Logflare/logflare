@@ -18,7 +18,7 @@ defmodule Logflare.Sources do
   @default_bucket_width 60
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
-  def create_source(source_params, user) do
+  def create_source(source_params, %User{} = user) do
     user
     |> Ecto.build_assoc(:sources)
     |> Source.update_by_user_changeset(source_params)
@@ -26,7 +26,10 @@ defmodule Logflare.Sources do
     |> case do
       {:ok, source} ->
         {:ok, _source_schema} =
-          create_source_schema(source, %{bigquery_schema: SchemaBuilder.initial_table_schema()})
+          SourceSchemas.create_source_schema_for_source(
+            %{bigquery_schema: SchemaBuilder.initial_table_schema()},
+            source
+          )
 
         Source.Supervisor.start_source(source.token)
 
@@ -92,6 +95,11 @@ defmodule Logflare.Sources do
   @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
     RepoWithCache.get_by(Source, kw)
+  end
+
+  @spec get_by!(Keyword.t()) :: Source.t()
+  def get_by!(kw) do
+    RepoWithCache.get_by!(Source, kw)
   end
 
   def get_by_id_and_preload(id) when is_integer(id) do

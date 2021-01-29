@@ -107,11 +107,11 @@ defmodule Logflare.Source do
     field :api_quota, :integer, default: @default_source_api_quota
     field :webhook_notification_url, :string
     field :slack_hook_url, :string
-    field :metrics, :map, virtual: true
+    field :metrics, :map, virtual: true, default: %{}
     field :has_rejected_events, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
-    field :bq_table_typemap, :map, virtual: true
+    # field :bq_table_typemap, :map, virtual: true
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime

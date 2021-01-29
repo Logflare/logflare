@@ -2,28 +2,55 @@ defmodule Logflare.SourcesTest do
   @moduledoc false
   use Logflare.DataCase
   import Logflare.Factory
-  alias Logflare.Sources
-  alias Logflare.Users
+  use Logflare.Commons
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Source
-  @moduletag :this
+  @moduletag :unboxed
 
   setup do
-    u = Users.get_user_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-    s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+    u = user_with_iam()
 
-    Source.BigQuery.Schema.start_link(%RLS{
-      source_id: s.token,
-      plan: %{limit_source_fields_limit: 500}
-    })
+    {:ok, s} = Sources.create_source(params_for(:source, token: Faker.UUID.v4(), rules: []), u)
+
+    {:ok, _} =
+      Source.BigQuery.Schema.start_link(%RLS{
+        source_id: s.token,
+        plan: %{limit_source_fields_limit: 500}
+      })
 
     {:ok, sources: [s], users: [u]}
   end
 
   describe "Sources" do
-    test "get_bq_schema/1", %{sources: [s | _], users: [u | _]} do
+    @tag :this
+    test "insert and get" do
+      {:ok, u1} = Users.insert_or_update_user(params_for(:user))
+      {:ok, s01} = Sources.create_source(params_for(:source), u1)
+      {:ok, s02} = Sources.create_source(params_for(:source), u1)
+      r1 = string_params_for(:rule, sink: s01.token) |> IO.inspect()
+      r2 = string_params_for(:rule, sink: s02.token)
+
+      {:ok, source} = Sources.create_source(params_for(:source, token: Faker.UUID.v4()), u1)
+      source = Sources.get_by_id_and_preload(source.id)
+      {:ok, _} = Rules.create_rule(r1, source)
+      {:ok, _} = Rules.create_rule(r2, source)
+
+      {:ok, _s2} = Sources.create_source(params_for(:source, token: Faker.UUID.v4()), u1)
+
+      left_source =
+        Sources.get_by(token: source.token)
+        |> Sources.preload_defaults()
+        |> IO.inspect()
+
+      assert left_source.id == source.id
+      assert left_source.inserted_at == source.inserted_at
+      assert is_list(left_source.rules)
+      assert length(left_source.rules) == 2
+    end
+
+    @tag :this
+    test "update bq schema", %{sources: [s | _], users: [u | _]} do
       source_id = s.token
 
       %{
@@ -74,10 +101,10 @@ defmodule Logflare.SourcesTest do
         ]
       }
 
-      assert {:ok, _} =
-               BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id)
+      assert {:ok, _} = Logflare.Source.BigQuery.Schema.update(source_id, schema)
+      # BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id)
 
-      {:ok, left_schema} = Sources.get_bq_schema(s)
+      {:ok, left_schema} = Sources.get(source_id).bq_table_schema
       assert left_schema == schema
     end
   end
