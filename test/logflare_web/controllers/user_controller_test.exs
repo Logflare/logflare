@@ -10,8 +10,11 @@ defmodule LogflareWeb.UserControllerTest do
   import Logflare.Factory
 
   setup do
-    u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
-    u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
+    {:ok, u1} =
+      Users.insert_or_update_user(params_for(:user, bigquery_dataset_id: "test_dataset_id_1"))
+
+    {:ok, u2} =
+      Users.insert_or_update_user(params_for(:user, bigquery_dataset_id: "test_dataset_id_2"))
 
     {:ok, users: [u1, u2], conn: Phoenix.ConnTest.build_conn()}
   end

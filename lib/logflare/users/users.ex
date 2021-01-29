@@ -10,6 +10,8 @@ defmodule Logflare.Users do
     get_by(User, id: user_id)
   end
 
+  def get_user!(user_id), do: get_by!(User, id: user_id)
+
   def get_user_by(keyword) do
     get_by(User, keyword)
   end
@@ -144,7 +146,6 @@ defmodule Logflare.Users do
     |> RepoWithCache.update()
   end
 
-  defp get_by(schema, kw) do
-    RepoWithCache.get_by(schema, kw)
-  end
+  defp get_by(schema, kw), do: RepoWithCache.get_by(schema, kw)
+  defp get_by!(schema, kw), do: RepoWithCache.get_by!(schema, kw)
 end

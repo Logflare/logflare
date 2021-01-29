@@ -129,8 +129,8 @@ defmodule Logflare.User do
     |> default_validations(user)
   end
 
-  def changefeed_changeset(struct, attrs) do
-    chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
+  def changefeed_changeset(struct \\ struct(__MODULE__), attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields_no_assoc(struct, attrs)
 
     if prefs = attrs["preferences"] do
       put_embed(

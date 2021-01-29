@@ -4,13 +4,11 @@ defmodule Logflare.UsersTest do
   use Logflare.DataCase
   alias Logflare.Sources
   alias Logflare.Users
-  import Users
 
   setup do
-    user = insert(:user)
+    {:ok, user} = Users.insert_or_update_user(params_for(:user))
 
-    source = insert(:source, user_id: user.id)
-    source = Sources.get_by(token: source.token)
+    {:ok, source} = Sources.create_source(params_for(:source), user)
     user = user |> Users.preload_defaults()
 
     {:ok, user: user, source: source}
@@ -19,7 +17,7 @@ defmodule Logflare.UsersTest do
   describe "Users" do
     test "get_by/1", %{source: s1, user: u1} do
       assert u1 ==
-               get_by(id: u1.id)
+               Users.get_user_by(id: u1.id)
                |> Users.preload_defaults()
 
       assert length(u1.sources) > 0
@@ -29,20 +27,20 @@ defmodule Logflare.UsersTest do
     end
 
     test "get_by api_key", %{user: right_user} do
-      left_user = get_by(api_key: right_user.api_key)
+      left_user = Users.get_user_by(api_key: right_user.api_key)
       assert left_user.id == right_user.id
-      assert get_by(api_key: "nil") == nil
+      assert Users.get_user_by(api_key: "nil") == nil
     end
 
     test "delete preferred email", %{user: u1} do
-      user = get_by(api_key: u1.api_key)
+      user = Users.get_user_by(api_key: u1.api_key)
 
       email = Faker.Internet.free_email()
       {:ok, user} = Users.update_user_allowed(user, %{"email_preferred" => email})
-      assert get_by(api_key: u1.api_key).email_preferred == email
+      assert Users.get_user_by(api_key: u1.api_key).email_preferred == email
 
       {:ok, _user} = Users.update_user_allowed(user, %{"email_preferred" => nil})
-      assert get_by(api_key: u1.api_key).email_preferred == nil
+      assert Users.get_user_by(api_key: u1.api_key).email_preferred == nil
     end
   end
 end
