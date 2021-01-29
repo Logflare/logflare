@@ -3,18 +3,11 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   use LogflareWeb.ConnCase
   @endpoint LogflareWeb.Endpoint
   import Phoenix.LiveViewTest
-  alias Logflare.Sources
   alias Logflare.Lql.FilterRule
-  alias Logflare.Repo
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Rule
-  alias Logflare.Users
   import Logflare.Factory
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
   use Mimic
-  
 
   setup_all do
     Sources.Counters.start_link()
@@ -26,12 +19,13 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
     setup do
       stub(Plans, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
-      user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
-      user = Users.get(user.id)
 
-      source = params_for(:source)
-      {:ok, source} = Sources.create_source(source, user)
-      Source.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
+      {:ok, user} =
+        Users.insert_or_update_user(
+          params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+        )
+
+      {:ok, source} = Sources.create_source(params_for(:source), user)
 
       {:ok, sink} =
         :source
@@ -80,8 +74,10 @@ defmodule LogflareWeb.Source.RulesLqlTest do
           ]
         )
 
-      user = insert(:user, email: "example@example.org", admin: true)
-      user = Users.get(user.id)
+      {:ok, user} =
+        Users.insert_or_update_user(params_for(:user, email: "example@example.org", admin: true))
+
+      user = Users.get_user(user.id)
 
       conn =
         conn
@@ -154,11 +150,12 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
   describe "Rule regex to LQL upgrade" do
     setup do
-      user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+      {:ok, user} =
+        Users.insert_or_update_user(
+          params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+        )
 
-      source = params_for(:source)
-
-      {:ok, source} = Sources.create_source(source, user)
+      {:ok, source} = Sources.create_source(params_for(:source), user)
 
       {:ok, sink} =
         :source
