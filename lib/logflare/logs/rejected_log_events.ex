@@ -38,11 +38,11 @@ defmodule Logflare.Logs.RejectedLogEvents do
   end
 
   def count(%Source{} = s) do
-    RepoWithCache.aggregate(
-      from(RejectedLogEvent) |> where([rle], rle.source_id == ^s.id),
-      :count,
-      :id
-    )
+    from(RejectedLogEvent)
+    |> where([rle], rle.source_id == ^s.id)
+    |> select([rle], rle.id)
+    |> RepoWithCache.all()
+    |> Enum.count()
   end
 
   def delete_by_source(%Source{token: token}) do
@@ -63,7 +63,8 @@ defmodule Logflare.Logs.RejectedLogEvents do
       RepoWithCache.insert(%RejectedLogEvent{
         source_id: id,
         params: le.params,
-        ingested_at: DateTime.from_unix!(le.ingested_at, :microsecond),
+        ingested_at: le.ingested_at,
+        # ingested_at: DateTime.from_unix!(le.ingested_at, :microsecond),
         validation_error: le.validation_error
       })
 
