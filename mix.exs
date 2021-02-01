@@ -109,7 +109,7 @@ defmodule Logflare.Mixfile do
       {:poison, "~> 4.0", override: true},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.3.0"},
+      {:tesla, "~> 1.4.0"},
 
       # Concurrency and pipelines
       {:broadway, "~> 0.6.0"},
@@ -141,7 +141,7 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 0.4.0"},
       {:telemetry_poller, "0.5.0"},
       {:telemetry_metrics, "~> 0.6.0", override: true},
-      {:logflare_logger_backend, "~> 0.8.0-rc.2"},
+      {:logflare_logger_backend, "~> 0.8.0-rc.3"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
 
       # ETS
