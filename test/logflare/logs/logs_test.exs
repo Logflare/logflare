@@ -28,14 +28,22 @@ defmodule Logflare.LogsTest do
 
   describe "log event ingest for source with regex rules" do
     setup do
-      u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
-      u = Users.get(u.id)
+      {:ok, u} =
+        Users.insert_or_update_user(
+          params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+        )
+
+      u = Users.get_user(u.id)
       [sink1, sink2] = insert_list(2, :source, user_id: u.id)
 
       rule1 = build(:rule, sink: sink1.token, regex: "pattern2")
       rule2 = build(:rule, sink: sink2.token, regex: "pattern3")
 
-      s1 = insert(:source, token: Faker.UUID.v4(), rules: [rule1, rule2], user_id: u.id)
+      {:ok, s1} =
+        Sources.create_source(
+          params_for(:source, token: Faker.UUID.v4(), rules: [rule1, rule2]),
+          u
+        )
 
       BigQuerySchemaGS.start_link(%RLS{source_id: s1.token, plan: @plan})
       BigQuerySchemaGS.start_link(%RLS{source_id: sink1.token, plan: @plan})
@@ -70,7 +78,6 @@ defmodule Logflare.LogsTest do
       s1 =
         Sources.get_by(token: s1.token)
         |> Sources.preload_defaults()
-        |> Sources.put_bq_table_data()
 
       SystemMetricsSup.start_link()
       Counters.start_link()
@@ -112,9 +119,7 @@ defmodule Logflare.LogsTest do
         %{"message" => "test"}
       ]
 
-      s1 =
-        Sources.get_by_and_preload(id: s1.id)
-        |> Sources.put_bq_table_data()
+      s1 = Sources.get_by_and_preload(id: s1.id)
 
       assert Logs.ingest_logs(log_params_batch, s1) == :ok
 
@@ -131,11 +136,19 @@ defmodule Logflare.LogsTest do
 
   describe "log event ingest for source with LQL rules" do
     setup do
-      u = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
-      u = Users.get(u.id)
+      {:ok, u} =
+        Users.insert_or_update_user(
+          params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+        )
+
+      u = Users.get_user(u.id)
       [sink1, sink2] = insert_list(2, :source, user_id: u.id)
 
-      s1 = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+      {:ok, s1} =
+        Sources.create_source(
+          params_for(:source, token: Faker.UUID.v4(), rules: []),
+          u
+        )
 
       project_id = GenUtils.get_project_id(s1.token)
       dataset_id = User.generate_bq_dataset_id(u)
@@ -199,7 +212,6 @@ defmodule Logflare.LogsTest do
       s1 =
         Sources.get_by(token: s1.token)
         |> Sources.preload_defaults()
-        |> Sources.put_bq_table_data()
 
       {:ok, sources: [s1], sinks: [sink1, sink2], users: [u]}
     end
@@ -259,9 +271,7 @@ defmodule Logflare.LogsTest do
         %{"message" => "test"}
       ]
 
-      s1 =
-        Sources.get_by_and_preload(id: s1.id)
-        |> Sources.put_bq_table_data()
+      s1 = Sources.get_by_and_preload(id: s1.id)
 
       assert Logs.ingest_logs(log_params_batch, s1) == :ok
 

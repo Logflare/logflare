@@ -14,18 +14,27 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   use Mimic
 
   setup_all do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    Logflare.Sources.Counters.start_link()
+
+    :ok
+  end
+
+  setup do
+    # :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    user_with_iam()
     email = System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM")
     source_token = "2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
-    user =
-      User
-      |> where([u], u.email == ^email)
-      |> Repo.one()
+    user = Users.get_by_and_preload(email: email)
 
-    source = Sources.get_by(token: source_token)
-    Logflare.Sources.Counters.start_link()
-    {:ok, _} = RLS.start_link(%RLS{source_id: String.to_atom(source_token), source: source})
+    {:ok, _source} =
+      Sources.create_source(
+        params_for(:source, token: source_token, name: "Automated testing source #1"),
+        user
+      )
+
+    source = Sources.get_by!(token: source_token)
+    RLS.start_link(%RLS{source_id: String.to_atom(source_token), source: source})
 
     %{user: user, source: [source]}
   end
@@ -67,11 +76,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
 
       uuid = ev.id
 
-      LogEvents.Cache.put(
-        s.token,
-        {"uuid", uuid},
-        ev
-      )
+      LogEvents.create_log_event(ev)
 
       conn =
         conn
@@ -163,11 +168,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       path = "metadata.id"
       vercel_id = bq_row() |> Map.get(:metadata) |> hd |> Map.get(:id)
 
-      LogEvents.Cache.put(
-        s.token,
-        {"metadata.id", vercel_id},
-        ev
-      )
+      LogEvents.create_log_event(ev)
 
       conn =
         conn
@@ -244,12 +245,12 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       },
       id: "7530b1ca-1c7b-4bde-abc9-506e06fe1f25",
       ingested_at: nil,
-      is_from_stale_query?: nil,
+      is_from_stale_query: nil,
       origin_source_id: nil,
       params: nil,
       source: nil,
       sys_uint: nil,
-      valid?: nil,
+      valid: nil,
       validation_error: nil,
       via_rule: nil
     }

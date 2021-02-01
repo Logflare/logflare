@@ -1,15 +1,18 @@
 defmodule Logflare.Source.BigQuery.BufferTest do
   @moduledoc false
   use LogflareWeb.ChannelCase
+  use Logflare.Commons
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.BigQuery.Buffer
   alias Logflare.Source.RecentLogsServer, as: RLS
   import Logflare.Factory
 
   setup do
-    u1 = insert(:user)
-    s1 = insert(:source, user_id: u1.id)
+    {:ok, u1} = Users.insert_or_update_user(params_for(:user))
+    {:ok, s1} = Sources.create_source(params_for(:source), u1)
+    s1 = Sources.preload_defaults(s1)
     rls = %RLS{source_id: s1.token}
+    {:ok, _} = RLS.start_link(rls)
 
     {:ok, sources: [s1], args: rls}
   end
