@@ -279,7 +279,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   def start_search_task(lv_pid, params) do
     so = SO.new(params)
 
-    if so.tailing? && so.partition_by == :pseudo do
+    if so.tailing? do
       start_cache_streaming_buffer_task(so.source)
     end
 

@@ -114,8 +114,13 @@ defmodule Logflare.Logs.Search do
 
   def query_source_streaming_buffer(%Source{} = source) do
     q =
-      source.bq_table_id
-      |> SearchQueries.source_table_streaming_buffer()
+      case source do
+        %{bq_table_partition_type: :pseudo} ->
+          SearchQueries.source_table_streaming_buffer(source.bq_table_id)
+
+        %{bq_table_partition_type: :timestamp} ->
+          SearchQueries.source_table_last_5_minutes(source.bq_table_id)
+      end
       |> order_by(desc: :timestamp)
       |> limit(100)
 

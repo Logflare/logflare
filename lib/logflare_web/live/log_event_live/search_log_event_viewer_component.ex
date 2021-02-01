@@ -43,9 +43,15 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
     le = LogEvents.Cache.get!(source.token, params_to_cache_key(%{path: path, value: log_id}))
 
-    if is_nil(le) do
-      start_task(path: path, value: log_id, partitions_range: [dminus3, dplus1], source: source)
-    end
+    socket =
+      if le do
+        socket
+        |> assign(Map.delete(assigns, :flash))
+        |> assign(:log_event, le)
+      else
+        start_task(path: path, value: log_id, partitions_range: [dminus3, dplus1], source: source)
+        assign(socket, Map.delete(assigns, :flash))
+      end
 
     socket = assign(socket, source: source)
     {:ok, socket}
@@ -62,11 +68,17 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     token = assigns.source.token
     le = LogEvents.Cache.get!(token, params_to_cache_key(%{uuid: id}))
 
-    if is_nil(le) do
-      start_task(uuid: id, partitions_range: [dminus1, dplus1], source: assigns.source)
-    end
+    socket =
+      if le do
+        socket
+        |> assign(Map.delete(assigns, :flash))
+        |> assign(:log_event, le)
+      else
+        start_task(uuid: id, partitions_range: [dminus1, dplus1], source: assigns.source)
+        assign(socket, Map.delete(assigns, :flash))
+      end
 
-    {:ok, assign(socket, assigns)}
+    {:ok, socket}
   end
 
   @spec params_to_cache_key(map()) :: {String.t(), String.t()}
