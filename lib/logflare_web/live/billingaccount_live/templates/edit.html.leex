@@ -38,10 +38,10 @@
   <div class="sub-form">
     <%= section_header("Usage") %>
     <p>Your total log event count per day for the last 30 days.</p>
-    <%= f = form_for :usage, "#", [phx_change: :usage_picker] %>
-    <%= select f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}], class: "btn btn-secondary dropdown-toggle", type: "button", id: "dropdownMenuButton"%>
+    <%= # f = form_for :usage, "#", [phx_change: :usage_picker] %>
+    <%= # select f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}], class: "btn btn-secondary dropdown-toggle", type: "button", id: "dropdownMenuButton"%>
   </form>
-  <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
+  <%= # live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
 </div>
 -->
 <div class="sub-form">
