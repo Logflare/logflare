@@ -126,6 +126,17 @@ defmodule Logflare.BillingAccounts.Stripe do
     update_subscription(subscription["id"], params)
   end
 
+  def change_to_metered_subscription(billing_account, sources, to_plan) do
+    [subscription] = billing_account.stripe_subscriptions["data"]
+    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+
+    delete_item = %{id: item["id"], deleted: true}
+    add_item = %{price: to_plan.stripe_id}
+    params = %{items: [delete_item, add_item]}
+
+    update_subscription(subscription["id"], params)
+  end
+
   def list_customer_invoices(stripe_customer_id) do
     params = %{customer: stripe_customer_id}
     Stripe.Invoice.list(params)
