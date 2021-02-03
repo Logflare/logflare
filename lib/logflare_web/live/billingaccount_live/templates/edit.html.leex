@@ -34,6 +34,7 @@
       <% end %>
     <% end %>
   </div>
+  <!--
   <div class="sub-form">
     <%= section_header("Usage") %>
     <p>Your total log event count per day for the last 30 days.</p>
@@ -42,6 +43,7 @@
   </form>
   <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
 </div>
+-->
 <div class="sub-form">
   <%= section_header("Pricing") %>
   <%= live_render(@socket, LogflareWeb.PlansLive, id: :plans) %>
@@ -49,7 +51,6 @@
 <div class="sub-form">
   <%= section_header("Enterprise Metered") %>
   <p>Upgrade to the Enterprise Metered plan. The Enterprise Metered plan is $100 per month which includes 50,000,000 events per month. Above 50 million log events you're charged $2.00 per million events. This plan includes 90 days of retention.</p>
-  <%= # link("Upgrade to Enterprise metered billing", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => "price_1IB4mjLvvReWx3FxtUoyGNnZ", "type" => "metered"}), class: "btn btn-dark text-white form-button") %>
   <div class="w-25">
     <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered") %>
   </div>
@@ -90,8 +91,7 @@
                 <%= sub["id"]%>
               </td>
               <td>
-              <%= inspect(sub["plan"]["amount"]) %>
-                <%=# Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %>
+                <%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %>
               </td>
               <td>
                 <%= sub["quantity"]%>
@@ -153,6 +153,11 @@
   <%= section_header("Billing Account Portal") %>
   <p>Update your billing info and download your invoices in Stripe's new customer portal.</p>
   <%= link "Go to portal", to: Routes.billing_path(@socket, :portal), method: :get, class: "btn btn-primary form-button" %>
+</div>
+<div class="sub-form">
+  <%= section_header("Sync Billing Account") %>
+  <p>Sync your billing account with Stripe.</p>
+  <%= link "Sync billing account", to: Routes.billing_path(@socket, :sync), class: "btn btn-primary form-button" %>
 </div>
 <div class="sub-form">
   <%= section_header("Delete Billing Account") %>
