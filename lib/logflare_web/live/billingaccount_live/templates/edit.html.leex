@@ -20,10 +20,13 @@
       <p>You're currently on the <u><%= @plan.name %> plan</u>. Thank you!</p>
     <% else %>
       <%= if @user.billing_account.stripe_subscriptions["data"] do %>
-        <%= if @plan.name != "Free" do %>
+        <%= cond do %>
+        <% @plan.type == "metered" -> %>
+          <p>You're currently on the <u><%= @plan.name %> plan</u>. Review your usage below. Thanks for subscribing!</p>
+        <% @plan.name != "Free" -> %>
           <p>You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup> added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>. Your total estimated total cost is <u><%= count_for_billing(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.</p>
           <p><small><sup>1</sup> Minimum 1 source required for billing.</small></p>
-        <% else %>
+        <% true -> %>
           <p>You're currently on the <u><%= @plan.name %> plan</u>. Select a plan below to upgrade.</p>
         <% end %>
       <% else %>
@@ -31,6 +34,7 @@
       <% end %>
     <% end %>
   </div>
+  <!--
   <div class="sub-form">
     <%= section_header("Usage") %>
     <p>Your total log event count per day for the last 30 days.</p>
@@ -39,15 +43,24 @@
   </form>
   <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
 </div>
+-->
 <div class="sub-form">
   <%= section_header("Pricing") %>
   <%= live_render(@socket, LogflareWeb.PlansLive, id: :plans) %>
 </div>
 <div class="sub-form">
-  <%= section_header("Enterprise Plans & Support") %>
-  <p>Contact us to learn more about our Enterprise plans and support options. We can handle any event volume required. Need to ingest directly to the EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you do just about anything you need with your data pipeline so please reach out.</p>
-  <%= # link("Upgrade to Enterprise metered billing", to: Routes.billing_path(@socket, :confirm_subscription, %{"stripe_id" => "price_1IB4mjLvvReWx3FxtUoyGNnZ", "type" => "metered"}), class: "btn btn-dark text-white form-button") %>
-  <%= link "Contact us", to: Routes.contact_path(@socket, :contact), class: "btn btn-primary form-button" %>
+  <%= section_header("Enterprise Metered") %>
+  <p>Upgrade to the Enterprise Metered plan. The Enterprise Metered plan is $100 per month which includes 50,000,000 events per month. Above 50 million log events you're charged $2.00 per million events. This plan includes 90 days of retention.</p>
+  <div class="w-25">
+    <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered") %>
+  </div>
+</div>
+<div class="sub-form">
+  <%= section_header("Enterprise Metered BYOB") %>
+  <p>Choose the Enterprise Metered BYOB plan if you're are using your own BigQuery credentials for log event storage. This plan also starts at $100 per month but includes 200,000,000 events and you're charged only $0.50 per million after that.</p>
+  <div class="w-25">
+    <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered BYOB") %>
+  </div>
 </div>
 <div class="sub-form">
   <%= section_header("Payment Method") %>
@@ -140,6 +153,11 @@
   <%= section_header("Billing Account Portal") %>
   <p>Update your billing info and download your invoices in Stripe's new customer portal.</p>
   <%= link "Go to portal", to: Routes.billing_path(@socket, :portal), method: :get, class: "btn btn-primary form-button" %>
+</div>
+<div class="sub-form">
+  <%= section_header("Sync Billing Account") %>
+  <p>Sync your billing account with Stripe.</p>
+  <%= link "Sync billing account", to: Routes.billing_path(@socket, :sync), class: "btn btn-primary form-button" %>
 </div>
 <div class="sub-form">
   <%= section_header("Delete Billing Account") %>

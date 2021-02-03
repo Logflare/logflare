@@ -30,7 +30,7 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def create_payment_session(
         %User{
-          sources: sources,
+          sources: _sources,
           billing_account: %BillingAccount{stripe_customer: stripe_customer_id}
         } = _user,
         %Plan{stripe_id: stripe_id} = _plan
@@ -75,7 +75,7 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def create_metered_customer_session(
         %User{
-          sources: sources,
+          sources: _sources,
           billing_account: %BillingAccount{stripe_customer: stripe_customer_id}
         } = _user,
         %Plan{stripe_id: stripe_id} = _plan
@@ -120,6 +120,39 @@ defmodule Logflare.BillingAccounts.Stripe do
     {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
 
     delete_item = %{id: item["id"], deleted: true}
+    add_item = %{price: to_plan.stripe_id, quantity: Enum.count(sources)}
+    params = %{items: [delete_item, add_item]}
+
+    update_subscription(subscription["id"], params)
+  end
+
+  def change_from_metered_subscription(billing_account, _sources, to_plan) do
+    [subscription] = billing_account.stripe_subscriptions["data"]
+    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+
+    delete_item = %{id: item["id"], deleted: true, clear_usage: true}
+    add_item = %{price: to_plan.stripe_id}
+    params = %{items: [delete_item, add_item]}
+
+    update_subscription(subscription["id"], params)
+  end
+
+  def change_to_metered_subscription(billing_account, _sources, to_plan) do
+    [subscription] = billing_account.stripe_subscriptions["data"]
+    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+
+    delete_item = %{id: item["id"], deleted: true}
+    add_item = %{price: to_plan.stripe_id}
+    params = %{items: [delete_item, add_item]}
+
+    update_subscription(subscription["id"], params)
+  end
+
+  def change_metered_to_standard_subscription(billing_account, sources, to_plan) do
+    [subscription] = billing_account.stripe_subscriptions["data"]
+    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+
+    delete_item = %{id: item["id"], deleted: true, clear_usage: true}
     add_item = %{price: to_plan.stripe_id, quantity: Enum.count(sources)}
     params = %{items: [delete_item, add_item]}
 
@@ -173,18 +206,15 @@ defmodule Logflare.BillingAccounts.Stripe do
   end
 
   def attatch_payment_method(id, pm_id) do
-    response = Stripe.PaymentMethod.attach(%{customer: id, payment_method: pm_id})
-    response
+    Stripe.PaymentMethod.attach(%{customer: id, payment_method: pm_id})
   end
 
   def detach_payment_method(pm_id) do
-    response = Stripe.PaymentMethod.detach(%{payment_method: pm_id})
-    response
+    Stripe.PaymentMethod.detach(%{payment_method: pm_id})
   end
 
   def list_payment_methods(id) do
-    response = Stripe.PaymentMethod.list(%{customer: id, type: :card})
-    response
+    Stripe.PaymentMethod.list(%{customer: id, type: :card})
   end
 
   def delete_subscription(id) do
