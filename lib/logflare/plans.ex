@@ -3,6 +3,8 @@ defmodule Logflare.Plans do
   The Plans context.
   """
 
+  require Logger
+
   import Ecto.Query, warn: false
   alias Logflare.Repo
   alias Logflare.BillingAccounts
@@ -43,7 +45,19 @@ defmodule Logflare.Plans do
   """
   def get_plan!(id), do: Repo.get!(Plan, id)
 
-  def get_plan_by(kw), do: Repo.get_by(Plan, kw)
+  def get_plan_by(kw) do
+    plan = Repo.get_by(Plan, kw)
+
+    # nil plan blows everything up. Should never return a nil plan.
+
+    if is_nil(plan) do
+      Logger.error("Customer is on a Stripe plan which doesn't exist in our plan list!!!!!")
+
+      get_plan_by(name: "Free")
+    else
+      plan
+    end
+  end
 
   def get_plan_by_user(%User{} = user) do
     if user.billing_enabled? do
