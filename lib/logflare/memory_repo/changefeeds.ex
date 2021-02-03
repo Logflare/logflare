@@ -93,12 +93,23 @@ defmodule Logflare.Changefeeds do
   end
 
   def replace_assocs_with_nils(x, schema) when is_struct(x) do
+    alias Ecto.Association.{BelongsTo, Has}
+
     for af <- EctoSchemaReflection.associations(schema), reduce: x do
       acc ->
-        case schema.__schema__(:association, af) do
-          %Ecto.Association.BelongsTo{cardinality: :one} -> Map.replace!(acc, af, nil)
-          %Ecto.Association.Has{cardinality: :one} -> Map.replace!(acc, af, nil)
-          %Ecto.Association.Has{cardinality: :many} -> Map.replace!(acc, af, [])
+        val = Map.get(acc, af)
+
+        if val && is_struct(val) && val.__struct__ == Ecto.Association.NotLoaded do
+          val =
+            case schema.__schema__(:association, af) do
+              %BelongsTo{cardinality: :one} -> nil
+              %Has{cardinality: :one} -> nil
+              %Has{cardinality: :many} -> []
+            end
+
+          Map.replace!(acc, af, val)
+        else
+          acc
         end
     end
   end
@@ -106,5 +117,9 @@ defmodule Logflare.Changefeeds do
   def replace_assocs_with_nils(x) when is_struct(x) do
     %schema{} = x
     replace_assocs_with_nils(x, schema)
+  end
+
+  def drop_assoc_fields(x) when is_struct(x) do
+    Map.drop(x, EctoSchemaReflection.associations(x))
   end
 end
