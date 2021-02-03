@@ -60,9 +60,10 @@ defmodule Logflare.Source.BillingWriter do
            BillingAccounts.Stripe.record_usage(si["id"], count) do
       :noop
     else
-      {:error, _resp} ->
+      {:error, resp} ->
         Logger.error("Error recording usage with Stripe",
-          source_id: rls.source.token
+          source_id: rls.source.token,
+          error_string: inspect(resp)
         )
     end
   end
