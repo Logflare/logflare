@@ -160,13 +160,91 @@ defmodule LogflareWeb.BillingController do
   end
 
   def change_subscription(
-        %{assigns: %{user: %User{billing_account: billing_account, sources: sources} = _user}} =
-          conn,
-        %{"plan" => plan_id}
+        %{
+          assigns: %{
+            user: %User{billing_account: billing_account, sources: sources} = _user,
+            plan: %Plans.Plan{type: "standard"}
+          }
+        } = conn,
+        %{"plan" => plan_id, "type" => "metered"}
+      ) do
+    with plan <- Plans.get_plan!(plan_id),
+         true <- billing_accoount_has_subscription?(billing_account),
+         {:ok, _response} <- Stripe.change_to_metered_subscription(billing_account, sources, plan) do
+      success_and_redirect(conn, "Plan successfully changed!")
+    else
+      false ->
+        error_and_redirect(conn, "You need a subscription to change first!")
+
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn, @default_error_message)
+    end
+  end
+
+  def change_subscription(
+        %{
+          assigns: %{
+            user: %User{billing_account: billing_account, sources: sources} = _user,
+            plan: %Plans.Plan{type: "metered"}
+          }
+        } = conn,
+        %{"plan" => plan_id, "type" => "metered"}
+      ) do
+    with plan <- Plans.get_plan!(plan_id),
+         true <- billing_accoount_has_subscription?(billing_account),
+         {:ok, _response} <-
+           Stripe.change_from_metered_subscription(billing_account, sources, plan) do
+      success_and_redirect(conn, "Plan successfully changed!")
+    else
+      false ->
+        error_and_redirect(conn, "You need a subscription to change first!")
+
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn, @default_error_message)
+    end
+  end
+
+  def change_subscription(
+        %{
+          assigns: %{
+            user: %User{billing_account: billing_account, sources: sources} = _user,
+            plan: %Plans.Plan{type: "standard"}
+          }
+        } = conn,
+        %{"plan" => plan_id, "type" => "standard"}
       ) do
     with plan <- Plans.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <- Stripe.change_subscription(billing_account, sources, plan) do
+      success_and_redirect(conn, "Plan successfully changed!")
+    else
+      false ->
+        error_and_redirect(conn, "You need a subscription to change first!")
+
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
+
+        error_and_redirect(conn, @default_error_message)
+    end
+  end
+
+  def change_subscription(
+        %{
+          assigns: %{
+            user: %User{billing_account: billing_account, sources: sources} = _user,
+            plan: %Plans.Plan{type: "metered"}
+          }
+        } = conn,
+        %{"plan" => plan_id, "type" => "standard"}
+      ) do
+    with plan <- Plans.get_plan!(plan_id),
+         true <- billing_accoount_has_subscription?(billing_account),
+         {:ok, _response} <-
+           Stripe.change_from_metered_subscription(billing_account, sources, plan) do
       success_and_redirect(conn, "Plan successfully changed!")
     else
       false ->

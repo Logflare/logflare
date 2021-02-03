@@ -17,7 +17,7 @@
   </small>
   <small class="source-details">
     <%= if @source.metrics.avg >= (0.80 * @conn.assigns.plan.limit_source_rate_limit) do %>
-      avg: <span id="<%= @source.token %>-avg-rate" class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Source rate limit is avg <%= @conn.assigns.plan.limit_source_rate_limit %> events/sec!"><%= @source.metrics.avg %></span>
+      avg: <span id="<%= @source.token %>-avg-rate" class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Source rate limit is avg <%= @conn.assigns.plan.limit_source_rate_limit %> events/sec! Upgrade for more."><%= @source.metrics.avg %></span>
     <% else %>
       avg: <span id="<%= @source.token %>-avg-rate"><%= @source.metrics.avg %></span>
     <% end %>
@@ -30,7 +30,7 @@
   </small>
   <small class="source-details">
     <%= if @source.metrics.fields > @conn.assigns.plan.limit_source_fields_limit do %>
-      fields: <span class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Max <%= @conn.assigns.plan.limit_source_fields_limit %> fields per source! Data in new fields are ignored."><%= @source.metrics.fields %></span>
+      fields: <span class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Max <%= @conn.assigns.plan.limit_source_fields_limit %> fields per source! Data in new fields are ignored. Upgrade for more."><%= @source.metrics.fields %></span>
     <% else %>
       fields: <span><%= @source.metrics.fields %></span>
     <% end %>

@@ -5,6 +5,7 @@ defmodule LogflareWeb.PlansLive do
 
   alias Logflare.Plans
   alias Logflare.Users
+  alias LogflareWeb.BillingHelpers
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
@@ -134,7 +135,7 @@ defmodule LogflareWeb.PlansLive do
           </div>
           <div class="py-4">
             <div>
-              <%= sub_button(@plan, @socket, @plans, @period, "Hobby") %>
+              <%= BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Hobby") %>
             </div>
           <div>
             <small class="text-muted">14-day trial</small>
@@ -174,7 +175,7 @@ defmodule LogflareWeb.PlansLive do
           </div>
           <div class="py-4">
             <div>
-              <%= sub_button(@plan, @socket, @plans, @period, "Pro") %>
+              <%= BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Pro") %>
             </div>
           <div>
             <small class="text-muted">14-day trial</small>
@@ -214,7 +215,7 @@ defmodule LogflareWeb.PlansLive do
           </div>
           <div class="py-4">
             <div>
-              <%= sub_button(@plan, @socket, @plans, @period, "Business") %>
+              <%= BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Business") %>
             </div>
           <div>
             <small class="text-muted">14-day trial</small>
@@ -230,70 +231,6 @@ defmodule LogflareWeb.PlansLive do
             <p class="nam-consectetur-an"><sup>2</sup> Standard plans are subject to our <%= link "fair use", to: Routes.marketing_path(@socket, :pricing) <> "#fair-use" %> policy.</p>
     </div>
     """
-  end
-
-  def sub_button(plan, socket, plans, period, plan_name) do
-    cond do
-      is_nil(plan) ->
-        link("Start trial",
-          to:
-            Routes.billing_path(socket, :confirm_subscription, %{
-              "stripe_id" => Plans.find_plan(plans, period, plan_name).stripe_id
-            }),
-          class: "btn btn-dark text-white form-button btn w-75 mr-0 mb-1"
-        )
-
-      plan.name == "Lifetime" ->
-        link("Contact us",
-          to: Routes.contact_path(socket, :contact),
-          class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
-        )
-
-      plan.name == "Free" || plan.name == "Legacy" ->
-        link("Subscribe",
-          to:
-            Routes.billing_path(socket, :confirm_subscription, %{
-              "stripe_id" => Plans.find_plan(plans, period, plan_name).stripe_id
-            }),
-          class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
-        )
-
-      plan.id == Plans.find_plan(plans, period, plan_name).id ->
-        link("Subscribed",
-          to:
-            Routes.billing_path(socket, :confirm_subscription, %{
-              "stripe_id" => Plans.find_plan(plans, period, plan_name).stripe_id
-            }),
-          class: "btn btn-dark text-white form-button disabled w-75 mr-0 mb-1"
-        )
-
-      plan.name == Plans.find_plan(plans, period, plan_name).name ->
-        link("Switch to #{period}ly",
-          to:
-            Routes.billing_path(socket, :change_subscription, %{
-              "plan" => Plans.find_plan(plans, period, plan_name).id
-            }),
-          class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
-        )
-
-      plan.id > Plans.find_plan(plans, period, plan_name).id ->
-        link("Downgrade",
-          to:
-            Routes.billing_path(socket, :change_subscription, %{
-              "plan" => Plans.find_plan(plans, period, plan_name).id
-            }),
-          class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
-        )
-
-      plan.id < Plans.find_plan(plans, period, plan_name).id ->
-        link("Upgrade",
-          to:
-            Routes.billing_path(socket, :change_subscription, %{
-              "plan" => Plans.find_plan(plans, period, plan_name).id
-            }),
-          class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
-        )
-    end
   end
 
   defp period!("month"), do: "year"
