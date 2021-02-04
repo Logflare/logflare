@@ -26,10 +26,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         hibernate_after: 30_000
       ],
       processors: [
-        default: [stages: procs]
+        default: [concurrency: procs]
       ],
       batchers: [
-        bq: [stages: procs, batch_size: 100, batch_timeout: 1000]
+        bq: [concurrency: procs, batch_size: 100, batch_timeout: 1000]
       ],
       context: rls
     )
