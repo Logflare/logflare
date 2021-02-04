@@ -126,6 +126,7 @@ defmodule Logflare.BillingAccounts do
         Map.put(attrs, :stripe_subscriptions, subscriptions)
         |> Map.put(:stripe_invoices, invoices)
         |> Map.put(:default_payment_method, customer.invoice_settings.default_payment_method)
+        |> Map.put(:custom_invoice_fields, customer.invoice_settings.custom_fields)
 
       update_billing_account(billing_account, attrs)
     else

@@ -3,14 +3,15 @@ defmodule Logflare.BillingAccounts.BillingAccount do
   import Ecto.Changeset
 
   schema "billing_accounts" do
-    field :latest_successful_stripe_session, :map
-    field :stripe_customer, :string
-    field :stripe_subscriptions, :map
-    field :stripe_invoices, :map
-    field :lifetime_plan?, :boolean, default: false, nullable: false
-    field :lifetime_plan_invoice, :string
-    field :default_payment_method, :string
-    belongs_to :user, Logflare.User
+    field(:latest_successful_stripe_session, :map)
+    field(:stripe_customer, :string)
+    field(:stripe_subscriptions, :map)
+    field(:stripe_invoices, :map)
+    field(:custom_invoice_fields, {:array, :map}, default: [], nullable: false)
+    field(:lifetime_plan?, :boolean, default: false, nullable: false)
+    field(:lifetime_plan_invoice, :string)
+    field(:default_payment_method, :string)
+    belongs_to(:user, Logflare.User)
 
     timestamps()
   end
@@ -25,7 +26,8 @@ defmodule Logflare.BillingAccounts.BillingAccount do
       :stripe_invoices,
       :lifetime_plan?,
       :lifetime_plan_invoice,
-      :default_payment_method
+      :default_payment_method,
+      :custom_invoice_fields
     ])
     |> validate_required([:user_id, :stripe_customer])
     |> unique_constraint(:user_id)

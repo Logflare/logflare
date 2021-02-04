@@ -170,7 +170,7 @@ defmodule LogflareWeb.StripeController do
           "id" => id,
           "type" => type,
           "data" => %{
-            "object" => %{"id" => customer, "invoice_settings" => invoice_settings} = _object
+            "object" => %{"id" => customer, "invoice_settings" => _invoice_settings} = _object
           }
         } = _event
       )
@@ -183,29 +183,7 @@ defmodule LogflareWeb.StripeController do
       }
     })
 
-    case type do
-      "customer.updated" ->
-        with billing_account <-
-               BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, billing_account} <-
-               BillingAccounts.update_billing_account(billing_account, invoice_settings) do
-          Phoenix.PubSub.broadcast(
-            Logflare.PubSub,
-            "billing",
-            {:update_billing_account, billing_account}
-          )
-
-          ok(conn)
-        else
-          err ->
-            log_error(err)
-
-            conflict(conn)
-        end
-
-      _else ->
-        not_implimented(conn)
-    end
+    not_implimented(conn)
   end
 
   def event(conn, _params) do
