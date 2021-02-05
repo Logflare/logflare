@@ -1,5 +1,5 @@
 <%= if @show_modal do %>
-  <%= live_modal @socket, @modal.body.module_or_template,
+<%= live_modal @socket, @modal.body.module_or_template,
     id: @modal.body.id,
     title: @modal.body.title,
     user: @user,
@@ -12,17 +12,17 @@
     team_user: @team_user,
     return_to: @modal.body.return_to  %>
 <% end %>
-<div id="user-preferences"
-data-user-local-timezone="<%= @user_local_timezone %>"
-data-use-local-time="<%= @use_local_time %>"
-></div>
+<div id="user-preferences" data-user-local-timezone="<%= @user_local_timezone %>"
+  data-use-local-time="<%= @use_local_time %>"></div>
 <div id="source-logs-search-control" class="subhead subhead-fixed" phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search</h5>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/search
+    </h5>
     <div class="log-settings">
       <ul>
         <li><a href="javascript:Source.scrollOverflowBottom();">
-            <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll down</span></a></li>
+            <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span> <span class="hide-on-mobile">scroll
+              down</span></a></li>
         <li>
           <%= LqlHelpers.lql_help_modal_link() %>
         </li>
@@ -30,15 +30,12 @@ data-use-local-time="<%= @use_local_time %>"
           <%= LqlHelpers.bq_source_schema_modal_link() %>
         </li>
         <li>
-          <a href="#" phx-click="set_local_time"
-            id="set_local_time"
-            phx-value-use_local_time="<%= @use_local_time %>"
-            >
+          <a href="#" phx-click="set_local_time" id="set_local_time" phx-value-use_local_time="<%= @use_local_time %>">
             <span>
               <%= if @use_local_time do %>
-                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
+              <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
               <% else %>
-                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
+              <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
               <% end %>
             </span>
             <span class="hide-on-mobile">local time</span>
@@ -46,47 +43,49 @@ data-use-local-time="<%= @use_local_time %>"
         </li>
         <li>
           <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)") do %>
-            <i class="fas fa-globe"></i>
-            <span class="hide-on-mobile">
-              timezone
-              <%= if @user_local_timezone do %>
-                <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@user_local_timezone).offset_utc)  %>
-              <% end %>
-            </span>
+          <i class="fas fa-globe"></i>
+          <span class="hide-on-mobile">
+            timezone
+            <%= if @user_local_timezone do %>
+            <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@user_local_timezone).offset_utc)  %>
+            <% end %>
+          </span>
           <% end %>
         </li>
         <li>
-          <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
-          <span>
-            <i class="fas fa-copy">
-            </i>
+          <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0"
+            data-toggle="tooltip" data-html="true" data-placement="top"
+            data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
+            <span>
+              <i class="fas fa-copy">
+              </i>
+            </span>
+            <span class="hide-on-mobile">
+              share
+            </span>
           </span>
-          <span class="hide-on-mobile">
-            share
-          </span>
-        </span>
-      </li>
-      <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
+        </li>
+        <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
         <li>
           <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_error_link, title: "Query Debugging") do %>
-            <i class="fas fa-bug"></i><span class="hide-on-mobile"> debug error </span>
+          <i class="fas fa-bug"></i><span class="hide-on-mobile"> debug error </span>
           <% end %>
         </li>
-      <% else %>
+        <% else %>
         <li>
           <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_events_link, title: "Query Debugging") do %>
-            <i class="fas fa-bug"></i><span class="hide-on-mobile"> events </span>
+          <i class="fas fa-bug"></i><span class="hide-on-mobile"> events </span>
           <% end %>
         </li>
         <li>
           <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
-            <i class="fas fa-bug"></i><span class="hide-on-mobile"> aggregate </span>
+          <i class="fas fa-bug"></i><span class="hide-on-mobile"> aggregate </span>
           <% end %>
         </li>
-      <% end %>
-    </ul>
+        <% end %>
+      </ul>
+    </div>
   </div>
-</div>
 </div>
 <div class="container source-logs-search-container console-text">
   <%= render("logs_list.html",
@@ -108,31 +107,32 @@ data-use-local-time="<%= @use_local_time %>"
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group form-text">
       <%= text_input f, :querystring, phx_focus: :form_focus, phx_blur: :form_blur, value: @querystring, class: "form-control form-control-margin", list: "matches" %>
+      <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
       <datalist id="matches">
         <%= for s <- @search_history do %>
-          <option value="<%= s.querystring %>"><%= s.querystring %></option>
+        <option value="<%= s.querystring %>"><%= s.querystring %></option>
         <% end %>
       </datalist>
     </div>
     <div class="d-flex flex-wrap align-items-center form-text">
       <div class="pr-3 pt-1 pb-1">
         <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
-          <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
+        <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
         <% end %>
       </div>
       <div class="pr-3 pt-1 pb-1">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
-            <span class="btn btn-primary live-pause" phx-click="pause_live_search" style="">
-              <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
-              <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
-            </span>
+          <span class="btn btn-primary live-pause" phx-click="pause_live_search" style="">
+            <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+            <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
+          </span>
           <% else %>
-            <span class="btn btn-primary live-pause" phx-click="resume_live_search" style="">
-              <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
-            </span>
+          <span class="btn btn-primary live-pause" phx-click="resume_live_search" style="">
+            <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
+          </span>
           <% end %>
-          <%= text_input f, :user_local_timezone, class: "d-none", value: @user_local_timezone, id: "user-local-timezone" %>
+
         </div>
       </div>
       <div class="pr-3 pt-1 pb-1">
@@ -142,7 +142,7 @@ data-use-local-time="<%= @use_local_time %>"
       </div>
       <div class="pr-3 pt-1 pb-1">
         <span class="btn btn-primary" id="daterangepicker">
-          <span class="fa fa-clock" ></span>
+          <span class="fa fa-clock"></span>
           <span class="hide-on-mobile">DateTime</span>
         </span>
       </div>
@@ -160,40 +160,37 @@ data-use-local-time="<%= @use_local_time %>"
       </div>
       <div class="pr-3 pt-1 pb-1">
         <%= if @chart_aggregate_enabled? do %>
-          <%= select f,
+        <%= select f,
          :chart_aggregate,
           ["sum", "avg", "max", "p50", "p95", "p99", "count"],
           selected: get_chart_aggregate(@lql_rules, "count"),
           class: "form-control form-control-sm"
            %>
         <% else %>
-          <span class="d-inline-block" tabindex="0"
-          data-toggle="tooltip"
-          title="Chart aggregate setting requires usage of chart: operator"
-          trigger="hover click"
-          delay="0"
-          >
-            <%= select f,
+        <span class="d-inline-block" tabindex="0" data-toggle="tooltip"
+          title="Chart aggregate setting requires usage of chart: operator" trigger="hover click" delay="0">
+          <%= select f,
             :chart_aggregate,
               ["count"],
               selected: "count",
               class: "form-control form-control-sm",
               style: "pointer-events: none;"
               %>
-          </span>
+        </span>
         <% end %>
       </div>
     </div>
-  </form>
-  <%= if @last_query_completed_at do %>
-        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
-          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0.0 </span> seconds
-        </small>
-      <% else %>
-        <small class="form-text text-muted">
-          Elapsed since last query: 0.0 seconds
-        </small>
-      <% end %>
-</div>
-<div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
+    </form>
+    <%= if @last_query_completed_at do %>
+    <small class="form-text text-muted" id="last-query-completed-at"
+      data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
+      Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0.0 </span> seconds
+    </small>
+    <% else %>
+    <small class="form-text text-muted">
+      Elapsed since last query: 0.0 seconds
+    </small>
+    <% end %>
+  </div>
+  <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 </div>
