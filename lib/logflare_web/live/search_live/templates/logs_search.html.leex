@@ -107,7 +107,7 @@ data-use-local-time="<%= @use_local_time %>"
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group form-text">
-      <%= text_input f, :querystring, phx_focus: :form_focus, value: @querystring, class: "form-control form-control-margin", list: "matches" %>
+      <%= text_input f, :querystring, phx_focus: :form_focus, phx_blur: :form_blur, value: @querystring, class: "form-control form-control-margin", list: "matches" %>
       <datalist id="matches">
         <%= for s <- @search_history do %>
           <option value="<%= s.querystring %>"><%= s.querystring %></option>
@@ -123,12 +123,12 @@ data-use-local-time="<%= @use_local_time %>"
       <div class="pr-3 pt-1 pb-1">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
-            <span class="btn btn-primary live-pause" phx-click="stop_live_search" style="">
+            <span class="btn btn-primary live-pause" phx-click="pause_live_search" style="">
               <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
               <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
             </span>
           <% else %>
-            <span class="btn btn-primary live-pause" phx-click="start_live_search" style="">
+            <span class="btn btn-primary live-pause" phx-click="resume_live_search" style="">
               <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
             </span>
           <% end %>
