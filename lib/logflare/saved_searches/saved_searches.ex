@@ -104,6 +104,7 @@ defmodule Logflare.SavedSearches do
     |> where([s], ilike(s.querystring, ^qs))
     |> where([s], s.source_id == ^source_id)
     |> order_by([s], desc: s.inserted_at)
+    |> limit([s], 10)
     |> Repo.all()
   end
 end
