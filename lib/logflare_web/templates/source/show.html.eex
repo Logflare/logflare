@@ -55,14 +55,14 @@
       <div class="form-group form-text">
         <%= text_input f, :querystring, placeholder: "404", class: "form-control form-control-margin", autofocus: true %>
         <%= hidden_input f, :tailing?, value: "true" %>
-        <small class="form-text text-muted">
-          random(tips): <%= @search_tip %>
-        </small>
       </div>
       <%= submit class: "btn btn-primary form-button" do %>
         <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
       <% end %>
     <% end %>
+    <small class="form-text text-muted">
+          random(tips): <%= @search_tip %>
+    </small>
   </div>
 
 </div>

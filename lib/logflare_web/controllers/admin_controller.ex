@@ -166,9 +166,11 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp query_accounts(email, sort_by) when is_binary(sort_by) do
+    e = "%#{email}%"
+
     from u in User,
       order_by: [desc: ^String.to_atom(sort_by)],
-      where: [email: ^email],
+      where: ilike(u.email, ^e),
       select: u
   end
 end

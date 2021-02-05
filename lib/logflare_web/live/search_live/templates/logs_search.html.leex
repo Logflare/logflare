@@ -107,16 +107,12 @@ data-use-local-time="<%= @use_local_time %>"
   <div class="search-control">
     <%= f = form_for :search, "#", phx_submit: :start_search, phx_change: :form_update, class: "form-group" %>
     <div class="form-group form-text">
-      <%= text_input f, :querystring, value: @querystring, class: "form-control form-control-margin", autofocus: true %>
-      <%= if @last_query_completed_at do %>
-        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
-          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0 </span> seconds
-        </small>
-      <% else %>
-        <small class="form-text text-muted">
-          random(tips): <%= @search_tip %>
-        </small>
-      <% end %>
+      <%= text_input f, :querystring, phx_focus: :form_focus, phx_blur: :form_blur, value: @querystring, class: "form-control form-control-margin", list: "matches" %>
+      <datalist id="matches">
+        <%= for s <- @search_history do %>
+          <option value="<%= s.querystring %>"><%= s.querystring %></option>
+        <% end %>
+      </datalist>
     </div>
     <div class="d-flex flex-wrap align-items-center form-text">
       <div class="pr-3 pt-1 pb-1">
@@ -127,12 +123,12 @@ data-use-local-time="<%= @use_local_time %>"
       <div class="pr-3 pt-1 pb-1">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
-            <span class="btn btn-primary live-pause" phx-click="stop_live_search" style="">
+            <span class="btn btn-primary live-pause" phx-click="pause_live_search" style="">
               <div class="spinner-border spinner-border-sm text-info" role="status" ></div>
               <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
             </span>
           <% else %>
-            <span class="btn btn-primary live-pause" phx-click="start_live_search" style="">
+            <span class="btn btn-primary live-pause" phx-click="resume_live_search" style="">
               <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
             </span>
           <% end %>
@@ -189,6 +185,15 @@ data-use-local-time="<%= @use_local_time %>"
       </div>
     </div>
   </form>
+  <%= if @last_query_completed_at do %>
+        <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
+          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0.0 </span> seconds
+        </small>
+      <% else %>
+        <small class="form-text text-muted">
+          Elapsed since last query: 0.0 seconds
+        </small>
+      <% end %>
 </div>
 <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval="<%= @user_idle_interval %>"></div>
 </div>

@@ -43,7 +43,8 @@ defmodule LogflareWeb.Source.SearchLV do
     show_modal: nil,
     last_query_completed_at: nil,
     lql_rules: [],
-    querystring: ""
+    querystring: "",
+    search_history: []
   ]
 
   def mount(params, session, socket) do
@@ -298,42 +299,29 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("pause_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+  def handle_event("pause_live_search" = ev, _, socket) do
+    pause_live_search(ev, socket)
+  end
+
+  def handle_event("resume_live_search" = ev, _, socket) do
+    resume_live_search(ev, socket)
+  end
+
+  def handle_event("form_focus", %{"value" => value}, socket) do
+    send(self(), :pause_live_search)
+
+    source = socket.assigns.source
+    search_history = search_history(value, source)
 
     socket =
-      if prev_assigns.tailing? and !prev_assigns.tailing_paused? do
-        maybe_cancel_tailing_timer(socket)
-        SearchQueryExecutor.maybe_cancel_query(stoken)
-
-        socket
-        |> assign(:tailing?, false)
-        |> assign(:tailing_paused?, true)
-      else
-        socket
-      end
+      socket
+      |> assign(:search_history, search_history)
 
     {:noreply, socket}
   end
 
-  def handle_event("resume_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
-
-    socket =
-      if prev_assigns.tailing_paused? do
-        socket =
-          socket
-          |> assign(:tailing_paused?, nil)
-          |> assign(:tailing?, true)
-
-        SearchQueryExecutor.maybe_execute_events_query(stoken, socket.assigns)
-
-        socket
-      else
-        socket
-      end
+  def handle_event("form_blur", %{"value" => _value}, socket) do
+    :noop
 
     {:noreply, socket}
   end
@@ -345,6 +333,8 @@ defmodule LogflareWeb.Source.SearchLV do
     new_qs = search["querystring"]
     new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
     new_chart_period = String.to_existing_atom(search["chart_period"])
+
+    search_history = search_history(new_qs, source)
 
     socket = assign(socket, :querystring, new_qs)
 
@@ -367,6 +357,7 @@ defmodule LogflareWeb.Source.SearchLV do
         qs = Lql.encode!(lql_rules)
 
         socket
+        |> assign(:search_history, search_history)
         |> assign(:querystring, qs)
         |> assign(:lql_rules, lql_rules)
         |> assign(:log_aggregates, [])
@@ -375,6 +366,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
         socket
+        |> assign(:search_history, search_history)
       end
 
     {:noreply, socket}
@@ -507,6 +499,14 @@ defmodule LogflareWeb.Source.SearchLV do
     socket
     |> assign(:querystring, qs)
     |> assign(:lql_rules, lql_rules)
+  end
+
+  def handle_info(:resume_live_search = ev, socket) do
+    resume_live_search(ev, socket)
+  end
+
+  def handle_info(:pause_live_search = ev, socket) do
+    pause_live_search(ev, socket)
   end
 
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
@@ -782,5 +782,53 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:loading, false)
     |> assign(:chart_loading?, false)
     |> put_flash(:error, error)
+  end
+
+  defp search_history(new_qs, source) do
+    search_history = SavedSearches.suggest_saved_searches(new_qs, source.id)
+
+    if Enum.count(search_history) == 1 && hd(search_history).querystring == new_qs,
+      do: [],
+      else: search_history
+  end
+
+  defp pause_live_search(ev, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
+
+    socket =
+      if prev_assigns.tailing? and !prev_assigns.tailing_paused? do
+        maybe_cancel_tailing_timer(socket)
+        SearchQueryExecutor.maybe_cancel_query(stoken)
+
+        socket
+        |> assign(:tailing?, false)
+        |> assign(:tailing_paused?, true)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  defp resume_live_search(ev, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = source} = prev_assigns
+    log_lv_received_event(ev, source)
+
+    socket =
+      if prev_assigns.tailing_paused? do
+        socket =
+          socket
+          |> assign(:tailing_paused?, nil)
+          |> assign(:tailing?, true)
+
+        SearchQueryExecutor.maybe_execute_events_query(stoken, socket.assigns)
+
+        socket
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 end
