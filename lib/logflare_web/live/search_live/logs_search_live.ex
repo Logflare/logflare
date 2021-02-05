@@ -43,7 +43,8 @@ defmodule LogflareWeb.Source.SearchLV do
     show_modal: nil,
     last_query_completed_at: nil,
     lql_rules: [],
-    querystring: ""
+    querystring: "",
+    search_history: []
   ]
 
   def mount(params, session, socket) do
@@ -338,6 +339,17 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_event("form_focus", %{"value" => value}, socket) do
+    source = socket.assigns.source
+    search_history = SavedSearches.suggest_saved_searches(value, source.id)
+
+    socket =
+      socket
+      |> assign(:search_history, search_history)
+
+    {:noreply, socket}
+  end
+
   def handle_event("form_update" = ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
     source = prev_assigns.source
     log_lv_received_event(ev, source)
@@ -345,6 +357,13 @@ defmodule LogflareWeb.Source.SearchLV do
     new_qs = search["querystring"]
     new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
     new_chart_period = String.to_existing_atom(search["chart_period"])
+
+    search_history = SavedSearches.suggest_saved_searches(new_qs, source.id)
+
+    search_history =
+      if Enum.count(search_history) == 1 && hd(search_history).querystring == new_qs,
+        do: [],
+        else: search_history
 
     socket = assign(socket, :querystring, new_qs)
 
@@ -367,6 +386,7 @@ defmodule LogflareWeb.Source.SearchLV do
         qs = Lql.encode!(lql_rules)
 
         socket
+        |> assign(:search_history, search_history)
         |> assign(:querystring, qs)
         |> assign(:lql_rules, lql_rules)
         |> assign(:log_aggregates, [])
@@ -375,6 +395,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
         socket
+        |> assign(:search_history, search_history)
       end
 
     {:noreply, socket}

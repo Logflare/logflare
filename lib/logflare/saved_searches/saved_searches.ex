@@ -96,4 +96,14 @@ defmodule Logflare.SavedSearches do
     |> where([s], is_nil(s.saved_by_user))
     |> Repo.update_all(set: [saved_by_user: true])
   end
+
+  def suggest_saved_searches(querystring, source_id) do
+    qs = "%#{querystring}%"
+
+    SavedSearch
+    |> where([s], ilike(s.querystring, ^qs))
+    |> where([s], s.source_id == ^source_id)
+    |> order_by([s], desc: s.inserted_at)
+    |> Repo.all()
+  end
 end
