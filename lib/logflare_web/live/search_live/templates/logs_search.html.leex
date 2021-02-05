@@ -187,11 +187,11 @@ data-use-local-time="<%= @use_local_time %>"
   </form>
   <%= if @last_query_completed_at do %>
         <small class="form-text text-muted" id="last-query-completed-at" data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
-          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0 </span> seconds
+          Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0.0 </span> seconds
         </small>
       <% else %>
         <small class="form-text text-muted">
-          random(tips): <%= @search_tip %>
+          Elapsed since last query: 0.0 seconds
         </small>
       <% end %>
 </div>
