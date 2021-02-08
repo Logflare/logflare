@@ -149,4 +149,20 @@ defmodule Logflare.Users do
     |> Ecto.Changeset.cast_embed(:preferences, required: true)
     |> Repo.update()
   end
+
+  def change_owner(%TeamUser{} = team_user, %User{} = user) do
+    new_user =
+      Map.take(team_user, [
+        :email,
+        :provider,
+        :email_preferred,
+        :name,
+        :image,
+        :phone,
+        :valid_google_account,
+        :provider_uid
+      ])
+
+    update_user_all_fields(user, new_user)
+  end
 end

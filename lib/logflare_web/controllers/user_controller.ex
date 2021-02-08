@@ -4,7 +4,7 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo, Users, Source.Supervisor, BillingAccounts.Stripe}
+  alias Logflare.{User, Repo, Users, TeamUsers, Source.Supervisor, BillingAccounts.Stripe}
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
@@ -131,6 +131,27 @@ defmodule LogflareWeb.UserController do
           link("Undo?", to: Routes.user_path(conn, :new_api_key, undo: true))
         ])
         |> redirect(to: Routes.source_path(conn, :dashboard))
+    end
+  end
+
+  def change_owner(%{assigns: %{user: _user}} = conn, %{"user" => %{"team_user_id" => ""}}) do
+    conn
+    |> put_flash(:error, "Please select a team member!")
+    |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+  end
+
+  def change_owner(%{assigns: %{user: user}} = conn, %{"user" => %{"team_user_id" => id}}) do
+    with team_user <- TeamUsers.get_team_user(id),
+         {:ok, _user} <- Users.change_owner(team_user, user),
+         {:ok, _resp} <- TeamUsers.delete_team_user(team_user) do
+      conn
+      |> put_flash(:info, "Owner successfully changed!")
+      |> redirect(to: Routes.user_path(conn, :edit) <> "#team-members")
+    else
+      _err ->
+        conn
+        |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
+        |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
     end
   end
 end
