@@ -153,14 +153,23 @@ defmodule LogflareWeb.UserController do
       |> redirect(to: Routes.user_path(conn, :edit) <> "#team-members")
     else
       {:error, changeset} ->
-        [email: {"has already been taken", _data}] = changeset.errors
+        case List.first(changeset.errors) do
+          {:email, {"has already been taken", _data}} ->
+            conn
+            |> put_flash(
+              :error,
+              "This email address is associated with a Logflare account already. Login with this user and delete the `Account` then try again."
+            )
+            |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
 
-        conn
-        |> put_flash(
-          :error,
-          "This email address is associated with a Logflare account already. Login with this user and delete the `Account` then try again."
-        )
-        |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+          _ ->
+            conn
+            |> put_flash(
+              :error,
+              "Something went wrong. Please contact support if this continues."
+            )
+            |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+        end
 
       _err ->
         conn
