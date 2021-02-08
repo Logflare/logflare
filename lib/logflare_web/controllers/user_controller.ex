@@ -142,12 +142,26 @@ defmodule LogflareWeb.UserController do
 
   def change_owner(%{assigns: %{user: user}} = conn, %{"user" => %{"team_user_id" => id}}) do
     with team_user <- TeamUsers.get_team_user(id),
-         {:ok, _user} <- Users.change_owner(team_user, user),
+         {:ok, new_owner} <- Users.change_owner(team_user, user),
          {:ok, _resp} <- TeamUsers.delete_team_user(team_user) do
+      if user.billing_account do
+        Stripe.update_customer(user.billing_account.stripe_customer, %{email: new_owner.email})
+      end
+
       conn
       |> put_flash(:info, "Owner successfully changed!")
       |> redirect(to: Routes.user_path(conn, :edit) <> "#team-members")
     else
+      {:error, changeset} ->
+        [email: {"has already been taken", _data}] = changeset.errors
+
+        conn
+        |> put_flash(
+          :error,
+          "This email address is associated with a Logflare account already. Login with this user and delete the `Account` then try again."
+        )
+        |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+
       _err ->
         conn
         |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
