@@ -84,12 +84,22 @@
 </div>
 <button class="btn btn-primary form-button" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_token(@team.id)) %>" data-toggle="tooltip" data-html=true data-placement="top" title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">Copy invite link</button>
 </div>
+
 <h4 class="header-margin">Account Preferences</h4>
 <p>Set your account wide preferences.</p>
 <div class="sub-form">
   <%= section_header("BigQuery Backend") %>
   <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner and BigQuery Job User permissions. See <%= link "this guide", to: Routes.marketing_path(@conn, :big_query_setup) %> for more info.</p>
   <%= render(LogflareWeb.UserView, "edit_bq_form.html", conn: @conn, changeset: @changeset) %>
+  <%= section_header("Change Account Owner") %>
+  <p>To change the main login of your Logflare account you must change the account owner. Add another team member first and then change the account owner here.</p>
+  <div class="form-group">
+    <%= form_for @changeset, Routes.user_path(@conn, :change_owner), fn owner -> %>
+    <%= select owner, :team_user_id, Enum.map(@team.team_users, &{&1.email, &1.id}), prompt: "Select a team member", class: "form-control" %>
+  </div>
+  <%= submit "Change owner", class: "btn btn-danger form-button" %>
+  <% end %>
+
   <%= section_header("Delete Your Account") %>
   <p>This will immediately delete everything associated with your account. There is no undo.</p>
   <%= link "Delete now", to: Routes.user_path(@conn, :delete), class: "btn btn-danger form-button", method: :delete %>

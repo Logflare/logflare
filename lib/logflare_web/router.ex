@@ -202,7 +202,8 @@ defmodule LogflareWeb.Router do
     get "/edit", UserController, :edit
     put "/edit", UserController, :update
     delete "/", UserController, :delete
-    get "/new-api-key", UserController, :new_api_key
+    get "/edit/api-key", UserController, :new_api_key
+    put "/edit/owner", UserController, :change_owner
   end
 
   scope "/account/billing", LogflareWeb do
