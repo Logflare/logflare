@@ -23,11 +23,14 @@ defmodule Logflare.DataCase do
       import Ecto.Query
       import Logflare.DataCase
       import Logflare.Factory
+
+      use Logflare.Commons
     end
   end
 
   setup tags do
     if tags[:unboxed] do
+      # Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
       :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
 
       on_exit(fn ->
@@ -40,6 +43,10 @@ defmodule Logflare.DataCase do
       unless tags[:async] do
         Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
       end
+
+      on_exit(fn ->
+        Logflare.EctoSQLUnboxedHelpers.truncate_all(:mnesia)
+      end)
     end
 
     :ok

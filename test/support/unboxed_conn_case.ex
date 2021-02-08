@@ -1,4 +1,4 @@
-defmodule LogflareWeb.ConnCase do
+defmodule LogflareWeb.UnboxedConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -33,21 +33,13 @@ defmodule LogflareWeb.ConnCase do
   setup tags do
     if tags[:unboxed] do
       :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
-
-      on_exit(fn ->
-        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
-        Logflare.EctoSQLUnboxedHelpers.truncate_all()
-      end)
+      on_exit(&Logflare.EctoSQLUnboxedHelpers.truncate_all/0)
     else
       :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    end
 
-      unless tags[:async] do
-        Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
-      end
-
-      on_exit(fn ->
-        Logflare.EctoSQLUnboxedHelpers.truncate_all(:mnesia)
-      end)
+    unless tags[:async] || tags[:unboxed] do
+      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
     end
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}
