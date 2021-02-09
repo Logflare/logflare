@@ -41,7 +41,9 @@ defmodule Logflare.SystemMetrics.Procs.Poller do
 
     processes = mem_sorted ++ reds_sorted
 
-    Logger.info("Process metrics!", processes: processes)
+    if Application.get_env(:logflare, :env) == :prod do
+      Logger.info("Process metrics!", processes: processes)
+    end
 
     poll_metrics()
     {:noreply, state}
