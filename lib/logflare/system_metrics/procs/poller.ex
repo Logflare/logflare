@@ -23,12 +23,23 @@ defmodule Logflare.SystemMetrics.Procs.Poller do
   end
 
   def handle_info(:poll_metrics, state) do
-    processes =
+    procs =
       Wobserver.Processes.list()
       |> Stream.reject(&(&1 == :error))
+
+    reds_sorted =
+      procs
       |> Enum.sort_by(& &1.reductions, :desc)
       |> Stream.take(10)
       |> Enum.to_list()
+
+    mem_sorted =
+      procs
+      |> Enum.sort_by(& &1.memory, :desc)
+      |> Stream.take(10)
+      |> Enum.to_list()
+
+    processes = mem_sorted ++ reds_sorted
 
     if Application.get_env(:logflare, :env) == :prod do
       Logger.info("Process metrics!", processes: processes)
