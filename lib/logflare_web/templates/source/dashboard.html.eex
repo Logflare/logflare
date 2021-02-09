@@ -41,13 +41,15 @@
       <h5 class="header-margin">Teams</h5>
       <ul class="list-unstyled">
         <%= if @home_team do %>
-        <%= if @team.id == @home_team.id do %>
-        <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+          <%= if @team.id == @home_team.id do %>
+          <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+          <% else %>
+          <li>
+            <%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small>
+              home team</small></li>
+          <% end %>
         <% else %>
-        <li>
-          <%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small>
-            home team</small></li>
-        <% end %>
+          <li><%= link "Create your own Logflare account", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "" %></li>
         <% end %>
         <%= if @team_users == [], do: "Other teams you are a member of will be listed here." %>
         <%= for team_user <- @team_users do %>
@@ -62,7 +64,8 @@
       </ul>
       <h5 class="header-margin">Members</h5>
       <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
-      <%= link("Invite more team members!", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
+      <%= link("Invite more team members", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
+
     </div>
     <div id="source-list" class="col-lg-6 mb-4">
       <div>

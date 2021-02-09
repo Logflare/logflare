@@ -188,12 +188,20 @@ defmodule LogflareWeb.Router do
 
   scope "/profile/:id", LogflareWeb do
     pipe_through [:browser, :require_auth]
+
     delete "/", TeamUserController, :delete
   end
 
   scope "/profile/switch", LogflareWeb do
     pipe_through [:browser, :require_auth, :auth_switch]
+
     get "/", TeamUserController, :change_team
+  end
+
+  scope "/account", LogflareWeb do
+    pipe_through [:browser, :require_auth]
+
+    post "/", AuthController, :create_and_sign_in
   end
 
   scope "/account", LogflareWeb do

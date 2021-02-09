@@ -82,6 +82,14 @@ defmodule Logflare.Users do
     |> Repo.update()
   end
 
+  def insert_user(params) do
+    api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
+    params = Map.put(params, :api_key, api_key)
+
+    User.changeset(%User{}, params)
+    |> Repo.insert()
+  end
+
   def insert_or_update_user(auth_params) do
     cond do
       user = Repo.get_by(User, provider_uid: auth_params.provider_uid) ->
@@ -91,11 +99,7 @@ defmodule Logflare.Users do
         update_user_by_email(user, auth_params)
 
       true ->
-        api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
-        auth_params = Map.put(auth_params, :api_key, api_key)
-
-        changeset = User.changeset(%User{}, auth_params)
-        Repo.insert(changeset)
+        insert_user(auth_params)
     end
   end
 
