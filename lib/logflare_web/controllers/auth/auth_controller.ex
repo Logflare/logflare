@@ -105,40 +105,80 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
+  def create_and_sign_in(%{assigns: %{team_user: team_user}} = conn, _params) do
+    {:ok, user} =
+      team_user
+      |> Map.take([:email, :email_preferred, :provider, :image, :name, :provider_uid, :token])
+      |> Users.insert_user()
+
+    auth_params =
+      Map.take(user, [:email, :email_preferred, :provider, :image, :name, :provider_uid, :token])
+
+    signin(conn, auth_params)
+  end
+
   def signin(conn, auth_params) do
-    oauth_params = get_session(conn, :oauth_params)
+    team_user = TeamUsers.get_team_user_by(email: auth_params.email)
+    user = Users.get_by(email: auth_params.email)
 
-    case Users.insert_or_update_user(auth_params) do
-      {:ok, user} ->
-        AccountEmail.welcome(user) |> Mailer.deliver()
-        CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access(user)
+    cond do
+      !is_nil(team_user) and is_nil(user) ->
+        team_user = team_user |> TeamUsers.preload_defaults()
+        user = Users.get(team_user.team.user_id)
 
-        conn
-        |> put_flash(:info, "Thanks for signing up! Now create a source!")
-        |> put_session(:user_id, user.id)
-        |> redirect(to: Routes.source_path(conn, :new, signup: true))
+        case TeamUsers.insert_or_update_team_user(team_user.team, auth_params) do
+          {:ok, team_user} ->
+            CloudResourceManager.set_iam_policy()
+            BigQuery.patch_dataset_access(user)
 
-      {:ok_found_user, user} ->
-        CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access(user)
-
-        case is_nil(oauth_params) do
-          true ->
             conn
             |> put_flash(:info, "Welcome back!")
             |> put_session(:user_id, user.id)
-            |> maybe_redirect_team_user()
+            |> put_session(:team_user_id, team_user.id)
+            |> redirect(to: Routes.source_path(conn, :dashboard))
 
-          false ->
+          {:error, _} ->
             conn
-            |> redirect_for_oauth(user)
+            |> put_flash(
+              :error,
+              "There was an error signing in. Please contact support if this continues."
+            )
+            |> redirect(to: Routes.auth_path(conn, :login))
         end
 
-      {:error, _reason} ->
-        conn
-        |> put_flash(:error, "Error signing in.")
-        |> redirect(to: Routes.auth_path(conn, :login))
+      true ->
+        case Users.insert_or_update_user(auth_params) do
+          {:ok, user} ->
+            AccountEmail.welcome(user) |> Mailer.deliver()
+            CloudResourceManager.set_iam_policy()
+            BigQuery.patch_dataset_access(user)
+
+            conn
+            |> put_flash(:info, "Thanks for signing up! Now create a source!")
+            |> put_session(:user_id, user.id)
+            |> redirect(to: Routes.source_path(conn, :new, signup: true))
+
+          {:ok_found_user, user} ->
+            CloudResourceManager.set_iam_policy()
+            BigQuery.patch_dataset_access(user)
+
+            case is_nil(get_session(conn, :oauth_params)) do
+              true ->
+                conn
+                |> put_flash(:info, "Welcome back!")
+                |> put_session(:user_id, user.id)
+                |> maybe_redirect_team_user()
+
+              false ->
+                conn
+                |> redirect_for_oauth(user)
+            end
+
+          {:error, _reason} ->
+            conn
+            |> put_flash(:error, "Error signing in.")
+            |> redirect(to: Routes.auth_path(conn, :login))
+        end
     end
   end
 
