@@ -1,5 +1,6 @@
 defmodule Logflare.MemoryRepo.ChangefeedListener do
   use Logflare.Commons
+  alias Logflare.Changefeeds.ChangefeedEvent
   use GenServer
   require Logger
   import Ecto.Query
@@ -14,38 +15,6 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
                    byte_size(channel) - @id_only_changefeed_suffix_byte_size,
                    @id_only_changefeed_suffix_byte_size
                  ) == "_id_only_changefeed"
-
-  defmodule ChangefeedEvent do
-    use TypedStruct
-
-    typedstruct do
-      field :id, term(), require: true
-      field :changes, map()
-      field :table, String.t(), require: true
-      field :type, String.t(), require: true
-      field :changefeed_subscription, Changefeeds.ChangefeedSubscription.t()
-    end
-
-    def build(attrs) do
-      kvs =
-        attrs
-        |> Enum.map(fn {k, v} ->
-          {String.to_atom(k), v}
-        end)
-        |> Enum.map(fn
-          {:id, v} -> {:id, v}
-          {k, v} -> {k, v}
-        end)
-
-      struct!(
-        __MODULE__,
-        kvs ++
-          [
-            changefeed_subscription: Changefeeds.get_changefeed_subscription_by_table(kvs[:table])
-          ]
-      )
-    end
-  end
 
   def child_spec(args) do
     %{
