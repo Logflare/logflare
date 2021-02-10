@@ -24,6 +24,7 @@ config :logflare, Logflare.Repo,
   ssl: true,
   prepare: :unnamed,
   timeout: 30_000
+  after_connect: {Logflare.Changefeeds.Setup, :after_connect!, []}
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_staging",

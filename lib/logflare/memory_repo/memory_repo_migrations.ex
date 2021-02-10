@@ -101,7 +101,8 @@ defmodule Logflare.MemoryRepo.Migrations do
                   'table', tg_table_name,
                   'type', tg_op,
                   'id', current_row.id,
-                  'changes', changes
+                  'changes', changes,
+                  'node_id', current_setting('logflare.node_id')
                 )::text
             );
           RETURN current_row;
@@ -132,7 +133,8 @@ defmodule Logflare.MemoryRepo.Migrations do
                   json_build_object(
                           'table', TG_TABLE_NAME,
                           'type', TG_OP,
-                          'id', current_row.id
+                          'id', current_row.id,
+                          'node_id', current_setting('logflare.node_id')
                       )::text
               );
           RETURN current_row;
