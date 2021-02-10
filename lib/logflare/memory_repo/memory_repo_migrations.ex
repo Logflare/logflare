@@ -41,8 +41,7 @@ defmodule Logflare.MemoryRepo.Migrations do
   end
 
   def create_table_and_indexes(schema) do
-    attributes =
-      EctoSchemaReflection.fields_no_embeds(schema) ++ EctoSchemaReflection.embeds(schema)
+    attributes = EctoSchemaReflection.fields(schema)
 
     table = schema |> EctoSchemaReflection.source() |> String.to_atom()
 
