@@ -238,7 +238,7 @@ hooks.SourceLogsSearch = {
     const idleInterval = $("#user-idle").data("user-idle-interval")
     idle({
       onIdle: () => {
-        hook.pushEvent("stop_live_search", {})
+        hook.pushEvent("pause_live_search", {})
         console.log(
           `User idle for ${idleInterval}, live tail search stopped...`
         )
