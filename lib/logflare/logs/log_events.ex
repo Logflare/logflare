@@ -9,7 +9,21 @@ defmodule Logflare.Logs.LogEvents do
 
   @spec create_log_event(LE.t()) :: {:ok, LE.t()} | {:error, term}
   def create_log_event(%LE{} = le) do
-    MemoryRepo.insert(le)
+    {:ok, result} = MemoryRepo.insert(le)
+
+    LE
+    |> from()
+    |> where([le], le.source_id == ^le.source_id)
+    |> MemoryRepo.all()
+    |> MemoryRepo.TableManagement.get_ids_for_sorted_records_over_max({:timestamp, :desc}, 500)
+    |> case do
+      [] ->
+        {:ok, result}
+
+      ids ->
+        {:ok, _} = MemoryRepo.delete_all(from(LE) |> where([le], le.id in ^ids))
+        {:ok, result}
+    end
   end
 
   def get_log_event_by_metadata_for_source(metadata_fragment, source_id)
