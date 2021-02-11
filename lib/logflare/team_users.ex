@@ -16,7 +16,7 @@ defmodule Logflare.TeamUsers do
 
   """
   def list_team_users do
-    Repo.all(TeamUser)
+    RepoWithCache.all(TeamUser)
   end
 
   def list_team_users_by_and_preload(kv) do
@@ -25,8 +25,8 @@ defmodule Logflare.TeamUsers do
         where: ^kv,
         select: t
 
-    for team_user <- Repo.all(query) do
-      Repo.preload(team_user, :team)
+    for team_user <- RepoWithCache.all(query) do
+      RepoWithCache.preload(team_user, :team)
     end
   end
 
@@ -36,7 +36,7 @@ defmodule Logflare.TeamUsers do
         where: ^kv,
         select: t
 
-    Repo.all(query)
+    RepoWithCache.all(query)
   end
 
   @doc """
@@ -53,7 +53,7 @@ defmodule Logflare.TeamUsers do
       ** (Ecto.NoResultsError)
 
   """
-  def get_team_user_by(kv), do: Repo.get_by(TeamUser, kv)
+  def get_team_user_by(kv), do: RepoWithCache.get_by(TeamUser, kv)
 
   def insert_or_update_team_user(team, auth_params) do
     team_id = team.id
@@ -64,12 +64,12 @@ defmodule Logflare.TeamUsers do
           from(u in TeamUser,
             where: u.team_id == ^team_id and u.provider_uid == ^auth_params.provider_uid
           )
-          |> Repo.one() ->
+          |> RepoWithCache.one() ->
         update_team_user(team_user, auth_params)
 
       team_user =
           from(u in TeamUser, where: u.team_id == ^team_id and u.email == ^auth_params.email)
-          |> Repo.one() ->
+          |> RepoWithCache.one() ->
         update_team_user(team_user, auth_params)
 
       true ->
@@ -97,23 +97,23 @@ defmodule Logflare.TeamUsers do
       })
   end
 
-  def get_team_user!(id), do: Repo.get!(TeamUser, id)
+  def get_team_user!(id), do: RepoWithCache.get!(TeamUser, id)
 
-  def get_team_user(id), do: Repo.get(TeamUser, id)
+  def get_team_user(id), do: RepoWithCache.get(TeamUser, id)
 
   def get_team_user_and_preload(id) do
-    case Repo.get(TeamUser, id) do
+    case RepoWithCache.get(TeamUser, id) do
       nil ->
         nil
 
       team_user ->
-        Repo.preload(team_user, :team)
+        RepoWithCache.preload(team_user, :team)
     end
   end
 
   def preload_defaults(team_user) do
     team_user
-    |> Repo.preload(:team)
+    |> RepoWithCache.preload(:team)
   end
 
   @doc """
@@ -132,7 +132,7 @@ defmodule Logflare.TeamUsers do
     Teams.get_team!(team_id)
     |> Ecto.build_assoc(:team_users)
     |> TeamUser.changeset(team_user_attrs)
-    |> Repo.insert()
+    |> RepoWithCache.insert()
   end
 
   @doc """
@@ -150,12 +150,12 @@ defmodule Logflare.TeamUsers do
   def update_team_user(%TeamUser{} = team_user, attrs) do
     team_user
     |> TeamUser.changeset(attrs)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   def touch_team_user(%TeamUser{} = team_user) do
     from(t in TeamUser, select: t, where: t.id == ^team_user.id)
-    |> Repo.update_all(set: [updated_at: DateTime.utc_now()])
+    |> RepoWithCache.update_all(set: [updated_at: DateTime.utc_now()])
   end
 
   @doc """
@@ -171,7 +171,7 @@ defmodule Logflare.TeamUsers do
 
   """
   def delete_team_user(%TeamUser{} = team_user) do
-    Repo.delete(team_user)
+    RepoWithCache.delete(team_user)
   end
 
   @doc """

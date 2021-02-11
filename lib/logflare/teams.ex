@@ -17,7 +17,7 @@ defmodule Logflare.Teams do
 
   """
   def list_teams do
-    Repo.all(Team)
+    RepoWithCache.all(Team)
   end
 
   @doc """
@@ -34,9 +34,9 @@ defmodule Logflare.Teams do
       ** (Ecto.NoResultsError)
 
   """
-  def get_team!(id), do: Repo.get!(Team, id)
+  def get_team!(id), do: RepoWithCache.get!(Team, id)
 
-  def get_team_by(keyword), do: Repo.get_by(Team, keyword)
+  def get_team_by(keyword), do: RepoWithCache.get_by(Team, keyword)
 
   def get_home_team!(%TeamUser{email: email} = _team_user) do
     case Users.get_user_by(email: email) |> Users.preload_team() do
@@ -48,9 +48,9 @@ defmodule Logflare.Teams do
     end
   end
 
-  def preload_user(team), do: Repo.preload(team, :user)
+  def preload_user(team), do: RepoWithCache.preload(team, :user)
 
-  def preload_team_users(team), do: Repo.preload(team, :team_users)
+  def preload_team_users(team), do: RepoWithCache.preload(team, :team_users)
 
   @doc """
   Creates a team.
@@ -64,11 +64,11 @@ defmodule Logflare.Teams do
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_team(user, %{name: _name} = attrs) do
+  def create_team(%User{} = user, %{name: _name} = attrs) do
     user
     |> Ecto.build_assoc(:team)
     |> Team.changeset(attrs)
-    |> Repo.insert()
+    |> RepoWithCache.insert()
   end
 
   @doc """
@@ -86,7 +86,7 @@ defmodule Logflare.Teams do
   def update_team(%Team{} = team, attrs) do
     team
     |> Team.changeset(attrs)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   @doc """
@@ -102,7 +102,7 @@ defmodule Logflare.Teams do
 
   """
   def delete_team(%Team{} = team) do
-    Repo.delete(team)
+    RepoWithCache.delete(team)
   end
 
   @doc """

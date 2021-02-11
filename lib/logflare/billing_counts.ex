@@ -21,19 +21,19 @@ defmodule Logflare.BillingCounts do
     |> where(^kv)
     |> order_by(desc: :inserted_at)
     |> limit(1)
-    |> Repo.one()
+    |> RepoWithCache.one()
   end
 
   def list_by(kv) do
     BillingCount
     |> where(^kv)
-    |> Repo.all()
+    |> RepoWithCache.all()
   end
 
   def insert(user, source, params) do
     assoc = params |> assoc(user) |> assoc(source)
 
-    Repo.insert(assoc)
+    RepoWithCache.insert(assoc)
   end
 
   defp assoc(params, user_or_source) do
