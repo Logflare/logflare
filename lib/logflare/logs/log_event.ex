@@ -8,6 +8,7 @@ defmodule Logflare.LogEvent do
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
 
   use Logflare.ChangefeedSchema
+
   @validators [EqDeepFieldTypes, BigQuerySchemaChange]
 
   defmodule Body do
@@ -23,7 +24,7 @@ defmodule Logflare.LogEvent do
     end
   end
 
-  @primary_key {:id, :binary_id, []}
+  @primary_key {:id, :binary_id, [autogenerate: false]}
   typed_schema "log_events" do
     embeds_one :body, Body
     belongs_to :source, Source
@@ -88,7 +89,7 @@ defmodule Logflare.LogEvent do
   end
 
   @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()
-  def make_from_db(params, %{source: _source}) do
+  def make_from_db(params, %{source: %Source{} = source}) do
     params =
       params
       |> Map.update(:metadata, %{}, fn
@@ -109,14 +110,15 @@ defmodule Logflare.LogEvent do
     __MODULE__
     |> struct!(changes)
     |> Map.put(:body, body)
+    |> Map.replace!(:source, source)
   end
 
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}) do
+  def make(params, %{source: %Source{} = source}) do
     changeset =
       %__MODULE__{}
       |> cast(mapper(params), [:valid, :validation_error, :ephemeral])
-      |> cast_assoc(:source, with: &Source.no_casting_changeset/1)
+      |> put_assoc(:source, source)
       |> cast_embed(:body, with: &make_body/2)
       |> validate_required([:body])
 
@@ -127,6 +129,7 @@ defmodule Logflare.LogEvent do
       |> Map.put(:body, body)
       |> Map.put(:validation_error, changeset_error_to_string(changeset))
       |> Map.put(:source, source)
+      |> Map.put(:source_id, source.id)
       |> Map.put(:origin_source_id, source.token)
       |> Map.put(:valid, changeset.valid?)
       |> Map.put(:params, params)

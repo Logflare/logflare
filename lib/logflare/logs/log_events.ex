@@ -5,15 +5,25 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
   alias Logflare.Google.BigQuery.GenUtils
-  # import Logflare.Ecto.BQQueryAPI
+  import Ecto.Query
 
-
+  @spec create_log_event(LE.t()) :: {:ok, LE.t()} | {:error, term}
   def create_log_event(%LE{} = le) do
     MemoryRepo.insert(le)
   end
 
+  def get_log_event_by_metadata_for_source(metadata_fragment, source_id)
+      when is_integer(source_id) and is_map(metadata_fragment) do
+    LE
+    |> from()
+    |> join(:inner, [le], s in assoc(le, :source))
+    |> where([le, s], s.id == ^source_id)
+    |> MemoryRepo.all()
+    |> Enum.find(&MapSet.subset?(MapSet.new(metadata_fragment), MapSet.new(&1.body.metadata)))
+  end
+
   def get_log_event(id) do
-    RepoWithCache.get!(LogEvent, id)
+    RepoWithCache.get(LogEvent, id)
   end
 
   def get_log_event!(id) do
@@ -187,5 +197,9 @@ defmodule Logflare.Logs.LogEvents do
   defp where_last_3d_q(q) do
     from_utc = Timex.shift(Timex.today(), days: -3)
     SearchQueries.where_partitiondate_between(q, from_utc, Timex.today())
+  end
+
+  def get_log_event_by(kw) do
+    RepoWithCache.get_by(LogEvent, kw)
   end
 end
