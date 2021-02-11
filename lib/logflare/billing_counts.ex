@@ -9,28 +9,36 @@ defmodule Logflare.BillingCounts do
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.BillingCounts.BillingCount
+  alias Logflare.Queries.AnalyticalQueries
 
   def timeseries(%User{id: user_id}, start_date, end_date) do
-    from(c in BillingCount,
-      right_join:
-        range in fragment(
-          "select generate_series(date(?), date(?), '1 day') AS day, cast(? as bigint) as user_id",
-          ^start_date,
-          ^end_date,
-          ^user_id
-        ),
-      on: range.day == fragment("date(?)", c.inserted_at),
-      on: range.user_id == c.user_id,
-      where: range.day >= ^start_date and range.day <= ^end_date,
-      group_by: range.day,
-      order_by: [asc: range.day],
-      select: [
-        range.day,
-        coalesce(sum(c.count), 0),
-        "Log Events"
-      ]
-    )
-    |> Repo.all()
+    q =
+      from(c in BillingCount,
+        where: c.user_id == ^user_id,
+        where: c.inserted_at >= ^start_date and c.inserted_at <= ^end_date,
+        group_by: fragment("date(?)", c.inserted_at),
+        order_by: [asc: fragment("date(?)", c.inserted_at)],
+        select: %{
+          date: fragment("date(?)", c.inserted_at),
+          sum: sum(c.count)
+        }
+      )
+
+    q_wrapped =
+      AnalyticalQueries.wrap_in_generated_timeseries_subquery(
+        q,
+        :date,
+        [:sum],
+        start_date,
+        end_date
+      )
+
+    q_select =
+      from(subquery(q_wrapped))
+      |> order_by([t], asc: t.date)
+      |> select([t], [t.date, t.sum, "Log Events"])
+
+    Repo.all(q_select)
   end
 
   def timeseries_to_ext(timeseries) do
