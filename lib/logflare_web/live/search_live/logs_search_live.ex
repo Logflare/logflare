@@ -822,7 +822,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:tailing_paused?, nil)
           |> assign(:tailing?, true)
 
-        SearchQueryExecutor.maybe_execute_events_query(stoken, socket.assigns)
+        kickoff_queries(stoken, socket.assigns)
 
         socket
       else
