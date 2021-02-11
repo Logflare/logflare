@@ -74,10 +74,9 @@ defmodule Logflare.ChangefeedSchema do
         use TypedEctoSchema
         import Ecto.Changeset
 
-        @primary_key false
+        id_type = unquote(schema).__changeset__.id
+        @primary_key {:id, id_type, autogenerate: false}
         typed_schema unquote(table_name) do
-          Ecto.Schema.field(:id, :integer, primary_key: true)
-
           for f <- EctoSchemaReflection.virtual_fields(unquote(schema)) do
             type = EctoSchemaReflection.virtual_field_type(unquote(schema), f)
             Ecto.Schema.field(f, type, [])
