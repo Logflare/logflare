@@ -18,7 +18,7 @@ defmodule Logflare.MemoryRepo.Migrations do
     create_or_replace_pg_changefeed_notify!()
     create_or_replace_pg_changefeed_notify_id_only!()
 
-    for %ChangefeedSubscription{schema: schema, table: table} = chg_sub <-
+    for %ChangefeedSubscription{schema: schema, table: _table} = chg_sub <-
           Changefeeds.list_changefeed_subscriptions() do
       # delete_table_for_schema(schema)
       create_changefeed_trigger(chg_sub)
@@ -31,8 +31,14 @@ defmodule Logflare.MemoryRepo.Migrations do
       end
     end
 
-    for {table, schema} <- Changefeeds.tables() do
+    for {_table, schema} <- Changefeeds.tables() do
       create_table_and_indexes(schema)
+
+      virtual_schema = Module.concat(schema, Virtual)
+
+      if Code.ensure_loaded?(virtual_schema) do
+        create_table_and_indexes(virtual_schema)
+      end
     end
   end
 
