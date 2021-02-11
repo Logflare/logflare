@@ -299,6 +299,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_event("observer_pause_live_search" = ev, _, socket) do
+    pause_live_search(ev, socket, :observer)
+  end
+
   def handle_event("pause_live_search" = ev, _, socket) do
     pause_live_search(ev, socket)
   end
@@ -792,7 +796,7 @@ defmodule LogflareWeb.Source.SearchLV do
       else: search_history
   end
 
-  defp pause_live_search(ev, %{assigns: prev_assigns} = socket) do
+  defp pause_live_search(ev, %{assigns: prev_assigns} = socket, paused_by \\ :human) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
 
@@ -807,6 +811,11 @@ defmodule LogflareWeb.Source.SearchLV do
       else
         socket
       end
+
+    socket =
+      unless paused_by == :observer,
+        do: push_event(socket, "human_paused", %{paused: true}),
+        else: socket
 
     {:noreply, socket}
   end
@@ -828,6 +837,8 @@ defmodule LogflareWeb.Source.SearchLV do
       else
         socket
       end
+
+    socket = push_event(socket, "human_resumed", %{paused: false})
 
     {:noreply, socket}
   end
