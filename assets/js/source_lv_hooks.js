@@ -16,21 +16,10 @@ hooks.SourceSchemaModalTable = {
     $(".copy-metadata-field").tooltip()
   },
 }
-const initSearchInViewObserver = (hook) => {
-  const observer = new IntersectionObserver((entries, observer) => {
-    entries.forEach((entry) => {
-      let searchInView = entry.isIntersecting
-      if (searchInView) {
-        hook.pushEvent("resume_live_search", {})
-      } else {
-        hook.pushEvent("pause_live_search", {})
-      }
-    })
-  })
 
-  const target = document.querySelector("#search")
-  observer.observe(target)
-}
+
+
+
 
 hooks.SourceLogsSearchList = {
   updated() {
@@ -227,7 +216,23 @@ hooks.SourceLogsSearch = {
       hook.pushEvent("pause_live_search", {})
     })
 
-    initSearchInViewObserver(this)
+    const observer =
+      new IntersectionObserver((entries, observer) => {
+        entries.forEach((entry) => {
+          let searchInView = entry.isIntersecting
+          if (searchInView) {
+            this.pushEvent("resume_live_search", {})
+          } else {
+            this.pushEvent("observer_pause_live_search", {})
+          }
+        })
+      })
+
+    const target = document.querySelector("#search")
+    observer.observe(target)
+
+    this.handleEvent("human_paused", ({ paused }) => observer.disconnect(target))
+    this.handleEvent("human_resumed", ({ paused }) => observer.observe(target))
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
