@@ -8,7 +8,6 @@ defmodule LogflareWeb.Router do
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
-    plug LogflareWeb.Plugs.SetNodeHeader
     plug Plug.RequestId
     plug :accepts, ["html"]
     plug :fetch_session
@@ -23,10 +22,10 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetTeam
     plug LogflareWeb.Plugs.SetPlan
     plug LogflareWeb.Plugs.EnsureSourceStarted
+    plug LogflareWeb.Plugs.SetHeaders
   end
 
   pipeline :api do
-    plug LogflareWeb.Plugs.SetNodeHeader
     plug Plug.RequestId
     plug LogflareWeb.Plugs.MaybeContentTypeToJson
 
@@ -35,6 +34,7 @@ defmodule LogflareWeb.Router do
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
+    plug LogflareWeb.Plugs.SetHeaders
   end
 
   pipeline :require_ingest_api_auth do
