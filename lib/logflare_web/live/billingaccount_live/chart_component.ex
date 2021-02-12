@@ -16,6 +16,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   end
 
   def mount(socket) do
+    socket = socket |> assign(chart_data: [])
     {:ok, socket}
   end
 
@@ -24,18 +25,27 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     end_date = DateTime.utc_now()
     start_date = DateTime.add(end_date, -days, :millisecond)
 
-    socket =
-      socket
-      |> assign(chart_data: timeseries(user, start_date, end_date))
+    Task.async(__MODULE__, :timeseries, [user, start_date, end_date])
+
+    socket = socket |> assign(loading: true)
 
     socket =
       case connected?(socket) do
         true ->
-          assign(socket, loading: false)
+          assign(socket, connected: false)
 
         false ->
-          assign(socket, loading: true)
+          assign(socket, connected: true)
       end
+
+    {:ok, socket}
+  end
+
+  def update(%{chart_data: data} = _assigns, socket) do
+    socket =
+      socket
+      |> assign(chart_data: data)
+      |> assign(loading: false)
 
     {:ok, socket}
   end
@@ -43,11 +53,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   def render(assigns) do
     ~L"""
     <div id="billing-chart" class="my-3 w-auto">
-      <%= if @loading do %>
-       <%= placeholder() %>
-      <% else %>
-        <%= make_chart(@chart_data) %>
-      <% end %>
+      <%= if @connected || @loading, do: placeholder(), else: make_chart(@chart_data) %>
     </div>
     """
   end
@@ -67,9 +73,12 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     |> Plot.to_svg()
   end
 
-  defp timeseries(user, start_date, end_date) do
-    BillingCounts.timeseries(user, start_date, end_date)
-    |> BillingCounts.timeseries_to_ext()
+  def timeseries(user, start_date, end_date) do
+    data =
+      BillingCounts.timeseries(user, start_date, end_date)
+      |> BillingCounts.timeseries_to_ext()
+
+    {:ok, data}
   end
 
   defp placeholder() do
