@@ -198,12 +198,12 @@ defmodule Logflare.Source.Supervisor do
         :noop
 
       source ->
-        case Sources.get_source_schema_by(source_id: source.id) do
+        case SourceSchemas.get_source_schema_by(source_id: source.id) do
           nil ->
             :noop
 
           schema ->
-            Sources.update_source_schema(schema, %{
+            SourceSchemas.update_source_schema(schema, %{
               bigquery_schema: SchemaBuilder.initial_table_schema()
             })
         end
