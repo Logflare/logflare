@@ -21,6 +21,7 @@ config :logflare, LogflareWeb.Endpoint,
 
 config :logger,
   level: :info,
+  sync_threshold: 10_001,
   discard_threshold: 10_000,
   backends: [LogflareLogger.HttpBackend],
   compile_time_purge_matching: [
