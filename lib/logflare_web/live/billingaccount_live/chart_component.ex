@@ -32,10 +32,10 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     socket =
       case connected?(socket) do
         true ->
-          assign(socket, connected: false)
+          assign(socket, connecting: false)
 
         false ->
-          assign(socket, connected: true)
+          assign(socket, connecting: true)
       end
 
     {:ok, socket}
@@ -53,7 +53,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   def render(assigns) do
     ~L"""
     <div id="billing-chart" class="my-3 w-auto">
-      <%= if @connected || @loading, do: placeholder(), else: make_chart(@chart_data) %>
+      <%= if @connecting || @loading, do: placeholder(), else: make_chart(@chart_data) %>
     </div>
     """
   end
