@@ -66,6 +66,20 @@ defmodule LogflareWeb.BillingAccountLive do
     {:noreply, socket}
   end
 
+  def handle_info({_ref, {:ok, data}}, socket) do
+    send_update(LogflareWeb.BillingAccountLive.ChartComponent,
+      id: :chart,
+      chart_data: data
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:DOWN, _ref, _type, _pid, :normal}, socket) do
+    # Handle down messages from chart query Task
+    {:noreply, socket}
+  end
+
   def handle_info({:chart_tick, counter}, socket) do
     send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
 
