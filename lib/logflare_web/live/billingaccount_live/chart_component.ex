@@ -16,7 +16,6 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   end
 
   def mount(socket) do
-    socket = socket |> assign(chart_data: [])
     {:ok, socket}
   end
 
