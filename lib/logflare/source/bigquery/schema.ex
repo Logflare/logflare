@@ -21,6 +21,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     field :bigquery_project_id, String.t()
     field :bigquery_dataset_id, String.t()
     field :field_count_limit, integer()
+    field :schema, map()
     field :next_update, integer()
   end
 
@@ -67,11 +68,15 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), {:update, log_event}, @timeout)
   end
 
+  def update(source_token, schema) do
+    GenServer.call(name(source_token), {:update, schema}, @timeout)
+  end
+
   def handle_call(:get, _from, %__MODULE__{} = state) do
     {:reply, state, state}
   end
 
-  def handle_call(:set_next_update, _from, state) do
+  def handle_call(:set_next_update, _from, %__MODULE__{} = state) do
     {:reply, :ok, state}
   end
 
@@ -83,7 +88,11 @@ defmodule Logflare.Source.BigQuery.Schema do
       when fc > limit,
       do: {:reply, :ok, state}
 
-  def handle_call({:update, %LE{body: body, id: event_id} = le}, _from, %__MODULE__{} = state) do
+  def handle_call(
+        {:update, %LE{body: body, id: event_id} = le},
+        _from,
+        %__MODULE__{} = state
+      ) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
     %{bigquery_schema: current_bigquery_schema, updated_at: updated_at} =
@@ -103,9 +112,9 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:ok, _table_info} ->
           Logger.info("Source schema updated from log_event!")
 
-          SourceSchemas.update_source_schema_with_bq_schema_for_source(
-            state.source_token,
-            maybe_new_schema
+          SourceSchemas.update_source_schema_for_source(
+            %{bigquery_schema: maybe_new_schema},
+            state.source_token
           )
 
           notify_maybe(state.source_token, maybe_new_schema, current_bigquery_schema)
@@ -128,9 +137,9 @@ defmodule Logflare.Source.BigQuery.Schema do
                     {:ok, _table_info} ->
                       Logger.info("Source schema updated from BigQuery!")
 
-                      SourceSchemas.update_source_schema_with_bq_schema_for_source(
-                        state.source_token,
-                        schema
+                      SourceSchemas.update_source_schema_for_source(
+                        %{bigquery_schema: schema},
+                        state.source_token
                       )
 
                       {:reply, :ok, state}
@@ -164,23 +173,33 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_call({:update, schema}, _from, state) do
+  def handle_call({:update, schema}, _from, %__MODULE__{} = state) do
+    source = Sources.get_by(token: state.source_token)
     sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
 
-    {:reply, :ok, %{state | schema: sorted, next_update: next_update()}}
+    {:ok, schema} =
+      SourceSchemas.update_source_schema_for_source(
+        %{bigquery_schema: sorted},
+        source
+      )
+
+    {:reply, :ok, %{state | schema: schema, next_update: next_update()}}
   end
 
-  def handle_cast({:update, schema, type_map, field_count}, state) do
+  def handle_cast({:update, schema, type_map, field_count}, %__MODULE__{} = state) do
     {:noreply, %{state | schema: schema, next_update: next_update()}}
   end
 
-  def handle_info(:persist, state) do
+  def handle_info(:persist, %__MODULE__{} = state) do
     source = Sources.get_by(token: state.source_token)
 
-    SourceSchemas.update_source_schema_with_bq_schema_for_source(
-      %{bigquery_schema: state.schema},
-      source
-    )
+    if state.schema do
+      {:ok, _} =
+        SourceSchemas.update_source_schema_for_source(
+          %{bigquery_schema: state.schema},
+          source
+        )
+    end
 
     persist()
 

@@ -19,7 +19,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
     post(uri, source, 0, recent_events)
   end
 
-  def init(rls) do
+  def init(%RLS{} = rls) do
     check_rate(rls.notifications_every)
     Process.flag(:trap_exit, true)
 
@@ -28,7 +28,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
     {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 
-  def handle_info(:check_rate, rls) do
+  def handle_info(:check_rate, %RLS{} = rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
     source = Sources.get_by_id(rls.source_id)
@@ -50,20 +50,20 @@ defmodule Logflare.Source.WebhookNotificationServer do
     end
   end
 
-  def handle_info({:ssl_closed, _details}, rls) do
+  def handle_info({:ssl_closed, _details}, %RLS{} = rls) do
     # See https://github.com/benoitc/hackney/issues/464
     :noop
 
     {:noreply, rls}
   end
 
-  def handle_info({:EXIT, _pid, :normal}, rls) do
+  def handle_info({:EXIT, _pid, :normal}, %RLS{} = rls) do
     :noop
 
     {:noreply, rls}
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, %RLS{} = state) do
     # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_id})
     reason

@@ -16,7 +16,7 @@ defmodule Logflare.Source.TextNotificationServer do
     GenServer.start_link(__MODULE__, rls, name: name(source_id))
   end
 
-  def init(rls) do
+  def init(%RLS{} = rls) do
     check_rate(rls.notifications_every)
     Process.flag(:trap_exit, true)
 
@@ -25,7 +25,7 @@ defmodule Logflare.Source.TextNotificationServer do
     {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 
-  def handle_info(:check_rate, rls) do
+  def handle_info(:check_rate, %RLS{} = rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
 
@@ -33,8 +33,8 @@ defmodule Logflare.Source.TextNotificationServer do
       true ->
         check_rate(rls.notifications_every)
 
-        source = Sources.get_by_id(rls.source_id)
-        user = Users.get_by(id: source.user_id)
+        source = Sources.get_by_id_and_preload(rls.source_id)
+        user = Users.get_by_and_preload(id: source.user_id)
         source_link = Routes.source_url(Endpoint, :show, source.id)
         body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
@@ -65,7 +65,7 @@ defmodule Logflare.Source.TextNotificationServer do
     end
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, %RLS{} = state) do
     # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_id})
     reason

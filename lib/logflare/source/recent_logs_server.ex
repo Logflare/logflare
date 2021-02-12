@@ -13,8 +13,8 @@ defmodule Logflare.Source.RecentLogsServer do
     field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
     field :bigquery_dataset_id, binary()
-    field :source, struct()
     field :user, struct()
+    field :user_id, integer()
     field :plan, Plan.t()
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
@@ -126,8 +126,9 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
+  def handle_continue(:boot, %__MODULE__{source_id: source_id} = rls)
       when is_atom(source_id) do
+    source = Sources.get(source_id)
     user = Users.get_user(source.user_id) |> Users.maybe_preload_bigquery_defaults()
     plan = Plans.get_plan_by_user(user)
 
@@ -255,7 +256,7 @@ defmodule Logflare.Source.RecentLogsServer do
           "is_system_log_event?" => true
         },
         %{
-          source: %Source{token: source_id}
+          source: Sources.get_by!(token: source_id) |> Sources.preload_defaults()
         }
       )
 

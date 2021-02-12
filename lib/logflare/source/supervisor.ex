@@ -5,14 +5,11 @@ defmodule Logflare.Source.Supervisor do
 
   use GenServer
 
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.Sources
+  use Logflare.Commons
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.BigQuery.Schema
 
   import Ecto.Query, only: [from: 2]
 
@@ -49,10 +46,10 @@ defmodule Logflare.Source.Supervisor do
 
     sources =
       query
-      |> Repo.all()
+      |> RepoWithCache.all()
 
     Enum.map(sources, fn source ->
-      rls = %RLS{source_id: source.token, source: source}
+      rls = %RLS{source_id: source.token}
       Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
     |> Enum.chunk_every(50)
@@ -168,18 +165,18 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def delete_all_user_sources(user) do
-    Repo.all(Ecto.assoc(user, :sources))
+    RepoWithCache.all(Ecto.assoc(user, :sources))
     |> Enum.each(fn s -> delete_source(s.token) end)
   end
 
   def reset_all_user_sources(user) do
-    Repo.all(Ecto.assoc(user, :sources))
+    RepoWithCache.all(Ecto.assoc(user, :sources))
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
   defp create_source(source_id) do
     source = Sources.get_by(token: source_id)
-    rls = %RLS{source_id: source_id, source: source}
+    rls = %RLS{source_id: source_id}
 
     children = [
       Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
@@ -211,19 +208,6 @@ defmodule Logflare.Source.Supervisor do
             })
         end
     end
-  end
-
-  def sync_persisted_schema_with_bq(source_token) when is_atom(source_token) do
-    {:ok, %{schema: schema}} = BigQuery.get_table(source_token)
-    Schema.update(source_token, schema)
-
-    %{schema: schema, type_map: type_map, field_count: field_count} =
-      Schema.get_state(source_token)
-
-    Schema.update_cluster(source_token, schema, type_map, field_count)
-    source = Sources.get(source_token)
-    source_schema = Sources.get_source_schema_by(source_id: source.id)
-    {:ok, _} = Sources.update_source_schema(source_schema, %{bigquery_schema: schema})
   end
 
   def ensure_started(source_id) do
