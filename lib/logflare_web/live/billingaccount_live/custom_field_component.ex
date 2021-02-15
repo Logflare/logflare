@@ -93,11 +93,13 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
 
   def render(assigns) do
     ~L"""
+    <%= if @billing_account.custom_invoice_fields do %>
     <ul class="list-unstyled">
-    <%= for %{"name" => k, "value" => v} <- @billing_account.custom_invoice_fields do %>
+    <%=  for %{"name" => k, "value" => v} <- @billing_account.custom_invoice_fields do %>
       <li><%= k %>: <%= v %> <%= delete_link(k, @myself) %></li>
     <% end %>
     </ul>
+    <% end %>
     <%= f = form_for :fields, "#", [phx_change: :validate, phx_submit: :add, phx_target: @myself] %>
     <div class="row">
     <div class="col-sm">
