@@ -15,26 +15,40 @@ defmodule Logflare.PubSubRates.Cache do
   end
 
   def cache_rates(source_id, rates) when is_atom(source_id) do
-    Cachex.get_and_update(__MODULE__, {source_id, "rates"}, fn
-      nil -> {:commit, rates}
-      val -> {:commit, Map.merge(val, rates)}
-    end)
+    {:ok, val} = Cachex.get(__MODULE__, {source_id, "rates"})
 
-    Cachex.expire(__MODULE__, {source_id, "rates"}, :timer.seconds(5))
+    rates =
+      if val,
+        do: Map.drop(val, [:cluster]) |> Map.merge(rates),
+        else: rates
+
+    totals = merge_node_rates(rates)
+
+    rates = Map.put(rates, :cluster, totals)
+
+    Cachex.put(__MODULE__, {source_id, "rates"}, rates, ttl: :timer.seconds(5))
   end
 
   def cache_inserts(source_id, inserts) when is_atom(source_id) do
-    Cachex.get_and_update(__MODULE__, {source_id, "inserts"}, fn
-      nil -> {:commit, inserts}
-      val -> {:commit, Map.merge(val, inserts)}
-    end)
+    {:ok, val} = Cachex.get(__MODULE__, {source_id, "inserts"})
+
+    inserts =
+      if val,
+        do: Map.merge(val, inserts),
+        else: inserts
+
+    Cachex.put(__MODULE__, {source_id, "inserts"}, inserts)
   end
 
   def cache_buffers(source_id, buffers) when is_atom(source_id) do
-    Cachex.get_and_update(__MODULE__, {source_id, "buffers"}, fn
-      nil -> {:commit, buffers}
-      val -> {:commit, Map.merge(val, buffers)}
-    end)
+    {:ok, val} = Cachex.get(__MODULE__, {source_id, "buffers"})
+
+    buffers =
+      if val,
+        do: Map.merge(val, buffers),
+        else: buffers
+
+    Cachex.put(__MODULE__, {source_id, "buffers"}, buffers)
   end
 
   def get_buffers(source_id) when is_atom(source_id) do
@@ -70,8 +84,7 @@ defmodule Logflare.PubSubRates.Cache do
         }
 
       {:ok, rates} ->
-        # cache this function calc so we don't do it on every request
-        merge_node_rates(rates)
+        Map.get(rates, :cluster)
 
       {:error, _} ->
         %{
