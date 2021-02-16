@@ -19,7 +19,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     source = Sources.get_by(token: @test_token)
 
-    {:ok, pid} = RLS.start_link(%RLS{source_id: @test_token, source: source})
+    {:ok, pid} = RLS.start_link(%RLS{source_id: @test_token})
     Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
 
     :ok
@@ -402,6 +402,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp assign_user_source(_context) do
+    user_with_iam()
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
     source = Sources.get_by(token: @test_token)

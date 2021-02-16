@@ -26,7 +26,17 @@ defmodule LogflareWeb.LogEventLive.Show do
       |> assign(:origin, params["origin"])
       |> assign(:id_param, log_id)
 
-    le = LogEvents.get_log_event(log_id)
+    le =
+      case path do
+        "uuid" ->
+          LogEvents.get_log_event(log_id)
+
+        "metadata.id" ->
+          LogEvents.get_log_event_by_metadata_for_source(
+            %{id: String.to_integer(log_id)},
+            source.id
+          )
+      end
 
     socket =
       cond do
@@ -105,7 +115,7 @@ defmodule LogflareWeb.LogEventLive.Show do
         bq_row when is_map(bq_row) ->
           le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
 
-          LogEvents.create_log_event(le)
+          {:ok, _} = LogEvents.create_log_event(le)
           assign_log_event(socket, le)
 
         {:error, error} ->

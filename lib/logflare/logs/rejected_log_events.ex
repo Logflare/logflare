@@ -59,12 +59,18 @@ defmodule Logflare.Logs.RejectedLogEvents do
   """
   @spec ingest(LE.t()) :: :ok
   def ingest(%LE{source: %Source{id: id}, valid: false} = le) do
+    ingested_at =
+      if is_integer(le.ingested_at) do
+        DateTime.from_unix!(le.ingested_at, :microsecond)
+      else
+        le.ingested_at
+      end
+
     {:ok, _rle} =
       RepoWithCache.insert(%RejectedLogEvent{
         source_id: id,
         params: le.params,
-        ingested_at: le.ingested_at,
-        # ingested_at: DateTime.from_unix!(le.ingested_at, :microsecond),
+        ingested_at: ingested_at,
         validation_error: le.validation_error
       })
 

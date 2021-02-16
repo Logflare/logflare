@@ -26,11 +26,11 @@ defmodule Logflare.Logs.LogEvents do
     end
   end
 
+  @spec get_log_event_by_metadata_for_source(map(), integer()) :: [LE.t()]
   def get_log_event_by_metadata_for_source(metadata_fragment, source_id)
       when is_integer(source_id) and is_map(metadata_fragment) do
     LE
     |> from()
-    |> join(:inner, [le], s in assoc(le, :source))
     |> where([le, s], s.id == ^source_id)
     |> MemoryRepo.all()
     |> Enum.find(&MapSet.subset?(MapSet.new(metadata_fragment), MapSet.new(&1.body.metadata)))
