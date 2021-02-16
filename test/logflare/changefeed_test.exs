@@ -50,6 +50,7 @@ defmodule Logflare.ChangefeedsTeset do
         "table" => "users",
         "id" => db.id,
         "type" => "INSERT",
+        "node_id" => "nonode@nohost",
         "changes" => Map.take(db, EctoSchemaReflection.fields(schema)) |> MapKeys.to_strings()
       }
 
@@ -77,6 +78,7 @@ defmodule Logflare.ChangefeedsTeset do
         "table" => "users",
         "id" => u.id,
         "type" => "INSERT",
+        "node_id" => "nonode@nohost",
         "changes" => Map.take(ss, EctoSchemaReflection.fields(schema)) |> MapKeys.to_strings()
       }
 
@@ -85,6 +87,7 @@ defmodule Logflare.ChangefeedsTeset do
       expected_payload = %{
         "table" => "source_schemas",
         "id" => ss.id,
+        "node_id" => "nonode@nohost",
         "type" => "INSERT"
       }
 
@@ -104,6 +107,7 @@ defmodule Logflare.ChangefeedsTeset do
                "changes" => %{
                  "name" => "new name"
                },
+               "node_id" => "nonode@nohost",
                "id" => db.id,
                "table" => "users",
                "type" => "UPDATE"
@@ -125,6 +129,7 @@ defmodule Logflare.ChangefeedsTeset do
       assert payload == %{
                "id" => db.id,
                "table" => "users",
+               "node_id" => "nonode@nohost",
                "type" => "DELETE",
                "changes" => nil
              }

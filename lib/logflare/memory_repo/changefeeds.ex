@@ -2,7 +2,6 @@ defmodule Logflare.Changefeeds do
   use Logflare.Commons
 
   alias Logflare.Changefeeds.ChangefeedSubscription
-  use Logflare.Commons
 
   defmodule ChangefeedSubscription do
     use TypedStruct
@@ -79,6 +78,24 @@ defmodule Logflare.Changefeeds do
 
       {:ok, _virtual_struct} =
         MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
+
+      :ok
+    else
+      :ok
+    end
+  end
+
+  def maybe_delete_virtual(struct_or_changeset) do
+    schema =
+      case struct_or_changeset do
+        %Ecto.Changeset{data: %schema{}} -> schema
+        %schema{} -> schema
+      end
+
+    virtual_schema = Module.concat(schema, Virtual)
+
+    if Code.ensure_loaded?(virtual_schema) do
+      {:ok, _deleted} = MemoryRepo.delete(struct_or_changeset)
 
       :ok
     else

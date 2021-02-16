@@ -154,6 +154,13 @@ defmodule Logflare.MemoryRepo.Migrations do
   def create_changefeed_trigger(%ChangefeedSubscription{id_only: id_only, table: table}) do
     trigger = "#{table}_changefeed_trigger"
 
+    procedure =
+      if id_only do
+        "changefeed_id_only_notify()"
+      else
+        "changefeed_notify()"
+      end
+
     trigger =
       if id_only do
         trigger <> "_id_only"
@@ -175,7 +182,7 @@ defmodule Logflare.MemoryRepo.Migrations do
             AFTER INSERT OR UPDATE OR DELETE
             ON #{table}
                 FOR EACH ROW
-        EXECUTE PROCEDURE changefeed_notify();
+        EXECUTE PROCEDURE #{procedure};
         END IF;
       END;
       $$

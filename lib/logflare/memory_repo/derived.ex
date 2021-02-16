@@ -14,10 +14,8 @@ defmodule Logflare.EctoDerived do
     virtual_schema = Module.concat(mod, Virtual)
 
     if Code.ensure_loaded?(virtual_schema) do
-      virtual =
-        virtual_schema
-        |> MemoryRepo.get(result.id)
-        |> Map.take(EctoSchemaReflection.virtual_fields(mod))
+      virtual = MemoryRepo.get(virtual_schema, result.id) || %{}
+      virtual = Map.take(virtual, EctoSchemaReflection.virtual_fields(mod))
 
       Map.merge(result, virtual)
     else
