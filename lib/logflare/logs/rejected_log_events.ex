@@ -81,6 +81,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
       end
     end)
     |> Enum.reverse()
+    |> Enum.take(100)
   end
 
   @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}
