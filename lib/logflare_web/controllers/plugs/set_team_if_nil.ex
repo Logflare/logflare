@@ -3,6 +3,7 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
   Assigns team user if browser session is present in conn
   """
   require Logger
+  use Logflare.Commons
 
   import Plug.Conn
 
@@ -17,11 +18,10 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
 
   def call(conn, _opts), do: conn
 
-  def set_team(%{assigns: %{user: user}} = conn, _opts) do
-    {:ok, team} = Teams.create_team(user, %{name: Generators.team_name()})
+  def set_team(%{assigns: %{user: %User{team: nil} = user}} = conn, _opts) do
+    {:ok, _team} = Teams.create_team(user, %{name: Generators.team_name()})
+    user = Users.get_user(user.id)
 
-    conn
-    |> assign(:user, user)
-    |> assign(:team, team)
+    assign(conn, :user, user)
   end
 end

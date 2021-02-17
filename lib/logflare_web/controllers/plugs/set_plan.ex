@@ -14,7 +14,7 @@ defmodule LogflareWeb.Plugs.SetPlan do
 
   def call(conn, _opts), do: conn
 
-  defp set_plan(%{assigns: %{user: user}} = conn, _opts) do
+  defp set_plan(%{assigns: %{user: %User{} = user}} = conn, _opts) do
     plan = Plans.get_plan_by_user(user)
 
     conn

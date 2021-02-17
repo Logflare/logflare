@@ -86,11 +86,11 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
       %User{} = user ->
         assign(conn, :user, user)
 
-      api_key when is_binary(api_key) ->
+      nil when api_key == "" or is_nil(api_key) ->
         message = "Error: please set ingest API key"
         put_401(conn, message)
 
-      nil ->
+      nil when is_binary(api_key) ->
         message = "Error: user not found"
         put_401(conn, message)
     end
