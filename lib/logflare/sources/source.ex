@@ -2,7 +2,7 @@ defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
   use Logflare.Commons
-  use Logflare.ChangefeedSchema
+  use Logflare.ChangefeedSchema, derive_virtual: [:bq_table_id, :bq_dataset_id]
 
   import Ecto.Changeset
 
@@ -74,7 +74,7 @@ defmodule Logflare.Source do
                :team_user_ids_for_schema_updates
              ]}
 
-    embedded_schema do
+    typed_embedded_schema do
       field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
       field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
       field :other_email_notifications, :string
@@ -98,7 +98,7 @@ defmodule Logflare.Source do
     end
   end
 
-  schema "sources" do
+  typed_schema "sources" do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string
@@ -206,7 +206,7 @@ defmodule Logflare.Source do
 
   def validate_source_ttl(changeset, source) do
     if source.user_id do
-      user = Users.get_user(source.user_id)
+      user = Users.get_user!(source.user_id)
       plan = Plans.get_plan_by_user(user)
 
       validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->

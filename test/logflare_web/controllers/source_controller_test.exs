@@ -12,7 +12,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
-  @moduletag :this
+  # @moduletag :this
 
   setup_all do
     Sources.Counters.start_link()
@@ -22,8 +22,8 @@ defmodule LogflareWeb.SourceControllerTest do
   setup do
     {:ok, u1} = Users.insert_or_update_user(params_for(:user))
     {:ok, u2} = Users.insert_or_update_user(params_for(:user))
-    Teams.create_team(u1, %{name: "u1 team"})
-    Teams.create_team(u2, %{name: "u2 team"})
+    {:ok, _} = Teams.create_team(u1, %{name: "u1 team"})
+    {:ok, _} = Teams.create_team(u2, %{name: "u2 team"})
 
     {:ok, s1} =
       Sources.create_source(params_for(:source, public_token: Faker.String.base64(16)), u1)
@@ -31,9 +31,9 @@ defmodule LogflareWeb.SourceControllerTest do
     {:ok, s2} = Sources.create_source(params_for(:source), u1)
     {:ok, s3} = Sources.create_source(params_for(:source), u2)
 
-    users = Repo.preload([u1, u2], :sources)
+    users = for u <- [u1, u2], do: Users.preload_defaults(u)
 
-    sources = [s1, s2, s3]
+    sources = for s <- [s1, s2, s3], do: Sources.preload_defaults(s)
 
     {:ok, users: users, sources: sources}
   end
@@ -65,7 +65,7 @@ defmodule LogflareWeb.SourceControllerTest do
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
         valid: false,
-        ingested_at: NaiveDateTime.utc_now()
+        ingested_at: DateTime.utc_now()
       })
 
       conn =
@@ -76,7 +76,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "dashboard"
 
       assert [
-               %LogEvent{
+               %RejectedLogEvent{
                  validation_error:
                    "Metadata validation error: values with the same field path must have the same type.",
                  params: %{"no_log_entry" => true, "timestamp" => ""},
@@ -131,6 +131,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.notifications_every == 14_400_000
     end
 
+    @tag :this
     test "returns 406 with invalid params", %{
       conn: conn,
       users: [u1, _u2],
@@ -335,6 +336,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "public" do
+    @tag :this
     test "shows a source page", %{conn: conn, sources: [s1 | _]} do
       conn =
         conn

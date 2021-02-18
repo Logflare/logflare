@@ -595,20 +595,21 @@ defmodule Logflare.Logs.SourceRoutingTest do
   describe "Source routing with regex routing" do
     test "successfull" do
       {:ok, _} = Source.Supervisor.start_link()
+      user_with_iam()
       u = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
-      {:ok, s1} =
-        params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
-        |> Sources.create_source(u)
+      {:ok, s1} = Sources.create_source(params_for(:source, token: Faker.UUID.v4()), u)
+
+      s1 = Sources.get_by_and_preload(id: s1.id)
 
       Schema.start_link(%RLS{
         source_id: s1.token,
         plan: %{limit_source_fields_limit: 500}
       })
 
-      {:ok, sink} =
-        params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
-        |> Sources.create_source(u)
+      {:ok, sink} = Sources.create_source(params_for(:source, token: Faker.UUID.v4()), u)
+
+      sink = Sources.get_by_and_preload(id: sink.id)
 
       Process.sleep(1_000)
 
