@@ -4,7 +4,42 @@ defmodule Logflare.RepoWithCache do
   use Logflare.DeriveVirtualDecorator
   import Logflare.EctoDerived, only: [merge_virtual: 1]
 
-  def apply_to_repo_and_memory_repo(f, a) when is_list(a) and is_atom(f) do
+  @mutating [
+    :insert_all,
+    :insert,
+    :insert!,
+    :update_all,
+    :update,
+    :update!,
+    :delete,
+    :delete!,
+    :delete_all
+  ]
+  @idempotent [
+    :all,
+    :one,
+    :get,
+    :get!,
+    :get_by,
+    :get_by!,
+    :aggregate
+  ]
+
+  def apply_to_repo_and_memory_repo(f, a) when f in @mutating do
+    Repo.transaction(fn ->
+      do_apply_to_repo_and_memory_repo(f, a)
+    end)
+    |> case do
+      {:ok, x} -> x
+      x -> x
+    end
+  end
+
+  def apply_to_repo_and_memory_repo(f, a) when f in @idempotent do
+    do_apply_to_repo_and_memory_repo(f, a)
+  end
+
+  def do_apply_to_repo_and_memory_repo(f, a) do
     with {:repo, {:ok, repo_result}} <- {:repo, apply_repo(f, a)},
          {:memory_repo, {:ok, memory_repo_result}} <- apply_memory_repo(f, a, repo_result),
          {:memory_repo_virtual, :ok} <-
