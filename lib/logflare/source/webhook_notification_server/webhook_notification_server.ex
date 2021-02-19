@@ -31,7 +31,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
   def handle_info(:check_rate, %RLS{} = rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
-    source = Sources.get_by_id(rls.source_id)
+    source = Sources.get_by_id_and_preload(rls.source_id)
 
     case rate > 0 do
       true ->

@@ -618,7 +618,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   def expect_plan_cache(_ctx) do
-    expect(Plans.Cache, :get_plan_by, fn _ ->
+    expect(Plans, :get_plan_by, fn _ ->
       %Plan{
         stripe_id: "31415"
       }
@@ -628,7 +628,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   def mock_plan_cache(_ctx) do
-    stub(Plans.Cache, :get_plan_by, fn _ ->
+    stub(Plans, :get_plan_by, fn _ ->
       %Plan{
         stripe_id: "31415"
       }

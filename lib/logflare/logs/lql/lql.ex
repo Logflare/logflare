@@ -14,7 +14,7 @@ defmodule Logflare.Lql do
   end
 
   def decode!(qs, %TS{} = bq_table_schema) when is_binary(qs) do
-    {:ok, lql_rules} = Parser.parse(qs, bq_table_schema)
+    {:ok, lql_rules} = decode(qs, bq_table_schema)
     lql_rules
   end
 

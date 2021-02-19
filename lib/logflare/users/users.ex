@@ -27,7 +27,7 @@ defmodule Logflare.Users do
 
   def preload_team(user) do
     user
-    |> RepoWithCache.preload(:team)
+    |> RepoWithCache.preload(team: :team_users)
   end
 
   def preload_billing_account(user) do
@@ -38,6 +38,7 @@ defmodule Logflare.Users do
   def preload_defaults(user) do
     user
     |> preload_sources
+    |> preload_team()
     |> maybe_preload_bigquery_defaults()
   end
 

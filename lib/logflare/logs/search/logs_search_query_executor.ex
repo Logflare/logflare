@@ -120,6 +120,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       source_id: state.source_id
     }
 
+    source = Sources.get_by_id_and_preload(state.source_id)
+    :timer.apply_interval(1_000, __MODULE__, :start_cache_streaming_buffer_task, [source])
+
     {:noreply, state}
   end
 
@@ -203,7 +206,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     # during initial tailing query
     log_events =
       params.log_events
-      |> Enum.reject(& &1.is_from_stale_query?)
+      |> Enum.reject(& &1.is_from_stale_query)
       |> Enum.concat(rows)
       |> Enum.uniq_by(&{&1.body, &1.id})
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
@@ -273,7 +276,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   def start_search_task(lv_pid, params) do
     so = SO.new(params)
 
-    if so.tailing? && so.partition_by == :pseudo do
+    if so.tailing? do
       start_cache_streaming_buffer_task(so.source)
     end
 
@@ -317,16 +320,12 @@ defmodule Logflare.Logs.SearchQueryExecutor do
           for row <- rows do
             le = LogEvent.make_from_db(row, %{source: source})
 
-            Logs.LogEvents.Cache.put(
-              source.token,
-              {"uuid", le.id},
-              le
-            )
+            MemoryRepo.insert(le)
           end
 
           :ok
 
-        {:error, _result} ->
+        {:error, result} ->
           Logger.warn("Streaming buffer not found for source #{source.token}")
       end
     end)

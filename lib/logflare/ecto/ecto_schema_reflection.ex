@@ -11,7 +11,6 @@ defmodule Logflare.EctoSchemaReflection do
     get(schema, :fields) -- embeds(schema)
   end
 
-  @spec fields_no_embeds(module() | struct()) :: [atom]
   def fields_no_embeds(struct) when is_struct(struct) do
     get_for_struct(struct, :fields) -- embeds(struct)
   end

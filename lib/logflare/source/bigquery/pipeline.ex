@@ -13,20 +13,21 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Source.Supervisor
   alias Logflare.{AccountEmail, Mailer}
 
-  def start_link(%RLS{source: source, plan: plan} = rls) do
+  def start_link(%RLS{source_id: token, plan: plan} = rls) do
+    source = Sources.get_by(token: token)
     procs = calc_procs(source, plan)
 
     Broadway.start_link(__MODULE__,
-      name: name(source.token),
+      name: name(token),
       producer: [
         module: {BufferProducer, rls},
         hibernate_after: 30_000
       ],
       processors: [
-        default: [stages: procs]
+        default: [concurrency: procs]
       ],
       batchers: [
-        bq: [stages: procs, batch_size: 100, batch_timeout: 1000]
+        bq: [concurrency: procs, batch_size: 100, batch_timeout: 1000]
       ],
       context: rls
     )
@@ -148,7 +149,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
     source = Sources.get_by(token: source_id)
-    user = Users.get_by(id: source.user_id)
+    user = Users.get_user_by(id: source.user_id)
 
     defaults = %{
       bigquery_dataset_location: nil,

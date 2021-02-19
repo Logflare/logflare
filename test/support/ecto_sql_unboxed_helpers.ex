@@ -14,7 +14,8 @@ defmodule Logflare.EctoSQLUnboxedHelpers do
     "saved_searches",
     # "saved_search_counters",
     "team_users",
-    "teams"
+    "teams",
+    "log_events"
   ]
 
   def truncate_all() do

@@ -11,9 +11,9 @@ defmodule Logflare.Users.APIIntegrationTest do
   @moduletag :skip
 
   setup do
-    user = insert(:user)
+    {:ok, user} = Users.insert_or_update_user(params_for(:user))
     source_id = Faker.UUID.v4()
-    source = insert(:source, token: source_id, user: user)
+    {:ok, source} = Sources.create_source(params_for(:source, token: source_id), user)
     source_id_atom = source.token
     SRC.setup_ets_table(source_id_atom)
     src = SRC.new(source_id_atom)
@@ -32,7 +32,7 @@ defmodule Logflare.Users.APIIntegrationTest do
       src: src,
       source: source
     } do
-      user = insert(:user, api_quota: 11, sources: [source])
+      user = Users.insert_or_update_user(params_for(:user, api_quota: 11, sources: [source]))
 
       plan = %Plan{
         limit_source_rate_limit: 10,
@@ -66,7 +66,7 @@ defmodule Logflare.Users.APIIntegrationTest do
       src: src,
       source: source
     } do
-      user = insert(:user, api_quota: 9, sources: [source])
+      user = Users.insert_or_update_user(params_for(:user, api_quota: 9, sources: [source]))
 
       action = %{
         type: {:api_call, :logs_post},

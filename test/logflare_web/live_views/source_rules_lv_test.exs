@@ -32,7 +32,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      rls = %RLS{source_id: source.token, source: source}
+      rls = %RLS{source_id: source.token}
 
       {:ok, _pid} = RLS.start_link(rls)
 
@@ -162,7 +162,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      Repo.insert(%Rule{
+      RepoWithCache.insert(%Rule{
         regex: "100",
         regex_struct: Regex.compile!("100"),
         source_id: source.id,
@@ -174,7 +174,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 2")
         |> Sources.create_source(user)
 
-      Repo.insert(%Rule{
+      RepoWithCache.insert(%Rule{
         regex: ~S"\d\d",
         regex_struct: Regex.compile!(~S"\d\d"),
         source_id: source.id,
@@ -186,12 +186,14 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 3")
         |> Sources.create_source(user)
 
-      Repo.insert(%Rule{
-        regex: ~S"\w+",
-        regex_struct: Regex.compile!(~S"\w+"),
-        source_id: source.id,
-        sink: sink3.token
-      })
+      Rules.create_rule(
+        string_params_for(:rule,
+          regex: ~S"\w+",
+          regex_struct: Regex.compile!(~S"\w+"),
+          sink: sink3.token
+        ),
+        source
+      )
 
       %{sources: [source, sink, sink2, sink3], user: [user]}
     end

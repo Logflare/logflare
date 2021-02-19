@@ -7,8 +7,8 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   use Placebo
 
   setup do
-    u1 = insert(:user)
-    s1 = insert(:source, user_id: u1.id)
+    {:ok, u1} = Users.insert_or_update_user(params_for(:user))
+    {:ok, s1} = Sources.create_source(params_for(:source), u1)
 
     {:ok, sources: [s1]}
   end
@@ -25,41 +25,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
       assert %{schema | next_update: :placeholder} == %{
                bigquery_project_id: nil,
                bigquery_dataset_id: nil,
-               schema: %GoogleApi.BigQuery.V2.Model.TableSchema{
-                 fields: [
-                   %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
-                     categories: nil,
-                     description: nil,
-                     fields: nil,
-                     mode: "REQUIRED",
-                     name: "timestamp",
-                     type: "TIMESTAMP"
-                   },
-                   %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
-                     categories: nil,
-                     description: nil,
-                     fields: nil,
-                     mode: "NULLABLE",
-                     name: "id",
-                     type: "STRING"
-                   },
-                   %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
-                     categories: nil,
-                     description: nil,
-                     fields: nil,
-                     mode: "NULLABLE",
-                     name: "event_message",
-                     type: "STRING"
-                   }
-                 ]
-               },
                source_token: sid,
-               field_count: 3,
-               type_map: %{
-                 event_message: %{t: :string},
-                 id: %{t: :string},
-                 timestamp: %{t: :datetime}
-               },
                next_update: :placeholder,
                field_count_limit: 500
              }

@@ -8,7 +8,6 @@ Mimic.copy(Logs.SearchQueryExecutor)
 Mimic.copy(Lql)
 Mimic.copy(Plans)
 Mimic.copy(Sources.Counters)
-Mimic.copy(Sources)
 Mimic.copy(Source.Supervisor)
 Mimic.copy(Logflare.Google.BigQuery)
 

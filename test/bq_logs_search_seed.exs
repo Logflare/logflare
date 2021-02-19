@@ -45,7 +45,7 @@ Sources.create_source(
   user
 )
 
-source = Sources.get_by(token: source_token)
+source = Sources.get_by_and_preload(token: source_token)
 
 %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(source.token)
 

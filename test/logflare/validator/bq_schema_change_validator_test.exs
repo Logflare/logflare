@@ -18,7 +18,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       s1 = Factory.insert(:source, user_id: u1.id)
       s1 = Sources.get_by(id: s1.id)
       schema = SchemaBuilder.initial_table_schema()
-      allow Sources.Cache.get_bq_schema(s1), return: schema
+      allow Sources.get_bq_schema(s1), return: schema
 
       le =
         LE.make(

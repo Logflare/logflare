@@ -26,6 +26,7 @@ defmodule Logflare.Commons do
       alias Logflare.Plans.Plan
 
       alias Logflare.Rule
+      alias Logflare.Rules
 
       alias Logflare.Lql
 
