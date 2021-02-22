@@ -1,6 +1,6 @@
-defmodule Logflare.MemoryRepo.Sync do
+defmodule Logflare.LocalRepo.Sync do
   @moduledoc """
-  Synchronized Repo data with MemoryRepo data for
+  Synchronized Repo data with LocalRepo data for
   """
   use Logflare.Commons
   use GenServer
@@ -103,7 +103,7 @@ defmodule Logflare.MemoryRepo.Sync do
 
   def sync_table(%ChangefeedSubscription{schema: schema}) do
     for x <- Repo.all(schema) |> Changefeeds.replace_assocs_with_nils(schema) do
-      {:ok, struct} = MemoryRepo.insert(x)
+      {:ok, struct} = LocalRepo.insert(x)
 
       :ok = Changefeeds.maybe_insert_virtual(struct)
     end

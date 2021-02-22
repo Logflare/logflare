@@ -3,7 +3,7 @@ defmodule Logflare.SavedSearch do
   alias Logflare.Source
   alias Logflare.EctoChangesetExtras
   import Ecto.Changeset
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 
   typed_schema "saved_searches" do
     field :querystring, :string

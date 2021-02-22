@@ -9,19 +9,19 @@ defmodule Logflare.Logs.LogEvents do
 
   @spec create_log_event(LE.t()) :: {:ok, LE.t()} | {:error, term}
   def create_log_event(%LE{} = le) do
-    {:ok, result} = MemoryRepo.insert(le)
+    {:ok, result} = LocalRepo.insert(le)
 
     LE
     |> from()
     |> where([le], le.source_id == ^le.source_id)
-    |> MemoryRepo.all()
-    |> MemoryRepo.TableManagement.get_ids_for_sorted_records_over_max({:timestamp, :desc}, 500)
+    |> LocalRepo.all()
+    |> LocalRepo.TableManagement.get_ids_for_sorted_records_over_max({:timestamp, :desc}, 500)
     |> case do
       [] ->
         {:ok, result}
 
       ids ->
-        {:ok, _} = MemoryRepo.delete_all(from(LE) |> where([le], le.id in ^ids))
+        {:ok, _} = LocalRepo.delete_all(from(LE) |> where([le], le.id in ^ids))
         {:ok, result}
     end
   end
@@ -32,7 +32,7 @@ defmodule Logflare.Logs.LogEvents do
     LE
     |> from()
     |> where([le, s], s.id == ^source_id)
-    |> MemoryRepo.all()
+    |> LocalRepo.all()
     |> Enum.find(&MapSet.subset?(MapSet.new(metadata_fragment), MapSet.new(&1.body.metadata)))
   end
 

@@ -1,4 +1,4 @@
-defmodule Logflare.MemoryRepo.Migrations do
+defmodule Logflare.LocalRepo.Migrations do
   use Logflare.Commons
   alias Logflare.Changefeeds.ChangefeedSubscription
   alias Logflare.EctoSchemaReflection

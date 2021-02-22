@@ -2,7 +2,7 @@ defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
   use Logflare.Commons
-  use Logflare.ChangefeedSchema, derive_virtual: [:bq_table_id, :bq_dataset_id]
+  use Logflare.Changefeeds.ChangefeedSchema, derive_virtual: [:bq_table_id, :bq_dataset_id]
 
   import Ecto.Changeset
 

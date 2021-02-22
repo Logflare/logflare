@@ -2,7 +2,7 @@ defmodule Logflare.ChangefeedsListenerTest do
   @moduledoc false
   use Logflare.DataCase
   use Logflare.Commons
-  alias Logflare.MemoryRepo.ChangefeedListener
+  alias Logflare.LocalRepo.ChangefeedListener
 
   describe "Changefeed listeners" do
     test "notifications from origin node are not processed" do
@@ -29,7 +29,7 @@ defmodule Logflare.ChangefeedsListenerTest do
             "table_changefeed"
           end
 
-        assert MemoryRepo.ChangefeedListener.process_notification(channel, chfd_event) == :noop
+        assert LocalRepo.ChangefeedListener.process_notification(channel, chfd_event) == :noop
       end
     end
 
@@ -58,7 +58,7 @@ defmodule Logflare.ChangefeedsListenerTest do
           end
 
         assert catch_error(
-                 MemoryRepo.ChangefeedListener.process_notification(channel, chfd_event)
+                 LocalRepo.ChangefeedListener.process_notification(channel, chfd_event)
                )
       end
     end

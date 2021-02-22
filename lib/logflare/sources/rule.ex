@@ -3,7 +3,7 @@ defmodule Logflare.Rule do
   use TypedEctoSchema
   use Logflare.Commons
   import Ecto.Changeset
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 
   typed_schema "rules" do
     field :regex, :string

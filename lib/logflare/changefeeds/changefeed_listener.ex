@@ -1,4 +1,4 @@
-defmodule Logflare.MemoryRepo.ChangefeedListener do
+defmodule Logflare.Changefeeds.ChangefeedListener do
   use Logflare.Commons
   alias Logflare.Changefeeds.ChangefeedEvent
   use GenServer
@@ -63,14 +63,14 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
       when node() != origin_node do
     schema = chfd_event.changefeed_subscription.schema
 
-    {1, nil} = MemoryRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
+    {1, nil} = LocalRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
   def process_notification(channel_name, %{type: "INSERT", node_id: origin_node} = chfd_event)
       when not changefeed_with_id_only?(channel_name) and node() != origin_node do
     changeset = to_changeset(chfd_event)
 
-    {:ok, struct} = MemoryRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
+    {:ok, struct} = LocalRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
 
     Changefeeds.maybe_insert_virtual(struct)
   end
@@ -81,12 +81,12 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
       )
       when not is_nil(changes) and node != origin_node do
     schema = chfd_event.changefeed_subscription.schema
-    struct = MemoryRepo.get(schema, chfd_event.id)
+    struct = LocalRepo.get(schema, chfd_event.id)
     changeset = to_changeset(struct, chfd_event)
     changeset = Ecto.Changeset.force_change(changeset, :updated_at, struct.updated_at)
     changeset = Ecto.Changeset.force_change(changeset, :inserted_at, struct.inserted_at)
 
-    {:ok, struct} = MemoryRepo.update(changeset)
+    {:ok, struct} = LocalRepo.update(changeset)
 
     Changefeeds.maybe_insert_virtual(struct)
   end
@@ -101,7 +101,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     struct = Repo.get(schema, id) |> Changefeeds.replace_assocs_with_nils()
 
     {:ok, struct} =
-      MemoryRepo.insert(struct,
+      LocalRepo.insert(struct,
         on_conflict: :replace_all,
         conflict_target: :id
       )
@@ -115,7 +115,7 @@ defmodule Logflare.MemoryRepo.ChangefeedListener do
     changeset = to_changeset(chfd_event)
 
     {:ok, struct} =
-      MemoryRepo.insert(changeset,
+      LocalRepo.insert(changeset,
         on_conflict: :replace_all,
         conflict_target: :id
       )

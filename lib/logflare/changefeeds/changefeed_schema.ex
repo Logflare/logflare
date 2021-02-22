@@ -1,4 +1,4 @@
-defmodule Logflare.ChangefeedSchema do
+defmodule Logflare.Changefeeds.ChangefeedSchema do
   alias Logflare.EctoSchemaReflection
   @callback changefeed_changeset(map()) :: Ecto.Changeset.t()
 
@@ -6,8 +6,8 @@ defmodule Logflare.ChangefeedSchema do
     derive_virtual = Keyword.get(opts, :derive_virtual)
 
     quote do
-      @before_compile Logflare.ChangefeedSchema
-      @after_compile Logflare.ChangefeedSchema
+      @before_compile Logflare.Changefeeds.ChangefeedSchema
+      @after_compile Logflare.Changefeeds.ChangefeedSchema
 
       if unquote(derive_virtual) do
         Module.register_attribute(__MODULE__, :derive_virtual, persist: true)

@@ -9,5 +9,5 @@ defmodule Logflare.RejectedLogEvent do
     belongs_to :source, Source
   end
 
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 end

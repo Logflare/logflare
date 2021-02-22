@@ -1,20 +1,9 @@
 defmodule Logflare.Changefeeds do
   use Logflare.Commons
-
   alias Logflare.Changefeeds.ChangefeedSubscription
 
-  defmodule ChangefeedSubscription do
-    use TypedStruct
-
-    typedstruct do
-      field :table, String.t(), require: true
-      field :schema, module(), require: true
-      field :id_only, boolean, require: true
-    end
-  end
-
   def list_changefeed_subscriptions() do
-    for config <- MemoryRepo.config(:changefeed_subscriptions) do
+    for config <- LocalRepo.config(:changefeed_subscriptions) do
       case config do
         schema when is_atom(schema) ->
           source = EctoSchemaReflection.source(schema)
@@ -38,7 +27,7 @@ defmodule Logflare.Changefeeds do
   end
 
   def tables() do
-    for schema <- MemoryRepo.config(:tables) do
+    for schema <- LocalRepo.config(:tables) do
       {EctoSchemaReflection.source(schema), schema}
     end
   end
@@ -77,7 +66,7 @@ defmodule Logflare.Changefeeds do
       virtual_struct = virtual_schema.changefeed_changeset(struct)
 
       {:ok, _virtual_struct} =
-        MemoryRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
+        LocalRepo.insert(virtual_struct, on_conflict: :replace_all, conflict_target: :id)
 
       :ok
     else
@@ -95,7 +84,7 @@ defmodule Logflare.Changefeeds do
     virtual_schema = Module.concat(schema, Virtual)
 
     if Code.ensure_loaded?(virtual_schema) do
-      {:ok, _deleted} = MemoryRepo.delete(struct_or_changeset)
+      {:ok, _deleted} = LocalRepo.delete(struct_or_changeset)
 
       :ok
     else

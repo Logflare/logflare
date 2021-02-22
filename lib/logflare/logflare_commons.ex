@@ -3,7 +3,7 @@ defmodule Logflare.Commons do
     quote do
       alias Logflare.Repo
       alias Logflare.BqRepo
-      alias Logflare.MemoryRepo
+      alias Logflare.LocalRepo
       alias Logflare.RepoWithCache
 
       alias Logflare.Source

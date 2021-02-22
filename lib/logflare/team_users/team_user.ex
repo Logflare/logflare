@@ -2,7 +2,7 @@ defmodule Logflare.TeamUsers.TeamUser do
   use Ecto.Schema
   use Logflare.Commons
   import Ecto.Changeset
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 
   schema "team_users" do
     field :email, :string

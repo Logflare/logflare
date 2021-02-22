@@ -7,7 +7,7 @@ defmodule Logflare.LogEvent do
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
 
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 
   @validators [EqDeepFieldTypes, BigQuerySchemaChange]
 

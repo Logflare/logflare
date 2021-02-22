@@ -58,7 +58,7 @@ defmodule Logflare.ChangefeedsTeset do
 
       assert db = load_from_payload(User, payload)
       assert Map.delete(expected_payload, "changes") == Map.delete(payload, "changes")
-      mem = MemoryRepo.get(User, db.id)
+      mem = LocalRepo.get(User, db.id)
       assert db == mem
     end
 
@@ -115,7 +115,7 @@ defmodule Logflare.ChangefeedsTeset do
 
       Process.sleep(200)
 
-      assert db == MemoryRepo.get(User, db.id)
+      assert db == LocalRepo.get(User, db.id)
     end
 
     test "DELETE notifications", %{notify_pid: pid, ref: ref} do
@@ -135,7 +135,7 @@ defmodule Logflare.ChangefeedsTeset do
              }
 
       Process.sleep(300)
-      assert is_nil(MemoryRepo.get(User, db.id))
+      assert is_nil(LocalRepo.get(User, db.id))
     end
   end
 end

@@ -10,7 +10,7 @@ defmodule Logflare.Teams.Team do
     timestamps()
   end
 
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 
   @doc false
   def changeset(team, attrs) do

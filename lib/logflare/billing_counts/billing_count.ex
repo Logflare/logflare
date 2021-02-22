@@ -1,7 +1,7 @@
 defmodule Logflare.BillingCounts.BillingCount do
   use TypedEctoSchema
   import Ecto.Changeset
-  use Logflare.ChangefeedSchema
+  use Logflare.Changefeeds.ChangefeedSchema
 
   typed_schema "billing_counts" do
     field :count, :integer

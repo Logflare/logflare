@@ -3,7 +3,7 @@ defmodule Logflare.Sources.SourceSchema do
   use TypedEctoSchema
   import Ecto.Changeset
 
-  use Logflare.ChangefeedSchema, derive_virtual: [:type_map, :field_count]
+  use Logflare.Changefeeds.ChangefeedSchema, derive_virtual: [:type_map, :field_count]
   @min_number_of_schema_fields 3
 
   typed_schema "source_schemas" do

@@ -1,8 +1,8 @@
 defmodule Logflare.RepoWithCache do
-  alias Logflare.{Repo, MemoryRepo}
+  alias Logflare.{Repo, LocalRepo}
   alias Logflare.Changefeeds
   use Logflare.DeriveVirtualDecorator
-  import Logflare.EctoDerived, only: [merge_virtual: 1]
+  import Logflare.LocalRepo.EctoDerived, only: [merge_virtual: 1]
 
   @mutating [
     :insert_all,
@@ -71,17 +71,17 @@ defmodule Logflare.RepoWithCache do
        when is_struct(repo_result) do
     opts = Keyword.merge(opts, on_conflict: :replace_all, conflict_target: :id)
     struct = Changefeeds.replace_assocs_with_nils(repo_result)
-    {:memory_repo, apply(MemoryRepo, f, [struct, opts])}
+    {:memory_repo, apply(LocalRepo, f, [struct, opts])}
   end
 
   defp apply_memory_repo(:insert_all = f, [schema_or_source, _entries, opts], repo_result)
        when is_list(repo_result) do
     {:memory_repo,
-     apply(MemoryRepo, f, [schema_or_source, params_from_structs(repo_result), opts])}
+     apply(LocalRepo, f, [schema_or_source, params_from_structs(repo_result), opts])}
   end
 
   defp apply_memory_repo(f, a, _repo_result) do
-    {:memory_repo, apply(MemoryRepo, f, a)}
+    {:memory_repo, apply(LocalRepo, f, a)}
   end
 
   def params_from_structs(schema_structs) when is_list(schema_structs) do
@@ -128,7 +128,7 @@ defmodule Logflare.RepoWithCache do
   end
 
   def preload(structs_or_struct_or_nil, preloads, opts \\ []) do
-    with structs_or_struct_or_nil <- MemoryRepo.preload(structs_or_struct_or_nil, preloads, opts) do
+    with structs_or_struct_or_nil <- LocalRepo.preload(structs_or_struct_or_nil, preloads, opts) do
       if is_list(preloads) do
         for {k, _} <- preloads, reduce: structs_or_struct_or_nil do
           x -> merge_virtual_for_preload(x, k)
@@ -155,29 +155,29 @@ defmodule Logflare.RepoWithCache do
   end
 
   @decorate update_virtual_fields()
-  defdelegate one(queryable), to: MemoryRepo
-  defdelegate one(queryable, opts), to: MemoryRepo
+  defdelegate one(queryable), to: LocalRepo
+  defdelegate one(queryable, opts), to: LocalRepo
 
   @decorate update_virtual_fields()
-  defdelegate all(queryable), to: MemoryRepo
-  defdelegate all(queryable, opts), to: MemoryRepo
+  defdelegate all(queryable), to: LocalRepo
+  defdelegate all(queryable, opts), to: LocalRepo
 
   @decorate update_virtual_fields()
-  defdelegate get_by(queryable, clauses), to: MemoryRepo
-  defdelegate get_by(queryable, clauses, opts), to: MemoryRepo
+  defdelegate get_by(queryable, clauses), to: LocalRepo
+  defdelegate get_by(queryable, clauses, opts), to: LocalRepo
 
   @decorate update_virtual_fields()
-  defdelegate get_by!(queryable, clauses), to: MemoryRepo
-  defdelegate get_by!(queryable, clauses, opts), to: MemoryRepo
+  defdelegate get_by!(queryable, clauses), to: LocalRepo
+  defdelegate get_by!(queryable, clauses, opts), to: LocalRepo
 
   @decorate update_virtual_fields()
-  defdelegate get(queryable, id), to: MemoryRepo
-  defdelegate get(queryable, id, opts), to: MemoryRepo
+  defdelegate get(queryable, id), to: LocalRepo
+  defdelegate get(queryable, id, opts), to: LocalRepo
 
   @decorate update_virtual_fields()
-  defdelegate get!(queryable, id), to: MemoryRepo
-  defdelegate get!(queryable, id, opts), to: MemoryRepo
+  defdelegate get!(queryable, id), to: LocalRepo
+  defdelegate get!(queryable, id, opts), to: LocalRepo
 
-  defdelegate aggregate(queryable, aggregate, opts), to: MemoryRepo
-  defdelegate aggregate(queryable, aggregate, field, opts), to: MemoryRepo
+  defdelegate aggregate(queryable, aggregate, opts), to: LocalRepo
+  defdelegate aggregate(queryable, aggregate, field, opts), to: LocalRepo
 end

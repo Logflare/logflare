@@ -1,4 +1,4 @@
-defmodule Logflare.MemoryRepo.TableManagement do
+defmodule Logflare.LocalRepo.TableManagement do
   # TODO: investigate a more efficient way that doesn't require reading all user data on every entry
   # possible options ets select_delete and select_count
   @spec get_ids_for_sorted_records_over_max([map()], {atom(), :desc | :asc}, integer()) ::

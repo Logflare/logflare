@@ -1,11 +1,11 @@
-defmodule Logflare.MemoryRepo do
+defmodule Logflare.LocalRepo do
   use Ecto.Repo,
     otp_app: :logflare,
     adapter: Ecto.Adapters.Mnesia
 
   alias Logflare.EctoSchemaReflection
 
-  @config Application.get_env(:logflare, Logflare.MemoryRepo)
+  @config Application.get_env(:logflare, Logflare.LocalRepo)
 
   def config(:changefeed_subscriptions) do
     concat_modules(@config[:changefeed_subscriptions])

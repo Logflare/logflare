@@ -16,7 +16,7 @@ defmodule Logflare.Application do
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
-    MemoryRepo.reset_mnesia()
+    LocalRepo.reset_mnesia()
 
     children = [
       PubSubRates.Cache,
@@ -36,10 +36,10 @@ defmodule Logflare.Application do
         ]
       ),
       Repo,
-      MemoryRepo,
-      MemoryRepo.Migrations,
-      # MemoryRepo.Sync,
-      {MemoryRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
+      LocalRepo,
+      LocalRepo.Migrations,
+      # LocalRepo.Sync,
+      {LocalRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -50,10 +50,10 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       Repo,
-      MemoryRepo.Migrations,
-      MemoryRepo,
-      MemoryRepo.Sync,
-      {MemoryRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
+      LocalRepo.Migrations,
+      LocalRepo,
+      LocalRepo.Sync,
+      {LocalRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,
