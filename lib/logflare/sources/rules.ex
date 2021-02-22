@@ -7,7 +7,7 @@ defmodule Logflare.Rules do
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
-    source = Sources.get(source.id) |> Sources.preload_defaults()
+    source = Sources.get_source(source.id) |> Sources.preload_defaults()
     lql_string = Map.fetch!(params, "lql_string")
 
     with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, source.source_schema.bigquery_schema),
@@ -105,7 +105,7 @@ defmodule Logflare.Rules do
     for rule <- rules do
       source =
         rule.source_id
-        |> Sources.get()
+        |> Sources.get_source()
 
       with {:ok, lql_filters} <- Lql.decode(rule.lql_string, source.source_schema.bigquery_schema) do
         if lql_filters != rule.lql_filters do

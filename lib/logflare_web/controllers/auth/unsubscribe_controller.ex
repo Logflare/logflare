@@ -9,7 +9,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->
         team_user = TeamUsers.get_team_user_by(email: email)
-        source = Sources.get(String.to_integer(source_id))
+        source = Sources.get_source(String.to_integer(source_id))
 
         ids =
           Enum.filter(source.notifications.team_user_ids_for_schema_updates, fn x ->
@@ -35,7 +35,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
-        source = Sources.get(String.to_integer(source_id))
+        source = Sources.get_source(String.to_integer(source_id))
 
         changeset =
           Source.update_by_user_changeset(source, %{
@@ -56,7 +56,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
-        source = Sources.get(String.to_integer(source_id))
+        source = Sources.get_source(String.to_integer(source_id))
 
         changeset =
           Source.update_by_user_changeset(source, %{
@@ -77,7 +77,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
-        source = Sources.get(String.to_integer(source_id))
+        source = Sources.get_source(String.to_integer(source_id))
 
         changeset =
           Source.update_by_user_changeset(source, %{
@@ -101,7 +101,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->
         team_user = TeamUsers.get_team_user_by(email: email)
-        source = Sources.get(String.to_integer(source_id))
+        source = Sources.get_source(String.to_integer(source_id))
 
         team_user_ids_for_email =
           Enum.filter(source.notifications.team_user_ids_for_email, fn x ->

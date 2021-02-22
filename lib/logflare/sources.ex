@@ -40,13 +40,22 @@ defmodule Logflare.Sources do
     end
   end
 
-  @spec get(atom | integer) :: Source.t() | nil
-  def get(source_id) when is_atom(source_id) do
-    get_by(token: source_id)
+  @spec get_source(atom | integer) :: Source.t() | nil
+  def get_source(source_id) when is_atom(source_id) do
+    get_source_by(token: source_id)
   end
 
-  def get(source_id) when is_integer(source_id) do
-    get_by(id: source_id)
+  def get_source(source_id) when is_integer(source_id) do
+    get_source_by(id: source_id)
+  end
+
+  @spec get_source!(atom | integer) :: Source.t()
+  def get_source!(source_id) when is_integer(source_id) do
+    get_source_by!(id: source_id)
+  end
+
+  def get_source!(source_id) when is_atom(source_id) do
+    get_source_by!(token: source_id)
   end
 
   def get_sources_by_user(%User{id: id}) do
@@ -92,13 +101,13 @@ defmodule Logflare.Sources do
     end
   end
 
-  @spec get_by(Keyword.t()) :: Source.t() | nil
-  def get_by(kw) do
+  @spec get_source_by(Keyword.t()) :: Source.t() | nil
+  def get_source_by(kw) do
     RepoWithCache.get_by(Source, kw)
   end
 
-  @spec get_by!(Keyword.t()) :: Source.t()
-  def get_by!(kw) do
+  @spec get_source_by!(Keyword.t()) :: Source.t()
+  def get_source_by!(kw) do
     RepoWithCache.get_by!(Source, kw)
   end
 
@@ -112,7 +121,7 @@ defmodule Logflare.Sources do
 
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
-    get_by(kw)
+    get_source_by(kw)
     |> preload_defaults()
   end
 

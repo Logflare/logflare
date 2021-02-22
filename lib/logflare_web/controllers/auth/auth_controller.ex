@@ -119,12 +119,12 @@ defmodule LogflareWeb.AuthController do
 
   def signin(conn, auth_params) do
     team_users = TeamUsers.list_team_users_by_and_preload(email: auth_params.email)
-    user = Users.get_by(email: auth_params.email)
+    user = Users.get_user_by(email: auth_params.email)
 
     cond do
       !Enum.empty?(team_users) and is_nil(user) ->
         team_user = hd(team_users)
-        user = Users.get(team_user.team.user_id)
+        user = Users.get_user(team_user.team.user_id)
 
         case TeamUsers.insert_or_update_team_user(team_user.team, auth_params) do
           {:ok, team_user} ->

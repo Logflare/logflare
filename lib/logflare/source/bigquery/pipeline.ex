@@ -14,7 +14,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.{AccountEmail, Mailer}
 
   def start_link(%RLS{source_id: token, plan: plan} = rls) do
-    source = Sources.get_by(token: token)
+    source = Sources.get_source_by(token: token)
     procs = calc_procs(source, plan)
 
     Broadway.start_link(__MODULE__,
@@ -148,7 +148,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
-    source = Sources.get_by(token: source_id)
+    source = Sources.get_source_by(token: source_id)
     user = Users.get_user_by(id: source.user_id)
 
     defaults = %{

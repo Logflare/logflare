@@ -144,7 +144,7 @@ defmodule Logflare.Source.Supervisor do
 
     # Double check source is in the database before starting
     # Can be removed when manager fns move into their own genserver
-    if Sources.get_by(token: source_id) do
+    if Sources.get_source_by(token: source_id) do
       GenServer.abcast(__MODULE__, {:create, source_id})
     else
       Logger.warn("Attempted to start a source not found in the database.", source_id: source_id)
@@ -175,7 +175,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp create_source(source_id) do
-    source = Sources.get_by(token: source_id)
+    source = Sources.get_source_by(token: source_id)
     rls = %RLS{source_id: source_id}
 
     children = [
@@ -193,7 +193,7 @@ defmodule Logflare.Source.Supervisor do
 
     # Put management fns in a manager genserver so bad changes don't accidentally crash all the log servers
     # Require source schema when creating source
-    case Sources.get_by(token: source_id) do
+    case Sources.get_source_by(token: source_id) do
       nil ->
         :noop
 

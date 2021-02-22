@@ -174,7 +174,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_call({:update, schema}, _from, %__MODULE__{} = state) do
-    source = Sources.get_by(token: state.source_token)
+    source = Sources.get_source_by(token: state.source_token)
     sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
 
     {:ok, schema} =

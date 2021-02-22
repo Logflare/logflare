@@ -15,7 +15,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
-    %Source{user_id: user_id} = Sources.get_by(token: source_id)
+    %Source{user_id: user_id} = Sources.get_source_by(token: source_id)
     %User{bigquery_project_id: project_id} = Users.get_user_by(id: user_id)
 
     project_id || @project_id
@@ -23,7 +23,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_bq_user_info(atom) :: map
   def get_bq_user_info(source_id) when is_atom(source_id) do
-    %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.get_by(token: source_id)
+    %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.get_source_by(token: source_id)
 
     %User{
       id: user_id,
@@ -66,7 +66,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_account_id(atom) :: String.t()
   def get_account_id(source_id) when is_atom(source_id) do
-    %Logflare.Source{user_id: account_id} = Sources.get_by(token: source_id)
+    %Logflare.Source{user_id: account_id} = Sources.get_source_by(token: source_id)
     "#{account_id}"
   end
 

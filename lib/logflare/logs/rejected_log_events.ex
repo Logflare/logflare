@@ -46,7 +46,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
   end
 
   def delete_by_source(%Source{token: token}) do
-    s = Sources.get_by(token: token)
+    s = Sources.get_source_by(token: token)
 
     {_, _} =
       RepoWithCache.delete_all(from(RejectedLogEvent) |> where([rle], rle.source_id == ^s.id))
@@ -79,7 +79,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
 
   @spec get!(atom) :: list(RLE.t())
   defp get!(token) do
-    s = Sources.get_by(token: token)
+    s = Sources.get_source_by(token: token)
     RepoWithCache.all(from(RejectedLogEvent) |> where([rle], rle.source_id == ^s.id))
   end
 end
