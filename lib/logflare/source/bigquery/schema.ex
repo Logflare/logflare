@@ -12,8 +12,9 @@ defmodule Logflare.Source.BigQuery.Schema do
   use Logflare.Commons
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
-  @persist_every 60_000
+  @persist_every_seconds 60
   @timeout 60_000
 
   typedstruct do
@@ -32,8 +33,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         source_token: rls.source_id,
         bigquery_project_id: rls.bigquery_project_id,
         bigquery_dataset_id: rls.bigquery_dataset_id,
-        field_count_limit: rls.plan.limit_source_fields_limit,
-        next_update: System.system_time()
+        field_count_limit: rls.plan.limit_source_fields_limit
       },
       name: name(rls.source_id)
     )
@@ -41,8 +41,6 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def init(state) do
     Process.flag(:trap_exit, true)
-
-    persist(0)
 
     {:ok, state, {:continue, :boot}}
   end
@@ -64,11 +62,12 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), :get)
   end
 
-  def update(source_token, %LE{} = log_event) do
+  @spec update(atom(), TFS.t() | LE.t()) :: {:ok, term} | {:error, term}
+  def update(source_token, %LE{} = log_event) when is_atom(source_token) do
     GenServer.call(name(source_token), {:update, log_event}, @timeout)
   end
 
-  def update(source_token, schema) do
+  def update(source_token, %TFS{} = schema) when is_atom(source_token) do
     GenServer.call(name(source_token), {:update, schema}, @timeout)
   end
 
@@ -76,17 +75,14 @@ defmodule Logflare.Source.BigQuery.Schema do
     {:reply, state, state}
   end
 
-  def handle_call(:set_next_update, _from, %__MODULE__{} = state) do
-    {:reply, :ok, state}
-  end
-
   def handle_call(
         {:update, %LE{}},
         _from,
         %{field_count: fc, field_count_limit: limit} = state
       )
-      when fc > limit,
-      do: {:reply, :ok, state}
+      when fc > limit do
+    {:reply, :ok, state}
+  end
 
   def handle_call(
         {:update, %LE{body: body, id: event_id} = le},
@@ -98,9 +94,13 @@ defmodule Logflare.Source.BigQuery.Schema do
     %{bigquery_schema: current_bigquery_schema, updated_at: updated_at} =
       SourceSchemas.get_source_schema_by(source_id: le.source.id)
 
+    source = Sources.get_source!(state.source_token)
+
     maybe_new_schema = try_schema_update(body.metadata, current_bigquery_schema)
     same_schema? = same_schemas?(current_bigquery_schema, maybe_new_schema)
-    next_update_time_reached? = state.next_update < Timex.to_unix(updated_at)
+
+    next_update_time_reached? =
+      Timex.diff(Timex.now(), updated_at, :seconds) >= @persist_every_seconds
 
     if not same_schema? and next_update_time_reached? do
       case BigQuery.patch_table(
@@ -114,7 +114,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           SourceSchemas.update_source_schema_for_source(
             %{bigquery_schema: maybe_new_schema},
-            state.source_token
+            source
           )
 
           notify_maybe(state.source_token, maybe_new_schema, current_bigquery_schema)
@@ -139,7 +139,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       SourceSchemas.update_source_schema_for_source(
                         %{bigquery_schema: schema},
-                        state.source_token
+                        source
                       )
 
                       {:reply, :ok, state}
@@ -173,7 +173,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_call({:update, schema}, _from, %__MODULE__{} = state) do
+  def handle_call({:update, %TFS{} = schema}, _from, %__MODULE__{} = state) do
     source = Sources.get_source_by(token: state.source_token)
     sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
 
@@ -183,35 +183,11 @@ defmodule Logflare.Source.BigQuery.Schema do
         source
       )
 
-    {:reply, :ok, %{state | schema: schema, next_update: next_update()}}
+    {:reply, :ok, %{state | schema: schema}}
   end
 
-  def handle_cast({:update, schema, type_map, field_count}, %__MODULE__{} = state) do
-    {:noreply, %{state | schema: schema, next_update: next_update()}}
-  end
-
-  def handle_info(:persist, %__MODULE__{} = state) do
-    source = Sources.get_by(token: state.source_token)
-
-    if state.schema do
-      {:ok, _} =
-        SourceSchemas.update_source_schema_for_source(
-          %{bigquery_schema: state.schema},
-          source
-        )
-    end
-
-    persist()
-
-    {:noreply, state}
-  end
-
-  defp persist(persist_every \\ @persist_every) do
-    Process.send_after(self(), :persist, persist_every)
-  end
-
-  defp next_update() do
-    System.system_time(:second) + 60
+  def handle_cast({:update, schema, _type_map, _field_count}, %__MODULE__{} = state) do
+    {:noreply, %{state | schema: schema}}
   end
 
   defp name(source_token) do
