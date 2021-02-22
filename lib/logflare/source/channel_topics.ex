@@ -4,8 +4,7 @@ defmodule Logflare.Source.ChannelTopics do
   """
   require Logger
 
-  alias Logflare.LogEvent, as: LE
-  alias Logflare.Source
+  use Logflare.Commons
   alias Number.Delimit
 
   use TypedStruct

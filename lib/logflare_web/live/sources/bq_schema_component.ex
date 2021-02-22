@@ -5,7 +5,6 @@ defmodule LogflareWeb.SourceBqSchemaComponent do
 
   @impl true
   def render(%{source: source}) do
-    bq_schema = Sources.Cache.get_bq_schema(source)
-    BqSchema.format_bq_schema(bq_schema)
+    BqSchema.format_bq_schema(source.source_schema.bigquery_schema)
   end
 end

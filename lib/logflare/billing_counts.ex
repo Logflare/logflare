@@ -6,9 +6,7 @@ defmodule Logflare.BillingCounts do
   require Logger
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.BillingCounts.BillingCount
+  use Logflare.Commons
   alias Logflare.Queries.AnalyticalQueries
 
   def timeseries(%User{id: user_id}, start_date, end_date) do
@@ -48,13 +46,13 @@ defmodule Logflare.BillingCounts do
   def list_by(kv) do
     BillingCount
     |> where(^kv)
-    |> Repo.all()
+    |> RepoWithCache.all()
   end
 
   def insert(user, source, params) do
     assoc = params |> assoc(user) |> assoc(source)
 
-    Repo.insert(assoc)
+    RepoWithCache.insert(assoc)
   end
 
   defp assoc(params, user_or_source) do

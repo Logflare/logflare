@@ -182,6 +182,9 @@ defmodule Logflare.Mixfile do
 
       # Charting
       {:contex, "~> 0.3.0"}
+
+      # Cache
+      {:ecto3_mnesia, "~> 0.2"}
     ]
   end
 

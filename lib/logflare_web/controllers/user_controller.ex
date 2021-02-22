@@ -4,7 +4,8 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo, Users, TeamUsers, Source.Supervisor, BillingAccounts.Stripe}
+  use Logflare.Commons
+  alias BillingAccounts.Stripe
 
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
@@ -42,11 +43,11 @@ defmodule LogflareWeb.UserController do
   def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
     user
     |> User.user_allowed_changeset(params)
-    |> Repo.update()
+    |> RepoWithCache.update()
     |> case do
       {:ok, updated_user} ->
         if updated_user.bigquery_project_id != user.bigquery_project_id,
-          do: Supervisor.reset_all_user_sources(user)
+          do: Source.Supervisor.reset_all_user_sources(user)
 
         conn
         |> put_flash(:info, "Account updated!")
@@ -110,7 +111,7 @@ defmodule LogflareWeb.UserController do
         auth_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
         changeset = User.changeset(user, auth_params)
-        Repo.update(changeset)
+        {:ok, _} = RepoWithCache.update(changeset)
 
         conn
         |> put_flash(:info, "API key restored!")
@@ -123,7 +124,7 @@ defmodule LogflareWeb.UserController do
         auth_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
         changeset = User.changeset(user, auth_params)
-        Repo.update(changeset)
+        {:ok, _} = RepoWithCache.update(changeset)
 
         conn
         |> put_flash(:info, [

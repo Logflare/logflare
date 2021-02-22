@@ -5,8 +5,8 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
   import Logflare.Factory
 
   setup do
-    u1 = insert(:user)
-    u2 = insert(:user)
+    {:ok, u1} = Users.insert_or_update_user(params_for(:user))
+    {:ok, u2} = Users.insert_or_update_user(params_for(:user))
     {:ok, users: [u1, u2]}
   end
 
@@ -15,6 +15,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
       conn =
         build_conn(:post, "/logs")
         |> put_req_header("x-api-key", u1.api_key)
+        |> Plug.Conn.fetch_query_params()
         |> SetVerifyUser.call(%{})
 
       assert conn.assigns.user.id == u1.id
@@ -25,6 +26,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
       conn =
         build_conn(:post, "/logs")
         |> put_req_header("x-api-key", "")
+        |> Plug.Conn.fetch_query_params()
         |> SetVerifyUser.call(%{})
 
       assert conn.halted == true

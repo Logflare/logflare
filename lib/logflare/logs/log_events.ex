@@ -1,19 +1,65 @@
 defmodule Logflare.Logs.LogEvents do
   @moduledoc false
+  use Logflare.Commons
   alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Sources
-  alias Logflare.LogEvent
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
-  alias Logflare.BqRepo
   alias Logflare.Google.BigQuery.GenUtils
-  # import Logflare.Ecto.BQQueryAPI
+  import Ecto.Query
+
+  @spec create_log_event(LE.t()) :: {:ok, LE.t()} | {:error, term}
+  def create_log_event(%LE{} = le) do
+    {:ok, result} = LocalRepo.insert(le)
+
+    LE
+    |> from()
+    |> where([le], le.source_id == ^le.source_id)
+    |> LocalRepo.all()
+    |> LocalRepo.TableManagement.get_ids_for_sorted_records_over_max({:timestamp, :desc}, 500)
+    |> case do
+      [] ->
+        {:ok, result}
+
+      ids ->
+        {:ok, _} = LocalRepo.delete_all(from(LE) |> where([le], le.id in ^ids))
+        {:ok, result}
+    end
+  end
+
+  @spec get_log_event_by_metadata_for_source(map(), integer()) :: [LE.t()]
+  def get_log_event_by_metadata_for_source(metadata_fragment, source_id)
+      when is_integer(source_id) and is_map(metadata_fragment) do
+    LE
+    |> from()
+    |> where([le, s], s.id == ^source_id)
+    |> LocalRepo.all()
+    |> Enum.find(&MapSet.subset?(MapSet.new(metadata_fragment), MapSet.new(&1.body.metadata)))
+  end
+
+  def get_log_event(id) do
+    RepoWithCache.get(LogEvent, id)
+  end
+
+  def get_log_event!(id) do
+    RepoWithCache.get!(LogEvent, id)
+  end
+
+  def get_log_event_with_source_and_partitions(id,
+        source: source,
+        partitions_range: partitions_range
+      ) do
+    if le = RepoWithCache.get(LogEvent, id) do
+      le
+    else
+      fetch_event_by_id(source.token, id, partitions_range: partitions_range)
+    end
+  end
 
   @spec fetch_event_by_id_and_timestamp(atom, keyword) :: {:ok, map()} | {:error, map()}
   def fetch_event_by_id_and_timestamp(source_token, kw) when is_atom(source_token) do
     id = kw[:id]
     timestamp = kw[:timestamp]
-    source = Sources.Cache.get_by_id_and_preload(source_token)
+    source = Sources.get_by_id_and_preload(source_token)
     bq_table_id = source.bq_table_id
     query = SearchQueries.source_log_event_query(bq_table_id, id, timestamp)
 
@@ -47,7 +93,7 @@ defmodule Logflare.Logs.LogEvents do
   def fetch_event_by_id(source_token, id, opts)
       when is_list(opts) and is_atom(source_token) and is_binary(id) do
     partitions_range = Keyword.get(opts, :partitions_range, [])
-    source = Sources.Cache.get_by_id_and_preload(source_token)
+    source = Sources.get_by_id_and_preload(source_token)
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
@@ -74,7 +120,7 @@ defmodule Logflare.Logs.LogEvents do
   @spec fetch_event_by_path(atom(), binary(), term()) :: {:ok, map() | nil} | {:error, any()}
   def fetch_event_by_path(source_token, path, value)
       when is_atom(source_token) and is_binary(path) do
-    source = Sources.Cache.get_by_id_and_preload(source_token)
+    source = Sources.get_by_id_and_preload(source_token)
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
@@ -165,5 +211,9 @@ defmodule Logflare.Logs.LogEvents do
   defp where_last_3d_q(q) do
     from_utc = Timex.shift(Timex.today(), days: -3)
     SearchQueries.where_partitiondate_between(q, from_utc, Timex.today())
+  end
+
+  def get_log_event_by(kw) do
+    RepoWithCache.get_by(LogEvent, kw)
   end
 end

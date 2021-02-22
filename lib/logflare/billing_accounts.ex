@@ -6,10 +6,7 @@ defmodule Logflare.BillingAccounts do
   require Logger
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.Users
-  alias Logflare.Source
+  use Logflare.Commons
   alias __MODULE__
   alias Logflare.BillingAccounts.BillingAccount
 
@@ -33,14 +30,14 @@ defmodule Logflare.BillingAccounts do
 
   """
   def list_billing_accounts do
-    Repo.all(BillingAccount)
+    RepoWithCache.all(BillingAccount)
   end
 
   @doc """
   Gets a single billing_account by a keyword.
   """
   def get_billing_account_by(kv) do
-    Repo.get_by(BillingAccount, kv)
+    RepoWithCache.get_by(BillingAccount, kv)
   end
 
   @doc """
@@ -57,7 +54,7 @@ defmodule Logflare.BillingAccounts do
       ** (Ecto.NoResultsError)
 
   """
-  def get_billing_account!(id), do: Repo.get!(BillingAccount, id)
+  def get_billing_account!(id), do: RepoWithCache.get!(BillingAccount, id)
 
   @doc """
   Creates a billing_account.
@@ -75,11 +72,11 @@ defmodule Logflare.BillingAccounts do
     user
     |> Ecto.build_assoc(:billing_account)
     |> BillingAccount.changeset(attrs)
-    |> Repo.insert()
+    |> RepoWithCache.insert()
     |> case do
       {:ok, _user} = response ->
         # move this to be the default on user create after launch
-        Users.update_user_all_fields(user, %{billing_enabled?: true})
+        Users.update_user_all_fields(user, %{billing_enabled: true})
 
         Source.Supervisor.reset_all_user_sources(user)
 
@@ -150,7 +147,7 @@ defmodule Logflare.BillingAccounts do
   def update_billing_account(%BillingAccount{} = billing_account, attrs) do
     billing_account
     |> BillingAccount.changeset(attrs)
-    |> Repo.update()
+    |> RepoWithCache.update()
   end
 
   def preload_payment_methods(billing_account) do
@@ -171,7 +168,7 @@ defmodule Logflare.BillingAccounts do
 
   """
   def delete_billing_account(%User{billing_account: billing_account} = user) do
-    case Repo.delete(billing_account) do
+    case RepoWithCache.delete(billing_account) do
       {:ok, _user} = response ->
         Source.Supervisor.reset_all_user_sources(user)
 

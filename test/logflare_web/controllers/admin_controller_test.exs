@@ -6,11 +6,11 @@ defmodule LogflareWeb.AdminControllerTest do
   describe "Admin controller" do
     setup do
       s1u1 = build(:source, rules: [])
-      u1 = insert(:user, sources: [s1u1])
+      u1 = Users.insert_or_update_user(params_for(:user, sources: [s1u1]))
       s1u2 = build(:source, rules: [])
-      u2 = insert(:user, sources: [s1u2])
+      u2 = Users.insert_or_update_user(params_for(:user, sources: [s1u2]))
 
-      a1 = insert(:user, admin: true)
+      a1 = Users.insert_or_update_user(params_for(:user, admin: true))
 
       sources = [s1u1, s1u2]
       users = [u1, u2]

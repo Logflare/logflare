@@ -2,8 +2,8 @@ defmodule Logflare.Logs.SearchQueries do
   @moduledoc false
   import Ecto.Query
   @chart_periods ~w(day hour minute second)a
+  use Logflare.Commons
   alias Logflare.Ecto.BQQueryAPI
-  alias Logflare.Lql
   import BQQueryAPI.UDF
   import BQQueryAPI
 

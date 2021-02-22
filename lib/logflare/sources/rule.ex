@@ -1,9 +1,9 @@
 defmodule Logflare.Rule do
   @moduledoc false
   use TypedEctoSchema
-  alias Logflare.Source
-  alias Logflare.Lql
+  use Logflare.Commons
   import Ecto.Changeset
+  use Logflare.Changefeeds.ChangefeedSchema
 
   typed_schema "rules" do
     field :regex, :string

@@ -1,9 +1,6 @@
 defmodule Logflare.Logs.SourceRouting do
   @moduledoc false
-  alias Logflare.{Source, Sources}
-  alias Logflare.Rule
-  alias Logflare.Lql
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   import Logflare.Logs, only: [ingest: 1, broadcast: 1]
   require Logger
 
@@ -22,7 +19,7 @@ defmodule Logflare.Logs.SourceRouting do
     for rule <- rules do
       cond do
         length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
-          sink_source = Sources.Cache.get_by(token: rule.sink)
+          sink_source = Sources.get_by(token: rule.sink)
           routed_le = %{le | source: sink_source, via_rule: rule}
           :ok = ingest(routed_le)
           :ok = broadcast(routed_le)
@@ -138,7 +135,7 @@ defmodule Logflare.Logs.SourceRouting do
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do
-    sink_source = Sources.Cache.get_by(token: rule.sink)
+    sink_source = Sources.get_by(token: rule.sink)
 
     if sink_source do
       routed_le = %{le | source: sink_source, via_rule: rule}

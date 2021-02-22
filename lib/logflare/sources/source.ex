@@ -1,11 +1,10 @@
 defmodule Logflare.Source do
   @moduledoc false
   use TypedEctoSchema
+  use Logflare.Commons
+  use Logflare.Changefeeds.ChangefeedSchema, derive_virtual: [:bq_table_id, :bq_dataset_id]
 
   import Ecto.Changeset
-
-  alias Logflare.Plans
-  alias Logflare.Users
 
   @default_source_api_quota 25
   @derive {Jason.Encoder,
@@ -20,8 +19,7 @@ defmodule Logflare.Source do
              :bigquery_table_ttl,
              :public_token,
              :bq_table_id,
-             :bq_table_schema,
-             :has_rejected_events?,
+             :has_rejected_events,
              :metrics,
              :notifications,
              :custom_event_message_keys
@@ -75,7 +73,7 @@ defmodule Logflare.Source do
                :team_user_ids_for_schema_updates
              ]}
 
-    embedded_schema do
+    typed_embedded_schema do
       field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
       field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
       field :other_email_notifications, :string
@@ -99,7 +97,7 @@ defmodule Logflare.Source do
     end
   end
 
-  schema "sources" do
+  typed_schema "sources" do
     field :name, :string
     field :token, Ecto.UUID.Atom
     field :public_token, :string
@@ -108,12 +106,11 @@ defmodule Logflare.Source do
     field :api_quota, :integer, default: @default_source_api_quota
     field :webhook_notification_url, :string
     field :slack_hook_url, :string
-    field :metrics, :map, virtual: true
-    field :has_rejected_events?, :boolean, default: false, virtual: true
+    field :metrics, :map, virtual: true, default: %{}
+    field :has_rejected_events, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
-    field :bq_table_schema, :any, virtual: true
-    field :bq_table_typemap, :any, virtual: true
+    # field :bq_table_typemap, :map, virtual: true
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
@@ -130,9 +127,28 @@ defmodule Logflare.Source do
 
     embeds_one :notifications, Notifications, on_replace: :update
 
-    has_one :source_schema, Logflare.Sources.SourceSchema
+    has_one :source_schema, SourceSchema
 
     timestamps()
+  end
+
+  def changefeed_changeset(struct \\ struct(__MODULE__), attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
+
+    cast_embed(chgst, :notifications, with: &Notifications.changeset/2)
+  end
+
+  @default_table_name_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] ||
+                               ""
+
+  def derive(:bq_table_id, %__MODULE__{} = source, _virtual_struct_params) do
+    user = Users.get_user(source.user_id)
+    generate_bq_table_id(%{source | user: user})
+  end
+
+  def derive(:bq_dataset_id, %__MODULE__{} = source, _virtual_struct_params) do
+    user = Users.get_user(source.user_id)
+    user.bigquery_dataset_id || "#{source.user_id}" <> @default_table_name_append
   end
 
   def no_casting_changeset(source) do
@@ -189,7 +205,7 @@ defmodule Logflare.Source do
 
   def validate_source_ttl(changeset, source) do
     if source.user_id do
-      user = Users.get(source.user_id)
+      user = Users.get_user!(source.user_id)
       plan = Plans.get_plan_by_user(user)
 
       validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->
@@ -211,7 +227,7 @@ defmodule Logflare.Source do
     end
   end
 
-  def generate_bq_table_id(%__MODULE__{} = source) do
+  def generate_bq_table_id(%__MODULE__{user: %User{} = user} = source) do
     default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
 
     bq_project_id = source.user.bigquery_project_id || default_project_id

@@ -3,11 +3,8 @@ defmodule Logflare.Source.EmailNotificationServer do
 
   require Logger
 
-  alias Logflare.{Sources, Users, TeamUsers}
-  alias Logflare.Sources.Counters
-  alias Logflare.AccountEmail
-  alias Logflare.Mailer
-  alias Logflare.Source.RecentLogsServer, as: RLS
+  use Logflare.Commons
+  alias Sources.Counters
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: name(source_id))
@@ -30,8 +27,8 @@ defmodule Logflare.Source.EmailNotificationServer do
       true ->
         check_rate(rls.notifications_every)
 
-        source = Sources.Cache.get_by_id(rls.source_id)
-        user = Users.Cache.get_by(id: source.user_id)
+        source = Sources.get_by_id_and_preload(rls.source_id)
+        user = Users.get_by_and_preload(id: source.user_id)
 
         if source.notifications.user_email_notifications == true do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->

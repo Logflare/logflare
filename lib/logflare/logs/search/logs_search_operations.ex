@@ -1,12 +1,10 @@
 defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
+  use Logflare.Commons
   alias Logflare.BqRepo
-  alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Logs.Search.Utils
-  alias Logflare.Lql
-  alias Logflare.{Sources, EctoQueryBQ}
 
   import Ecto.Query
 
@@ -129,10 +127,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def put_chart_data_shape_id(%SO{} = so) do
-    flat_type_map =
-      so.source
-      |> Sources.Cache.get_bq_schema()
-      |> SchemaUtils.bq_schema_to_flat_typemap()
+    flat_type_map = SchemaUtils.bq_schema_to_flat_typemap(so.source.source_schema.bigquery_schema)
 
     [%{path: path}] = so.chart_rules
     path_is_timestamp? = path == "timestamp"

@@ -22,7 +22,7 @@ defmodule Ecto.Term do
   end
 
   def dump(value) do
-    {:ok, :erlang.term_to_binary(value)}
+    {:ok, :erlang.term_to_binary(value, compressed: 9)}
   end
 
   def embed_as(_) do

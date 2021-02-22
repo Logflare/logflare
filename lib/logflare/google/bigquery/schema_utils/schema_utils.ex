@@ -196,4 +196,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> Enum.reject(fn {_k, v} -> v === :map end)
     |> Map.new()
   end
+
+  @spec count_fields(map()) :: integer()
+  def count_fields(type_map) do
+    type_map
+    |> Iteraptor.to_flatmap()
+    |> Enum.count()
+  end
 end

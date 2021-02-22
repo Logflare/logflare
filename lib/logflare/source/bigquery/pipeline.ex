@@ -4,23 +4,21 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   require Logger
 
+  use Logflare.Commons
   alias Broadway.Message
   alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Source.BigQuery.{Schema, BufferProducer}
   alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
-  alias Logflare.{Source}
-  alias Logflare.{Users, Sources}
-  alias Logflare.Source.Supervisor
+  alias Source.Supervisor
   alias Logflare.{AccountEmail, Mailer}
-  alias Logflare.LogEvent, as: LE
-  alias Logflare.Source.RecentLogsServer, as: RLS
 
-  def start_link(%RLS{source: source, plan: plan} = rls) do
+  def start_link(%RLS{source_id: token, plan: plan} = rls) do
+    source = Sources.get_by(token: token)
     procs = calc_procs(source, plan)
 
     Broadway.start_link(__MODULE__,
-      name: name(source.token),
+      name: name(token),
       producer: [
         module: {BufferProducer, rls},
         hibernate_after: 30_000
@@ -150,8 +148,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
-    source = Sources.Cache.get_by(token: source_id)
-    user = Users.Cache.get_by(id: source.user_id)
+    source = Sources.get_by(token: source_id)
+    user = Users.get_user_by(id: source.user_id)
 
     defaults = %{
       bigquery_dataset_location: nil,

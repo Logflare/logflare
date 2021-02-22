@@ -2,10 +2,8 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
 
-  alias Logflare.JSON
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans}
+  alias Logflare.Google.BigQuery
   alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
 
@@ -13,13 +11,16 @@ defmodule LogflareWeb.SourceController do
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   def api_index(%{assigns: %{user: user}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+    sources = Sources.preload_sources_for_dashboard(user.sources)
 
     conn |> json(sources)
   end
 
-  def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+  def dashboard(
+        %{assigns: %{user: %User{team: team} = user, team_user: team_user}} = conn,
+        _params
+      ) do
+    sources = Sources.preload_sources_for_dashboard(user.sources)
 
     home_team = Teams.get_home_team!(team_user)
 
@@ -34,8 +35,8 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+  def dashboard(%{assigns: %{user: %User{team: %Team{} = team} = user}} = conn, _params) do
+    sources = Sources.preload_sources_for_dashboard(user.sources)
 
     home_team = team
 
@@ -43,6 +44,7 @@ defmodule LogflareWeb.SourceController do
 
     render(conn, "dashboard.html",
       sources: sources,
+      team: team,
       home_team: home_team,
       team_users: team_users_with_teams,
       current_node: Node.self()
@@ -55,7 +57,7 @@ defmodule LogflareWeb.SourceController do
     {flash_key, message} =
       source
       |> Source.update_by_user_changeset(%{"favorite" => !source.favorite})
-      |> Repo.update()
+      |> Sources.update_source()
       |> case do
         {:ok, _source} ->
           {:info, "Source updated!"}
@@ -97,6 +99,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def show(%{assigns: %{user: user, source: source}} = conn, _params) do
+    source = Sources.refresh_source_metrics(source)
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
@@ -200,11 +203,13 @@ defmodule LogflareWeb.SourceController do
   end
 
   def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => _public_token}) do
+    source = Sources.refresh_source_metrics(source)
     avg_rate = source.metrics.avg
     render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
 
   def edit(%{assigns: %{source: source}} = conn, _params) do
+    source = Sources.refresh_source_metrics(source)
     changeset = Source.update_by_user_changeset(source, %{})
 
     render(conn, "edit.html",
@@ -280,7 +285,8 @@ defmodule LogflareWeb.SourceController do
   end
 
   def delete_slack_hook(conn, %{"id" => source_id}) do
-    Repo.get(Source, source_id)
+    source_id
+    |> Sources.get_by_id_and_preload()
     |> Sources.delete_slack_hook_url()
     |> case do
       {:ok, _source} ->
@@ -299,6 +305,8 @@ defmodule LogflareWeb.SourceController do
         %{assigns: %{source: source, user: _user, plan: plan}} = conn,
         %{"source" => %{"notifications_every" => _freq} = params}
       ) do
+    source = Sources.refresh_source_metrics(source)
+
     case Sources.update_source_by_user(source, plan, params) do
       {:ok, _source} ->
         conn
@@ -332,9 +340,10 @@ defmodule LogflareWeb.SourceController do
   end
 
   def update(%{assigns: %{source: old_source, user: user}} = conn, %{"source" => source_params}) do
+    old_source = Sources.refresh_source_metrics(old_source)
     changeset = Source.update_by_user_changeset(old_source, source_params)
 
-    case Repo.update(changeset) do
+    case Sources.update_source(changeset) do
       {:ok, source} ->
         ttl = source.bigquery_table_ttl
 
@@ -435,17 +444,8 @@ defmodule LogflareWeb.SourceController do
   end
 
   def rejected_logs(%{assigns: %{source: source}} = conn, %{"id" => _id}) do
-    rejected_logs = RejectedLogEvents.get_by_source(source)
+    rejected_logs = RejectedLogEvents.get_for_source(source)
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
-  end
-
-  defp preload_sources_for_dashboard(sources) do
-    sources
-    |> Enum.map(&Sources.preload_defaults/1)
-    |> Enum.map(&Sources.preload_saved_searches/1)
-    |> Enum.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(& &1.name, &<=/2)
-    |> Enum.sort_by(& &1.favorite, &>=/2)
   end
 
   defp get_and_encode_logs(%Source{} = source) do

@@ -1,7 +1,7 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans, PubSubRates}
+  use Logflare.Commons
 
   def start(_type, _args) do
     import Supervisor.Spec
@@ -16,14 +16,10 @@ defmodule Logflare.Application do
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
+    LocalRepo.reset_mnesia()
+
     children = [
-      Users.Cache,
-      Sources.Cache,
-      BillingAccounts.Cache,
-      Plans.Cache,
       PubSubRates.Cache,
-      Logs.LogEvents.Cache,
-      Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
       worker(
         Tracker,
@@ -39,7 +35,11 @@ defmodule Logflare.Application do
           ]
         ]
       ),
-      Logflare.Repo,
+      Repo,
+      LocalRepo,
+      LocalRepo.Migrations,
+      # LocalRepo.Sync,
+      {LocalRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -49,7 +49,11 @@ defmodule Logflare.Application do
     dev_prod_children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
-      Logflare.Repo,
+      Repo,
+      LocalRepo.Migrations,
+      LocalRepo,
+      LocalRepo.Sync,
+      {LocalRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,
@@ -64,15 +68,9 @@ defmodule Logflare.Application do
         ]
       },
       # supervisor(LogflareTelemetry.Supervisor, []),
-      Users.Cache,
-      Sources.Cache,
-      BillingAccounts.Cache,
-      Plans.Cache,
       PubSubRates.Cache,
-      Logs.LogEvents.Cache,
       Sources.Buffers,
       Sources.BuffersCache,
-      Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
       supervisor(Sources.Counters, []),
       supervisor(Sources.RateCounters, []),

@@ -12,10 +12,10 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   setup do
     Sources.Counters.start_link()
 
-    u1 = insert(:user, api_key: "dummy_key", api_quota: 5)
-    u2 = insert(:user, api_key: "other_dummy_key", api_quota: 0)
-    s1 = insert(:source, user_id: u1.id)
-    s2 = insert(:source, user_id: u2.id)
+    u1 = Users.insert_or_update_user(params_for(:user, api_key: "dummy_key", api_quota: 5))
+    u2 = Users.insert_or_update_user(params_for(:user, api_key: "other_dummy_key", api_quota: 0))
+    {:ok, s1} = Sources.create_source(params_for(:source), u1)
+    {:ok, s2} = Sources.create_source(params_for(:source), u2)
 
     u1 = Users.preload_defaults(u1)
     u2 = Users.preload_defaults(u2)

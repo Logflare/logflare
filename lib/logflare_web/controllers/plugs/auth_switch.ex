@@ -40,7 +40,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
         } = conn,
         opts
       ) do
-    case Users.get(user_id) do
+    case Users.get_user(user_id) do
       nil -> reject(conn, opts)
       switch_to_user -> verify(team_user.email, switch_to_user.email, conn, opts)
     end

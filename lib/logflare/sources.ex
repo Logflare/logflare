@@ -4,32 +4,32 @@ defmodule Logflare.Sources do
   """
 
   import Ecto.Query, only: [from: 2]
+  use Logflare.Commons
 
-  alias Logflare.{Repo, Source, Cluster}
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Rule
-  alias Logflare.User
-  alias Logflare.SavedSearch
-  alias Logflare.Sources.SourceSchema
   alias Logflare.PubSubRates
+  alias Logflare.Cluster
 
   require Logger
 
   @default_bucket_width 60
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
-  def create_source(source_params, user) do
+  def create_source(source_params, %User{} = user) do
     user
     |> Ecto.build_assoc(:sources)
     |> Source.update_by_user_changeset(source_params)
-    |> Repo.insert()
+    |> RepoWithCache.insert()
     |> case do
       {:ok, source} ->
         {:ok, _source_schema} =
-          create_source_schema(source, %{bigquery_schema: SchemaBuilder.initial_table_schema()})
+          SourceSchemas.create_source_schema_for_source(
+            %{bigquery_schema: SchemaBuilder.initial_table_schema()},
+            source
+          )
 
         Source.Supervisor.start_source(source.token)
 
@@ -46,8 +46,7 @@ defmodule Logflare.Sources do
   end
 
   def get(source_id) when is_integer(source_id) do
-    Source
-    |> Repo.get(source_id)
+    get_by(id: source_id)
   end
 
   def get_sources_by_user(%User{id: id}) do
@@ -55,21 +54,17 @@ defmodule Logflare.Sources do
       where: s.user_id == ^id,
       select: s
     )
-    |> Repo.all()
+    |> RepoWithCache.all()
   end
 
   def update_source(changeset) do
-    Repo.update(changeset)
+    RepoWithCache.update(changeset)
   end
 
   def update_source(source, attrs) do
-    Source.changeset(source, attrs)
-    |> Repo.update()
-  end
-
-  def update_source_by_user(source, attrs) do
-    Source.update_by_user_changeset(source, attrs)
-    |> Repo.update()
+    source
+    |> Source.changeset(attrs)
+    |> RepoWithCache.update()
   end
 
   def update_source_by_user(_source, _plan, %{"notifications_every" => ""}) do
@@ -80,42 +75,45 @@ defmodule Logflare.Sources do
     freq = String.to_integer(freq)
     limit = plan.limit_alert_freq
 
-    case freq < limit do
-      true ->
-        {:error, :upgrade}
+    if freq < limit do
+      {:error, :upgrade}
+    else
+      Source.update_by_user_changeset(source, attrs)
+      |> RepoWithCache.update()
+      |> case do
+        {:ok, source} = response ->
+          Source.Supervisor.reset_source(source.token)
 
-      false ->
-        Source.update_by_user_changeset(source, attrs)
-        |> Repo.update()
-        |> case do
-          {:ok, source} = response ->
-            Source.Supervisor.reset_source(source.token)
+          response
 
-            response
-
-          response ->
-            response
-        end
+        response ->
+          response
+      end
     end
   end
 
   @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
-    Source
-    |> Repo.get_by(kw)
+    RepoWithCache.get_by(Source, kw)
+  end
+
+  @spec get_by!(Keyword.t()) :: Source.t()
+  def get_by!(kw) do
+    RepoWithCache.get_by!(Source, kw)
+  end
+
+  def get_by_id_and_preload(id) when is_integer(id) do
+    get_by_and_preload(id: id)
+  end
+
+  def get_by_id_and_preload(token) when is_atom(token) do
+    get_by_and_preload(token: token)
   end
 
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
-    Source
-    |> Repo.get_by(kw)
-    |> case do
-      nil ->
-        nil
-
-      s ->
-        preload_defaults(s)
-    end
+    get_by(kw)
+    |> preload_defaults()
   end
 
   def get_rate_limiter_metrics(source, bucket: :default) do
@@ -130,7 +128,7 @@ defmodule Logflare.Sources do
   end
 
   def delete_source(source) do
-    case Repo.delete(source) do
+    case RepoWithCache.delete(source) do
       {:ok, response} ->
         {:ok, response}
 
@@ -155,43 +153,43 @@ defmodule Logflare.Sources do
     |> Map.drop([:queue])
   end
 
-  def get_bq_schema(%Source{} = source) do
-    with %{schema: schema} <- Schema.get_state(source.token) do
-      schema = SchemaUtils.deep_sort_by_fields_name(schema)
-      {:ok, schema}
-    else
-      errtup -> errtup
-    end
+  @spec preload_sources_for_dashboard(Source.t() | [Source.t()]) :: Source.t() | [Source.t()]
+  def preload_sources_for_dashboard(sources) when is_list(sources) do
+    sources
+    |> Enum.map(&preload_sources_for_dashboard/1)
+    |> Enum.sort_by(& &1.name, &<=/2)
+    |> Enum.sort_by(& &1.favorite, &>=/2)
   end
+
+  def preload_sources_for_dashboard(%Source{} = source) do
+    source
+    |> RepoWithCache.preload(:rules)
+    |> RepoWithCache.preload(:source_schema)
+    |> Sources.preload_saved_by_user_searches()
+    |> Sources.refresh_source_metrics()
+  end
+
+  def preload_defaults(nil), do: nil
 
   def preload_defaults(source) do
     source
-    |> Repo.preload(:user)
-    |> Repo.preload(:rules)
-    |> refresh_source_metrics()
+    |> RepoWithCache.preload(:user)
+    |> RepoWithCache.preload(:rules)
+    |> RepoWithCache.preload(:source_schema)
     |> maybe_compile_rule_regexes()
-    |> put_bq_table_id()
   end
 
-  def put_bq_table_data(source) do
-    source
-    |> put_bq_table_id()
-    |> put_bq_table_schema()
-    |> put_bq_table_typemap()
-    |> put_bq_dataset_id()
-  end
-
-  def preload_saved_searches(source) do
+  def preload_saved_by_user_searches(source) do
     import Ecto.Query
 
-    Repo.preload(
+    RepoWithCache.preload(
       source,
-      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user)
+      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user == true)
     )
   end
 
   def preload_source_schema(source) do
-    Repo.preload(source, :source_schema)
+    RepoWithCache.preload(source, :source_schema)
   end
 
   # """
@@ -257,13 +255,7 @@ defmodule Logflare.Sources do
       fields: fields
     }
 
-    %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
-  end
-
-  def put_schema_field_count(%Source{} = source) do
-    new_metrics = %{source.metrics | fields: Source.Data.get_schema_field_count(source)}
-
-    %{source | metrics: new_metrics}
+    %{source | metrics: metrics, has_rejected_events: rejected_count > 0}
   end
 
   def valid_source_token_param?(string) when is_binary(string) do
@@ -278,148 +270,7 @@ defmodule Logflare.Sources do
   def delete_slack_hook_url(source) do
     source
     |> Source.changeset(%{slack_hook_url: nil})
-    |> Repo.update()
-  end
-
-  @spec put_bq_table_id(Source.t()) :: Source.t()
-  def put_bq_table_id(%Source{} = source) do
-    %{source | bq_table_id: Source.generate_bq_table_id(source)}
-  end
-
-  @spec put_bq_table_schema(Source.t()) :: Source.t()
-  def put_bq_table_schema(%Source{} = source) do
-    bq_table_schema =
-      with {:ok, bq_table_schema} <- get_bq_schema(source) do
-        bq_table_schema
-      else
-        {:error, error} -> raise(error)
-      end
-
-    %{source | bq_table_schema: bq_table_schema}
-  end
-
-  @spec put_bq_table_typemap(Source.t()) :: Source.t()
-  def put_bq_table_typemap(%Source{} = source) do
-    bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
-    %{source | bq_table_typemap: bq_table_typemap}
-  end
-
-  def put_bq_dataset_id(%Source{} = source) do
-    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
-    %{source | bq_dataset_id: dataset_id}
-  end
-
-  @doc """
-  Returns the list of source_schemas.
-
-  ## Examples
-
-      iex> list_source_schemas()
-      [%SourceSchema{}, ...]
-
-  """
-  def list_source_schemas do
-    Repo.all(SourceSchema)
-  end
-
-  @doc """
-  Gets a single source_schema.
-
-  Raises `Ecto.NoResultsError` if the Source schema does not exist.
-
-  ## Examples
-
-      iex> get_source_schema!(123)
-      %SourceSchema{}
-
-      iex> get_source_schema!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_source_schema!(id), do: Repo.get!(SourceSchema, id)
-
-  def get_source_schema_by(kv), do: SourceSchema |> Repo.get_by(kv)
-
-  @doc """
-  Creates a source_schema.
-
-  ## Examples
-
-      iex> create_source_schema(%{field: value})
-      {:ok, %SourceSchema{}}
-
-      iex> create_source_schema(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_source_schema(source, attrs \\ %{}) do
-    source
-    |> Ecto.build_assoc(:source_schema)
-    |> SourceSchema.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def find_or_create_source_schema(source) do
-    default = %{bigquery_schema: SchemaBuilder.initial_table_schema()}
-
-    case get_source_schema_by(source_id: source.id) do
-      nil -> create_source_schema(source, default)
-      schema -> {:ok, schema}
-    end
-  end
-
-  def create_or_update_source_schema(source, attrs) do
-    case get_source_schema_by(source_id: source.id) do
-      nil -> create_source_schema(source, attrs)
-      source_schema -> update_source_schema(source_schema, attrs)
-    end
-  end
-
-  @doc """
-  Updates a source_schema.
-
-  ## Examples
-
-      iex> update_source_schema(source_schema, %{field: new_value})
-      {:ok, %SourceSchema{}}
-
-      iex> update_source_schema(source_schema, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_source_schema(%SourceSchema{} = source_schema, attrs) do
-    source_schema
-    |> SourceSchema.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a source_schema.
-
-  ## Examples
-
-      iex> delete_source_schema(source_schema)
-      {:ok, %SourceSchema{}}
-
-      iex> delete_source_schema(source_schema)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_source_schema(%SourceSchema{} = source_schema) do
-    Repo.delete(source_schema)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking source_schema changes.
-
-  ## Examples
-
-      iex> change_source_schema(source_schema)
-      %Ecto.Changeset{data: %SourceSchema{}}
-
-  """
-  def change_source_schema(%SourceSchema{} = source_schema, attrs \\ %{}) do
-    SourceSchema.changeset(source_schema, attrs)
+    |> RepoWithCache.update()
   end
 
   def count_for_billing(sources) do
@@ -430,9 +281,9 @@ defmodule Logflare.Sources do
 
   @spec get_source_for_lv_param(binary | integer) :: Logflare.Source.t()
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
-    get_by_and_preload(id: source_id)
-    |> preload_saved_searches()
-    |> put_bq_table_data()
+    [id: source_id]
+    |> get_by_and_preload()
+    |> preload_saved_by_user_searches()
   end
 
   @spec get_table_partition_type(Source.t()) :: :timestamp | :pseudo

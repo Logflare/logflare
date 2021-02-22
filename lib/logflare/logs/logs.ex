@@ -2,10 +2,8 @@ defmodule Logflare.Logs do
   @moduledoc false
   require Logger
   use Publicist
-
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   alias Logflare.Logs.{RejectedLogEvents}
-  alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
@@ -20,7 +18,7 @@ defmodule Logflare.Logs do
     |> Enum.map(&Map.put(&1, :make_from, "ingest"))
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
-      if le.valid? do
+      if le.valid do
         :ok = SourceRouting.route_to_sinks_and_ingest(le)
         :ok = ingest(le)
         :ok = broadcast(le)
@@ -31,7 +29,7 @@ defmodule Logflare.Logs do
       le
     end)
     |> Enum.reduce([], fn log, acc ->
-      if log.valid? do
+      if log.valid do
         acc
       else
         [log.validation_error | acc]

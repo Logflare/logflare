@@ -6,10 +6,7 @@ defmodule Logflare.Plans do
   require Logger
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
-  alias Logflare.BillingAccounts
-  alias Logflare.Plans.Plan
-  alias Logflare.User
+  use Logflare.Commons
 
   @doc """
   Returns the list of plans.
@@ -60,12 +57,12 @@ defmodule Logflare.Plans do
   end
 
   def get_plan_by_user(%User{} = user) do
-    if user.billing_enabled? do
+    if user.billing_enabled do
       case BillingAccounts.get_billing_account_by(user_id: user.id) do
         nil ->
           get_plan_by(name: "Free")
 
-        %BillingAccounts.BillingAccount{lifetime_plan?: true} ->
+        %BillingAccounts.BillingAccount{lifetime_plan: true} ->
           get_plan_by(name: "Lifetime")
 
         %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->

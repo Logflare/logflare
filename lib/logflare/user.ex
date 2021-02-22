@@ -6,11 +6,9 @@ defmodule Logflare.User do
 
   import Ecto.Changeset
 
-  alias Logflare.Source
-  alias Logflare.Teams.Team
-  alias Logflare.BillingAccounts.BillingAccount
+  use Logflare.Commons
   alias Logflare.Google.BigQuery
-  alias Logflare.Users.UserPreferences
+  use Logflare.Changefeeds.ChangefeedSchema
 
   @derive {Jason.Encoder,
            only: [
@@ -73,7 +71,7 @@ defmodule Logflare.User do
     field :valid_google_account, :boolean
     field :provider_uid, :string
     field :company, :string
-    field :billing_enabled?, :boolean, default: true, null: false
+    field :billing_enabled, :boolean, default: true, null: false
     embeds_one :preferences, UserPreferences
 
     has_many :billing_counts, Logflare.BillingCounts.BillingCount
@@ -109,7 +107,7 @@ defmodule Logflare.User do
               :old_api_key,
               :api_quota,
               :bigquery_udfs_hash,
-              :billing_enabled?
+              :billing_enabled
             ]
 
   @doc """
@@ -131,10 +129,27 @@ defmodule Logflare.User do
     |> default_validations(user)
   end
 
+  def changefeed_changeset(struct \\ struct(__MODULE__), attrs) do
+    chgst = EctoChangesetExtras.cast_all_fields_no_assoc(struct, attrs)
+
+    if prefs = attrs["preferences"] do
+      put_embed(
+        chgst,
+        :preferences,
+        UserPreferences.changeset(
+          %UserPreferences{id: prefs["id"]},
+          prefs
+        )
+      )
+    else
+      chgst
+    end
+  end
+
   def preferences_changeset(user, attrs) do
     user
     |> cast(attrs, [:preferences])
-    |> cast_embed([:preferences])
+    |> cast_embed(:preferences)
   end
 
   def default_validations(changeset, user) do

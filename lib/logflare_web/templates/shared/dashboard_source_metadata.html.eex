@@ -29,10 +29,10 @@
     buffer: <span id="<%= @source.token %>-buffer"><%= @source.metrics.buffer %></span>
   </small>
   <small class="source-details">
-    <%= if @source.metrics.fields > @conn.assigns.plan.limit_source_fields_limit do %>
-      fields: <span class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Max <%= @conn.assigns.plan.limit_source_fields_limit %> fields per source! Data in new fields are ignored. Upgrade for more."><%= @source.metrics.fields %></span>
+    <%= if @source.source_schema.field_count > @conn.assigns.plan.limit_source_fields_limit do %>
+      fields: <span class="my-badge my-badge-warning logflare-tooltip" data-toggle="tooltip" data-placement="left" title="Max <%= @conn.assigns.plan.limit_source_fields_limit %> fields per source! Data in new fields are ignored."><%= @source.source_schema.field_count %></span>
     <% else %>
-      fields: <span><%= @source.metrics.fields %></span>
+      fields: <span><%= @source.source_schema.field_count %></span>
     <% end %>
   </small>
   <small class="source-details">

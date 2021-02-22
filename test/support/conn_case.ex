@@ -23,6 +23,7 @@ defmodule LogflareWeb.ConnCase do
       alias LogflareWeb.Router.Helpers, as: Routes
       import Logflare.Factory
       import Phoenix.LiveViewTest
+      use Logflare.Commons
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
@@ -30,10 +31,23 @@ defmodule LogflareWeb.ConnCase do
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    if tags[:unboxed] do
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
 
-    unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      on_exit(fn ->
+        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo, sandbox: false)
+        Logflare.EctoSQLUnboxedHelpers.truncate_all()
+      end)
+    else
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+
+      unless tags[:async] do
+        Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      end
+
+      on_exit(fn ->
+        Logflare.EctoSQLUnboxedHelpers.truncate_all(:mnesia)
+      end)
     end
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}

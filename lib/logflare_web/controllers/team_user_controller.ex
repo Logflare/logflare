@@ -4,7 +4,6 @@ defmodule LogflareWeb.TeamUserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner when action in [:delete]
 
-  alias Logflare.TeamUsers
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
 

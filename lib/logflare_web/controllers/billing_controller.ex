@@ -3,10 +3,6 @@ defmodule LogflareWeb.BillingController do
 
   require Logger
 
-  alias Logflare.BillingAccounts
-  alias Logflare.Plans
-  alias Logflare.Source
-  alias Logflare.{User, Users}
   alias Logflare.BillingAccounts.Stripe
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
@@ -80,7 +76,7 @@ defmodule LogflareWeb.BillingController do
     with {:ok, customer} <- Stripe.create_customer(user),
          {:ok, _billing_account} <-
            BillingAccounts.create_billing_account(user, %{stripe_customer: customer.id}) do
-      user = Users.get(user.id) |> Users.preload_billing_account() |> Users.preload_sources()
+      user = Users.get_user(user.id) |> Users.preload_billing_account() |> Users.preload_sources()
 
       conn
       |> assign(:user, user)

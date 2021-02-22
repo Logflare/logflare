@@ -3,18 +3,11 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   use LogflareWeb.ConnCase
   @endpoint LogflareWeb.Endpoint
   import Phoenix.LiveViewTest
-  alias Logflare.Sources
   alias Logflare.Lql.FilterRule
-  alias Logflare.Repo
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Rule
-  alias Logflare.Users
   import Logflare.Factory
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
   use Mimic
-  
 
   setup_all do
     Sources.Counters.start_link()
@@ -26,19 +19,20 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
     setup do
       stub(Plans, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
-      user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
-      user = Users.get(user.id)
 
-      source = params_for(:source)
-      {:ok, source} = Sources.create_source(source, user)
-      Sources.Cache.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
+      {:ok, user} =
+        Users.insert_or_update_user(
+          params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+        )
+
+      {:ok, source} = Sources.create_source(params_for(:source), user)
 
       {:ok, sink} =
         :source
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      rls = %RLS{source_id: source.token, source: source}
+      rls = %RLS{source_id: source.token}
 
       {:ok, _pid} = RLS.start_link(rls)
 
@@ -80,8 +74,10 @@ defmodule LogflareWeb.Source.RulesLqlTest do
           ]
         )
 
-      user = insert(:user, email: "example@example.org", admin: true)
-      user = Users.get(user.id)
+      {:ok, user} =
+        Users.insert_or_update_user(params_for(:user, email: "example@example.org", admin: true))
+
+      user = Users.get_user(user.id)
 
       conn =
         conn
@@ -154,18 +150,19 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
   describe "Rule regex to LQL upgrade" do
     setup do
-      user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+      {:ok, user} =
+        Users.insert_or_update_user(
+          params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+        )
 
-      source = params_for(:source)
-
-      {:ok, source} = Sources.create_source(source, user)
+      {:ok, source} = Sources.create_source(params_for(:source), user)
 
       {:ok, sink} =
         :source
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      Repo.insert(%Rule{
+      RepoWithCache.insert(%Rule{
         regex: "100",
         regex_struct: Regex.compile!("100"),
         source_id: source.id,
@@ -177,7 +174,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 2")
         |> Sources.create_source(user)
 
-      Repo.insert(%Rule{
+      RepoWithCache.insert(%Rule{
         regex: ~S"\d\d",
         regex_struct: Regex.compile!(~S"\d\d"),
         source_id: source.id,
@@ -189,12 +186,14 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 3")
         |> Sources.create_source(user)
 
-      Repo.insert(%Rule{
-        regex: ~S"\w+",
-        regex_struct: Regex.compile!(~S"\w+"),
-        source_id: source.id,
-        sink: sink3.token
-      })
+      Rules.create_rule(
+        string_params_for(:rule,
+          regex: ~S"\w+",
+          regex_struct: Regex.compile!(~S"\w+"),
+          sink: sink3.token
+        ),
+        source
+      )
 
       %{sources: [source, sink, sink2, sink3], user: [user]}
     end

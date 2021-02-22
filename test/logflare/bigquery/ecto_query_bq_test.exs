@@ -11,8 +11,12 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
   @moduletag :skip
 
   setup do
-    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-    s = insert(:source, user_id: u.id)
+    {:ok, u} =
+      Users.insert_or_update_user(
+        params_for(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
+      )
+
+    {:ok, s} = Sources.create_source(params_for(:source), u)
     s = Sources.get_by(id: s.id)
     {:ok, sources: [s], users: [u]}
   end

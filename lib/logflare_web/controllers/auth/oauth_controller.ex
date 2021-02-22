@@ -34,7 +34,7 @@ defmodule LogflareWeb.Auth.OauthController do
             source_changes
           )
 
-        case Repo.update(changeset) do
+        case RepoWithCache.update(changeset) do
           {:ok, _source} ->
             conn
             |> put_flash(:info, "Slack connected!")

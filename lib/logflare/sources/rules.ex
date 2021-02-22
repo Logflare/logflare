@@ -1,21 +1,19 @@
 defmodule Logflare.Rules do
   @moduledoc false
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.Sources
-  alias Logflare.Rule
-  alias Logflare.Lql
+
+  use Logflare.Commons
   import Ecto.Query
   require Logger
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
-    bq_schema = Sources.Cache.get_bq_schema(source)
-    lql_string = params["lql_string"]
+    source = Sources.get(source.id) |> Sources.preload_defaults()
+    lql_string = Map.fetch!(params, "lql_string")
 
-    with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, bq_schema),
+    with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, source.source_schema.bigquery_schema),
          params = Map.put(params, "lql_filters", lql_filters),
-         {:ok, rule} <- Rule.changeset(%Rule{source_id: source.id}, params) |> Repo.insert() do
+         {:ok, rule} <-
+           %Rule{source_id: source.id} |> Rule.changeset(params) |> RepoWithCache.insert() do
       {:ok, rule}
     else
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -27,7 +25,7 @@ defmodule Logflare.Rules do
   end
 
   def delete_rule!(rule_id) do
-    Rule |> Repo.get!(rule_id) |> Repo.delete!()
+    Rule |> RepoWithCache.get!(rule_id) |> RepoWithCache.delete!()
   end
 
   @spec has_regex_rules?([Rule.t()]) :: boolean()
@@ -52,7 +50,7 @@ defmodule Logflare.Rules do
     |> Enum.reduce_while(:ok, fn rule, _ ->
       rule
       |> Rule.regex_to_lql_upgrade_changeset()
-      |> Repo.update()
+      |> RepoWithCache.update()
       |> case do
         {:ok, r} ->
           Logger.info("Rule #{r.id} for source #{r.source_id} upgraded to LQL filters")
@@ -75,12 +73,12 @@ defmodule Logflare.Rules do
       Rule
       |> where([r], is_nil(r.lql_filters) and not is_nil(r.regex))
       |> select([r], r)
-      |> Repo.all()
+      |> RepoWithCache.all()
 
     for rule <- rules do
       rule
       |> Rule.regex_to_lql_upgrade_changeset()
-      |> Repo.update()
+      |> RepoWithCache.update()
       |> case do
         {:ok, r} ->
           Logger.info("Rule #{r.id} for source #{r.source_id} upgraded to LQL filter")
@@ -102,19 +100,18 @@ defmodule Logflare.Rules do
       Rule
       |> where([r], not is_nil(r.lql_filters) and not is_nil(r.lql_string))
       |> select([r], r)
-      |> Repo.all()
+      |> RepoWithCache.all()
 
     for rule <- rules do
       source =
         rule.source_id
         |> Sources.get()
-        |> Sources.put_bq_table_schema()
 
-      with {:ok, lql_filters} <- Lql.decode(rule.lql_string, source.bq_table_schema) do
+      with {:ok, lql_filters} <- Lql.decode(rule.lql_string, source.source_schema.bigquery_schema) do
         if lql_filters != rule.lql_filters do
           rule
           |> Rule.changeset(%{lql_filters: lql_filters})
-          |> Repo.update()
+          |> RepoWithCache.update()
           |> case do
             {:ok, r} ->
               Logger.info(

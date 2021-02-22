@@ -14,25 +14,32 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   use Mimic
 
   setup_all do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    Logflare.Sources.Counters.start_link()
+
+    :ok
+  end
+
+  setup do
+    # :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    user_with_iam()
     email = System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM")
     source_token = "2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
 
-    user =
-      User
-      |> where([u], u.email == ^email)
-      |> Repo.one()
+    user = Users.get_by_and_preload(email: email)
 
-    source = Sources.get_by(token: source_token)
-    Logflare.Sources.Counters.start_link()
-    {:ok, _} = RLS.start_link(%RLS{source_id: String.to_atom(source_token), source: source})
+    {:ok, _source} =
+      Sources.create_source(
+        params_for(:source, token: source_token, name: "Automated testing source #1"),
+        user
+      )
+
+    source = Sources.get_by!(token: source_token)
+    _ = RLS.start_link(%RLS{source_id: String.to_atom(source_token)})
 
     %{user: user, source: [source]}
   end
 
   describe "log event liveview for Logflare UUID" do
-    setup :clear_cache
-
     test "mounted, event not cached", %{conn: conn, source: [s | _], user: user} do
       uuid = "7530b1ca-1c7b-4bde-abc9-506e06fe1f25"
 
@@ -47,13 +54,11 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       assert not (html =~ ~s|id="log-event"|)
       assert not (html =~ ~s|id="log-event-error"|)
 
-      expect(LogEvents, :fetch_event_by_id, fn _, _ -> bq_row() end)
-
       {:ok, view, _html} = live(conn)
 
       html = render(view)
 
-      le_cached = LogEvents.Cache.get!(s.token, {"uuid", uuid})
+      le_cached = LogEvents.get_log_event!(uuid)
       assert not is_nil(le_cached)
 
       assert html =~ ~s|id="log-event"|
@@ -63,15 +68,11 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
     end
 
     test "mounted, event cached", %{conn: conn, source: [s | _], user: user} do
-      ev = generate_log_event()
+      ev = generate_log_event(s)
 
       uuid = ev.id
 
-      LogEvents.Cache.put(
-        s.token,
-        {"uuid", uuid},
-        ev
-      )
+      {:ok, _le} = LogEvents.create_log_event(ev)
 
       conn =
         conn
@@ -99,15 +100,11 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       assert not (html =~ ~s|id="log-event"|)
       assert not (html =~ ~s|id="log-event-error"|)
 
-      expect(LogEvents, :fetch_event_by_id, fn _, _ ->
-        {:error, "query error 1337!"}
-      end)
-
       {:ok, view, _html} = live(conn)
 
       html = render(view)
 
-      le_cached = LogEvents.Cache.get!(s.token, "uuid:#{uuid}")
+      le_cached = LogEvents.get_log_event(uuid)
       assert is_nil(le_cached)
 
       assert not (html =~ ~s|id="log-event"|)
@@ -119,8 +116,6 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   end
 
   describe "log event for Vercel id" do
-    setup :clear_cache
-
     test "mounted, event not cached", %{
       conn: conn,
       source: [s | _],
@@ -141,15 +136,13 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       assert not (html =~ ~s|id="log-event"|)
       assert not (html =~ ~s|id="log-event-error"|)
 
-      expect(LogEvents, :fetch_event_by_path, fn _, _, _ -> bq_row() end)
-
       {:ok, view, _html} = live(conn)
 
       vercel_id = bq_row() |> Map.get(:metadata) |> hd |> Map.get(:id)
 
       html = render(view)
 
-      le_cached = LogEvents.Cache.get!(s.token, {"metadata.id", vercel_id})
+      le_cached = LogEvents.get_log_event_by_metadata_for_source(%{id: vercel_id}, s.id)
       assert not is_nil(le_cached)
 
       assert html =~ ~s|id="log-event"|
@@ -158,16 +151,13 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       assert html =~ bq_row().id
     end
 
+    @tag :this
     test "mounted with cached log event", %{conn: conn, source: [s | _], user: user} do
-      ev = generate_log_event()
+      ev = generate_log_event(s)
       path = "metadata.id"
       vercel_id = bq_row() |> Map.get(:metadata) |> hd |> Map.get(:id)
 
-      LogEvents.Cache.put(
-        s.token,
-        {"metadata.id", vercel_id},
-        ev
-      )
+      {:ok, le} = LogEvents.create_log_event(ev)
 
       conn =
         conn
@@ -203,7 +193,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
 
       html = render(view)
 
-      le_cached = LogEvents.Cache.get!(s.token, "vercel:#{vercel_id}")
+      le_cached = LogEvents.get_log_event_by_metadata_for_source(%{id: vercel_id}, s.id)
       assert is_nil(le_cached)
 
       assert not (html =~ ~s|id="log-event"|)
@@ -214,7 +204,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
     end
   end
 
-  def generate_log_event() do
+  def generate_log_event(source) do
     %Logflare.LogEvent{
       body: %Logflare.LogEvent.Body{
         created_at: nil,
@@ -244,12 +234,13 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       },
       id: "7530b1ca-1c7b-4bde-abc9-506e06fe1f25",
       ingested_at: nil,
-      is_from_stale_query?: nil,
+      is_from_stale_query: nil,
       origin_source_id: nil,
       params: nil,
-      source: nil,
+      source_id: source.id,
+      source: source,
       sys_uint: nil,
-      valid?: nil,
+      valid: nil,
       validation_error: nil,
       via_rule: nil
     }
@@ -287,10 +278,5 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       ],
       timestamp: 1_599_680_402_725_000
     }
-  end
-
-  def clear_cache(_ctx) do
-    Cachex.clear(Logflare.Logs.LogEvents.Cache)
-    :ok
   end
 end

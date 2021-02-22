@@ -18,12 +18,13 @@ defmodule LogflareWeb.LogControllerTest do
   setup do
     import Logflare.Factory
 
-    [u1, u2] = insert_list(2, :user)
+    {:ok, u1} = Users.insert_or_update_user(params_for(:user))
+    {:ok, u2} = Users.insert_or_update_user(params_for(:user))
 
     u1 = Users.preload_defaults(u1)
     u2 = Users.preload_defaults(u2)
 
-    s = insert(:source, user_id: u1.id, api_quota: 1000)
+    {:ok, s} = Sources.create_source(params_for(:source, user_id: u1.id, api_quota: 1000), u1)
 
     s = Sources.get_by_and_preload(id: s.id)
 
@@ -617,7 +618,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   def expect_plan_cache(_ctx) do
-    expect(Plans.Cache, :get_plan_by, fn _ ->
+    expect(Plans, :get_plan_by, fn _ ->
       %Plan{
         stripe_id: "31415"
       }
@@ -627,7 +628,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   def mock_plan_cache(_ctx) do
-    stub(Plans.Cache, :get_plan_by, fn _ ->
+    stub(Plans, :get_plan_by, fn _ ->
       %Plan{
         stripe_id: "31415"
       }

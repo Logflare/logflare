@@ -6,8 +6,16 @@ defmodule Logflare.SourceTest do
 
   describe "Source" do
     test "generate_bq_table_id/1" do
-      u = insert(:user)
-      s = insert(:source, token: "44a6851a-9a6f-49ee-822f-12c6f17bedee", rules: [], user_id: u.id)
+      {:ok, u} = Users.insert_or_update_user(params_for(:user))
+
+      {:ok, s} =
+        Sources.create_source(
+          params_for(:source,
+            token: "44a6851a-9a6f-49ee-822f-12c6f17bedee",
+            rules: []
+          ),
+          u
+        )
 
       s =
         Sources.get_by(id: s.id)
@@ -20,8 +28,19 @@ defmodule Logflare.SourceTest do
     end
 
     test "generate_bq_table_id/1 with custom bigquery_dataset_id" do
-      u = insert(:user, bigquery_dataset_id: "test_custom_dataset_1")
-      s = insert(:source, token: "44a6851a-9a6f-49ee-822f-12c6f17bedee", rules: [], user_id: u.id)
+      {:ok, u} =
+        Users.insert_or_update_user(
+          params_for(:user, bigquery_dataset_id: "test_custom_dataset_1")
+        )
+
+      {:ok, s} =
+        Sources.create_source(
+          params_for(:source,
+            token: "44a6851a-9a6f-49ee-822f-12c6f17bedee",
+            rules: []
+          ),
+          u
+        )
 
       s =
         Sources.get_by(id: s.id)

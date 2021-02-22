@@ -21,7 +21,7 @@ defmodule Logflare.Source.SlackHookServer do
     |> SHS.Client.post(source, source.metrics.rate, recent_events)
   end
 
-  def init(rls) do
+  def init(%RLS{} = rls) do
     check_rate(rls.notifications_every)
     Process.flag(:trap_exit, true)
 
@@ -30,10 +30,10 @@ defmodule Logflare.Source.SlackHookServer do
     {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 
-  def handle_info(:check_rate, rls) do
+  def handle_info(:check_rate, %RLS{} = rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
-    source = Sources.Cache.get_by_id(rls.source_id)
+    source = Sources.get_by_id_and_preload(rls.source_id)
 
     case rate > 0 do
       true ->
@@ -53,7 +53,7 @@ defmodule Logflare.Source.SlackHookServer do
     end
   end
 
-  def handle_info({:EXIT, _pid, :normal}, rls) do
+  def handle_info({:EXIT, _pid, :normal}, %RLS{} = rls) do
     :noop
 
     {:noreply, rls}

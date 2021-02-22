@@ -20,7 +20,7 @@ defmodule Logflare.User.BigQueryUDFs.SearchFns do
   end
 
   def lf_timestamp_trunc(bq_project_id, bq_dataset_id) do
-   "
+    "
     CREATE OR REPLACE FUNCTION
     `#{bq_project_id}`.#{bq_dataset_id}.LF_TIMESTAMP_TRUNC(_timestamp TIMESTAMP, _date_part STRING) AS (
     CASE _date_part
@@ -35,7 +35,7 @@ defmodule Logflare.User.BigQueryUDFs.SearchFns do
   end
 
   def lf_timestamp_trunc_with_timezone(bq_project_id, bq_dataset_id) do
-  "
+    "
     CREATE OR REPLACE FUNCTION
     `#{bq_project_id}`.#{bq_dataset_id}.LF_TIMESTAMP_TRUNC_WITH_TIMEZONE(_timestamp TIMESTAMP, _date_part STRING, timezone STRING) AS (
     CASE _date_part

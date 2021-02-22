@@ -1,14 +1,16 @@
 defmodule Logflare.Teams.Team do
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
-  schema "teams" do
+  typed_schema "teams" do
     field :name, :string
     belongs_to :user, Logflare.User
     has_many :team_users, Logflare.TeamUsers.TeamUser
 
     timestamps()
   end
+
+  use Logflare.Changefeeds.ChangefeedSchema
 
   @doc false
   def changeset(team, attrs) do
