@@ -50,7 +50,13 @@ defmodule Logflare.Plans do
     if is_nil(plan) do
       Logger.error("Customer is on a Stripe plan which doesn't exist in our plan list!!!!!")
 
-      get_plan_by(name: "Free")
+      default_kw = [{:name, "Free"}]
+
+      if kw == default_kw do
+        raise("This leads to infinite recursion")
+      end
+
+      get_plan_by(default_kw)
     else
       plan
     end
