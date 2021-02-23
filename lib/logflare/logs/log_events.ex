@@ -5,24 +5,30 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
   alias Logflare.Google.BigQuery.GenUtils
+  require Logger
   import Ecto.Query
 
   @spec create_log_event(LE.t()) :: {:ok, LE.t()} | {:error, term}
-  def create_log_event(%LE{} = le) do
-    {:ok, result} = LocalRepo.insert(le)
+  def create_log_event(%LE{source_id: source_id} = le) do
+    case LocalRepo.insert(le, on_conflict: :replace_all, conflict_target: :id) do
+      {:ok, result} ->
+        LE
+        |> from()
+        |> where([le], le.source_id == ^source_id)
+        |> LocalRepo.all()
+        |> LocalRepo.TableManagement.get_ids_for_sorted_records_over_max({:timestamp, :desc}, 500)
+        |> case do
+          [] ->
+            {:ok, result}
 
-    LE
-    |> from()
-    |> where([le], le.source_id == ^le.source_id)
-    |> LocalRepo.all()
-    |> LocalRepo.TableManagement.get_ids_for_sorted_records_over_max({:timestamp, :desc}, 500)
-    |> case do
-      [] ->
-        {:ok, result}
+          ids ->
+            {_, nil} = LocalRepo.delete_all(from(LE) |> where([le], le.id in ^ids))
+            {:ok, result}
+        end
 
-      ids ->
-        {:ok, _} = LocalRepo.delete_all(from(LE) |> where([le], le.id in ^ids))
-        {:ok, result}
+      {:error, err} ->
+        Logger.error("Local repo insert log event error #{inspect(err)}")
+        {:error, err}
     end
   end
 
@@ -37,11 +43,15 @@ defmodule Logflare.Logs.LogEvents do
   end
 
   def get_log_event(id) do
-    RepoWithCache.get(LogEvent, id)
+    LogEvent
+    |> RepoWithCache.get(id)
+    |> RepoWithCache.preload(:source)
   end
 
   def get_log_event!(id) do
-    RepoWithCache.get!(LogEvent, id)
+    LogEvent
+    |> RepoWithCache.get!(id)
+    |> RepoWithCache.preload(:source)
   end
 
   def get_log_event_with_source_and_partitions(id,

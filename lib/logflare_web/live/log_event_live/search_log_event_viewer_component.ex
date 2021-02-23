@@ -3,12 +3,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   alias LogflareWeb.LogView
   require Logger
   alias LogflareWeb.Helpers.BqSchema
-  alias Logflare.Logs.LogEvents
-  alias Logflare.LogEvent, as: LE
+  use Logflare.Commons
   alias LogflareWeb.SharedView
 
   @impl true
-  def render(%{log_event: %LE{body: %{metadata: metadata}} = le} = assigns) do
+  def render(%{log_event: %LE{body: %{metadata: metadata}, source: %Source{}} = le} = assigns) do
     LogView.render("log_event_body.html",
       source: le.source,
       metadata: metadata,
@@ -21,7 +20,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def render(assigns) do
+  def render(_assigns) do
     SharedView.render("loader.html")
   end
 
@@ -41,7 +40,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     dminus3 = Timex.shift(d, days: -3)
     dplus1 = Timex.shift(d, days: 1)
 
-    le = LogEvents.Cache.get!(source.token, params_to_cache_key(%{path: path, value: log_id}))
+    le =
+      case origin do
+        "vercel" ->
+          LogEvents.get_log_event_by_metadata_for_source(%{"id" => log_id}, source.token)
+      end
 
     socket =
       if le do
@@ -65,8 +68,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     dminus1 = Timex.shift(d, days: -1)
     dplus1 = Timex.shift(d, days: +1)
 
-    token = assigns.source.token
-    le = LogEvents.Cache.get!(token, params_to_cache_key(%{uuid: id}))
+    le = LogEvents.get_log_event(id)
 
     socket =
       if le do

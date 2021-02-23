@@ -320,7 +320,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
           for row <- rows do
             le = LogEvent.make_from_db(row, %{source: source})
 
-            LocalRepo.insert(le)
+            LogEvents.create_log_event(le)
           end
 
           :ok
