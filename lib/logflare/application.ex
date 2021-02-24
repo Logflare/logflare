@@ -54,6 +54,13 @@ defmodule Logflare.Application do
       LocalRepo,
       LocalRepo.Sync,
       {Changefeeds.ListenerSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
+      {Repo.MaxPartitionedRowsWorker,
+       [
+         %{
+           schema: RejectedLogEvent,
+           opts: %{partition_by: :source_id, order_by: [desc: :ingested_at], limit: 500}
+         }
+       ]},
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,
