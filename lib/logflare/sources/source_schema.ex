@@ -10,6 +10,7 @@ defmodule Logflare.Sources.SourceSchema do
     field :bigquery_schema, Ecto.Term
     field :field_count, :integer, default: 0, virtual: true
     field :type_map, Ecto.Term, default: %{}, virtual: true
+    field :bq_schema_updated_at, :utc_datetime, default: ~U[1970-01-01T00:00:00Z]
 
     belongs_to :source, Logflare.Source
 
@@ -19,8 +20,8 @@ defmodule Logflare.Sources.SourceSchema do
   @doc false
   def changeset(source_schema, attrs) do
     source_schema
-    |> cast(attrs, [:bigquery_schema])
-    |> validate_required([:bigquery_schema])
+    |> cast(attrs, [:bigquery_schema, :bq_schema_updated_at])
+    |> validate_required([:bigquery_schema, :bq_schema_updated_at])
     |> foreign_key_constraint(:source_id)
     |> unique_constraint(:source_id, name: "source_schemas_source_id_index")
   end

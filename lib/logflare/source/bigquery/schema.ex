@@ -12,7 +12,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   use Logflare.Commons
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
 
   @persist_every_seconds 60
   @timeout 60_000
@@ -62,12 +62,12 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), :get)
   end
 
-  @spec update(atom(), TFS.t() | LE.t()) :: {:ok, term} | {:error, term}
+  @spec update(atom(), TS.t() | LE.t()) :: {:ok, term} | {:error, term}
   def update(source_token, %LE{} = log_event) when is_atom(source_token) do
     GenServer.call(name(source_token), {:update, log_event}, @timeout)
   end
 
-  def update(source_token, %TFS{} = schema) when is_atom(source_token) do
+  def update(source_token, %TS{} = schema) when is_atom(source_token) do
     GenServer.call(name(source_token), {:update, schema}, @timeout)
   end
 
@@ -91,7 +91,7 @@ defmodule Logflare.Source.BigQuery.Schema do
       ) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    %{bigquery_schema: current_bigquery_schema, updated_at: updated_at} =
+    %{bigquery_schema: current_bigquery_schema, bq_schema_updated_at: bq_schema_updated_at} =
       SourceSchemas.get_source_schema_by(source_id: le.source.id)
 
     source = Sources.get_source!(state.source_token)
@@ -100,7 +100,14 @@ defmodule Logflare.Source.BigQuery.Schema do
     same_schema? = same_schemas?(current_bigquery_schema, maybe_new_schema)
 
     next_update_time_reached? =
-      Timex.diff(Timex.now(), updated_at, :seconds) >= @persist_every_seconds
+      Timex.diff(DateTime.utc_now(), bq_schema_updated_at, :seconds) >= @persist_every_seconds
+
+    if not same_schema? do
+      SourceSchemas.update_source_schema_for_source(
+        %{bigquery_schema: maybe_new_schema},
+        source
+      )
+    end
 
     if not same_schema? and next_update_time_reached? do
       case BigQuery.patch_table(
@@ -112,12 +119,12 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:ok, _table_info} ->
           Logger.info("Source schema updated from log_event!")
 
+          notify_maybe(state.source_token, maybe_new_schema, current_bigquery_schema)
+
           SourceSchemas.update_source_schema_for_source(
-            %{bigquery_schema: maybe_new_schema},
+            %{bq_schema_updated_at: DateTime.utc_now()},
             source
           )
-
-          notify_maybe(state.source_token, maybe_new_schema, current_bigquery_schema)
 
           {:reply, :ok, state}
 
@@ -138,7 +145,7 @@ defmodule Logflare.Source.BigQuery.Schema do
                       Logger.info("Source schema updated from BigQuery!")
 
                       SourceSchemas.update_source_schema_for_source(
-                        %{bigquery_schema: schema},
+                        %{bigquery_schema: schema, bq_schema_updated_at: DateTime.utc_now()},
                         source
                       )
 
@@ -173,7 +180,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_call({:update, %TFS{} = schema}, _from, %__MODULE__{} = state) do
+  def handle_call({:update, %TS{} = schema}, _from, %__MODULE__{} = state) do
     source = Sources.get_source_by(token: state.source_token)
     sorted = BigQuery.SchemaUtils.deep_sort_by_fields_name(schema)
 
