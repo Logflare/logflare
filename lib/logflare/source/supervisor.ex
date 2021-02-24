@@ -44,9 +44,8 @@ defmodule Logflare.Source.Supervisor do
         select: s
       )
 
-    sources =
-      query
-      |> RepoWithCache.all()
+    # TODO: fix ecto3_mnesia bug before using repo with cache here (may be datetime related)
+    sources = Repo.all(query)
 
     Enum.map(sources, fn source ->
       rls = %RLS{source_id: source.token}

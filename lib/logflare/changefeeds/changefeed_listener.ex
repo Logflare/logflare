@@ -50,7 +50,7 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
 
     {:noreply, :event_handled}
   catch
-    huh, error ->
+    _, error ->
       Logger.error("Cache invalidation worker error: #{inspect(error)}")
       {:noreply, :event_error}
   end

@@ -124,7 +124,6 @@ defmodule LogflareWeb.AdminController do
     query()
     |> Repo.all()
     |> Stream.map(&Sources.refresh_source_metrics/1)
-    |> Stream.map(&Sources.put_schema_field_count/1)
     |> Enum.sort_by(&Map.fetch(&1.metrics, String.to_atom(sort_by)), &>=/2)
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end
@@ -133,7 +132,6 @@ defmodule LogflareWeb.AdminController do
     query()
     |> Repo.all()
     |> Stream.map(&Sources.refresh_source_metrics/1)
-    |> Stream.map(&Sources.put_schema_field_count/1)
     |> Enum.sort_by(&Map.fetch(&1.metrics, String.to_atom(sort_by)), &>=/2)
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
@@ -142,7 +140,6 @@ defmodule LogflareWeb.AdminController do
     query()
     |> Repo.all()
     |> Stream.map(&Sources.refresh_source_metrics/1)
-    |> Stream.map(&Sources.put_schema_field_count/1)
     |> Enum.into([])
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end

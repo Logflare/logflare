@@ -89,4 +89,21 @@ config :logflare,
 
   sigterm_shutdown_grace_period_ms: 300_000
 
+config :logflare, Logflare.LocalRepo,
+  changefeed_subscriptions: [
+    User,
+    Teams.Team,
+    TeamUsers.TeamUser,
+    Source,
+    {Sources.SourceSchema, id_only: true},
+    SavedSearch,
+    Rule,
+    BillingCounts.BillingCount,
+    BillingAccounts.BillingAccount,
+    RejectedLogEvent
+  ],
+  tables: [
+    LogEvent
+  ]
+
 import_config "#{Mix.env()}.exs"

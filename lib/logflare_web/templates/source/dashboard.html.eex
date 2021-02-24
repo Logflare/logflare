@@ -9,130 +9,124 @@
             <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false"
               data-clipboard-text="<%= @user.api_key %>" data-toggle="tooltip" data-html=true data-placement="top"
               title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span></li>
-        <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
+      <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
               class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
-      </ul>
-    </div>
+    </ul>
   </div>
 </div>
-
+</div>
 <div class="container d-flex justify-content-center flex-column mb-4">
   <p class="text-center mb-0">🛎️ 🙏 We have a <%= link "new Github Action", to: "https://github.com/marketplace/actions/logflare-log", target: "_blank" %> thanks to <%= link "@gr2m", to: "https://twitter.com/gr2m" %>.</p>
   <small class="text-center">If there is a library or integration you'd like to see for Logflare, we'd love to work with you on it.</small>
 </div>
-
 <div class="dashboard container mx-auto" hidden>
   <div class="row justify-content-md-center">
     <div id="saved-searches" class="col-lg-3">
       <h5 class="header-margin">Saved Searches</h5>
       <ul class="list-unstyled">
         <%= if Enum.map(@sources, &Map.get(&1, :saved_searches)) |> Enum.concat == [], do: "Your saved searches will show up here. Save some searches!" %>
-        <%= for source <- @sources do %>
-        <%= for saved_search <- source.saved_searches do %>
-        <li>
-          <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing?: saved_search.tailing?}), class: "" %>
-          <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
-          <i class="fa fa-trash"></i>
-          <% end %>
-        </li>
-        <% end %>
-        <% end %>
-      </ul>
-      <h5 class="header-margin">Teams</h5>
-      <ul class="list-unstyled">
-        <%= if @home_team do %>
-          <%= if @team.id == @home_team.id do %>
-          <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
-          <% else %>
-          <li>
-            <%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small>
-              home team</small></li>
-          <% end %>
-        <% else %>
-          <li><%= link "Create your own Logflare account.", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "" %></li>
-        <% end %>
-        <%= if @team_users == [], do: "Other teams you are a member of will be listed here." %>
-        <%= for team_user <- @team_users do %>
-        <%= if @team.id == team_user.team_id do %>
-        <li><strong><%= team_user.team.name %></strong></li>
-        <% else %>
-        <li>
-          <%= link team_user.team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}) %>
-        </li>
-        <% end %>
-        <% end %>
-      </ul>
-      <h5 class="header-margin">Members</h5>
-      <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
-      <%= link("Invite more team members.", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
-
-    </div>
-    <div id="source-list" class="col-lg-6 mb-4">
-      <div>
-        <ul class="list-group">
-          <%= if @sources == [] do %>
-          <li class="list-group-item">You don't have any sources!</li>
-          <li class="list-group-item">Sources are where your log events go.</li>
-          <li class="list-group-item">Create one now!</li>
-          <% end %>
           <%= for source <- @sources do %>
-          <li class="list-group-item">
-            <div class="favorite float-left">
-              <%= link to: Routes.source_path(@conn, :favorite, source.id) do %>
-              <span id="">
-                <%= if source.favorite == false do %>
-                <i class="far fa-star"></i>
-                <% else %>
-                <i class="fas fa-star"></i>
+            <%= for saved_search <- source.saved_searches do %>
+              <li>
+                <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing?: saved_search.tailing}), class: "" %>
+                <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
+                  <i class="fa fa-trash"></i>
                 <% end %>
-              </span>
-              <% end %>
-            </div>
-            <div>
-              <div class="float-right">
-                <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
-                <i class="fas fa-edit"></i>
-                <% end %>
-                <%= link to: Routes.source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
-                <i class="fa fa-trash"></i>
-                <% end %>
-              </div>
-              <div class="source-link word-break-all">
-                <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
-                <span id="<%= source.token %>">
-                  <small class="my-badge my-badge-info">
-                    <%= source.metrics.inserts_string %>
-                  </small>
-                </span>
-              </div>
-            </div>
-            <%= render(LogflareWeb.SharedView, "dashboard_source_metadata.html", conn: @conn, source: source) %>
-          </li>
+              </li>
+            <% end %>
           <% end %>
         </ul>
-        <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
+        <h5 class="header-margin">Teams</h5>
+        <ul class="list-unstyled">
+          <%= if @home_team do %>
+            <%= if @team.id == @home_team.id do %>
+              <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+            <% else %>
+              <li>
+                <%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small>
+                  home team</small></li>
+            <% end %>
+          <% else %>
+            <li><%= link "Create your own Logflare account.", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "" %></li>
+          <% end %>
+          <%= if @team_users == [], do: "Other teams you are a member of will be listed here." %>
+            <%= for team_user <- @team_users do %>
+              <%= if @team.id == team_user.team_id do %>
+                <li><strong><%= team_user.team.name %></strong></li>
+              <% else %>
+                <li>
+                  <%= link team_user.team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}) %>
+                </li>
+              <% end %>
+            <% end %>
+          </ul>
+          <h5 class="header-margin">Members</h5>
+          <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
+          <%= link("Invite more team members.", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
+        </div>
+        <div id="source-list" class="col-lg-6 mb-4">
+          <div>
+            <ul class="list-group">
+              <%= if @sources == [] do %>
+                <li class="list-group-item">You don't have any sources!</li>
+                <li class="list-group-item">Sources are where your log events go.</li>
+                <li class="list-group-item">Create one now!</li>
+              <% end %>
+              <%= for source <- @sources do %>
+                <li class="list-group-item">
+                  <div class="favorite float-left">
+                    <%= link to: Routes.source_path(@conn, :favorite, source.id) do %>
+                      <span id="">
+                        <%= if source.favorite == false do %>
+                          <i class="far fa-star"></i>
+                        <% else %>
+                          <i class="fas fa-star"></i>
+                        <% end %>
+                      </span>
+                    <% end %>
+                  </div>
+                  <div>
+                    <div class="float-right">
+                      <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
+                        <i class="fas fa-edit"></i>
+                      <% end %>
+                      <%= link to: Routes.source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
+                        <i class="fa fa-trash"></i>
+                      <% end %>
+                    </div>
+                    <div class="source-link word-break-all">
+                      <%= link source.name, to: Routes.source_path(@conn, :show, source.id) %>
+                      <span id="<%= source.token %>">
+                        <small class="my-badge my-badge-info">
+                          <%= source.metrics.inserts_string %>
+                        </small>
+                      </span>
+                    </div>
+                  </div>
+                  <%= render(LogflareWeb.SharedView, "dashboard_source_metadata.html", conn: @conn, source: source) %>
+                </li>
+              <% end %>
+            </ul>
+            <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
+          </div>
+        </div>
+        <div class="col-lg-3">
+          <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
+          <p>👋 Let's build a dashboard!</p>
+          <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of Logflare.</p>
+          <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.</p>
+          <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
+          <p>Schedule a call or learn more about Logflare by watching <%= link "some of our videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>.</p>
+          <%= link "Schedule a call", to: "https://savvycal.com/logflare/build", class: "btn btn-primary btn-sm mb-3 mr-3", target: "_blank" %>
+        </div>
       </div>
     </div>
-    <div class="col-lg-3">
-      <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
-      <p>👋 Let's build a dashboard!</p>
-      <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of Logflare.</p>
-      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.</p>
-      <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
-      <p>Schedule a call or learn more about Logflare by watching <%= link "some of our videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>.</p>
-
-      <%= link "Schedule a call", to: "https://savvycal.com/logflare/build", class: "btn btn-primary btn-sm mb-3 mr-3", target: "_blank" %>
-
-    </div>
-  </div>
-</div>
-<div id="__phx-assigns__" data-user-api-key="<%= @user.api_key %>"
+    <div id="__phx-assigns__" data-user-api-key="<%= @user.api_key %>"
   data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.token))) %>"
   data-current-node="<%= @current_node %>">
-</div>
-<script>
-  document.addEventListener("DOMContentLoaded", async () => {
-    await Dashboard.main()
-  })
-
-</script>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", async () => {
+        await Dashboard.main()
+      })
+    </script>

@@ -128,16 +128,14 @@ defmodule Logflare.RepoWithCache do
   end
 
   def preload(structs_or_struct_or_nil, preloads, opts \\ []) do
-    with structs_or_struct_or_nil <- LocalRepo.preload(structs_or_struct_or_nil, preloads, opts) do
-      if is_list(preloads) do
-        for {k, _} <- preloads, reduce: structs_or_struct_or_nil do
-          x -> merge_virtual_for_preload(x, k)
-        end
-      else
-        merge_virtual_for_preload(structs_or_struct_or_nil, preloads)
+    structs_or_struct_or_nil = LocalRepo.preload(structs_or_struct_or_nil, preloads, opts)
+
+    if is_list(preloads) do
+      for {k, _} <- preloads, reduce: structs_or_struct_or_nil do
+        x -> merge_virtual_for_preload(x, k)
       end
     else
-      errtup -> errtup
+      merge_virtual_for_preload(structs_or_struct_or_nil, preloads)
     end
   end
 

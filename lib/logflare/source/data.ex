@@ -2,7 +2,7 @@ defmodule Logflare.Source.Data do
   @moduledoc false
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.{RateCounterServer, BigQuery.Buffer, BigQuery.Schema}
+  alias Logflare.Source.{RateCounterServer, BigQuery.Buffer}
 
   def get_logs(source_id) when is_atom(source_id) do
     Logflare.Source.RecentLogsServer.list(source_id)

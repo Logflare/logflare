@@ -7,7 +7,6 @@ defmodule Logflare.Source.SlackHookServer do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Source.Data
   alias __MODULE__, as: SHS
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do

@@ -1,8 +1,6 @@
 defmodule Logflare.SourceSchemas do
   use Logflare.Commons
   alias Logflare.Sources.SourceSchema
-  alias Logflare.Google.BigQuery.SchemaUtils
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema
 
   @spec list_source_schemas() :: [SourceSchema.t()]
   def list_source_schemas do
@@ -52,8 +50,5 @@ defmodule Logflare.SourceSchemas do
   @spec change_source_schema(SourceSchema.t(), map()) :: Ecto.Changeset.t()
   def change_source_schema(%SourceSchema{} = source_schema, attrs \\ %{}) do
     SourceSchema.changeset(source_schema, attrs)
-  end
-
-  def create_or_update_source_schema_for_source(attrs, %Source{} = source) do
   end
 end

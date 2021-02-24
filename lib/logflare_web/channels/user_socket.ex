@@ -1,8 +1,6 @@
 defmodule LogflareWeb.UserSocket do
   use Phoenix.Socket, log: false
-
-  alias Logflare.User
-  alias Logflare.Repo
+  use Logflare.Commons
 
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400

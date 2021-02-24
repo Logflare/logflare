@@ -105,7 +105,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> patch(Routes.source_path(conn, :update, s1.id), params)
 
-      s1_new = Sources.get_by(token: s1.token)
+      s1_new = Sources.get_source_by(token: s1.token)
 
       assert html_response(conn, 302) =~ "redirected"
       assert get_flash(conn, :info) == "Source updated!"
@@ -127,7 +127,7 @@ defmodule LogflareWeb.SourceControllerTest do
         }
       }
 
-      s1_new = Sources.get_by(token: s1.token)
+      s1_new = Sources.get_source_by(token: s1.token)
       assert s1_new.notifications_every == 14_400_000
     end
 
@@ -152,7 +152,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
-      s1_new = Sources.get_by(token: s1.token)
+      s1_new = Sources.get_source_by(token: s1.token)
 
       assert s1_new.name != new_name
       assert get_flash(conn, :error) == "Something went wrong!"
@@ -183,7 +183,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> patch("/sources/#{s1.id}", params)
 
-      s1_new = Sources.get_by(id: s1.id)
+      s1_new = Sources.get_source_by(id: s1.id)
 
       refute conn.assigns[:changeset]
       refute s1_new.token == nope_token
@@ -209,7 +209,7 @@ defmodule LogflareWeb.SourceControllerTest do
           }
         )
 
-      s1_new = Sources.get_by(id: s1.id)
+      s1_new = Sources.get_source_by(id: s1.id)
 
       refute s1_new.name === "it's mine now!"
       assert conn.halted === true
@@ -277,7 +277,7 @@ defmodule LogflareWeb.SourceControllerTest do
           }
         })
 
-      source = Sources.get_by(name: name)
+      source = Sources.get_source_by(name: name)
 
       refute conn.assigns[:changeset]
       assert redirected_to(conn, 302) === source_path(conn, :show, source.id) <> "?new=true"
@@ -327,7 +327,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u1)
         |> get(source_path(conn, :favorite, Integer.to_string(s1.id)))
 
-      new_s1 = Sources.get_by(id: s1.id)
+      new_s1 = Sources.get_source_by(id: s1.id)
 
       assert get_flash(conn, :info) == "Source updated!"
       assert redirected_to(conn, 302) =~ source_path(conn, :dashboard)
@@ -373,7 +373,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> delete(source_path(conn, :del_source_and_redirect, s1.id))
 
       assert redirected_to(conn, 302) =~ "/dashboard"
-      assert is_nil(Sources.get(s1.id))
+      assert is_nil(Sources.get_source(s1.id))
       assert is_nil(SavedSearches.get(saved_search.id))
     end
   end

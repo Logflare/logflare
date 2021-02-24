@@ -20,8 +20,8 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
     u1 = Users.preload_defaults(u1)
     u2 = Users.preload_defaults(u2)
 
-    s1 = Sources.get_by(id: s1.id)
-    s2 = Sources.get_by(id: s2.id)
+    s1 = Sources.get_source_by(id: s1.id)
+    s2 = Sources.get_source_by(id: s2.id)
 
     {:ok, _} = RateCounterServer.start_link(%RLS{source_id: s1.token})
     {:ok, _} = RateCounterServer.start_link(%RLS{source_id: s2.token})

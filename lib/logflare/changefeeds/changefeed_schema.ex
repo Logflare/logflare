@@ -36,7 +36,7 @@ defmodule Logflare.Changefeeds.ChangefeedSchema do
         defoverridable changefeed_changeset: 2
       end
 
-      @behaviour Logflare.ChangefeedSchema
+      @behaviour Logflare.Changefeeds.ChangefeedSchema
     end
   end
 

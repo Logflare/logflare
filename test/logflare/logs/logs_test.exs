@@ -73,7 +73,7 @@ defmodule Logflare.LogsTest do
         )
 
       s1 =
-        Sources.get_by(token: s1.token)
+        Sources.get_source_by(token: s1.token)
         |> Sources.preload_defaults()
 
       SystemMetricsSup.start_link()
@@ -234,7 +234,7 @@ defmodule Logflare.LogsTest do
       Buffer.start_link(%RLS{source_id: sink2.token})
 
       s1 =
-        Sources.get_by(token: s1.token)
+        Sources.get_source_by(token: s1.token)
         |> Sources.preload_defaults()
 
       {:ok, sources: [s1], sinks: [sink1, sink2], users: [u]}

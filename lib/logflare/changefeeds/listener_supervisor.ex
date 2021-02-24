@@ -1,5 +1,6 @@
-defmodule Logflare.Changefeeds.SupervisorListener do
+defmodule Logflare.Changefeeds.ListenerSupervisor do
   use Logflare.Commons
+  alias Logflare.Changefeeds.ChangefeedListener
 
   use Supervisor
 
@@ -15,7 +16,7 @@ defmodule Logflare.Changefeeds.SupervisorListener do
 
     children =
       for changefeed <- changefeeds do
-        {LocalRepo.ChangefeedListener,
+        {ChangefeedListener,
          [%{notifications_pid: pid, changefeed: changefeed}, [name: :"#{changefeed}_listener"]]}
       end
 

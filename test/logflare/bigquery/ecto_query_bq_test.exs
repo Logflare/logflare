@@ -17,7 +17,7 @@ defmodule Logflare.BigQuery.Lql.EctoHelpersTest do
       )
 
     {:ok, s} = Sources.create_source(params_for(:source), u)
-    s = Sources.get_by(id: s.id)
+    s = Sources.get_source_by(id: s.id)
     {:ok, sources: [s], users: [u]}
   end
 

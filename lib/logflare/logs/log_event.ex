@@ -87,7 +87,7 @@ defmodule Logflare.LogEvent do
   end
 
   @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()
-  def make_from_db(params, %{source: %Source{} = source}) do
+  def make_from_db(params, %{source: %Source{id: source_id} = source}) do
     params =
       params
       |> Map.update(:metadata, %{}, fn
@@ -110,10 +110,11 @@ defmodule Logflare.LogEvent do
     |> struct!(changes)
     |> Map.put(:body, body)
     |> Map.replace!(:source, source)
+    |> Map.replace!(:source_id, source_id)
   end
 
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: %Source{} = source}) do
+  def make(params, %{source: %Source{id: source_id} = source}) do
     changeset =
       %__MODULE__{}
       |> cast(mapper(params, source), [:valid, :validation_error, :ephemeral, :make_from])
@@ -128,7 +129,7 @@ defmodule Logflare.LogEvent do
       |> Map.put(:body, body)
       |> Map.put(:validation_error, changeset_error_to_string(changeset))
       |> Map.put(:source, source)
-      |> Map.put(:source_id, source.id)
+      |> Map.put(:source_id, source_id)
       |> Map.put(:origin_source_id, source.token)
       |> Map.put(:valid, changeset.valid?)
       |> Map.put(:params, params)

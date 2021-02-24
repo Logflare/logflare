@@ -54,7 +54,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
     Source.put_bq_schema(@test_token, PredefinedTestUser.table_schema())
-    source = Sources.get_by(token: @test_token)
+    source = Sources.get_source_by(token: @test_token)
 
     conn =
       build_conn()

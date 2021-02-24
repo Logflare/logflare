@@ -3,8 +3,6 @@ defmodule Logflare.LocalRepo do
     otp_app: :logflare,
     adapter: Ecto.Adapters.Mnesia
 
-  alias Logflare.EctoSchemaReflection
-
   @config Application.get_env(:logflare, Logflare.LocalRepo)
 
   def config(:changefeed_subscriptions) do
@@ -15,6 +13,7 @@ defmodule Logflare.LocalRepo do
     concat_modules(@config[:tables])
   end
 
+  @spec concat_modules(Keyword.t()) :: module()
   def concat_modules(kw) do
     for chfd <- kw do
       case chfd do

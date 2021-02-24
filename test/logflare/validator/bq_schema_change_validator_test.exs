@@ -16,7 +16,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
     test "validate/1 returns :ok with no metadata in BQ schema" do
       u1 = Factory.insert(:user)
       s1 = Factory.insert(:source, user_id: u1.id)
-      s1 = Sources.get_by(id: s1.id)
+      s1 = Sources.get_source_by(id: s1.id)
       schema = SchemaBuilder.initial_table_schema()
       allow Sources.get_bq_schema(s1), return: schema
 

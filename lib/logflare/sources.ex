@@ -6,9 +6,6 @@ defmodule Logflare.Sources do
   import Ecto.Query, only: [from: 2]
   use Logflare.Commons
 
-  alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.PubSubRates
   alias Logflare.Cluster

@@ -18,7 +18,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     test "inserts logs for source and validator", %{sources: [s1, _]} do
       validator = Logflare.Logs.Validators.EqDeepFieldTypes
 
-      source = Sources.get_by(token: s1.token)
+      source = Sources.get_source_by(token: s1.token)
       timestamp = System.system_time(:microsecond)
 
       log_event = %LogEvent{
@@ -43,8 +43,8 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     end
 
     test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
-      source1 = Sources.get_by(token: s1.token)
-      source2 = Sources.get_by(token: s2.token)
+      source1 = Sources.get_source_by(token: s1.token)
+      source2 = Sources.get_source_by(token: s2.token)
       user = Users.get_by_and_preload(id: u1.id)
 
       validator = Logflare.Logs.Validators.EqDeepFieldTypes

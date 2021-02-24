@@ -84,7 +84,7 @@ defmodule Logflare.Users do
     params = Map.put(params, :api_key, api_key)
 
     %User{}
-    |> User.changeset( params)
+    |> User.changeset(params)
     |> RepoWithCache.insert()
   end
 

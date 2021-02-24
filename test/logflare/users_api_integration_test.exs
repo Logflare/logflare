@@ -23,7 +23,7 @@ defmodule Logflare.Users.APIIntegrationTest do
         SRC.update_state(acc, 10 * n)
       end)
 
-    source = Sources.get(String.to_atom(source_id))
+    source = Sources.get_source(String.to_atom(source_id))
     {:ok, source: source, src: src_state}
   end
 

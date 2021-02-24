@@ -13,7 +13,7 @@ defmodule Logflare.Repo.Migrations.CreateLogEvents do
       add :origin_source_id, :text
       add :via_rule, :map
 
-      add :source_id, references(:sources)
+      add :source_id, references(:sources, on_delete: :delete_all)
     end
   end
 end

@@ -18,7 +18,7 @@ defmodule Logflare.SourceTest do
         )
 
       s =
-        Sources.get_by(id: s.id)
+        Sources.get_source_by(id: s.id)
         |> Sources.preload_defaults()
 
       dataset_id_append = GCPConfig.dataset_id_append()
@@ -43,7 +43,7 @@ defmodule Logflare.SourceTest do
         )
 
       s =
-        Sources.get_by(id: s.id)
+        Sources.get_source_by(id: s.id)
         |> Sources.preload_defaults()
 
       assert s.bq_table_id ==

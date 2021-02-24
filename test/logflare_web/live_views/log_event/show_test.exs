@@ -33,7 +33,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
         user
       )
 
-    source = Sources.get_by!(token: source_token)
+    source = Sources.get_source_by!(token: source_token)
     _ = RLS.start_link(%RLS{source_id: String.to_atom(source_token)})
 
     %{user: user, source: [source]}

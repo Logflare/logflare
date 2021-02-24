@@ -39,7 +39,7 @@ defmodule Logflare.Application do
       LocalRepo,
       LocalRepo.Migrations,
       # LocalRepo.Sync,
-      {LocalRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
+      {Changefeeds.ListenerSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -53,7 +53,7 @@ defmodule Logflare.Application do
       LocalRepo.Migrations,
       LocalRepo,
       LocalRepo.Sync,
-      {LocalRepo.ChangefeedsSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
+      {Changefeeds.ListenerSupervisor, changefeeds: Changefeeds.list_changefeed_channels()},
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,

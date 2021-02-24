@@ -3,6 +3,7 @@ defmodule LogflareWeb.SourceBqSchemaComponent do
   use Logflare.Commons
   alias LogflareWeb.Helpers.BqSchema
 
+  @impl true
   def update(assigns, socket) do
     source_schema = SourceSchemas.get_source_schema_by(source_id: assigns.source.id)
     {:ok, assign(socket, %{source_schema: source_schema})}

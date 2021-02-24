@@ -41,7 +41,7 @@ defmodule Logflare.SourcesTest do
       {:ok, _s2} = Sources.create_source(params_for(:source, token: Faker.UUID.v4()), u1)
 
       left_source =
-        Sources.get_by(token: source.token)
+        Sources.get_source_by(token: source.token)
         |> Sources.preload_defaults()
 
       assert left_source.id == source.id
@@ -104,7 +104,7 @@ defmodule Logflare.SourcesTest do
       assert :ok = Logflare.Source.BigQuery.Schema.update(source_id, schema)
 
       left_schema =
-        Sources.get(source_id)
+        Sources.get_source(source_id)
         |> Sources.preload_defaults()
         |> Map.get(:source_schema)
         |> Map.get(:bigquery_schema)

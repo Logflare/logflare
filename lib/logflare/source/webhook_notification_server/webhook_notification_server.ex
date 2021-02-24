@@ -75,11 +75,11 @@ defmodule Logflare.Source.WebhookNotificationServer do
         WNS.DiscordClient.new()
         |> WNS.DiscordClient.post(source, rate, recent_events)
 
-      %URI{host: "ptb.discord.com"} = uri ->
+      %URI{host: "ptb.discord.com"} = _uri ->
         WNS.DiscordClient.new()
         |> WNS.DiscordClient.post(source, rate, recent_events)
 
-      %URI{host: "discord.com"} = uri ->
+      %URI{host: "discord.com"} = _uri ->
         WNS.DiscordClient.new()
         |> WNS.DiscordClient.post(source, rate, recent_events)
 

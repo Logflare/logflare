@@ -13,7 +13,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
     s1 = Sources.preload_defaults(s1)
     rls = %RLS{source_id: s1.token}
     {:ok, _} = RLS.start_link(rls)
-
+    # {:ok, _} = Sources.BuffersCache.start_link(rls)
     {:ok, sources: [s1], args: rls}
   end
 

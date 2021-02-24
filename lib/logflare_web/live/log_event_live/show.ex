@@ -6,8 +6,6 @@ defmodule LogflareWeb.LogEventLive.Show do
 
   # alias LogflareWeb.LogView
   alias Logflare.Logs.LogEvents
-  alias Logflare.LogEvent, as: LE
-  alias LogflareWeb.Helpers.BqSchema
   alias Logflare.Sources
 
   require Logger
@@ -25,7 +23,14 @@ defmodule LogflareWeb.LogEventLive.Show do
       |> assign(:origin, params["origin"])
       |> assign(:id_param, log_id)
 
-    le = LogEvents.Cache.get!(token, cache_key)
+    le =
+      case params do
+        %{"uuid" => uuid} ->
+          LogEvents.get_log_event!(uuid)
+
+        %{"id" => log_id} ->
+          LogEvents.get_log_event_by_metadata_for_source(%{"id" => log_id}, source.id)
+      end
 
     socket =
       if le do
