@@ -111,13 +111,20 @@ defmodule Logflare.Logs.Search do
   end
 
   def query_source_streaming_buffer(%Source{} = source) do
+    fields =
+      if source.source_schema.type_map[:metadata] do
+        [:id, :metadata, :timestamp, :event_message]
+      else
+        [:id, :timestamp, :event_message]
+      end
+
     q =
       case Sources.get_table_partition_type(source) do
         :pseudo ->
           SearchQueries.source_table_streaming_buffer(source.bq_table_id)
 
         :timestamp ->
-          SearchQueries.source_table_last_5_minutes(source.bq_table_id)
+          SearchQueries.source_table_last_5_minutes(source.bq_table_id, fields: fields)
       end
       |> order_by(desc: :timestamp)
       |> limit(100)

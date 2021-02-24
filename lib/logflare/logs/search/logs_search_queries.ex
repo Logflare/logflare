@@ -263,12 +263,19 @@ defmodule Logflare.Logs.SearchQueries do
     |> where(in_streaming_buffer())
   end
 
-  def source_table_last_5_minutes(bq_table_id) when is_binary(bq_table_id) do
+  @spec source_table_last_5_minutes(String.t(), Keyword.t() | nil) :: Ecto.Query.t()
+  def source_table_last_5_minutes(bq_table_id, opts \\ []) when is_binary(bq_table_id) do
+    fields =
+      if fields = opts[:fields] do
+        fields
+      else
+        [:id, :metadata, :timestamp, :event_message]
+      end
+
     from(bq_table_id)
-    |> select([:id, :metadata, :timestamp, :event_message])
+    |> select(^fields)
     |> where([t], t.timestamp >= ^Timex.shift(DateTime.utc_now(), seconds: -300))
   end
-
 
   def where_log_id(q, id) do
     where(q, [t], t.id == ^id)

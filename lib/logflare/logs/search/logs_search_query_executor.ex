@@ -325,8 +325,14 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
           :ok
 
-        {:error, _result} ->
-          Logger.warn("Streaming buffer not found for source #{source.token}")
+        {:error, %Tesla.Env{body: body} = result} ->
+          cond do
+            body =~ "streaming buffer" ->
+              Logger.warn("Streaming buffer not found for source #{source.token}")
+
+            true ->
+              Logger.error("Error: #{inspect(result)}")
+          end
       end
     end)
   end

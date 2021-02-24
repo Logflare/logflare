@@ -25,8 +25,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def update(%{log_event: {:error, _}}, socket) do
-    {:ok, assign(socket, :error, "Error!")}
+  def update(%{error: error, id: :log_event_viewer}, socket) do
+    {:ok, assign(socket, :error, error)}
   end
 
   @impl true
@@ -61,9 +61,10 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def update(assigns, socket) do
-    %{"log-event-id" => id, "log-event-timestamp" => timestamp} = assigns.params
-
+  def update(
+        %{params: %{"log-event-id" => id, "log-event-timestamp" => timestamp}} = assigns,
+        socket
+      ) do
     d = String.to_integer(timestamp) |> Timex.from_unix(:microsecond) |> Timex.to_date()
     dminus1 = Timex.shift(d, days: -1)
     dplus1 = Timex.shift(d, days: +1)
@@ -81,15 +82,6 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       end
 
     {:ok, socket}
-  end
-
-  @spec params_to_cache_key(map()) :: {String.t(), String.t()}
-  defp params_to_cache_key(%{uuid: id}) do
-    {"uuid", id}
-  end
-
-  defp params_to_cache_key(%{path: path, value: value}) do
-    {path, value}
   end
 
   defp start_task(params) do
@@ -115,11 +107,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
         %{} = bq_row ->
           le = LE.make_from_db(bq_row, %{source: source})
 
-          LogEvents.Cache.put(
-            source.token,
-            params_to_cache_key(params),
-            le
-          )
+          LogEvents.create_log_event(le)
 
           send_update(pid, __MODULE__, log_event: le, id: :log_event_viewer)
 
