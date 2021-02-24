@@ -10,19 +10,19 @@ defmodule LogflareWeb.SearchLV.Utils do
   end
 
   def log_lv_received_info(msg, source) do
-    Logger.info("#{pid_sid(source)} received #{msg} info msg...")
+    Logger.debug("#{pid_sid(source)} received #{msg} info msg...")
   end
 
   def log_lv(source, msg) do
-    Logger.info("#{pid_sid(source)} #{msg}")
+    Logger.debug("#{pid_sid(source)} #{msg}")
   end
 
   def log_lv_executing_query(source) do
-    Logger.info("#{pid_sid(source)} executing tail search query...")
+    Logger.debug("#{pid_sid(source)} executing tail search query...")
   end
 
   def log_lv_received_event(event_name, source) do
-    Logger.info("#{pid_sid(source)} received #{event_name} event")
+    Logger.debug("#{pid_sid(source)} received #{event_name} event")
   end
 
   defp pid_sid(source) do

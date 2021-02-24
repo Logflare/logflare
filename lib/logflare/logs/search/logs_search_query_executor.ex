@@ -128,7 +128,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def handle_call({:query, params}, {lv_pid, _ref}, %State{} = state) do
-    Logger.info(
+    Logger.debug(
       "Starting search query from #{pid_to_string(lv_pid)} for #{params.source.token} source..."
     )
 
@@ -141,7 +141,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     current_lv_task_params = state.event_tasks[lv_pid]
 
     if current_lv_task_params && current_lv_task_params[:task] do
-      Logger.info(
+      Logger.debug(
         "SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
       )
 
@@ -178,7 +178,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     current_lv_task_params = state.event_tasks[lv_pid]
 
     if current_lv_task_params && current_lv_task_params[:task] do
-      Logger.info(
+      Logger.debug(
         "SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
       )
 
@@ -192,7 +192,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
-    Logger.info(
+    Logger.debug(
       "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
         state.source_id
       } source..."
