@@ -4,17 +4,9 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
   use GenServer
   require Logger
   import Ecto.Query
-  @operations_type ["UPDATE", "INSERT", "DELETE"]
+  @operations_type [:update, :insert, :delete]
 
-  @id_only_changefeed_suffix "_id_only_changefeed"
-  @id_only_changefeed_suffix_byte_size byte_size(@id_only_changefeed_suffix)
-
-  defguardp changefeed_with_id_only?(channel)
-            when binary_part(
-                   channel,
-                   byte_size(channel) - @id_only_changefeed_suffix_byte_size,
-                   @id_only_changefeed_suffix_byte_size
-                 ) == "_id_only_changefeed"
+  defguardp changefeed_with_id_only?(event) when event.changefeed_subscription.id_only == true
 
   def child_spec(args) do
     %{
@@ -40,17 +32,15 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
   Handle changefeed notification
   """
   @impl true
-  def handle_info({:notification, _pid, _ref, channel_name, payload}, _state) do
-    chfd_event =
-      payload
-      |> Jason.decode!()
-      |> ChangefeedEvent.build()
-
-    process_notification(channel_name, chfd_event)
+  def handle_info({:notification, _pid, _ref, _channel_name, payload}, _state) do
+    payload
+    |> Jason.decode!()
+    |> ChangefeedEvent.build()
+    |> process_notification()
 
     {:noreply, :event_handled}
-  catch
-    _, error ->
+  rescue
+    error ->
       Logger.error("Cache invalidation worker error: #{inspect(error)}")
       {:noreply, :event_error}
   end
@@ -59,15 +49,15 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
     {:noreply, :event_received}
   end
 
-  def process_notification(_, %{type: "DELETE", node_id: origin_node} = chfd_event)
+  def process_notification(%{type: :delete, node_id: origin_node} = chfd_event)
       when node() != origin_node do
     schema = chfd_event.changefeed_subscription.schema
 
     {1, nil} = LocalRepo.delete_all(from(schema) |> where([t], t.id == ^chfd_event.id))
   end
 
-  def process_notification(channel_name, %{type: "INSERT", node_id: origin_node} = chfd_event)
-      when not changefeed_with_id_only?(channel_name) and node() != origin_node do
+  def process_notification(%{type: :insert, node_id: origin_node} = chfd_event)
+      when not changefeed_with_id_only?(chfd_event) and node() != origin_node do
     changeset = to_changeset(chfd_event)
 
     {:ok, struct} = LocalRepo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
@@ -75,16 +65,16 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
     Changefeeds.maybe_insert_virtual(struct)
   end
 
-  def process_notification(
-        _channel_name,
-        %{type: "UPDATE", changes: changes, node_id: origin_node} = chfd_event
-      )
-      when not is_nil(changes) and node != origin_node do
+  def process_notification(%{type: :update, changes: changes, node_id: origin_node} = chfd_event)
+      when not is_nil(changes) and node() != origin_node do
     schema = chfd_event.changefeed_subscription.schema
     struct = LocalRepo.get(schema, chfd_event.id)
-    changeset = to_changeset(struct, chfd_event)
-    changeset = Ecto.Changeset.force_change(changeset, :updated_at, struct.updated_at)
-    changeset = Ecto.Changeset.force_change(changeset, :inserted_at, struct.inserted_at)
+
+    changeset =
+      struct
+      |> to_changeset(chfd_event)
+      |> Ecto.Changeset.force_change(:updated_at, struct.updated_at)
+      |> Ecto.Changeset.force_change(:inserted_at, struct.inserted_at)
 
     {:ok, struct} = LocalRepo.update(changeset)
 
@@ -92,11 +82,10 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
   end
 
   def process_notification(
-        channel_name,
         %{id: id, type: type, table: _table, node_id: origin_node} = chfd_event
       )
-      when type in ["UPDATE", "INSERT"] and changefeed_with_id_only?(channel_name) and
-             node != origin_node do
+      when type in [:update, :insert] and changefeed_with_id_only?(chfd_event) and
+             node() != origin_node do
     schema = chfd_event.changefeed_subscription.schema
     struct = Repo.get(schema, id) |> Changefeeds.replace_assocs_with_nils()
 
@@ -109,9 +98,8 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
     Changefeeds.maybe_insert_virtual(struct)
   end
 
-  def process_notification(_channel_name, %{type: type, node_id: origin_node} = chfd_event)
-      when type in ["UPDATE", "INSERT"] and node() != origin_node do
-    # schema = chfd_event.changefeed_subscription.schema
+  def process_notification(%{type: type, node_id: origin_node} = chfd_event)
+      when type in [:update, :insert] and node() != origin_node do
     changeset = to_changeset(chfd_event)
 
     {:ok, struct} =
@@ -123,7 +111,7 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
     Changefeeds.maybe_insert_virtual(struct)
   end
 
-  def process_notification(_channel_name, %{node_id: origin_node}) when node() == origin_node do
+  def process_notification(%{node_id: origin_node} = ev) when node() == origin_node do
     :noop
   end
 

@@ -7,7 +7,7 @@ defmodule Logflare.Changefeeds.ChangefeedEvent do
     field :node_id, atom(), require: true
     field :changes, map() | nil
     field :table, String.t(), require: true
-    field :type, String.t(), require: true
+    field :type, atom(), require: true
     field :changefeed_subscription, Changefeeds.ChangefeedSubscription.t()
   end
 
@@ -19,6 +19,7 @@ defmodule Logflare.Changefeeds.ChangefeedEvent do
       end)
       |> Enum.map(fn
         {:id, v} -> {:id, v}
+        {:type, v} -> {:type, v |> String.downcase() |> String.to_existing_atom()}
         {k, v} -> {k, v}
       end)
 

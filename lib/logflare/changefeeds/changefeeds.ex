@@ -8,19 +8,23 @@ defmodule Logflare.Changefeeds do
         schema when is_atom(schema) ->
           source = EctoSchemaReflection.source(schema)
 
+          id_only = false
+
           %ChangefeedSubscription{
             table: source,
             schema: schema,
-            id_only: false
+            id_only: id_only,
+            channel: pg_channel_name(%{table: source, id_only: id_only})
           }
 
-        {schema, id_only: true} when is_atom(schema) ->
+        {schema, id_only: id_only = true} when is_atom(schema) ->
           source = EctoSchemaReflection.source(schema)
 
           %ChangefeedSubscription{
             table: source,
             schema: schema,
-            id_only: true
+            id_only: id_only,
+            channel: pg_channel_name(%{table: source, id_only: id_only})
           }
       end
     end
@@ -43,11 +47,11 @@ defmodule Logflare.Changefeeds do
     Enum.find(list_changefeed_subscriptions(), &(&1.table == table))
   end
 
-  def pg_channel_name(%ChangefeedSubscription{table: table, id_only: true}) do
+  def pg_channel_name(%{table: table, id_only: true}) do
     "#{table}_id_only_changefeed"
   end
 
-  def pg_channel_name(%ChangefeedSubscription{table: table, id_only: false}) do
+  def pg_channel_name(%{table: table, id_only: false}) do
     "#{table}_changefeed"
   end
 
