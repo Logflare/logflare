@@ -107,7 +107,7 @@ defmodule Logflare.LocalRepo.Migrations do
                   'type', tg_op,
                   'id', current_row.id,
                   'changes', changes,
-                  'node_id', current_setting('logflare.node_id')
+                  'node_id', COALESCE(current_setting('logflare.node_id', true), 'no_node_id')
                 )::text
             );
           RETURN current_row;
@@ -139,7 +139,7 @@ defmodule Logflare.LocalRepo.Migrations do
                           'table', TG_TABLE_NAME,
                           'type', TG_OP,
                           'id', current_row.id,
-                          'node_id', current_setting('logflare.node_id')
+                          'node_id', COALESCE(current_setting('logflare.node_id', true), 'no_node_id')
                       )::text
               );
           RETURN current_row;
