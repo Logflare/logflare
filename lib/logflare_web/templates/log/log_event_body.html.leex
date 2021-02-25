@@ -6,7 +6,8 @@
         <div><%= Timex.to_datetime(@timestamp) %></div>
         <div>
           <%= if @user_local_timezone do %>
-            <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
+            <%= link Timex.to_datetime(@timestamp, @user_local_timezone), to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source,
+            querystring: "t:>#{Timex.format!(Timex.shift(@timestamp, seconds: -30), "{ISO:Extended:Z}")} t:<#{Timex.format!(Timex.shift(@timestamp, seconds: 30), "{ISO:Extended:Z}")} c:count(*) c:group_by(t::second)", tailing?: false) %>
           <% else %>
             <br/>
           <% end %>
