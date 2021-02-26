@@ -263,7 +263,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
     rules = socket.assigns.lql_rules
-    send(self(), :pause_live_search)
 
     timestamp_rules =
       Lql.Utils.get_ts_filters(rules)
