@@ -261,6 +261,36 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Map.take([:querystring, :tailing?])
   end
 
+  def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
+    rules = socket.assigns.lql_rules
+    send(self(), :pause_live_search)
+
+    timestamp_rules =
+      Lql.Utils.get_ts_filters(rules)
+      |> Lql.Utils.get_filter_rules()
+
+    if Enum.empty?(timestamp_rules) do
+      socket =
+        socket
+        |> put_flash(
+          :error,
+          "To jump #{direction} please include a timestamp filter in your query."
+        )
+
+      {:noreply, socket}
+    else
+      new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
+      qs = Lql.encode!(new_rules)
+
+      socket =
+        socket
+        |> assign(:lql_rules, new_rules)
+        |> push_patch_with_params(%{tailing?: false, querystring: qs})
+
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("stop_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)

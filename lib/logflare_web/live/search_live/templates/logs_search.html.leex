@@ -121,6 +121,11 @@
         <% end %>
       </div>
       <div class="pr-3 pt-1 pb-1">
+        <a href="#" phx-click="backwards" class="btn btn-primary">
+          <span class="fas fa-step-backward"></span>
+        </a>
+      </div>
+      <div class="pr-3 pt-1 pb-1">
         <div class="btn-group-toggle">
           <%= if @tailing? do %>
           <span class="btn btn-primary live-pause" phx-click="pause_live_search" style="">
@@ -132,20 +137,26 @@
             <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
           </span>
           <% end %>
-
         </div>
+      </div>
+      <div class="pr-3 pt-1 pb-1">
+        <a href="#" phx-click="forwards" class="btn btn-primary">
+          <span class="fas fa-step-forward"></span>
+        </a>
       </div>
       <div class="pr-3 pt-1 pb-1">
         <a href="#" phx-click="save_search" class="btn btn-primary">
           <i class="fas fa-save"></i><span class="fas-in-button  hide-on-mobile">Save</span>
         </a>
       </div>
+
       <div class="pr-3 pt-1 pb-1">
         <span class="btn btn-primary" id="daterangepicker">
           <span class="fa fa-clock"></span>
           <span class="hide-on-mobile">DateTime</span>
         </span>
       </div>
+
       <div class="pr-3 pt-1 pb-1">
         <%= link "Reset", to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source, querystring: "c:count(*) c:group_by(t::minute)", tailing?: true), class: "btn btn-primary" %>
       </div>
