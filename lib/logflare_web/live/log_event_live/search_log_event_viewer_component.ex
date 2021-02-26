@@ -102,10 +102,14 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   defp assign_defaults(socket, assigns) do
+    user = socket.assigns[:user] || assigns[:user]
+    team_user = socket.assigns[:team_user] || assigns[:team_user]
+    source = socket.assigns[:source] || assigns[:source]
+
     socket
-    |> assign(:user, assigns.user)
-    |> assign(:team_user, assigns.team_user)
-    |> assign(:source, assigns.source)
+    |> assign(:user, user)
+    |> assign(:team_user, team_user)
+    |> assign(:source, source)
   end
 
   @spec params_to_cache_key(map()) :: {String.t(), String.t()}
