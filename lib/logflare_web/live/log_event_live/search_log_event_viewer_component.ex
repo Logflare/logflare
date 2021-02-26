@@ -8,35 +8,25 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   alias LogflareWeb.SharedView
 
   @impl true
-  def render(%{log_event: %LE{body: %{metadata: metadata}} = le} = assigns) do
-    LogView.render("log_event_body.html",
-      source: le.source,
-      metadata: metadata,
-      fmt_metadata: BqSchema.encode_metadata(metadata),
-      message: le.body.message,
-      id: le.id,
-      timestamp: Timex.from_unix(le.body.timestamp, :microsecond),
-      user_local_timezone: nil
-    )
+  def update(%{log_event: {:error, _}} = assigns, socket) do
+    socket =
+      assign(socket, :error, "Error!")
+      |> assign_defaults(assigns)
+
+    {:ok, socket}
   end
 
   @impl true
-  def render(assigns) do
-    SharedView.render("loader.html")
+  def update(%{log_event: log_event_result} = assigns, socket) do
+    socket =
+      assign(socket, :log_event, log_event_result)
+      |> assign_defaults(assigns)
+
+    {:ok, socket}
   end
 
   @impl true
-  def update(%{log_event: {:error, _}}, socket) do
-    {:ok, assign(socket, :error, "Error!")}
-  end
-
-  @impl true
-  def update(%{log_event: log_event_result}, socket) do
-    {:ok, assign(socket, :log_event, log_event_result)}
-  end
-
-  @impl true
-  def update(%{origin: origin, id_param: log_id, source: source, path: path} = assigns, socket) do
+  def update(%{origin: _origin, id_param: log_id, source: source, path: path} = assigns, socket) do
     d = Date.utc_today()
     dminus3 = Timex.shift(d, days: -3)
     dplus1 = Timex.shift(d, days: 1)
@@ -53,7 +43,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
         assign(socket, Map.delete(assigns, :flash))
       end
 
-    socket = assign(socket, source: source)
+    socket = assign_defaults(socket, assigns)
+
     {:ok, socket}
   end
 
@@ -78,7 +69,43 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
         assign(socket, Map.delete(assigns, :flash))
       end
 
+    socket = assign_defaults(socket, assigns)
+
     {:ok, socket}
+  end
+
+  @impl true
+  def render(%{log_event: %LE{body: %{metadata: metadata}} = le} = assigns) do
+    tz =
+      if assigns.team_user,
+        do: assigns.team_user.preferences.timezone,
+        else: assigns.user.preferences.timezone
+
+    timestamp = Timex.from_unix(le.body.timestamp, :microsecond)
+    local_timestamp = Timex.to_datetime(timestamp, tz)
+
+    LogView.render("log_event_body.html",
+      source: le.source,
+      metadata: metadata,
+      fmt_metadata: BqSchema.encode_metadata(metadata),
+      message: le.body.message,
+      id: le.id,
+      timestamp: timestamp,
+      local_timezone: tz,
+      local_timestamp: local_timestamp
+    )
+  end
+
+  @impl true
+  def render(_assigns) do
+    SharedView.render("loader.html")
+  end
+
+  defp assign_defaults(socket, assigns) do
+    socket
+    |> assign(:user, assigns.user)
+    |> assign(:team_user, assigns.team_user)
+    |> assign(:source, assigns.source)
   end
 
   @spec params_to_cache_key(map()) :: {String.t(), String.t()}
