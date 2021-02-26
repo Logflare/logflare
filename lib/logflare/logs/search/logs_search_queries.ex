@@ -227,6 +227,7 @@ defmodule Logflare.Logs.SearchQueries do
     end
   end
 
+  @spec source_log_event_by_path(String.t(), String.t(), any()) :: Ecto.Query.t()
   def source_log_event_by_path(bq_table_id, path, value)
       when is_binary(bq_table_id) and is_binary(path) do
     last_column = String.split(path, ".") |> List.last() |> String.to_atom()
@@ -242,6 +243,7 @@ defmodule Logflare.Logs.SearchQueries do
     |> where([..., t1], field(t1, ^last_column) == ^value)
   end
 
+  @spec source_log_event_id(String.t(), String.t()) :: Ecto.Query.t()
   def source_log_event_id(bq_table_id, id) when is_binary(bq_table_id) when is_binary(id) do
     from(bq_table_id)
     |> where([t], t.id == ^id)
@@ -253,24 +255,23 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
+  @spec select_default_fields(ECto.Query.t(), :events) :: Ecto.Query.t()
   def select_default_fields(query, :events) do
     select(query, [:timestamp, :id, :event_message])
   end
 
-  def source_table_streaming_buffer(bq_table_id) when is_binary(bq_table_id) do
+  @spec source_table_streaming_buffer(binary, Keyword.t()) :: Ecto.Query.t()
+  def source_table_streaming_buffer(bq_table_id, opts) when is_binary(bq_table_id) do
+    fields = Keyword.fetch!(opts, :fields)
+
     from(bq_table_id)
-    |> select([:id, :metadata, :timestamp, :event_message])
+    |> select(^fields)
     |> where(in_streaming_buffer())
   end
 
   @spec source_table_last_5_minutes(String.t(), Keyword.t() | nil) :: Ecto.Query.t()
-  def source_table_last_5_minutes(bq_table_id, opts \\ []) when is_binary(bq_table_id) do
-    fields =
-      if fields = opts[:fields] do
-        fields
-      else
-        [:id, :metadata, :timestamp, :event_message]
-      end
+  def source_table_last_5_minutes(bq_table_id, opts) when is_binary(bq_table_id) do
+    fields = Keyword.fetch!(opts, :fields)
 
     from(bq_table_id)
     |> select(^fields)

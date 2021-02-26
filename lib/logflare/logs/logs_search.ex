@@ -121,7 +121,7 @@ defmodule Logflare.Logs.Search do
     q =
       case Sources.get_table_partition_type(source) do
         :pseudo ->
-          SearchQueries.source_table_streaming_buffer(source.bq_table_id)
+          SearchQueries.source_table_streaming_buffer(source.bq_table_id, fields: fields)
 
         :timestamp ->
           SearchQueries.source_table_last_5_minutes(source.bq_table_id, fields: fields)
