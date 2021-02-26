@@ -5,8 +5,9 @@
         <h6 class="header-margin"> Timestamp  </h6>
         <div><%= Timex.to_datetime(@timestamp) %></div>
         <div>
-          <%= if @user_local_timezone do %>
-            <%= Timex.to_datetime(@timestamp, @user_local_timezone) %>
+          <%= if @local_timezone do %>
+            <%= link @local_timestamp, to: Routes.live_path(LogflareWeb.Endpoint, LogflareWeb.Source.SearchLV, @source,
+            querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)", tailing?: false) %>
           <% else %>
             <br/>
           <% end %>
