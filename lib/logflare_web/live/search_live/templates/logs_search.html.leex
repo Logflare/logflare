@@ -123,17 +123,17 @@
         <% end %>
       </div>
 
-      <div class="btn-group btn-group-toggle pr-2" data-toggle="buttons">
+      <div class="btn-group pr-2">
         <a href="#" phx-click="backwards" class="btn btn-primary mr-0">
           <span class="fas fa-step-backward"></span>
         </a>
         <%= if @tailing? do %>
-        <span class="btn btn-primary live-pause mr-0" phx-click="pause_live_search" style="">
+        <span class="btn btn-primary live-pause mr-0" phx-click="pause_live_search">
           <div class="spinner-border spinner-border-sm text-info" role="status"></div>
           <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
         </span>
         <% else %>
-        <span class="btn btn-primary live-pause mr-0" phx-click="resume_live_search" style="">
+        <span class="btn btn-primary live-pause mr-0" phx-click="resume_live_search">
           <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
         </span>
         <% end %>
