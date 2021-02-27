@@ -117,7 +117,7 @@
       </datalist>
     </div>
     <div class="d-flex flex-wrap align-items-center form-text">
-      <div class="pr-3 pt-1 pb-1">
+      <div class="pr-1 pt-1 pb-1">
         <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
         <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
         <% end %>
@@ -141,22 +141,28 @@
           <% end %>
         </div>
       </div>
-      <div class="pr-3 pt-1 pb-1">
+      <div class="pr-1 pt-1 pb-1">
         <a href="#" phx-click="forwards" class="btn btn-primary">
           <span class="fas fa-step-forward"></span>
         </a>
       </div>
-      <div class="pr-3 pt-1 pb-1">
+      <div class="pr-1 pt-1 pb-1">
         <a href="#" phx-click="save_search" class="btn btn-primary">
           <i class="fas fa-save"></i>
           <span class="fas-in-button hide-on-mobile">Save</span>
         </a>
       </div>
-      <div class="pr-3 pt-1 pb-1">
+      <div class="pr-1 pt-1 pb-1">
         <span class="btn btn-primary" id="daterangepicker">
           <i class="fas fa-clock"></i>
           <span class="hide-on-mobile fas-in-button">DateTime</span>
         </span>
+      </div>
+      <div class="pr-1 pt-1 pb-1">
+        <%= link to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source, querystring: "c:count(*) c:group_by(t::minute)", tailing?: true), class: "btn btn-primary" do %>
+        <i class="fas fa-redo"></i>
+        <span class="hide-on-mobile fas-in-button">Reset</span>
+        <% end %>
       </div>
       </div>
       <div class="d-flex flex-wrap align-items-center form-text pt-2">
@@ -188,12 +194,6 @@
               style: "pointer-events: none;"
               %>
         </span>
-        <% end %>
-      </div>
-      <div class="pr-3 pt-1 pb-1">
-        <%= link to: Routes.live_path(@socket, LogflareWeb.Source.SearchLV, @source, querystring: "c:count(*) c:group_by(t::minute)", tailing?: true), class: "btn btn-primary" do %>
-        <i class="fas fa-redo"></i>
-        <span class="hide-on-mobile fas-in-button">Reset</span>
         <% end %>
       </div>
     </div>
