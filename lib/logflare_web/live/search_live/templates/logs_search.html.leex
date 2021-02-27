@@ -88,6 +88,7 @@
   </div>
 </div>
 <div class="container source-logs-search-container console-text">
+  <div id="logs-list-container">
   <%= render("logs_list.html",
      log_events: @log_events,
      last_query_completed_at: @last_query_completed_at,
@@ -95,6 +96,7 @@
      use_local_time: @use_local_time,
      loading: @loading
      ) %>
+  </div>
   <div>
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component(
@@ -162,6 +164,8 @@
         <span class="hide-on-mobile fas-in-button">Reset</span>
         <% end %>
       </div>
+      </div>
+      <div class="d-flex flex-wrap align-items-center form-text pt-2">
       <div class="pr-3 pt-1 pb-1  hide-on-mobile">
         Chart period:
       </div>

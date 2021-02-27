@@ -1,5 +1,6 @@
+
 <%= if length(@log_events) > 0 do %>
-  <div id="logs-list-container" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
+  <div id="source-logs-search-list" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list"></div>
     <% else %>
@@ -24,5 +25,5 @@
     <% end %>
   </div>
 <% else %>
-  <div id="logs-list-container-empty"> </div>
+  <div> </div>
 <% end %>

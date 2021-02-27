@@ -1,5 +1,13 @@
 @import "named_variables";
 
+#logs-list-container {
+  min-height: 47.75vh;
+}
+
+#logs-list-stream-container {
+  min-height: 63vh;
+}
+
 .v-align-icon-button {
   vertical-align: text-top;
 }
