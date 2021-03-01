@@ -278,6 +278,30 @@ defmodule LogflareWeb.Source.SearchLV do
 
       {:noreply, socket}
     else
+      timestamp_rules =
+        if socket.assigns.use_local_time do
+          user_local_timezone = socket.assigns.user_local_timezone
+          tz = Timex.Timezone.get(user_local_timezone)
+
+          Enum.map(timestamp_rules, fn
+            lql_rule ->
+              if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
+                Map.replace!(
+                  lql_rule,
+                  :values,
+                  for value <- lql_rule.values do
+                    Timex.shift(value, seconds: Timex.Timezone.diff(value, tz))
+                  end
+                )
+              else
+                lql_rule
+              end
+          end)
+        else
+          timestamp_rules
+        end
+
+      rules = Lql.Utils.update_timestamp_rules(rules, timestamp_rules)
       new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
       qs = Lql.encode!(new_rules)
 
