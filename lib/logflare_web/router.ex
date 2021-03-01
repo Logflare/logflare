@@ -3,6 +3,7 @@ defmodule LogflareWeb.Router do
   use LogflareWeb, :router
   alias LogflareWeb.LayoutView
   use PhoenixOauth2Provider.Router, otp_app: :logflare
+  alias LogflareWeb.Plugs
   import Phoenix.LiveView.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
@@ -13,7 +14,7 @@ defmodule LogflareWeb.Router do
     plug :fetch_session
     plug :fetch_flash
     plug :fetch_live_flash
-    plug :put_root_layout, {LogflareWeb.LayoutView, :root}
+    plug Plugs.RootLayoutPlug
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug LogflareWeb.Plugs.SetVerifyUser
