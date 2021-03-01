@@ -61,6 +61,7 @@ defmodule Logflare.Application do
            opts: %{partition_by: :source_id, order_by: [desc: :ingested_at], limit: 500}
          }
        ]},
+      {Changefeeds.RepoStateSyncValidator, [interval_sec: 300]},
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
         Logflare.Tracker,
