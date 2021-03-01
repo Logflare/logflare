@@ -174,7 +174,6 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp create_source(source_id) do
-    source = Sources.get_source_by(token: source_id)
     rls = %RLS{source_id: source_id}
 
     children = [

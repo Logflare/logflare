@@ -5,7 +5,6 @@ defmodule Logflare.Source.RecentLogsServer do
   """
   use Publicist
   use TypedStruct
-  alias Logflare.Plans.Plan
 
   typedstruct do
     field :source_id, atom(), enforce: true
@@ -13,9 +12,8 @@ defmodule Logflare.Source.RecentLogsServer do
     field :inserts_since_boot, integer(), default: 0
     field :bigquery_project_id, atom()
     field :bigquery_dataset_id, binary()
-    field :user, struct()
     field :user_id, integer()
-    field :plan, Plan.t()
+    field :plan_id, integer()
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
     field :billing_last_node_count, integer(), default: 0
@@ -141,8 +139,8 @@ defmodule Logflare.Source.RecentLogsServer do
       rls
       | bigquery_project_id: user.bigquery_project_id,
         bigquery_dataset_id: user.bigquery_dataset_id,
-        user: user,
-        plan: plan,
+        user_id: user.id,
+        plan_id: plan.id,
         notifications_every: source.notifications_every
     }
 

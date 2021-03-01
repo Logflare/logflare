@@ -27,13 +27,15 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def start_link(%RLS{} = rls) do
+    plan = Plans.get_plan!(rls.plan_id)
+
     GenServer.start_link(
       __MODULE__,
       %__MODULE__{
         source_token: rls.source_id,
         bigquery_project_id: rls.bigquery_project_id,
         bigquery_dataset_id: rls.bigquery_dataset_id,
-        field_count_limit: rls.plan.limit_source_fields_limit
+        field_count_limit: plan.limit_source_fields_limit
       },
       name: name(rls.source_id)
     )

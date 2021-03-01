@@ -13,8 +13,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Source.Supervisor
   alias Logflare.{AccountEmail, Mailer}
 
-  def start_link(%RLS{source_id: token, plan: plan} = rls) do
+  def start_link(%RLS{source_id: token, plan_id: plan_id} = rls) do
     source = Sources.get_source_by(token: token)
+    plan = Plans.get_plan(plan_id)
     procs = calc_procs(source, plan)
 
     Broadway.start_link(__MODULE__,

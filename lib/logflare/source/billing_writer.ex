@@ -23,14 +23,15 @@ defmodule Logflare.Source.BillingWriter do
   @spec handle_info(:write_count, RLS.t()) :: {:noreply, term}
   def handle_info(:write_count, %RLS{} = rls) do
     last_count = rls.billing_last_node_count
-    source = Sources.get_source(rls.source_id)
+    source = Sources.get_source!(rls.source_id)
+    plan = Plans.get_plan!(rls.plan_id)
     node_count = Data.get_node_inserts(source.token)
     count = node_count - last_count
 
     if count > 0 do
       record_to_db(rls, count)
 
-      if rls.plan.type == "metered" do
+      if plan.type == "metered" do
         record_to_stripe(rls, count)
       end
     end
@@ -57,7 +58,8 @@ defmodule Logflare.Source.BillingWriter do
 
   @spec record_to_stripe(RLS.t(), integer) :: :noop | :ok
   defp record_to_stripe(%RLS{} = rls, count) when is_integer(count) do
-    billing_account = rls.user.billing_account
+    user = Users.get_user!(rls.user_id)
+    billing_account = user.billing_account
 
     with {:ok, si} <-
            BillingAccounts.get_billing_account_stripe_subscription_item(billing_account),
@@ -76,9 +78,10 @@ defmodule Logflare.Source.BillingWriter do
   @spec record_to_db(RLS.t(), integer) :: :noop | :ok
   defp record_to_db(%RLS{} = rls, count) when is_integer(count) do
     source = Sources.get_source(rls.source_id)
+    user = Users.get_user(rls.user_id)
 
     with {:ok, _resp} <-
-           BillingCounts.insert(rls.user, source, %{
+           BillingCounts.insert(user, source, %{
              node: Atom.to_string(Node.self()),
              count: count
            }) do
