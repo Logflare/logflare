@@ -1,5 +1,6 @@
 defmodule Logflare.Source.BillingWriter do
   use GenServer
+  use Logflare.Commons
 
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.BillingCounts
@@ -19,9 +20,11 @@ defmodule Logflare.Source.BillingWriter do
     {:ok, rls}
   end
 
-  def handle_info(:write_count, rls) do
+  @spec handle_info(:write_count, RLS.t()) :: {:noreply, term}
+  def handle_info(:write_count, %RLS{} = rls) do
     last_count = rls.billing_last_node_count
-    node_count = Data.get_node_inserts(rls.source.token)
+    source = Sources.get_source(rls.source_id)
+    node_count = Data.get_node_inserts(source.token)
     count = node_count - last_count
 
     if count > 0 do
@@ -47,11 +50,13 @@ defmodule Logflare.Source.BillingWriter do
     Process.send_after(self(), :write_count, every)
   end
 
+  @spec name(atom()) :: atom()
   defp name(source_id) do
     String.to_atom("#{source_id}" <> "-bw")
   end
 
-  defp record_to_stripe(rls, count) do
+  @spec record_to_stripe(RLS.t(), integer) :: :noop | :ok
+  defp record_to_stripe(%RLS{} = rls, count) when is_integer(count) do
     billing_account = rls.user.billing_account
 
     with {:ok, si} <-
@@ -62,15 +67,18 @@ defmodule Logflare.Source.BillingWriter do
     else
       {:error, resp} ->
         Logger.error("Error recording usage with Stripe",
-          source_id: rls.source.token,
+          source_id: rls.source_id,
           error_string: inspect(resp)
         )
     end
   end
 
-  defp record_to_db(rls, count) do
+  @spec record_to_db(RLS.t(), integer) :: :noop | :ok
+  defp record_to_db(%RLS{} = rls, count) when is_integer(count) do
+    source = Sources.get_source(rls.source_id)
+
     with {:ok, _resp} <-
-           BillingCounts.insert(rls.user, rls.source, %{
+           BillingCounts.insert(rls.user, source, %{
              node: Atom.to_string(Node.self()),
              count: count
            }) do
@@ -78,7 +86,7 @@ defmodule Logflare.Source.BillingWriter do
     else
       {:error, _resp} ->
         Logger.error("Error inserting billing count!",
-          source_id: rls.source.token
+          source_id: rls.source_id
         )
     end
   end
