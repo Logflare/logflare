@@ -60,7 +60,10 @@ config :libcluster,
 
 config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions: [{"us-central1", "logflare-cluster-group"}],
-  zones: [{"us-central1-a", "instance-group-1"}]
+  zones: [
+    {"us-central1-a", "instance-group-1"},
+    {"us-central1-a", "instance-group"}
+  ]
 
 config :logflare, Logflare.Tracker, pool_size: 1
 

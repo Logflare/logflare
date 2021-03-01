@@ -148,7 +148,7 @@ function resetScrollTracker() {
 }
 
 export function scrollOverflowBottom() {
-  const $lastLog = $("#logs-list li:nth(1)")[0]
+  const $lastLog = $("#logs-list li:nth(0)")[0]
   if ($lastLog) {
     $lastLog.scrollIntoView()
   }

@@ -261,6 +261,59 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Map.take([:querystring, :tailing?])
   end
 
+  def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
+    rules = socket.assigns.lql_rules
+
+    timestamp_rules =
+      Lql.Utils.get_ts_filters(rules)
+      |> Lql.Utils.get_filter_rules()
+
+    if Enum.empty?(timestamp_rules) do
+      socket =
+        socket
+        |> put_flash(
+          :error,
+          "To jump #{direction} please include a timestamp filter in your query."
+        )
+
+      {:noreply, socket}
+    else
+      timestamp_rules =
+        if socket.assigns.use_local_time do
+          user_local_timezone = socket.assigns.user_local_timezone
+          tz = Timex.Timezone.get(user_local_timezone)
+
+          Enum.map(timestamp_rules, fn
+            lql_rule ->
+              if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
+                Map.replace!(
+                  lql_rule,
+                  :values,
+                  for value <- lql_rule.values do
+                    Timex.shift(value, seconds: Timex.Timezone.diff(value, tz))
+                  end
+                )
+              else
+                lql_rule
+              end
+          end)
+        else
+          timestamp_rules
+        end
+
+      rules = Lql.Utils.update_timestamp_rules(rules, timestamp_rules)
+      new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
+      qs = Lql.encode!(new_rules)
+
+      socket =
+        socket
+        |> assign(:lql_rules, new_rules)
+        |> push_patch_with_params(%{tailing?: false, querystring: qs})
+
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("stop_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
