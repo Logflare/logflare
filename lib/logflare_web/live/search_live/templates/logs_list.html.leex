@@ -8,13 +8,13 @@
           <li id="log-event_<%= log.id || log.body.timestamp %>">
             <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>
             <%= if @use_local_time do %>
-              <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp, @user_local_timezone) %></mark>
+              <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= BqSchemaHelpers.format_timestamp(timestamp, @user_local_timezone) %></mark>
             <% else %>
-              <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp) <> " UTC"%></mark>
+              <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= BqSchemaHelpers.format_timestamp(timestamp) <> " UTC"%></mark>
             <% end %>
             <%= message %>
             <%= unless log.ephemeral do %>
-              <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body.timestamp) do %>
+              <%= ModalLiveHelpers.live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body.timestamp) do %>
                 <span>metadata</span>
               <% end %>
             <% end %>

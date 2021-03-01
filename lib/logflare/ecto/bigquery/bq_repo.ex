@@ -5,7 +5,7 @@ defmodule Logflare.BqRepo do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.EctoQueryBQ
-  import Logflare.TypeCasts
+  alias Logflare.TypeCasts
 
   @query_request_timeout 60_000
   @use_query_cache true
@@ -43,8 +43,8 @@ defmodule Logflare.BqRepo do
       response =
         response
         |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
-        |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer_or_zero/1)
-        |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
+        |> Map.update(:totalBytesProcessed, 0, &Typecasts.maybe_string_to_integer_or_zero/1)
+        |> Map.update(:totalRows, 0, &Typecasts.maybe_string_to_integer_or_zero/1)
         |> Map.from_struct()
         |> Enum.map(fn {k, v} ->
           {

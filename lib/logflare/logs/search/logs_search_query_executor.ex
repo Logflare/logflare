@@ -4,7 +4,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   use Logflare.Commons
   alias Logs.Search
   alias Logs.SearchOperation, as: SO
-  import LogflareWeb.SearchLV.Utils
+  alias LogflareWeb.SearchLV.Utils
   alias Logflare.User.BigQueryUDFs
   use TypedStruct
   require Logger
@@ -129,7 +129,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_call({:query, params}, {lv_pid, _ref}, %State{} = state) do
     Logger.debug(
-      "Starting search query from #{pid_to_string(lv_pid)} for #{params.source.token} source..."
+      "Starting search query from #{Utils.pid_to_string(lv_pid)} for #{params.source.token} source..."
     )
 
     state =
@@ -142,7 +142,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.debug(
-        "SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
+        "SeachQueryExecutor: cancelling query task for #{Utils.pid_to_string(lv_pid)} live_view..."
       )
 
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
@@ -179,7 +179,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.debug(
-        "SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
+        "SeachQueryExecutor: Cancelling query task from #{Utils.pid_to_string(lv_pid)} live_view..."
       )
 
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
@@ -193,7 +193,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
     Logger.debug(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
+      "SeachQueryExecutor: Getting search results for #{Utils.pid_to_string(lv_pid)} / #{
         state.source_id
       } source..."
     )
@@ -226,7 +226,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{aggregates: aggregates_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
+      "SeachQueryExecutor: Getting search results for #{Utils.pid_to_string(lv_pid)} / #{
         state.source_id
       } source..."
     )
@@ -268,7 +268,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       send(lv_pid, msg)
     else
       Logger.info(
-        "SearchQueryExecutor not sending msg to #{pid_to_string(lv_pid)} because it's not alive} "
+        "SearchQueryExecutor not sending msg to #{Utils.pid_to_string(lv_pid)} because it's not alive} "
       )
     end
   end

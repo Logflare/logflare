@@ -6,12 +6,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
   alias Logs.SearchQueryExecutor
   alias Lql.ChartRule
-  alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
+  alias LogflareWeb.BqSchemaHelpers, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import Logflare.Logs.Search.Utils
-  import LogflareWeb.SearchLV.Utils
+  alias Logflare.Logs.Search.Utils, as: SearchUtils
+  alias LogflareWeb.SearchLV.Utils
 
   require Logger
 
@@ -42,7 +42,9 @@ defmodule LogflareWeb.Source.SearchLV do
   ]
 
   def mount(params, session, socket) do
-    Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
+    Logger.info(
+      "#{Utils.pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}"
+    )
 
     socket =
       if connected?(socket) do
@@ -143,7 +145,7 @@ defmodule LogflareWeb.Source.SearchLV do
         user: user,
         loading: true,
         chart_loading: true,
-        search_tip: gen_search_tip(),
+        search_tip: SearchUtils.gen_search_tip(),
         use_local_time: true,
         querystring: querystring
       )
@@ -158,7 +160,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:querystring, optimizedqs)
       else
         {:error, error} ->
-          maybe_cancel_tailing_timer(socket)
+          Utils.maybe_cancel_tailing_timer(socket)
 
           error_socket(socket, error)
 
@@ -209,7 +211,7 @@ defmodule LogflareWeb.Source.SearchLV do
         loading: true,
         chart_loading?: true,
         user: user,
-        search_tip: gen_search_tip(),
+        search_tip: SearchUtils.gen_search_tip(),
         use_local_time: true,
         team_user: team_user
       )
@@ -226,7 +228,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
     else
       {:error, error} ->
-        maybe_cancel_tailing_timer(socket)
+        Utils.maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(source.token)
 
         error_socket(socket, error)
@@ -257,11 +259,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("stop_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     socket =
       if prev_assigns.tailing? do
-        maybe_cancel_tailing_timer(socket)
+        Utils.maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(stoken)
 
         socket
@@ -276,7 +278,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("start_live_search" = ev, _, %{assigns: prev_assigns} = socket) do
     %{source: source} = prev_assigns
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     socket =
       if prev_assigns.tailing? do
@@ -326,7 +328,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("form_update" = ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
     source = prev_assigns.source
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     new_qs = search["querystring"]
     new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
@@ -371,12 +373,12 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("timestamp_and_chart_update" = ev, params, %{assigns: assigns} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+    Utils.log_lv_received_event(ev, socket.assigns.source)
 
     ts_qs = Map.get(params, "querystring")
     period = Map.get(params, "period")
 
-    maybe_cancel_tailing_timer(socket)
+    Utils.maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(socket.assigns.source.token)
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.source_schema.bigquery_schema)
@@ -411,10 +413,10 @@ defmodule LogflareWeb.Source.SearchLV do
         %{assigns: prev_assigns} = socket
       ) do
     %{id: _sid, token: stoken} = prev_assigns.source
-    log_lv_received_event(ev, prev_assigns.source)
+    Utils.log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.source_schema.bigquery_schema
 
-    maybe_cancel_tailing_timer(socket)
+    Utils.maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(stoken)
 
     socket =
@@ -429,7 +431,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("set_local_time" = ev, metadata, socket) do
     source = socket.assigns.source
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     use_local_time =
       metadata
@@ -437,7 +439,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> String.to_existing_atom()
       |> Kernel.not()
 
-    maybe_cancel_tailing_timer(socket)
+    Utils.maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(source.token)
 
     socket =
@@ -455,7 +457,7 @@ defmodule LogflareWeb.Source.SearchLV do
     %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?, user: user} =
       socket.assigns
 
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     %Plans.Plan{limit_saved_search_limit: limit} = Plans.get_plan_by_user(user)
 
@@ -508,7 +510,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
+    Utils.log_lv_received_event("search_result", socket.assigns.source)
 
     timezone =
       if socket.assigns.use_local_time do
@@ -529,7 +531,7 @@ defmodule LogflareWeb.Source.SearchLV do
       end)
 
     if socket.assigns.tailing? do
-      log_lv(socket.assigns.source, "is scheduling tail aggregate")
+      Utils.log_lv(socket.assigns.source, "is scheduling tail aggregate")
 
       %ChartRule{period: period} =
         socket.assigns.lql_rules
@@ -548,11 +550,11 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{events: _events} = search_result}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
+    Utils.log_lv_received_event("search_result", socket.assigns.source)
 
     tailing_timer =
       if socket.assigns.tailing? do
-        log_lv(socket.assigns.source, "is scheduling tail search")
+        Utils.log_lv(socket.assigns.source, "is scheduling tail search")
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
       else
         nil
@@ -598,7 +600,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_error = msg, search_op}, %{assigns: %{source: source}} = socket) do
-    log_lv_received_info(msg, source)
+    Utils.log_lv_received_info(msg, source)
 
     error_notificaton =
       case search_op.error do
@@ -607,7 +609,7 @@ defmodule LogflareWeb.Source.SearchLV do
           "Search halted: " <> halted_message
 
         err ->
-          format_error(err)
+          SearchUtils.format_error(err)
       end
 
     socket =
@@ -624,7 +626,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, assigns.source)
+      Utils.log_lv_received_info(msg, assigns.source)
       SearchQueryExecutor.maybe_execute_events_query(assigns.source.token, assigns)
     end
 
@@ -633,7 +635,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, assigns.source)
+      Utils.log_lv_received_info(msg, assigns.source)
       SearchQueryExecutor.maybe_execute_agg_query(assigns.source.token, assigns)
     end
 
@@ -792,11 +794,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp pause_live_search(ev, %{assigns: prev_assigns} = socket, paused_by \\ :human) do
     %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     socket =
       if prev_assigns.tailing? and !prev_assigns.tailing_paused? do
-        maybe_cancel_tailing_timer(socket)
+        Utils.maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(stoken)
 
         socket
@@ -816,7 +818,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp resume_live_search(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+    Utils.log_lv_received_event(ev, source)
 
     socket =
       if prev_assigns.tailing_paused? do

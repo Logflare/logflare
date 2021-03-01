@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Helpers.BqSchema do
+defmodule LogflareWeb.BqSchemaHelpers do
   @moduledoc false
   alias LogflareWeb.SharedView
   alias Logflare.BigQuery.SchemaTypes

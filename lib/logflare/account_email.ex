@@ -5,7 +5,7 @@ defmodule Logflare.AccountEmail do
 
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-  alias LogflareWeb.Helpers.BqSchema
+  alias LogflareWeb.BqSchemaHelpers
   alias Logflare.{Auth, User, Source, TeamUsers.TeamUser}
 
   def welcome(user) do
@@ -150,8 +150,8 @@ defmodule Logflare.AccountEmail do
     unsubscribe_link =
       Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature, type: type)
 
-    formatted_new = BqSchema.format_bq_schema(new_schema, type: :text)
-    formatted_old = BqSchema.format_bq_schema(old_schema, type: :text)
+    formatted_new = BqSchemaHelpers.format_bq_schema(new_schema, type: :text)
+    formatted_old = BqSchemaHelpers.format_bq_schema(old_schema, type: :text)
 
     diff = diff_schema(schema_to_list(formatted_new), schema_to_list(formatted_old))
 

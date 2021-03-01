@@ -2,7 +2,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   use LogflareWeb, :live_component
   alias LogflareWeb.LogView
   require Logger
-  alias LogflareWeb.Helpers.BqSchema
+  alias LogflareWeb.BqSchemaHelpers
   use Logflare.Commons
   alias LogflareWeb.SharedView
 
@@ -11,7 +11,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     LogView.render("log_event_body.html",
       source: le.source,
       metadata: metadata,
-      fmt_metadata: BqSchema.encode_metadata(metadata),
+      fmt_metadata: BqSchemaHelpers.encode_metadata(metadata),
       message: le.body.message,
       id: le.id,
       timestamp: Timex.from_unix(le.body.timestamp, :microsecond),

@@ -1,5 +1,5 @@
 <%= if @show_modal do %>
-<%= live_modal @socket, @modal.body.module_or_template,
+<%= ModalLiveHelpers.live_modal @socket, @modal.body.module_or_template,
     id: @modal.body.id,
     title: @modal.body.title,
     user: @user,
@@ -42,7 +42,7 @@
           </a>
         </li>
         <li>
-          <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)") do %>
+          <%= ModalLiveHelpers.live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)") do %>
           <i class="fas fa-globe"></i>
           <span class="hide-on-mobile">
             timezone
@@ -67,18 +67,18 @@
         </li>
         <%= if @search_op_error && is_nil(@search_op_log_events) && is_nil(@search_op_log_aggregates) do %>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_error_link, title: "Query Debugging") do %>
+          <%= ModalLiveHelpers.live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_error_link, title: "Query Debugging") do %>
           <i class="fas fa-bug"></i><span class="hide-on-mobile"> debug error </span>
           <% end %>
         </li>
         <% else %>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_events_link, title: "Query Debugging") do %>
+          <%= ModalLiveHelpers.live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_events_link, title: "Query Debugging") do %>
           <i class="fas fa-bug"></i><span class="hide-on-mobile"> events </span>
           <% end %>
         </li>
         <li>
-          <%= live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
+          <%= ModalLiveHelpers.live_modal_show_link(component: LogflareWeb.Search.QueryDebugComponent, modal_id: :modal_debug_log_aggregates_link, title: "Query Debugging") do %>
           <i class="fas fa-bug"></i><span class="hide-on-mobile"> aggregate </span>
           <% end %>
         </li>
@@ -99,7 +99,7 @@
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component(
     "Components.LogEventsChart",
-    %{data: @log_aggregates, loading: @chart_loading?, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
+    %{data: @log_aggregates, loading: @chart_loading?, chart_period: Utils.get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
     [id: "log-events-chart"]
     ) %>
   </div>
@@ -153,7 +153,7 @@
         Chart period:
       </div>
       <div class="pr-3 pt-1 pb-1">
-        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: get_chart_period(@lql_rules, "minute"), class: "form-control form-control-sm" %>
+        <%= select f, :chart_period, ["day", "hour", "minute", "second"], selected: Utils.get_chart_period(@lql_rules, "minute"), class: "form-control form-control-sm" %>
       </div>
       <div class="pr-3 pt-1 pb-1 hide-on-mobile">
         Aggregate:
@@ -163,7 +163,7 @@
         <%= select f,
          :chart_aggregate,
           ["sum", "avg", "max", "p50", "p95", "p99", "count"],
-          selected: get_chart_aggregate(@lql_rules, "count"),
+          selected: Utils.get_chart_aggregate(@lql_rules, "count"),
           class: "form-control form-control-sm"
            %>
         <% else %>
