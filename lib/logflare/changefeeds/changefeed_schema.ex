@@ -66,11 +66,12 @@ defmodule Logflare.Changefeeds.ChangefeedSchema do
   end
 
   def create_schema_virtual(schema, derive_virtual) do
-    module_name = Module.concat(schema, Virtual)
+    module_name = EctoDerived.to_derived_module_name(schema)
     table_name = "#{schema.__schema__(:source)}_virtual"
 
     contents =
       quote do
+        alias Logflare.LocalRepo.EctoDerived
         use TypedEctoSchema
         import Ecto.Changeset
 
@@ -84,29 +85,11 @@ defmodule Logflare.Changefeeds.ChangefeedSchema do
         end
 
         def changefeed_changeset(non_virtual_struct) do
-          %schema{} = non_virtual_struct
-
-          params =
-            for field <- unquote(derive_virtual), reduce: %{} do
-              virtual_params ->
-                Map.put(
-                  virtual_params,
-                  field,
-                  schema.derive(field, non_virtual_struct, virtual_params)
-                )
-            end
-
-          changeset =
-            struct(unquote(module_name), id: non_virtual_struct.id)
-            |> cast(params, EctoSchemaReflection.fields(unquote(module_name)))
-            |> validate_required([:id] ++ unquote(derive_virtual))
-
-          if Keyword.get(unquote(schema).__info__(:functions), :derived_validations) do
-            changeset
-            |> unquote(schema).derived_validations()
-          else
-            changeset
-          end
+          Helpers.changefeed_changeset(
+            non_virtual_struct,
+            unquote(module_name),
+            unquote(derive_virtual)
+          )
         end
       end
 
