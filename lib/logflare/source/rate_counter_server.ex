@@ -81,7 +81,7 @@ defmodule Logflare.Source.RateCounterServer do
     {:noreply, source_id}
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, %RCS{} = state) do
     # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
       source_id: Atom.to_string(state)
@@ -104,7 +104,7 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def update_ets_table(%RCS{} = state) do
-    insert_to_ets_table(state.source_id, state)
+    insert_to_ets_table(state.source_id, %RCS{} = state)
   end
 
   def state_to_external(%RCS{} = state) do

@@ -1,7 +1,6 @@
 defmodule Logflare.SavedSearch do
   use TypedEctoSchema
   alias Logflare.Source
-  alias Logflare.EctoChangesetExtras
   import Ecto.Changeset
   use Logflare.Changefeeds.ChangefeedSchema
 

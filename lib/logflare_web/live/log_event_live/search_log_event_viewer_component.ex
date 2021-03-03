@@ -4,10 +4,10 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   require Logger
   alias LogflareWeb.BqSchemaHelpers
   use Logflare.Commons
-  alias LogflareWeb.SharedView
+  use LogflareWeb.Commons
 
   @impl true
-  def render(%{log_event: %LE{body: %{metadata: metadata}, source: %Source{}} = le} = assigns) do
+  def render(%{log_event: %LE{body: %{metadata: metadata}, source: %Source{}} = le} = _assigns) do
     LogView.render("log_event_body.html",
       source: le.source,
       metadata: metadata,

@@ -1,6 +1,7 @@
 defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
+  use Logflare.Commons
 
   alias Logflare.Google.BigQuery
   alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
@@ -17,7 +18,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def dashboard(
-        %{assigns: %{user: %User{team: team} = user, team_user: team_user}} = conn,
+        %{assigns: %{user: %User{team: _team} = user, team_user: team_user}} = conn,
         _params
       ) do
     sources = Sources.preload_sources_for_dashboard(user.sources)

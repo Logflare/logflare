@@ -71,6 +71,8 @@ end
 
 defmodule LogflareWeb.Commons do
   defmacro __using__(_ctx) do
-    alias LogflareWeb.SharedView
+    quote do
+      alias LogflareWeb.SharedView
+    end
   end
 end

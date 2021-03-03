@@ -111,7 +111,7 @@ defmodule Logflare.Changefeeds.ChangefeedListener do
     Changefeeds.maybe_insert_virtual(struct)
   end
 
-  def process_notification(%{node_id: origin_node} = ev) when node() == origin_node do
+  def process_notification(%{node_id: origin_node} = _ev) when node() == origin_node do
     :noop
   end
 

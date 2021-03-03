@@ -2,8 +2,7 @@ defmodule LogflareWeb.SavedSearchesController do
   use LogflareWeb, :controller
   require Logger
 
-  plug LogflareWeb.Plugs.SetVerifySource
-       when action in [:delete]
+  plug LogflareWeb.Plugs.SetVerifySource when action in [:delete]
 
   def delete(conn, %{"id" => search_id} = _params) do
     search_id

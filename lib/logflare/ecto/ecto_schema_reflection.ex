@@ -19,7 +19,10 @@ defmodule Logflare.EctoSchemaReflection do
   def associations(module) when is_struct(module), do: get_for_struct(module, :associations)
   def associations(schema), do: get(schema, :associations)
 
-  @spec source(module()) :: String.t()
+  @spec source(schema :: module()) :: String.t()
+  @doc """
+  Returns source (table name for SQL) for given schema.
+  """
   def source(schema) do
     get(schema, :source)
   end

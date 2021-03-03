@@ -119,16 +119,6 @@ defmodule Logflare.Changefeeds.Analytics do
 
   @spec sum_index_values([Mnesia.Indexes.Index.t()]) :: indexes_aggregate_metrics
   def sum_index_values(indexes) when is_list(indexes) do
-    initial = %{memory: 0, memory_avg: 0, count: 0}
-
-    data =
-      indexes
-      |> Enum.reduce(initial, fn %Mnesia.Indexes.Index{memory: m}, acc ->
-        acc
-        |> Map.update!(:memory, &(&1 + m))
-        |> Map.update!(:count, &(&1 + 1))
-      end)
-
     count = Enum.count(indexes)
     memory = indexes |> Enum.map(& &1.memory) |> Enum.sum()
     memory_avg = div(memory, count)

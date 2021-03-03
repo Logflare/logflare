@@ -71,6 +71,7 @@ defmodule Logflare.Source.RecentLogsServer do
     GenServer.cast(source_id, {:push, source_id, log_event})
   end
 
+  @spec list(atom()) :: [map()]
   def list(source_id) when is_atom(source_id) do
     case Process.whereis(source_id) do
       nil ->
@@ -82,6 +83,7 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
+  @spec list_for_cluster(atom()) :: list(map)
   def list_for_cluster(source_id) when is_atom(source_id) do
     nodes = Cluster.Utils.node_list_all()
 
@@ -115,6 +117,7 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
+  @spec get_latest_date(atom()) :: non_neg_integer()
   def get_latest_date(source_id) when is_atom(source_id) do
     case RLS.list(source_id) |> Enum.at(0) do
       nil -> 0
@@ -165,21 +168,22 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, rls}
   end
 
-  def handle_call(:list, _from, state) do
+  @spec handle_call(:list, pid, RLS.t()) :: {:reply, {:ok, list(map), RLS.t()}}
+  def handle_call(:list, _from, %RLS{} = state) do
     recent = Enum.into(state.recent, [])
     {:reply, {:ok, recent}, state}
   end
 
-  def handle_cast({:push, _source_id, %LE{} = le}, state) do
+  def handle_cast({:push, _source_id, %LE{} = le}, %RLS{} = state) do
     log_events = LQueue.push(state.recent, le)
     {:noreply, %{state | recent: log_events}}
   end
 
-  def handle_info({:stop_please, reason}, state) do
+  def handle_info({:stop_please, reason}, %RLS{} = state) do
     {:stop, reason, state}
   end
 
-  def handle_info(:broadcast, state) do
+  def handle_info(:broadcast, %RLS{} = state) do
     {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
 
     broadcast()
@@ -192,6 +196,7 @@ defmodule Logflare.Source.RecentLogsServer do
      }}
   end
 
+  @spec handle_info(:touch, RLS.t()) :: {:noreply, RLS.t()}
   def handle_info(:touch, %__MODULE__{source_id: source_id} = state) do
     case Enum.into(state.recent, []) do
       [%Logflare.LogEvent{params: %{"is_system_log_event?" => true}}] ->
@@ -213,7 +218,7 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, %RLS{} = state) do
     # Do Shutdown Stuff
     Logger.info("Going Down - #{inspect(reason)} - #{state.source_id}", %{
       source_id: state.source_id

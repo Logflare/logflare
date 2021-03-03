@@ -49,7 +49,8 @@ defmodule Logflare.BillingCounts do
     |> RepoWithCache.all()
   end
 
-  def insert(user, source, params) do
+  @spec insert(User.t(), Source.t(), Keyword.t()) :: {:ok, BillingCount} | {:error, term}
+  def insert(%User{} = user, %Source{} = source, params) do
     assoc = params |> assoc(user) |> assoc(source)
 
     RepoWithCache.insert(assoc)

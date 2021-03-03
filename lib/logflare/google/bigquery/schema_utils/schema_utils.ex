@@ -6,7 +6,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   require Logger
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
-  import Logflare.BigQuery.SchemaTypes
+  alias Logflare.BigQuery.SchemaTypes
 
   @doc """
   Transform BigQuery query response into a map.
@@ -93,13 +93,13 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
             }
 
           is_list(v) and not is_map(hd(v)) ->
-            %{t: {:list, type_of(hd(v))}}
+            %{t: {:list, SchemaTypes.type_of(hd(v))}}
 
           is_map(v) ->
             %{t: :map, fields: to_typemap(v)}
 
           true ->
-            %{t: type_of(v)}
+            %{t: SchemaTypes.type_of(v)}
         end
 
       k =
@@ -157,20 +157,20 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
         v =
           cond do
             mode == "REPEATED" and t == "RECORD" ->
-              %{t: bq_type_to_ex(t)}
+              %{t: SchemaTypes.bq_type_to_ex(t)}
 
             mode == "REPEATED" and t != "RECORD" ->
-              %{t: {:list, bq_type_to_ex(t)}}
+              %{t: {:list, SchemaTypes.bq_type_to_ex(t)}}
 
             mode in ["NULLABLE", "REQUIRED"] ->
-              %{t: bq_type_to_ex(t)}
+              %{t: SchemaTypes.bq_type_to_ex(t)}
 
             is_nil(mode) ->
-              %{t: bq_type_to_ex(t)}
+              %{t: SchemaTypes.bq_type_to_ex(t)}
 
             true ->
               Logger.warn("Unexpected value of TFS mode: #{mode}")
-              %{t: bq_type_to_ex(t)}
+              %{t: SchemaTypes.bq_type_to_ex(t)}
           end
 
         v =

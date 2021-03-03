@@ -1,4 +1,5 @@
 defmodule Logflare.LogEvent do
+  @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
   alias Logflare.Logs.Ingest.MetadataCleaner

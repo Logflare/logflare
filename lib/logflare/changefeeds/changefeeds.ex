@@ -2,6 +2,7 @@ defmodule Logflare.Changefeeds do
   use Logflare.Commons
   alias Logflare.Changefeeds.ChangefeedSubscription
 
+  @spec list_changefeed_subscriptions() :: [ChangefeedSubscription.t()]
   def list_changefeed_subscriptions() do
     for config <- LocalRepo.config(:changefeed_subscriptions) do
       case config do

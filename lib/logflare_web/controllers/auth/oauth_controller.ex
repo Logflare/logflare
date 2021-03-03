@@ -5,7 +5,6 @@ defmodule LogflareWeb.Auth.OauthController do
 
   alias Logflare.JSON
   alias Logflare.Source
-  alias Logflare.Repo
   alias LogflareWeb.AuthController
 
   def callback(

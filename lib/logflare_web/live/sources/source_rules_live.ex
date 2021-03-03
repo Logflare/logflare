@@ -10,7 +10,6 @@ defmodule LogflareWeb.Sources.RulesLV do
   alias Logflare.{Sources, Users}
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
-  alias LogflareWeb.Sources.BqSchemaLive
 
   @lql_dialect :routing
   @lql_string ""

@@ -1,7 +1,7 @@
 defmodule Logflare.Lql.Parser do
   @moduledoc false
   import NimbleParsec
-  import __MODULE__.Helpers
+  import Logflare.Lql.Parser.Helpers
   alias Logflare.Lql.{FilterRule, ChartRule}
   alias Logflare.Google.BigQuery.SchemaUtils
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS

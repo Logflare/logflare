@@ -119,11 +119,11 @@ defmodule Logflare.Source do
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
-    belongs_to :user, Logflare.User
+    belongs_to :user, User
 
-    has_many :rules, Logflare.Rule
-    has_many :saved_searches, Logflare.SavedSearch
-    has_many :billing_counts, Logflare.BillingCounts.BillingCount
+    has_many :rules, Rule
+    has_many :saved_searches, SavedSearch
+    has_many :billing_counts, BillingCount
 
     embeds_one :notifications, Notifications, on_replace: :update
 
@@ -132,7 +132,7 @@ defmodule Logflare.Source do
     timestamps()
   end
 
-  def changefeed_changeset(struct \\ struct(__MODULE__), attrs) do
+  def changefeed_changeset(struct \\ struct(Source), attrs) do
     chgst = EctoChangesetExtras.cast_all_fields(struct, attrs)
 
     cast_embed(chgst, :notifications, with: &Notifications.changeset/2)
@@ -141,12 +141,12 @@ defmodule Logflare.Source do
   @default_table_name_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] ||
                                ""
 
-  def derive(:bq_table_id, %__MODULE__{} = source, _virtual_struct_params) do
+  def derive(:bq_table_id, %Source{} = source, _virtual_struct_params) do
     user = Users.get_user(source.user_id)
     generate_bq_table_id(%{source | user: user})
   end
 
-  def derive(:bq_dataset_id, %__MODULE__{} = source, _virtual_struct_params) do
+  def derive(:bq_dataset_id, %Source{} = source, _virtual_struct_params) do
     user = Users.get_user(source.user_id)
     user.bigquery_dataset_id || "#{source.user_id}" <> @default_table_name_append
   end
@@ -227,7 +227,7 @@ defmodule Logflare.Source do
     end
   end
 
-  def generate_bq_table_id(%__MODULE__{user: %User{} = user} = source) do
+  def generate_bq_table_id(%Source{user: %User{} = _user} = source) do
     default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
 
     bq_project_id = source.user.bigquery_project_id || default_project_id

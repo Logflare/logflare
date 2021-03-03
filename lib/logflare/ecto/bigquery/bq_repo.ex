@@ -5,7 +5,7 @@ defmodule Logflare.BqRepo do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.EctoQueryBQ
-  alias Logflare.TypeCasts
+  alias Logflare.Typecasts
 
   @query_request_timeout 60_000
   @use_query_cache true

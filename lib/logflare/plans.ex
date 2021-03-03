@@ -41,6 +41,7 @@ defmodule Logflare.Plans do
 
   """
   def get_plan!(id), do: Repo.get!(Plan, id)
+  def get_plan(id), do: Repo.get(Plan, id)
 
   def get_plan_by(kw) do
     plan = Repo.get_by(Plan, kw)

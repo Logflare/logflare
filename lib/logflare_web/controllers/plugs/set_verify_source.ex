@@ -89,7 +89,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     end
   end
 
-  defp set_source_for_public(public_token, conn, opts) do
+  defp set_source_for_public(public_token, conn, _opts) do
     case Sources.get_by_and_preload(public_token: public_token) do
       nil ->
         conn
