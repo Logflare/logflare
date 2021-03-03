@@ -5,6 +5,7 @@ defmodule LogflareWeb.Router do
   use PhoenixOauth2Provider.Router, otp_app: :logflare
   alias LogflareWeb.Plugs
   import Phoenix.LiveView.Router
+  import Phoenix.LiveDashboard.Router
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -252,8 +253,12 @@ defmodule LogflareWeb.Router do
     get "/plans/:id/edit", AdminPlanController, :edit
     put "/plans/:id/edit", AdminPlanController, :update
 
-    delete "/accounts/:id", AdminController, :delete_account
-    get "/accounts/:id/become", AdminController, :become_account
+    scope "/live" do
+      live_dashboard "/dashboard",
+        additional_pages: [
+          local_repo: Logflare.LiveDashboard.LocalRepoPage
+        ]
+    end
   end
 
   scope "/install", LogflareWeb do
