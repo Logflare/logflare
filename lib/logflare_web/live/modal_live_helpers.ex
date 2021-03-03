@@ -5,6 +5,7 @@ defmodule LogflareWeb.ModalLiveHelpers do
   import Phoenix.LiveView.Helpers
   import Phoenix.LiveView, only: [assign: 3]
   import Phoenix.HTML.Link, only: [link: 2]
+  alias LogflareWeb.ModalLiveUtils
 
   defmacro __using__(_context) do
     quote do
@@ -14,49 +15,10 @@ defmodule LogflareWeb.ModalLiveHelpers do
 
       def handle_event(
             "show_live_modal",
-            %{
-              "module-or-template" => module_or_template,
-              "type" => type,
-              "id" => id,
-              "title" => title
-            } = params,
+            params,
             socket
           ) do
-        module_or_template =
-          if type == "component" do
-            String.to_existing_atom(module_or_template)
-          else
-            module_or_template
-          end
-
-        id = String.to_existing_atom(id)
-
-        view =
-          if v = params["view"] do
-            String.to_existing_atom(v)
-          end
-
-        module_or_template =
-          case type do
-            "template" -> module_or_template
-            "component" -> module_or_template
-          end
-
-        socket =
-          socket
-          |> assign(:show_modal, true)
-          |> assign(:modal, %{
-            body: %{
-              module_or_template: module_or_template,
-              view: view,
-              title: title,
-              id: id,
-              return_to: params["return-to"]
-            },
-            params: params
-          })
-
-        {:noreply, socket}
+        ModalLiveUtils.handle_event("show_live_modal", params, socket)
       end
     end
   end
@@ -91,8 +53,7 @@ defmodule LogflareWeb.ModalLiveHelpers do
     link(contents, opts)
   end
 
-  def live_modal(socket, template, opts)
-      when is_binary(template) do
+  def live_modal(socket, template, opts) when is_binary(template) do
     path = Keyword.fetch!(opts, :return_to)
     title = Keyword.fetch!(opts, :title)
 
