@@ -43,11 +43,11 @@ defmodule Logflare.Changefeeds.RepoStateSyncValidator do
   end
 
   defp run_and_schedule(%{interval_sec: interval_sec} = state) do
-    validate_changfeed_tables(state)
-    Process.send_after(self(), :work, interval_sec)
+    validate_changefeed_tables(state)
+    Process.send_after(self(), :work, :timer.seconds(interval_sec))
   end
 
-  def validate_changfeed_tables(state) do
+  def validate_changefeed_tables(state) do
     for %ChangefeedSubscription{schema: schema} <- Changefeeds.list_changefeed_subscriptions() do
       validate(schema, state)
     end
