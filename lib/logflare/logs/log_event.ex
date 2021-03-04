@@ -10,8 +10,6 @@ defmodule Logflare.LogEvent do
 
   use Logflare.Changefeeds.ChangefeedSchema
 
-  @validators [EqDeepFieldTypes, BigQuerySchemaChange]
-
   defmodule Body do
     @moduledoc false
     use TypedEctoSchema
@@ -158,7 +156,9 @@ defmodule Logflare.LogEvent do
   def validate(%LE{valid: false} = le), do: le
 
   def validate(%LE{valid: true} = le) do
-    @validators
+    validators = [EqDeepFieldTypes, BigQuerySchemaChange]
+
+    validators
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do
         :ok ->

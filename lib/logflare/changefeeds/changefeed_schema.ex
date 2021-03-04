@@ -1,5 +1,6 @@
 defmodule Logflare.Changefeeds.ChangefeedSchema do
   alias Logflare.EctoSchemaReflection
+  alias Logflare.LocalRepo.EctoDerived
   @callback changefeed_changeset(map()) :: Ecto.Changeset.t()
 
   defmacro __using__(opts) do

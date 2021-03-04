@@ -23,4 +23,9 @@ defmodule Logflare.LocalRepo.EctoDerived do
       result
     end
   end
+
+  @spec to_derived_module_name(schema :: module()) :: module()
+  def to_derived_module_name(schema) when is_atom(schema) do
+    Module.concat(schema, Virtual)
+  end
 end

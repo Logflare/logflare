@@ -1,6 +1,7 @@
 defmodule Logflare.Changefeeds do
   use Logflare.Commons
   alias Logflare.Changefeeds.ChangefeedSubscription
+  alias Logflare.LocalRepo.EctoDerived
 
   @spec list_changefeed_subscriptions() :: [ChangefeedSubscription.t()]
   def list_changefeed_subscriptions() do
@@ -65,7 +66,7 @@ defmodule Logflare.Changefeeds do
   end
 
   def maybe_insert_virtual(%schema{} = struct) do
-    virtual_schema = Module.concat(schema, Virtual)
+    virtual_schema = EctoDerived.to_derived_module_name(schema)
 
     if Code.ensure_loaded?(virtual_schema) do
       virtual_struct = virtual_schema.changefeed_changeset(struct)
@@ -86,7 +87,7 @@ defmodule Logflare.Changefeeds do
         %schema{} -> schema
       end
 
-    virtual_schema = Module.concat(schema, Virtual)
+    virtual_schema = EctoDerived.to_derived_module_name(schema)
 
     if Code.ensure_loaded?(virtual_schema) do
       {:ok, _deleted} = LocalRepo.delete(struct_or_changeset)

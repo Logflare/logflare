@@ -2,6 +2,7 @@ defmodule Logflare.LocalRepo.Migrations do
   use Logflare.Commons
   alias Logflare.Changefeeds.ChangefeedSubscription
   alias Logflare.EctoSchemaReflection
+  alias Logflare.LocalRepo.EctoDerived
   use GenServer
 
   def start_link(args \\ %{}, opts \\ []) do
@@ -24,7 +25,7 @@ defmodule Logflare.LocalRepo.Migrations do
       create_changefeed_trigger(chg_sub)
       create_table_and_indexes(schema)
 
-      virtual_schema = Module.concat(schema, Virtual)
+      virtual_schema = EctoDerived.to_derived_module_name(schema)
 
       if Code.ensure_loaded?(virtual_schema) do
         create_table_and_indexes(virtual_schema)
@@ -34,7 +35,7 @@ defmodule Logflare.LocalRepo.Migrations do
     for {_table, schema} <- Changefeeds.tables() do
       create_table_and_indexes(schema)
 
-      virtual_schema = Module.concat(schema, Virtual)
+      virtual_schema = EctoDerived.to_derived_module_name(schema)
 
       if Code.ensure_loaded?(virtual_schema) do
         create_table_and_indexes(virtual_schema)
