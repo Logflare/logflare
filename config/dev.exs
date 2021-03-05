@@ -50,7 +50,8 @@ config :logflare, Logflare.Repo,
   hostname: "localhost",
   pool_size: 10,
   prepare: :unnamed,
-  log: false
+  log: false,
+  after_connect: {Logflare.Changefeeds.Setup, :after_connect!, []}
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_dev",

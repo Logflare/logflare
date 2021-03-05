@@ -37,7 +37,8 @@ config :logflare, Logflare.Repo,
   timeout: 30_000,
   queue_target: 5_000,
   database: "logflare",
-  hostname: "10.11.144.4"
+  hostname: "10.11.144.4",
+  after_connect: {Logflare.Changefeeds.Setup, :after_connect!, []}
 
 config :logflare, Logflare.Google,
   # gcloud services enable cloudbuild.googleapis.com container.googleapis.com dataproc.googleapis.com redis.googleapis.com cloudfunctions.googleapis.com run.googleapis.com servicenetworking.googleapis.com sourcerepo.googleapis.com

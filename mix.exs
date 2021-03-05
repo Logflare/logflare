@@ -38,6 +38,7 @@ defmodule Logflare.Mixfile do
       mod: {Logflare.Application, []},
       extra_applications: [
         :logger,
+        :mnesia,
         :runtime_tools,
         :ueberauth_github,
         :ueberauth_google,
@@ -64,7 +65,7 @@ defmodule Logflare.Mixfile do
       {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
       {:phoenix_live_view, "~> 0.15.3", override: true},
-      {:phoenix_live_dashboard, "~> 0.3.0"},
+      {:phoenix_live_dashboard, "~> 0.4.0"},
       {:cors_plug, "~> 2.0"},
 
       # Oauth
@@ -181,7 +182,8 @@ defmodule Logflare.Mixfile do
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
 
       # Charting
-      {:contex, "~> 0.3.0"}
+      {:contex, "~> 0.3.0"},
+      {:nimble_options, "~> 0.3.0"},
 
       # Cache
       {:ecto3_mnesia, "~> 0.2"}

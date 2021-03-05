@@ -21,7 +21,7 @@ defmodule Logflare.Application do
     children = [
       PubSubRates.Cache,
       {Phoenix.PubSub, name: Logflare.PubSub},
-      worker(
+      {
         Tracker,
         [
           [
@@ -34,7 +34,7 @@ defmodule Logflare.Application do
             log_level: false
           ]
         ]
-      ),
+      },
       Repo,
       LocalRepo,
       LocalRepo.Migrations,
@@ -80,12 +80,12 @@ defmodule Logflare.Application do
       Sources.Buffers,
       Sources.BuffersCache,
       # init Counters before Manager as Manager calls Counters through table create
-      supervisor(Sources.Counters, []),
-      supervisor(Sources.RateCounters, []),
-      supervisor(Logflare.PubSubRates, []),
-      supervisor(Logflare.Source.Supervisor, []),
-      supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      {Sources.Counters, []},
+      {Sources.RateCounters, []},
+      {Logflare.PubSubRates, []},
+      {Logflare.Source.Supervisor, []},
+      {Logflare.SystemMetricsSup, []},
+      {LogflareWeb.Endpoint, []}
     ]
 
     env = Application.get_env(:logflare, :env)

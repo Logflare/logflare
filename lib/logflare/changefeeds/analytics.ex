@@ -35,15 +35,6 @@ defmodule Logflare.Changefeeds.Analytics do
     end
   end
 
-  def run() do
-    changefeed_metrics = changefeed_metrics()
-
-    %{
-      metrics: node_changefeed_metrics(changefeed_metrics),
-      changefeeds: changefeed_metrics
-    }
-  end
-
   @spec node_changefeed_metrics([Changefeed.Data]) :: Changefeed.Metrics
   def node_changefeed_metrics(changefeed_data) when is_list(changefeed_data) do
     metrics =
