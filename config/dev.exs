@@ -97,5 +97,7 @@ config :logflare,
   recaptcha_site_key: "6LerPsoUAAAAAMPNe7nb4dBMDDN4w6tGtmQXn8bh",
   recaptcha_secret: "6LerPsoUAAAAAM2MP18GAsePKntkjBiANAV35Z1z"
 
+config :phoenix, :plug_init_mode, :runtime
+
 import_config "dev.secret.exs"
 import_config "telemetry.exs"
