@@ -139,7 +139,7 @@ defmodule Logflare.Mixfile do
 
       # Telemetry & logging
       {:telemetry, "~> 0.4.0"},
-      {:telemetry_poller, "0.5.0"},
+      {:telemetry_poller, "0.5.1"},
       {:telemetry_metrics, "~> 0.6.0", override: true},
       {:logflare_logger_backend, "~> 0.8.0-rc.6"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
