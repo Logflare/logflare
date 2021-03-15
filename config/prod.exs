@@ -86,8 +86,8 @@ config :logflare_agent,
 
 config :logflare_logger_backend,
   source_id: "4593c8b8-be2c-4bc6-a3e7-2bf090dd501f",
-  flush_interval: 1_000,
-  max_batch_size: 50,
+  flush_interval: 2_000,
+  max_batch_size: 250,
   url: "https://api.logflarestaging.com"
 
 config :libcluster,
