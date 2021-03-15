@@ -22,6 +22,8 @@ defmodule Logflare.BillingAccounts do
   Protocol.derive(Jason.Encoder, Stripe.Invoice)
   Protocol.derive(Jason.Encoder, Stripe.LineItem)
   Protocol.derive(Jason.Encoder, Stripe.Price)
+  Protocol.derive(Jason.Encoder, Stripe.Discount)
+  Protocol.derive(Jason.Encoder, Stripe.Coupon)
 
   @doc """
   Returns the list of billing_accounts.
