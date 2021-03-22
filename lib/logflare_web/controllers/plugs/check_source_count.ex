@@ -12,7 +12,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
     do: update_stripe_count_and_return(conn, length(user.sources))
 
   def call(%{assigns: %{user: user, plan: plan}} = conn, _params) do
-    if user.billing_enabled? do
+    if user.billing_enabled do
       source_count = length(user.sources)
 
       if source_count >= plan.limit_sources do

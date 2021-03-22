@@ -21,7 +21,7 @@ defmodule Logflare.Source do
              :public_token,
              :bq_table_id,
              :bq_table_schema,
-             :has_rejected_events?,
+             :has_rejected_events,
              :metrics,
              :notifications,
              :custom_event_message_keys
@@ -109,7 +109,7 @@ defmodule Logflare.Source do
     field :webhook_notification_url, :string
     field :slack_hook_url, :string
     field :metrics, :map, virtual: true
-    field :has_rejected_events?, :boolean, default: false, virtual: true
+    field :has_rejected_events, :boolean, default: false, virtual: true
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
     field :bq_table_schema, :any, virtual: true

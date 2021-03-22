@@ -32,7 +32,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
         validation_error: validator.message(),
         source: source,
         ingested_at: timestamp,
-        valid?: false
+        valid: false
       }
 
       _ = RejectedLogEvents.ingest(log_event)
@@ -60,7 +60,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
           timestamp: timestamp
         },
         source: source1,
-        valid?: false,
+        valid: false,
         validation_error: validator.message()
       }
 
@@ -73,7 +73,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
           timestamp: timestamp
         },
         source: source1,
-        valid?: false,
+        valid: false,
         validation_error: validator.message()
       }
 
@@ -86,7 +86,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
           timestamp: timestamp
         },
         source: source2,
-        valid?: false,
+        valid: false,
         validation_error: validator.message()
       }
 

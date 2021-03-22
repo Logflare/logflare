@@ -122,7 +122,7 @@ defmodule LogflareWeb.BillingController do
       ) do
     with plan <- Plans.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
-         false <- billing_account.lifetime_plan?,
+         false <- billing_account.lifetime_plan,
          {:ok, session} <- Stripe.create_metered_customer_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
