@@ -89,7 +89,7 @@ defmodule LogflareWeb.Source.SearchLV do
         qs = Lql.encode!(lql_rules)
 
         stale_log_events =
-          Enum.map(socket.assigns.log_events, &Map.put(&1, :is_from_stale_query?, true))
+          Enum.map(socket.assigns.log_events, &Map.put(&1, :is_from_stale_query, true))
 
         socket =
           socket
@@ -640,7 +640,7 @@ defmodule LogflareWeb.Source.SearchLV do
               %{
                 event_message: msg,
                 timestamp: DateTime.utc_now() |> DateTime.to_unix(),
-                ephemeral?: true
+                ephemeral: true
               },
               %{
                 source: socket.assigns.source

@@ -14,7 +14,6 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   alias Logflare.Plans
   alias Logflare.Plans.Plan
   use Mimic
-  
 
   setup_all do
     Sources.Counters.start_link()

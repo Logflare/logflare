@@ -219,7 +219,7 @@
   <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
   <% end %>
   <%= section_header("Backend TTL") %>
-  <%= if @conn.assigns.user.billing_enabled? do %>
+  <%= if @conn.assigns.user.billing_enabled do %>
   <p>Set how long to keep data in your backend.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
   <div class="form-group">

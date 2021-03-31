@@ -73,7 +73,7 @@ defmodule Logflare.User do
     field :valid_google_account, :boolean
     field :provider_uid, :string
     field :company, :string
-    field :billing_enabled?, :boolean, default: true, null: false
+    field :billing_enabled, :boolean, default: true
     embeds_one :preferences, UserPreferences
 
     has_many :billing_counts, Logflare.BillingCounts.BillingCount
@@ -109,7 +109,7 @@ defmodule Logflare.User do
               :old_api_key,
               :api_quota,
               :bigquery_udfs_hash,
-              :billing_enabled?
+              :billing_enabled
             ]
 
   @doc """

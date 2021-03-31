@@ -25,15 +25,15 @@ defmodule Logflare.LogEvent do
   typed_embedded_schema do
     embeds_one :body, Body
     embeds_one :source, Source
-    field :valid?, :boolean
-    field :is_from_stale_query?, :boolean
+    field :valid, :boolean
+    field :is_from_stale_query, :boolean
     field :validation_error, {:array, :string}
     field :ingested_at, :utc_datetime_usec
     field :sys_uint, :integer
     field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
-    field :ephemeral?, :boolean
+    field :ephemeral, :boolean
     field :make_from, :string
   end
 
@@ -70,7 +70,7 @@ defmodule Logflare.LogEvent do
         "timestamp" => timestamp
       },
       "id" => id,
-      "ephemeral?" => params[:ephemeral?],
+      "ephemeral" => params[:ephemeral],
       "make_from" => params[:make_from]
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
@@ -89,7 +89,7 @@ defmodule Logflare.LogEvent do
 
     changes =
       %__MODULE__{}
-      |> cast(params, [:valid?, :validation_error, :id, :make_from])
+      |> cast(params, [:valid, :validation_error, :id, :make_from])
       |> cast_embed(:body, with: &make_body/2)
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> Map.get(:changes)
@@ -106,7 +106,7 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params, source), [:valid?, :validation_error, :ephemeral?, :make_from])
+      |> cast(mapper(params, source), [:valid, :validation_error, :ephemeral, :make_from])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> cast_embed(:body, with: &make_body/2)
       |> validate_required([:body])
@@ -119,7 +119,7 @@ defmodule Logflare.LogEvent do
       |> Map.put(:validation_error, changeset_error_to_string(changeset))
       |> Map.put(:source, source)
       |> Map.put(:origin_source_id, source.token)
-      |> Map.put(:valid?, changeset.valid?)
+      |> Map.put(:valid, changeset.valid?)
       |> Map.put(:params, params)
       |> Map.put(:ingested_at, NaiveDateTime.utc_now())
       |> Map.put(:id, Ecto.UUID.generate())
@@ -142,17 +142,17 @@ defmodule Logflare.LogEvent do
   end
 
   @spec validate(LE.t()) :: LE.t()
-  def validate(%LE{valid?: false} = le), do: le
+  def validate(%LE{valid: false} = le), do: le
 
-  def validate(%LE{valid?: true} = le) do
+  def validate(%LE{valid: true} = le) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do
         :ok ->
-          {:cont, %{le | valid?: true}}
+          {:cont, %{le | valid: true}}
 
         {:error, message} ->
-          {:halt, %{le | valid?: false, validation_error: message}}
+          {:halt, %{le | valid: false, validation_error: message}}
       end
     end)
   end

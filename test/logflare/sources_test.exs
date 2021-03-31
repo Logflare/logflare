@@ -10,7 +10,6 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Source
   @moduletag :this
 
-
   setup do
     u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
     s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
