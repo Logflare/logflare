@@ -244,12 +244,12 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       },
       id: "7530b1ca-1c7b-4bde-abc9-506e06fe1f25",
       ingested_at: nil,
-      is_from_stale_query?: nil,
+      is_from_stale_query: nil,
       origin_source_id: nil,
       params: nil,
       source: nil,
       sys_uint: nil,
-      valid?: nil,
+      valid: nil,
       validation_error: nil,
       via_rule: nil
     }

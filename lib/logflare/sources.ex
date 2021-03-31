@@ -257,7 +257,7 @@ defmodule Logflare.Sources do
       fields: fields
     }
 
-    %{source | metrics: metrics, has_rejected_events?: rejected_count > 0}
+    %{source | metrics: metrics, has_rejected_events: rejected_count > 0}
   end
 
   def put_schema_field_count(%Source{} = source) do

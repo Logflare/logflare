@@ -81,7 +81,7 @@ defmodule Logflare.BillingAccounts do
     |> case do
       {:ok, _user} = response ->
         # move this to be the default on user create after launch
-        Users.update_user_all_fields(user, %{billing_enabled?: true})
+        Users.update_user_all_fields(user, %{billing_enabled: true})
 
         Source.Supervisor.reset_all_user_sources(user)
 

@@ -90,7 +90,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
         search
       end
 
-    SavedSearches.inc(search.id, tailing?: tailing?)
+    SavedSearches.inc(search.id, tailing: tailing?)
   end
 
   def query(params) do
@@ -209,7 +209,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     # during initial tailing query
     log_events =
       params.log_events
-      |> Enum.reject(& &1.is_from_stale_query?)
+      |> Enum.reject(& &1.is_from_stale_query)
       |> Enum.concat(rows)
       |> Enum.uniq_by(&{&1.body, &1.id})
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)

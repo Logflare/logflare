@@ -46,7 +46,7 @@ defmodule Logflare.SavedSearches do
 
     if search do
       search
-      |> SavedSearch.changeset(%{saved_by_user: true, tailing?: tailing?})
+      |> SavedSearch.changeset(%{saved_by_user: true, tailing: tailing?})
       |> Repo.update()
     else
       insert(
@@ -54,7 +54,7 @@ defmodule Logflare.SavedSearches do
           querystring: querystring,
           lql_rules: lql_rules,
           saved_by_user: true,
-          tailing?: tailing?
+          tailing: tailing?
         },
         source
       )
@@ -62,7 +62,7 @@ defmodule Logflare.SavedSearches do
   end
 
   def inc(search_id, opts) do
-    tailing? = opts[:tailing?]
+    tailing? = opts[:tailing]
     timestamp = opts[:timestamp] || DateTime.utc_now() |> DateTimeUtils.truncate(:hour)
 
     {tcount, ntcount} =

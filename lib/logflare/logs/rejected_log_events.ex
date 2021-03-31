@@ -55,7 +55,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
   Expected to be called only in Logs context
   """
   @spec ingest(LE.t()) :: :ok
-  def ingest(%LE{source: %Source{token: token}, valid?: false, id: id} = le) do
+  def ingest(%LE{source: %Source{token: token}, valid: false, id: id} = le) do
     Cachex.put!(@cache, {token, id}, le)
     Cachex.incr(@cache, counter_name(token))
 

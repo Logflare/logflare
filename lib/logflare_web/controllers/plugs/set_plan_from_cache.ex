@@ -22,14 +22,14 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
   end
 
   defp get_plan(user) do
-    if user.billing_enabled? do
+    if user.billing_enabled do
       ba = BillingAccounts.Cache.get_billing_account_by(user_id: user.id)
 
       case ba do
         nil ->
           Plans.Cache.get_plan_by(name: "Free")
 
-        %BillingAccounts.BillingAccount{lifetime_plan?: true} ->
+        %BillingAccounts.BillingAccount{lifetime_plan: true} ->
           Plans.Cache.get_plan_by(name: "Lifetime")
 
         %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->

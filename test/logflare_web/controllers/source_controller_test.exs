@@ -62,7 +62,7 @@ defmodule LogflareWeb.SourceControllerTest do
         validation_error: Validators.EqDeepFieldTypes.message(),
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
-        valid?: false,
+        valid: false,
         ingested_at: NaiveDateTime.utc_now()
       })
 
@@ -355,8 +355,8 @@ defmodule LogflareWeb.SourceControllerTest do
           s1
         )
 
-      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing?: false)
-      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing?: true)
+      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: false)
+      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: true)
 
       conn =
         conn

@@ -89,36 +89,36 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
 
     for i <- 1..20 do
       SavedSearches.inc(ss3.id,
-        tailing?: false,
+        tailing: false,
         timestamp: %{~U[2020-01-01T00:00:00Z] | day: i, hour: i}
       )
 
       SavedSearches.inc(ss3.id,
-        tailing?: true,
+        tailing: true,
         timestamp: %{~U[2020-01-01T00:00:00Z] | day: i, hour: i}
       )
     end
 
     for i <- 1..30 do
-      SavedSearches.inc(ss3.id, tailing?: false, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
-      SavedSearches.inc(ss3.id, tailing?: true, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
+      SavedSearches.inc(ss3.id, tailing: false, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
+      SavedSearches.inc(ss3.id, tailing: true, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
     end
 
     for i <- 1..10 do
-      SavedSearches.inc(ss2.id, tailing?: false, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
-      SavedSearches.inc(ss2.id, tailing?: true, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
+      SavedSearches.inc(ss2.id, tailing: false, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
+      SavedSearches.inc(ss2.id, tailing: true, timestamp: %{~U[2020-01-01T00:00:00Z] | day: i})
     end
 
     for i <- 1..10 do
-      SavedSearches.inc(ss.id, tailing?: false, timestamp: %{~U[2020-01-01T01:00:00Z] | second: i})
+      SavedSearches.inc(ss.id, tailing: false, timestamp: %{~U[2020-01-01T01:00:00Z] | second: i})
     end
 
-    SavedSearches.inc(ss.id, tailing?: false, timestamp: ~U[2020-01-01T01:00:00Z])
-    SavedSearches.inc(ss.id, tailing?: false, timestamp: ~U[2020-01-01T01:00:00Z])
-    SavedSearches.inc(ss.id, tailing?: false, timestamp: ~U[2020-02-01T01:00:00Z])
-    SavedSearches.inc(ss.id, tailing?: false, timestamp: ~U[2020-03-01T01:00:00Z])
-    SavedSearches.inc(ss.id, tailing?: true, timestamp: ~U[2020-01-01T01:00:00Z])
-    SavedSearches.inc(ss.id, tailing?: true, timestamp: ~U[2020-03-01T01:00:00Z])
+    SavedSearches.inc(ss.id, tailing: false, timestamp: ~U[2020-01-01T01:00:00Z])
+    SavedSearches.inc(ss.id, tailing: false, timestamp: ~U[2020-01-01T01:00:00Z])
+    SavedSearches.inc(ss.id, tailing: false, timestamp: ~U[2020-02-01T01:00:00Z])
+    SavedSearches.inc(ss.id, tailing: false, timestamp: ~U[2020-03-01T01:00:00Z])
+    SavedSearches.inc(ss.id, tailing: true, timestamp: ~U[2020-01-01T01:00:00Z])
+    SavedSearches.inc(ss.id, tailing: true, timestamp: ~U[2020-03-01T01:00:00Z])
 
     {:ok, sources: [s], users: [u], saved_searches: [ss]}
   end
@@ -162,12 +162,12 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
     end
 
     test "top_sources/1", %{sources: [_s | _], users: [_u | _], saved_searches: [ss | _]} do
-      SavedSearches.inc(ss.id, tailing?: true)
-      SavedSearches.inc(ss.id, tailing?: false)
-      SavedSearches.inc(ss.id, tailing?: true)
-      SavedSearches.inc(ss.id, tailing?: false)
-      SavedSearches.inc(ss.id, tailing?: false)
-      SavedSearches.inc(ss.id, tailing?: false)
+      SavedSearches.inc(ss.id, tailing: true)
+      SavedSearches.inc(ss.id, tailing: false)
+      SavedSearches.inc(ss.id, tailing: true)
+      SavedSearches.inc(ss.id, tailing: false)
+      SavedSearches.inc(ss.id, tailing: false)
+      SavedSearches.inc(ss.id, tailing: false)
 
       data = Analytics.top_sources(:"24h")
       assert [%{id: _, name: _, non_tailing_count: 4, tailing_count: 2}] = data
