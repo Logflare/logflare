@@ -30,7 +30,7 @@
         <%= for source <- @sources do %>
         <%= for saved_search <- source.saved_searches do %>
         <li>
-          <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing?: saved_search.tailing?}), class: "" %>
+          <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing: saved_search.tailing}), class: "" %>
           <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
           <i class="fa fa-trash"></i>
           <% end %>
