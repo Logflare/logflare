@@ -2,13 +2,28 @@ import socket from "./socket"
 import $ from "jquery"
 import * as userConfig from "./user-config-storage"
 import _ from "lodash"
-import { userSelectedFormatter } from "./formatters"
-import { activateClipboardForSelector } from "./utils"
-import { applyToAllLogTimestamps } from "./logs"
+import {
+  userSelectedFormatter
+} from "./formatters"
+import {
+  activateClipboardForSelector
+} from "./utils"
+import {
+  applyToAllLogTimestamps
+} from "./logs"
 
-export async function main({ scrollTracker }, { avgEventsPerSecond }) {
-  const { sourceToken, logs } = $("#__phx-assigns__").data()
-  await initLogsUiFunctions({ scrollTracker })
+export async function main({
+  scrollTracker
+}, {
+  avgEventsPerSecond
+}) {
+  const {
+    sourceToken,
+    logs
+  } = $("#__phx-assigns__").data()
+  await initLogsUiFunctions({
+    scrollTracker
+  })
 
   await initClipboards()
   await initTooltips()
@@ -31,17 +46,28 @@ async function initClipboards() {
 }
 
 async function initTooltips() {
-  $(".logflare-tooltip").tooltip({ delay: { show: 100, hide: 200 } })
+  $(".logflare-tooltip").tooltip({
+    delay: {
+      show: 100,
+      hide: 200
+    }
+  })
 }
 
-export async function initLogsUiFunctions({ scrollTracker }) {
-  await trackScroll({ scrollTracker })
+export async function initLogsUiFunctions({
+  scrollTracker
+}) {
+  await trackScroll({
+    scrollTracker
+  })
 
   await applyToAllLogTimestamps(await userSelectedFormatter())
   $("#logs-list").removeAttr("hidden")
 }
 
-export async function trackScroll({ scrollTracker }) {
+export async function trackScroll({
+  scrollTracker
+}) {
   window.scrollTracker = scrollTracker
 
   window.addEventListener("scroll", () => {
@@ -83,30 +109,32 @@ export function scrollBottom() {
 }
 
 async function logTemplate(e) {
-  const { via_rule, origin_source_id, body } = e
+  const {
+    via_rule,
+    origin_source_id,
+    body
+  } = e
   const metadata = JSON.stringify(body.metadata, null, 2)
   const formatter = await userSelectedFormatter()
   const formattedDatetime = formatter(body.timestamp)
   const randomId = Math.random() * 10e16
   const metadataId = `metadata-${body.timestamp}-${randomId}`
 
-  const metadataElement = !_.isEmpty(body.metadata)
-    ? `
+  const metadataElement = !_.isEmpty(body.metadata) ?
+    `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
         metadata
     </a>
     <div class="collapse metadata" id="${metadataId}">
-        <pre class="pre-metadata"><code> ${_.escape(metadata)}</code></pre>
-    </div> `
-    : ""
+        <pre class="pre-metadata"><code>${_.escape(metadata)}</code></pre>
+    </div> ` :
+    ""
 
   return `<li>
-    <mark class="log-datestamp" data-timestamp="${
-    body.timestamp
-    }">${formattedDatetime}</mark> ${body.message}
+    <mark class="log-datestamp" data-timestamp="${body.timestamp
+    }">${formattedDatetime}</mark> ${_.escape(body.message)}
     ${metadataElement}
-    ${
-    via_rule
+    ${via_rule
       ? `<span
     data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
     <i class="fa fa-code-branch" style="font-size: 1em;"></i>
