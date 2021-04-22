@@ -100,6 +100,7 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:nimble_parsec, "~> 1.0"},
       {:warpath, "~> 0.5.0"},
+      {:timber_logfmt, github: "Logflare/logfmt-elixir"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},

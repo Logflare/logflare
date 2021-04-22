@@ -84,6 +84,21 @@ defmodule Logflare.Logs.SyslogParser do
         |> rename_fields()
 
       syslog_message = struct(SyslogMessage, map)
+
+      logfmt =
+        case syslog_message.process_id do
+          "router" ->
+            parse_logfmt(syslog_message.message_text)
+
+          "heroku-postgres" ->
+            parse_logfmt(syslog_message.message_text)
+
+          _ ->
+            nil
+        end
+
+      syslog_message = Map.put(syslog_message, :logfmt, logfmt)
+
       {:ok, syslog_message}
     else
       {:error, error, _, _, _, _} -> {:error, error}
@@ -131,5 +146,12 @@ defmodule Logflare.Logs.SyslogParser do
        end, v}
     end)
     |> Map.new()
+  end
+
+  defp parse_logfmt(string) do
+    case Logfmt.decode(string) do
+      {:ok, data} -> data
+      {:error, _} -> nil
+    end
   end
 end

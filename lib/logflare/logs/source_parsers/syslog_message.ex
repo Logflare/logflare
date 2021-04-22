@@ -6,6 +6,7 @@ defmodule Logflare.Logs.SyslogMessage do
 
   typedstruct do
     field :sd, list(map)
+    field :logfmt, map()
 
     field :priority, integer()
     field :facility, integer()
