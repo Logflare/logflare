@@ -259,6 +259,7 @@ defmodule LogflareWeb.Router do
     pipe_through :browser
 
     get "/vercel", Auth.VercelAuth, :set_oauth_params
+    get "/vercel-v2", Auth.VercelAuth, :set_oauth_params_v2
     get "/zeit", Auth.VercelAuth, :set_oauth_params
   end
 
@@ -280,6 +281,7 @@ defmodule LogflareWeb.Router do
     pipe_through :api
     post "/cloudflare/v1", CloudflareControllerV1, :event
     post "/stripe", StripeController, :event
+    # post "/vercel", VercelController, :event
   end
 
   scope "/health", LogflareWeb do

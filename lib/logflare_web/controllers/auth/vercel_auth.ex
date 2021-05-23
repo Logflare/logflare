@@ -4,6 +4,8 @@ defmodule LogflareWeb.Auth.VercelAuth do
   """
   use LogflareWeb, :controller
 
+  alias Logflare.Vercel
+
   @config Application.get_env(:logflare, __MODULE__)
 
   def set_oauth_params(%{query_string: query_string} = conn, _params) do
@@ -18,6 +20,41 @@ defmodule LogflareWeb.Auth.VercelAuth do
 
     conn
     |> put_session(:oauth_params, params)
+    |> redirect(to: Routes.auth_path(conn, :login))
+  end
+
+  def set_oauth_params_v2(conn, %{
+        "code" => code,
+        "configurationId" => _config_id,
+        "next" => redirect_to,
+        "teamId" => _team_id
+      }) do
+    resp = Vercel.Client.get_access_token(code) |> IO.inspect(label: :token)
+
+    params = %{
+      "next" => redirect_to
+    }
+
+    login(conn, params)
+  end
+
+  def set_oauth_params_v2(conn, %{
+        "code" => code,
+        "configurationId" => _config_id,
+        "next" => redirect_to
+      }) do
+    resp = Vercel.Client.get_access_token(code) |> IO.inspect(label: :token)
+
+    params = %{
+      "next" => redirect_to
+    }
+
+    login(conn, params)
+  end
+
+  defp login(conn, params) do
+    conn
+    |> put_session(:vercel_setup, params)
     |> redirect(to: Routes.auth_path(conn, :login))
   end
 end

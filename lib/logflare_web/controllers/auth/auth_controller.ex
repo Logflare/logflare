@@ -162,16 +162,24 @@ defmodule LogflareWeb.AuthController do
             CloudResourceManager.set_iam_policy()
             BigQuery.patch_dataset_access(user)
 
-            case is_nil(get_session(conn, :oauth_params)) do
+            oauth_params = get_session(conn, :oauth_params)
+            vercel_setup_params = get_session(conn, :vercel_setup)
+
+            cond do
+              oauth_params ->
+                conn
+                |> redirect_for_oauth(user)
+
+              vercel_setup_params ->
+                conn
+                |> put_session(:vercel_setup, nil)
+                |> redirect(external: vercel_setup_params["next"])
+
               true ->
                 conn
                 |> put_flash(:info, "Welcome back!")
                 |> put_session(:user_id, user.id)
                 |> maybe_redirect_team_user()
-
-              false ->
-                conn
-                |> redirect_for_oauth(user)
             end
 
           {:error, _reason} ->

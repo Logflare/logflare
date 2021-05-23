@@ -86,8 +86,13 @@ config :libcluster,
 config :logflare, Logflare.Tracker, pool_size: 1
 
 config :logflare, LogflareWeb.Auth.VercelAuth,
-  vercel_app_host: "https://dev.chasegranberry.net",
+  vercel_app_host: "https://phx.chasegranberry.net",
   client_id: "9b73d10edd067ba404148b28ef1eb4b1cb2a7027ade973b6cadc2b24f7c16702"
+
+config :logflare, Logflare.Vercel.Client,
+  client_id: "oac_mfhbqP7U20BH3IbJYmhsNNj1",
+  client_secret: "AyAOgIeI4TmOgnqgUTA9u68z",
+  redirect_uri: "http://localhost:4000/install/vercel-v2"
 
 config :goth,
   json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
