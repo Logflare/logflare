@@ -11,6 +11,7 @@ defmodule Logflare.User do
   alias Logflare.BillingAccounts.BillingAccount
   alias Logflare.Google.BigQuery
   alias Logflare.Users.UserPreferences
+  alias Logflare.Vercel
 
   @derive {Jason.Encoder,
            only: [
@@ -78,6 +79,7 @@ defmodule Logflare.User do
 
     has_many :billing_counts, Logflare.BillingCounts.BillingCount
     has_many :sources, Source
+    has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
     has_one :billing_account, BillingAccount

@@ -3,7 +3,6 @@ defmodule LogflareWeb.Auth.VercelAuth do
   What we do when someone signs up and oauth's from the Vercel integration.
   """
   use LogflareWeb, :controller
-
   alias Logflare.Vercel
 
   @config Application.get_env(:logflare, __MODULE__)
@@ -23,30 +22,27 @@ defmodule LogflareWeb.Auth.VercelAuth do
     |> redirect(to: Routes.auth_path(conn, :login))
   end
 
-  def set_oauth_params_v2(conn, %{
-        "code" => code,
-        "configurationId" => _config_id,
-        "next" => redirect_to,
-        "teamId" => _team_id
-      }) do
-    resp = Vercel.Client.get_access_token(code) |> IO.inspect(label: :token)
+  def set_oauth_params_v2(
+        conn,
+        %{
+          "code" => code,
+          "next" => redirect_to
+        } = params
+      ) do
+    IO.inspect(params)
+
+    {:ok, resp} =
+      Vercel.Client.new()
+      |> Vercel.Client.get_access_token(code)
+
+    auth_params =
+      resp.body
+      |> Map.delete("user_id")
+      |> Map.put("vercel_user_id", resp.body["user_id"])
 
     params = %{
-      "next" => redirect_to
-    }
-
-    login(conn, params)
-  end
-
-  def set_oauth_params_v2(conn, %{
-        "code" => code,
-        "configurationId" => _config_id,
-        "next" => redirect_to
-      }) do
-    resp = Vercel.Client.get_access_token(code) |> IO.inspect(label: :token)
-
-    params = %{
-      "next" => redirect_to
+      "next" => redirect_to,
+      "auth_params" => auth_params
     }
 
     login(conn, params)

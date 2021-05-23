@@ -7,6 +7,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Mailer
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Google.BigQuery
+  alias Logflare.Vercel
 
   @max_age 86_400
 
@@ -171,6 +172,8 @@ defmodule LogflareWeb.AuthController do
                 |> redirect_for_oauth(user)
 
               vercel_setup_params ->
+                {:ok, _auth} = Vercel.create_auth(user, vercel_setup_params["auth_params"])
+
                 conn
                 |> put_session(:vercel_setup, nil)
                 |> redirect(external: vercel_setup_params["next"])

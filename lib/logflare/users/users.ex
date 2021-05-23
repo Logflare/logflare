@@ -39,6 +39,11 @@ defmodule Logflare.Users do
     |> Repo.preload(:billing_account)
   end
 
+  def preload_vercel_auths(user) do
+    user
+    |> Repo.preload(:vercel_auths)
+  end
+
   def preload_defaults(user) do
     user
     |> preload_sources

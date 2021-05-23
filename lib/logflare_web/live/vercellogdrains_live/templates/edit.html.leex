@@ -1,0 +1,38 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/<%= link "account", to: Routes.user_path(@socket, :edit), class: "text-primary" %>/vercel</h5>
+    <div class="log-settings">
+      <ul>
+        <li><%= link to: Routes.billing_account_path(@socket, :edit) do %><i class="fas fa-money-bill"></i><span
+            class="hide-on-mobile"> billing</span><% end %></li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@socket, :index) do %><i class="fas fa-key"></i><span
+            class="hide-on-mobile"> authorized apps</span><% end %></li>
+        <li><%= link to: Routes.vercel_log_drains_path(@socket, :index) do %><i class="fas fa-money-bill"></i><span
+            class="hide-on-mobile"> vercel</span><% end %></li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="container mx-auto">
+  <h4 class="header-margin">Vercel Integration</h4>
+  <div class="sub-form">
+    <%= section_header("Log Drains") %>
+    <ul>
+      <%= for d <- @drains do %>
+        <li>
+        <%= inspect(d) %>
+        </li>
+      <% end %>
+    </ul>
+  </div>
+  <div class="sub-form">
+    <%= section_header("Authorizations") %>
+    <ul>
+      <%= for a <- @auths do %>
+        <li>
+        <%= a.access_token %>
+        </li>
+      <% end %>
+    </ul>
+  </div>
+</div>
