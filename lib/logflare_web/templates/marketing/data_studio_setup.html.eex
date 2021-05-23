@@ -67,11 +67,13 @@
           </div>
           <h4>What are Partitioned Tables Exactly?</h5>
           <p>Partitioned tables are very cool and provide a lot of benefits when you're using the BigQuery platform and Data Studio.</p>
+
           <ul>
             <li>Data storage is half price when data in a partitioned table is older than 90 days. When a table hasn't been modified in 90 days you only get charged half the normal rate. Because when you partition a table, it separates that table into many different underlying tables, you automatically benefit from this discount.</li>
             <li>Potentially large savings on query costs. When you partition a table you can limit your queries by the partition and BigQuery will only scan the data in the selected column / parition combination. This prevents BigQuery from scanning everything for the entire column, which saves money and makes your queries more responsive.</li>
             <li>Data Studio's cache is highly optimized for time based paritioned tables so you automatically get these query optimizations when you use Data Studio and BigQuery.</li>
           </ul>
+
           <p>The only caveat is data in the streaming buffer isn't returned with paritioned queries by default and Data Studio doesn't include streaming buffered data at all when you opt for using partitioned table optimized queries. If you're building your own system on top of BigQuery you can query the streaming buffer direclty with a query like this as data in the streaming buffer has a NULL value for the _PARTITIONTIME column (<%= link "source", to: "https://stackoverflow.com/questions/41864257/how-to-query-for-data-in-streaming-buffer-only-in-bigquery" %>):</p>
           <pre>
             <code>
