@@ -124,6 +124,11 @@ config :logflare, LogflareWeb.Auth.VercelAuth,
 config :logflare,
   recaptcha_site_key: "6LffD8sZAAAAAFPKl-dzyTTpPtunFXfL6Wm8zraT"
 
+config :logflare, Logflare.Vercel.Client,
+  client_id: "oac_yEwf1AmqJMbRs2rkmnePdNK3",
+  redirect_uri: "https://logflare.app/install/vercel-v2",
+  install_vercel_uri: "https://vercel.com/integrations/logflare/new"
+
 import_config "telemetry.exs"
 
 if File.exists?("config/prod.secret.exs") do
