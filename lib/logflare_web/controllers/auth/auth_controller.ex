@@ -172,7 +172,12 @@ defmodule LogflareWeb.AuthController do
                 |> redirect_for_oauth(user)
 
               vercel_setup_params ->
-                {:ok, _auth} = Vercel.create_auth(user, vercel_setup_params["auth_params"])
+                IO.inspect(vercel_setup_params)
+                auth_params = vercel_setup_params["auth_params"]
+                install_id = auth_params["installation_id"]
+
+                {:ok, _auth} =
+                  Vercel.find_by_or_create_auth([installation_id: install_id], user, auth_params)
 
                 conn
                 |> put_session(:vercel_setup, nil)

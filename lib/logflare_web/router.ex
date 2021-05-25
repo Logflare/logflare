@@ -214,10 +214,10 @@ defmodule LogflareWeb.Router do
     put "/edit/owner", UserController, :change_owner
   end
 
-  scope "/account", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/integrations", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
-    live "/vercel", VercelLogDrainsLive, :index
+    live "/vercel/edit", VercelLogDrainsLive, :edit
   end
 
   scope "/account/billing", LogflareWeb do

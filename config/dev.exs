@@ -90,9 +90,10 @@ config :logflare, LogflareWeb.Auth.VercelAuth,
   client_id: "9b73d10edd067ba404148b28ef1eb4b1cb2a7027ade973b6cadc2b24f7c16702"
 
 config :logflare, Logflare.Vercel.Client,
-  client_id: "oac_mfhbqP7U20BH3IbJYmhsNNj1",
-  client_secret: "AyAOgIeI4TmOgnqgUTA9u68z",
-  redirect_uri: "http://localhost:4000/install/vercel-v2"
+  client_id: "oac_9AFs6dPQPFhy5xS1IOvc2xrf",
+  client_secret: "mmDrqcJYuJeIxNX9AXbNqrhm",
+  redirect_uri: "http://localhost:4000/install/vercel-v2",
+  install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
 
 config :goth,
   json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()

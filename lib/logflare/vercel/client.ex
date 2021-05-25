@@ -14,7 +14,6 @@ defmodule Logflare.Vercel.Client do
   def new(%Vercel.Auth{} = auth) do
     middleware = [
       {Tesla.Middleware.BaseUrl, "https://api.vercel.com"},
-      Tesla.Middleware.FormUrlencoded,
       Tesla.Middleware.JSON,
       {Tesla.Middleware.Headers, headers(auth)},
       {Tesla.Middleware.Query, query_params(auth)}
@@ -23,6 +22,9 @@ defmodule Logflare.Vercel.Client do
     adapter = {Tesla.Adapter.Mint, timeout: 60_000, mode: :passive}
 
     Tesla.client(middleware, adapter)
+  end
+
+  def new_auth() do
   end
 
   def get_access_token(client, code) do
@@ -34,6 +36,9 @@ defmodule Logflare.Vercel.Client do
     }
 
     url = "/v2/oauth/access_token"
+    middleware = Tesla.Client.middleware(client)
+    adapter = Tesla.Client.adapter(client)
+    client = Tesla.client([Tesla.Middleware.FormUrlencoded | middleware], adapter)
 
     client
     |> Tesla.post(url, body)
@@ -42,6 +47,11 @@ defmodule Logflare.Vercel.Client do
   def list_log_drains(client) do
     client
     |> Tesla.get("/v1/integrations/log-drains")
+  end
+
+  def list_projects(client) do
+    client
+    |> Tesla.get("/v4/projects")
   end
 
   def create_log_drain(client, params) when is_map(params) do

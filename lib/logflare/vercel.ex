@@ -2,6 +2,13 @@ defmodule Logflare.Vercel do
   alias Logflare.Vercel.Auth
   alias Logflare.Repo
 
+  def find_by_or_create_auth(kv, user, attrs \\ %{}) do
+    case get_auth_by(kv) do
+      nil -> create_auth(user, attrs)
+      auth -> {:ok, auth}
+    end
+  end
+
   @doc """
   Returns the list of vercel_auths.
 
@@ -30,6 +37,8 @@ defmodule Logflare.Vercel do
 
   """
   def get_auth!(id), do: Repo.get!(Auth, id)
+
+  def get_auth_by(kv), do: Repo.get_by(Auth, kv)
 
   @doc """
   Creates a auth.

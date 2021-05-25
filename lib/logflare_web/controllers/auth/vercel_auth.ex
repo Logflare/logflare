@@ -4,6 +4,7 @@ defmodule LogflareWeb.Auth.VercelAuth do
   """
   use LogflareWeb, :controller
   alias Logflare.Vercel
+  alias LogflareWeb.Router.Helpers, as: Routes
 
   @config Application.get_env(:logflare, __MODULE__)
 
@@ -22,15 +23,7 @@ defmodule LogflareWeb.Auth.VercelAuth do
     |> redirect(to: Routes.auth_path(conn, :login))
   end
 
-  def set_oauth_params_v2(
-        conn,
-        %{
-          "code" => code,
-          "next" => redirect_to
-        } = params
-      ) do
-    IO.inspect(params)
-
+  def set_oauth_params_v2(conn, %{"code" => code} = params) do
     {:ok, resp} =
       Vercel.Client.new()
       |> Vercel.Client.get_access_token(code)
@@ -39,6 +32,11 @@ defmodule LogflareWeb.Auth.VercelAuth do
       resp.body
       |> Map.delete("user_id")
       |> Map.put("vercel_user_id", resp.body["user_id"])
+
+    redirect_to =
+      if params["next"],
+        do: params["next"],
+        else: Routes.vercel_log_drains_url(LogflareWeb.Endpoint, :edit)
 
     params = %{
       "next" => redirect_to,
