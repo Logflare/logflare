@@ -66,7 +66,11 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     auth = socket.assigns.selected_auth
     api_key = socket.assigns.user.api_key
     url = "https://api.logflare.app/logs/vercel?api_key=#{api_key}&source=#{source_token}"
-    drain_params = %{name: name, type: "json", url: url, projectId: project_id}
+
+    drain_params =
+      if project_id == "all_projects",
+        do: %{name: name, type: "json", url: url},
+        else: %{name: name, type: "json", url: url, projectId: project_id}
 
     {:ok, resp} = Vercel.Client.new(auth) |> Vercel.Client.create_log_drain(drain_params)
 

@@ -4,7 +4,7 @@
     <div class="log-settings">
       <ul>
         <li><%= link to: Routes.vercel_log_drains_path(@socket, :edit) do %>▲</i><span class="hide-on-mobile">
-            vercel</span><% end %></li>
+            vercel integration</span><% end %></li>
       </ul>
     </div>
   </div>
@@ -37,7 +37,7 @@
       <li>
         <%= if d.source do %>
         <p>
-        <code><%= d.drain["name"] %></code> for project <code><%= d.drain["projectId"]%></code> is sending logs to
+        <code><%= d.drain["name"] %></code> for project <code><%= if d.drain["projectId"], do: d.drain["projectId"], else: "all_projects" %></code> is sending logs to
         <code><%= link d.source.name, to: Routes.source_path(@socket, :show, d.source.id) %></code>
         </p>
         <div class="mt-2 mb-3">
