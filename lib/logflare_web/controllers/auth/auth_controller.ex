@@ -172,7 +172,6 @@ defmodule LogflareWeb.AuthController do
                 |> redirect_for_oauth(user)
 
               vercel_setup_params ->
-                IO.inspect(vercel_setup_params)
                 auth_params = vercel_setup_params["auth_params"]
                 install_id = auth_params["installation_id"]
 

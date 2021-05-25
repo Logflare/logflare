@@ -215,7 +215,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/integrations", LogflareWeb do
-    pipe_through [:browser, :require_auth]
+    pipe_through [:browser, :require_auth, :check_owner]
 
     live "/vercel/edit", VercelLogDrainsLive, :edit
   end
