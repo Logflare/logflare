@@ -121,8 +121,11 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   def handle_event("delete_auth", %{"id" => auth_id}, socket) do
-    Vercel.get_auth!(auth_id)
-    |> Vercel.delete_auth()
+    socket =
+      case Vercel.get_auth!(auth_id) |> Vercel.delete_auth() do
+        {:ok, _resp} -> put_flash(socket, :info, "Integration deleted!")
+        {:error, _resp} -> put_flash(socket, :error, "Something went wrong!")
+      end
 
     user_id = socket.assigns.user.id
 

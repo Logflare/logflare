@@ -78,14 +78,24 @@ defmodule LogflareWeb.SourceController do
     |> Sources.create_source(user)
     |> case do
       {:ok, source} ->
-        if get_session(conn, :oauth_params) do
-          conn
-          |> put_flash(:info, "Source created!")
-          |> AuthController.redirect_for_oauth(user)
-        else
-          conn
-          |> put_flash(:info, "Source created!")
-          |> redirect(to: Routes.source_path(conn, :show, source.id, new: true))
+        oauth_params = get_session(conn, :oauth_params)
+        vercel_setup_params = get_session(conn, :vercel_setup)
+
+        cond do
+          oauth_params ->
+            conn
+            |> put_flash(:info, "Source created!")
+            |> AuthController.redirect_for_oauth(user)
+
+          vercel_setup_params ->
+            conn
+            |> put_flash(:info, "Source created!")
+            |> AuthController.redirect_for_vercel(user)
+
+          true ->
+            conn
+            |> put_flash(:info, "Source created!")
+            |> redirect(to: Routes.source_path(conn, :show, source.id, new: true))
         end
 
       {:error, changeset} ->
