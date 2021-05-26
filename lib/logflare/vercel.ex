@@ -1,6 +1,7 @@
 defmodule Logflare.Vercel do
   alias Logflare.Vercel.Auth
   alias Logflare.Repo
+  alias __MODULE__
 
   def find_by_or_create_auth(kv, user, attrs \\ %{}) do
     case get_auth_by(kv) do
@@ -90,7 +91,20 @@ defmodule Logflare.Vercel do
 
   """
   def delete_auth(%Auth{} = auth) do
-    Repo.delete(auth)
+    {:ok, resp} =
+      Vercel.Client.new(auth)
+      |> Vercel.Client.delete_configuration(auth.installation_id)
+
+    case resp do
+      %Tesla.Env{status: 204} ->
+        Repo.delete(auth)
+
+      %Tesla.Env{status: 403} ->
+        Repo.delete(auth)
+
+      _resp ->
+        {:error, :vercel_api_error}
+    end
   end
 
   @doc """

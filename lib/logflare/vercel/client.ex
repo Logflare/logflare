@@ -64,6 +64,11 @@ defmodule Logflare.Vercel.Client do
     |> Tesla.delete("/v1/integrations/log-drains/" <> drain_id)
   end
 
+  def delete_configuration(client, config_id) when is_binary(config_id) do
+    client
+    |> Tesla.delete("/v1/integrations/configuration/" <> config_id)
+  end
+
   defp query_params(%Vercel.Auth{team_id: nil}) do
     []
   end
