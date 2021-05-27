@@ -16,7 +16,8 @@
     <p>Vercel log drains send your project logs from Vercel to a Logflare source.</p>
     <p>Install the Vercel integration to setup a log drain.</p>
     <p><i class="fas fa-info-circle"></i> If you installed a Logflare integration before May 2021 you will need to
-      reinstall it to manage your log drains here. You can safely install the integration again without uninstalling it first.</p>
+      reinstall it to manage your log drains here. You can safely install the integration again without uninstalling it
+      first.</p>
     <%= button "Install integration", to: Application.get_env(:logflare, Logflare.Vercel.Client)[:install_vercel_uri], class: "btn btn-primary"%>
   </div>
 
@@ -38,8 +39,9 @@
       <li>
         <%= if d.source do %>
         <p>
-        <strong><%= d.drain["name"] %></strong> for project <strong><%= if d.project, do: d.project["name"], else: "all_projects" %></strong> is sending logs to
-        <code><%= link d.source.name, to: Routes.source_path(@socket, :show, d.source.id) %></code>
+          <strong><%= d.drain["name"] %></strong> for project
+          <strong><%= if d.project, do: d.project["name"], else: "all_projects" %></strong> is sending logs to
+          <code><%= link d.source.name, to: Routes.source_path(@socket, :show, d.source.id) %></code>
         </p>
         <div class="mt-2 mb-3">
           <%= link "5xx Status Codes", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=m.proxy.statusCode%3A%3E499+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm" %>
@@ -51,7 +53,8 @@
           <%= link("Delete drain", to: "#", class: "btn btn-danger btn-sm", phx_click: "delete_drain", phx_value_id: d.drain["id"], phx_disable_with: "Deleting...") %>
         </div>
         <% else %>
-        <p>The Logflare source for the drain <code><%= d.drain["name"] %></code> no longer exists. You can safely delete it.</p>
+        <p>The Logflare source for the drain <code><%= d.drain["name"] %></code> no longer exists. You can safely delete
+          it.</p>
         <%= link("Delete drain", to: "#", class: "btn btn-danger btn-sm", phx_click: "delete_drain", phx_value_id: d.drain["id"], phx_disable_with: "Deleting...") %>
         <% end %>
       </li>
@@ -82,14 +85,22 @@
   <div class="sub-form">
     <%= section_header("Installations") %>
     <ul class="list-unstyled">
-      <%= for a <- @auths do %>
+      <%= for a <- @auths_teams do %>
       <li>
-        <%= if @selected_auth.installation_id == a.installation_id do %><span class="font-weight-bold"><% else %><span><% end %>
-          <%= a.installation_id %>
-        </span>
-        <%= link to: "https://vercel.com/dashboard/integrations/#{a.installation_id}", style: "text-decoration: none", target: "_blank" do %>
+        <%= if @selected_auth.installation_id == a.auth.installation_id do %><span
+          class="font-weight-bold"><% else %><span><% end %>
+            <%= a.auth.installation_id %>
+          </span>
+          <%= if a.team do %>
+          for team <%= a.team["name"] %>
+          <%= link to: "https://vercel.com/dashboard/#{String.downcase(a.team["name"])}/integrations/#{a.auth.installation_id}", style: "text-decoration: none", target: "_blank" do %>
           <i class="fas fa-external-link-alt"></i>
-        <% end %>
+          <% end %>
+          <% else %>
+          <%= link to: "https://vercel.com/dashboard/integrations/#{a.auth.installation_id}", style: "text-decoration: none", target: "_blank" do %>
+          <i class="fas fa-external-link-alt"></i>
+          <% end %>
+          <% end %>
       </li>
       <% end %>
     </ul>

@@ -8,7 +8,6 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   alias LogflareWeb.VercelLogDrainsView
   alias Logflare.Users
   alias Logflare.Vercel
-  alias LogflareWeb.Router.Helpers, as: Routes
 
   @impl true
   def mount(_params, %{"user_id" => user_id}, socket) do
@@ -27,7 +26,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   @impl true
   def handle_params(%{"configurationId" => _config_id} = params, _uri, socket) do
     contacting_vercel()
-    send(self(), {:handle_params, params})
+    send(self(), {:init_socket, params})
 
     {:noreply, assign_default_socket(socket)}
   end
@@ -155,16 +154,26 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     {:noreply, socket}
   end
 
-  def handle_info({:handle_params, %{"configurationId" => config_id}}, socket) do
-    auth = Vercel.get_auth_by(installation_id: config_id)
+  def handle_info({:init_socket, %{"configurationId" => config_id}}, socket) do
+    auth =
+      case Vercel.get_auth_by(installation_id: config_id) do
+        nil -> %Vercel.Auth{}
+        auth -> auth
+      end
 
-    socket =
-      socket
-      |> assign_selected_auth(auth)
-      |> assign_drains()
-      |> assign_projects()
-      |> assign_mapped_drains_sources_projects()
-      |> clear_flash()
+    socket = init_socket(socket, auth)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:init_socket, socket) do
+    auth =
+      case socket.assigns.auths do
+        [] -> %Vercel.Auth{}
+        auths -> hd(auths)
+      end
+
+    socket = init_socket(socket, auth)
 
     {:noreply, socket}
   end
@@ -177,17 +186,13 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     {:noreply, clear_flash(socket)}
   end
 
-  def handle_info(:init_socket, socket) do
-    socket =
-      socket
-      |> assign_auths()
-      |> assign_selected_auth()
-      |> assign_drains()
-      |> assign_projects()
-      |> assign_mapped_drains_sources_projects()
-      |> clear_flash()
-
-    {:noreply, socket}
+  defp init_socket(socket, %Vercel.Auth{} = auth) do
+    socket
+    |> assign_selected_auth(auth)
+    |> assign_drains()
+    |> assign_projects()
+    |> assign_mapped_drains_sources_projects()
+    |> assign_mapped_auths_teams()
   end
 
   defp assign_default_socket(socket) do
@@ -274,23 +279,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     assign(socket, :user, user)
   end
 
-  defp assign_selected_auth(socket) do
-    auths = socket.assigns.auths
-
-    selected =
-      case auths do
-        [] -> %Vercel.Auth{}
-        auths -> hd(auths)
-      end
-
-    assign_selected_auth(socket, selected)
-  end
-
-  defp assign_selected_auth(socket, nil) do
-    assign_selected_auth(socket)
-  end
-
-  defp assign_selected_auth(socket, %Vercel.Auth{} = auth) do
+  defp assign_selected_auth(socket, auth \\ %Vercel.Auth{}) do
     assign(socket, :selected_auth, auth)
   end
 
@@ -301,8 +290,24 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     assign(socket, :auths, auths)
   end
 
-  defp send_clear_flash() do
-    send(self(), :clear_flash)
+  defp assign_mapped_auths_teams(socket) do
+    auths = socket.assigns.auths
+
+    auths_teams =
+      Enum.map(auths, fn auth ->
+        team =
+          if auth.team_id do
+            {:ok, resp} =
+              Vercel.Client.new(auth)
+              |> Vercel.Client.get_team(auth.team_id)
+
+            resp.body
+          end
+
+        %{auth: auth, team: team}
+      end)
+
+    assign(socket, :auths_teams, auths_teams)
   end
 
   defp contacting_vercel() do
