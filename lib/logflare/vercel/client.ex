@@ -44,6 +44,11 @@ defmodule Logflare.Vercel.Client do
     |> Tesla.post(url, body)
   end
 
+  def get_user(client) do
+    client
+    |> Tesla.get("/www/user")
+  end
+
   def list_log_drains(client) do
     client
     |> Tesla.get("/v1/integrations/log-drains")
