@@ -24,7 +24,7 @@
   <div class="sub-form">
     <%= section_header("Manage Installation") %>
     <%= a = form_for :fields, "#", [phx_change: :select_auth] %>
-    <%= label a, :selected_an_installation, class: "label-padding" %>
+    <%= label a, :select_an_installation, class: "label-padding" %>
     <%= select a, :installation, Enum.map(@auths, & {"Installed on #{&1.inserted_at}", &1.id}), selected: @selected_auth.id, class: "form-control form-control-margin" %>
     <%= link("Delete installation", to: "#", class: "btn btn-danger form-button mt-4", phx_click: "delete_auth", phx_value_id: @selected_auth.id, phx_disable_with: "Deleting...") %><br>
     </form>
@@ -38,7 +38,7 @@
       <li>
         <%= if d.source do %>
         <p>
-        <code><%= d.drain["name"] %></code> for project <code><%= if d.drain["projectId"], do: d.drain["projectId"], else: "all_projects" %></code> is sending logs to
+        <strong><%= d.drain["name"] %></strong> for project <strong><%= if d.project, do: d.project["name"], else: "all_projects" %></strong> is sending logs to
         <code><%= link d.source.name, to: Routes.source_path(@socket, :show, d.source.id) %></code>
         </p>
         <div class="mt-2 mb-3">
@@ -68,7 +68,7 @@
     <%= error_tag f, :name %>
 
     <%= label f, :vercel_project, class: "label-padding" %>
-    <%= select f, :project, [{"All projects", "all_projects"} | @projects], class: "form-control form-control-margin" %>
+    <%= select f, :project, [{"All projects", "all_projects"} | Enum.map(@projects, &{&1["name"], &1["id"]})], class: "form-control form-control-margin" %>
     <%= error_tag f, :project %>
 
     <%= label f, :logflare_source, class: "label-padding" %>
