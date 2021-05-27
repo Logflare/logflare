@@ -8,7 +8,6 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   alias LogflareWeb.VercelLogDrainsView
   alias Logflare.Users
   alias Logflare.Vercel
-  alias LogflareWeb.Router.Helpers, as: Routes
 
   @impl true
   def mount(_params, %{"user_id" => user_id}, socket) do
@@ -25,9 +24,9 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   @impl true
-  def handle_params(%{"configurationId" => config_id} = params, _uri, socket) do
+  def handle_params(%{"configurationId" => _config_id} = params, _uri, socket) do
     contacting_vercel()
-    send(self(), {:handle_params, params})
+    send(self(), {:init_socket, params})
 
     {:noreply, assign_default_socket(socket)}
   end
@@ -48,7 +47,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     {:noreply, socket}
   end
 
-  def handle_event("validate", params, socket) do
+  def handle_event("validate", _params, socket) do
     {:noreply, socket}
   end
 
@@ -79,14 +78,15 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         %Tesla.Env{status: 200} ->
           socket
           |> assign_drains()
-          |> assign_mapped_drains_sources()
+          |> assign_mapped_drains_sources_projects()
           |> clear_flash()
           |> put_flash(:info, "Log drain created!")
 
+        %Tesla.Env{status: 403} ->
+          unauthorized_socket(socket)
+
         _ ->
-          socket
-          |> clear_flash()
-          |> put_flash(:error, "Something went wrong. Please try again!")
+          unknown_error_socket(socket)
       end
 
     {:noreply, socket}
@@ -103,7 +103,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
           socket
           |> clear_flash()
           |> assign_drains()
-          |> assign_mapped_drains_sources()
+          |> assign_mapped_drains_sources_projects()
           |> put_flash(:info, "Log drain deleted!")
 
         %Tesla.Env{status: 404} ->
@@ -111,10 +111,11 @@ defmodule LogflareWeb.VercelLogDrainsLive do
           |> clear_flash()
           |> put_flash(:info, "Log drain not found!")
 
-        resp ->
-          socket
-          |> clear_flash()
-          |> put_flash(:error, "Something went wrong. Please try again!")
+        %Tesla.Env{status: 403} ->
+          unauthorized_socket(socket)
+
+        _resp ->
+          unknown_error_socket(socket)
       end
 
     {:noreply, socket}
@@ -124,7 +125,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     socket =
       case Vercel.get_auth!(auth_id) |> Vercel.delete_auth() do
         {:ok, _resp} -> put_flash(socket, :info, "Integration deleted!")
-        {:error, _resp} -> put_flash(socket, :error, "Something went wrong!")
+        {:error, _resp} -> unknown_error_socket(socket)
       end
 
     user_id = socket.assigns.user.id
@@ -135,7 +136,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       |> assign_auths()
       |> assign_selected_auth()
       |> assign_drains()
-      |> assign_mapped_drains_sources()
+      |> assign_mapped_drains_sources_projects()
 
     {:noreply, socket}
   end
@@ -143,28 +144,36 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   def handle_info({:select_auth, %{"fields" => %{"installation" => auth_id}}}, socket) do
     auth = Vercel.get_auth!(auth_id)
 
-    send_clear_flash()
-
     socket =
       socket
       |> assign_selected_auth(auth)
       |> assign_drains()
       |> assign_projects()
-      |> assign_mapped_drains_sources()
+      |> assign_mapped_drains_sources_projects()
 
     {:noreply, socket}
   end
 
-  def handle_info({:handle_params, %{"configurationId" => config_id}}, socket) do
-    auth = Vercel.get_auth_by(installation_id: config_id)
+  def handle_info({:init_socket, %{"configurationId" => config_id}}, socket) do
+    auth =
+      case Vercel.get_auth_by(installation_id: config_id) do
+        nil -> %Vercel.Auth{}
+        auth -> auth
+      end
 
-    socket =
-      socket
-      |> assign_selected_auth(auth)
-      |> assign_drains()
-      |> assign_projects()
-      |> assign_mapped_drains_sources()
-      |> clear_flash()
+    socket = init_socket(socket, auth)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:init_socket, socket) do
+    auth =
+      case socket.assigns.auths do
+        [] -> %Vercel.Auth{}
+        auths -> hd(auths)
+      end
+
+    socket = init_socket(socket, auth)
 
     {:noreply, socket}
   end
@@ -177,17 +186,13 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     {:noreply, clear_flash(socket)}
   end
 
-  def handle_info(:init_socket, socket) do
-    socket =
-      socket
-      |> assign_auths()
-      |> assign_selected_auth()
-      |> assign_drains()
-      |> assign_projects()
-      |> assign_mapped_drains_sources()
-      |> clear_flash()
-
-    {:noreply, socket}
+  defp init_socket(socket, %Vercel.Auth{} = auth) do
+    socket
+    |> assign_selected_auth(auth)
+    |> assign_drains()
+    |> assign_projects()
+    |> assign_mapped_drains_sources_projects()
+    |> assign_mapped_auths_teams()
   end
 
   defp assign_default_socket(socket) do
@@ -198,28 +203,36 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   defp assign_drains(socket) do
-    {:ok, drains} =
+    {:ok, resp} =
       Vercel.Client.new(socket.assigns.selected_auth)
       |> Vercel.Client.list_log_drains()
 
-    drains =
-      drains
-      |> case do
-        %Tesla.Env{status: 200} = resp ->
+    case resp do
+      %Tesla.Env{status: 200} ->
+        drains =
           resp.body
           |> Enum.sort_by(& &1["createdAt"])
 
-        resp ->
-          []
-      end
+        socket
+        |> assign(:drains, drains)
+        |> clear_flash()
 
-    socket
-    |> assign(:drains, drains)
+      %Tesla.Env{status: 403} ->
+        socket
+        |> assign(:drains, [])
+        |> unauthorized_socket()
+
+      _resp ->
+        socket
+        |> assign(:drains, [])
+        |> unknown_error_socket()
+    end
   end
 
-  defp assign_mapped_drains_sources(socket) do
+  defp assign_mapped_drains_sources_projects(socket) do
     drains = socket.assigns.drains
     sources = socket.assigns.user.sources
+    projects = socket.assigns.projects
 
     mapped_drains_sources =
       Enum.map(drains, fn d ->
@@ -228,8 +241,9 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         source_token = params["source"]
 
         source = Enum.find(sources, &(Atom.to_string(&1.token) == source_token))
+        project = Enum.find(projects, &(&1["id"] == d["projectId"]))
 
-        %{drain: d, source: source}
+        %{drain: d, source: source, project: project}
       end)
 
     assign(socket, :mapped_drains_sources, mapped_drains_sources)
@@ -240,16 +254,20 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       Vercel.Client.new(socket.assigns.selected_auth)
       |> Vercel.Client.list_projects()
 
-    projects =
-      case resp do
-        %Tesla.Env{status: 403} ->
-          []
+    case resp do
+      %Tesla.Env{status: 200} ->
+        projects = resp.body["projects"]
 
-        resp ->
-          Enum.map(resp.body["projects"], &{&1["name"], &1["id"]})
-      end
+        socket
+        |> assign(:projects, projects)
+        |> clear_flash()
 
-    assign(socket, :projects, projects)
+      %Tesla.Env{status: 403} ->
+        unauthorized_socket(socket)
+
+      _resp ->
+        unknown_error_socket(socket)
+    end
   end
 
   defp assign_user(socket, user_id) do
@@ -261,23 +279,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     assign(socket, :user, user)
   end
 
-  defp assign_selected_auth(socket) do
-    auths = socket.assigns.auths
-
-    selected =
-      case auths do
-        [] -> %Vercel.Auth{}
-        auths -> hd(auths)
-      end
-
-    assign_selected_auth(socket, selected)
-  end
-
-  defp assign_selected_auth(socket, nil) do
-    assign_selected_auth(socket)
-  end
-
-  defp assign_selected_auth(socket, %Vercel.Auth{} = auth) do
+  defp assign_selected_auth(socket, auth \\ %Vercel.Auth{}) do
     assign(socket, :selected_auth, auth)
   end
 
@@ -288,12 +290,46 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     assign(socket, :auths, auths)
   end
 
-  defp send_clear_flash() do
-    send(self, :clear_flash)
+  defp assign_mapped_auths_teams(socket) do
+    auths = socket.assigns.auths
+
+    auths_teams =
+      Enum.map(auths, fn auth ->
+        team =
+          if auth.team_id do
+            {:ok, resp} =
+              Vercel.Client.new(auth)
+              |> Vercel.Client.get_team(auth.team_id)
+
+            resp.body
+          end
+
+        %{auth: auth, team: team}
+      end)
+
+    assign(socket, :auths_teams, auths_teams)
   end
 
   defp contacting_vercel() do
-    send(self, :contacting_vercel)
+    send(self(), :contacting_vercel)
+  end
+
+  defp unauthorized_socket(socket) do
+    socket
+    |> clear_flash
+    |> put_flash(
+      :error,
+      "This installation is not authorized. Try reinstalling the Logflare integration."
+    )
+  end
+
+  defp unknown_error_socket(socket) do
+    socket
+    |> clear_flash
+    |> put_flash(
+      :error,
+      "Something went wrong. Try reinstalling the Logflare integration. Contact support if this continues."
+    )
   end
 
   @impl true

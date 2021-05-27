@@ -69,6 +69,11 @@ defmodule Logflare.Vercel.Client do
     |> Tesla.delete("/v1/integrations/configuration/" <> config_id)
   end
 
+  def get_team(client, team_id) when is_binary(team_id) do
+    client
+    |> Tesla.get("/v1/teams/" <> team_id)
+  end
+
   defp query_params(%Vercel.Auth{team_id: nil}) do
     []
   end
