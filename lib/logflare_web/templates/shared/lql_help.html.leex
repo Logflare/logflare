@@ -1,4 +1,21 @@
-<p>Logflare provides simple and powerful filtering capabilities both for historical search and realtime streams via the Logflare Query Language. Use the Logflare Query Language to search your log events or match and route log events dynamically via rules.</p>
+<div class="mt-4">
+  <p>Logflare provides simple and powerful filtering capabilities both for historical search and realtime streams via the Logflare Query Language. Use the Logflare Query Language to search your log events or match and route log events dynamically via rules.</p>
+</div>
+<h5 class="header-margin">Quick Tips</h5>
+<ul>
+  <li>
+    When searching with regex use the modifier <code>(?i)</code> to make the expression case insensitive. So <code>m.request.method:~"(?i)get"</code> vs <code>m.requst.method:~"GET"</code>.
+  </li>
+  <li>
+    The regex version of <code>OR</code> is very useful. Return all images urls for example can be <code>m.url:~"jpg$|jpeg$|png$"</code>.
+  </li>
+  <li>
+   You can combine LQL statments to return log messages which match a string but NOT another string like <code>"Function error" -m.request.url:~"api/posts"</code>. This gives us all log events with <code>Fuction error</code> in the message not generated from the posts API endpoint.
+  </li>
+  <li>
+    By default searching the log event message is case sensitive.
+  </li>
+</ul>
 <h5 class="header-margin">Searching Log Event Messages</h5>
 <p>
   Any string not matching a supported operator will search against the log event message. Some strings may need to be wrapped in double quotes.
