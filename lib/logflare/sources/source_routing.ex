@@ -70,7 +70,7 @@ defmodule Logflare.Logs.SourceRouting do
                   apply(Kernel, :==, [le_value, value])
 
                 operator == :"~" ->
-                  apply(Kernel, :=~, [le_value, ~r/#{value}/ui])
+                  apply(Kernel, :=~, [le_value, ~r/#{value}/u])
 
                 operator in [:<=, :<, :>=, :>] ->
                   apply(Kernel, operator, [le_value, value])
