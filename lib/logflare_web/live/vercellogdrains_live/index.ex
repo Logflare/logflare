@@ -83,7 +83,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
           |> put_flash(:info, "Log drain created!")
 
         %Tesla.Env{status: 403} ->
-          socket
+          unauthorized_socket(socket)
 
         _ ->
           unknown_error_socket(socket)
@@ -143,22 +143,13 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   def handle_info({:select_auth, %{"fields" => %{"installation" => auth_id}}}, socket) do
     auth = Vercel.get_auth!(auth_id)
 
-    socket =
-      socket
-      |> assign_selected_auth(auth)
-      |> assign_drains()
-      |> assign_projects()
-      |> assign_mapped_drains_sources_projects()
-
-    {:noreply, socket}
+    {:noreply, init_socket(socket, auth)}
   end
 
   def handle_info({:init_socket, %{"configurationId" => config_id}}, socket) do
     auth = Vercel.get_auth_by(installation_id: config_id)
 
-    socket = init_socket(socket, auth)
-
-    {:noreply, socket}
+    {:noreply, init_socket(socket, auth)}
   end
 
   def handle_info(:init_socket, socket) do
@@ -168,9 +159,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         auths -> hd(auths)
       end
 
-    socket = init_socket(socket, auth)
-
-    {:noreply, socket}
+    {:noreply, init_socket(socket, auth)}
   end
 
   def handle_info(:contacting_vercel, socket) do

@@ -101,6 +101,8 @@ defmodule Logflare.Lql.EctoHelpers do
           end
 
         :"~" ->
+          v = "(?i)" <> v
+
           dynamic([..., n1], fragment(~s|REGEXP_CONTAINS(?, ?)|, field(n1, ^c), ^v))
 
         :string_contains ->
