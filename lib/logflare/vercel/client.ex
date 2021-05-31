@@ -24,9 +24,6 @@ defmodule Logflare.Vercel.Client do
     Tesla.client(middleware, adapter)
   end
 
-  def new_auth() do
-  end
-
   def get_access_token(client, code) do
     body = %{
       client_id: @client_id,
@@ -45,6 +42,10 @@ defmodule Logflare.Vercel.Client do
   end
 
   def get_user(client) do
+    middleware = strip_query_params(client)
+    adapter = Tesla.Client.adapter(client)
+    client = Tesla.client(middleware, adapter)
+
     client
     |> Tesla.get("/www/user")
   end
@@ -93,5 +94,15 @@ defmodule Logflare.Vercel.Client do
 
   defp headers(%Vercel.Auth{access_token: access_token}) when is_binary(access_token) do
     [{"authorization", "Bearer " <> access_token}]
+  end
+
+  defp strip_query_params(client) do
+    Tesla.Client.middleware(client)
+    |> Enum.reject(fn x ->
+      case x do
+        {Tesla.Middleware.Query, _} -> true
+        _ -> false
+      end
+    end)
   end
 end

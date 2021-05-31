@@ -294,6 +294,13 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         socket
         |> assign(:selected_auth, auth)
         |> unauthorized_socket()
+
+      %Tesla.Env{status: 400} ->
+        Logger.error("Bad Vercel user API request.", error_string: inspect(resp))
+        unknown_error_socket(socket)
+
+      _resp ->
+        unknown_error_socket(socket)
     end
   end
 
