@@ -56,8 +56,12 @@ defmodule Logflare.Vercel.Client do
   end
 
   def list_projects(client) do
+    middleware = add_limit_param(client, 100)
+    adapter = Tesla.Client.adapter(client)
+    client = Tesla.client(middleware, adapter)
+
     client
-    |> Tesla.get("/v4/projects")
+    |> Tesla.get("/v8/projects")
   end
 
   def create_log_drain(client, params) when is_map(params) do
@@ -94,6 +98,19 @@ defmodule Logflare.Vercel.Client do
 
   defp headers(%Vercel.Auth{access_token: access_token}) when is_binary(access_token) do
     [{"authorization", "Bearer " <> access_token}]
+  end
+
+  defp add_limit_param(client, limit) do
+    Tesla.Client.middleware(client)
+    |> Enum.map(fn x ->
+      case x do
+        {Tesla.Middleware.Query, params} ->
+          {Tesla.Middleware.Query, [{:limit, limit} | params]}
+
+        rest ->
+          rest
+      end
+    end)
   end
 
   defp strip_query_params(client) do
