@@ -149,7 +149,20 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   def handle_info({:init_socket, %{"configurationId" => config_id}}, socket) do
     auth = Vercel.get_auth_by(installation_id: config_id)
 
-    {:noreply, init_socket(socket, auth)}
+    socket =
+      if auth do
+        init_socket(socket, auth)
+      else
+        send_flash(
+          :error,
+          "ConfigurationId `#{config_id}` not found in your Logflare account. Please reinstall the Loglfare Vercel integration to manage your log drains here."
+        )
+
+        socket
+        |> init_socket()
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info(:init_socket, socket) do
@@ -170,7 +183,17 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     {:noreply, clear_flash(socket)}
   end
 
-  defp init_socket(socket, auth \\ %Vercel.Auth{}) do
+  def handle_info({:send_flash, {level, message}}, socket) do
+    {:noreply, put_flash(socket, level, message)}
+  end
+
+  defp init_socket(socket, auth \\ %Vercel.Auth{})
+
+  defp init_socket(socket, nil) do
+    init_socket(socket, %Vercel.Auth{})
+  end
+
+  defp init_socket(socket, %Vercel.Auth{} = auth) do
     auth =
       cond do
         auth.installation_id ->
@@ -338,6 +361,10 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       end)
 
     assign(socket, :auths_teams, auths_teams)
+  end
+
+  defp send_flash(level, message) do
+    send(self(), {:send_flash, {level, message}})
   end
 
   defp contacting_vercel() do
