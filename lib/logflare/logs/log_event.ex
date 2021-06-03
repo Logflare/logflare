@@ -37,8 +37,12 @@ defmodule Logflare.LogEvent do
     field :make_from, :string
   end
 
-  def mapper(params, source) do
-    message = make_message(params, source)
+  def mapper(params, _source) do
+    message =
+      params["log_entry"] || params["message"] ||
+        params["event_message"] ||
+        params[:event_message]
+
     metadata = params["metadata"] || params[:metadata]
     id = id(params)
 
@@ -169,35 +173,32 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  defp make_message(params, source) do
-    from = params[:make_from]
+  def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
+    message = make_message(le, source)
 
-    message =
-      params["log_entry"] || params["message"] ||
-        params["event_message"] ||
-        params[:event_message]
+    Kernel.put_in(le.body.message, message)
+  end
 
-    id = id(params)
+  defp make_message(le, source) do
+    message = le.body.message
 
-    if from == "ingest" && source.custom_event_message_keys do
-      custom_message_keys =
-        source.custom_event_message_keys
-        |> String.split(",", trim: true)
-        |> Enum.map(&String.trim/1)
-
-      Enum.map(custom_message_keys, fn x ->
+    if keys = source.custom_event_message_keys do
+      keys
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.map(fn x ->
         case x do
           "id" ->
-            id
+            le.id
 
           "message" ->
             message
 
           "metadata." <> rest ->
-            query_json(params, "$.metadata.#{rest}")
+            query_json(le.body.metadata, "$.#{rest}")
 
           "m." <> rest ->
-            query_json(params, "$.metadata.#{rest}")
+            query_json(le.body.metadata, "$.#{rest}")
         end
       end)
       |> Enum.join(" | ")
@@ -206,8 +207,8 @@ defmodule Logflare.LogEvent do
     end
   end
 
-  defp query_json(params, query) do
-    case Warpath.query(params, query) do
+  defp query_json(metadata, query) do
+    case Warpath.query(metadata, query) do
       {:ok, v} ->
         inspect(v)
 

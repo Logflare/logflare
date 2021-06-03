@@ -22,6 +22,7 @@ defmodule Logflare.Logs do
     |> Enum.map(fn %LE{} = le ->
       if le.valid do
         :ok = SourceRouting.route_to_sinks_and_ingest(le)
+        le = LE.apply_custom_event_message(le)
         :ok = ingest(le)
         :ok = broadcast(le)
       else
