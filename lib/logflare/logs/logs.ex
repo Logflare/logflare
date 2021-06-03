@@ -47,6 +47,8 @@ defmodule Logflare.Logs do
     # indvididual source genservers
     {:ok, _} = Supervisor.ensure_started(source.token)
 
+    le = apply_custom_event_message(le)
+
     :ok = RecentLogsServer.push(le)
     :ok = Buffer.push(le)
 
@@ -62,5 +64,51 @@ defmodule Logflare.Logs do
     :ok = Source.ChannelTopics.broadcast_new(le)
 
     :ok
+  end
+
+  defp apply_custom_event_message(%LE{source: %Source{} = source} = le) do
+    message = make_message(le, source)
+
+    Kernel.put_in(le.body.message, message)
+  end
+
+  defp make_message(le, source) do
+    message = le.body.message
+
+    if source.custom_event_message_keys do
+      custom_message_keys =
+        source.custom_event_message_keys
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+
+      Enum.map(custom_message_keys, fn x ->
+        case x do
+          "id" ->
+            le.id
+
+          "message" ->
+            message
+
+          "metadata." <> rest ->
+            query_json(le.body.metadata, "$.#{rest}")
+
+          "m." <> rest ->
+            query_json(le.body.metadata, "$.#{rest}")
+        end
+      end)
+      |> Enum.join(" | ")
+    else
+      message
+    end
+  end
+
+  defp query_json(metadata, query) do
+    case Warpath.query(metadata, query) do
+      {:ok, v} ->
+        inspect(v)
+
+      {:error, _} ->
+        "json_path_query_error"
+    end
   end
 end

@@ -37,8 +37,12 @@ defmodule Logflare.LogEvent do
     field :make_from, :string
   end
 
-  def mapper(params, source) do
-    message = make_message(params, source)
+  def mapper(params, _source) do
+    message =
+      params["log_entry"] || params["message"] ||
+        params["event_message"] ||
+        params[:event_message]
+
     metadata = params["metadata"] || params[:metadata]
     id = id(params)
 
@@ -167,53 +171,6 @@ defmodule Logflare.LogEvent do
       joined_errors = inspect(v)
       "#{acc}#{k}: #{joined_errors}\n"
     end)
-  end
-
-  defp make_message(params, source) do
-    from = params[:make_from]
-
-    message =
-      params["log_entry"] || params["message"] ||
-        params["event_message"] ||
-        params[:event_message]
-
-    id = id(params)
-
-    if from == "ingest" && source.custom_event_message_keys do
-      custom_message_keys =
-        source.custom_event_message_keys
-        |> String.split(",", trim: true)
-        |> Enum.map(&String.trim/1)
-
-      Enum.map(custom_message_keys, fn x ->
-        case x do
-          "id" ->
-            id
-
-          "message" ->
-            message
-
-          "metadata." <> rest ->
-            query_json(params, "$.metadata.#{rest}")
-
-          "m." <> rest ->
-            query_json(params, "$.metadata.#{rest}")
-        end
-      end)
-      |> Enum.join(" | ")
-    else
-      message
-    end
-  end
-
-  defp query_json(params, query) do
-    case Warpath.query(params, query) do
-      {:ok, v} ->
-        inspect(v)
-
-      {:error, _} ->
-        "json_path_query_error"
-    end
   end
 
   defp id(params) do
