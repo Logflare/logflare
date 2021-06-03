@@ -173,6 +173,50 @@ defmodule Logflare.LogEvent do
     end)
   end
 
+  def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
+    message = make_message(le, source)
+
+    Kernel.put_in(le.body.message, message)
+  end
+
+  defp make_message(le, source) do
+    message = le.body.message
+
+    if keys = source.custom_event_message_keys do
+      keys
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.map(fn x ->
+        case x do
+          "id" ->
+            le.id
+
+          "message" ->
+            message
+
+          "metadata." <> rest ->
+            query_json(le.body.metadata, "$.#{rest}")
+
+          "m." <> rest ->
+            query_json(le.body.metadata, "$.#{rest}")
+        end
+      end)
+      |> Enum.join(" | ")
+    else
+      message
+    end
+  end
+
+  defp query_json(metadata, query) do
+    case Warpath.query(metadata, query) do
+      {:ok, v} ->
+        inspect(v)
+
+      {:error, _} ->
+        "json_path_query_error"
+    end
+  end
+
   defp id(params) do
     params["id"] || params[:id]
   end
