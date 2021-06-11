@@ -93,7 +93,7 @@
           </span>
           <%= if a.team do %>
           for team <%= a.team["name"] %>
-          <%= link to: "https://vercel.com/dashboard/#{String.downcase(a.team["name"])}/integrations/#{a.auth.installation_id}", style: "text-decoration: none", target: "_blank" do %>
+          <%= link to: "https://vercel.com/dashboard/#{a.team["slug"]}/integrations/#{a.auth.installation_id}", style: "text-decoration: none", target: "_blank" do %>
           <i class="fas fa-external-link-alt"></i>
           <% end %>
           <% else %>
