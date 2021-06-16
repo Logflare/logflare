@@ -55,9 +55,9 @@
       </p>
       <p class="text-center">
         <small>When using the Logflare hosted service you agree to our
-          <%= link "terms of service", to: Routes.marketing_path(@conn, :terms) %>,
-          <%= link "privacy policy", to: Routes.marketing_path(@conn, :privacy) %> and
-          <%= link "cookie policy", to: Routes.marketing_path(@conn, :cookies) %>.</small>
+          <%= link "terms of service", to: Routes.marketing_path(@conn, :terms), target: "_blank" %>,
+          <%= link "privacy policy", to: Routes.marketing_path(@conn, :privacy), target: "_blank" %> and
+          <%= link "cookie policy", to: Routes.marketing_path(@conn, :cookies), target: "_blank" %>.</small>
       </p>
     </div>
   </div>
