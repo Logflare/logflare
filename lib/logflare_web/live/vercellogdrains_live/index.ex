@@ -85,7 +85,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         %Tesla.Env{status: 403} ->
           unauthorized_socket(socket)
 
-        _ ->
+        resp ->
+          Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
           unknown_error_socket(socket)
       end
 
@@ -114,7 +115,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         %Tesla.Env{status: 403} ->
           unauthorized_socket(socket)
 
-        _resp ->
+        resp ->
+          Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
           unknown_error_socket(socket)
       end
 
@@ -133,7 +135,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
           |> init_socket()
           |> put_flash(:info, "Integration deleted!")
 
-        {:error, _resp} ->
+        {:error, resp} ->
+          Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
           unknown_error_socket(socket)
       end
 
@@ -240,7 +243,9 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         socket
         |> assign(:drains, [])
 
-      _resp ->
+      resp ->
+        Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
+
         socket
         |> assign(:drains, [])
         |> unknown_error_socket()
@@ -283,7 +288,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       %Tesla.Env{status: 403} ->
         socket
 
-      _resp ->
+      resp ->
+        Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
         unknown_error_socket(socket)
     end
   end
@@ -322,7 +328,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         Logger.error("Bad Vercel user API request.", error_string: inspect(resp))
         unknown_error_socket(socket)
 
-      _resp ->
+      resp ->
+        Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
         unknown_error_socket(socket)
     end
   end
