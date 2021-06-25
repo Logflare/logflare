@@ -1,0 +1,43 @@
+version: 2
+updates:
+- package-ecosystem: mix
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: google_api_cloud_resource_manager
+    versions:
+    - 0.36.0
+    - 0.37.0
+    - 0.37.1
+    - 0.38.0
+    - 0.39.0
+    - 0.39.1
+  - dependency-name: ecto_sql
+    versions:
+    - 3.5.4
+    - 3.6.0
+  - dependency-name: timex
+    versions:
+    - 3.6.3
+    - 3.6.4
+    - 3.7.1
+    - 3.7.3
+  - dependency-name: swoosh
+    versions:
+    - 1.3.0
+    - 1.3.1
+    - 1.3.2
+    - 1.3.3
+    - 1.3.4
+  - dependency-name: ex_machina
+    versions:
+    - 2.5.0
+    - 2.6.0
+  - dependency-name: credo
+    versions:
+    - 1.5.4
+  - dependency-name: tesla
+    versions:
+    - 1.4.0
