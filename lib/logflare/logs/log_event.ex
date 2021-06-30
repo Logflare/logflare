@@ -199,6 +199,9 @@ defmodule Logflare.LogEvent do
 
           "m." <> rest ->
             query_json(le.body.metadata, "$.#{rest}")
+
+          keys ->
+            ["Invalid custom message keys. Are your keys comma separated? Got: #{inspect(keys)}"]
         end
       end)
       |> Enum.join(" | ")
