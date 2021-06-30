@@ -117,7 +117,7 @@
 
         <h5 class="header-margin">Custom API Request</h5>
         <p>Send logs via an HTTP request. This request body payload lets you send over a human readable event message in
-          the <code>log_entry</code> field.</p>
+          the <code>message</code> field.</p>
         <pre class="pre-scrollable">
           <code>
     curl -X "POST" "https://api.logflare.app/logs?source=<%= @source.token %>" \
