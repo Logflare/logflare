@@ -41,7 +41,9 @@ defmodule Logflare.Mixfile do
         :runtime_tools,
         :ueberauth_github,
         :ueberauth_google,
-        :ssl
+        :ssl,
+        :phoenix_html,
+        :phoenix
       ]
     ]
   end
@@ -61,8 +63,9 @@ defmodule Logflare.Mixfile do
       {:phoenix_ecto, "~> 4.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
-      {:plug, "~> 1.8"},
+      # {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
+      {:plug_crypto, "~> 1.2.2"},
       {:phoenix_live_view, "~> 0.15.3", override: true},
       {:phoenix_live_dashboard, "~> 0.3.0"},
       {:cors_plug, "~> 2.0"},
@@ -142,7 +145,7 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 0.4.0"},
       {:telemetry_poller, "0.5.0"},
       {:telemetry_metrics, "~> 0.6.0", override: true},
-      {:logflare_logger_backend, "~> 0.8.0-rc.6"},
+      {:logflare_logger_backend, "~> 0.8.1"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
 
       # ETS
