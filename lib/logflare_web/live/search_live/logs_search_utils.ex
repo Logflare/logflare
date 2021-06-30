@@ -5,14 +5,37 @@ defmodule Logflare.Logs.Search.Utils do
   alias Logflare.JSON
   require Logger
 
-  def format_error(%Tesla.Env{body: body}) do
-    body
-    |> JSON.decode!()
-    |> Map.get("error")
-    |> Map.get("message")
+  def format_error(%Tesla.Env{body: body, status: status, url: url} = resp)
+      when status in 500..600 do
+    Logger.error("Backend search error.", tesla_response: inspect(resp))
+
+    %URI{host: host} = URI.parse(url)
+
+    search_error_message(host, status)
   end
 
-  def format_error(e), do: e
+  def format_error(%Tesla.Env{body: body, status: status, url: url} = resp) do
+    Logger.error("Backend search error.", tesla_response: inspect(resp))
+
+    case JSON.decode(body) do
+      {:ok, json} ->
+        json
+        |> Map.get("error")
+        |> Map.get("message")
+
+      {:error, _reason} ->
+        %URI{host: host} = URI.parse(url)
+
+        search_error_message(host, status)
+    end
+  end
+
+  def format_error(e) do
+    err = inspect(e)
+    Logger.error("Backend search error.", error_string: err)
+
+    err
+  end
 
   def gen_search_tip() do
     tips = [
@@ -61,4 +84,8 @@ defmodule Logflare.Logs.Search.Utils do
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
   def put_result_in(value, so, path), do: %{so | path => value}
+
+  defp search_error_message(host, status) do
+    "Invalid JSON response from backend #{host}. Recieved an HTTP status code: #{status}. This is likely temporary. Please contact support if it continues."
+  end
 end
