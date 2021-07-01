@@ -18,4 +18,17 @@ config :logflare, Logflare.Google,
 
 config :logflare, Logflare.Tracker, pool_size: 5
 
-import_config "test.secret.exs"
+config :logflare, Logflare.Repo,
+  username: "postgres",
+  password: "postgres",
+  database: "logflare_test",
+  hostname: "localhost",
+  pool_size: 10,
+  pool: Ecto.Adapters.SQL.Sandbox
+
+config :goth,
+  json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
+
+config :logger,
+  level: :error,
+  backends: [:console]
