@@ -150,6 +150,7 @@ defmodule Logflare.AccountEmail do
     diff = diff_schema(schema_to_list(formatted_new), schema_to_list(formatted_old))
 
     if diff == [] do
+      # Something generates BOOL and something else generates BOOLEAN which causes this
       Logger.error("Schema update email send with no new fields.",
         source_id: source.token,
         account_email: %{new_schema: inspect(new_schema), old_schema: inspect(old_schema)}
