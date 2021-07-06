@@ -33,7 +33,13 @@ internal class TransformerVisitor(
     }
 
     override fun postVisit(node: TSelectSqlStatement?) {
-        node!!.tables.forEach { table ->
+        val hasWildcard = node!!.resultColumnList.any {
+            it.columnNameOnly == "*"
+        }
+        if (hasWildcard) {
+            throw RestrictedWildcardResultColumn()
+        }
+        node.tables.forEach { table ->
             val name = table.tableName.tableString
             // if table is not coming from CTE
             if (!isInCTE(name)) {

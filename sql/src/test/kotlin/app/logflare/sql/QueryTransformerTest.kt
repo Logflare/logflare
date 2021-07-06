@@ -94,29 +94,29 @@ internal class QueryTransformerTest {
     @Test
     fun testSubQuery() {
         assertEquals(
-            "SELECT * FROM (SELECT * FROM ${tableName("source")})",
+            "SELECT a FROM (SELECT a FROM ${tableName("source")})",
             queryTransformer(
-                    "SELECT * FROM (SELECT * FROM source)"
+                    "SELECT a FROM (SELECT a FROM source)"
             ).transform())
     }
 
     @Test
     fun testCTE() {
         assertEquals(
-            "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4) SELECT * FROM something UNION SELECT * FROM ${tableName("something1")}",
+            "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4) SELECT a FROM something UNION SELECT a FROM ${tableName("something1")}",
             queryTransformer(
-                "WITH something AS (SELECT a,b,c FROM source WHERE d > 4) SELECT * FROM something UNION SELECT * FROM something1"
+                "WITH something AS (SELECT a,b,c FROM source WHERE d > 4) SELECT a FROM something UNION SELECT a FROM something1"
                 ).transform())
     }
 
     @Test
     fun testRecursiveCTE() {
         assertEquals(
-            "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4 UNION SELECT * FROM something) " +
-                    "SELECT * FROM something",
+            "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4 UNION SELECT a FROM something) " +
+                    "SELECT a FROM something",
             queryTransformer(
-                "WITH something AS (SELECT a,b,c FROM source WHERE d > 4 UNION SELECT * FROM something) " +
-                        "SELECT * FROM something"
+                "WITH something AS (SELECT a,b,c FROM source WHERE d > 4 UNION SELECT a FROM something) " +
+                        "SELECT a FROM something"
             ).transform()
         )
     }
@@ -124,12 +124,12 @@ internal class QueryTransformerTest {
     fun testReferenceCTE() {
         assertEquals(
             "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4), " +
-                    "something1 AS (SELECT * FROM something) " +
-                    "SELECT * FROM something UNION SELECT * FROM something1",
+                    "something1 AS (SELECT a FROM something) " +
+                    "SELECT a FROM something UNION SELECT a FROM something1",
             queryTransformer(
                 "WITH something AS (SELECT a,b,c FROM source WHERE d > 4), " +
-                        "something1 AS (SELECT * FROM something) " +
-                        "SELECT * FROM something UNION SELECT * FROM something1"
+                        "something1 AS (SELECT a FROM something) " +
+                        "SELECT a FROM something UNION SELECT a FROM something1"
             ).transform())
     }
 
@@ -150,7 +150,7 @@ internal class QueryTransformerTest {
     @Test
     fun testOneStmtOnly() {
         assertThrows<SingularQueryRequired> {
-            queryTransformer("SELECT * FROM a; SELECT * FROM b").transform()
+            queryTransformer("SELECT a FROM a; SELECT a FROM b").transform()
         }
     }
 
@@ -171,9 +171,35 @@ internal class QueryTransformerTest {
             // support SELECT INTO, but if/when logflare grows to support
             // other syntaxes, one'd wish we wouldn't have forgotten
             // something like this
-            queryTransformer("SELECT * FROM a INTO b", dbVendor = EDbVendor.dbvpostgresql).transform()
+            queryTransformer("SELECT a FROM a INTO b", dbVendor = EDbVendor.dbvpostgresql).transform()
         }
     }
 
+    @Test
+    fun testRestrictedWildcardSelect() {
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryTransformer("SELECT * FROM a").transform()
+        }
+
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryTransformer("SELECT a.* FROM a").transform()
+        }
+
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryTransformer("SELECT q, a.* FROM a").transform()
+        }
+
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryTransformer("SELECT a FROM (SELECT * FROM a)").transform()
+        }
+
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryTransformer("WITH q AS (SELECT a FROM a) SELECT * FROM q").transform()
+        }
+
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryTransformer("SELECT a FROM a UNION ALL SELECT * FROM b").transform()
+        }
+    }
 
 }
