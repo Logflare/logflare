@@ -79,7 +79,8 @@ defmodule Logflare.Application do
       supervisor(Logflare.PubSubRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(LogflareWeb.Endpoint, []),
+      Logflare.SQL,
     ]
 
     env = Application.get_env(:logflare, :env)

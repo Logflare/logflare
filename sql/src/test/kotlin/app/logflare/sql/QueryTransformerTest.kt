@@ -8,7 +8,7 @@ import kotlin.test.*
 internal class QueryTransformerTest {
 
     val projectId = "project"
-    val userId = "1234"
+    val userId: Long = 1234
 
     private fun datasetResolver() =
         object : DatasetResolver<Source> {
