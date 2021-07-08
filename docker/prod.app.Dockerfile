@@ -14,7 +14,7 @@ RUN mix compile --force
 RUN cd /logflare/assets \ 
     && yarn \
     && yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react \
-    && ./node_modules/webpack/bin/webpack.js --mode production --silent
+    && ./node_modules/webpack/bin/webpack.js --mode production
 
 WORKDIR /logflare
 
