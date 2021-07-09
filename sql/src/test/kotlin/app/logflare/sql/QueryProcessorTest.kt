@@ -5,7 +5,7 @@ import org.junit.jupiter.api.assertThrows
 import java.util.*
 import kotlin.test.*
 
-internal class QueryTransformerTest {
+internal class QueryProcessorTest {
 
     val projectId = "project"
     val userId: Long = 1234
@@ -24,11 +24,11 @@ internal class QueryTransformerTest {
 
     private fun tableName(sourceName: String): String  {
         val source = sourceResolver().resolve(sourceName)
-        return "${projectId}.${datasetResolver().resolve(source)}.${DefaultTableResolver.resolve(source)}"
+        return "`${projectId}.${datasetResolver().resolve(source)}.${DefaultTableResolver.resolve(source)}`"
     }
 
-    private fun queryTransformer(query: String, dbVendor: EDbVendor = EDbVendor.dbvbigquery): QueryTransformer {
-        return QueryTransformer(
+    private fun queryProcessor(query: String, dbVendor: EDbVendor = EDbVendor.dbvbigquery): QueryProcessor {
+        return QueryProcessor(
             query,
             sourceResolver = sourceResolver(),
             projectId = projectId,
@@ -41,42 +41,42 @@ internal class QueryTransformerTest {
     fun testTableNameSubstitutionWhereClause() {
         assertEquals(
             "SELECT a,b,c FROM ${tableName("source")} WHERE ${tableName("source")}.d > 4",
-            queryTransformer("SELECT a,b,c FROM source WHERE source.d > 4").transform())
+            queryProcessor("SELECT a,b,c FROM source WHERE source.d > 4").transformForExecution())
     }
 
     @Test
     fun testTableNameSubstitutionSelectClause() {
         assertEquals(
             "SELECT ${tableName("source")}.a,b,c FROM ${tableName("source")}",
-            queryTransformer("SELECT source.a,b,c FROM source").transform())
+            queryProcessor("SELECT source.a,b,c FROM source").transformForExecution())
     }
 
     @Test
     fun testTableNameSubstitutionOrderClause() {
         assertEquals(
             "SELECT a,b,c FROM ${tableName("source")} ORDER BY ${tableName("source")}.d",
-            queryTransformer("SELECT a,b,c FROM source ORDER BY source.d").transform())
+            queryProcessor("SELECT a,b,c FROM source ORDER BY source.d").transformForExecution())
     }
 
     @Test
     fun testTableNameSubstitutionGroupClause() {
         assertEquals(
             "SELECT a,b,c FROM ${tableName("source")} GROUP BY ${tableName("source")}.d",
-            queryTransformer("SELECT a,b,c FROM source GROUP BY source.d").transform())
+            queryProcessor("SELECT a,b,c FROM source GROUP BY source.d").transformForExecution())
     }
 
     @Test
     fun testTableNameSubstitutionHavingClause() {
         assertEquals(
             "SELECT a,b,c FROM ${tableName("source")} GROUP BY ${tableName("source")}.d HAVING COUNT(${tableName("source")}.e) > 3",
-            queryTransformer("SELECT a,b,c FROM source GROUP BY source.d HAVING COUNT(source.e) > 3").transform())
+            queryProcessor("SELECT a,b,c FROM source GROUP BY source.d HAVING COUNT(source.e) > 3").transformForExecution())
     }
 
     @Test
     fun testTableNameSubstitutionWhereClauseWithAlias() {
         assertEquals(
             "SELECT a,b,c FROM ${tableName("source")} src WHERE src.d > 4",
-            queryTransformer("SELECT a,b,c FROM source src WHERE src.d > 4").transform())
+            queryProcessor("SELECT a,b,c FROM source src WHERE src.d > 4").transformForExecution())
     }
 
     @Test
@@ -84,10 +84,10 @@ internal class QueryTransformerTest {
         assertEquals(
             "SELECT a, b, c FROM ${tableName("source")} LEFT JOIN ${tableName("anotherSource")} " +
                     "ON ${tableName("source")}.d = ${tableName("anotherSource")}.e",
-            queryTransformer(
+            queryProcessor(
                 "SELECT a, b, c FROM source LEFT JOIN anotherSource " +
                         "ON source.d = anotherSource.e"
-            ).transform()
+            ).transformForExecution()
         )
     }
 
@@ -95,18 +95,18 @@ internal class QueryTransformerTest {
     fun testSubQuery() {
         assertEquals(
             "SELECT a FROM (SELECT a FROM ${tableName("source")})",
-            queryTransformer(
+            queryProcessor(
                     "SELECT a FROM (SELECT a FROM source)"
-            ).transform())
+            ).transformForExecution())
     }
 
     @Test
     fun testCTE() {
         assertEquals(
             "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4) SELECT a FROM something UNION SELECT a FROM ${tableName("something1")}",
-            queryTransformer(
+            queryProcessor(
                 "WITH something AS (SELECT a,b,c FROM source WHERE d > 4) SELECT a FROM something UNION SELECT a FROM something1"
-                ).transform())
+                ).transformForExecution())
     }
 
     @Test
@@ -114,10 +114,10 @@ internal class QueryTransformerTest {
         assertEquals(
             "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4 UNION SELECT a FROM something) " +
                     "SELECT a FROM something",
-            queryTransformer(
+            queryProcessor(
                 "WITH something AS (SELECT a,b,c FROM source WHERE d > 4 UNION SELECT a FROM something) " +
                         "SELECT a FROM something"
-            ).transform()
+            ).transformForExecution()
         )
     }
     @Test
@@ -126,41 +126,41 @@ internal class QueryTransformerTest {
             "WITH something AS (SELECT a,b,c FROM ${tableName("source")} WHERE d > 4), " +
                     "something1 AS (SELECT a FROM something) " +
                     "SELECT a FROM something UNION SELECT a FROM something1",
-            queryTransformer(
+            queryProcessor(
                 "WITH something AS (SELECT a,b,c FROM source WHERE d > 4), " +
                         "something1 AS (SELECT a FROM something) " +
                         "SELECT a FROM something UNION SELECT a FROM something1"
-            ).transform())
+            ).transformForExecution())
     }
 
 
     @Test
     fun testSelectStmtOnly() {
         assertThrows<SelectQueryRequired> {
-            queryTransformer("UPDATE a SET x = 1").transform()
+            queryProcessor("UPDATE a SET x = 1").transformForExecution()
         }
         assertThrows<SelectQueryRequired> {
-            queryTransformer("DELETE a WHERE x = 1").transform()
+            queryProcessor("DELETE a WHERE x = 1").transformForExecution()
         }
         assertThrows<SelectQueryRequired> {
-            queryTransformer("DROP TABLE a").transform()
+            queryProcessor("DROP TABLE a").transformForExecution()
         }
     }
 
     @Test
     fun testOneStmtOnly() {
         assertThrows<SingularQueryRequired> {
-            queryTransformer("SELECT a FROM a; SELECT a FROM b").transform()
+            queryProcessor("SELECT a FROM a; SELECT a FROM b").transformForExecution()
         }
     }
 
     @Test
     fun testRestrictedFunctions() {
         assertThrows<RestrictedFunctionCall> {
-            queryTransformer("SELECT SESSION_USER()").transform()
+            queryProcessor("SELECT SESSION_USER()").transformForExecution()
         }
         assertThrows<RestrictedFunctionCall> {
-            queryTransformer("SELECT EXTERNAL_QUERY('','')").transform()
+            queryProcessor("SELECT EXTERNAL_QUERY('','')").transformForExecution()
         }
     }
 
@@ -171,35 +171,40 @@ internal class QueryTransformerTest {
             // support SELECT INTO, but if/when logflare grows to support
             // other syntaxes, one'd wish we wouldn't have forgotten
             // something like this
-            queryTransformer("SELECT a FROM a INTO b", dbVendor = EDbVendor.dbvpostgresql).transform()
+            queryProcessor("SELECT a FROM a INTO b", dbVendor = EDbVendor.dbvpostgresql).transformForExecution()
         }
     }
 
     @Test
     fun testRestrictedWildcardSelect() {
         assertThrows<RestrictedWildcardResultColumn> {
-            queryTransformer("SELECT * FROM a").transform()
+            queryProcessor("SELECT * FROM a").transformForExecution()
         }
 
         assertThrows<RestrictedWildcardResultColumn> {
-            queryTransformer("SELECT a.* FROM a").transform()
+            queryProcessor("SELECT a.* FROM a").transformForExecution()
         }
 
         assertThrows<RestrictedWildcardResultColumn> {
-            queryTransformer("SELECT q, a.* FROM a").transform()
+            queryProcessor("SELECT q, a.* FROM a").transformForExecution()
         }
 
         assertThrows<RestrictedWildcardResultColumn> {
-            queryTransformer("SELECT a FROM (SELECT * FROM a)").transform()
+            queryProcessor("SELECT a FROM (SELECT * FROM a)").transformForExecution()
         }
 
         assertThrows<RestrictedWildcardResultColumn> {
-            queryTransformer("WITH q AS (SELECT a FROM a) SELECT * FROM q").transform()
+            queryProcessor("WITH q AS (SELECT a FROM a) SELECT * FROM q").transformForExecution()
         }
 
         assertThrows<RestrictedWildcardResultColumn> {
-            queryTransformer("SELECT a FROM a UNION ALL SELECT * FROM b").transform()
+            queryProcessor("SELECT a FROM a UNION ALL SELECT * FROM b").transformForExecution()
         }
+    }
+
+    @Test
+    fun testParameterExtraction() {
+        assertEquals(queryProcessor("SELECT a, @a FROM b WHERE c = @c OR d > @c").parameters(), setOf("c", "a"))
     }
 
 }

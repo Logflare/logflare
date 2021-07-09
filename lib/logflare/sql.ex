@@ -45,7 +45,11 @@ defmodule Logflare.SQL do
   end
 
   def handle_call({:transform, query, user_id}, from, %__MODULE__{ready: false} = state) do
-    {:noreply, %{state | ready_queue: [{from, query, user_id}|state.ready_queue]}}
+    {:noreply, %{state | ready_queue: [{{:transform, query, user_id}, from}|state.ready_queue]}}
+  end
+
+  def handle_call({:parameters, query}, from, %__MODULE__{ready: false} = state) do
+    {:noreply, %{state | ready_queue: [{{:parameters, query}, from}|state.ready_queue]}}
   end
 
   def handle_call({:transform, query, user_id}, from, state) do
@@ -54,11 +58,17 @@ defmodule Logflare.SQL do
     {:noreply, put_in(state.requests[ref], from)}
   end
 
+  def handle_call({:parameters, query}, from, state) do
+    ref = make_ref()
+    send(state.pid, {:parameters, self(), ref, query})
+    {:noreply, put_in(state.requests[ref], from)}
+  end
+
   def handle_info({:ready, pid}, %__MODULE__{} = state) do
     Logger.info("Logflare.SQL is ready")
     state = Enum.reduce(state.ready_queue, %__MODULE__ { state | pid: pid, ready_queue: [], ready: true },
-    fn {from, query, user_id}, state ->
-      {:noreply, state} = handle_call({:transform, query, user_id}, from, state)
+    fn {call, from}, state ->
+      {:noreply, state} = handle_call(call, from, state)
       state
     end)
     {:noreply, state}
@@ -87,6 +97,14 @@ defmodule Logflare.SQL do
 
   defp do_transform(query, user_id, timeout) do
     GenServer.call(__MODULE__, {:transform, query, user_id}, timeout)
+  end
+
+  @doc """
+  Gets parameters from the query
+  """
+
+  def parameters(query, timeout \\ 60_000) do
+    GenServer.call(__MODULE__, {:parameters, query}, timeout)
   end
 
 

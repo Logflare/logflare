@@ -7,9 +7,9 @@ import gudusoft.gsqlparser.stmt.TSelectSqlStatement
 /**
  * Main entry point to Logflare SQL functionality
  *
- * Translates given query to one that can be safely relayed to BigQuery
+ * Provides extraction & transformation functionality for a given query
  */
-class QueryTransformer(
+class QueryProcessor(
     private val query: String,
     private val sourceResolver: SourceResolver,
     private val projectId: String,
@@ -37,12 +37,20 @@ class QueryTransformer(
     }
 
     /**
-     * Runs the transformation
+     * Transforms the query to be executed on BigQuery backend
      */
-    fun transform(): String {
+    fun transformForExecution(): String {
         parse()
         val statement = parser.sqlstatements[0]
         statement.acceptChildren(TransformerVisitor(projectId, sourceResolver, tableResolver, datasetResolver))
         return statement.toString()
+    }
+
+    fun parameters(): Set<String> {
+        parse()
+        val statement = parser.sqlstatements[0]
+        val extractor = ParameterExtractor()
+        statement.acceptChildren(extractor)
+        return extractor.parameters
     }
 }

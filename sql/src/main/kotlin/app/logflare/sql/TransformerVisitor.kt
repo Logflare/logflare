@@ -44,7 +44,7 @@ internal class TransformerVisitor(
             // if table is not coming from CTE
             if (!isInCTE(name)) {
                 val source = sourceResolver.resolve(name)
-                val newName = "${projectId}.${datasetResolver.resolve(source)}.${tableResolver.resolve(source)}"
+                val newName = "`${projectId}.${datasetResolver.resolve(source)}.${tableResolver.resolve(source)}`"
                 table.tableName.setString(newName)
                 val tableRenamer = object : TParseTreeVisitor() {
                     override fun postVisit(node: TObjectName?) {
