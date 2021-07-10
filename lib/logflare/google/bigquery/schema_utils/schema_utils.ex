@@ -191,6 +191,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def bq_schema_to_flat_typemap(%TS{} = schema) do
     schema
     |> to_typemap()
+    |> flatten_typemap()
+  end
+
+  def flatten_typemap(%{} = typemap) do
+    typemap
     |> Iteraptor.to_flatmap()
     |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
     |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
