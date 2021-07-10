@@ -12,7 +12,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     schema_flatmap = Sources.Cache.get_bq_schema_flat_map(source)
 
     new_schema_flatmap =
-      to_typemap(body.metadata)
+      to_typemap(%{metadata: body.metadata})
       |> flatten_typemap()
 
     try do
@@ -33,7 +33,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
       if v1 != v2,
         do:
           raise(
-            "Type error! Field `#{k}` has type of `#{v1}`. Incoming metadata has type of `#{v2}`."
+            "Type error! Field `#{k}` has type of `#{inspect(v1)}`. Incoming metadata has type of `#{inspect(v2)}`."
           ),
         else: v2
     end)
