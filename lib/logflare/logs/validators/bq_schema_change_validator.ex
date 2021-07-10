@@ -9,11 +9,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
-    schema = Sources.Cache.get_bq_schema(source)
-
-    schema_flatmap =
-      schema
-      |> bq_schema_to_flat_typemap()
+    schema_flatmap = Sources.Cache.get_bq_schema_flat_map(source)
 
     new_schema_flatmap =
       to_typemap(body.metadata)
