@@ -185,6 +185,8 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> Map.new()
   end
 
+  def bq_schema_to_flat_typemap(nil), do: %{}
+
   @spec bq_schema_to_flat_typemap(TS.t()) :: map
   def bq_schema_to_flat_typemap(%TS{} = schema) do
     schema
