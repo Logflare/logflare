@@ -5,7 +5,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   import Logflare.Google.BigQuery.SchemaUtils,
-    only: [to_typemap: 1, to_typemap: 2, bq_schema_to_flat_typemap: 1]
+    only: [to_typemap: 1, to_typemap: 2, bq_schema_to_flat_typemap: 1, flatten_typemap: 1]
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
@@ -16,8 +16,8 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
       |> bq_schema_to_flat_typemap()
 
     new_schema_flatmap =
-      SchemaBuilder.build_table_schema(body.metadata)
-      |> bq_schema_to_flat_typemap()
+      to_typemap(body.metadata)
+      |> flatten_typemap()
 
     try do
       merge_flat_typemaps(schema_flatmap, new_schema_flatmap)
