@@ -194,13 +194,22 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> flatten_typemap()
   end
 
+  def flatten_typemap(nil), do: %{}
+
   def flatten_typemap(%{} = typemap) do
-    typemap
-    |> Iteraptor.to_flatmap()
-    |> Enum.map(fn {k, v} -> {String.trim_trailing(k, ".t"), v} end)
-    |> Enum.map(fn {k, v} -> {String.replace(k, ".fields.", "."), v} end)
+    t =
+      typemap
+      |> Iteraptor.to_flatmap()
+
+    for {k, v} when v != :map <- t do
+      {format_flatmap_field_names(k), v}
+    end
     |> Enum.uniq()
-    |> Enum.reject(fn {_k, v} -> v === :map end)
     |> Map.new()
+  end
+
+  defp format_flatmap_field_names(k) do
+    String.trim_trailing(k, ".t")
+    |> String.replace(".fields.", ".")
   end
 end
