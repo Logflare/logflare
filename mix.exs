@@ -132,7 +132,7 @@ defmodule Logflare.Mixfile do
       {:scrivener_html, "~> 1.8"},
 
       # GCP
-      {:google_api_cloud_resource_manager, "~> 0.34.0"},
+      {:google_api_cloud_resource_manager, "~> 0.40.1"},
       {:google_api_big_query, "~> 0.52.0"},
       {:goth, "~> 1.2.0"},
 
