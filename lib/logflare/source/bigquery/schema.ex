@@ -270,7 +270,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   defp count_fields(type_map) do
     type_map
-    |> Iteraptor.to_flatmap()
+    |> BigQuery.SchemaUtils.flatten_typemap()
     |> Enum.count()
   end
 
