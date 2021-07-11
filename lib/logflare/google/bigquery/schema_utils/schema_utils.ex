@@ -201,7 +201,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
       typemap
       |> Iteraptor.to_flatmap()
 
-    for {k, v} when v != :map <- t do
+    for {k, v} <- t do
       {format_flatmap_field_names(k), v}
     end
     |> Enum.uniq()

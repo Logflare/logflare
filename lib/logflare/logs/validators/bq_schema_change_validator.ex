@@ -4,19 +4,22 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   alias Logflare.{Source, Sources}
   alias Logflare.Source.BigQuery.SchemaBuilder
 
-  import Logflare.Google.BigQuery.SchemaUtils,
-    only: [to_typemap: 1, to_typemap: 2, bq_schema_to_flat_typemap: 1, flatten_typemap: 1]
+  import Logflare.Google.BigQuery.SchemaUtils
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
     schema_flatmap = Sources.Cache.get_bq_schema_flat_map(source)
 
-    new_schema_flatmap =
+    metadata_flatmap =
       to_typemap(%{metadata: body.metadata})
       |> flatten_typemap()
 
+    try_merge(metadata_flatmap, schema_flatmap)
+  end
+
+  def try_merge(metadata_flatmap, schema_flatmap) do
     try do
-      merge_flat_typemaps(schema_flatmap, new_schema_flatmap)
+      merge_flat_typemaps(metadata_flatmap, schema_flatmap)
       :ok
     rescue
       e ->
@@ -24,12 +27,13 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     end
   end
 
-  def merge_flat_typemaps(nil, new), do: new
-  def merge_flat_typemaps(original, nil), do: original
-  def merge_flat_typemaps(_, new) when new === %{}, do: new
+  def merge_flat_typemaps(nil, original), do: original
+  def merge_flat_typemaps(new, nil), do: new
+  def merge_flat_typemaps(new, original) when new == %{}, do: original
+  def merge_flat_typempas(new, original) when new == original, do: original
 
-  def merge_flat_typemaps(original, new) do
-    Map.merge(original, new, fn k, v1, v2 ->
+  def merge_flat_typemaps(new, original) do
+    Map.merge(new, original, fn k, v1, v2 ->
       if v1 != v2,
         do:
           raise(
@@ -37,5 +41,22 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
           ),
         else: v2
     end)
+  end
+
+  # Currently for tests. Change tests.
+  def valid?(metadata, schema) do
+    schema_flatmap = bq_schema_to_flat_typemap(schema)
+
+    new_schema_flatmap =
+      to_typemap(%{metadata: metadata})
+      |> flatten_typemap()
+
+    try do
+      merge_flat_typemaps(new_schema_flatmap, schema_flatmap)
+      true
+    rescue
+      _e ->
+        false
+    end
   end
 end
