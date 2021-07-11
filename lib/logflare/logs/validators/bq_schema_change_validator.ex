@@ -37,7 +37,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
       if v1 != v2,
         do:
           raise(
-            "Type error! Field `#{k}` has type of `#{inspect(v1)}`. Incoming metadata has type of `#{inspect(v2)}`."
+            "Type error! Field `#{k}` has type of `#{inspect(v2)}`. Incoming metadata has type of `#{inspect(v1)}`."
           ),
         else: v2
     end)
