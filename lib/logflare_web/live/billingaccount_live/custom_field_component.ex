@@ -86,6 +86,14 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, changeset: changeset)}
 
+      {:error, %Stripe.Error{message: message}} ->
+        socket =
+          socket
+          |> put_flash(:error, "Maximum  4 custom fields!")
+          |> push_patch(to: Routes.billing_account_path(socket, :edit))
+
+        {:noreply, socket}
+
       _err ->
         error_socket(socket)
     end
