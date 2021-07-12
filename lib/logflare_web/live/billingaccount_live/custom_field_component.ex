@@ -86,10 +86,13 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, changeset: changeset)}
 
-      {:error, %Stripe.Error{message: message}} ->
+      {:error,
+       %Stripe.Error{
+         message: "Array invoice_settings[custom_fields] exceeded maximum 4 allowed elements."
+       }} ->
         socket =
           socket
-          |> put_flash(:error, "Maximum  4 custom fields!")
+          |> put_flash(:error, "Maximum 4 custom invoice fields!")
           |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
         {:noreply, socket}
