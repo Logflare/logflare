@@ -66,7 +66,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
 
   def handle_event("add", %{"fields" => params}, socket) do
     ba = socket.assigns.billing_account
-    fields = [params | ba.custom_invoice_fields]
+    fields = ba.custom_invoice_fields ++ [params]
 
     with {:ok, ba} <-
            BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}),
