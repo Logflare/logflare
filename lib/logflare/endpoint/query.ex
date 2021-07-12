@@ -4,7 +4,7 @@ defmodule Logflare.Endpoint.Query do
 
   schema "endpoint_queries" do
     field :token, Ecto.UUID
-    field :title, :string
+    field :name, :string
     field :query, :string
     field :parameter_types, :map
 
@@ -16,7 +16,7 @@ defmodule Logflare.Endpoint.Query do
   @doc false
   def changeset(query, attrs) do
     query
-    |> cast(attrs, [:title, :uuid, :query])
-    |> validate_required([:title, :uuid, :query])
+    |> cast(attrs, [:name, :uuid, :query])
+    |> validate_required([:name, :uuid, :query])
   end
 end
