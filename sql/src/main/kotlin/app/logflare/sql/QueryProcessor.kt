@@ -2,6 +2,7 @@ package app.logflare.sql
 
 import gudusoft.gsqlparser.EDbVendor
 import gudusoft.gsqlparser.TGSqlParser
+import gudusoft.gsqlparser.nodes.TTable
 import gudusoft.gsqlparser.stmt.TSelectSqlStatement
 
 /**
@@ -52,5 +53,17 @@ class QueryProcessor(
         val extractor = ParameterExtractor()
         statement.acceptChildren(extractor)
         return extractor.parameters
+    }
+
+    fun sources(): Set<Source> {
+        parse()
+        val statement = parser.sqlstatements[0]
+        val sources = mutableSetOf<Source>()
+        statement.acceptChildren(object : TableVisitor() {
+            override fun visit(table: TTable?, select: TSelectSqlStatement) {
+                sources.add(sourceResolver.resolve(table!!.name))
+            }
+        })
+        return sources
     }
 }

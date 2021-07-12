@@ -207,4 +207,13 @@ internal class QueryProcessorTest {
         assertEquals(queryProcessor("SELECT a, @a FROM b WHERE c = @c OR d > @c").parameters(), setOf("c", "a"))
     }
 
+    @Test
+    fun testSourceExtraction() {
+        assertEquals(queryProcessor("SELECT a, b FROM a,b,c").sources(),
+            setOf(sourceResolver().resolve("a"),
+                sourceResolver().resolve("b"),
+                sourceResolver().resolve("c")))
+    }
+
+
 }

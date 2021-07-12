@@ -52,6 +52,10 @@ defmodule Logflare.SQL do
     {:noreply, %{state | ready_queue: [{{:parameters, query}, from}|state.ready_queue]}}
   end
 
+  def handle_call({:sources, query, user_id}, from, %__MODULE__{ready: false} = state) do
+    {:noreply, %{state | ready_queue: [{{:sources, query, user_id}, from}|state.ready_queue]}}
+  end
+
   def handle_call({:transform, query, user_id}, from, state) do
     ref = make_ref()
     send(state.pid, {:transform, self(), ref, query, user_id})
@@ -61,6 +65,12 @@ defmodule Logflare.SQL do
   def handle_call({:parameters, query}, from, state) do
     ref = make_ref()
     send(state.pid, {:parameters, self(), ref, query})
+    {:noreply, put_in(state.requests[ref], from)}
+  end
+
+  def handle_call({:sources, query, user_id}, from, state) do
+    ref = make_ref()
+    send(state.pid, {:sources, self(), ref, query, user_id})
     {:noreply, put_in(state.requests[ref], from)}
   end
 
@@ -102,9 +112,23 @@ defmodule Logflare.SQL do
   @doc """
   Gets parameters from the query
   """
-
   def parameters(query, timeout \\ 60_000) do
     GenServer.call(__MODULE__, {:parameters, query}, timeout)
+  end
+
+  @doc """
+  Get sources UUIDs from the query
+  """
+  def sources(query, user, timeout \\ 60_000) do
+    do_sources(query, user, timeout)
+  end
+
+  defp do_sources(query, %Logflare.User{id: id}, timeout) do
+    do_sources(query, id, timeout)
+  end
+
+  defp do_sources(query, user_id, timeout) do
+    GenServer.call(__MODULE__, {:sources, query, user_id}, timeout)
   end
 
 

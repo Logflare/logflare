@@ -63,8 +63,7 @@ object Main {
                                 ).toTypedArray()))
                         }
                     }
-                }
-                if (tag is OtpErlangAtom && tag.atomValue().equals("parameters") &&
+                } else if (tag is OtpErlangAtom && tag.atomValue().equals("parameters") &&
                             msg.elements().size == 4) {
                     val sender = msg.elementAt(1)
                     val ref = msg.elementAt(2)
@@ -82,6 +81,42 @@ object Main {
                                         OtpErlangAtom("ok"),
                                         ref,
                                         OtpErlangList(parameters.map { OtpErlangBinary(it.toByteArray()) }
+                                            .toTypedArray<OtpErlangObject>())
+                                    ).toTypedArray()
+                                )
+                            )
+                        } catch (e: Throwable) {
+                            mailbox.send(
+                                sender,
+                                OtpErlangTuple(
+                                    listOf<OtpErlangObject>(
+                                        OtpErlangAtom("error"),
+                                        ref,
+                                        OtpErlangBinary(e.message?.toByteArray() ?: "unknown error".toByteArray())
+                                    ).toTypedArray()
+                                )
+                            )
+                        }
+                    }
+                } else if (tag is OtpErlangAtom && tag.atomValue().equals("sources") &&
+                    msg.elements().size == 5) {
+                    val sender = msg.elementAt(1)
+                    val ref = msg.elementAt(2)
+                    val query = msg.elementAt(3)
+                    val userId = msg.elementAt(4)
+                    if (sender is OtpErlangPid && query is OtpErlangBinary && userId is OtpErlangLong) {
+                        val sourceResolver = DatabaseSourceResolver(dataSource = ds, userId = userId.longValue())
+                        try {
+                            val parameters = QueryProcessor(
+                                sourceResolver = sourceResolver, datasetResolver = datasetResolver,
+                                projectId = projectId, query = query.binaryValue().decodeToString()
+                            ).sources()
+                            mailbox.send(
+                                sender, OtpErlangTuple(
+                                    listOf<OtpErlangObject>(
+                                        OtpErlangAtom("ok"),
+                                        ref,
+                                        OtpErlangList(parameters.map { OtpErlangBinary(it.token.toString().toByteArray()) }
                                             .toTypedArray<OtpErlangObject>())
                                     ).toTypedArray()
                                 )
