@@ -68,12 +68,12 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
     ba = socket.assigns.billing_account
     fields = ba.custom_invoice_fields ++ [params]
 
-    with {:ok, ba} <-
-           BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}),
-         {:ok, _customer} <-
+    with {:ok, _customer} <-
            BillingAccounts.Stripe.update_customer(ba.stripe_customer, %{
              invoice_settings: %{custom_fields: fields}
-           }) do
+           }),
+         {:ok, ba} <-
+           BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}) do
       socket =
         socket
         |> assign(billing_account: ba)
