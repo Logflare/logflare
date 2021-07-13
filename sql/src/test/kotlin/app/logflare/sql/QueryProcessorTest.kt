@@ -215,5 +215,13 @@ internal class QueryProcessorTest {
                 sourceResolver().resolve("c")))
     }
 
+    @Test
+    fun testSensibleErrorMessages() {
+        val exc = assertThrows<QueryParseError> {
+            queryProcessor("ZZ").transformForExecution()
+        }
+        assertFalse(exc.message!!.contains("tokenlize"))
+        assert(exc.message!!.contains("tokenizing"))
+    }
 
 }
