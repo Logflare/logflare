@@ -59,7 +59,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:ok, socket}
   end
 
-  def handle_params(%{"querystring" => qs}, uri, socket) do
+  def handle_params(%{"querystring" => qs} = params, uri, socket) do
     source = socket.assigns.source
 
     socket =
@@ -67,6 +67,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
       |> assign(:show_modal, false)
       |> assign(uri: URI.parse(uri))
+      |> assign(uri_params: params)
 
     socket =
       if team_user = socket.assigns[:team_user] do
@@ -238,7 +239,30 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
+  def handle_event(
+        "start_search" = ev,
+        %{"search" => %{"querystring" => qs}},
+        %{assigns: prev_assigns} = socket
+      ) do
+    %{id: _sid, token: stoken} = prev_assigns.source
+    log_lv_received_event(ev, prev_assigns.source)
+    bq_table_schema = prev_assigns.source.bq_table_schema
+
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.maybe_cancel_query(stoken)
+
+    socket =
+      assign_new_search_with_qs(
+        socket,
+        %{querystring: qs, tailing?: prev_assigns.tailing?},
+        bq_table_schema
+      )
+
+    {:noreply, socket}
+  end
+
+  def handle_event(direction = ev, _, socket) when direction in ["backwards", "forwards"] do
+    log_lv_received_event(ev, socket.assigns.source)
     rules = socket.assigns.lql_rules
 
     timestamp_rules =
@@ -291,15 +315,21 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("soft_play" = ev, _, socket) do
+  def handle_event("soft_play" = ev, _, %{assigns: %{uri_params: params}} = socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+
     soft_play(ev, socket)
   end
 
-  def handle_event("soft_pause" = ev, _, socket) do
-    soft_pause(ev, socket, :observer)
+  def handle_event("soft_pause" = ev, _, %{assigns: %{uri_params: params}} = socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+
+    soft_pause(ev, socket)
   end
 
   def handle_event("hard_play" = ev, _, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
+
     hard_play(ev, socket)
   end
 
@@ -357,6 +387,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:querystring, qs)
         |> assign(:lql_rules, lql_rules)
         |> assign(:loading, true)
+        |> clear_flash()
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
         socket
@@ -366,7 +397,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("timestamp_and_chart_update" = ev, params, %{assigns: assigns} = socket) do
+  def handle_event("datetime_update" = ev, params, %{assigns: assigns} = socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
     ts_qs = Map.get(params, "querystring")
@@ -396,28 +427,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
-
-    {:noreply, socket}
-  end
-
-  def handle_event(
-        "start_search" = ev,
-        %{"search" => %{"querystring" => qs}},
-        %{assigns: prev_assigns} = socket
-      ) do
-    %{id: _sid, token: stoken} = prev_assigns.source
-    log_lv_received_event(ev, prev_assigns.source)
-    bq_table_schema = prev_assigns.source.bq_table_schema
-
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
-
-    socket =
-      assign_new_search_with_qs(
-        socket,
-        %{querystring: qs, tailing?: prev_assigns.tailing?},
-        bq_table_schema
-      )
 
     {:noreply, socket}
   end
@@ -481,17 +490,9 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("reset_search", _, socket) do
+  def handle_event("reset_search" = ev, _, socket) do
+    log_lv_received_event(ev, socket.assigns.source)
     {:noreply, reset_search(socket)}
-  end
-
-  defp reset_search(%{assigns: assigns} = socket) do
-    lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
-    qs = Lql.encode!(lql_rules)
-
-    socket
-    |> assign(:querystring, qs)
-    |> assign(:lql_rules, lql_rules)
   end
 
   def handle_info(:soft_pause = ev, socket) do
@@ -603,6 +604,7 @@ defmodule LogflareWeb.Source.SearchLV do
           msg = "Search halted: " <> halted_message
 
           socket
+          |> assign(loading: false)
           |> put_flash(:error, msg)
 
         err ->
@@ -642,8 +644,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
-      |> clear_flash(:warning)
-      |> clear_flash(:error)
+      |> clear_flash()
       |> assign(:lql_rules, lql_rules)
       |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
@@ -737,6 +738,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp kickoff_queries(source_token, assigns) when is_atom(source_token) do
+    Logger.info("Kicking off queries for #{source_token}", source_id: source_token)
+
     SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
     SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
   end
@@ -780,6 +783,10 @@ defmodule LogflareWeb.Source.SearchLV do
       else: search_history
   end
 
+  defp soft_play(ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
+    {:noreply, socket}
+  end
+
   defp soft_play(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
@@ -793,7 +800,11 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(ev, %{assigns: prev_assigns} = socket, paused_by \\ :human) do
+  defp soft_pause(ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
+    {:noreply, socket}
+  end
+
+  defp soft_pause(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
 
@@ -838,5 +849,14 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Map.update!("tailing?", &String.to_existing_atom/1)
     |> MapKeys.to_atoms_unsafe!()
     |> Map.take([:querystring, :tailing?])
+  end
+
+  defp reset_search(%{assigns: assigns} = socket) do
+    lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
+    qs = Lql.encode!(lql_rules)
+
+    socket
+    |> assign(:querystring, qs)
+    |> assign(:lql_rules, lql_rules)
   end
 end

@@ -160,7 +160,7 @@ hooks.SourceLogsSearch = {
         picker.endDate,
         picker.chosenLabel
       )
-      hook.pushEvent("timestamp_and_chart_update", {
+      hook.pushEvent("datetime_update", {
         querystring: tsClause
       })
     })
@@ -190,7 +190,7 @@ hooks.SourceLogsSearch = {
         picker.endDate,
         picker.chosenLabel
       )
-      hook.pushEvent("timestamp_and_chart_update", {
+      hook.pushEvent("datetime_update", {
         querystring: tsClause
       })
     })
@@ -199,10 +199,10 @@ hooks.SourceLogsSearch = {
       hook.pushEvent("soft_play", {})
     })
 
-    window.stopLiveSearch = () => hook.pushEvent("stop_live_search", {})
+    window.stopLiveSearch = () => hook.pushEvent("soft_pause", {})
 
     window.updateTimestampAndChart = (tsClause, chartPeriod) => {
-      hook.pushEvent("timestamp_and_chart_update", {
+      hook.pushEvent("datetime_update", {
         querystring: tsClause,
         period: chartPeriod,
       })

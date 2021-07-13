@@ -133,9 +133,15 @@
           <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
         </span>
         <% else %>
+        <%= if @uri_params["tailing?"] == "true" do %>
         <span class="btn btn-primary live-pause mr-0" phx-click="soft_play">
           <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
         </span>
+        <% else %>
+        <span class="btn btn-primary live-pause mr-0" phx-click="hard_play">
+          <i class="fas fa-play"></i><span class="fas-in-button hide-on-mobile">Live</span>
+        </span>
+        <% end %>
         <% end %>
         <a href="#" phx-click="forwards" class="btn btn-primary">
           <span class="fas fa-step-forward"></span>
