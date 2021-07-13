@@ -56,23 +56,6 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         %{
           "fields" => %{
             "name" => name,
-            "project" => project_id
-          }
-        },
-        socket
-      ) do
-    socket
-    |> clear_flash()
-    |> put_flash(:error, "Please select a Logflare source!")
-
-    {:noreply, socket}
-  end
-
-  def handle_event(
-        "create_drain",
-        %{
-          "fields" => %{
-            "name" => name,
             "project" => project_id,
             "source" => source_token
           }
@@ -130,9 +113,10 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         },
         socket
       ) do
-    socket
-    |> clear_flash()
-    |> put_flash(:error, "Please select a Logflare source!")
+    socket =
+      socket
+      |> clear_flash()
+      |> put_flash(:error, "Please select a Logflare source!")
 
     {:noreply, socket}
   end
