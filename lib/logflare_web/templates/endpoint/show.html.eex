@@ -1,0 +1,62 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+
+    <h5>~/endpoints/<%= link @endpoint_query.name, to: Routes.endpoint_path(@conn, :show, @endpoint_query), class: "text-primary" %></h5>
+  </div>
+</div>
+<div class="container mx-auto">
+
+    <%= section_header("Query") %>
+
+    <code>
+      <%= @endpoint_query.query %>
+    </code>
+
+    <%= unless Enum.empty?(@parameters) do %>
+      <div class="mb-4">
+      <%= section_header("Parameters") %>
+      <%= for parameter <- @parameters do %>
+        <div>
+        <label ]for="param[<%= parameter %>">
+        <%= parameter %>
+        </label>
+        <input id="param[<%= parameter %>]">
+        </div>
+      <% end %>
+      </div>
+    <% end %>
+
+    <div class="mt-4">
+      <button class="btn btn-primary" onclick="Endpoint.query('<%= @endpoint_query.token %>', collectParameters())">Run</button>
+    </div>
+
+    <div id="queryResult" class="mt-4">
+    </div>
+
+    <%= section_header("cURL Example") %>
+
+    <code>
+    <pre class="pt-2">
+    curl "https://api.logflare.app/endpoints/query/<%= @endpoint_query.token %>" \
+         -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
+         -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
+    <% end %>
+    </pre>
+    </code>
+
+
+</div>
+
+<script>
+function collectParameters() {
+    <%= unless Enum.empty?(@parameters) do %>
+      var parameters = {}
+      <%= for parameter <- @parameters do %>
+      parameters["<%= parameter %>"] = document.getElementById("param[<%= parameter %>]").value
+      <% end %>
+      return parameters
+    <% else %>
+       return []
+    <% end %>
+}
+</script>

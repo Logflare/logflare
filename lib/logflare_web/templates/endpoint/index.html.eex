@@ -1,0 +1,67 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/endpoints</h5>
+    <div class="log-settings">
+      <ul>
+        <li>
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span>Ingest API key is
+            <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false"
+              data-clipboard-text="<%= @user.api_key %>" data-toggle="tooltip" data-html=true data-placement="top"
+              title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span></li>
+        <li><%= link to: Routes.vercel_log_drains_path(@conn, :edit) do %>▲</i><span
+            class="hide-on-mobile"> vercel integration</span><% end %></li>
+        <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
+              class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="dashboard container mx-auto">
+  <div class="row justify-content-md-center">
+    <div class="col-lg-3">
+    </div>
+    <div id="endpoint-query-list" class="col-lg-6 mb-4">
+      <div>
+        <ul class="list-group">
+          <%= if @endpoint_queries == [] do %>
+          <li class="list-group-item">You don't have any endpoint queries!</li>
+          <li class="list-group-item">Create one now!</li>
+          <% end %>
+          <%= for endpoint_query <- @endpoint_queries do %>
+          <li class="list-group-item">
+            <div>
+              <div class="float-right">
+                <%= link to: Routes.endpoint_path(@conn, :edit, endpoint_query.id), class: "dashboard-links" do %>
+                <i class="fas fa-edit"></i>
+                <% end %>
+                <%= link to: Routes.endpoint_path(@conn, :delete, endpoint_query.id), method: :delete, class: "dashboard-links", data: [confirm: "Are you sure?"] do %>
+                <i class="fa fa-trash"></i>
+                <% end %>
+              </div>
+              <div class="source-link word-break-all">
+                <%= link endpoint_query.name, to: Routes.endpoint_path(@conn, :show, endpoint_query.id) %>
+                <span id="<%= endpoint_query.token %>">
+                </span>
+              </div>
+            </div>
+          </li>
+          <% end %>
+        </ul>
+        <%= link "New endpoint query", to: Routes.endpoint_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
+      </div>
+    </div>
+    <div class="col-lg-3">
+      <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
+      <p>👋 Let's build a dashboard!</p>
+      <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of Logflare.</p>
+      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.</p>
+      <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
+      <p>Schedule a call or learn more about Logflare by watching <%= link "some of our videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>.</p>
+
+      <%= link "Schedule a call", to: "https://savvycal.com/logflare/build", class: "btn btn-primary btn-sm mb-3 mr-3", target: "_blank" %>
+
+    </div>
+  </div>
+</div>

@@ -1,0 +1,24 @@
+<div class="subhead subhead-fixed">
+    <div class="container mx-auto">
+      <h5>~/endpoints/<%= link @endpoint_query.name, to: Routes.endpoint_path(@conn, :show, @endpoint_query), class: "text-primary" %>/edit</h5>
+    </div>
+  </div>
+  <div class="container mx-auto">
+    <%= section_header("Endpoint Name") %>
+    <%= form_for @changeset, Routes.endpoint_path(@conn, :update, @endpoint_query), fn a -> %>
+    <div class="form-group">
+      <%= text_input a, :name, placeholder: "YourApp.EndpointName", class: "form-control form-control-margin" %>
+      <%= error_tag a, :name %>
+    </div>
+    <%= submit "Update name", class: "btn btn-primary form-button" %>
+    <% end %>
+    <%= section_header("Endpoint Query") %>
+    <div class="form-group">
+      <%= form_for @changeset, Routes.endpoint_path(@conn, :update, @endpoint_query), fn a -> %>
+      <%= textarea a, :query, class: "form-control form-control-margin"  %>
+      <%= error_tag a, :query %>
+    </div>
+    <%= submit "Update query", class: "btn btn-primary form-button" %>
+    <% end %>
+  </div>
+</div>

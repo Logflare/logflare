@@ -131,6 +131,25 @@ defmodule LogflareWeb.Router do
     get "/dashboard", SourceController, :dashboard
   end
 
+  scope "/endpoints/query", LogflareWeb do
+    pipe_through [:api]
+    get "/:token", EndpointController, :query
+  end
+
+  scope "/endpoints", LogflareWeb do
+    pipe_through [:browser, :require_auth]
+
+    get "/", EndpointController, :index
+    post "/", EndpointController, :create
+
+    get "/new", EndpointController, :new
+    get "/:id", EndpointController, :show
+    get "/:id/edit", EndpointController, :edit
+    put "/:id", EndpointController, :update
+    delete "/:id", EndpointController, :delete
+  end
+
+
   scope "/sources", LogflareWeb do
     pipe_through [:browser]
 
@@ -293,11 +312,6 @@ defmodule LogflareWeb.Router do
   scope "/health", LogflareWeb do
     pipe_through :api
     get "/", HealthCheckController, :check
-  end
-
-  scope "/endpoints", LogflareWeb do
-    pipe_through [:api]
-    get "/:token", EndpointController, :query
   end
 
   # Account management API.
