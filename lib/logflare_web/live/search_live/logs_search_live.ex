@@ -571,19 +571,7 @@ defmodule LogflareWeb.Source.SearchLV do
           put_flash(socket, :info, message)
 
         msg = warning_message(socket.assigns, search_result) ->
-          le =
-            LogEvent.make(
-              %{
-                event_message: msg,
-                timestamp: DateTime.utc_now() |> DateTime.to_unix(),
-                ephemeral: true
-              },
-              %{
-                source: socket.assigns.source
-              }
-            )
-
-          assign(socket, :log_events, [le])
+          put_flash(socket, :warning, msg)
 
         true ->
           socket
@@ -720,10 +708,10 @@ defmodule LogflareWeb.Source.SearchLV do
         "No log events matching your search query."
 
       log_events_empty? and tailing? ->
-        "No log events matching your search query ingested during last 24 hours..."
+        "No log events matching your search query."
 
       querystring == "" and log_events_empty? and tailing? ->
-        "No log events ingested during last 24 hours..."
+        "No log events ingested during last 24 hours. Try searching over a longer time period, and clicking the bar chart to drill down."
 
       true ->
         nil
