@@ -152,6 +152,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   def handle_event("make-default", %{"stripe-id" => id}, socket) do
     billing_account = socket.assigns.user.billing_account
     stripe_customer = billing_account.stripe_customer
+
     user = socket.assigns.user
 
     invoice_settings = %{
@@ -162,15 +163,19 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       }
     }
 
-    with {:ok, billing_account} <-
-           BillingAccounts.update_billing_account(billing_account, %{default_payment_method: id}),
-         {:ok, _response} <-
-           BillingAccounts.Stripe.update_customer(stripe_customer, invoice_settings) do
+    with {:ok, _response} <-
+           BillingAccounts.Stripe.update_customer(stripe_customer, invoice_settings),
+         {:ok, message} <-
+           update_all_subscription(billing_account.stripe_subscriptions, %{
+             default_payment_method: id
+           }),
+         {:ok, billing_account} <-
+           BillingAccounts.update_billing_account(billing_account, %{default_payment_method: id}) do
       socket =
         socket
         |> assign(:user, Map.put(user, :billing_account, billing_account))
         |> clear_flash()
-        |> put_flash(:info, "Default payment method updated!")
+        |> put_flash(:info, message)
         |> push_patch(to: Routes.billing_account_path(socket, :edit))
 
       {:noreply, socket}
@@ -209,5 +214,21 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     ~E"""
     <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</button>
     """
+  end
+
+  defp update_all_subscription(nil, params),
+    do: {:ok, "Default payment method set for your billing account!"}
+
+  defp update_all_subscription(subs, params) do
+    updated =
+      for s <- subs["data"] do
+        BillingAccounts.Stripe.update_subscription(s["id"], params)
+      end
+      |> Enum.filter(fn {:ok, _} -> true end)
+      |> Enum.count()
+
+    message = "Default payment method set for #{updated} subscription(s)!"
+
+    {:ok, message}
   end
 end

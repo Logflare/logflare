@@ -56,6 +56,23 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         %{
           "fields" => %{
             "name" => name,
+            "project" => project_id
+          }
+        },
+        socket
+      ) do
+    socket
+    |> clear_flash()
+    |> put_flash(:error, "Please select a Logflare source!")
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "create_drain",
+        %{
+          "fields" => %{
+            "name" => name,
             "project" => project_id,
             "source" => source_token
           }
@@ -71,24 +88,51 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         do: %{name: name, type: "json", url: url},
         else: %{name: name, type: "json", url: url, projectId: project_id}
 
-    {:ok, resp} = Vercel.Client.new(auth) |> Vercel.Client.create_log_drain(drain_params)
+    resp = Vercel.Client.new(auth) |> Vercel.Client.create_log_drain(drain_params)
 
     socket =
       case resp do
-        %Tesla.Env{status: 200} ->
+        {:ok, %Tesla.Env{status: 200}} ->
           socket
           |> assign_drains()
           |> assign_mapped_drains_sources_projects()
           |> clear_flash()
           |> put_flash(:info, "Log drain created!")
 
-        %Tesla.Env{status: 403} ->
+        {:ok, %Tesla.Env{status: 400}} ->
+          socket
+          |> clear_flash()
+          |> put_flash(:info, "Please use alphanumeric characters for you log drain name!")
+
+        {:ok, %Tesla.Env{status: 403}} ->
           unauthorized_socket(socket)
 
-        resp ->
+        {:error, "Encounter Mint error %Mint.TransportError{reason: :timeout}"} ->
+          socket
+          |> clear_flash()
+          |> put_flash(:error, "Vercel API timeout! Please try again.")
+
+        {:error, resp} ->
           Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
           unknown_error_socket(socket)
       end
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "create_drain",
+        %{
+          "fields" => %{
+            "name" => name,
+            "project" => project_id
+          }
+        },
+        socket
+      ) do
+    socket
+    |> clear_flash()
+    |> put_flash(:error, "Please select a Logflare source!")
 
     {:noreply, socket}
   end

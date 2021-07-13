@@ -5,38 +5,6 @@ defmodule Logflare.Logs.Search.Utils do
   alias Logflare.JSON
   require Logger
 
-  def format_error(%Tesla.Env{body: body, status: status, url: url} = resp)
-      when status in 500..600 do
-    Logger.error("Backend search error.", tesla_response: inspect(resp))
-
-    %URI{host: host} = URI.parse(url)
-
-    search_error_message(host, status)
-  end
-
-  def format_error(%Tesla.Env{body: body, status: status, url: url} = resp) do
-    Logger.error("Backend search error.", tesla_response: inspect(resp))
-
-    case JSON.decode(body) do
-      {:ok, json} ->
-        json
-        |> Map.get("error")
-        |> Map.get("message")
-
-      {:error, _reason} ->
-        %URI{host: host} = URI.parse(url)
-
-        search_error_message(host, status)
-    end
-  end
-
-  def format_error(e) do
-    err = inspect(e)
-    Logger.error("Backend search error.", error_string: err)
-
-    err
-  end
-
   def gen_search_tip() do
     tips = [
       "Search is case sensitive.",
