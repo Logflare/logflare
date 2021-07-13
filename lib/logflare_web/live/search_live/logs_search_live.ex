@@ -599,6 +599,7 @@ defmodule LogflareWeb.Source.SearchLV do
           Logger.error("Backend search error", error_string: inspect(err))
 
           socket
+          |> assign(loading: false)
       end
 
     {:noreply, socket}
