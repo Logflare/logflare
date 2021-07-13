@@ -22,7 +22,7 @@ defmodule LogflareWeb.SearchLV.Utils do
   end
 
   def log_lv_received_event(event_name, source) do
-    Logger.info("#{pid_sid(source)} received #{event_name} event")
+    # Logger.info("#{pid_sid(source)} received #{event_name} event")
   end
 
   defp pid_sid(source) do

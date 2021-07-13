@@ -3,7 +3,7 @@ import {
 } from "./utils"
 import sqlFormatter from "sql-formatter"
 import $ from "jquery"
-
+import _ from "lodash"
 import idle from "./vendor/idle"
 
 let hooks = {}
@@ -16,10 +16,6 @@ hooks.SourceSchemaModalTable = {
     $(".copy-metadata-field").tooltip()
   },
 }
-
-
-
-
 
 hooks.SourceLogsSearchList = {
   updated() {
@@ -61,14 +57,14 @@ hooks.ModalHook = {
         },
       })
 
-      this.pushEvent("pause_live_search", {})
+      this.pushEvent("soft_pause", {})
     }
 
     $modal.on("hidePrevented.bs.modal", () => {
       this.pushEvent("deactivate_modal", {})
 
       if ($modal.data("modal-type") === "metadata-modal") {
-        this.pushEvent("resume_live_search", {})
+        this.pushEvent("soft_play", {})
       }
     })
 
@@ -171,7 +167,7 @@ hooks.SourceLogsSearch = {
 
 
     $daterangepicker.on("cancel.daterangepicker", (e, picker) => {
-      hook.pushEvent("resume_live_search", {})
+      hook.pushEvent("soft_play", {})
     })
 
     activateClipboardForSelector("#search-uri-query", {
@@ -180,7 +176,7 @@ hooks.SourceLogsSearch = {
     $("#search-uri-query").tooltip()
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("pause_live_search", {})
+      hook.pushEvent("soft_pause", {})
     })
   },
   reconnected() { },
@@ -200,7 +196,7 @@ hooks.SourceLogsSearch = {
     })
 
     $daterangepicker.on("cancel.daterangepicker", (e, picker) => {
-      hook.pushEvent("resume_live_search", {})
+      hook.pushEvent("soft_play", {})
     })
 
     window.stopLiveSearch = () => hook.pushEvent("stop_live_search", {})
@@ -213,37 +209,36 @@ hooks.SourceLogsSearch = {
     }
 
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("pause_live_search", {})
+      hook.pushEvent("soft_pause", {})
     })
-
-    const observer =
-      new IntersectionObserver((entries, observer) => {
-        entries.forEach((entry) => {
-          let searchInView = entry.isIntersecting
-          if (searchInView) {
-            this.pushEvent("resume_live_search", {})
-          } else {
-            this.pushEvent("observer_pause_live_search", {})
-          }
-        })
-      })
-
-    const target = document.querySelector("#search")
-    observer.observe(target)
-
-    this.handleEvent("human_paused", ({ paused }) => observer.disconnect(target))
-    this.handleEvent("human_resumed", ({ paused }) => observer.observe(target))
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
     $("#search-uri-query").tooltip()
 
+    function resetScrollTracker() {
+      let window_inner_height = window.innerHeight
+      let window_offset = window.pageYOffset
+      let client_height = document.body.clientHeight
+      // should make this dynamic
+      let nav_height = 175
+
+      // even if we're close to the bottom, we're at the bottom (for mobile browsers)
+      if (window_inner_height + window_offset - nav_height >= client_height - 0) {
+        hook.pushEvent("soft_play", {})
+      } else {
+        hook.pushEvent("soft_pause", {})
+      }
+    };
+
+    window.addEventListener("scroll", _.throttle(resetScrollTracker, 250))
+
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")
     idle({
       onIdle: () => {
-        hook.pushEvent("pause_live_search", {})
+        hook.pushEvent("soft_pause", {})
         console.log(
           `User idle for ${idleInterval}, live tail search stopped...`
         )
