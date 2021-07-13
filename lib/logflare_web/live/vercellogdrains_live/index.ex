@@ -85,7 +85,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         {:ok, %Tesla.Env{status: 400}} ->
           socket
           |> clear_flash()
-          |> put_flash(:info, "Please use alphanumeric characters for you log drain name!")
+          |> put_flash(:info, "Please use alphanumeric characters for your log drain name!")
 
         {:ok, %Tesla.Env{status: 403}} ->
           unauthorized_socket(socket)
