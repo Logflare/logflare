@@ -44,21 +44,7 @@
 </div>
 <div class="sub-form">
   <%= section_header("Pricing") %>
-  <%= live_render(@socket, LogflareWeb.PlansLive, id: :plans) %>
-</div>
-<div class="sub-form">
-  <%= section_header("Enterprise Metered") %>
-  <p>Upgrade to the Enterprise Metered plan. The Enterprise Metered plan is $100 per month which includes 50,000,000 events per month. Above 50 million log events you're charged $2.00 per million events. This plan includes 90 days of retention.</p>
-  <div class="w-25">
-    <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered") %>
-  </div>
-</div>
-<div class="sub-form">
-  <%= section_header("Enterprise Metered BYOB") %>
-  <p>Choose the Enterprise Metered BYOB plan if you're are using your own BigQuery credentials for log event storage. This plan also starts at $100 per month but includes 200,000,000 events and you're charged only $0.50 per million after that.</p>
-  <div class="w-25">
-    <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered BYOB") %>
-  </div>
+  <%= live_render(@socket, LogflareWeb.MeteredPlansLive, id: :plans) %>
 </div>
 <div class="sub-form">
   <%= section_header("Payment Method") %>
