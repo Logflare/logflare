@@ -596,7 +596,10 @@ defmodule LogflareWeb.Source.SearchLV do
           |> put_flash(:error, msg)
 
         err ->
-          Logger.error("Backend search error", error_string: inspect(err))
+          Logger.error("Backend search error for source: #{source.token}",
+            error_string: inspect(err),
+            source_id: source.token
+          )
 
           socket
           |> assign(loading: false)
