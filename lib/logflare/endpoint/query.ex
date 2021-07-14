@@ -6,7 +6,6 @@ defmodule Logflare.Endpoint.Query do
     field :token, Ecto.UUID
     field :name, :string
     field :query, :string
-    field :parameter_types, :map
 
     belongs_to :user, Logflare.User
 
@@ -20,12 +19,12 @@ defmodule Logflare.Endpoint.Query do
     |> validate_required([:name, :token, :query])
   end
 
-def update_by_user_changeset(query, attrs) do
+  def update_by_user_changeset(query, attrs) do
     query
     |> cast(attrs, [
       :name,
       :token,
-      :query,
+      :query
     ])
     |> default_validations()
   end
@@ -49,6 +48,4 @@ def update_by_user_changeset(query, attrs) do
       end
     end)
   end
-
-
 end
