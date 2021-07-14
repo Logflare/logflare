@@ -217,15 +217,19 @@ hooks.SourceLogsSearch = {
     })
     $("#search-uri-query").tooltip()
 
+    // Auto plays and pauses search
     function resetScrollTracker() {
       let window_inner_height = window.innerHeight
       let window_offset = window.pageYOffset
       let client_height = document.body.clientHeight
-      // should make this dynamic
-      let nav_height = 175
+      let subhead = document.querySelector("div.subhead")
+      let header = document.querySelector("nav")
+
+      let nav_height = subhead.offsetHeight + header.offsetHeight
 
       // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-      if (window_inner_height + window_offset - nav_height >= client_height - 0) {
+      // should make this 40 dynamic
+      if (window_inner_height + window_offset - nav_height >= client_height + 40) {
         hook.pushEvent("soft_play", {})
       } else {
         hook.pushEvent("soft_pause", {})
@@ -233,6 +237,25 @@ hooks.SourceLogsSearch = {
     };
 
     window.addEventListener("scroll", _.throttle(resetScrollTracker, 250))
+
+    // Auto plays and pauses search, but need to figure out better layout css first.
+    // Logs list area needs to auto fill height
+
+    // const observer =
+    //   new IntersectionObserver((entries, observer) => {
+    //     entries.forEach((entry) => {
+    //       let searchInView = entry.isIntersecting
+    //       if (searchInView) {
+    //         hook.pushEvent("soft_play", {})
+    //       } else {
+    //         hook.pushEvent("soft_pause", {})
+    //       }
+    //     })
+    //   })
+    // 
+    // const target = document.querySelector("#last-query-completed-at")
+    // observer.observe(target)
+
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")
