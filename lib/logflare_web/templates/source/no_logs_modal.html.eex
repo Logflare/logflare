@@ -28,7 +28,7 @@
         <p>Install the Gigalixir command line tool, and navigate to your project directory.</p>
         <pre class="py-3">
           <code>
-    gigalixir drains:add "<%= Routes.log_url(LogflareWeb.Endpoint, :syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+    gigalixir drains:add "<%= log_url(:syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
         <h5 class="header-margin">Cloudflare App</h5>
@@ -41,7 +41,7 @@
         <p>Add our log drain with a simple command.</p>
         <pre class="py-3">
           <code>
-    heroku drains:add "<%= Routes.log_url(LogflareWeb.Endpoint, :syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+    heroku drains:add "<%= log_url(:syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
         <h5 class="header-margin">Elixir Logger</h5>
@@ -61,7 +61,7 @@
 
         <pre class="px-4 py-3">
         <code>
-        <%= Routes.log_url(LogflareWeb.Endpoint, :github) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+        <%= log_url(:github) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
         </pre>
 
         <h5 class="header-margin">Github Action</h5>
@@ -95,12 +95,12 @@
         <p>e.g. you can set a Github webhook to send events to:</p>
         <pre class="py-3 px-4">
           <code>
-    <%= Routes.log_url(LogflareWeb.Endpoint, :generic_json) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+    <%= log_url(:generic_json) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
         </pre>
         <p>Or send generic JSON events yourself.</p>
         <pre class="py-3">
           <code>
-    curl -X "POST" "<%= Routes.log_url(LogflareWeb.Endpoint, :generic_json) %>?source=<%= @source.token %>" \
+    curl -X "POST" "<%= log_url(:generic_json) %>?source=<%= @source.token %>" \
          -H 'Content-Type: application/json; charset=utf-8' \
          -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
          -d $'[
@@ -127,7 +127,7 @@
           the <code>message</code> field.</p>
         <pre class="py-3">
           <code>
-    curl -X "POST" "<%= Routes.log_url(LogflareWeb.Endpoint, :create) %>?source=<%= @source.token %>" \
+    curl -X "POST" "<%= log_url(:create) %>?source=<%= @source.token %>" \
     -H 'Content-Type: application/json' \
     -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
     -d $'{
@@ -238,7 +238,7 @@
             body: JSON.stringify(logflareEventBody),
         }
 
-        event.waitUntil(fetch("<%= Routes.log_url(LogflareWeb.Endpoint, :create) %>", init))
+        event.waitUntil(fetch("<%= log_url(:create) %>", init))
 
         return response
     }
