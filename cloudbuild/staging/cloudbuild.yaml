@@ -41,6 +41,8 @@ steps:
         "gcr.io/logflare-staging/logflare_origin:latest",
         ".",
       ]
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args: ['gsutil', 'cp', 'gs://logflare-build-support/gudusoft.gsqlparser-2.3.0.7.jar', 'sql/gsp/gudusoft.gsqlparser-2.3.0.7.jar']
     env:
       - "SHORT_COMMIT_SHA=$SHORT_SHA"
     secretEnv: ["MAGIC_COOKIE_PREFIX"]
