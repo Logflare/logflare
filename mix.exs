@@ -43,7 +43,8 @@ defmodule Logflare.Mixfile do
         :ueberauth_google,
         :ssl,
         :phoenix_html,
-        :phoenix
+        :phoenix,
+        :erlexec
       ]
     ]
   end
@@ -185,7 +186,10 @@ defmodule Logflare.Mixfile do
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
 
       # Charting
-      {:contex, "~> 0.3.0"}
+      {:contex, "~> 0.3.0"},
+
+      # SQL
+      {:erlexec, "~>1.18.11"}
     ]
   end
 

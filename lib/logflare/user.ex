@@ -79,6 +79,7 @@ defmodule Logflare.User do
 
     has_many :billing_counts, Logflare.BillingCounts.BillingCount
     has_many :sources, Source
+    has_many :endpoint_queries, Logflare.Endpoint.Query
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
