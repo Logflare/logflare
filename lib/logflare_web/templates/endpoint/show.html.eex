@@ -37,7 +37,7 @@
 
     <code>
     <pre class="pt-2">
-    curl "https://api.logflare.app/endpoints/query/<%= @endpoint_query.token %>" \
+    curl "<%= Routes.endpoint_url(@conn, :query, @endpoint_query.token)%>" \
          -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
          -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
     <% end %>
