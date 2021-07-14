@@ -101,9 +101,13 @@ defmodule LogflareWeb.LogController do
 
   def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
-    batch =
-      batch
-      |> Logs.Vercel.handle_batch(source)
+    batch = Logs.Vercel.handle_batch(batch, source)
+
+    ingest_and_render(conn, batch, source)
+  end
+
+  def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
+    batch = Logs.Github.handle_batch([params], source)
 
     ingest_and_render(conn, batch, source)
   end

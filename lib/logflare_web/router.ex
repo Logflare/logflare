@@ -149,7 +149,6 @@ defmodule LogflareWeb.Router do
     delete "/:id", EndpointController, :delete
   end
 
-
   scope "/sources", LogflareWeb do
     pipe_through [:browser]
 
@@ -343,6 +342,7 @@ defmodule LogflareWeb.Router do
     post "/typecasts", LogController, :create_with_typecasts
     post "/logplex", LogController, :syslog
     post "/syslogs", LogController, :syslog
+    post "/github", LogController, :github
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog
