@@ -10,7 +10,7 @@ internal class SourceMappingVisitor(
 ) : TableVisitor() {
 
     override fun visit(table: TTable?, select: TSelectSqlStatement) {
-        val originalName = table!!.tableName.tableString
+        val originalName = table!!.fullTableName()
         val newName = sourceResolver.findByUUID(sourceMapping[originalName]!!).name
         table.tableName.setString(newName)
         val tableRenamer = object : TParseTreeVisitor() {

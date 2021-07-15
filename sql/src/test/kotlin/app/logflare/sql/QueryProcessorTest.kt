@@ -20,6 +20,10 @@ internal class QueryProcessorTest {
         object : SourceResolver {
             override fun resolve(source: String): Source =
                 Source(token = UUID.nameUUIDFromBytes(source.toByteArray()), name = source, userId = userId)
+
+            override fun findByUUID(uuid: UUID): Source {
+                TODO("Not yet implemented")
+            }
         }
 
     private fun tableName(sourceName: String): String  {
