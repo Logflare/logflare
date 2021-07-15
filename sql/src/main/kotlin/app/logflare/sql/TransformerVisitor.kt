@@ -22,7 +22,7 @@ internal class TransformerVisitor(
     }
 
     override fun visit(table: TTable?, select: TSelectSqlStatement) {
-        val name = table!!.tableName.tableString
+        val name = table!!.fullTableName()
         val source = sourceResolver.resolve(name)
         val newName = "`${projectId}.${datasetResolver.resolve(source)}.${tableResolver.resolve(source)}`"
         table.tableName.setString(newName)
