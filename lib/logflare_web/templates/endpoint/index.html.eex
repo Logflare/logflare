@@ -53,15 +53,12 @@
       </div>
     </div>
     <div class="col-lg-3">
-      <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
-      <p>👋 Let's build a dashboard!</p>
-      <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of Logflare.</p>
-      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable price.</p>
-      <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
-      <p>Schedule a call or learn more about Logflare by watching <%= link "some of our videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>.</p>
-
-      <%= link "Schedule a call", to: "https://savvycal.com/logflare/build", class: "btn btn-primary btn-sm mb-3 mr-3", target: "_blank" %>
-
+      <h5 class="header-margin">Create an API</h5>
+      <p>Easily create an API from your structured log event data.</p>
+      <p>Endpoints allow you to write SQL (yes, straight SQL) to materialize data from your Logflare sources.</p>
+      <p>When you create an endpoint and make a request to it, Logflare will query the underlying table and return the response. Then it will periodically and proactively cache those results so whenever you hit that endpoint the results are near real-time and cached for lighting fast response times.</p>
+      <p>Endpoints are currently in beta and are limited in some ways.</p>
+      <p>What do you think?</p>
     </div>
   </div>
 </div>
