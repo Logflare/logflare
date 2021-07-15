@@ -9,7 +9,7 @@
     <%= section_header("Query") %>
 
     <code>
-      <%= @endpoint_query.query %>
+      <pre><%= @endpoint_query.query %></pre>
     </code>
 
     <%= unless Enum.empty?(@parameters) do %>
