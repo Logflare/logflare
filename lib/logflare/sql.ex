@@ -16,10 +16,6 @@ defmodule Logflare.SQL do
   end
 
   def init(_) do
-    # Start networking if it isn't already
-    unless Node.alive? do
-      {:ok, _} = Node.start(:logflare)
-    end
     {:ok, %__MODULE__{}, {:continue, :run}}
   end
 
