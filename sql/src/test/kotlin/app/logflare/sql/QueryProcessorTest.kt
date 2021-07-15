@@ -19,7 +19,7 @@ internal class QueryProcessorTest {
     private fun sourceResolver() =
         object : SourceResolver {
             override fun resolve(source: String): Source =
-                Source(token = UUID.nameUUIDFromBytes(source.toByteArray()), userId = userId)
+                Source(token = UUID.nameUUIDFromBytes(source.toByteArray()), name = source, userId = userId)
         }
 
     private fun tableName(sourceName: String): String  {

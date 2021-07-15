@@ -5,4 +5,4 @@ import java.util.*
 /**
  * Source representation
  */
-data class Source(val token: UUID, val userId: Long)
+data class Source(val token: UUID, val name: String, val userId: Long)

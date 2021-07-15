@@ -6,6 +6,7 @@ defmodule Logflare.Endpoint.Query do
     field :token, Ecto.UUID
     field :name, :string
     field :query, :string
+    field :source_mapping, :map
 
     belongs_to :user, Logflare.User
 
@@ -27,6 +28,7 @@ defmodule Logflare.Endpoint.Query do
       :query
     ])
     |> default_validations()
+    |> update_source_mapping()
   end
 
   def default_validations(changeset) do
@@ -47,5 +49,23 @@ defmodule Logflare.Endpoint.Query do
           [{field, error}]
       end
     end)
+  end
+
+  def update_source_mapping(changeset) do
+    case Logflare.SQL.sources(get_field(changeset, :query), get_field(changeset, :user)) do
+      {:ok, source_mapping} ->
+        put_change(changeset, :source_mapping, source_mapping)
+      {:error, error} ->
+         add_error(changeset, :query, error)
+    end
+  end
+
+  def map_query(%__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q) do
+    case Logflare.SQL.source_mapping(query, user_id, source_mapping) do
+      {:ok, query} ->
+        Map.put(q, :query, query)
+      {:error, _} ->
+        q
+    end
   end
 end
