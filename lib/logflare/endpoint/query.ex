@@ -52,11 +52,16 @@ defmodule Logflare.Endpoint.Query do
   end
 
   def update_source_mapping(changeset) do
-    case Logflare.SQL.sources(get_field(changeset, :query), get_field(changeset, :user)) do
-      {:ok, source_mapping} ->
-        put_change(changeset, :source_mapping, source_mapping)
-      {:error, error} ->
-         add_error(changeset, :query, error)
+    query = get_field(changeset, :query)
+    if query do
+      case Logflare.SQL.sources(query, get_field(changeset, :user)) do
+        {:ok, source_mapping} ->
+          put_change(changeset, :source_mapping, source_mapping)
+        {:error, error} ->
+           add_error(changeset, :query, error)
+      end
+    else
+      changeset
     end
   end
 
