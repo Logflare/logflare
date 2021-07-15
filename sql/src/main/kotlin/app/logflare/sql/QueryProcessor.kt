@@ -62,7 +62,7 @@ class QueryProcessor(
         val sources = mutableSetOf<Source>()
         statement.acceptChildren(object : TableVisitor() {
             override fun visit(table: TTable?, select: TSelectSqlStatement) {
-                sources.add(sourceResolver.resolve(table!!.name))
+                sources.add(sourceResolver.resolve(table!!.fullTableName()))
             }
         })
         return sources

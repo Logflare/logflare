@@ -224,4 +224,23 @@ internal class QueryProcessorTest {
         assert(exc.message!!.contains("tokenizing"))
     }
 
+    @Test
+    fun testSourceNamesWithDot() {
+        val qp = queryProcessor("SELECT count(id) FROM `dev.dev` WHERE a < 1")
+        assertEquals(qp.sources(), setOf(sourceResolver().resolve("dev.dev")))
+        assertEquals(
+            "SELECT count(id) FROM ${tableName("dev.dev")} WHERE a < 1",
+            qp.transformForExecution())
+    }
+
+    @Test
+    fun testSourceNamesWithDots() {
+        val qp = queryProcessor("SELECT count(id) FROM `dev.dev.dev` WHERE a < 1")
+        assertEquals(qp.sources(), setOf(sourceResolver().resolve("dev.dev.dev")))
+        assertEquals(
+            "SELECT count(id) FROM ${tableName("dev.dev.dev")} WHERE a < 1",
+            qp.transformForExecution())
+    }
+
+
 }
