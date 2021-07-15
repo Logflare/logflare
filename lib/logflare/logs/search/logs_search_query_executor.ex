@@ -196,21 +196,14 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
-        state.source_id
-      } source..."
+      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {%{params: params}, new_event_tasks} = Map.pop(state.event_tasks, lv_pid)
 
-    rows = Enum.map(events_so.rows, &LogEvent.make_from_db(&1, %{source: params.source}))
-
-    # prevents removal of log events loaded
-    # during initial tailing query
     log_events =
-      params.log_events
-      |> Enum.reject(& &1.is_from_stale_query)
-      |> Enum.concat(rows)
+      events_so.rows
+      |> Enum.map(&LogEvent.make_from_db(&1, %{source: params.source}))
       |> Enum.uniq_by(&{&1.body, &1.id})
       |> Enum.sort_by(& &1.body.timestamp, &>=/2)
       |> Enum.take(100)
@@ -229,9 +222,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{aggregates: aggregates_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
-        state.source_id
-      } source..."
+      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {_, new_agg_tasks} = Map.pop(state.agg_tasks, lv_pid)
