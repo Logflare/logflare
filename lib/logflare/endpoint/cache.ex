@@ -43,6 +43,10 @@ defmodule Logflare.Endpoint.Cache do
       {:reply, {:ok, state.cached_result}, state, timeout_until_fetching(state)}
     end
 
+    def handle_call(:invalidate, _from, state) do
+      {:reply, :ok, %{state | cached_result: nil}}
+    end
+
     def handle_info(:timeout, state) do
       now = DateTime.utc_now()
       if DateTime.diff(now, state.last_query_at || now, :second) >= @inactivity_minutes * 60 do
@@ -107,7 +111,11 @@ defmodule Logflare.Endpoint.Cache do
     end
 
     def query(cache, params) do
-        GenServer.call(cache, {:query, params}, :infinity)
+      GenServer.call(cache, {:query, params}, :infinity)
+    end
+
+    def invalidate(cache) do
+      GenServer.call(cache, :invalidate)
     end
 
     defp process_error(error, user_id) do

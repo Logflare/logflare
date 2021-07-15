@@ -101,6 +101,8 @@ def create(%{assigns: %{user: user}} = conn, %{"query" => params}) do
        where: q.user_id == ^user.id and q.id == ^id)
     |> Logflare.Repo.one() |> Logflare.Repo.preload(:user)
 
+    Logflare.Endpoint.Cache.resolve(endpoint_query) |> Logflare.Endpoint.Cache.invalidate()
+
     Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, params)
     |> Logflare.Repo.update()
     |> case do
