@@ -246,5 +246,14 @@ internal class QueryProcessorTest {
             qp.transformForExecution())
     }
 
+    @Test
+    fun testTransformJoinUnnest() {
+        assertEquals("SELECT a FROM ${tableName("dev")} " +
+                "INNER JOIN UNNEST(${tableName("dev")}.metadata) AS f1 ON TRUE",
+            queryProcessor("SELECT a FROM dev INNER JOIN UNNEST(dev.metadata) AS f1 ON TRUE").transformForExecution())
+        assertEquals("SELECT a FROM ${tableName("dev")} AS dev1 " +
+                "INNER JOIN UNNEST(dev1.metadata) AS f1 ON TRUE",
+            queryProcessor("SELECT a FROM dev AS dev1 INNER JOIN UNNEST(dev1.metadata) AS f1 ON TRUE").transformForExecution())
+    }
 
 }

@@ -21,7 +21,7 @@ internal class TransformerVisitor(
         super.postVisit(node)
     }
 
-    override fun visit(table: TTable?, select: TSelectSqlStatement) {
+    override fun visit(table: TTable?, node: TParseTreeNode) {
         val name = table!!.fullTableName()
         val source = sourceResolver.resolve(name)
         val newName = "`${projectId}.${datasetResolver.resolve(source)}.${tableResolver.resolve(source)}`"
@@ -33,10 +33,12 @@ internal class TransformerVisitor(
                 }
             }
         }
-        select.acceptChildren(tableRenamer)
+        node.acceptChildren(tableRenamer)
         // I don't know why, but GSP does not visit GROUP BY's
         // HAVING clause (or anything else beyond `items`, really)
-        select.groupByClause?.havingClause?.acceptChildren(tableRenamer)
+        if (node is TSelectSqlStatement) {
+            node.groupByClause?.havingClause?.acceptChildren(tableRenamer)
+        }
     }
 
     override fun postVisit(node: TFunctionCall?) {

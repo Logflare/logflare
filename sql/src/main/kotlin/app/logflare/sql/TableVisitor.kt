@@ -1,6 +1,9 @@
 package app.logflare.sql
 
+import gudusoft.gsqlparser.EDbObjectType
+import gudusoft.gsqlparser.ETableSource
 import gudusoft.gsqlparser.TBaseType
+import gudusoft.gsqlparser.TSourceToken
 import gudusoft.gsqlparser.nodes.*
 import gudusoft.gsqlparser.stmt.TSelectSqlStatement
 import java.util.*
@@ -31,7 +34,22 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
             val name = table.tableName.tableString
             // if table is not coming from CTE
             if (!isInCTE(name)) {
-                visit(table, node)
+                if (table.tableType == ETableSource.unnest) {
+                    table.unnestClause.arrayExpr.acceptChildren(object : TParseTreeVisitor() {
+                        override fun postVisit(stmt: TObjectName?) {
+                            if (stmt!!.dbObjectType == EDbObjectType.column) {
+                                if (stmt.sourceTable?.aliasClause == null) {
+                                    stmt.objectToken.setString("`${stmt.sourceTable!!.fullTableName()}`")
+                                } else {
+                                    stmt.objectToken.setString(stmt.sourceTable.aliasClause.toString())
+                                }
+                            }
+                            super.postVisit(stmt)
+                        }
+                    })
+                } else {
+                    visit(table, node)
+                }
             }
         }
         if (node.cteList != null) {
@@ -42,6 +60,6 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
         super.postVisit(node)
     }
 
-    abstract fun visit(table: TTable?, select: TSelectSqlStatement)
+    abstract fun visit(table: TTable?, node: TParseTreeNode)
 }
 

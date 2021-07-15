@@ -9,7 +9,7 @@ internal class SourceMappingVisitor(
     private val sourceResolver: SourceResolver
 ) : TableVisitor() {
 
-    override fun visit(table: TTable?, select: TSelectSqlStatement) {
+    override fun visit(table: TTable?, node: TParseTreeNode) {
         val originalName = table!!.fullTableName()
         val newName = ensureValidName(sourceResolver.findByUUID(sourceMapping[originalName]!!).name)
         table.tableName.setString(newName)
@@ -20,10 +20,12 @@ internal class SourceMappingVisitor(
                 }
             }
         }
-        select.acceptChildren(tableRenamer)
+        node.acceptChildren(tableRenamer)
         // I don't know why, but GSP does not visit GROUP BY's
         // HAVING clause (or anything else beyond `items`, really)
-        select.groupByClause?.havingClause?.acceptChildren(tableRenamer)
+        if (node is TSelectSqlStatement) {
+            node.groupByClause?.havingClause?.acceptChildren(tableRenamer)
+        }
     }
 
     private fun ensureValidName(name: String): String {
