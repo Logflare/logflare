@@ -65,7 +65,7 @@ defmodule Logflare.Endpoint.Cache do
 
     defp do_query(params, state) do
         # Ensure latest version of the query is used
-        state = %{state | query: Logflare.Repo.reload(state.query),
+        state = %{state | query: Logflare.Repo.reload(state.query) |> Logflare.Endpoint.Query.map_query(),
                           last_update_at: DateTime.utc_now() }
         case Logflare.SQL.parameters(state.query.query) do
            {:ok, parameters} ->

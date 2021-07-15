@@ -4,6 +4,7 @@ import gudusoft.gsqlparser.EDbVendor
 import gudusoft.gsqlparser.TGSqlParser
 import gudusoft.gsqlparser.nodes.TTable
 import gudusoft.gsqlparser.stmt.TSelectSqlStatement
+import java.util.*
 
 /**
  * Main entry point to Logflare SQL functionality
@@ -65,5 +66,12 @@ class QueryProcessor(
             }
         })
         return sources
+    }
+
+    fun mapSources(mapping: Map<String, UUID>): String {
+        parse()
+        val statement = parser.sqlstatements[0]
+        statement.acceptChildren(SourceMappingVisitor(mapping, sourceResolver))
+        return statement.toString()
     }
 }

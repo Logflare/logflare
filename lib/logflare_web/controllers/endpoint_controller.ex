@@ -22,7 +22,7 @@ defmodule LogflareWeb.EndpointController do
   def query(%{params: %{"token" => token}} = conn, _) do
     query = from q in Logflare.Endpoint.Query,
             where: q.token == ^token
-    endpoint_query = Logflare.Repo.one(query)
+    endpoint_query = Logflare.Repo.one(query) |> Logflare.Endpoint.Query.map_query()
     case Logflare.Endpoint.Cache.resolve(endpoint_query) |>
          Logflare.Endpoint.Cache.query(conn.query_params) do
       {:ok, result} ->
@@ -43,6 +43,7 @@ defmodule LogflareWeb.EndpointController do
     endpoint_query = (from q in Logflare.Endpoint.Query,
        where: q.user_id == ^user.id and q.id == ^id)
     |> Logflare.Repo.one()
+    |> Logflare.Endpoint.Query.map_query()
 
     parameters = case Logflare.SQL.parameters(endpoint_query.query) do
       {:ok, params} -> params
@@ -60,6 +61,7 @@ defmodule LogflareWeb.EndpointController do
     endpoint_query = (from q in Logflare.Endpoint.Query,
        where: q.user_id == ^user.id and q.id == ^id)
     |> Logflare.Repo.one() |> Logflare.Repo.preload(:user)
+    |> Logflare.Endpoint.Query.map_query()
 
     changeset = Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, %{})
 

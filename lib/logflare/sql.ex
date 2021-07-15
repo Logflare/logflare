@@ -48,6 +48,10 @@ defmodule Logflare.SQL do
     {:noreply, %{state | ready_queue: [{{:transform, query, user_id}, from}|state.ready_queue]}}
   end
 
+  def handle_call({:source_mapping, query, user_id, source_mapping}, from, %__MODULE__{ready: false} = state) do
+    {:noreply, %{state | ready_queue: [{{:source_mapping, query, user_id, source_mapping}, from}|state.ready_queue]}}
+  end
+
   def handle_call({:parameters, query}, from, %__MODULE__{ready: false} = state) do
     {:noreply, %{state | ready_queue: [{{:parameters, query}, from}|state.ready_queue]}}
   end
@@ -59,6 +63,12 @@ defmodule Logflare.SQL do
   def handle_call({:transform, query, user_id}, from, state) do
     ref = make_ref()
     send(state.pid, {:transform, self(), ref, query, user_id})
+    {:noreply, put_in(state.requests[ref], from)}
+  end
+
+def handle_call({:source_mapping, query, user_id, source_mapping}, from, state) do
+    ref = make_ref()
+    send(state.pid, {:sourceMapping, self(), ref, query, user_id, source_mapping})
     {:noreply, put_in(state.requests[ref], from)}
   end
 
@@ -107,6 +117,21 @@ defmodule Logflare.SQL do
 
   defp do_transform(query, user_id, timeout) do
     GenServer.call(__MODULE__, {:transform, query, user_id}, timeout)
+  end
+
+  @doc """
+  Transform a query for a given User or User ID
+  """
+  def source_mapping(query, user, map, timeout \\ 60_000) do
+    do_source_mapping(query, user, map, timeout)
+  end
+
+  defp do_source_mapping(query, %Logflare.User{id: id}, map, timeout) do
+    do_source_mapping(query, id, map, timeout)
+  end
+
+  defp do_source_mapping(query, user_id, map, timeout) do
+    GenServer.call(__MODULE__, {:source_mapping, query, user_id, map}, timeout)
   end
 
   @doc """
