@@ -146,6 +146,7 @@ defmodule LogflareWeb.Router do
     get "/:id", EndpointController, :show
     get "/:id/edit", EndpointController, :edit
     put "/:id", EndpointController, :update
+    put "/:id/reset_url", EndpointController, :reset_url
     delete "/:id", EndpointController, :delete
   end
 
