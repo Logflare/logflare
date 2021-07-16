@@ -131,6 +131,25 @@ defmodule LogflareWeb.Router do
     get "/dashboard", SourceController, :dashboard
   end
 
+  scope "/endpoints/query", LogflareWeb do
+    pipe_through [:api]
+    get "/:token", EndpointController, :query
+  end
+
+  scope "/endpoints", LogflareWeb do
+    pipe_through [:browser, :require_auth]
+
+    get "/", EndpointController, :index
+    post "/", EndpointController, :create
+
+    get "/new", EndpointController, :new
+    get "/:id", EndpointController, :show
+    get "/:id/edit", EndpointController, :edit
+    put "/:id", EndpointController, :update
+    put "/:id/reset_url", EndpointController, :reset_url
+    delete "/:id", EndpointController, :delete
+  end
+
   scope "/sources", LogflareWeb do
     pipe_through [:browser]
 

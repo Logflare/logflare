@@ -25,8 +25,6 @@ defmodule LogflareWeb.Source.SearchLV do
   @user_idle_interval :timer.minutes(5)
   @default_qs "c:count(*) c:group_by(t::minute)"
   @default_assigns [
-    log_events: [],
-    log_aggregates: [],
     loading: false,
     tailing_paused?: nil,
     tailing_timer: nil,
@@ -88,17 +86,26 @@ defmodule LogflareWeb.Source.SearchLV do
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
         qs = Lql.encode!(lql_rules)
 
-        stale_log_events =
-          Enum.map(socket.assigns.log_events, &Map.put(&1, :is_from_stale_query, true))
+        search_op_log_events =
+          if socket.assigns.search_op_log_events do
+            events =
+              Enum.map(
+                socket.assigns.search_op_log_events.rows,
+                &Map.put(&1, :is_from_stale_query, true)
+              )
+
+            Map.put(socket.assigns.search_op_log_events, :rows, events)
+          else
+            socket.assigns.search_op_log_events
+          end
 
         socket =
           socket
           |> assign(:loading, true)
           |> assign(:tailing_initial?, true)
-          |> assign(:log_events, stale_log_events)
-          |> assign(:log_aggregates, [])
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
+          |> assign(:search_op_log_events, search_op_log_events)
 
         kickoff_queries(source.token, socket.assigns)
 
@@ -524,6 +531,11 @@ defmodule LogflareWeb.Source.SearchLV do
         )
       end)
 
+    aggs =
+      search_result.aggregates
+      |> Map.from_struct()
+      |> put_in([:rows], log_aggregates)
+
     if socket.assigns.tailing? do
       log_lv(socket.assigns.source, "is scheduling tail aggregate")
 
@@ -536,8 +548,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
-      |> assign(:log_aggregates, log_aggregates)
-      |> assign(:search_op_log_aggregates, search_result.aggregates)
+      |> assign(:search_op_log_aggregates, aggs)
 
     {:noreply, socket}
   end
@@ -555,8 +566,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
-      |> assign(:log_events, search_result.events.rows)
-      |> assign(:search_result, search_result.events)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
       |> assign(:tailing_timer, tailing_timer)
@@ -596,7 +605,10 @@ defmodule LogflareWeb.Source.SearchLV do
           |> put_flash(:error, msg)
 
         err ->
-          Logger.error("Backend search error", error_string: inspect(err))
+          Logger.error("Backend search error for source: #{source.token}",
+            error_string: inspect(err),
+            source_id: source.token
+          )
 
           socket
           |> assign(loading: false)
@@ -757,8 +769,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp error_socket(socket, error) do
     socket
-    |> assign(:log_events, [])
-    |> assign(:log_aggregates, [])
     |> assign(:tailing?, false)
     |> assign(:loading, false)
     |> put_flash(:error, error)

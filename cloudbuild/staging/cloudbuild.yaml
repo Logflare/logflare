@@ -17,6 +17,14 @@ steps:
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    args:
+      [
+        "gsutil",
+        "cp",
+        "gs://logflare-build-support/gudusoft.gsqlparser-2.3.0.7.jar",
+        "sql/gsp/gudusoft.gsqlparser-2.3.0.7.jar",
+      ]
   - name: "gcr.io/kaniko-project/executor:latest"
     args:
       [

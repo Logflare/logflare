@@ -90,7 +90,7 @@
 <div class="container source-logs-search-container console-text">
   <div id="logs-list-container">
     <%= render("logs_list.html",
-     log_events: @log_events,
+     search_op_log_events: @search_op_log_events,
      last_query_completed_at: @last_query_completed_at,
      user_local_timezone: @user_local_timezone,
      use_local_time: @use_local_time,
@@ -101,7 +101,7 @@
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component(
     "Components.LogEventsChart",
-    %{data: @log_aggregates, loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
+    %{data: @search_op_log_aggregates[:rows], loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
     [id: "log-events-chart"]
     ) %>
   </div>
@@ -209,7 +209,7 @@
       Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0.0 </span> seconds
     </small>
     <% else %>
-    <small class="form-text text-muted">
+    <small class="form-text text-muted" id="last-query-completed-at">
       Elapsed since last query: 0.0 seconds
     </small>
     <% end %>

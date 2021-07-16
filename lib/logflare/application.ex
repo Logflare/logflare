@@ -6,6 +6,12 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
+    # Start distribution early so that both Cachex and Logflare.SQL
+    # can work with it.
+    unless Node.alive? do
+      {:ok, _} = Node.start(:logflare)
+    end
+
     # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
@@ -79,7 +85,9 @@ defmodule Logflare.Application do
       supervisor(Logflare.PubSubRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(LogflareWeb.Endpoint, []),
+      Logflare.SQL,
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
     env = Application.get_env(:logflare, :env)
