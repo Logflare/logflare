@@ -26,6 +26,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @default_qs "c:count(*) c:group_by(t::minute)"
   @default_assigns [
     loading: false,
+    chart_loading: true,
     tailing_paused?: nil,
     tailing_timer: nil,
     search_op: nil,
@@ -394,6 +395,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:querystring, qs)
         |> assign(:lql_rules, lql_rules)
         |> assign(:loading, true)
+        |> assign(:chart_loading, true)
         |> clear_flash()
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
@@ -548,6 +550,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(:chart_loading, false)
       |> assign(:search_op_log_aggregates, aggs)
 
     {:noreply, socket}
