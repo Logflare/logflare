@@ -606,6 +606,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
           socket
           |> assign(loading: false)
+          |> assign(chart_loading: false)
           |> put_flash(:error, msg)
 
         err ->
@@ -616,6 +617,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
           socket
           |> assign(loading: false)
+          |> assign(chart_loading: false)
       end
 
     {:noreply, socket}
@@ -760,7 +762,7 @@ defmodule LogflareWeb.Source.SearchLV do
         to:
           Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
             querystring: suggested_querystring,
-            tailing?: true
+            tailing?: socket.assigns.tailing?
           )
       )
 
