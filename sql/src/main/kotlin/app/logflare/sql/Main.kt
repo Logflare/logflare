@@ -20,7 +20,7 @@ object Main {
         hikariConfig.password = System.getenv("DB_PASSWORD")
         val ds = HikariDataSource(hikariConfig)
 
-        val datasetResolver = EnvDatasetResolver(System.getenv("MIX_ENV") ?: "dev")
+        val datasetResolver = EnvDatasetResolver(System.getenv("LOGFLARE_ENV") ?: "dev")
 
         val node = OtpNode("logflare_sql")
         node.setCookie(System.getenv("COOKIE"))
