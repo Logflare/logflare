@@ -101,7 +101,7 @@
     <%# live_react_component needs to be wrapped in a div or its JS code will fail!  %>
     <%= live_react_component(
     "Components.LogEventsChart",
-    %{data: @search_op_log_aggregates[:rows], loading: @loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
+    %{data: @search_op_log_aggregates[:rows], loading: @chart_loading, chart_period: get_chart_period(@lql_rules, "minute"), chart_data_shape_id: (if @search_op_log_aggregates, do: @search_op_log_aggregates.chart_data_shape_id, else: nil)},
     [id: "log-events-chart"]
     ) %>
   </div>
