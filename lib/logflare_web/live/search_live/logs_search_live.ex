@@ -86,12 +86,26 @@ defmodule LogflareWeb.Source.SearchLV do
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
         qs = Lql.encode!(lql_rules)
 
+        search_op_log_events =
+          if socket.assigns.search_op_log_events do
+            events =
+              Enum.map(
+                socket.assigns.search_op_log_events.rows,
+                &Map.put(&1, :is_from_stale_query, true)
+              )
+
+            Map.put(socket.assigns.search_op_log_events, :rows, events)
+          else
+            socket.assigns.search_op_log_events
+          end
+
         socket =
           socket
           |> assign(:loading, true)
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
+          |> assign(:search_op_log_events, search_op_log_events)
 
         kickoff_queries(source.token, socket.assigns)
 
