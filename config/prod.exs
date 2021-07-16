@@ -129,7 +129,7 @@ config :logflare, Logflare.Vercel.Client,
   redirect_uri: "https://logflare.app/install/vercel-v2",
   install_vercel_uri: "https://vercel.com/integrations/logflare/new"
 
-config :erlexec, root: true
+config :erlexec, root: true, user: "root"
 
 import_config "telemetry.exs"
 
