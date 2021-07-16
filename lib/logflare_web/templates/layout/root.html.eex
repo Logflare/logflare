@@ -68,9 +68,6 @@
               <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
             </li>
             <li class="nav-item">
-              <%= link "Endpoints", to: Routes.endpoint_path(@conn, :index), class: "nav-link" %>
-            </li>
-            <li class="nav-item">
               <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
             </li>
             <%= if Map.get(@conn.assigns, :team_user) do %>

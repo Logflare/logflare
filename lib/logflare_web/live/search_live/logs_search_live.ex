@@ -609,6 +609,19 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(chart_loading: false)
           |> put_flash(:error, msg)
 
+        %Tesla.Env{status: 400} = err ->
+          Logger.error("Backend search error for source: #{source.token}",
+            error_string: inspect(err),
+            source_id: source.token
+          )
+
+          msg = "Query error! Likely a field type mismatch. Check your source schema."
+
+          socket
+          |> assign(loading: false)
+          |> assign(chart_loading: false)
+          |> put_flash(:error, msg)
+
         err ->
           Logger.error("Backend search error for source: #{source.token}",
             error_string: inspect(err),
