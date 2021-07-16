@@ -20,5 +20,14 @@
     </div>
     <%= submit "Update query", class: "btn btn-primary form-button" %>
     <% end %>
+
+    <%= section_header("Endpoint URL") %>
+    <div class="mb-2">
+      <%= Routes.endpoint_url(@conn, :query, @endpoint_query.token) %>
+    </div>
+    <%= form_for @changeset, Routes.endpoint_path(@conn, :reset_url, @endpoint_query), fn a -> %>
+    <%= submit "Reset", class: "btn btn-primary form-button" %>
+    <% end %>
+
   </div>
 </div>

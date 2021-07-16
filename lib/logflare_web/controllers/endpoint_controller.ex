@@ -77,7 +77,7 @@ defmodule LogflareWeb.EndpointController do
     render(conn, "new.html", changeset: changeset)
   end
 
-def create(%{assigns: %{user: user}} = conn, %{"query" => params}) do
+  def create(%{assigns: %{user: user}} = conn, %{"query" => params}) do
     params = params
     |> Map.put("token", Ecto.UUID.generate())
 
@@ -120,7 +120,29 @@ def create(%{assigns: %{user: user}} = conn, %{"query" => params}) do
     end
   end
 
-def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
+ def reset_url(%{assigns: %{user: user}} = conn, %{"id" => id}) do
+    endpoint_query = (from q in Logflare.Endpoint.Query,
+       where: q.user_id == ^user.id and q.id == ^id)
+    |> Logflare.Repo.one() |> Logflare.Repo.preload(:user)
+
+    Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, %{token: Ecto.UUID.generate})
+    |> Logflare.Repo.update()
+    |> case do
+      {:ok, endpoint_query} ->
+            conn
+            |> put_flash(:info, "Endpoint updated!")
+            |> redirect(to: Routes.endpoint_path(conn, :edit, endpoint_query.id))
+      {:error, changeset} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> assign(:changeset, changeset)
+        |> render("edit.html",
+                  changeset: changeset,
+                  endpoint_query: endpoint_query)
+    end
+  end
+
+ def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
     endpoint_query = (from q in Logflare.Endpoint.Query,
        where: q.user_id == ^user.id and q.id == ^id)
     |> Logflare.Repo.one() |> Logflare.Repo.preload(:user)
