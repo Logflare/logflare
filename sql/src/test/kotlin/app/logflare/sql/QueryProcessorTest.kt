@@ -1,6 +1,7 @@
 package app.logflare.sql
 
 import gudusoft.gsqlparser.EDbVendor
+import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.api.assertThrows
 import java.util.*
 import kotlin.test.*
@@ -254,6 +255,31 @@ internal class QueryProcessorTest {
         assertEquals("SELECT a FROM ${tableName("dev")} AS dev1 " +
                 "INNER JOIN UNNEST(dev1.metadata) AS f1 ON TRUE",
             queryProcessor("SELECT a FROM dev AS dev1 INNER JOIN UNNEST(dev1.metadata) AS f1 ON TRUE").transformForExecution())
+    }
+
+    @Test
+    fun testUnnestWithNoTableReference() {
+        assertDoesNotThrow {
+            queryProcessor(
+                """
+           SELECT
+            t.timestamp,
+            t.id,
+            t.event_message,
+            f1
+          FROM
+            `light-two-os-directions-test` as t
+            INNER JOIN UNNEST(metadata) AS f1 ON TRUE
+            WHERE t.timestamp > timestamp_sub(current_timestamp(), INTERVAL 7 DAY)
+            AND t.timestamp < current_timestamp()
+            AND f1.imei IS NOT NULL
+          ORDER BY
+            t.timestamp DESC
+          LIMIT
+          10000
+       """
+            ).transformForExecution()
+        }
     }
 
 }
