@@ -45,6 +45,13 @@
                 <span id="<%= endpoint_query.token %>">
                 </span>
               </div>
+              <div class="source-meta-data">
+                <small class="source-details">
+                  <% url = Routes.endpoint_url(@conn, :query, endpoint_query.token) %>
+                  <span class="pointer-cursor copy-token logflare-tooltip" data-toggle="tooltip" data-html=true data-placement="top" title="<span id=copy-tooltip>Copy this</span>" id="<%= String.replace(endpoint_query.token, ~r/[0-9]|-/, "") %>"
+                        data-clipboard-text="<%= url %>"><%=  url %></span>
+              </small>
+              </div>
             </div>
           </li>
           <% end %>
@@ -62,3 +69,9 @@
     </div>
   </div>
 </div>
+<script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    await Endpoint.main()
+  })
+
+</script>
