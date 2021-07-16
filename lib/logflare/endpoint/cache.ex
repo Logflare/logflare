@@ -20,6 +20,7 @@ defmodule Logflare.Endpoint.Cache do
     @max_results 10_000
     @ttl_secs 60 # seconds until cache is invalidated
     @inactivity_minutes 60 # minutes until the Cache process is terminated
+    @env Application.get_env(:logflare, :env)
 
     import Ecto.Query, only: [from: 2]
 
@@ -129,7 +130,7 @@ defmodule Logflare.Endpoint.Cache do
 
 
     defp process_message(message, user_id) do
-      regex = ~r/#{@project_id}\.#{user_id}_#{Mix.env}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
+      regex = ~r/#{@project_id}\.#{user_id}_#{@env}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
       names = Regex.named_captures(regex, message)
       case names do
         %{"uuid" => uuid} ->

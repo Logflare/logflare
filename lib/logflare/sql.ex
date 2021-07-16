@@ -34,6 +34,7 @@ defmodule Logflare.SQL do
                        {"DATABASE_URL", db_url},
                        {"DB_USER", db_config[:username]},
                        {"DB_PASSWORD", db_config[:password]},
+                       {"LOGFLARE_ENV", Application.get_env(:logflare, :env) |> to_string() },
                        {"PROJECT_ID", Application.get_env(:logflare, Logflare.Google)[:project_id]}
                      ]}
                    ])
