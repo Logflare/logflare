@@ -25,7 +25,7 @@
       <%= section_header("Parameters") %>
       <%= for parameter <- @parameters do %>
         <div>
-        <label ]for="param[<%= parameter %>">
+        <label for="param[<%= parameter %>]">
         <%= parameter %>
         </label>
         <input id="param[<%= parameter %>]">
