@@ -41,6 +41,9 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
                                 if (stmt.sourceTable?.aliasClause == null) {
                                     stmt.objectToken.setString("`${stmt.sourceTable!!.fullTableName()}`")
                                 } else {
+                                    if (stmt.objectToken == null) {
+                                        stmt.objectToken = TSourceToken()
+                                    }
                                     stmt.objectToken.setString(stmt.sourceTable.aliasClause.toString())
                                 }
                             }
