@@ -103,6 +103,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket =
           socket
           |> assign(:loading, true)
+          |> assign(:chart_loading, true)
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
