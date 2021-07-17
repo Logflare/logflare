@@ -256,7 +256,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       |> Vercel.Client.list_log_drains()
 
     case resp do
-      {:ok, %Tesla.Env{status: 200}} ->
+      {:ok, %Tesla.Env{status: 200} = resp} ->
         drains =
           resp.body
           |> Enum.sort_by(& &1["createdAt"])
@@ -305,7 +305,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       |> Vercel.Client.list_projects()
 
     case resp do
-      {:ok, %Tesla.Env{status: 200}} ->
+      {:ok, %Tesla.Env{status: 200} = resp} ->
         projects = resp.body["projects"]
 
         socket
@@ -385,7 +385,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
               |> Vercel.Client.get_team(auth.team_id)
 
             case resp do
-              {:ok, %Tesla.Env{status: 200}} ->
+              {:ok, %Tesla.Env{status: 200} = resp} ->
                 resp.body
 
               {:ok, %Tesla.Env{status: 403}} ->
