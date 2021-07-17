@@ -8,6 +8,32 @@ import java.util.*
 
 object Main {
 
+    internal data class BigQuery(val projectId: String, val datasetResolver: DatasetResolver<Source>)
+
+    private fun getUserBigQuery(dataSource: HikariDataSource, userId: Long, default: BigQuery) : BigQuery {
+        dataSource.connection.use { conn ->
+            conn.prepareStatement("SELECT bigquery_project_id, bigquery_dataset_id FROM users WHERE id = ?").use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.executeQuery().use { resultSet ->
+                    if (!resultSet.next()) {
+                        return default
+                    }
+                    val dataset = resultSet.getString(2)
+                    var datasetResolver = default.datasetResolver
+                    if (dataset != null) {
+                       datasetResolver = object : DatasetResolver<Source> {
+                           override fun resolve(t: Source): String = dataset
+                       }
+                    }
+                    return BigQuery(
+                        projectId = resultSet.getString(1) ?: default.projectId,
+                        datasetResolver = datasetResolver,
+                    )
+                }
+            }
+        }
+    }
+
     @JvmStatic
     fun main(args: Array<String>) {
         val logger = LoggerFactory.getLogger(this::class.java.canonicalName)
@@ -33,6 +59,8 @@ object Main {
 
         logger.info("Ready")
 
+        val bq = BigQuery(projectId = projectId, datasetResolver = datasetResolver)
+
         while (true) {
             val msg = mailbox.receive()
             if (msg is OtpErlangTuple) {
@@ -45,10 +73,11 @@ object Main {
                     val userId = msg.elementAt(4)
                     if (sender is OtpErlangPid && query is OtpErlangBinary && userId is OtpErlangLong) {
                         val sourceResolver = DatabaseSourceResolver(dataSource = ds, userId = userId.longValue())
+                        val userBq = getUserBigQuery(dataSource = ds, userId = userId.longValue(), default = bq)
                         try {
                             val transformed = QueryProcessor(
-                                sourceResolver = sourceResolver, datasetResolver = datasetResolver,
-                                projectId = projectId, query = query.binaryValue().decodeToString()
+                                sourceResolver = sourceResolver, datasetResolver = userBq.datasetResolver,
+                                projectId = userBq.projectId, query = query.binaryValue().decodeToString()
                             ).transformForExecution()
                             mailbox.send(
                                 sender, OtpErlangTuple(
@@ -91,10 +120,12 @@ object Main {
                             }
                         }
 
+                        val userBq = getUserBigQuery(dataSource = ds, userId = userId.longValue(), default = bq)
+
                         try {
                             val mapped = QueryProcessor(
-                                sourceResolver = sourceResolver, datasetResolver = datasetResolver,
-                                projectId = projectId, query = query.binaryValue().decodeToString()
+                                sourceResolver = sourceResolver, datasetResolver = userBq.datasetResolver,
+                                projectId = userBq.projectId, query = query.binaryValue().decodeToString()
                             ).mapSources(mapping)
                             mailbox.send(
                                 sender, OtpErlangTuple(
@@ -161,10 +192,13 @@ object Main {
                     val userId = msg.elementAt(4)
                     if (sender is OtpErlangPid && query is OtpErlangBinary && userId is OtpErlangLong) {
                         val sourceResolver = DatabaseSourceResolver(dataSource = ds, userId = userId.longValue())
+                        val userBq = getUserBigQuery(dataSource = ds, userId = userId.longValue(), default = bq)
+
                         try {
+
                             val sources = QueryProcessor(
-                                sourceResolver = sourceResolver, datasetResolver = datasetResolver,
-                                projectId = projectId, query = query.binaryValue().decodeToString()
+                                sourceResolver = sourceResolver, datasetResolver = userBq.datasetResolver,
+                                projectId = userBq.projectId, query = query.binaryValue().decodeToString()
                             ).sources()
                             val map = OtpErlangMap()
                             sources.forEach {
