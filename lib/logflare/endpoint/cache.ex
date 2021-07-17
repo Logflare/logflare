@@ -70,7 +70,9 @@ defmodule Logflare.Endpoint.Cache do
 
     defp do_query(params, state) do
         # Ensure latest version of the query is used
-        state = %{state | query: Logflare.Repo.reload(state.query) |> Logflare.Endpoint.Query.map_query(),
+        state = %{state | query: Logflare.Repo.reload(state.query)
+                          |> Logflare.Repo.preload(:user)
+                          |> Logflare.Endpoint.Query.map_query(),
                           last_update_at: DateTime.utc_now() }
         case Logflare.SQL.parameters(state.query.query) do
            {:ok, parameters} ->
@@ -88,7 +90,8 @@ defmodule Logflare.Endpoint.Cache do
                     }
                  end)
 
-                 case Logflare.BqRepo.query_with_sql_and_params(@project_id, query, params,
+                 case Logflare.BqRepo.query_with_sql_and_params(state.query.user.bigquery_project_id || @project_id,
+                                           query, params,
                                            parameterMode: "NAMED", maxResults: @max_results) do
                        {:ok, result} ->
                           if Enum.empty?(params) do
