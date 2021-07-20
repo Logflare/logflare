@@ -29,7 +29,7 @@ class QueryProcessor(
 
     private fun parse() {
         if (parser.parse() != 0) {
-            throw QueryParseError(parser.errormessage)
+            throw QueryParseError(parser.sqltext, parser.syntaxErrors)
         }
         if (parser.sqlstatements.size() != 1) {
             throw SingularQueryRequired()
