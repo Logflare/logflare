@@ -26,6 +26,6 @@
     </small>
 
   </div>
-  <%= submit "Add source", class: "btn btn-primary form-button" %>
+  <%= submit "Add endpoint", class: "btn btn-primary form-button" %>
   <% end %>
 </div>
