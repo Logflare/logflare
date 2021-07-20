@@ -234,13 +234,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/integrations", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+    pipe_through [:browser, :require_auth]
 
     live "/vercel/edit", VercelLogDrainsLive, :edit
   end
 
-  scope "/account/billing", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/billing", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
     post "/", BillingController, :create
     delete "/", BillingController, :delete
@@ -248,8 +248,8 @@ defmodule LogflareWeb.Router do
     get "/sync", BillingController, :sync
   end
 
-  scope "/account/billing/subscription", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/billing/subscription", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
     get "/subscribed", BillingController, :success
     get "/abandoned", BillingController, :abandoned
