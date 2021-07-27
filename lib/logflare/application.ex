@@ -18,7 +18,7 @@ defmodule Logflare.Application do
     credentials =
       if env in [:dev, :test],
         do: Application.get_env(:goth, :json) |> Jason.decode!(),
-        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> Jason.decode!()
+        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
 
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
     source = {:service_account, credentials, scopes: scopes}
