@@ -131,6 +131,9 @@ config :logflare, Logflare.Vercel.Client,
 
 config :erlexec, root: true, user: "root"
 
+config :goth,
+  json: "{}"
+
 import_config "telemetry.exs"
 
 if File.exists?("config/prod.secret.exs") do
