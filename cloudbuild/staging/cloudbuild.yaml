@@ -25,14 +25,6 @@ steps:
         "gs://logflare-build-support/gudusoft.gsqlparser-2.3.0.7.jar",
         "sql/gsp/gudusoft.gsqlparser-2.3.0.7.jar",
       ]
-  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
-    args:
-      [
-        "gsutil",
-        "cp",
-        "gs://logflare-build-support/logflare-staging-edf6d4e9fc6f.json",
-        "config/secrets/logflare-staging-edf6d4e9fc6f.json",
-      ]
   - name: "gcr.io/kaniko-project/executor:latest"
     args:
       [

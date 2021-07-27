@@ -6,7 +6,7 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
-    env = Application.get_env(:logflare, :env)
+    env = Application.get_env(:logflare, :env) |> IO.inspect()
 
     # Start distribution early so that both Cachex and Logflare.SQL
     # can work with it.
@@ -15,7 +15,11 @@ defmodule Logflare.Application do
     end
 
     # Setup Goth for GCP connections
-    credentials = Application.get_env(:goth, :json) |> Jason.decode!()
+    credentials =
+      if env in [:dev, :test],
+        do: Application.get_env(:goth, :json) |> Jason.decode!(),
+        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> Jason.decode!()
+
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
     source = {:service_account, credentials, scopes: scopes}
 
@@ -99,12 +103,7 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
-    children =
-      if env == :test do
-        children
-      else
-        dev_prod_children
-      end
+    children = if env in [:test], do: children, else: dev_prod_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
