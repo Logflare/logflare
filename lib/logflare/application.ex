@@ -8,9 +8,14 @@ defmodule Logflare.Application do
 
     # Start distribution early so that both Cachex and Logflare.SQL
     # can work with it.
-    unless Node.alive? do
+    unless Node.alive?() do
       {:ok, _} = Node.start(:logflare)
     end
+
+    # Setup Goth for GCP connections
+    credentials = Application.get_env(:goth, :json) |> Jason.decode!()
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    source = {:service_account, credentials, scopes: scopes}
 
     # TODO: Set node status in GCP when sigterm is received
     :ok =
@@ -46,6 +51,7 @@ defmodule Logflare.Application do
         ]
       ),
       Logflare.Repo,
+      {Goth, name: Logflare.Goth, source: source},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -55,6 +61,7 @@ defmodule Logflare.Application do
     dev_prod_children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+      {Goth, name: Logflare.Goth, source: source},
       Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub},
       {

@@ -2,6 +2,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @moduledoc """
   Generic utils for BigQuery.
   """
+  require Logger
+
   alias Logflare.JSON
   alias Logflare.{Sources, Users}
   alias Logflare.{Source, User}
@@ -60,8 +62,14 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   def get_conn() do
-    {:ok, goth} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
-    Connection.new(goth.token)
+    case Goth.fetch(Logflare.Goth) do
+      {:ok, %Goth.Token{} = goth} ->
+        Connection.new(goth.token)
+
+      {:error, reason} ->
+        Logger.error("Goth error!", error_string: inspect(reason))
+        ""
+    end
   end
 
   @spec get_account_id(atom) :: String.t()
