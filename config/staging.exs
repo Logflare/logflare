@@ -75,6 +75,9 @@ config :logflare, Logflare.Vercel.Client,
 
 config :erlexec, root: true, user: "root"
 
+config :goth,
+  json: "config/secrets/logflare-staging-edf6d4e9fc6f.json" |> File.read!()
+
 import_config "telemetry.exs"
 
 if File.exists?("config/staging.secret.exs") do
