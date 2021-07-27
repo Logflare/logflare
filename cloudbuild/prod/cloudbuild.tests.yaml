@@ -1,0 +1,71 @@
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud_prod.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/prod.secret.exs.enc
+      - --plaintext-file=./config/prod.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=gcloud_test.json.enc
+      - --plaintext-file=gcloud_test.json
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./config/test.secret.exs.enc
+      - --plaintext-file=./config/test.secret.exs
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "--build-arg",
+        "MAGIC_COOKIE",
+        "-t",
+        "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA",
+        "-t",
+        "gcr.io/$PROJECT_ID/logflare_app:latest",
+        "-f",
+        "docker/prod.app.Dockerfile",
+        ".",
+      ]
+    secretEnv: ["MAGIC_COOKIE"]
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "run",
+        "-e",
+        "MIX_ENV=test",
+        "-e",
+        "TEST_ENV=gcp_cloud_build",
+        "-w",
+        "/logflare",
+        "gcr.io/$PROJECT_ID/logflare_app:latest",
+        "/logflare/run_test.bash",
+      ]
+    secretEnv: ["MAGIC_COOKIE"]
+secrets:
+  - kmsKeyName: projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
+    secretEnv:
+      MAGIC_COOKIE: "CiQAaKkB6bwW6k2L9NxnoxLiSerCpIeLBGlN54tyvdAtGmTqBeISSQA/IRNwMsuZjfo6o1os4UkkFYG3eJzzxp6hDWbI+6El6HxSZLWLDy3ousxpSU8hip3hLypJ9aSjOLlj4zrnXFxS6qzwLA3/pEE="
+timeout: 1800s
