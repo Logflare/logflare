@@ -68,7 +68,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
       {:error, reason} ->
         Logger.error("Goth error!", error_string: inspect(reason))
-        ""
+        Connection.new("")
     end
   end
 
