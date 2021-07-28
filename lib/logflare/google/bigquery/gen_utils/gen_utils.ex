@@ -68,7 +68,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
       {:error, reason} ->
         Logger.error("Goth error!", error_string: inspect(reason))
-        ""
+        # This is going to give us an unauthorized connection but we are handling it downstream.
+        Connection.new("")
     end
   end
 
