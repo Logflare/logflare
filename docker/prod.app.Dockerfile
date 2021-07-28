@@ -14,7 +14,7 @@ RUN mix compile --force
 RUN cd /logflare/assets \ 
     && yarn \
     && yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react \
-    && ./node_modules/webpack/bin/webpack.js --mode production --silent
+    && ./node_modules/webpack/bin/webpack.js --mode production
 
 WORKDIR /logflare
 
@@ -22,5 +22,8 @@ RUN mix phx.digest
 RUN mix release --force --overwrite
 
 WORKDIR /logflare
+
+# erlexec requires SHELL to be set
+ENV SHELL /bin/bash
 
 CMD [ "/logflare/run_prod.bash" ]

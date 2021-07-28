@@ -164,11 +164,13 @@ function resetScrollTracker() {
   let window_inner_height = window.innerHeight
   let window_offset = window.pageYOffset
   let client_height = document.body.clientHeight
-  // should make this dynamic
-  let nav_height = 110
+  let subhead = document.querySelector("div.subhead")
+  let header = document.querySelector("nav")
+  let nav_height = subhead.offsetHeight + header.offsetHeight
 
   // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-  if (window_inner_height + window_offset - nav_height >= client_height - 100) {
+  // should make this dynamic
+  if (window_inner_height + window_offset - nav_height >= client_height - 129) {
     window.scrollTracker = true
   } else {
     window.scrollTracker = false

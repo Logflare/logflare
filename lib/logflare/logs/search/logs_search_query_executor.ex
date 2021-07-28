@@ -145,7 +145,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.info(
-        "SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
+        "SearchQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
       )
 
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
@@ -182,7 +182,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.info(
-        "SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
+        "SearchQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
       )
 
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
@@ -196,19 +196,19 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
-        state.source_id
-      } source..."
+      "SearchQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {%{params: params}, new_event_tasks} = Map.pop(state.event_tasks, lv_pid)
 
     rows = Enum.map(events_so.rows, &LogEvent.make_from_db(&1, %{source: params.source}))
 
+    old_rows = if params.search_op_log_events, do: params.search_op_log_events.rows, else: []
+
     # prevents removal of log events loaded
     # during initial tailing query
     log_events =
-      params.log_events
+      old_rows
       |> Enum.reject(& &1.is_from_stale_query)
       |> Enum.concat(rows)
       |> Enum.uniq_by(&{&1.body, &1.id})
@@ -229,9 +229,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{aggregates: aggregates_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
-        state.source_id
-      } source..."
+      "SearchQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {_, new_agg_tasks} = Map.pop(state.agg_tasks, lv_pid)

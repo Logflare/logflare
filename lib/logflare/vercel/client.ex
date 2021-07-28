@@ -24,9 +24,6 @@ defmodule Logflare.Vercel.Client do
     Tesla.client(middleware, adapter)
   end
 
-  def new_auth() do
-  end
-
   def get_access_token(client, code) do
     body = %{
       client_id: @client_id,
@@ -35,17 +32,12 @@ defmodule Logflare.Vercel.Client do
       redirect_uri: @redirect_uri
     }
 
-    url = "/v2/oauth/access_token"
-    middleware = Tesla.Client.middleware(client)
-    adapter = Tesla.Client.adapter(client)
-    client = Tesla.client([Tesla.Middleware.FormUrlencoded | middleware], adapter)
-
-    client
-    |> Tesla.post(url, body)
+    make_form_encoded(client)
+    |> Tesla.post("/v2/oauth/access_token", body)
   end
 
   def get_user(client) do
-    client
+    strip_query_params(client)
     |> Tesla.get("/www/user")
   end
 
@@ -55,8 +47,8 @@ defmodule Logflare.Vercel.Client do
   end
 
   def list_projects(client) do
-    client
-    |> Tesla.get("/v4/projects")
+    add_limit_param(client, 100)
+    |> Tesla.get("/v8/projects")
   end
 
   def create_log_drain(client, params) when is_map(params) do
@@ -93,5 +85,45 @@ defmodule Logflare.Vercel.Client do
 
   defp headers(%Vercel.Auth{access_token: access_token}) when is_binary(access_token) do
     [{"authorization", "Bearer " <> access_token}]
+  end
+
+  defp add_limit_param(client, limit) do
+    middleware =
+      Tesla.Client.middleware(client)
+      |> Enum.map(fn x ->
+        case x do
+          {Tesla.Middleware.Query, params} ->
+            {Tesla.Middleware.Query, [{:limit, limit} | params]}
+
+          rest ->
+            rest
+        end
+      end)
+
+    adapter = Tesla.Client.adapter(client)
+
+    Tesla.client(middleware, adapter)
+  end
+
+  defp strip_query_params(client) do
+    middleware =
+      Tesla.Client.middleware(client)
+      |> Enum.reject(fn x ->
+        case x do
+          {Tesla.Middleware.Query, _} -> true
+          _ -> false
+        end
+      end)
+
+    adapter = Tesla.Client.adapter(client)
+
+    Tesla.client(middleware, adapter)
+  end
+
+  defp make_form_encoded(client) do
+    middleware = Tesla.Client.middleware(client)
+    adapter = Tesla.Client.adapter(client)
+
+    Tesla.client([Tesla.Middleware.FormUrlencoded | middleware], adapter)
   end
 end

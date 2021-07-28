@@ -4,7 +4,8 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   use Placebo
 
   import Logflare.Logs.Validators.BigQuerySchemaChange
-  import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
+
+  import Logflare.Google.BigQuery.SchemaUtils
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.BigQuery.SchemaBuilder
@@ -48,11 +49,16 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
              |> to_typemap() == typemap_for_third().metadata.fields
     end
 
-    test "valid? returns true for correct metadata and schema" do
-      schema = SchemaFactory.build(:schema, variant: :third)
-      metadata = SchemaFactory.build(:metadata, variant: :third)
+    test "try_merge returns :ok for correct metadata and schema" do
+      schema = SchemaFactory.build(:schema, variant: :third) |> bq_schema_to_flat_typemap()
 
-      assert valid?(metadata, schema)
+      m = SchemaFactory.build(:metadata, variant: :third)
+
+      metadata =
+        to_typemap(%{metadata: m})
+        |> flatten_typemap()
+
+      assert try_merge(metadata, schema) == :ok
     end
 
     test "valid? returns false for various changed nested field types" do

@@ -233,6 +233,7 @@ defmodule LogflareWeb.SourceController do
       else
         Plans.list_plans() ++ [Plans.legacy_plan()]
       end
+      |> Enum.sort_by(& &1.limit_alert_freq, :desc)
 
     for p <- plans do
       limit = p.limit_alert_freq

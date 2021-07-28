@@ -6,6 +6,23 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
+    env = Application.get_env(:logflare, :env) |> IO.inspect()
+
+    # Start distribution early so that both Cachex and Logflare.SQL
+    # can work with it.
+    unless Node.alive?() do
+      {:ok, _} = Node.start(:logflare)
+    end
+
+    # Setup Goth for GCP connections
+    credentials =
+      if env in [:dev, :test],
+        do: Application.get_env(:goth, :json) |> Jason.decode!(),
+        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
+
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    source = {:service_account, credentials, scopes: scopes}
+
     # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
@@ -40,6 +57,7 @@ defmodule Logflare.Application do
         ]
       ),
       Logflare.Repo,
+      {Goth, name: Logflare.Goth, source: source},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -49,6 +67,7 @@ defmodule Logflare.Application do
     dev_prod_children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+      {Goth, name: Logflare.Goth, source: source},
       Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
@@ -79,17 +98,12 @@ defmodule Logflare.Application do
       supervisor(Logflare.PubSubRates, []),
       supervisor(Logflare.Source.Supervisor, []),
       supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      supervisor(LogflareWeb.Endpoint, []),
+      Logflare.SQL,
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
-    env = Application.get_env(:logflare, :env)
-
-    children =
-      if env == :test do
-        children
-      else
-        dev_prod_children
-      end
+    children = if env in [:test], do: children, else: dev_prod_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

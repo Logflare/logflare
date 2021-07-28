@@ -66,14 +66,15 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
 
   def handle_event("add", %{"fields" => params}, socket) do
     ba = socket.assigns.billing_account
-    fields = [params | ba.custom_invoice_fields]
+    f = if ba.custom_invoice_fields, do: ba.custom_invoice_fields, else: []
+    fields = f ++ [params]
 
-    with {:ok, ba} <-
-           BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}),
-         {:ok, _customer} <-
+    with {:ok, _customer} <-
            BillingAccounts.Stripe.update_customer(ba.stripe_customer, %{
              invoice_settings: %{custom_fields: fields}
-           }) do
+           }),
+         {:ok, ba} <-
+           BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}) do
       socket =
         socket
         |> assign(billing_account: ba)
@@ -85,6 +86,17 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, changeset: changeset)}
+
+      {:error,
+       %Stripe.Error{
+         message: "Array invoice_settings[custom_fields] exceeded maximum 4 allowed elements."
+       }} ->
+        socket =
+          socket
+          |> put_flash(:error, "Maximum 4 custom invoice fields!")
+          |> push_patch(to: Routes.billing_account_path(socket, :edit))
+
+        {:noreply, socket}
 
       _err ->
         error_socket(socket)

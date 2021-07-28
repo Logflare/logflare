@@ -3,7 +3,6 @@
     <h5>~/account/edit</h5>
     <div class="log-settings">
       <ul>
-        <li><%= link to: Routes.billing_account_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span><% end %></li>
         <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
       </ul>
     </div>
@@ -52,6 +51,7 @@
 
 <h4 id="billing-account" class="header-margin">Billing Account</h4>
 <p>Create a billing account to subscribe to Logflare. Creating a billing account doesn't obligate you to anything. It's where you can update your billing preferences and manage your subscription.</p>
+<p><i class="fas fa-exclamation-circle"></i> All team members can now access the billing account. You can invite someone in accounting as a team member to subscribe to Logflare if needed.</p>
 <div class="sub-form">
 <%= if @user.billing_account do %>
   <%= section_header("Edit Billing Account") %>

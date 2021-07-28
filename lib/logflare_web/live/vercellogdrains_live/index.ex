@@ -71,51 +71,80 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         do: %{name: name, type: "json", url: url},
         else: %{name: name, type: "json", url: url, projectId: project_id}
 
-    {:ok, resp} = Vercel.Client.new(auth) |> Vercel.Client.create_log_drain(drain_params)
+    resp = Vercel.Client.new(auth) |> Vercel.Client.create_log_drain(drain_params)
 
     socket =
       case resp do
-        %Tesla.Env{status: 200} ->
+        {:ok, %Tesla.Env{status: 200}} ->
           socket
           |> assign_drains()
           |> assign_mapped_drains_sources_projects()
           |> clear_flash()
           |> put_flash(:info, "Log drain created!")
 
-        %Tesla.Env{status: 403} ->
+        {:ok, %Tesla.Env{status: 400}} ->
+          socket
+          |> clear_flash()
+          |> put_flash(:info, "Please use alphanumeric characters for your log drain name!")
+
+        {:ok, %Tesla.Env{status: 403}} ->
           unauthorized_socket(socket)
 
-        _ ->
-          unknown_error_socket(socket)
+        {:error, "Encounter Mint error %Mint.TransportError{reason: :timeout}"} ->
+          handle_timeout_socket(socket, resp)
+
+        {:error, resp} ->
+          unknown_error_socket(socket, resp)
       end
 
     {:noreply, socket}
   end
 
+  def handle_event(
+        "create_drain",
+        %{
+          "fields" => %{
+            "name" => name,
+            "project" => project_id
+          }
+        },
+        socket
+      ) do
+    socket =
+      socket
+      |> clear_flash()
+      |> put_flash(:error, "Please select a Logflare source!")
+
+    {:noreply, socket}
+  end
+
   def handle_event("delete_drain", %{"id" => drain_id}, socket) do
-    {:ok, resp} =
+    resp =
       Vercel.Client.new(socket.assigns.selected_auth)
       |> Vercel.Client.delete_log_drain(drain_id)
 
     socket =
       case resp do
-        %Tesla.Env{status: 204} ->
+        {:ok, %Tesla.Env{status: 204}} ->
           socket
           |> clear_flash()
           |> assign_drains()
           |> assign_mapped_drains_sources_projects()
           |> put_flash(:info, "Log drain deleted!")
 
-        %Tesla.Env{status: 404} ->
+        {:ok, %Tesla.Env{status: 404}} ->
           socket
           |> clear_flash()
           |> put_flash(:info, "Log drain not found!")
 
-        %Tesla.Env{status: 403} ->
+        {:ok, %Tesla.Env{status: 403}} ->
           unauthorized_socket(socket)
 
-        _resp ->
-          unknown_error_socket(socket)
+        {:error, "Encounter Mint error %Mint.TransportError{reason: :timeout}"} ->
+          handle_timeout_socket(socket, resp)
+
+        {:error, resp} ->
+          unknown_error_socket(socket, resp)
       end
 
     {:noreply, socket}
@@ -133,8 +162,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
           |> init_socket()
           |> put_flash(:info, "Integration deleted!")
 
-        {:error, _resp} ->
-          unknown_error_socket(socket)
+        {:error, resp} ->
+          unknown_error_socket(socket, resp)
       end
 
     {:noreply, socket}
@@ -149,7 +178,20 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   def handle_info({:init_socket, %{"configurationId" => config_id}}, socket) do
     auth = Vercel.get_auth_by(installation_id: config_id)
 
-    {:noreply, init_socket(socket, auth)}
+    socket =
+      if auth do
+        init_socket(socket, auth)
+      else
+        send_flash(
+          :error,
+          "ConfigurationId `#{config_id}` not found in your Logflare account. Please reinstall the Loglfare Vercel integration to manage your log drains here."
+        )
+
+        socket
+        |> init_socket()
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info(:init_socket, socket) do
@@ -170,7 +212,17 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     {:noreply, clear_flash(socket)}
   end
 
-  defp init_socket(socket, auth \\ %Vercel.Auth{}) do
+  def handle_info({:send_flash, {level, message}}, socket) do
+    {:noreply, put_flash(socket, level, message)}
+  end
+
+  defp init_socket(socket, auth \\ %Vercel.Auth{})
+
+  defp init_socket(socket, nil) do
+    init_socket(socket, %Vercel.Auth{})
+  end
+
+  defp init_socket(socket, %Vercel.Auth{} = auth) do
     auth =
       cond do
         auth.installation_id ->
@@ -199,12 +251,12 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   defp assign_drains(socket) do
-    {:ok, resp} =
+    resp =
       Vercel.Client.new(socket.assigns.selected_auth)
       |> Vercel.Client.list_log_drains()
 
     case resp do
-      %Tesla.Env{status: 200} ->
+      {:ok, %Tesla.Env{status: 200} = resp} ->
         drains =
           resp.body
           |> Enum.sort_by(& &1["createdAt"])
@@ -213,14 +265,17 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         |> assign(:drains, drains)
         |> clear_flash()
 
-      %Tesla.Env{status: 403} ->
+      {:ok, %Tesla.Env{status: 403}} ->
         socket
         |> assign(:drains, [])
 
-      _resp ->
+      {:error, "Encounter Mint error %Mint.TransportError{reason: :timeout}"} ->
+        handle_timeout_socket(socket, resp)
+
+      {:error, resp} ->
         socket
         |> assign(:drains, [])
-        |> unknown_error_socket()
+        |> unknown_error_socket(resp)
     end
   end
 
@@ -245,23 +300,26 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   defp assign_projects(socket) do
-    {:ok, resp} =
+    resp =
       Vercel.Client.new(socket.assigns.selected_auth)
       |> Vercel.Client.list_projects()
 
     case resp do
-      %Tesla.Env{status: 200} ->
+      {:ok, %Tesla.Env{status: 200} = resp} ->
         projects = resp.body["projects"]
 
         socket
         |> assign(:projects, projects)
         |> clear_flash()
 
-      %Tesla.Env{status: 403} ->
+      {:ok, %Tesla.Env{status: 403}} ->
         socket
 
-      _resp ->
-        unknown_error_socket(socket)
+      {:error, "Encounter Mint error %Mint.TransportError{reason: :timeout}"} ->
+        handle_timeout_socket(socket, resp)
+
+      {:error, resp} ->
+        unknown_error_socket(socket, resp)
     end
   end
 
@@ -281,19 +339,30 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   defp assign_selected_auth(socket, %Vercel.Auth{id: id} = auth) when is_integer(id) do
-    {:ok, resp} =
+    resp =
       Vercel.Client.new(auth)
       |> Vercel.Client.get_user()
 
     case resp do
-      %Tesla.Env{status: 200} ->
+      {:ok, %Tesla.Env{status: 200}} ->
         socket
         |> assign(:selected_auth, auth)
 
-      %Tesla.Env{status: 403} ->
+      {:ok, %Tesla.Env{status: 403}} ->
         socket
         |> assign(:selected_auth, auth)
         |> unauthorized_socket()
+
+      {:ok, %Tesla.Env{status: 400}} ->
+        Logger.error("Bad Vercel user API request.", error_string: inspect(resp))
+        socket
+
+      {:error, "Encounter Mint error %Mint.TransportError{reason: :timeout}"} ->
+        handle_timeout_socket(socket, resp)
+
+      resp ->
+        Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
+        socket
     end
   end
 
@@ -311,15 +380,15 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       Enum.map(auths, fn auth ->
         team =
           if auth.team_id do
-            {:ok, resp} =
+            resp =
               Vercel.Client.new(auth)
               |> Vercel.Client.get_team(auth.team_id)
 
             case resp do
-              %Tesla.Env{status: 200} ->
+              {:ok, %Tesla.Env{status: 200} = resp} ->
                 resp.body
 
-              %Tesla.Env{status: 403} ->
+              {:ok, %Tesla.Env{status: 403}} ->
                 nil
 
               _ ->
@@ -331,6 +400,10 @@ defmodule LogflareWeb.VercelLogDrainsLive do
       end)
 
     assign(socket, :auths_teams, auths_teams)
+  end
+
+  defp send_flash(level, message) do
+    send(self(), {:send_flash, {level, message}})
   end
 
   defp contacting_vercel() do
@@ -346,13 +419,23 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     )
   end
 
-  defp unknown_error_socket(socket) do
+  defp unknown_error_socket(socket, resp) do
+    Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
+
     socket
     |> clear_flash
     |> put_flash(
       :error,
       "Something went wrong. Try reinstalling the Logflare integration. Contact support if this continues."
     )
+  end
+
+  defp handle_timeout_socket(socket, resp) do
+    Logger.error("Vercel timeout!", error_string: inspect(resp))
+
+    socket
+    |> clear_flash()
+    |> put_flash(:error, "Vercel API timeout! Please try again.")
   end
 
   @impl true

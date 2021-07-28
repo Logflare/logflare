@@ -33,6 +33,14 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> deep_sort_by_fields_name()
   end
 
+  def build_table_schema(metadata) do
+    metadata_field = build_fields_schemas({"metadata", metadata})
+
+    initial_table_schema()
+    |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
+    |> deep_sort_by_fields_name()
+  end
+
   def initial_table_schema() do
     %Model.TableSchema{
       fields: [
@@ -62,7 +70,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   end
 
   @spec build_metadata_fields_schemas(map, TFS.t()) :: TFS.t()
-  defp build_metadata_fields_schemas(metadata, old_metadata_schema) do
+  def build_metadata_fields_schemas(metadata, old_metadata_schema) do
     new_metadata_schema = build_fields_schemas({"metadata", metadata})
 
     old_metadata_schema
@@ -70,7 +78,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> DeepMerge.deep_merge(new_metadata_schema)
   end
 
-  defp build_fields_schemas({params_key, params_val}) when is_map(params_val) do
+  def build_fields_schemas({params_key, params_val}) when is_map(params_val) do
     %TFS{
       description: nil,
       mode: "REPEATED",
@@ -80,7 +88,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     }
   end
 
-  defp build_fields_schemas(maps) when is_list(maps) do
+  def build_fields_schemas(maps) when is_list(maps) do
     maps
     |> Enum.reduce(%{}, &DeepMerge.deep_merge/2)
     |> Enum.reject(fn
@@ -90,7 +98,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> Enum.map(&build_fields_schemas/1)
   end
 
-  defp build_fields_schemas({params_key, params_value}) do
+  def build_fields_schemas({params_key, params_value}) do
     case SchemaTypes.to_schema_type(params_value) do
       {"ARRAY", "RECORD"} ->
         %TFS{

@@ -1,0 +1,31 @@
+<div class="subhead subhead-fixed">
+  <div class="container mx-auto">
+    <h5>~/endpoints/new</h5>
+    <div class="log-settings">
+      <ul>
+        <li></li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="container mx-auto">
+  <p>
+  </p>
+  <%= form_for @changeset, Routes.endpoint_path(@conn, :create), fn f -> %>
+  <div class="form-group">
+    <%= text_input f, :name, placeholder: "YourApp.EndpointName", class: "form-control form-control-margin", autofocus: true %>
+    <%= error_tag f, :name %>
+    <small class="form-text text-muted">
+      Don't worry, you can change the name later.
+    </small>
+
+    <%= textarea f, :query, placeholder: "", class: "form-control form-control-margin", autofocus: true %>
+    <%= error_tag f, :query %>
+    <small class="form-text text-muted">
+      You can change the query later as well.
+    </small>
+
+  </div>
+  <%= submit "Add endpoint", class: "btn btn-primary form-button" %>
+  <% end %>
+</div>

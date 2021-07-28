@@ -41,3 +41,13 @@ Use [our Logger backend](https://github.com/Logflare/logflare_logger_backend) to
 ## Source available
 
 We are leaving this repo public as an example of a larger Elixir project. We hope to have an open source edition of Logflare at some point in the future.
+
+## Close Source Usage
+
+Logflare is using a SQL parser from sqlparser.com. To set this up on your dev machine:
+
+  * Copy parser from sqlparser.com into `sql/gsp`. When extracted it's located at `lib/gudusoft.gsqlparser-2.3.0.7.jar`
+  * Install Java with homebrew (MacOS)
+  * Do what homebrew says
+  * Run `mix sql`
+

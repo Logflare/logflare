@@ -19,7 +19,11 @@ defmodule LogflareWeb.Auth.EmailController do
   def send_link(conn, %{"email" => email}) do
     email = email |> String.downcase() |> String.trim()
 
-    Auth.Email.auth_email(email)
+    if get_session(conn, :vercel_setup) do
+      Auth.Email.auth_email_no_link(email)
+    else
+      Auth.Email.auth_email(email)
+    end
     |> Mailer.deliver()
 
     conn
@@ -28,6 +32,8 @@ defmodule LogflareWeb.Auth.EmailController do
   end
 
   def callback(conn, %{"token" => token}) do
+    token = String.trim(token)
+
     case Auth.verify_token(token, @max_age) do
       {:ok, email} ->
         auth_params = %{

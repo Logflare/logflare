@@ -6,7 +6,7 @@ defmodule Logflare.Plans.Plan do
     field :name, :string, default: "Legacy"
     field :stripe_id, :string
     field :price, :integer, default: 0
-    field :period, :string, default: :month
+    field :period, :string, default: "month"
     field :limit_sources, :integer, default: 100
     field :limit_rate_limit, :integer, default: 150
     field :limit_source_rate_limit, :integer, default: 50

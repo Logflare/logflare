@@ -131,6 +131,25 @@ defmodule LogflareWeb.Router do
     get "/dashboard", SourceController, :dashboard
   end
 
+  scope "/endpoints/query", LogflareWeb do
+    pipe_through [:api]
+    get "/:token", EndpointController, :query
+  end
+
+  scope "/endpoints", LogflareWeb do
+    pipe_through [:browser, :require_auth]
+
+    get "/", EndpointController, :index
+    post "/", EndpointController, :create
+
+    get "/new", EndpointController, :new
+    get "/:id", EndpointController, :show
+    get "/:id/edit", EndpointController, :edit
+    put "/:id", EndpointController, :update
+    put "/:id/reset_url", EndpointController, :reset_url
+    delete "/:id", EndpointController, :delete
+  end
+
   scope "/sources", LogflareWeb do
     pipe_through [:browser]
 
@@ -215,13 +234,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/integrations", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+    pipe_through [:browser, :require_auth]
 
     live "/vercel/edit", VercelLogDrainsLive, :edit
   end
 
-  scope "/account/billing", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/billing", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
     post "/", BillingController, :create
     delete "/", BillingController, :delete
@@ -229,8 +248,8 @@ defmodule LogflareWeb.Router do
     get "/sync", BillingController, :sync
   end
 
-  scope "/account/billing/subscription", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/billing/subscription", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
     get "/subscribed", BillingController, :success
     get "/abandoned", BillingController, :abandoned
@@ -324,6 +343,7 @@ defmodule LogflareWeb.Router do
     post "/typecasts", LogController, :create_with_typecasts
     post "/logplex", LogController, :syslog
     post "/syslogs", LogController, :syslog
+    post "/github", LogController, :github
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog

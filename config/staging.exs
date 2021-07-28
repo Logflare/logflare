@@ -67,13 +67,15 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
 
 config :logflare, Logflare.Tracker, pool_size: 1
 
-import_config "telemetry.exs"
-
 config :logflare, Logflare.Vercel.Client,
   client_id: "oac_9AFs6dPQPFhy5xS1IOvc2xrf",
   client_secret: "mmDrqcJYuJeIxNX9AXbNqrhm",
   redirect_uri: "https://logflarestaging.com/install/vercel-v2",
   install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
+
+config :erlexec, root: true, user: "root"
+
+import_config "telemetry.exs"
 
 if File.exists?("config/staging.secret.exs") do
   import_config "staging.secret.exs"
