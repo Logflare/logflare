@@ -43,7 +43,7 @@ defmodule Logflare.Source.BillingWriter do
   end
 
   defp write() do
-    every = :timer.minutes(Enum.random(5..15))
+    every = :timer.minutes(Enum.random(45..75))
     Process.send_after(self(), :write_count, every)
   end
 
