@@ -1,10 +1,11 @@
-<%= if length(@log_events) > 0 do %>
-  <div id="logs-list-container" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
+
+<%= if @search_op_log_events do %>
+  <div id="source-logs-search-list" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list"></div>
     <% else %>
       <div id="logs-list" class="list-unstyled console-text-list">
-        <%= for log <- @log_events do %>
+        <%= for log <- @search_op_log_events.rows do %>
           <li id="log-event_<%= log.id || log.body.timestamp %>">
             <% %{metadata: _metadata, timestamp: timestamp, message: message} = log.body %>
             <%= if @use_local_time do %>
@@ -24,5 +25,5 @@
     <% end %>
   </div>
 <% else %>
-  <div id="logs-list-container-empty"> </div>
+  <div> </div>
 <% end %>

@@ -206,13 +206,13 @@
   <small class="form-text text-muted">
     Currently seeing <%= @source.metrics.avg %> events per second on average. Email <a
         href="mailto:support@logflare.app?Subject=Rate%20Limits" target="_top">support@logflare.app</a> to increase your
-    rate limit.
-  </small>
-</div>
-<%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
-<% end %>
-<%= section_header("Backend TTL") %>
-<%= if @conn.assigns.user.billing_enabled do %>
+      rate limit.
+    </small>
+  </div>
+  <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
+  <% end %>
+  <%= section_header("Backend TTL") %>
+  <%= if @conn.assigns.user.billing_enabled do %>
   <p>Set how long to keep data in your backend.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
   <div class="form-group">
@@ -235,7 +235,7 @@
       alert("Copied!");
       e.clearSelection();
     });
-  
+
     clipboard.on('error', (e) => {
       alert("Something went wrong!");
       e.clearSelection();

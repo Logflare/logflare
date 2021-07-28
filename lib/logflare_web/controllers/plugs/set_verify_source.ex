@@ -51,7 +51,8 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         assign(conn, :source, source)
 
       {nil, true} ->
-        message = "Source or source_name is nil, empty or not found."
+        message =
+          "Your `source_id` is nil, empty or not found. The `source_id` is a UUID you can copy from your dashboard (https://logflare.app/dashboard)."
 
         conn
         |> put_status(406)

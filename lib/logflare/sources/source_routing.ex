@@ -19,13 +19,23 @@ defmodule Logflare.Logs.SourceRouting do
     for rule <- rules do
       cond do
         length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
+
           sink_source = Sources.get_source_by(token: rule.sink)
-          routed_le = %{le | source: sink_source, via_rule: rule}
+
+          routed_le =
+            le
+            |> Map.put(:source, sink_source)
+            |> Map.put(:via_rule, rule)
+            |> LE.apply_custom_event_message()
+
+
           :ok = ingest(routed_le)
           :ok = broadcast(routed_le)
 
         rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
-          route_with_regex(le, rule)
+          le
+          |> LE.apply_custom_event_message()
+          |> route_with_regex(rule)
 
         true ->
           :noop

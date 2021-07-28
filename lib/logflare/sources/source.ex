@@ -19,6 +19,7 @@ defmodule Logflare.Source do
              :bigquery_table_ttl,
              :public_token,
              :bq_table_id,
+             :bq_table_schema,
              :has_rejected_events,
              :metrics,
              :notifications,

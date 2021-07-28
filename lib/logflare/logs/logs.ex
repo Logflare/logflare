@@ -20,6 +20,7 @@ defmodule Logflare.Logs do
     |> Enum.map(fn %LE{} = le ->
       if le.valid do
         :ok = SourceRouting.route_to_sinks_and_ingest(le)
+        le = LE.apply_custom_event_message(le)
         :ok = ingest(le)
         :ok = broadcast(le)
       else
@@ -28,11 +29,11 @@ defmodule Logflare.Logs do
 
       le
     end)
-    |> Enum.reduce([], fn log, acc ->
-      if log.valid do
+    |> Enum.reduce([], fn le, acc ->
+      if le.valid do
         acc
       else
-        [log.validation_error | acc]
+        [le.validation_error | acc]
       end
     end)
     |> case do

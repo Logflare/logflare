@@ -93,33 +93,45 @@ defmodule Logflare.Lql.Parser do
   defp get_path_type(typemap, path, querystring) do
     type = Map.get(typemap, path)
 
-    if type do
-      type
-    else
-      case get_most_similar_path(typemap, path) do
-        "metadata." <> maybe_rest_of_path = maybe_this ->
-          "metadata." <> rest_of_path = path
-          suggested_querystring = String.replace(querystring, rest_of_path, maybe_rest_of_path)
+    case type do
+      :map ->
+        throw(
+          {"",
+           [
+             "Field type `#{type}` is not queryable.",
+             "",
+             ""
+           ]}
+        )
 
-          throw(
-            {suggested_querystring,
-             [
-               "LQL Parser error: path '#{path}' not present in source schema. Did you mean '",
-               maybe_this,
-               "'?"
-             ]}
-          )
+      nil ->
+        case get_most_similar_path(typemap, path) do
+          "metadata." <> maybe_rest_of_path = maybe_this ->
+            "metadata." <> rest_of_path = path
+            suggested_querystring = String.replace(querystring, rest_of_path, maybe_rest_of_path)
 
-        _ ->
-          throw(
-            {"",
-             [
-               "No fields found to match `#{path}` your query. See this source schema for queryable fields.",
-               "",
-               ""
-             ]}
-          )
-      end
+            throw(
+              {suggested_querystring,
+               [
+                 "LQL Parser error: path '#{path}' not present in source schema. Did you mean '",
+                 maybe_this,
+                 "'?"
+               ]}
+            )
+
+          _ ->
+            throw(
+              {"",
+               [
+                 "No fields found to match `#{path}` your query. See this source schema for queryable fields.",
+                 "",
+                 ""
+               ]}
+            )
+        end
+
+      _type ->
+        type
     end
   end
 

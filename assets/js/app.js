@@ -5,6 +5,7 @@ import "bootstrap"
 import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"
 import * as Source from "./source"
+import * as Endpoint from "./endpoint"
 import * as Logs from "./logs"
 import * as User from "./user"
 import BillingHooks from "./billing"
@@ -28,6 +29,7 @@ window.Components = { LogEventsChart, Loader, AdminChart: Chart }
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
+window.Endpoint = Endpoint
 window.User = User
 window.ClipboardJS = ClipboardJS
 

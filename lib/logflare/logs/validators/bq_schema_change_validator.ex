@@ -1,51 +1,62 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
-  use Logflare.Commons
-  import Logflare.Google.BigQuery.SchemaUtils, only: [to_typemap: 1, to_typemap: 2]
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.{Source, Sources}
+  alias Logflare.Source.BigQuery.SchemaBuilder
+
+  import Logflare.Google.BigQuery.SchemaUtils
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
-    if valid?(body.metadata, source.source_schema.bigquery_schema) do
+    schema_flatmap = Sources.Cache.get_bq_schema_flat_map(source)
+
+    metadata_flatmap =
+      to_typemap(%{metadata: body.metadata})
+      |> flatten_typemap()
+
+    try_merge(metadata_flatmap, schema_flatmap)
+  end
+
+  def try_merge(metadata_flatmap, schema_flatmap) do
+    try do
+      merge_flat_typemaps(metadata_flatmap, schema_flatmap)
       :ok
-    else
-      {:error, message()}
+    rescue
+      e ->
+        {:error, e.message}
     end
   end
 
-  def valid?(nil, _), do: true
-  def valid?(_, nil), do: true
-  def valid?(m, _) when m === %{}, do: true
+  def merge_flat_typemaps(nil, original), do: original
+  def merge_flat_typemaps(new, nil), do: new
+  def merge_flat_typemaps(new, original) when new == %{}, do: original
+  def merge_flat_typempas(new, original) when new == original, do: original
 
-  def valid?(metadata, existing_schema) do
-    existing_typemap = to_typemap(existing_schema, from: :bigquery_schema)
+  def merge_flat_typemaps(new, original) do
+    Map.merge(new, original, fn k, v1, v2 ->
+      if v1 != v2,
+        do:
+          raise(
+            "Type error! Field `#{k}` has type of `#{inspect(v2)}`. Incoming metadata has type of `#{inspect(v1)}`."
+          ),
+        else: v2
+    end)
+  end
 
-    existing_metadata_typemap =
-      case existing_typemap do
-        %{metadata: %{fields: _}} -> existing_typemap.metadata.fields
-        _ -> %{}
-      end
+  # Currently for tests. Change tests.
+  def valid?(metadata, schema) do
+    schema_flatmap = bq_schema_to_flat_typemap(schema)
 
-    new_metadata_typemap = to_typemap(metadata)
+    new_schema_flatmap =
+      to_typemap(%{metadata: metadata})
+      |> flatten_typemap()
 
     try do
-      DeepMerge.deep_merge(new_metadata_typemap, existing_metadata_typemap, &resolver/3)
+      merge_flat_typemaps(new_schema_flatmap, schema_flatmap)
+      true
     rescue
-      _e -> false
-    else
-      _ -> true
+      _e ->
+        false
     end
-  end
-
-  def resolver(_, original, override)
-      when (is_atom(original) or is_tuple(original)) and (is_atom(override) or is_tuple(override)) do
-    if original != override, do: raise("type_error")
-  end
-
-  def resolver(_, _original, _override) do
-    DeepMerge.continue_deep_merge()
-  end
-
-  def message() do
-    "Incoming metadata is not compatible with existing schema"
   end
 end

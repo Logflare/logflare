@@ -7,7 +7,12 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source.RecentLogsServer, as: RLS
+
   @moduletag :unboxed
+
+  alias Logflare.Source
+  @moduletag :this
+
 
   setup do
     u = user_with_iam()

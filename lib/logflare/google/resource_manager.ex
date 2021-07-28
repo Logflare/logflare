@@ -6,7 +6,6 @@ defmodule Logflare.Google.CloudResourceManager do
 
   alias GoogleApi.CloudResourceManager.V1.Api
   alias GoogleApi.CloudResourceManager.V1.Model
-  alias GoogleApi.CloudResourceManager.V1.Connection
   alias Logflare.Repo
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.User
@@ -31,7 +30,7 @@ defmodule Logflare.Google.CloudResourceManager do
   @source_repo_sa Application.get_env(:logflare, Logflare.Google)[:source_repo_sa]
 
   def get_iam_policy() do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
 
     body = %Model.GetIamPolicyRequest{}
 
@@ -39,7 +38,7 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   def set_iam_policy() do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
 
     Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
       members = build_members()
@@ -96,7 +95,7 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   def list_projects() do
-    conn = get_conn()
+    conn = GenUtils.get_conn()
     Api.Projects.cloudresourcemanager_projects_list(conn)
   end
 
@@ -253,10 +252,5 @@ defmodule Logflare.Google.CloudResourceManager do
     |> Enum.sort_by(& &1.updated_at, {:desc, Date})
     |> Enum.take(1450)
     |> Enum.map(&("user:" <> &1.email))
-  end
-
-  defp get_conn() do
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
-    Connection.new(token.token)
   end
 end

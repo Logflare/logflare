@@ -58,12 +58,23 @@ defmodule Logflare.Logs.RejectedLogEvents do
   Expected to be called only in Logs context
   """
   @spec ingest(LE.t()) :: :ok
-  def ingest(%LE{source: %Source{id: id}, valid: false} = le) do
-    ingested_at =
-      if is_integer(le.ingested_at) do
-        DateTime.from_unix!(le.ingested_at, :microsecond)
-      else
-        le.ingested_at
+  def ingest(%LE{source: %Source{token: token}, valid: false, id: id} = le) do
+    Cachex.put!(@cache, {token, id}, le)
+    Cachex.incr(@cache, counter_name(token))
+
+    :ok
+  end
+
+  def query(source_id) when is_atom(source_id) do
+    @cache
+    |> Cachex.stream!()
+    |> Enum.filter(fn x ->
+      case x do
+        {:entry, {^source_id, _le_id}, _ts, _, _le} ->
+          true
+
+        _ ->
+          false
       end
 
     {:ok, _rle} =

@@ -42,7 +42,10 @@ defmodule Logflare.Mixfile do
         :runtime_tools,
         :ueberauth_github,
         :ueberauth_google,
-        :ssl
+        :ssl,
+        :phoenix_html,
+        :phoenix,
+        :erlexec
       ]
     ]
   end
@@ -62,8 +65,9 @@ defmodule Logflare.Mixfile do
       {:phoenix_ecto, "~> 4.0"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
-      {:plug, "~> 1.8"},
+      # {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.0"},
+      {:plug_crypto, "~> 1.2.2"},
       {:phoenix_live_view, "~> 0.15.3", override: true},
       {:phoenix_live_dashboard, "~> 0.4.0"},
       {:cors_plug, "~> 2.0"},
@@ -101,6 +105,7 @@ defmodule Logflare.Mixfile do
       {:bertex, ">= 0.0.0"},
       {:nimble_parsec, "~> 1.0"},
       {:warpath, "~> 0.5.0"},
+      {:timber_logfmt, github: "Logflare/logfmt-elixir"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
@@ -131,7 +136,7 @@ defmodule Logflare.Mixfile do
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.52.0"},
-      {:goth, "~> 1.2.0"},
+      {:goth, "~> 1.3-rc"},
 
       # Ecto
       {:ecto, "~> 3.5", override: true},
@@ -142,7 +147,7 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 0.4.0"},
       {:telemetry_poller, "0.5.0"},
       {:telemetry_metrics, "~> 0.6.0", override: true},
-      {:logflare_logger_backend, "~> 0.8.0-rc.6"},
+      {:logflare_logger_backend, "~> 0.10.2"},
       {:logflare_agent, "~> 0.6.2", only: [:prod]},
 
       # ETS
@@ -187,6 +192,9 @@ defmodule Logflare.Mixfile do
 
       # Cache
       {:ecto3_mnesia, "~> 0.2"}
+
+      # SQL
+      {:erlexec, "~>1.18.11"}
     ]
   end
 

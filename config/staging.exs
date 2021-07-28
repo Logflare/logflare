@@ -61,9 +61,20 @@ config :libcluster,
 
 config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions: [{"us-central1", "logflare-cluster-group"}],
-  zones: [{"us-central1-a", "instance-group-1"}]
+  zones: [
+    {"us-central1-a", "instance-group-1"},
+    {"us-central1-a", "instance-group"}
+  ]
 
 config :logflare, Logflare.Tracker, pool_size: 1
+
+config :logflare, Logflare.Vercel.Client,
+  client_id: "oac_9AFs6dPQPFhy5xS1IOvc2xrf",
+  client_secret: "mmDrqcJYuJeIxNX9AXbNqrhm",
+  redirect_uri: "https://logflarestaging.com/install/vercel-v2",
+  install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
+
+config :erlexec, root: true, user: "root"
 
 import_config "telemetry.exs"
 

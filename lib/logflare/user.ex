@@ -8,7 +8,9 @@ defmodule Logflare.User do
 
   use Logflare.Commons
   alias Logflare.Google.BigQuery
+
   use Logflare.Changefeeds.ChangefeedSchema
+
 
   @derive {Jason.Encoder,
            only: [
@@ -76,6 +78,8 @@ defmodule Logflare.User do
 
     has_many :billing_counts, BillingCount
     has_many :sources, Source
+    has_many :endpoint_queries, Logflare.Endpoint.Query
+    has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
     has_one :billing_account, BillingAccount

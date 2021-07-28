@@ -89,7 +89,7 @@
     UNNEST(m.request) req,
     UNNEST(m.response) resp,
     UNNEST(resp.headers) h
-    WHERE DATE(_PARTITIONTIME) = "2019-05-09"
+    WHERE DATE(timestamp) = "2019-05-09"
     ORDER BY timestamp DESC
     LIMIT 10
         </code>

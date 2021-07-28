@@ -149,7 +149,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       )
 
       html =
-        render_change(view, :timestamp_and_chart_update, %{
+        render_change(view, :datetime_update, %{
           "querystring" => "t:2020-01-01T01:10:00..2020-01-01T01:22:20"
         })
 
@@ -343,7 +343,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).tailing?
     end
 
-    test "timestamp_and_chart_update", %{conn: conn, source: [s | _]} do
+    test "datetime_update", %{conn: conn, source: [s | _]} do
       conn =
         conn
         |> put_connect_params(%{"user_timezone" => "Europe/Berlin"})
@@ -355,13 +355,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html =~ "error c:count(*) c:group_by(t::minute)"
 
-      assert render_change(view, "timestamp_and_chart_update", %{"querystring" => "t:last@2h"}) =~
+      assert render_change(view, "datetime_update", %{"querystring" => "t:last@2h"}) =~
                ~S|id="user-local-timezone"|
 
       assert "error t:last@2hour c:count(*) c:group_by(t::minute)" ==
                get_view_assigns(view).querystring
 
-      assert render_change(view, "timestamp_and_chart_update", %{
+      assert render_change(view, "datetime_update", %{
                "querystring" => "t:2020-04-20T00:{01..02}:00",
                "period" => "second"
              }) =~

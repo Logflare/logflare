@@ -264,6 +264,12 @@ defmodule Logflare.Sources do
     %{source | metrics: metrics, has_rejected_events: rejected_count > 0}
   end
 
+  def put_schema_field_count(%Source{} = source) do
+    new_metrics = %{source.metrics | fields: Source.Data.get_schema_field_count(source)}
+
+    %{source | metrics: new_metrics}
+  end
+
   def valid_source_token_param?(string) when is_binary(string) do
     case String.length(string) === 36 && Ecto.UUID.cast(string) do
       {:ok, _} -> true

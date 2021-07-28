@@ -5,8 +5,6 @@ defmodule LogflareWeb.BillingController do
 
   alias Logflare.BillingAccounts.Stripe
 
-  plug LogflareWeb.Plugs.AuthMustBeOwner
-
   @stripe_publishable_key Application.get_env(:stripity_stripe, :publishable_key)
   @default_error_message "Something went wrong. Try that again! If this continues please contact support."
 
@@ -58,14 +56,14 @@ defmodule LogflareWeb.BillingController do
          {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer) do
       conn
       |> put_flash(:info, "Billing account deleted!")
-      |> redirect(to: Routes.user_path(conn, :edit))
+      |> redirect(to: Routes.source_path(conn, :dashboard))
     else
       err ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         conn
         |> put_flash(:error, @default_error_message)
-        |> redirect(to: Routes.user_path(conn, :edit))
+        |> redirect(to: Routes.source_path(conn, :dashboard))
     end
   end
 
@@ -118,7 +116,7 @@ defmodule LogflareWeb.BillingController do
       ) do
     with plan <- Plans.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
-         false <- billing_account.lifetime_plan?,
+         false <- billing_account.lifetime_plan,
          {:ok, session} <- Stripe.create_metered_customer_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)

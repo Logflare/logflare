@@ -26,7 +26,7 @@ defmodule LogflareWeb.LogController do
   def create(%{assigns: %{source: source}} = conn, log_params) do
     batch =
       log_params
-      |> Map.take(~w[log_entry metadata timestamp @logflareTransformDirectives])
+      |> Map.take(~w[log_entry message metadata timestamp @logflareTransformDirectives])
       |> List.wrap()
 
     ingest_and_render(conn, batch, source)
@@ -99,9 +99,13 @@ defmodule LogflareWeb.LogController do
 
   def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
-    batch =
-      batch
-      |> Logs.Vercel.handle_batch(source)
+    batch = Logs.Vercel.handle_batch(batch, source)
+
+    ingest_and_render(conn, batch, source)
+  end
+
+  def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
+    batch = Logs.Github.handle_batch([params], source)
 
     ingest_and_render(conn, batch, source)
   end

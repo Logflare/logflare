@@ -5,15 +5,6 @@ defmodule Logflare.Logs.Search.Utils do
   alias Logflare.JSON
   require Logger
 
-  def format_error(%Tesla.Env{body: body}) do
-    body
-    |> JSON.decode!()
-    |> Map.get("error")
-    |> Map.get("message")
-  end
-
-  def format_error(e), do: e
-
   def gen_search_tip() do
     tips = [
       "Search is case sensitive.",
@@ -61,4 +52,8 @@ defmodule Logflare.Logs.Search.Utils do
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
   def put_result_in(value, so, path), do: %{so | path => value}
+
+  defp search_error_message(host, status) do
+    "Invalid JSON response from backend #{host}. Recieved an HTTP status code: #{status}. This is likely temporary. Please contact support if it continues."
+  end
 end

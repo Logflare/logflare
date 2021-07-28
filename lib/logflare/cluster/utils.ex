@@ -1,6 +1,6 @@
 defmodule Logflare.Cluster.Utils do
   @moduledoc false
-  @min_cluster_size 3
+  @min_cluster_size 2
 
   def node_list_all() do
     [Node.self() | Node.list()]

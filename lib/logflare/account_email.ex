@@ -18,13 +18,9 @@ defmodule Logflare.AccountEmail do
 
     Thanks for checking out Logflare! Please Let us know if you have any issues. A few things to note...
 
-    You'll only get account related emails from us. If you want to hear more, please subscribe to product updates: #{
-      Routes.user_url(Endpoint, :edit) <> "#contact-information"
-    }
+    You'll only get account related emails from us. If you want to hear more, please subscribe to product updates: #{Routes.user_url(Endpoint, :edit) <> "#contact-information"}
 
-    Need to cancel your account? No need to contact us. You can always delete your account here: #{
-      Routes.user_url(Endpoint, :edit) <> "#delete-your-account"
-    }
+    Need to cancel your account? No need to contact us. You can always delete your account here: #{Routes.user_url(Endpoint, :edit) <> "#delete-your-account"}
 
     It's a good idea to take some time to learn about Logflare. Logflare is simple on the surface but enables some powerful things like:
 
@@ -34,9 +30,7 @@ defmodule Logflare.AccountEmail do
 
     3) With the same simple yet powerful query language you can quickly search your logs and build alerts: https://www.loom.com/share/961f3392e20941929ee24393bf01b43c
 
-    And so much more. Our guides provide some good info: #{
-      Routes.marketing_url(Endpoint, :guides)
-    }
+    And so much more. Our guides provide some good info: #{Routes.marketing_url(Endpoint, :guides)}
 
     We have a little Loom library if you prefer video: https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e
 
@@ -156,6 +150,7 @@ defmodule Logflare.AccountEmail do
     diff = diff_schema(schema_to_list(formatted_new), schema_to_list(formatted_old))
 
     if diff == [] do
+      # Something generates BOOL and something else generates BOOLEAN which causes this
       Logger.error("Schema update email send with no new fields.",
         source_id: source.token,
         account_email: %{new_schema: inspect(new_schema), old_schema: inspect(old_schema)}
@@ -172,7 +167,11 @@ defmodule Logflare.AccountEmail do
       |> concat_and_join()
 
     part_one = """
-    Your source schema has been updated. Based on the incoming payload we've detected some new fields. Note: if you've recently cleared the source cache you may see these emails when the schema cache is rebuilt.
+    Your source schema has been updated. Based on the incoming payload we've detected some new fields.
+
+    Schema changes are locked for the next 10 seconds. You're allowed to update the schema 6 times per minute per source.
+
+    Note: if you've recently cleared the source cache you may see these emails when the schema cache is rebuilt.
 
     Source:
     #{source_link}

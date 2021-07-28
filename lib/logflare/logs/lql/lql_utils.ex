@@ -108,4 +108,49 @@ defmodule Logflare.Lql.Utils do
         nil
     end
   end
+
+  def jump_timestamp(rules, direction) when direction in [:backwards, :forwards] do
+    timestamp_rules =
+      get_ts_filters(rules)
+      |> get_filter_rules()
+
+    timestamps =
+      timestamp_rules
+      |> Enum.map(&(&1.value || &1.values))
+      |> List.flatten()
+
+    from = Enum.min(timestamps)
+    to = Enum.max(timestamps)
+
+    diff =
+      case direction do
+        :forwards ->
+          -NaiveDateTime.diff(from, to, :microsecond)
+
+        :backwards ->
+          NaiveDateTime.diff(from, to, :microsecond)
+      end
+
+    from = NaiveDateTime.add(from, diff, :microsecond)
+    to = NaiveDateTime.add(to, diff, :microsecond)
+
+    range = %Logflare.Lql.FilterRule{
+      modifiers: %{},
+      operator: :range,
+      path: "timestamp",
+      shorthand: nil,
+      value: nil,
+      values: [from, to]
+    }
+
+    update_timestamp_rules(rules, [range])
+  end
+
+  def timestamp_filter_rule_is_shorthand?(%FilterRule{shorthand: shorthand}) do
+    case shorthand do
+      x when binary_part(x, 0, 4) in ["last", "this"] -> true
+      x when x in ["today", "yesterday"] -> true
+      _ -> false
+    end
+  end
 end

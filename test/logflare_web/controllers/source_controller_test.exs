@@ -364,8 +364,8 @@ defmodule LogflareWeb.SourceControllerTest do
           s1
         )
 
-      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing?: false)
-      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing?: true)
+      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: false)
+      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: true)
 
       conn =
         conn

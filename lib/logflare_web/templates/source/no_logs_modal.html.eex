@@ -26,9 +26,9 @@
 
         <h5 class="header-margin">Gigalixir</h5>
         <p>Install the Gigalixir command line tool, and navigate to your project directory.</p>
-        <pre class="pre-scrollable">
+        <pre class="py-3">
           <code>
-    gigalixir drains:add "https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+    gigalixir drains:add "<%= log_url(:syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
         <h5 class="header-margin">Cloudflare App</h5>
@@ -39,9 +39,9 @@
 
         <h5 class="header-margin">Heroku</h5>
         <p>Add our log drain with a simple command.</p>
-        <pre class="pre-scrollable">
+        <pre class="py-3">
           <code>
-    heroku drains:add "https://api.logflare.app/logs/logplex?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+    heroku drains:add "<%= log_url(:syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
         </pre>
 
         <h5 class="header-margin">Elixir Logger</h5>
@@ -56,13 +56,21 @@
         <p>Use our official Pino transport to send log events from your Javascript project.</p>
         <%= link "Setup the Pino transport", to: "https://github.com/Logflare/pino-logflare", class: "btn btn-primary form-button", target: "_blank" %>
 
+         <h5 class="header-margin">Github Webhook</h5>
+        <p>Set your Github webhook to this Logflare endpoint and we'll ingest Github webhooks for you. This endpoint drops all keys ending in <code>_url</code> so it keeps your Github payloads in check.</p>
+
+        <pre class="px-4 py-3">
+        <code>
+        <%= log_url(:github) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+        </pre>
+
         <h5 class="header-margin">Github Action</h5>
         <p>Use our Github Action (thanks <%= link "@gr2m", to: "https://twitter.com/gr2m" %>) to easily log events coming from your repositories.</p>
         <%= link "Setup the Github Action", to: "https://github.com/marketplace/actions/logflare-log", class: "btn btn-primary form-button", target: "_blank" %>
 
         <h5 class="header-margin">Fluent Bit</h5>
         <p>Watch log files on a server with this <%= link "Fluent Bit", to: "https://fluentbit.io/", target: "_blank" %> output config.</p>
-        <pre class="pre-scrollable">
+        <pre class="py-3">
           <code>
     [INPUT]
         Name        tail
@@ -85,14 +93,14 @@
         <h5 class="header-margin">Generic Webhook</h5>
         <p>Use the generic JSON ingest endpoint to generate log events from an external webhook.</p>
         <p>e.g. you can set a Github webhook to send events to:</p>
-        <pre class="pre-scrollable">
+        <pre class="py-3 px-4">
           <code>
-    https://api.logflare.app/logs/json?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+    <%= log_url(:generic_json) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
         </pre>
         <p>Or send generic JSON events yourself.</p>
-        <pre class="pre-scrollable">
+        <pre class="py-3">
           <code>
-    curl -X "POST" "https://api.logflare.app/logs/json?api_key=&source=<%= @source.token %>" \
+    curl -X "POST" "<%= log_url(:generic_json) %>?source=<%= @source.token %>" \
          -H 'Content-Type: application/json; charset=utf-8' \
          -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
          -d $'[
@@ -111,20 +119,19 @@
         "name": "banana",
         "qty": 12
       }
-    ]'
-          </code>
+    ]'</code>
         </pre>
 
         <h5 class="header-margin">Custom API Request</h5>
         <p>Send logs via an HTTP request. This request body payload lets you send over a human readable event message in
-          the <code>log_entry</code> field.</p>
-        <pre class="pre-scrollable">
+          the <code>message</code> field.</p>
+        <pre class="py-3">
           <code>
-    curl -X "POST" "https://api.logflare.app/logs?api_key=&source=<%= @source.token %>" \
+    curl -X "POST" "<%= log_url(:create) %>?source=<%= @source.token %>" \
     -H 'Content-Type: application/json' \
     -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
     -d $'{
-      "log_entry": "This is another log message.",
+      "message": "This is another log message.",
       "metadata": {
         "ip_address": "100.100.100.100",
         "request_method": "POST",
@@ -152,7 +159,7 @@
 
         <h5 class="header-margin">Custom Cloudflare Worker</h5>
         <p>Customize the Cloudflare worker using the template below.</p>
-        <pre class="pre-scrollable">
+        <pre class="py-3">
           <code>
     const makeid = length => {
         let text = ""
@@ -231,7 +238,7 @@
             body: JSON.stringify(logflareEventBody),
         }
 
-        event.waitUntil(fetch("https://api.logflare.app/logs", init))
+        event.waitUntil(fetch("<%= log_url(:create) %>", init))
 
         return response
     }

@@ -40,6 +40,11 @@
   </head>
   <body>
     <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
+    <%= if Plug.Conn.get_session(@conn, :vercel_setup) do %>
+      <div class="navbar-brand">
+        <%= render LogflareWeb.SharedView, "logo.html", assigns %>
+      </div>
+    <% else %>
       <%= if @user do %>
         <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
           <%= render LogflareWeb.SharedView, "logo.html", assigns %>
@@ -49,10 +54,13 @@
           <%= render LogflareWeb.SharedView, "logo.html", assigns %>
         </a>
       <% end %>
+    <% end %>
+      <%= if !Plug.Conn.get_session(@conn, :vercel_setup) do %>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
       aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
+      <% end %>
       <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
           <%= if @user do %>
@@ -117,6 +125,7 @@
         <% end %>
       </div>
     </nav>
+
     <%= @inner_content %>
     <%= render("js_libs.html") %>
     <script src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>

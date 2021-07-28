@@ -2,7 +2,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   @moduledoc """
   Manages the source schema across a cluster.
 
-  Schemas should only be updated once per minute. Server is booted with schema from Postgres. Handles schema mismatch between BigQuery and Logflare.
+  Schema updates are limited to @updates_per_minute. Server is booted with schema from Postgres. Handles schema mismatch between BigQuery and Logflare.
   """
   use GenServer
   use TypedStruct
@@ -16,6 +16,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   @persist_every_seconds 60
   @timeout 60_000
+  @updates_per_minute 6
 
   typedstruct do
     field :source_token, atom()
@@ -192,11 +193,23 @@ defmodule Logflare.Source.BigQuery.Schema do
         source
       )
 
+
     {:reply, :ok, %{state | schema: schema}}
   end
 
   def handle_cast({:update, schema, _type_map, _field_count}, %__MODULE__{} = state) do
     {:noreply, %{state | schema: schema}}
+  end
+
+  defp count_fields(type_map) do
+    type_map
+    |> BigQuery.SchemaUtils.flatten_typemap()
+    |> Enum.count()
+  end
+
+  defp next_update() do
+    seconds = 60 / @updates_per_minute
+    System.system_time(:second) + seconds
   end
 
   defp name(source_token) do

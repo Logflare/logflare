@@ -37,7 +37,7 @@ config :logflare, Logflare.Repo,
   timeout: 30_000,
   queue_target: 5_000,
   database: "logflare",
-  hostname: "10.11.144.4",
+  hostname: "10.11.144.7",
   after_connect: {Logflare.Changefeeds.Setup, :after_connect!, []}
 
 config :logflare, Logflare.Google,
@@ -87,8 +87,8 @@ config :logflare_agent,
 
 config :logflare_logger_backend,
   source_id: "4593c8b8-be2c-4bc6-a3e7-2bf090dd501f",
-  flush_interval: 1_000,
-  max_batch_size: 50,
+  flush_interval: 2_000,
+  max_batch_size: 250,
   url: "https://api.logflarestaging.com"
 
 config :libcluster,
@@ -124,6 +124,13 @@ config :logflare, LogflareWeb.Auth.VercelAuth,
 
 config :logflare,
   recaptcha_site_key: "6LffD8sZAAAAAFPKl-dzyTTpPtunFXfL6Wm8zraT"
+
+config :logflare, Logflare.Vercel.Client,
+  client_id: "oac_yEwf1AmqJMbRs2rkmnePdNK3",
+  redirect_uri: "https://logflare.app/install/vercel-v2",
+  install_vercel_uri: "https://vercel.com/integrations/logflare/new"
+
+config :erlexec, root: true, user: "root"
 
 import_config "telemetry.exs"
 
