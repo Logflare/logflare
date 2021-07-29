@@ -6,6 +6,12 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
+    # Database options for Postgres notifications
+    hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
+    username = Application.get_env(:logflare, Logflare.Repo)[:username]
+    password = Application.get_env(:logflare, Logflare.Repo)[:password]
+    database = Application.get_env(:logflare, Logflare.Repo)[:database]
+
     env = Application.get_env(:logflare, :env)
 
     # Start distribution early so that both Cachex and Logflare.SQL
@@ -100,6 +106,20 @@ defmodule Logflare.Application do
       supervisor(Logflare.SystemMetricsSup, []),
       supervisor(LogflareWeb.Endpoint, []),
       Logflare.SQL,
+      {
+        Cainophile.Adapters.Postgres,
+        register: Logflare.PgPublisher,
+        epgsql: %{
+          host: hostname,
+          username: username,
+          database: database,
+          password: password
+        },
+        slot: "example",
+        wal_position: {"0", "0"},
+        publications: ["logflare_pub"]
+      },
+      Logflare.CacheBuster,
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
