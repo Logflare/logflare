@@ -6,7 +6,7 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     import Supervisor.Spec
 
-    env = Application.get_env(:logflare, :env) |> IO.inspect()
+    env = Application.get_env(:logflare, :env)
 
     # Start distribution early so that both Cachex and Logflare.SQL
     # can work with it.
