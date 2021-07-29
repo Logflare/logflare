@@ -115,7 +115,7 @@ defmodule Logflare.Application do
           database: database,
           password: password
         },
-        slot: "example",
+        slot: :temporary,
         wal_position: {"0", "0"},
         publications: ["logflare_pub"]
       },

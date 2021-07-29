@@ -21,7 +21,7 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
     env = Application.get_env(:logflare, :env)
 
     if env in [:dev, :test] do
-      execute("ALTER SYSTEM SET wal_level = 'minimal';")
+      execute("ALTER SYSTEM RESET wal_level;")
     end
 
     execute("DROP PUBLICATION logflare_pub;")
