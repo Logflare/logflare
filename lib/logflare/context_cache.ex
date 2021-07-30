@@ -32,10 +32,10 @@ defmodule Logflare.ContextCache do
     {:ok, keys} = Cachex.get(@cache, key)
 
     if keys do
-      # Logger.info("Cache busted for `#{context}`")
+      Logger.info("Cache busted for `#{context}`")
 
       # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
-      for k <- keys, do: Cachex.del(@cache, k)
+      for(k <- keys, do: Cachex.del(@cache, k))
     end
 
     {:ok, :busted}
@@ -44,13 +44,20 @@ defmodule Logflare.ContextCache do
   defp index_keys(context, cache_key, value) do
     keys_key = {context, select_key(value)}
 
-    Cachex.get_and_update(@cache, keys_key, fn
-      nil ->
-        {:commit, [cache_key]}
+    {:ok, keys} = Cachex.get(@cache, keys_key)
 
-      keys ->
-        {:commit, [cache_key | keys] |> Enum.uniq()}
-    end)
+    cond do
+      is_nil(keys) ->
+        Cachex.put(@cache, keys_key, [cache_key])
+
+      Enum.any?(keys, &match?(&1, cache_key)) ->
+        :noop
+
+      true ->
+        Cachex.put(@cache, keys_key, [cache_key | keys])
+    end
+
+    {:ok, :indexed}
   end
 
   defp select_key(value) do
