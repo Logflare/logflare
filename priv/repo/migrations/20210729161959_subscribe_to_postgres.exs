@@ -11,6 +11,7 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
 
     env = Application.get_env(:logflare, :env)
 
+    # Locally, make sure to restart Postgres after for these changes to take effect
     if env in [:dev, :test] do
       execute("ALTER SYSTEM SET wal_level = 'logical';")
     end
