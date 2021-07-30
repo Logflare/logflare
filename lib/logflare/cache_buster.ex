@@ -38,8 +38,7 @@ defmodule Logflare.CacheBuster do
     ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
   end
 
-  defp handle_record(%{relation: {"public", table}, record: _record}) do
-    # Logger.info("CacheBuster notify: #{table} updated")
+  defp handle_record(_record) do
     :noop
   end
 end
