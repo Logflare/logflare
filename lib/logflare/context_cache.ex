@@ -27,7 +27,7 @@ defmodule Logflare.ContextCache do
     {:ok, keys} = Cachex.get(cache, key)
 
     if keys do
-      Logger.info("Cache busted for `#{context}`")
+      # Logger.info("Cache busted for `#{context}`")
 
       # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
       for k <- keys, do: Cachex.del(cache, k)
@@ -64,6 +64,10 @@ defmodule Logflare.ContextCache do
         value.id
 
       true ->
+        # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
+        :unknown
+
+      nil ->
         # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
         :unknown
 
