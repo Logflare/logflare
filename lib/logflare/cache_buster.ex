@@ -1,6 +1,6 @@
 defmodule Logflare.CacheBuster do
   @moduledoc """
-    Monitors our Postgres notifications and busts the cache accordingly.
+    Monitors our Postgres replication log and busts the cache accordingly.
   """
 
   use GenServer
@@ -26,15 +26,18 @@ defmodule Logflare.CacheBuster do
     {:noreply, state}
   end
 
-  defp handle_record(%{relation: {"public", "sources"}, record: %{"id" => id}}) do
+  defp handle_record(%{relation: {"public", "sources"}, record: %{"id" => id}})
+       when is_binary(id) do
     ContextCache.bust_keys(Logflare.Sources, String.to_integer(id))
   end
 
-  defp handle_record(%{relation: {"public", "users"}, record: %{"id" => id}}) do
+  defp handle_record(%{relation: {"public", "users"}, record: %{"id" => id}})
+       when is_binary(id) do
     ContextCache.bust_keys(Logflare.Users, String.to_integer(id))
   end
 
-  defp handle_record(%{relation: {"public", "billing_accounts"}, record: %{"id" => id}}) do
+  defp handle_record(%{relation: {"public", "billing_accounts"}, record: %{"id" => id}})
+       when is_binary(id) do
     ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
   end
 
