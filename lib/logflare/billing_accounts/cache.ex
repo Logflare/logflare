@@ -4,22 +4,10 @@ defmodule Logflare.BillingAccounts.Cache do
 
   alias Logflare.BillingAccounts
 
-  @ttl 5_000
-
   @cache __MODULE__
 
   def child_spec(_) do
-    %{
-      id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          @cache,
-          [expiration: expiration(default: @ttl)]
-        ]
-      }
-    }
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, []]}}
   end
 
   def get_billing_account_by(keyword), do: apply_fun(__ENV__.function, [keyword])
