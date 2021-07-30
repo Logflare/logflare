@@ -46,7 +46,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   require Logger
 
-  @touch_timer :timer.seconds(60)
+  @touch_timer :timer.minutes(45)
   @broadcast_every 250
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
@@ -273,7 +273,11 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   defp touch() do
-    Process.send_after(self(), :touch, @touch_timer)
+    rand = Enum.random(0..30) * :timer.minutes(1)
+
+    every = rand + @touch_timer
+
+    Process.send_after(self(), :touch, every)
   end
 
   defp broadcast() do

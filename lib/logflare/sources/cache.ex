@@ -3,22 +3,11 @@ defmodule Logflare.Sources.Cache do
   import Cachex.Spec
   alias Logflare.{Sources, Source}
   alias Logflare.Google.BigQuery.SchemaUtils
-  @ttl 5_000
 
   @cache __MODULE__
 
   def child_spec(_) do
-    %{
-      id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          @cache,
-          [expiration: expiration(default: @ttl)]
-        ]
-      }
-    }
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, []]}}
   end
 
   def get_bq_schema(%Source{token: token}), do: do_get_schema(token)
