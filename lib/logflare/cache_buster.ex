@@ -30,6 +30,10 @@ defmodule Logflare.CacheBuster do
     ContextCache.bust_keys(Logflare.Sources, String.to_integer(id))
   end
 
+  defp handle_record(%{relation: {"public", "users"}, record: %{"id" => id}}) do
+    ContextCache.bust_keys(Logflare.Users, String.to_integer(id))
+  end
+
   defp handle_record(%{relation: {"public", "billing_accounts"}, record: %{"id" => id}}) do
     ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
   end
