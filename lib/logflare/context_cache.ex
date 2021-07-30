@@ -72,7 +72,7 @@ defmodule Logflare.ContextCache do
         :unknown
 
       _value ->
-        Logger.warn("Unhandled cache key for value.", error_string: inspect(value))
+        # Logger.warn("Unhandled cache key for value.", error_string: inspect(value))
         :uknown
     end
   end
