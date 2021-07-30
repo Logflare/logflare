@@ -3,6 +3,12 @@ defmodule Logflare.ContextCache do
 
   require Logger
 
+  @cache __MODULE__
+
+  def child_spec(_) do
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, []]}}
+  end
+
   def apply_fun(context, {fun, arity}, args) do
     cache = cache_name(context)
     cache_key = {{fun, arity}, args}
@@ -21,10 +27,9 @@ defmodule Logflare.ContextCache do
   end
 
   def bust_keys(context, id) when is_integer(id) do
-    cache = cache_name(context)
     key = {context, id}
 
-    {:ok, keys} = Cachex.get(cache, key)
+    {:ok, keys} = Cachex.get(@cache, key)
 
     if keys do
       # Logger.info("Cache busted for `#{context}`")
@@ -37,10 +42,9 @@ defmodule Logflare.ContextCache do
   end
 
   defp index_keys(context, cache_key, value) do
-    cache = cache_name(context)
     keys_key = {context, select_key(value)}
 
-    Cachex.get_and_update(cache, keys_key, fn
+    Cachex.get_and_update(@cache, keys_key, fn
       nil ->
         {:commit, [cache_key]}
 
