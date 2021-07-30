@@ -1,7 +1,17 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans, PubSubRates}
+
+  alias Logflare.{
+    Users,
+    Sources,
+    Tracker,
+    Logs,
+    BillingAccounts,
+    Plans,
+    PubSubRates,
+    ContextCache
+  }
 
   def start(_type, _args) do
     import Supervisor.Spec
@@ -40,6 +50,7 @@ defmodule Logflare.Application do
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     children = [
+      ContextCache,
       Users.Cache,
       Sources.Cache,
       BillingAccounts.Cache,
@@ -89,6 +100,7 @@ defmodule Logflare.Application do
         ]
       },
       # supervisor(LogflareTelemetry.Supervisor, []),
+      ContextCache,
       Users.Cache,
       Sources.Cache,
       BillingAccounts.Cache,
