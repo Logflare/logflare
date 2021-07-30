@@ -8,6 +8,8 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
     # Give replication privileges to the `logflare` user on Google Cloud
     # ALTER USER logflare WITH REPLICATION;
     # https://cloud.google.com/sql/docs/postgres/replication/configure-logical-replication
+    #
+    # `max_replication_slots` defaults to 10 and scales for every gig of memory allocated
 
     env = Application.get_env(:logflare, :env)
 

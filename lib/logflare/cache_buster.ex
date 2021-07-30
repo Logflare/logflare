@@ -26,8 +26,12 @@ defmodule Logflare.CacheBuster do
     {:noreply, state}
   end
 
-  defp handle_record(%{relation: {"public", table = "sources"}, record: %{"id" => id}}) do
+  defp handle_record(%{relation: {"public", "sources"}, record: %{"id" => id}}) do
     ContextCache.bust_keys(Logflare.Sources, String.to_integer(id))
+  end
+
+  defp handle_record(%{relation: {"public", "billing_accounts"}, record: %{"id" => id}}) do
+    ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
   end
 
   defp handle_record(%{relation: {"public", table}, record: _record}) do
