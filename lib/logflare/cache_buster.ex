@@ -7,6 +7,8 @@ defmodule Logflare.CacheBuster do
 
   require Logger
 
+  alias Logflare.ContextCache
+
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
@@ -24,9 +26,8 @@ defmodule Logflare.CacheBuster do
     {:noreply, state}
   end
 
-  defp handle_record(%{relation: {"public", table = "sources"}, record: %{"token" => source_id}}) do
-    # Logger.info("CacheBuster notify: table `#{table}` updated")
-    :noop
+  defp handle_record(%{relation: {"public", table = "sources"}, record: %{"id" => id}}) do
+    ContextCache.bust_keys(Logflare.Sources, String.to_integer(id))
   end
 
   defp handle_record(%{relation: {"public", table}, record: _record}) do
