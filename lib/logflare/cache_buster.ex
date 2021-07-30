@@ -25,7 +25,8 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%{relation: {"public", table = "sources"}, record: %{"token" => source_id}}) do
-    Logger.info("CacheBuster notify: table `#{table}` updated")
+    # Logger.info("CacheBuster notify: table `#{table}` updated")
+    :noop
   end
 
   defp handle_record(%{relation: {"public", table}, record: _record}) do
