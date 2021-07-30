@@ -5,6 +5,9 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
 
   def up do
     # For Google Cloud SQL set cloudsql.logical_decoding to `on`
+    # Give replication privileges to the `logflare` user on Google Cloud
+    # ALTER USER logflare WITH REPLICATION;
+    # https://cloud.google.com/sql/docs/postgres/replication/configure-logical-replication
 
     env = Application.get_env(:logflare, :env)
 
