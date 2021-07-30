@@ -189,7 +189,10 @@ defmodule Logflare.Mixfile do
       {:contex, "~> 0.3.0"},
 
       # SQL
-      {:erlexec, "~>1.18.11"}
+      {:erlexec, "~>1.18.11"},
+
+      # Postgres Subscribe
+      {:cainophile, "~> 0.1.0"}
     ]
   end
 
