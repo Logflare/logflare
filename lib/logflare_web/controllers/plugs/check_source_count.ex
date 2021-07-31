@@ -38,7 +38,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
          source_count
        ) do
     {:ok, item} =
-      BillingAccounts.get_billing_account_by(user_id: user.id)
+      BillingAccounts.Cache.get_billing_account_by(user_id: user.id)
       |> BillingAccounts.get_billing_account_stripe_subscription_item()
 
     if item do
@@ -53,7 +53,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
          source_count
        ) do
     {:ok, item} =
-      BillingAccounts.get_billing_account_by(user_id: user.id)
+      BillingAccounts.Cache.get_billing_account_by(user_id: user.id)
       |> BillingAccounts.get_billing_account_stripe_subscription_item()
 
     if item do

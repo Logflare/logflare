@@ -61,7 +61,7 @@ defmodule Logflare.Plans do
 
   def get_plan_by_user(%User{} = user) do
     if user.billing_enabled do
-      case BillingAccounts.get_billing_account_by(user_id: user.id) do
+      case BillingAccounts.Cache.get_billing_account_by(user_id: user.id) do
         nil ->
           get_plan_by(name: "Free")
 
