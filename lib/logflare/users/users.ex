@@ -1,4 +1,6 @@
 defmodule Logflare.Users do
+  require Logger
+
   alias Logflare.{User, Repo, Sources, Users}
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.Users.UserPreferences

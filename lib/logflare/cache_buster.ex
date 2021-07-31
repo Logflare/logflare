@@ -41,6 +41,11 @@ defmodule Logflare.CacheBuster do
     ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
   end
 
+  defp handle_record(%{relation: {"public", "plans"}, record: %{"id" => id}})
+       when is_binary(id) do
+    ContextCache.bust_keys(Logflare.Plans, String.to_integer(id))
+  end
+
   defp handle_record(_record) do
     :noop
   end
