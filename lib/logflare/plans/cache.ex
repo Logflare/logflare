@@ -4,22 +4,10 @@ defmodule Logflare.Plans.Cache do
 
   alias Logflare.Plans
 
-  @ttl 5_000
-
   @cache __MODULE__
 
   def child_spec(_) do
-    %{
-      id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          @cache,
-          [expiration: expiration(default: @ttl)]
-        ]
-      }
-    }
+    %{id: @cache, start: {Cachex, :start_link, [@cache, []]}}
   end
 
   def get_plan_by(keyword), do: apply_fun(__ENV__.function, [keyword])
