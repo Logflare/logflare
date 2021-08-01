@@ -14,14 +14,14 @@ defmodule Logflare.ContextCache do
     cache_key = {{fun, arity}, args}
 
     case Cachex.fetch(cache, cache_key, fn {{_fun, _arity}, args} ->
-           # If this `apply` returns nil cachex thinks it didn't find anything and actually runs the function vs returning the cached nil
-           {:commit, apply(context, fun, args)}
+           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
+           {:commit, {:cached, apply(context, fun, args)}}
          end) do
-      {:commit, value} ->
+      {:commit, {:cached, value}} ->
         index_keys(context, cache_key, value)
         value
 
-      {:ok, value} ->
+      {:ok, {:cached, value}} ->
         index_keys(context, cache_key, value)
         value
     end
@@ -31,6 +31,8 @@ defmodule Logflare.ContextCache do
     context_cache = cache_name(context)
     key = {context, id}
 
+    # Should just maybe stream everything from the cache and filter by function / value key to get the keys to bust as
+    # we don't get a bunch of updates
     {:ok, keys} = Cachex.get(@cache, key)
 
     if keys do
