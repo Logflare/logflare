@@ -13,10 +13,13 @@ defmodule Logflare.ContextCache do
     cache = cache_name(context)
     cache_key = {{fun, arity}, args}
 
-    case Cachex.fetch(cache, cache_key, fn {_type, args} ->
+    case Cachex.fetch(cache, cache_key, fn {{_fun, _arity}, args} ->
            {:commit, apply(context, fun, args)}
          end) do
       {:commit, value} ->
+        if cache == Logflare.BillingAccounts.Cache,
+          do: Logger.error("Cache miss for key `#{inspect(cache_key)}`")
+
         index_keys(context, cache_key, value)
         value
 
