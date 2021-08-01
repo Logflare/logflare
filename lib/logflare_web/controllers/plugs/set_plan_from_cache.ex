@@ -36,7 +36,7 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
           Plans.Cache.get_plan_by(name: "Free")
 
         billing_account ->
-          case BillingAccounts.Cache.get_billing_account_stripe_plan(billing_account) do
+          case BillingAccounts.get_billing_account_stripe_plan(billing_account) do
             {:ok, nil} ->
               Plans.Cache.get_plan_by(name: "Free")
 

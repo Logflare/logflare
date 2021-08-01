@@ -89,4 +89,8 @@ config :logflare,
 
   sigterm_shutdown_grace_period_ms: 300_000
 
+config :logflare, Logflare.CacheBuster,
+  replication_slot: :temporary,
+  publications: ["logflare_pub"]
+
 import_config "#{Mix.env()}.exs"
