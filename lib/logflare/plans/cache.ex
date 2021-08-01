@@ -7,7 +7,7 @@ defmodule Logflare.Plans.Cache do
   @cache __MODULE__
 
   def child_spec(_) do
-    %{id: @cache, start: {Cachex, :start_link, [@cache, []]}}
+    %{id: @cache, start: {Cachex, :start_link, [@cache, [stats: true]]}}
   end
 
   def get_plan_by(keyword), do: apply_fun(__ENV__.function, [keyword])
