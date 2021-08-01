@@ -14,12 +14,10 @@ defmodule Logflare.ContextCache do
     cache_key = {{fun, arity}, args}
 
     case Cachex.fetch(cache, cache_key, fn {{_fun, _arity}, args} ->
+           # If this `apply` returns nil cachex thinks it didn't find anything and actually runs the function vs returning the cached nil
            {:commit, apply(context, fun, args)}
          end) do
       {:commit, value} ->
-        if cache == Logflare.BillingAccounts.Cache,
-          do: Logger.error("Cache miss for key `#{inspect(cache_key)}`")
-
         index_keys(context, cache_key, value)
         value
 
