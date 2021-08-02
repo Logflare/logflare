@@ -64,7 +64,6 @@ defmodule Logflare.CacheBuster do
          record: %{"id" => id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    Logger.error("New {Logflare.BillingAccounts, #{id}}")
     ContextCache.bust_keys(Logflare.BillingAccounts, :not_found)
   end
 
