@@ -14,32 +14,32 @@ defmodule Logflare.ContextCache do
     cache_key = {{fun, arity}, args}
 
     case Cachex.fetch(cache, cache_key, fn {{_fun, _arity}, args} ->
-           {:commit, apply(context, fun, args)}
+           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
+           {:commit, {:cached, apply(context, fun, args)}}
          end) do
-      {:commit, value} ->
-        if cache == Logflare.BillingAccounts.Cache,
-          do: Logger.error("Cache miss for key `#{inspect(cache_key)}`")
-
+      {:commit, {:cached, value}} ->
         index_keys(context, cache_key, value)
         value
 
-      {:ok, value} ->
+      {:ok, {:cached, value}} ->
         index_keys(context, cache_key, value)
         value
     end
   end
 
-  def bust_keys(context, id) when is_integer(id) do
+  def bust_keys(context, id) do
     context_cache = cache_name(context)
     key = {context, id}
 
+    # Should just maybe stream everything from the cache and filter by function / value key to get the keys to bust as
+    # we don't get a bunch of updates
     {:ok, keys} = Cachex.get(@cache, key)
 
     if keys do
       # Logger.info("Cache busted for `#{context}`")
 
       # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
-      for(k <- keys, do: Cachex.del(context_cache, k))
+      for k <- keys, do: Cachex.del(context_cache, k)
     end
 
     {:ok, :busted}
@@ -80,11 +80,11 @@ defmodule Logflare.ContextCache do
 
       true ->
         # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
-        :unknown
+        "true"
 
       nil ->
         # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
-        :unknown
+        :not_found
 
       _value ->
         # Logger.warn("Unhandled cache key for value.", error_string: inspect(value))
