@@ -34,10 +34,10 @@ defmodule Logflare.Source.Supervisor do
 
   def handle_continue(:boot, _source_ids) do
     # Starting sources by latest events first
-    # Starting sources only when we've seen an event in the last 7 days
+    # Starting sources only when we've seen an event in the last 24 hours
     # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
 
-    milli = :timer.hours(24) * 7
+    milli = :timer.hours(24)
     from_datetime = DateTime.utc_now() |> DateTime.add(-milli, :millisecond)
 
     query =
@@ -55,11 +55,11 @@ defmodule Logflare.Source.Supervisor do
       rls = %RLS{source_id: source.token, source: source}
       Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
-    |> Enum.chunk_every(50)
+    |> Enum.chunk_every(100)
     |> Enum.each(fn children ->
       # BigQuery Rate limit is 100/second
       # Logger.info("Sleeping for startup Logflare.Source.Supervisor")
-      # Process.sleep(100)
+      Process.sleep(250)
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
