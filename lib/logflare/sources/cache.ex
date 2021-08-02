@@ -1,26 +1,26 @@
 defmodule Logflare.Sources.Cache do
   @moduledoc false
-  import Cachex.Spec
+
   alias Logflare.{Sources, Source}
   alias Logflare.Google.BigQuery.SchemaUtils
 
-  @cache __MODULE__
-
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, []]}}
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 10000]]}}
   end
 
   def get_bq_schema(%Source{token: token}), do: do_get_schema(token)
   def get_bq_schema(source_token) when is_atom(source_token), do: do_get_schema(source_token)
 
   def do_get_schema(source_token) do
-    Cachex.get!(@cache, {{:source_bq_schema, 1}, source_token})
+    Cachex.get!(__MODULE__, {{:source_bq_schema, 1}, source_token})
   end
 
   def put_bq_schema(source_token, schema) do
     put_bq_schema_flat_map(source_token, schema)
 
-    Cachex.put(@cache, {{:source_bq_schema, 1}, source_token}, schema, ttl: :timer.hours(24 * 365))
+    Cachex.put(__MODULE__, {{:source_bq_schema, 1}, source_token}, schema,
+      ttl: :timer.hours(24 * 365)
+    )
   end
 
   def get_bq_schema_flat_map(%Source{token: token}), do: do_get_schema_flat_map(token)
@@ -29,13 +29,13 @@ defmodule Logflare.Sources.Cache do
     do: do_get_schema_flat_map(source_token)
 
   def do_get_schema_flat_map(source_token) do
-    Cachex.get!(@cache, {{:bq_schema_flat_map, 1}, source_token})
+    Cachex.get!(__MODULE__, {{:bq_schema_flat_map, 1}, source_token})
   end
 
   def put_bq_schema_flat_map(source_token, schema) do
     flat_map = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
-    Cachex.put(@cache, {{:bq_schema_flat_map, 1}, source_token}, flat_map,
+    Cachex.put(__MODULE__, {{:bq_schema_flat_map, 1}, source_token}, flat_map,
       ttl: :timer.hours(24 * 365)
     )
   end

@@ -3,13 +3,10 @@ defmodule Logflare.Users.Cache do
   Cache for users.
   """
 
-  alias Logflare.{Users}
-  import Cachex.Spec
+  alias Logflare.Users
 
   def child_spec(_) do
-    cachex_opts = []
-
-    %{id: __MODULE__, start: {Cachex, :start_link, [Users.Cache, cachex_opts]}}
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 10000]]}}
   end
 
   def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
