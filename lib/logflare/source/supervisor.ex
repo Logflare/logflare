@@ -55,11 +55,11 @@ defmodule Logflare.Source.Supervisor do
       rls = %RLS{source_id: source.token, source: source}
       Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
-    |> Enum.chunk_every(50)
+    |> Enum.chunk_every(100)
     |> Enum.each(fn children ->
       # BigQuery Rate limit is 100/second
       # Logger.info("Sleeping for startup Logflare.Source.Supervisor")
-      # Process.sleep(100)
+      Process.sleep(250)
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
