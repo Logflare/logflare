@@ -27,7 +27,7 @@ defmodule Logflare.ContextCache do
     end
   end
 
-  def bust_keys(context, id) when is_integer(id) do
+  def bust_keys(context, id) do
     context_cache = cache_name(context)
     key = {context, id}
 
@@ -39,7 +39,7 @@ defmodule Logflare.ContextCache do
       # Logger.info("Cache busted for `#{context}`")
 
       # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
-      for(k <- keys, do: Cachex.del(context_cache, k))
+      for k <- keys, do: Cachex.del(context_cache, k)
     end
 
     {:ok, :busted}
@@ -80,11 +80,11 @@ defmodule Logflare.ContextCache do
 
       true ->
         # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
-        :unknown
+        "true"
 
       nil ->
         # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
-        :unknown
+        :not_found
 
       _value ->
         # Logger.warn("Unhandled cache key for value.", error_string: inspect(value))
