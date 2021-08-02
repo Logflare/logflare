@@ -126,7 +126,7 @@ defmodule Logflare.Source do
 
     has_many :rules, Logflare.Rule
     has_many :saved_searches, Logflare.SavedSearch
-    has_many :billing_counts, Logflare.BillingCounts.BillingCount
+    has_many :billing_counts, Logflare.BillingCounts.BillingCount, on_delete: :nothing
 
     embeds_one :notifications, Notifications, on_replace: :update
 
