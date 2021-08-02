@@ -1,13 +1,10 @@
 defmodule Logflare.Plans.Cache do
   @moduledoc false
-  import Cachex.Spec
 
   alias Logflare.Plans
 
-  @cache __MODULE__
-
   def child_spec(_) do
-    %{id: @cache, start: {Cachex, :start_link, [@cache, [stats: true]]}}
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 10000]]}}
   end
 
   def get_plan_by(keyword), do: apply_fun(__ENV__.function, [keyword])
