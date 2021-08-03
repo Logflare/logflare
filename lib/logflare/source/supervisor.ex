@@ -10,6 +10,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.SourceSchemas
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.BigQuery.Schema
@@ -202,12 +203,12 @@ defmodule Logflare.Source.Supervisor do
         :noop
 
       source ->
-        case Sources.get_source_schema_by(source_id: source.id) do
+        case SourceSchemas.get_source_schema_by(source_id: source.id) do
           nil ->
             :noop
 
           schema ->
-            Sources.update_source_schema(schema, %{
+            SourceSchemas.update_source_schema(schema, %{
               bigquery_schema: SchemaBuilder.initial_table_schema()
             })
         end
@@ -223,8 +224,8 @@ defmodule Logflare.Source.Supervisor do
 
     Schema.update_cluster(source_token, schema, type_map, field_count)
     source = Sources.get(source_token)
-    source_schema = Sources.get_source_schema_by(source_id: source.id)
-    {:ok, _} = Sources.update_source_schema(source_schema, %{bigquery_schema: schema})
+    source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
+    {:ok, _} = SourceSchemas.update_source_schema(source_schema, %{bigquery_schema: schema})
   end
 
   def ensure_started(source_id) do

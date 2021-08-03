@@ -130,7 +130,7 @@ defmodule Logflare.Source do
 
     embeds_one :notifications, Notifications, on_replace: :update
 
-    has_one :source_schema, Logflare.Sources.SourceSchema
+    has_one :source_schema, Logflare.SourceSchemas.SourceSchema
 
     timestamps()
   end

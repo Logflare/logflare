@@ -12,6 +12,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
+  alias Logflare.SourceSchemas
   alias Logflare.Source
   alias Logflare.LogEvent
   alias Logflare.AccountEmail
@@ -53,7 +54,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     source = Sources.get_by(token: state.source_token)
 
-    case Sources.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.get_source_schema_by(source_id: source.id) do
       nil ->
         Sources.Cache.put_bq_schema(state.source_token, state.schema)
 
@@ -257,7 +258,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_info(:persist, state) do
     source = Sources.Cache.get_by(token: state.source_token)
 
-    Sources.create_or_update_source_schema(source, %{bigquery_schema: state.schema})
+    SourceSchemas.create_or_update_source_schema(source, %{bigquery_schema: state.schema})
 
     persist()
 

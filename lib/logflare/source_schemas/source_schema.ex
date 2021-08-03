@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.SourceSchema do
+defmodule Logflare.SourceSchemas.SourceSchema do
   use Ecto.Schema
   import Ecto.Changeset
 
