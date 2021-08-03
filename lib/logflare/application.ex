@@ -14,8 +14,6 @@ defmodule Logflare.Application do
   }
 
   def start(_type, _args) do
-    import Supervisor.Spec
-
     # Database options for Postgres notifications
     hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
     username = Application.get_env(:logflare, Logflare.Repo)[:username]
@@ -61,7 +59,7 @@ defmodule Logflare.Application do
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
-      worker(
+      {
         Tracker,
         [
           [
@@ -74,7 +72,7 @@ defmodule Logflare.Application do
             log_level: false
           ]
         ]
-      ),
+      },
       Logflare.Repo,
       {Goth, name: Logflare.Goth, source: source},
       LogflareWeb.Endpoint,
@@ -113,12 +111,12 @@ defmodule Logflare.Application do
       Sources.BuffersCache,
       Logs.RejectedLogEvents,
       # init Counters before Manager as Manager calls Counters through table create
-      supervisor(Sources.Counters, []),
-      supervisor(Sources.RateCounters, []),
-      supervisor(Logflare.PubSubRates, []),
-      supervisor(Logflare.Source.Supervisor, []),
-      supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareWeb.Endpoint, []),
+      Sources.Counters,
+      Sources.RateCounters,
+      Logflare.PubSubRates,
+      Logflare.Source.Supervisor,
+      Logflare.SystemMetricsSup,
+      LogflareWeb.Endpoint,
       Logflare.SQL,
       {
         Cainophile.Adapters.Postgres,
