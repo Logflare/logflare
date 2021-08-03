@@ -58,6 +58,7 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.chunk_every(100)
     |> Enum.each(fn children ->
       # BigQuery Rate limit is 100/second
+      # Also gives the database a break on boot
       # Logger.info("Sleeping for startup Logflare.Source.Supervisor")
       Process.sleep(250)
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
