@@ -8,38 +8,6 @@ defmodule Logflare.Sources.Cache do
     %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 100_000]]}}
   end
 
-  def get_bq_schema(%Source{token: token}), do: do_get_schema(token)
-  def get_bq_schema(source_token) when is_atom(source_token), do: do_get_schema(source_token)
-
-  def do_get_schema(source_token) do
-    Cachex.get!(__MODULE__, {{:source_bq_schema, 1}, source_token})
-  end
-
-  def put_bq_schema(source_token, schema) do
-    put_bq_schema_flat_map(source_token, schema)
-
-    Cachex.put(__MODULE__, {{:source_bq_schema, 1}, source_token}, schema,
-      ttl: :timer.hours(24 * 365)
-    )
-  end
-
-  def get_bq_schema_flat_map(%Source{token: token}), do: do_get_schema_flat_map(token)
-
-  def get_bq_schema_flat_map(source_token) when is_atom(source_token),
-    do: do_get_schema_flat_map(source_token)
-
-  def do_get_schema_flat_map(source_token) do
-    Cachex.get!(__MODULE__, {{:bq_schema_flat_map, 1}, source_token})
-  end
-
-  def put_bq_schema_flat_map(source_token, schema) do
-    flat_map = SchemaUtils.bq_schema_to_flat_typemap(schema)
-
-    Cachex.put(__MODULE__, {{:bq_schema_flat_map, 1}, source_token}, flat_map,
-      ttl: :timer.hours(24 * 365)
-    )
-  end
-
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def get_by_id_and_preload(arg) when is_integer(arg), do: get_by_and_preload(id: arg)
   def get_by_id_and_preload(arg) when is_atom(arg), do: get_by_and_preload(token: arg)
