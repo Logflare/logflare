@@ -10,7 +10,8 @@ defmodule Logflare.Application do
     BillingAccounts,
     Plans,
     PubSubRates,
-    ContextCache
+    ContextCache,
+    SourceSchemas
   }
 
   def start(_type, _args) do
@@ -55,6 +56,7 @@ defmodule Logflare.Application do
       Sources.Cache,
       BillingAccounts.Cache,
       Plans.Cache,
+      SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
@@ -105,6 +107,7 @@ defmodule Logflare.Application do
       Sources.Cache,
       BillingAccounts.Cache,
       Plans.Cache,
+      SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
       Sources.Buffers,

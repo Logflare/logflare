@@ -6,7 +6,8 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Logs.Search.Utils
   alias Logflare.Lql
-  alias Logflare.{Sources, EctoQueryBQ}
+  alias Logflare.EctoQueryBQ
+  alias Logflare.SourceSchemas
 
   import Ecto.Query
 
@@ -40,9 +41,7 @@ defmodule Logflare.Logs.SearchOperations do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
 
     query_total_bytes_halt =
-      "Query halted: total bytes processed for this query is expected to be larger than #{
-        div(bytes_limit, 1_000_000_000)
-      } GB"
+      "Query halted: total bytes processed for this query is expected to be larger than #{div(bytes_limit, 1_000_000_000)} GB"
 
     with {:ok, response} <-
            BqRepo.query(bq_project_id, so.query, dataset_id: dataset_id, dryRun: true),
@@ -91,9 +90,7 @@ defmodule Logflare.Logs.SearchOperations do
         chart_rule = hd(so.chart_rules)
 
         msg =
-          "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{
-            chart_rule.path
-          }. Check the source schema for the field used with chart operator."
+          "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{chart_rule.path}. Check the source schema for the field used with chart operator."
 
         Utils.halt(so, msg)
 
@@ -105,9 +102,7 @@ defmodule Logflare.Logs.SearchOperations do
 
       get_number_of_chart_ticks(min_ts, max_ts, chart_period) > @default_max_n_chart_ticks ->
         msg =
-          "The interval length between min and max timestamp is larger than #{
-            @default_max_n_chart_ticks
-          } periods, please use a longer chart aggregation period."
+          "The interval length between min and max timestamp is larger than #{@default_max_n_chart_ticks} periods, please use a longer chart aggregation period."
 
         Utils.halt(so, msg)
 
@@ -130,8 +125,8 @@ defmodule Logflare.Logs.SearchOperations do
 
   def put_chart_data_shape_id(%SO{} = so) do
     flat_type_map =
-      so.source
-      |> Sources.Cache.get_bq_schema()
+      SourceSchemas.Cache.get_source_schema_by(source_id: so.source.id)
+      |> Map.get(:bigquery_schema)
       |> SchemaUtils.bq_schema_to_flat_typemap()
 
     [%{path: path}] = so.chart_rules

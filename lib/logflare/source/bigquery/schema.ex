@@ -17,6 +17,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.LogEvent
   alias Logflare.AccountEmail
   alias Logflare.Mailer
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @persist_every 60_000
   @timeout 60_000
@@ -56,7 +57,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
     case SourceSchemas.get_source_schema_by(source_id: source.id) do
       nil ->
-        Sources.Cache.put_bq_schema(state.source_token, state.schema)
+        send(self(), :persist)
 
         Logger.info("Nil schema: #{state.source_token}")
 
@@ -67,7 +68,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         type_map = BigQuery.SchemaUtils.to_typemap(schema)
         field_count = count_fields(type_map)
 
-        Sources.Cache.put_bq_schema(state.source_token, schema)
+        send(self(), :persist)
 
         {:noreply,
          %{
@@ -151,7 +152,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           Logger.info("Source schema updated from log_event!")
 
-          Sources.Cache.put_bq_schema(state.source_token, schema)
+          send(self(), :persist)
 
           notify_maybe(state.source_token, schema, state.schema)
 
@@ -185,7 +186,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       Logger.info("Source schema updated from BigQuery!")
 
-                      Sources.Cache.put_bq_schema(state.source_token, schema)
+                      send(self(), :persist)
 
                       {:reply, :ok,
                        %{
@@ -230,7 +231,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     type_map = BigQuery.SchemaUtils.to_typemap(sorted)
     field_count = count_fields(type_map)
 
-    Sources.Cache.put_bq_schema(state.source_token, sorted)
+    send(self(), :persist)
 
     {:reply, :ok,
      %{
@@ -243,7 +244,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_cast({:update, schema, type_map, field_count}, state) do
-    Sources.Cache.put_bq_schema(state.source_token, schema)
+    send(self(), :persist)
 
     {:noreply,
      %{
@@ -257,8 +258,12 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def handle_info(:persist, state) do
     source = Sources.Cache.get_by(token: state.source_token)
+    flat_map = SchemaUtils.bq_schema_to_flat_typemap(state.schema)
 
-    SourceSchemas.create_or_update_source_schema(source, %{bigquery_schema: state.schema})
+    SourceSchemas.create_or_update_source_schema(source, %{
+      bigquery_schema: state.schema,
+      schema_flat_map: flat_map
+    })
 
     persist()
 

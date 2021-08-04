@@ -27,9 +27,12 @@ defmodule Logflare.Sources do
     |> Repo.insert()
     |> case do
       {:ok, source} ->
+        init_schema = SchemaBuilder.initial_table_schema()
+
         {:ok, _source_schema} =
           SourceSchemas.create_source_schema(source, %{
-            bigquery_schema: SchemaBuilder.initial_table_schema()
+            bigquery_schema: init_schema,
+            schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
           })
 
         Source.Supervisor.start_source(source.token)

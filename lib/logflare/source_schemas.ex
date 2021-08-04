@@ -5,7 +5,7 @@ defmodule Logflare.SourceSchemas do
 
   alias Logflare.Repo
   alias Logflare.SourceSchemas.SourceSchema
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   require Logger
 
@@ -22,23 +22,21 @@ defmodule Logflare.SourceSchemas do
     Repo.all(SourceSchema)
   end
 
-  @doc """
-  Gets a single source_schema.
+  def get_source_schema(id) do
+    Repo.get(SourceSchema, id) |> maybe_update_flatmap()
+  end
 
-  Raises `Ecto.NoResultsError` if the Source schema does not exist.
+  def get_source_schema_by(kv) do
+    SourceSchema |> Repo.get_by(kv) |> maybe_update_flatmap()
+  end
 
-  ## Examples
+  def maybe_update_flatmap(%{schema_flat_map: nil} = source_schema) do
+    flatmap = SchemaUtils.bq_schema_to_flat_typemap(source_schema.bigquery_schema)
+    {:ok, ss} = update_source_schema(source_schema, %{schema_flat_map: flatmap})
+    ss
+  end
 
-      iex> get_source_schema!(123)
-      %SourceSchema{}
-
-      iex> get_source_schema!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_source_schema!(id), do: Repo.get!(SourceSchema, id)
-
-  def get_source_schema_by(kv), do: SourceSchema |> Repo.get_by(kv)
+  def maybe_update_flatmap(source_schema), do: source_schema
 
   @doc """
   Creates a source_schema.
@@ -57,15 +55,6 @@ defmodule Logflare.SourceSchemas do
     |> Ecto.build_assoc(:source_schema)
     |> SourceSchema.changeset(attrs)
     |> Repo.insert()
-  end
-
-  def find_or_create_source_schema(source) do
-    default = %{bigquery_schema: SchemaBuilder.initial_table_schema()}
-
-    case get_source_schema_by(source_id: source.id) do
-      nil -> create_source_schema(source, default)
-      schema -> {:ok, schema}
-    end
   end
 
   def create_or_update_source_schema(source, attrs) do

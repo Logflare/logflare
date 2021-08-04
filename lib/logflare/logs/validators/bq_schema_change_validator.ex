@@ -1,14 +1,15 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
   alias Logflare.LogEvent, as: LE
-  alias Logflare.{Source, Sources}
+  alias Logflare.{Source, SourceSchemas}
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   import Logflare.Google.BigQuery.SchemaUtils
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
-    schema_flatmap = Sources.Cache.get_bq_schema_flat_map(source)
+    schema_flatmap =
+      if source.id, do: SourceSchemas.Cache.get_source_schema_by(source_id: source.id), else: %{}
 
     metadata_flatmap =
       to_typemap(%{metadata: body.metadata})

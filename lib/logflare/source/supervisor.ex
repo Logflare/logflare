@@ -13,7 +13,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.SourceSchemas
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   import Ecto.Query, only: [from: 2]
 
@@ -208,8 +208,11 @@ defmodule Logflare.Source.Supervisor do
             :noop
 
           schema ->
+            init_schema = SchemaBuilder.initial_table_schema()
+
             SourceSchemas.update_source_schema(schema, %{
-              bigquery_schema: SchemaBuilder.initial_table_schema()
+              bigquery_schema: init_schema,
+              schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
             })
         end
     end

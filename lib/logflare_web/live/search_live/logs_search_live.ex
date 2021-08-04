@@ -10,8 +10,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.SavedSearches
   alias Logflare.{Sources, Users, Plans, TeamUsers}
   alias Logflare.User
-  alias Logflare.LogEvent
-  alias Logflare.TeamUsers.TeamUser
+
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -324,13 +323,13 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("soft_play" = ev, _, %{assigns: %{uri_params: params}} = socket) do
+  def handle_event("soft_play" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
     soft_play(ev, socket)
   end
 
-  def handle_event("soft_pause" = ev, _, %{assigns: %{uri_params: params}} = socket) do
+  def handle_event("soft_pause" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
     log_lv_received_event(ev, socket.assigns.source)
 
     soft_pause(ev, socket)
@@ -801,7 +800,7 @@ defmodule LogflareWeb.Source.SearchLV do
       else: search_history
   end
 
-  defp soft_play(ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
+  defp soft_play(_ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
     {:noreply, socket}
   end
 
@@ -818,7 +817,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
+  defp soft_pause(_ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
     {:noreply, socket}
   end
 

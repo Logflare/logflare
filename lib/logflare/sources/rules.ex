@@ -5,12 +5,15 @@ defmodule Logflare.Rules do
   alias Logflare.Sources
   alias Logflare.Rule
   alias Logflare.Lql
+  alias Logflare.SourceSchemas
   import Ecto.Query
   require Logger
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
-    bq_schema = Sources.Cache.get_bq_schema(source)
+    bq_schema =
+      SourceSchemas.Cache.get_source_schema_by(source_id: source.id) |> Map.get(:bigquery_schema)
+
     lql_string = params["lql_string"]
 
     with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, bq_schema),
@@ -60,9 +63,7 @@ defmodule Logflare.Rules do
 
         {:error, changeset} ->
           Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to LQL, error: #{
-              inspect(changeset.errors)
-            }"
+            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to LQL, error: #{inspect(changeset.errors)}"
           )
 
           {:halt, {:error, changeset}}
@@ -87,9 +88,7 @@ defmodule Logflare.Rules do
 
         {:error, changeset} ->
           Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade, error: #{
-              inspect(changeset.errors)
-            }"
+            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade, error: #{inspect(changeset.errors)}"
           )
       end
     end
@@ -123,18 +122,14 @@ defmodule Logflare.Rules do
 
             {:error, changeset} ->
               Logger.error(
-                "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, Repo update erro: #{
-                  inspect(changeset.errors)
-                }"
+                "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, Repo update erro: #{inspect(changeset.errors)}"
               )
           end
         end
       else
         {:error, error} ->
           Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, LQL decoding error: #{
-              inspect(error)
-            }"
+            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, LQL decoding error: #{inspect(error)}"
           )
       end
     end
