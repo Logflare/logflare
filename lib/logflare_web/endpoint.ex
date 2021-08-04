@@ -2,7 +2,9 @@ defmodule LogflareWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :logflare
   @session_options [store: :cookie, key: "_logflare_key", signing_salt: "INPMyhPE"]
 
-  socket "/socket", LogflareWeb.UserSocket, websocket: true
+  socket "/socket", LogflareWeb.UserSocket, websocket: [compress: true]
+
+  socket "/logs", LogflareWeb.LogSocket, websocket: [compress: true]
 
   socket "/live", Logflare.LiveView.Socket,
     websocket: [connect_info: [session: @session_options], compress: true]
