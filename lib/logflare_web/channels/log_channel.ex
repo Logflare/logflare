@@ -2,11 +2,27 @@ defmodule LogflareWeb.LogChannel do
   use LogflareWeb, :channel
 
   alias Logflare.{Logs, Sources, Source}
+  alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.Endpoint
 
   def join("ingest:" <> source_uuid, _payload, socket) do
     case Sources.Cache.get_by(token: source_uuid) do
       %Source{} = source ->
-        send(self, {:notify, %{message: "Ready! Can we haz all your datas?"}})
+        url = Routes.source_url(Endpoint, :show, source.id)
+
+        send(
+          self,
+          {:notify,
+           %{
+             message: "💥 Connected to Logflare! Can we haz all your datas? 👀 ➡️ #{url}",
+             source: %{
+               name: source.name,
+               token: source.token,
+               url: url
+             }
+           }}
+        )
+
         socket = socket |> assign(:source, source)
         {:ok, socket}
 
