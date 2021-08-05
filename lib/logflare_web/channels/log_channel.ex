@@ -32,7 +32,9 @@ defmodule LogflareWeb.LogChannel do
   end
 
   def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
-    case Logs.ingest_logs(log_params_batch, source) do
+    source = socket.assigns.source
+
+    case Logs.ingest_logs(batch, source) do
       :ok ->
         push(socket, "batch", %{message: "Handled batch"})
         {:noreply, socket}
