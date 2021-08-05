@@ -9,6 +9,7 @@ defmodule LogflareWeb.LogChannel do
     case Sources.Cache.get_by(token: source_uuid) do
       %Source{} = source ->
         url = Routes.source_url(Endpoint, :show, source.id)
+        socket = socket |> assign(:source, source)
 
         send(
           self,
@@ -23,7 +24,6 @@ defmodule LogflareWeb.LogChannel do
            }}
         )
 
-        socket = socket |> assign(:source, source)
         {:ok, socket}
 
       nil ->
