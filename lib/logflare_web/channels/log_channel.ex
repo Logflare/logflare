@@ -22,7 +22,11 @@ defmodule LogflareWeb.LogChannel do
   end
 
   def handle_in(event, payload, socket) do
-    push(socket, event, %{message: event})
+    push(socket, "notify", %{
+      message: "Unhandled message. Please verify.",
+      payload: inspect(payload)
+    })
+
     {:noreply, socket}
   end
 end
