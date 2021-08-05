@@ -2,8 +2,13 @@ defmodule LogflareWeb.LogChannel do
   use LogflareWeb, :channel
 
   def join("ingest:" <> source_id, _payload, socket) do
-    push(socket, "notify", %{message: "Socket ready for channel `#{source_id}`"})
+    send(self, :after_join)
     {:ok, socket}
+  end
+
+  def handle_info(:after_join, socket) do
+    push(socket, "notify", %{message: "Ready! Can we haz all your datas?"})
+    {:noreply, socket}
   end
 
   def handle_in("batch", payload, socket) do
