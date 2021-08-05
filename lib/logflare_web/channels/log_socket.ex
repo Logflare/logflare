@@ -2,7 +2,6 @@ defmodule LogflareWeb.LogSocket do
   use Phoenix.Socket
 
   alias Logflare.Users
-  alias Logflare.Repo
 
   channel "ingest:*", LogflareWeb.LogChannel
 
