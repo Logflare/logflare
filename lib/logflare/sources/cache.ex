@@ -7,7 +7,10 @@ defmodule Logflare.Sources.Cache do
     %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 100_000]]}}
   end
 
-  def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
+  # For ingest
+  def get_by_and_preload_rules(kv), do: apply_repo_fun(__ENV__.function, [kv])
+
+  def get_by_and_preload(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id_and_preload(arg) when is_integer(arg), do: get_by_and_preload(id: arg)
   def get_by_id_and_preload(arg) when is_atom(arg), do: get_by_and_preload(token: arg)
   def get_by_name_and_preload(arg) when is_binary(arg), do: get_by_and_preload(name: arg)
@@ -18,7 +21,7 @@ defmodule Logflare.Sources.Cache do
     apply_repo_fun(__ENV__.function, [source_id])
   end
 
-  def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
+  def get_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)
   def get_by_name(arg) when is_binary(arg), do: get_by(name: arg)

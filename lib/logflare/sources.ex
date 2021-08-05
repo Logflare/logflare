@@ -168,6 +168,14 @@ defmodule Logflare.Sources do
     end
   end
 
+  def get_by_and_preload_rules(kv) do
+    source = get_by(kv)
+
+    if source,
+      do: Repo.preload(source, :rules),
+      else: nil
+  end
+
   def preload_defaults(source) do
     source
     |> Repo.preload(:user)

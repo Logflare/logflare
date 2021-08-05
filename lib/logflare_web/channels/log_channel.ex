@@ -6,7 +6,7 @@ defmodule LogflareWeb.LogChannel do
   alias LogflareWeb.Endpoint
 
   def join("ingest:" <> source_uuid, _payload, socket) do
-    case Sources.Cache.get_by(token: source_uuid) do
+    case Sources.Cache.get_by_and_preload_rules(token: source_uuid) do
       %Source{} = source ->
         url = Routes.source_url(Endpoint, :show, source.id)
         socket = socket |> assign(:source, source)
