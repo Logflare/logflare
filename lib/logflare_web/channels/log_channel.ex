@@ -1,19 +1,30 @@
 defmodule LogflareWeb.LogChannel do
   use LogflareWeb, :channel
 
-  def join("ingest:" <> source_id, _payload, socket) do
-    send(self, :after_join)
-    {:ok, socket}
+  alias Logflare.{Logs, Sources, Source}
+
+  def join("ingest:" <> source_uuid, _payload, socket) do
+    case Sources.Cache.get_by(token: source_uuid) do
+      %Source{} = source ->
+        send(self, {:notify, %{message: "Ready! Can we haz all your datas?"}})
+        socket = socket |> assign(:source, source)
+        {:ok, socket}
+
+      nil ->
+        {:error, socket}
+    end
   end
 
-  def handle_info(:after_join, socket) do
-    push(socket, "notify", %{message: "Ready! Can we haz all your datas?"})
-    {:noreply, socket}
-  end
+  def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
+    case Logs.ingest_logs(log_params_batch, source) do
+      :ok ->
+        push(socket, "batch", %{message: "Handled batch"})
+        {:noreply, socket}
 
-  def handle_in("batch", payload, socket) do
-    push(socket, "batch", %{message: "Handled batch"})
-    {:noreply, socket}
+      {:error, errors} ->
+        push(socket, "batch", %{message: "Batch error", errors: errors})
+        {:noreply, socket}
+    end
   end
 
   def handle_in("ping", payload, socket) do
@@ -22,11 +33,20 @@ defmodule LogflareWeb.LogChannel do
   end
 
   def handle_in(event, payload, socket) do
-    push(socket, "notify", %{
-      message: "Unhandled message. Please verify.",
-      payload: inspect(payload)
-    })
+    send(
+      self,
+      {:notify,
+       %{
+         message: "Unhandled event type. Please verify.",
+         echo_payload: inspect(payload)
+       }}
+    )
 
+    {:noreply, socket}
+  end
+
+  def handle_info({:notify, payload}, socket) do
+    push(socket, "notify", payload)
     {:noreply, socket}
   end
 end
