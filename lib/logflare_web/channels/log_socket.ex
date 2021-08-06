@@ -9,6 +9,7 @@ defmodule LogflareWeb.LogSocket do
   channel "logs:erlang:lager:*", LogflareWeb.LogChannel
   channel "logs:elixir:*", LogflareWeb.LogChannel
   channel "logs:elixir:logger:*", LogflareWeb.LogChannel
+  channel "logs:javascript:node:*", LogflareWeb.LogChannel
 
   def connect(%{"api_key" => api_key}, socket) do
     user = Users.get_by(api_key: api_key)
