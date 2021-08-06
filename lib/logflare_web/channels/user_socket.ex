@@ -38,7 +38,16 @@ defmodule LogflareWeb.UserSocket do
     {:ok, socket}
   end
 
-  def id(_socket), do: nil
+  def id(socket) do
+    case Map.get(socket, :user) do
+      %User{} = user ->
+        "user_socket:user:#{user.id}"
+
+      nil ->
+        anon_id = Ecto.UUID.generate()
+        "user_socket:anon:#{anon_id}"
+    end
+  end
 
   defp verify_token(token),
     do: Phoenix.Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: @max_age)
