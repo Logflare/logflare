@@ -23,17 +23,15 @@ defmodule Logflare.Source.ChannelTopics do
     payload = %{payload | log_count: Delimit.number_to_delimited(log_count)}
     topic = "dashboard:#{source_token}"
     event = "log_count"
-    payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
 
-    logflare_local_broadcast(topic, payload)
+    logflare_local_broadcast(topic, event, payload)
   end
 
   def broadcast_buffer(%{buffer: _buffer, source_token: source_token} = payload) do
     topic = "dashboard:#{source_token}"
     event = "buffer"
-    payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
 
-    logflare_local_broadcast(topic, payload)
+    logflare_local_broadcast(topic, event, payload)
   end
 
   def broadcast_rates(payload) do
@@ -43,9 +41,8 @@ defmodule Logflare.Source.ChannelTopics do
 
     topic = "dashboard:#{payload.source_token}"
     event = "rate"
-    payload = %Phoenix.Socket.Broadcast{event: event, payload: payload, topic: topic}
 
-    logflare_local_broadcast(topic, payload)
+    logflare_local_broadcast(topic, event, payload)
   end
 
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
@@ -70,7 +67,7 @@ defmodule Logflare.Source.ChannelTopics do
     end
   end
 
-  def logflare_local_broadcast(topic, payload) do
-    Phoenix.PubSub.local_broadcast(Logflare.PubSub, topic, payload)
+  def logflare_local_broadcast(topic, event, payload) do
+    LogflareWeb.Endpoint.local_broadcast(topic, event, payload)
   end
 end
