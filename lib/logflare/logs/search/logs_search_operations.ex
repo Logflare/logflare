@@ -125,7 +125,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   def put_chart_data_shape_id(%SO{} = so) do
     flat_type_map =
-      SourceSchemas.Cache.get_source_schema_by(source_id: so.source.id)
+      SourceSchemas.get_source_schema_by(source_id: so.source.id)
       |> Map.get(:bigquery_schema)
       |> SchemaUtils.bq_schema_to_flat_typemap()
 

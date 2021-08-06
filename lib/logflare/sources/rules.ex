@@ -12,7 +12,7 @@ defmodule Logflare.Rules do
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
     bq_schema =
-      SourceSchemas.Cache.get_source_schema_by(source_id: source.id) |> Map.get(:bigquery_schema)
+      SourceSchemas.get_source_schema_by(source_id: source.id) |> Map.get(:bigquery_schema)
 
     lql_string = params["lql_string"]
 
