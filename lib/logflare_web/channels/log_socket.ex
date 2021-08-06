@@ -3,7 +3,12 @@ defmodule LogflareWeb.LogSocket do
 
   alias Logflare.Users
 
-  channel "ingest:*", LogflareWeb.LogChannel
+  channel "logs:*", LogflareWeb.LogChannel
+  channel "logs:erlang:*", LogflareWeb.LogChannel
+  channel "logs:erlang:logger:*", LogflareWeb.LogChannel
+  channel "logs:erlang:lager:*", LogflareWeb.LogChannel
+  channel "logs:elixir:*", LogflareWeb.LogChannel
+  channel "logs:elixir:logger:*", LogflareWeb.LogChannel
 
   def connect(%{"api_key" => api_key}, socket) do
     user = Users.get_by(api_key: api_key)

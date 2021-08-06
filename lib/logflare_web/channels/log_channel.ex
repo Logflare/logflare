@@ -5,7 +5,25 @@ defmodule LogflareWeb.LogChannel do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
 
-  def join("ingest:" <> source_uuid, _payload, socket) do
+  def join("logs:" <> source_uuid, payload, socket),
+    do: join(source_uuid, payload, socket)
+
+  def join("logs:elixir:" <> source_uuid, payload, socket),
+    do: join(source_uuid, payload, socket)
+
+  def join("logs:elixir:logger:" <> source_uuid, payload, socket),
+    do: join(source_uuid, payload, socket)
+
+  def join("logs:erlang:" <> source_uuid, payload, socket),
+    do: join(source_uuid, payload, socket)
+
+  def join("logs:erlang:logger:" <> source_uuid, payload, socket),
+    do: join(source_uuid, payload, socket)
+
+  def join("logs:erlang:lager:" <> source_uuid, payload, socket),
+    do: join(source_uuid, payload, socket)
+
+  def join(source_uuid, _payload, socket) do
     case Sources.Cache.get_by_and_preload_rules(token: source_uuid) do
       %Source{} = source ->
         url = Routes.source_url(Endpoint, :show, source.id)
