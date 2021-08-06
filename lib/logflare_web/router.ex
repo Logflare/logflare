@@ -340,6 +340,7 @@ defmodule LogflareWeb.Router do
     post "/zeit", LogController, :vercel_ingest
     post "/vercel", LogController, :vercel_ingest
     post "/elixir/logger", LogController, :elixir_logger
+    post "/erlang/logger", LogController, :elixir_logger
     post "/typecasts", LogController, :create_with_typecasts
     post "/logplex", LogController, :syslog
     post "/syslogs", LogController, :syslog
