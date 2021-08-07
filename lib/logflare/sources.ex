@@ -241,6 +241,8 @@ defmodule Logflare.Sources do
     %{source | rules: rules}
   end
 
+  def refresh_source_metrics_for_ingest(nil), do: nil
+
   def refresh_source_metrics_for_ingest(%Source{token: token} = source) do
     rates = PubSubRates.Cache.get_cluster_rates(token)
 
@@ -250,6 +252,8 @@ defmodule Logflare.Sources do
 
     %{source | metrics: metrics}
   end
+
+  def refresh_source_metrics(nil), do: nil
 
   def refresh_source_metrics(%Source{token: token} = source) do
     alias Logflare.Logs.RejectedLogEvents
@@ -280,10 +284,6 @@ defmodule Logflare.Sources do
     }
 
     %{source | metrics: metrics, has_rejected_events: rejected_count > 0}
-  end
-
-  def refresh_source_metrics(nil) do
-    nil
   end
 
   def put_schema_field_count(%Source{} = source) do
