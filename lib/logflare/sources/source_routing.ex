@@ -22,7 +22,7 @@ defmodule Logflare.Logs.SourceRouting do
     for rule <- rules do
       cond do
         length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
-          sink_source = Sources.Cache.get_by(token: rule.sink)
+          sink_source = Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics()
 
           routed_le =
             le
