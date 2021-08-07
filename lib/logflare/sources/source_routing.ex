@@ -33,6 +33,7 @@ defmodule Logflare.Logs.SourceRouting do
           :ok = ingest(routed_le)
           :ok = broadcast(routed_le)
 
+        # This should be able to be deprecated as all source regex routing is done via LQL rules now
         rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
           le
           |> LE.apply_custom_event_message()
