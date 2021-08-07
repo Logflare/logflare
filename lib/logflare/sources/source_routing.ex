@@ -146,7 +146,7 @@ defmodule Logflare.Logs.SourceRouting do
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do
-    sink_source = Sources.Cache.get_by(token: rule.sink)
+    sink_source = Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics()
 
     if sink_source do
       routed_le = %{le | source: sink_source, via_rule: rule}

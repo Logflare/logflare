@@ -29,10 +29,10 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     source =
       cond do
         token && is_api_path ->
-          Sources.Cache.get_by_and_preload_rules(token: token)
+          Sources.Cache.get_by_and_preload_rules(token: token) |> Sources.refresh_source_metrics()
 
         name && is_api_path ->
-          Sources.Cache.get_by_and_preload_rules(name: name)
+          Sources.Cache.get_by_and_preload_rules(name: name) |> Sources.refresh_source_metrics()
 
         id && is_browser_path ->
           Sources.get_by_and_preload(id: id)
