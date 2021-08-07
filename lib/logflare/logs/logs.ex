@@ -14,6 +14,9 @@ defmodule Logflare.Logs do
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
+    # This should get refreshed in the LogflareWeb.Plugs.SetVerifySource
+    source = Sources.refresh_source_metrics(source)
+
     log_params_batch
     |> Enum.map(&IngestTypecasting.maybe_apply_transform_directives/1)
     |> Enum.map(&IngestTransformers.transform(&1, :to_bigquery_column_spec))
@@ -21,12 +24,12 @@ defmodule Logflare.Logs do
     |> Enum.map(&LE.make(&1, %{source: source}))
     |> Enum.map(fn %LE{} = le ->
       if le.valid do
-        :ok = SourceRouting.route_to_sinks_and_ingest(le)
-        le = LE.apply_custom_event_message(le)
-        :ok = ingest(le)
-        :ok = broadcast(le)
+        SourceRouting.route_to_sinks_and_ingest(le)
+        LE.apply_custom_event_message(le)
+        ingest(le)
+        broadcast(le)
       else
-        :ok = RejectedLogEvents.ingest(le)
+        RejectedLogEvents.ingest(le)
       end
 
       le
@@ -46,22 +49,20 @@ defmodule Logflare.Logs do
 
   def ingest(%LE{source: %Source{} = source} = le) do
     # indvididual source genservers
-    {:ok, _} = Supervisor.ensure_started(source.token)
-
-    :ok = RecentLogsServer.push(le)
-    :ok = Buffer.push(le)
+    Supervisor.ensure_started(source.token)
+    RecentLogsServer.push(le)
+    Buffer.push(le)
 
     # all sources genservers
-    {:ok, _} = Sources.Counters.incriment(source.token)
-    {:ok, :total_logs_logged} = SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+    Sources.Counters.incriment(source.token)
+    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
 
     :ok
   end
 
   def broadcast(%LE{} = le) do
-    # broadcasters
-    :ok = Source.ChannelTopics.broadcast_new(le)
-
-    :ok
+    if le.source.metrics.avg < 5 do
+      Source.ChannelTopics.broadcast_new(le)
+    end
   end
 end
