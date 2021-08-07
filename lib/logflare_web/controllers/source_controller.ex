@@ -123,13 +123,13 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 25 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
     search_tip = Search.Utils.gen_search_tip()
 
     conn
     |> put_flash(
       :info,
-      "This source is seeing more than 25 events per second. Refresh to see the latest events. Use the explore link to view in Google Data Studio."
+      "This source is seeing more than 5 events per second. Refresh to see the latest events. Use the explore link to view in Google Data Studio."
     )
     |> render(
       "show.html",
