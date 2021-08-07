@@ -19,6 +19,7 @@ defmodule Logflare.Source.RecentLogsServer do
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
     field :billing_last_node_count, integer(), default: 0
+    field :latest_log_event, LE.t()
   end
 
   use GenServer
@@ -118,9 +119,13 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def get_latest_date(source_id) when is_atom(source_id) do
-    case RLS.list(source_id) |> Enum.at(0) do
-      nil -> 0
-      le -> le.body.timestamp
+    case Process.whereis(source_id) do
+      nil ->
+        0
+
+      pid ->
+        {:ok, log_event} = GenServer.call(pid, :latest_le)
+        log_event.body.timestamp
     end
   end
 
@@ -170,9 +175,13 @@ defmodule Logflare.Source.RecentLogsServer do
     {:reply, {:ok, recent}, state}
   end
 
+  def handle_call(:latest_le, _from, state) do
+    {:reply, {:ok, state.latest_log_event}, state}
+  end
+
   def handle_cast({:push, _source_id, %LE{} = le}, state) do
     log_events = LQueue.push(state.recent, le)
-    {:noreply, %{state | recent: log_events}}
+    {:noreply, %{state | recent: log_events, latest_log_event: le}}
   end
 
   def handle_info({:stop_please, reason}, state) do
