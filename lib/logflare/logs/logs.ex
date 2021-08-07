@@ -18,21 +18,13 @@ defmodule Logflare.Logs do
     source = Sources.refresh_source_metrics(source)
 
     log_params_batch
-    |> Enum.map(&IngestTypecasting.maybe_apply_transform_directives/1)
-    |> Enum.map(&IngestTransformers.transform(&1, :to_bigquery_column_spec))
-    |> Enum.map(&Map.put(&1, :make_from, "ingest"))
-    |> Enum.map(&LE.make(&1, %{source: source}))
-    |> Enum.map(fn %LE{} = le ->
-      if le.valid do
-        SourceRouting.route_to_sinks_and_ingest(le)
-        LE.apply_custom_event_message(le)
-        ingest(le)
-        broadcast(le)
-      else
-        RejectedLogEvents.ingest(le)
-      end
-
-      le
+    |> Enum.map(fn log ->
+      log
+      |> IngestTypecasting.maybe_apply_transform_directives()
+      |> IngestTransformers.transform(:to_bigquery_column_spec)
+      |> Map.put(:make_from, "ingest")
+      |> LE.make(%{source: source})
+      |> maybe_ingest_and_broadcast()
     end)
     |> Enum.reduce([], fn le, acc ->
       if le.valid do
@@ -64,5 +56,18 @@ defmodule Logflare.Logs do
     if le.source.metrics.avg < 5 do
       Source.ChannelTopics.broadcast_new(le)
     end
+  end
+
+  defp maybe_ingest_and_broadcast(%LE{} = le) do
+    if le.valid do
+      SourceRouting.route_to_sinks_and_ingest(le)
+      LE.apply_custom_event_message(le)
+      ingest(le)
+      broadcast(le)
+    else
+      RejectedLogEvents.ingest(le)
+    end
+
+    le
   end
 end
