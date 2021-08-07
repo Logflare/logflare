@@ -8,7 +8,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
-  alias LogflareWeb.Source.SourceLV
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -128,7 +127,7 @@ defmodule LogflareWeb.SourceController do
     search_tip = Search.Utils.gen_search_tip()
 
     search_path =
-      Routes.live_path(conn, SearchLV, source,
+      Routes.live_path(conn, LogflareWeb.Source.SearchLV, source,
         querystring: "c:count(*) c:group_by(t::minute)",
         tailing?: true
       )
