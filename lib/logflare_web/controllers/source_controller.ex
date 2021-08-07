@@ -8,6 +8,7 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
   alias LogflareWeb.AuthController
+  alias LogflareWeb.Source.SourceLV
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -110,7 +111,7 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 25 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 5 do
     search_tip = Search.Utils.gen_search_tip()
 
     render(
@@ -126,10 +127,24 @@ defmodule LogflareWeb.SourceController do
   def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
     search_tip = Search.Utils.gen_search_tip()
 
+    search_path =
+      Routes.live_path(conn, SearchLV, source,
+        querystring: "c:count(*) c:group_by(t::minute)",
+        tailing?: true
+      )
+
+    message = [
+      "This source is seeing more than 5 events per second. ",
+      Phoenix.HTML.Link.link("Search",
+        to: "#{search_path}"
+      ),
+      " to see the latest events. Use the explore link to view in Google Data Studio."
+    ]
+
     conn
     |> put_flash(
       :info,
-      "This source is seeing more than 5 events per second. Refresh to see the latest events. Use the explore link to view in Google Data Studio."
+      message
     )
     |> render(
       "show.html",
