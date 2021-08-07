@@ -30,8 +30,8 @@ defmodule Logflare.Logs.SourceRouting do
             |> Map.put(:via_rule, rule)
             |> LE.apply_custom_event_message()
 
-          :ok = ingest(routed_le)
-          :ok = broadcast(routed_le)
+          ingest(routed_le)
+          broadcast(routed_le)
 
         rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
           le
@@ -150,8 +150,8 @@ defmodule Logflare.Logs.SourceRouting do
 
     if sink_source do
       routed_le = %{le | source: sink_source, via_rule: rule}
-      :ok = ingest(routed_le)
-      :ok = broadcast(routed_le)
+      ingest(routed_le)
+      broadcast(routed_le)
     else
       Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
     end
