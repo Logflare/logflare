@@ -241,6 +241,16 @@ defmodule Logflare.Sources do
     %{source | rules: rules}
   end
 
+  def refresh_source_metrics_for_ingest(%Source{token: token} = source) do
+    rates = PubSubRates.Cache.get_cluster_rates(token)
+
+    metrics = %Source.Metrics{
+      avg: rates.average_rate
+    }
+
+    %{source | metrics: metrics}
+  end
+
   def refresh_source_metrics(%Source{token: token} = source) do
     alias Logflare.Logs.RejectedLogEvents
     alias Number.Delimit
