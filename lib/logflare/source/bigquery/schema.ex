@@ -55,7 +55,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     source = Sources.get_by(token: state.source_token)
 
-    case SourceSchemas.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
       nil ->
         send(self(), :persist)
 
