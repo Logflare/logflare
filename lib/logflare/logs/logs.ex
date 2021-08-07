@@ -14,9 +14,6 @@ defmodule Logflare.Logs do
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
-    # This should get refreshed in the LogflareWeb.Plugs.SetVerifySource
-    source = Sources.refresh_source_metrics(source)
-
     log_params_batch
     |> Enum.map(fn log ->
       log

@@ -272,6 +272,10 @@ defmodule Logflare.Sources do
     %{source | metrics: metrics, has_rejected_events: rejected_count > 0}
   end
 
+  def refresh_source_metrics(nil) do
+    nil
+  end
+
   def put_schema_field_count(%Source{} = source) do
     new_metrics = %{source.metrics | fields: Source.Data.get_schema_field_count(source)}
 
