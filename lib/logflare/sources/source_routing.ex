@@ -22,7 +22,8 @@ defmodule Logflare.Logs.SourceRouting do
     for rule <- rules do
       cond do
         length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
-          sink_source = Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics()
+          sink_source =
+            Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
           routed_le =
             le
@@ -146,7 +147,8 @@ defmodule Logflare.Logs.SourceRouting do
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do
-    sink_source = Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics()
+    sink_source =
+      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
     if sink_source do
       routed_le = %{le | source: sink_source, via_rule: rule}
