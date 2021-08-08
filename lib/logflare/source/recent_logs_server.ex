@@ -124,10 +124,8 @@ defmodule Logflare.Source.RecentLogsServer do
         0
 
       pid ->
-        case GenServer.call(pid, :latest_le) do
-          {:ok, nil} -> 0
-          {:ok, log_event} -> log_event.body.timestamp
-        end
+        {:ok, log_event} = GenServer.call(pid, :latest_le)
+        if log_event.body, do: log_event.body.timestamp, else: 0
     end
   end
 
