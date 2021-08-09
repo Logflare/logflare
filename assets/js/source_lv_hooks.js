@@ -227,11 +227,16 @@ hooks.SourceLogsSearch = {
 
       let nav_height = subhead.offsetHeight + header.offsetHeight
 
+
       // even if we're close to the bottom, we're at the bottom (for mobile browsers)
       // should make this 40 dynamic
       if (window_inner_height + window_offset - nav_height >= client_height + 40) {
-        hook.pushEvent("soft_play", {})
+        if (window.playing != true) {
+          hook.pushEvent("soft_play", {})
+          window.playing = true
+        }
       } else {
+        // We don't reset window.playing here because we don't want it to start playing again when you scroll back down
         hook.pushEvent("soft_pause", {})
       }
     };
