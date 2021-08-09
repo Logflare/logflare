@@ -614,7 +614,7 @@ defmodule LogflareWeb.Source.SearchLV do
             source_id: source.token
           )
 
-          msg = "Query error! Likely a field type mismatch. Check your source schema."
+          msg = "Query error! Please contact support if this continues."
 
           socket
           |> assign(loading: false)
