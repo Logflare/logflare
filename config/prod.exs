@@ -7,6 +7,7 @@ config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4000,
     transport_options: [max_connections: 16_384, num_acceptors: 100],
+    # https://blog.percy.io/tuning-nginx-behind-google-cloud-platform-http-s-load-balancer-305982ddb340
     # https://github.com/ninenines/cowboy/issues/1286#issuecomment-699643478
     protocol_options: [
       # https://ninenines.eu/docs/en/cowboy/2.8/manual/cowboy_http/

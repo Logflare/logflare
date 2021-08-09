@@ -58,13 +58,13 @@ defmodule Logflare.Logs do
   defp maybe_ingest_and_broadcast(%LE{} = le) do
     if le.valid do
       le
-      |> tap(fn x -> SourceRouting.route_to_sinks_and_ingest(x) end)
+      |> tap(&SourceRouting.route_to_sinks_and_ingest/1)
       |> LE.apply_custom_event_message()
-      |> tap(fn x -> ingest(x) end)
-      |> tap(fn x -> broadcast(x) end)
+      |> tap(&ingest/1)
+      |> tap(&broadcast/1)
     else
       le
-      |> tap(fn x -> RejectedLogEvents.ingest(x) end)
+      |> tap(&RejectedLogEvents.ingest/1)
     end
   end
 end

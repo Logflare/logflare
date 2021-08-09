@@ -45,6 +45,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     |> Process.whereis()
     |> if do
       :ok = cancel_query(source_token)
+      :ok = cancel_agg(source_token)
     else
       Logger.error(
         "Cancel query failed: SearchQueryExecutor process for #{source_token} not alive"
@@ -99,6 +100,10 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   def query_agg(params) do
     GenServer.call(name(params.source.token), {:query_agg, params}, @query_timeout)
+  end
+
+  def cancel_agg(source_token) when is_atom(source_token) do
+    GenServer.call(name(source_token), :cancel_agg, @query_timeout)
   end
 
   def cancel_query(source_token) when is_atom(source_token) do
@@ -172,6 +177,23 @@ defmodule Logflare.Logs.SearchQueryExecutor do
         task: start_aggs_task(lv_pid, params),
         params: params
       })
+
+    {:reply, :ok, %{state | agg_tasks: agg_tasks}}
+  end
+
+  @impl true
+  def handle_call(:cancel_agg, {lv_pid, _ref}, state) do
+    current_lv_task_params = state.agg_tasks[lv_pid]
+
+    if current_lv_task_params && current_lv_task_params[:task] do
+      Logger.info(
+        "SearchQueryExecutor: Cancelling agg task from #{pid_to_string(lv_pid)} live_view..."
+      )
+
+      Task.shutdown(current_lv_task_params.task, :brutal_kill)
+    end
+
+    agg_tasks = Map.put(state.agg_tasks, lv_pid, %{})
 
     {:reply, :ok, %{state | agg_tasks: agg_tasks}}
   end
