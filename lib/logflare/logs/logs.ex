@@ -61,7 +61,7 @@ defmodule Logflare.Logs do
       |> tap(fn x -> SourceRouting.route_to_sinks_and_ingest(x) end)
       |> LE.apply_custom_event_message()
       |> tap(fn x -> ingest(x) end)
-      |> tap(fn x -> broadcast(le) end)
+      |> tap(fn x -> broadcast(x) end)
     else
       le
       |> tap(fn x -> RejectedLogEvents.ingest(x) end)
