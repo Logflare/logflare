@@ -21,6 +21,7 @@ defmodule Logflare.Logs do
       |> IngestTransformers.transform(:to_bigquery_column_spec)
       |> Map.put(:make_from, "ingest")
       |> LE.make(%{source: source})
+      |> IO.inspect()
       |> maybe_ingest_and_broadcast()
     end)
     |> Enum.reduce([], fn le, acc ->
@@ -58,7 +59,7 @@ defmodule Logflare.Logs do
   defp maybe_ingest_and_broadcast(%LE{} = le) do
     if le.valid do
       SourceRouting.route_to_sinks_and_ingest(le)
-      LE.apply_custom_event_message(le)
+      le = LE.apply_custom_event_message(le)
       ingest(le)
       broadcast(le)
     else
