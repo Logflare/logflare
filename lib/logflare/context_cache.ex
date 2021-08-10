@@ -54,7 +54,7 @@ defmodule Logflare.ContextCache do
       is_nil(keys) ->
         Cachex.put(@cache, keys_key, [cache_key])
 
-      Enum.any?(keys, &match?(&1, cache_key)) ->
+      Enum.any?(keys, &(&1 == cache_key)) ->
         :noop
 
       true ->

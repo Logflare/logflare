@@ -9,6 +9,8 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
 
     For Google Cloud SQL set cloudsql.logical_decoding to `on` or `off` respectively.
     https://cloud.google.com/sql/docs/postgres/replication/configure-logical-replication
+
+    Figure out how to do `execute("alter table "rules" replica identity full")` automatically for each table here and for ones created in the future.
   """
 
   use Ecto.Migration
@@ -25,7 +27,11 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
     end
 
     execute("ALTER USER #{@username} WITH REPLICATION;")
+
     for p <- @publications, do: execute("CREATE PUBLICATION #{p} FOR ALL TABLES;")
+
+    # This is happening in `20210810182003_set_rules_to_replica_identity_full.exs`
+    # execute("alter table rules replica identity full")
   end
 
   def down do
@@ -36,6 +42,9 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
     end
 
     execute("ALTER USER #{@username} WITH NOREPLICATION;")
+
+    # This is happening in `20210810182003_set_rules_to_replica_identity_full.exs`
+    # execute("alter table rules replica identity default")
 
     if @env in [:dev, :test] do
       execute("ALTER SYSTEM RESET wal_level;")
