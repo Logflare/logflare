@@ -48,17 +48,19 @@ defmodule Logflare.ContextCache do
   defp index_keys(context, cache_key, value) do
     keys_key = {context, select_key(value)}
 
-    {:ok, keys} = Cachex.get(@cache, keys_key)
+    {:ok, keys} = Cachex.get(@cache, keys_key) |> IO.inspect()
 
     cond do
       is_nil(keys) ->
-        Cachex.put(@cache, keys_key, [cache_key])
+        updated_keys = MapSet.new([cache_key])
+        Cachex.put(@cache, keys_key, updated_keys)
 
-      Enum.any?(keys, &(&1 == cache_key)) ->
+      MapSet.member?(keys, cache_key) ->
         :noop
 
       true ->
-        Cachex.put(@cache, keys_key, [cache_key | keys])
+        updated_keys = MapSet.put(keys, cache_key)
+        Cachex.put(@cache, keys_key, updated_keys)
     end
 
     {:ok, :indexed}
