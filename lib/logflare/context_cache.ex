@@ -48,7 +48,7 @@ defmodule Logflare.ContextCache do
   defp index_keys(context, cache_key, value) do
     keys_key = {context, select_key(value)}
 
-    {:ok, keys} = Cachex.get(@cache, keys_key) |> IO.inspect()
+    {:ok, keys} = Cachex.get(@cache, keys_key)
 
     cond do
       is_nil(keys) ->
