@@ -124,8 +124,10 @@ defmodule Logflare.Source.RecentLogsServer do
         0
 
       pid ->
-        {:ok, log_event} = GenServer.call(pid, :latest_le)
-        if log_event.body, do: log_event.body.timestamp, else: 0
+        case GenServer.call(pid, :latest_le) do
+          {:ok, log_event} -> log_event.body.timestamp
+          {:error, _reason} -> 0
+        end
     end
   end
 
@@ -173,6 +175,10 @@ defmodule Logflare.Source.RecentLogsServer do
   def handle_call(:list, _from, state) do
     recent = Enum.into(state.recent, [])
     {:reply, {:ok, recent}, state}
+  end
+
+  def handle_call(:latest_le, _from, %{latest_log_event: nil} = state) do
+    {:reply, {:error, :no_log_event_yet}, state}
   end
 
   def handle_call(:latest_le, _from, state) do
