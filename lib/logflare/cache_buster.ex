@@ -99,7 +99,6 @@ defmodule Logflare.CacheBuster do
        })
        when is_binary(source_id) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    Logger.error("BUSTED")
     ContextCache.bust_keys(Logflare.Sources, String.to_integer(source_id))
   end
 

@@ -18,11 +18,11 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
       {:commit, {:cached, value}} ->
-        index_keys(context, cache_key, value)
+        # index_keys(context, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
-        index_keys(context, cache_key, value)
+        # index_keys(context, cache_key, value)
         value
     end
   end
@@ -31,16 +31,18 @@ defmodule Logflare.ContextCache do
     context_cache = cache_name(context)
     key = {context, id}
 
+    {:ok, true} = Cachex.reset(context_cache)
+
     # Should just maybe stream everything from the cache and filter by function / value key to get the keys to bust as
     # we don't get a bunch of updates
-    {:ok, keys} = Cachex.get(@cache, key)
+    # {:ok, keys} = Cachex.get(@cache, key)
 
-    if keys do
-      # Logger.info("Cache busted for `#{context}`")
+    # if keys do
+    # Logger.info("Cache busted for `#{context}`")
 
-      # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
-      for k <- keys, do: Cachex.del(context_cache, k)
-    end
+    # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
+    #  for k <- keys, do: Cachex.del(context_cache, k)
+    # end
 
     {:ok, :busted}
   end
