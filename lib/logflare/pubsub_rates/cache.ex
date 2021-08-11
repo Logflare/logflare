@@ -3,15 +3,11 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Source
 
+  @cache __MODULE__
   @default_bucket_width 60
 
   def child_spec(_) do
-    cachex_opts = []
-
-    %{
-      id: __MODULE__,
-      start: {Cachex, :start_link, [__MODULE__, cachex_opts]}
-    }
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: true]]}}
   end
 
   def cache_rates(source_id, rates) when is_atom(source_id) do
