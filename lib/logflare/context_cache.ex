@@ -18,52 +18,38 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
       {:commit, {:cached, value}} ->
-        # index_keys(context, cache_key, value)
+        index_keys(context, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
-        # index_keys(context, cache_key, value)
+        index_keys(context, cache_key, value)
         value
     end
   end
 
   def bust_keys(context, id) do
     context_cache = cache_name(context)
-    key = {context, id}
 
-    {:ok, true} = Cachex.reset(context_cache)
+    {:ok, keys} = Cachex.keys(@cache)
 
-    # Should just maybe stream everything from the cache and filter by function / value key to get the keys to bust as
-    # we don't get a bunch of updates
-    # {:ok, keys} = Cachex.get(@cache, key)
+    Stream.each(keys, fn
+      {{^context, ^id}, cache_key} ->
+        Cachex.del(context_cache, cache_key)
 
-    # if keys do
-    # Logger.info("Cache busted for `#{context}`")
-
-    # Should probably also update this to delete or update our keys index but we'll keep them all here to avoid race conditions for now
-    #  for k <- keys, do: Cachex.del(context_cache, k)
-    # end
+      _key ->
+        :noop
+    end)
+    |> Stream.run()
 
     {:ok, :busted}
   end
 
   defp index_keys(context, cache_key, value) do
-    keys_key = {context, select_key(value)}
+    keys_key = {{context, select_key(value)}, cache_key}
 
-    {:ok, keys} = Cachex.get(@cache, keys_key)
+    {:ok, key} = Cachex.get(@cache, keys_key)
 
-    cond do
-      is_nil(keys) ->
-        updated_keys = MapSet.new([cache_key])
-        Cachex.put(@cache, keys_key, updated_keys)
-
-      MapSet.member?(keys, cache_key) ->
-        :noop
-
-      true ->
-        updated_keys = MapSet.put(keys, cache_key)
-        Cachex.put(@cache, keys_key, updated_keys)
-    end
+    if is_nil(key), do: Cachex.put(@cache, keys_key, cache_key)
 
     {:ok, :indexed}
   end
