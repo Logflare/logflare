@@ -1,12 +1,21 @@
 defmodule Logflare.ContextCache do
-  @moduledoc false
+  @moduledoc """
+    Read through cache for hot database paths.
+
+    Stats are reported to Logflare via Logflare.SystemMetrics.Cachex.Poller.
+
+    TODO
+     - Limit this cache like the others
+     - Cachex hook when other cache keys are evicted the keys key here gets deletedf
+     - Cachex hook on this one when it's limited, where if it gets evicted it invalidates the others
+  """
 
   require Logger
 
   @cache __MODULE__
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, []]}}
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: true]]}}
   end
 
   def apply_fun(context, {fun, arity}, args) do
@@ -33,8 +42,14 @@ defmodule Logflare.ContextCache do
     {:ok, keys} = Cachex.keys(@cache)
 
     Stream.each(keys, fn
-      {{^context, ^id}, cache_key} ->
-        Cachex.del(context_cache, cache_key)
+      {{^context, ^id}, cache_key} = key ->
+        case Cachex.del(context_cache, cache_key) do
+          {:ok, true} ->
+            Cachex.del(@cache, key)
+
+          {:ok, nil} ->
+            :noop
+        end
 
       _key ->
         :noop
