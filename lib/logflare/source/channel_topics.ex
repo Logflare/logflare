@@ -68,6 +68,12 @@ defmodule Logflare.Source.ChannelTopics do
   end
 
   def logflare_local_broadcast(topic, event, payload) do
-    LogflareWeb.Endpoint.local_broadcast(topic, event, payload)
+    case :ets.info(LogflareWeb.Endpoint) do
+      :undefined ->
+        Logger.error("Endpoint not up yet!")
+
+      _ ->
+        LogflareWeb.Endpoint.local_broadcast(topic, event, payload)
+    end
   end
 end
