@@ -21,11 +21,9 @@
 </div>
 
 <div class="container d-flex justify-content-center flex-column mb-4">
-  <p class="text-center mb-0">🛎️ 🙏 We have a
-    <%= link "new Github Action", to: "https://github.com/marketplace/actions/logflare-log", target: "_blank" %> thanks
-    to <%= link "@gr2m", to: "https://twitter.com/gr2m" %>.</p>
-  <small class="text-center">If there is a library or integration you'd like to see for Logflare, we'd love to work with
-    you on it.</small>
+  <p class="text-center mb-0">🙌 Know Erlang? We're looking for feedback on our
+    <%= link "new Erlang API client", to: "https://github.com/Logflare/logflare_erl", target: "_blank" %>. The Quick Start ⚡ should be a super quick start!</p>
+  <small class="text-center">⏳ Stay tuned for the Erlang Logger Handler and the Lager Backend.</small>
 </div>
 
 <div class="dashboard container mx-auto" hidden>
