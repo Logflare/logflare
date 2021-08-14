@@ -48,13 +48,20 @@ defmodule Logflare.SystemMetrics.Cachex.Poller do
     caches_stats =
       for c <- @caches do
         case Cachex.stats(c) do
-          {:ok, stats} -> stats |> Map.put(:name, c)
-          {:error, :stats_disabled} -> :stats_disabled
+          {:ok, %{hit_rate: hr, miss_rate: mr} = stats} when is_float(hr) and is_float(mr) ->
+            stats |> Map.put(:name, c)
+
+          {:ok, %{hit_rate: hr, miss_rate: mr} = stats} ->
+            :rates_not_floats
+
+          {:ok, stats} ->
+            :missing_rates
+
+          {:error, :stats_disabled} ->
+            :stats_disabled
         end
       end
       |> Enum.filter(&is_map(&1))
-      |> Enum.filter(&is_float(&1.hit_rate))
-      |> Enum.filter(&is_float(&1.miss_rate))
 
     if Application.get_env(:logflare, :env) == :prod do
       Logger.info("Cachex stats!", cachex_stats: caches_stats)
