@@ -48,7 +48,7 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @touch_timer :timer.minutes(45)
-  @broadcast_every 250
+  @broadcast_every 500
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: source_id)
@@ -239,12 +239,13 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
-    node_inserts = Source.Data.get_node_inserts(state.source_id)
+    current_inserts = Source.Data.get_node_inserts(state.source_id)
+    last_inserts = state.inserts_since_boot
 
-    if node_inserts > state.inserts_since_boot do
+    if current_inserts > last_inserts do
       bq_inserts = Source.Data.get_bq_inserts(state.source_id)
 
-      inserts_payload = %{Node.self() => %{node_inserts: node_inserts, bq_inserts: bq_inserts}}
+      inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
@@ -253,14 +254,15 @@ defmodule Logflare.Source.RecentLogsServer do
       )
     end
 
-    cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_id)
+    current_cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_id)
+    last_cluster_inserts = state.total_cluster_inserts
 
-    if cluster_inserts > state.total_cluster_inserts do
-      payload = %{log_count: cluster_inserts, source_token: state.source_id}
+    if current_cluster_inserts > last_cluster_inserts do
+      payload = %{log_count: current_cluster_inserts, source_token: state.source_id}
       Source.ChannelTopics.broadcast_log_count(payload)
     end
 
-    {:ok, cluster_inserts, node_inserts}
+    {:ok, current_cluster_inserts, current_inserts}
   end
 
   defp load_init_log_message(source_id) do
