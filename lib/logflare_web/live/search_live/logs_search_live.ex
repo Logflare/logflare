@@ -616,7 +616,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
           send(self(), :soft_pause)
 
-          msg = "Query error! Please contact support if this continues."
+          msg = "Backend error! Retry your query. Please contact support if this continues."
 
           socket
           |> assign(loading: false)
