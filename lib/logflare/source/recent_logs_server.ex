@@ -48,7 +48,7 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @touch_timer :timer.minutes(45)
-  @broadcast_every 250
+  @broadcast_every 500
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: source_id)
