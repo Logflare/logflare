@@ -120,9 +120,9 @@ defmodule Logflare.Source.Supervisor do
       _ ->
         send(source_id, {:stop_please, :shutdown})
 
-        Process.sleep(1_000)
-
         reset_persisted_schema(source_id)
+
+        Process.sleep(1_000)
 
         case create_source(source_id) do
           {:ok, _pid} ->
