@@ -1,6 +1,8 @@
 defmodule Logflare.Queries.AnalyticalQueries do
   import Ecto.Query
 
+  # e.g. https://elixirforum.com/t/help-understanding-difference-between-2-queries/41743/4
+
   def wrap_in_generated_timeseries_subquery(
         query,
         group_by_column = :date,

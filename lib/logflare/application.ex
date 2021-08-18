@@ -112,8 +112,6 @@ defmodule Logflare.Application do
       SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
-      # Endpoint goes here because sources broadcast stuff and need the Endpoint to do that
-      LogflareWeb.Endpoint,
 
       # Sources
       Sources.Buffers,
@@ -124,6 +122,9 @@ defmodule Logflare.Application do
       Sources.RateCounters,
       Logflare.PubSubRates,
       Logflare.Source.Supervisor,
+
+      # If we get a log event and the Source.Supervisor is not up it will 500
+      LogflareWeb.Endpoint,
 
       # Follow Postgresql replication log and bust all our context caches
       Logflare.CacheBuster,
