@@ -7,7 +7,7 @@
   <small class="source-details">
     latest:
     <%= if @source.metrics.latest == 0 do %>
-      <span>no logs</span>
+      <span>not initialized</span>
     <% else %>
       <span class="log-datestamp" id="<%= @source.token %>-latest" data-timestamp="<%=@source.metrics.latest %>"><%= @source.metrics.latest %></span>
     <% end %>
