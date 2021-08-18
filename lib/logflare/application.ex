@@ -102,6 +102,8 @@ defmodule Logflare.Application do
         ]
       },
       # supervisor(LogflareTelemetry.Supervisor, []),
+
+      # Context Caches
       ContextCache,
       Users.Cache,
       Sources.Cache,
@@ -110,16 +112,26 @@ defmodule Logflare.Application do
       SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
+      # Endpoint goes here because sources broadcast stuff and need the Endpoint to do that
+      LogflareWeb.Endpoint,
+
+      # Sources
       Sources.Buffers,
       Sources.BuffersCache,
       Logs.RejectedLogEvents,
-      # init Counters before Manager as Manager calls Counters through table create
+      # init Counters before Supervisof as Supervisor calls Counters through table create
       Sources.Counters,
       Sources.RateCounters,
       Logflare.PubSubRates,
       Logflare.Source.Supervisor,
+
+      # Follow Postgresql replication log and bust all our context caches
+      Logflare.CacheBuster,
+
+      # Monitor system level metrics
       Logflare.SystemMetricsSup,
-      LogflareWeb.Endpoint,
+
+      # For Logflare Endpoints
       Logflare.SQL,
       {
         Cainophile.Adapters.Postgres,
@@ -134,7 +146,6 @@ defmodule Logflare.Application do
         wal_position: {"0", "0"},
         publications: publications
       },
-      Logflare.CacheBuster,
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
