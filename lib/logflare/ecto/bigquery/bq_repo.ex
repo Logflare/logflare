@@ -21,7 +21,7 @@ defmodule Logflare.BqRepo do
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
 
-    %Plan{name: plan} = Plans.get_plan_by_user(user)
+    %Plan{name: plan} = Plans.Cache.get_plan_by_user(user)
 
     query_request =
       %QueryRequest{
@@ -71,7 +71,7 @@ defmodule Logflare.BqRepo do
   end
 
   @spec query(String.t(), Ecto.Query.t(), keyword) :: query_result
-  def query(project_id, %Ecto.Query{} = query, opts \\ [])
+  def query(user, project_id, %Ecto.Query{} = query, opts \\ [])
       when not is_nil(project_id) and is_list(opts) do
     {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 
@@ -82,6 +82,6 @@ defmodule Logflare.BqRepo do
         sql
       end
 
-    query_with_sql_and_params(project_id, sql, params, opts)
+    query_with_sql_and_params(user, project_id, sql, params, opts)
   end
 end

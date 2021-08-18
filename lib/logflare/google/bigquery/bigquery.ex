@@ -209,7 +209,7 @@ defmodule Logflare.Google.BigQuery do
     conn = GenUtils.get_conn()
 
     %User{email: email, provider: provider} = user = Users.get_by(id: user_id)
-    %Plan{name: plan} = Plans.get_plan_by_user(user)
+    %Plan{name: plan} = Plans.Cache.get_plan_by_user(user)
 
     reference = %Model.DatasetReference{
       datasetId: dataset_id,
@@ -336,8 +336,8 @@ defmodule Logflare.Google.BigQuery do
     access = access_emails ++ access_defaults
 
     %Plan{name: plan} =
-      Users.get_by(id: user_id)
-      |> Plans.get_plan_by_user()
+      Users.Cache.get_by(id: user_id)
+      |> Plans.Cache.get_plan_by_user()
 
     body = %Model.Dataset{
       access: access,
