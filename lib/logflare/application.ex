@@ -113,27 +113,7 @@ defmodule Logflare.Application do
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
 
-      # Sources
-      Sources.Buffers,
-      Sources.BuffersCache,
-      Logs.RejectedLogEvents,
-      # init Counters before Supervisof as Supervisor calls Counters through table create
-      Sources.Counters,
-      Sources.RateCounters,
-      Logflare.PubSubRates,
-      Logflare.Source.Supervisor,
-
-      # If we get a log event and the Source.Supervisor is not up it will 500
-      LogflareWeb.Endpoint,
-
       # Follow Postgresql replication log and bust all our context caches
-      Logflare.CacheBuster,
-
-      # Monitor system level metrics
-      Logflare.SystemMetricsSup,
-
-      # For Logflare Endpoints
-      Logflare.SQL,
       {
         Cainophile.Adapters.Postgres,
         register: Logflare.PgPublisher,
@@ -147,6 +127,26 @@ defmodule Logflare.Application do
         wal_position: {"0", "0"},
         publications: publications
       },
+      Logflare.CacheBuster,
+
+      # Sources
+      Sources.Buffers,
+      Sources.BuffersCache,
+      Logs.RejectedLogEvents,
+      # init Counters before Supervisof as Supervisor calls Counters through table create
+      Sources.Counters,
+      Sources.RateCounters,
+      Logflare.PubSubRates,
+      Logflare.Source.Supervisor,
+
+      # If we get a log event and the Source.Supervisor is not up it will 500
+      LogflareWeb.Endpoint,
+
+      # Monitor system level metrics
+      Logflare.SystemMetricsSup,
+
+      # For Logflare Endpoints
+      Logflare.SQL,
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
