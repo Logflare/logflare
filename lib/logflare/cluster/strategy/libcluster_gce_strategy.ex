@@ -6,7 +6,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   alias __MODULE__, as: GCE
   alias Cluster.Strategy.State
 
-  @default_polling_interval 3_000
+  @default_polling_interval 10_000
   @default_release_name :node
   @regions Application.get_env(:logflare, __MODULE__)[:regions]
   @zones Application.get_env(:logflare, __MODULE__)[:zones]
@@ -24,9 +24,6 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   def handle_info(:timeout, state) do
     handle_info(:load, state)
   end
-
-  # TODO: Call :load on all nodes when sigterm is received so they
-  # know to not include a shutting down node in the cluster
 
   def handle_info(:load, %State{} = state) do
     {:noreply, load(state)}
