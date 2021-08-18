@@ -22,7 +22,8 @@ defmodule Logflare.Logs.LogEvents do
 
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
 
-    query_result = BqRepo.query_with_sql_and_params(bq_project_id, sql_with_params, params)
+    query_result =
+      BqRepo.query_with_sql_and_params(source.user, bq_project_id, sql_with_params, params)
 
     with {:ok, result} <- query_result do
       case result do
@@ -56,12 +57,14 @@ defmodule Logflare.Logs.LogEvents do
     partition_type = Sources.get_table_partition_type(source)
 
     fetch_streaming_buffer(
+      source.user,
       bq_project_id,
       base_query,
       dataset_id,
       partition_type
     ) ||
       fetch_with_partitions_range(
+        source.user,
         bq_project_id,
         base_query,
         dataset_id,
@@ -82,23 +85,25 @@ defmodule Logflare.Logs.LogEvents do
     base_query = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
     partition_type = Sources.get_table_partition_type(source)
 
-    params = [bq_project_id, base_query, dataset_id, partition_type]
+    params = [source.user, bq_project_id, base_query, dataset_id, partition_type]
 
-    apply(&fetch_streaming_buffer/4, params) || apply(&fetch_last_3d/4, params) ||
+    apply(&fetch_streaming_buffer/5, params) || apply(&fetch_last_3d/5, params) ||
       {:error, :not_found}
   end
 
-  defp fetch_streaming_buffer(_, _, _, :timestamp) do
+  defp fetch_streaming_buffer(_, _, _, _, :timestamp) do
     nil
   end
 
-  defp fetch_streaming_buffer(bq_project_id, query, dataset_id, :pseudo) do
-    bq_project_id
-    |> BqRepo.query(SearchQueries.where_streaming_buffer(query), dataset_id: dataset_id)
+  defp fetch_streaming_buffer(user, bq_project_id, query, dataset_id, :pseudo) do
+    user
+    |> BqRepo.query(bq_project_id, SearchQueries.where_streaming_buffer(query),
+      dataset_id: dataset_id
+    )
     |> process()
   end
 
-  defp fetch_last_3d(bq_project_id, query, dataset_id, :timestamp) do
+  defp fetch_last_3d(user, bq_project_id, query, dataset_id, :timestamp) do
     import Ecto.Query
     from_utc = Timex.shift(Timex.today(), days: -3)
 
@@ -107,24 +112,24 @@ defmodule Logflare.Logs.LogEvents do
       |> where([t], t.timestamp >= ^from_utc)
       |> where([t], t.timestamp <= ^Date.utc_today())
 
-    bq_project_id
-    |> BqRepo.query(query, dataset_id: dataset_id)
+    user
+    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
     |> process()
   end
 
-  defp fetch_last_3d(bq_project_id, query, dataset_id, :pseudo) do
-    bq_project_id
-    |> BqRepo.query(where_last_3d_q(query), dataset_id: dataset_id)
+  defp fetch_last_3d(user, bq_project_id, query, dataset_id, :pseudo) do
+    user
+    |> BqRepo.query(bq_project_id, where_last_3d_q(query), dataset_id: dataset_id)
     |> process()
   end
 
-  defp fetch_with_partitions_range(bq_project_id, query, dataset_id, [], _) do
-    bq_project_id
-    |> BqRepo.query(query, dataset_id: dataset_id)
+  defp fetch_with_partitions_range(user, bq_project_id, query, dataset_id, [], _) do
+    user
+    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
     |> process()
   end
 
-  defp fetch_with_partitions_range(bq_project_id, query, dataset_id, [min, max], :timestamp) do
+  defp fetch_with_partitions_range(user, bq_project_id, query, dataset_id, [min, max], :timestamp) do
     import Ecto.Query
 
     query =
@@ -132,16 +137,16 @@ defmodule Logflare.Logs.LogEvents do
       |> where([t], t.timestamp >= ^min)
       |> where([t], t.timestamp <= ^max)
 
-    bq_project_id
-    |> BqRepo.query(query, dataset_id: dataset_id)
+    user
+    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
     |> process()
   end
 
-  defp fetch_with_partitions_range(bq_project_id, query, dataset_id, [min, max], :pseudo) do
+  defp fetch_with_partitions_range(user, bq_project_id, query, dataset_id, [min, max], :pseudo) do
     query = SearchQueries.where_partitiondate_between(query, min, max)
 
-    bq_project_id
-    |> BqRepo.query(query, dataset_id: dataset_id)
+    user
+    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
     |> process()
   end
 

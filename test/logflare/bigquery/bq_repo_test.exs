@@ -35,7 +35,7 @@ defmodule Logflare.Google.BigQuery.BqRepoTest do
       table_id = table.id |> String.replace(":", ".")
       sql = "SELECT timestamp FROM `#{table_id}`"
 
-      {:ok, response} = BqRepo.query_with_sql_and_params(bigquery_project_id, sql, [])
+      {:ok, response} = BqRepo.query_with_sql_and_params(u, bigquery_project_id, sql, [])
       assert response.rows == []
       assert response.total_rows == 0
     end

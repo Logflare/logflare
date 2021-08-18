@@ -19,23 +19,20 @@ defmodule Logflare.User.BigQueryUDFs do
     new_udfs_hash = to_md5_hash(sql)
 
     if bq_udfs_hash != new_udfs_hash do
-      result = BqRepo.query_with_sql_and_params(bq_project_id, sql, [], useQueryCache: false)
+      result =
+        BqRepo.query_with_sql_and_params(user, bq_project_id, sql, [], useQueryCache: false)
 
       with {:ok, _} <- result,
            {:ok, user} <- Users.update_user_all_fields(user, %{bigquery_udfs_hash: new_udfs_hash}) do
         Logger.info(
-          "Created BQ UDFs for dataset #{bq_dataset_id} for project #{bq_project_id} for user #{
-            user.id
-          }"
+          "Created BQ UDFs for dataset #{bq_dataset_id} for project #{bq_project_id} for user #{user.id}"
         )
 
         {:ok, user}
       else
         {:error, message} ->
           Logger.error(
-            "Error creating BQ UDFs for dataset #{bq_dataset_id} for project #{bq_project_id}: #{
-              inspect(message)
-            }"
+            "Error creating BQ UDFs for dataset #{bq_dataset_id} for project #{bq_project_id}: #{inspect(message)}"
           )
 
           {:error, message}
