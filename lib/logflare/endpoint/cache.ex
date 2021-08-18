@@ -102,6 +102,7 @@ defmodule Logflare.Endpoint.Cache do
               end)
 
             case Logflare.BqRepo.query_with_sql_and_params(
+                   state.query.user,
                    state.query.user.bigquery_project_id || @project_id,
                    query,
                    params,

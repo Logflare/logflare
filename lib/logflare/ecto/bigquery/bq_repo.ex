@@ -5,6 +5,8 @@ defmodule Logflare.BqRepo do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.EctoQueryBQ
+  alias Logflare.Plans
+  alias Logflare.Plans.Plan
   import Logflare.TypeCasts
 
   @query_request_timeout 60_000
@@ -15,9 +17,11 @@ defmodule Logflare.BqRepo do
           | {:error, term()}
 
   @spec query_with_sql_and_params(String.t(), String.t(), [term()], Keyword.t()) :: query_result
-  def query_with_sql_and_params(project_id, sql, params, opts \\ [])
+  def query_with_sql_and_params(user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
+
+    %Plan{name: plan} = Plans.get_plan_by_user(user)
 
     query_request =
       %QueryRequest{
@@ -27,7 +31,12 @@ defmodule Logflare.BqRepo do
         parameterMode: "POSITIONAL",
         queryParameters: params,
         dryRun: false,
-        timeoutMs: @query_request_timeout
+        timeoutMs: @query_request_timeout,
+        labels: %{
+          "managed_by" => "logflare",
+          "logflare_plan" => GenUtils.format_key(plan),
+          "logflare_account" => GenUtils.format_key(user.id)
+        }
       }
       |> Map.merge(override)
 

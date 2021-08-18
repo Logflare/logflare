@@ -22,7 +22,8 @@ defmodule Logflare.Logs.LogEvents do
 
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
 
-    query_result = BqRepo.query_with_sql_and_params(bq_project_id, sql_with_params, params)
+    query_result =
+      BqRepo.query_with_sql_and_params(source.user, bq_project_id, sql_with_params, params)
 
     with {:ok, result} <- query_result do
       case result do

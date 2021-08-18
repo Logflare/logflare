@@ -103,4 +103,15 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   def get_tesla_error_message(:timeout), do: "timeout"
   def get_tesla_error_message(:closed), do: "closed"
   def get_tesla_error_message(message), do: inspect(message)
+
+  def format_key(label) when is_binary(label) do
+    # https://cloud.google.com/resource-manager/docs/creating-managing-labels?_ga=2.5645051.-99470436.1587500458#requirements
+
+    label
+    |> String.downcase()
+    |> String.replace(" ", "_")
+    |> String.slice(0, 62)
+  end
+
+  def format_key(label) when is_integer(label), do: label |> Integer.to_string() |> format_key()
 end
