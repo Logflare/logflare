@@ -229,7 +229,7 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def ets_table_is_undefined?(_source_id) do
-    :ets.info(@ets_table_name) == :undefined
+    :ets.whereis(@ets_table_name) == :undefined
   end
 
   def lookup_ets(source_id) do
