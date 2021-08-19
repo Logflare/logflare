@@ -81,7 +81,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec create_table(atom, binary, binary, any) ::
           {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
-  def create_table(source, dataset_id, project_id, table_ttl) do
+  def create_table(source, dataset_id, project_id, table_ttl) when is_atom(source) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
 
@@ -115,7 +115,7 @@ defmodule Logflare.Google.BigQuery do
         timePartitioning: partitioning,
         clustering: clustering,
         description: "Managed by Logflare",
-        labels: %{"managed_by" => "logflare"}
+        labels: %{"managed_by" => "logflare", "logflare_source" => GenUtils.format_key(source)}
       }
     )
     |> GenUtils.maybe_parse_google_api_result()

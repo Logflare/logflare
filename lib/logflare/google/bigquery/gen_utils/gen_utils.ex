@@ -114,4 +114,5 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   def format_key(label) when is_integer(label), do: label |> Integer.to_string() |> format_key()
+  def format_key(label) when is_atom(label), do: label |> Atom.to_string() |> format_key()
 end
