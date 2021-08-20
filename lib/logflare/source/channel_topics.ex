@@ -54,7 +54,7 @@ defmodule Logflare.Source.ChannelTopics do
   end
 
   def maybe_broadcast(topic, event, payload) do
-    case :ets.info(LogflareWeb.Endpoint) do
+    case :ets.whereis(LogflareWeb.Endpoint) do
       :undefined ->
         Logger.error("Endpoint not up yet!")
 
@@ -68,7 +68,7 @@ defmodule Logflare.Source.ChannelTopics do
   end
 
   def logflare_local_broadcast(topic, event, payload) do
-    case :ets.info(LogflareWeb.Endpoint) do
+    case :ets.whereis(LogflareWeb.Endpoint) do
       :undefined ->
         Logger.error("Endpoint not up yet!")
 

@@ -6,7 +6,7 @@ defmodule Logflare.SourceSchemas.Cache do
   alias Logflare.Google.BigQuery.SchemaUtils
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 100_000]]}}
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: false, limit: 100_000]]}}
   end
 
   def get_source_schema(id), do: apply_fun(__ENV__.function, [id])

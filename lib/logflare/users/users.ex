@@ -12,6 +12,10 @@ defmodule Logflare.Users do
 
   @moduledoc false
 
+  def list() do
+    Repo.all(User)
+  end
+
   def get(user_id) do
     User
     |> Repo.get(user_id)

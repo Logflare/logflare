@@ -81,7 +81,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec create_table(atom, binary, binary, any) ::
           {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
-  def create_table(source, dataset_id, project_id, table_ttl) do
+  def create_table(source, dataset_id, project_id, table_ttl) when is_atom(source) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
 
@@ -115,7 +115,7 @@ defmodule Logflare.Google.BigQuery do
         timePartitioning: partitioning,
         clustering: clustering,
         description: "Managed by Logflare",
-        labels: %{"managed_by" => "logflare"}
+        labels: %{"managed_by" => "logflare", "logflare_source" => GenUtils.format_key(source)}
       }
     )
     |> GenUtils.maybe_parse_google_api_result()
@@ -298,6 +298,45 @@ defmodule Logflare.Google.BigQuery do
     conn
     |> Api.Datasets.bigquery_datasets_delete(project_id, dataset_id, deleteContents: true)
     |> GenUtils.maybe_parse_google_api_result()
+  end
+
+  def patch_dataset_labels(%User{} = user) do
+    conn = GenUtils.get_conn()
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
+    project_id = user.bigquery_project_id || @project_id
+
+    %Plan{name: plan} =
+      user
+      |> Plans.Cache.get_plan_by_user()
+
+    body = %Model.Dataset{
+      description: "Managed by Logflare",
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_account" => GenUtils.format_key(user.id)
+      }
+    }
+
+    case Api.Datasets.bigquery_datasets_patch(
+           conn,
+           project_id,
+           dataset_id,
+           body: body
+         ) do
+      {:ok, %GoogleApi.BigQuery.V2.Model.Dataset{} = resp} ->
+        IO.inspect(resp)
+        Logger.info("Dataset labels patched: #{dataset_id}")
+        {:ok, :patched}
+
+      {:ok, response} ->
+        Logger.info("Dataset labels NOT patched: #{dataset_id}", error_string: inspect(response))
+        {:error, :not_patched}
+
+      {:error, response} ->
+        Logger.warn("Dataset labels NOT patched: #{dataset_id}", error_string: inspect(response))
+        {:error, :not_patched}
+    end
   end
 
   defp patch(_dataset_id, [], _project_id, _user_id), do: :noop
