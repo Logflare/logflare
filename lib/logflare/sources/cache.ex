@@ -4,7 +4,7 @@ defmodule Logflare.Sources.Cache do
   alias Logflare.Sources
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 100_000]]}}
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: false, limit: 100_000]]}}
   end
 
   # For ingest
