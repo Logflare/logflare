@@ -93,6 +93,12 @@ defmodule Logflare.Logs.SyslogParser do
           "heroku-postgres" ->
             parse_logfmt(syslog_message.message_text)
 
+          "heroku-redis" ->
+            parse_logfmt(syslog_message.message_text)
+
+          "heroku" <> _rest ->
+            parse_logfmt(syslog_message.message_text)
+
           _ ->
             nil
         end

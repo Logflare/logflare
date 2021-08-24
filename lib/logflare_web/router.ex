@@ -347,6 +347,7 @@ defmodule LogflareWeb.Router do
     post "/logplex", LogController, :syslog
     post "/syslogs", LogController, :syslog
     post "/github", LogController, :github
+    post "/vector", LogController, :vector
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog
