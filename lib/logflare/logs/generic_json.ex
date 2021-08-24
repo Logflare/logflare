@@ -13,6 +13,6 @@ defmodule Logflare.Logs.GenericJson do
   end
 
   def message(params) do
-    inspect(params)
+    Jason.encode!(params)
   end
 end
