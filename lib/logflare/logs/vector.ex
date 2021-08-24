@@ -6,15 +6,7 @@ defmodule Logflare.Logs.Vector do
   end
 
   def handle_event(%{"timestamp" => timestamp, "message" => message} = params) do
-    metadata =
-      case params do
-        %{"log" => %{"level" => level}} ->
-          Map.put(params, "level", level)
-
-        _ ->
-          params
-      end
-      |> Map.drop(["message", "timestamp"])
+    metadata = Map.drop(params, ["message", "timestamp"])
 
     %{
       "message" => message,
