@@ -325,7 +325,6 @@ defmodule Logflare.Google.BigQuery do
            body: body
          ) do
       {:ok, %GoogleApi.BigQuery.V2.Model.Dataset{} = resp} ->
-        IO.inspect(resp)
         Logger.info("Dataset labels patched: #{dataset_id}")
         {:ok, :patched}
 
