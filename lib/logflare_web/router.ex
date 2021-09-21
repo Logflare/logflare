@@ -5,6 +5,16 @@ defmodule LogflareWeb.Router do
   use PhoenixOauth2Provider.Router, otp_app: :logflare
   import Phoenix.LiveView.Router
 
+  @csp "\
+  default-src 'self';\
+  connect-src 'self' https://api.github.com/repos/Logflare/logflare;\
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com;\
+  style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
+  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com data:;\
+  font-src 'self' https://use.fontawesome.com;\
+  frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com;\
+  "
+
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
@@ -15,7 +25,7 @@ defmodule LogflareWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, {LogflareWeb.LayoutView, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    plug :put_secure_browser_headers, %{"content-security-policy" => @csp}
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetTeamIfNil
     plug LogflareWeb.Plugs.SetTeamUser
