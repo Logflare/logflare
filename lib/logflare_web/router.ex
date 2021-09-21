@@ -10,7 +10,7 @@ defmodule LogflareWeb.Router do
   connect-src 'self' https://api.github.com/repos/Logflare/logflare;\
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com;\
   style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
-  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com data:;\
+  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com;\
   font-src 'self' https://use.fontawesome.com;\
   frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com;\
   "
