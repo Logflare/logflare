@@ -37,7 +37,12 @@
 
         </div>
         <div><%= account.email %></div>
-        <div><small>Inserted at: <%= account.inserted_at %> Updated at: <%= account.updated_at %></small></div>
+        <div>
+          <small class="source-details">Inserted at: <%= account.inserted_at %></small>
+          <small class="source-details">Updated at: <%= account.updated_at %></small>
+          <small class="source-details">Stripe customer:
+            <%= if account.billing_account, do: link(account.billing_account.stripe_customer, to: "https://dashboard.stripe.com/customers/" <> account.billing_account.stripe_customer, style: "color: white;", target: "_blank") %></small>
+        </div>
       </li>
       <% end %>
     </ul>
