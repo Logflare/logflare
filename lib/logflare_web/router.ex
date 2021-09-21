@@ -25,7 +25,12 @@ defmodule LogflareWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, {LogflareWeb.LayoutView, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers, %{"content-security-policy" => @csp}
+
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" => @csp,
+      "referrer-policy" => "same-origin"
+    }
+
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetTeamIfNil
     plug LogflareWeb.Plugs.SetTeamUser
