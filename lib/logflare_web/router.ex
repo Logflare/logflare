@@ -5,17 +5,18 @@ defmodule LogflareWeb.Router do
   use PhoenixOauth2Provider.Router, otp_app: :logflare
   import Phoenix.LiveView.Router
 
-  @csp "\
+  # TODO: move plug calls in SourceController and RuleController into here
+
+  @csp """
+  \
   default-src 'self';\
-  connect-src 'self' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com https://js.stripe.com;\
+  connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
   style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
-  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com;\
+  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
   font-src 'self' https://use.fontawesome.com;\
   frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com/;\
-  "
-
-  # TODO: move plug calls in SourceController and RuleController into here
+  """
 
   pipeline :browser do
     plug Plug.RequestId
@@ -366,5 +367,11 @@ defmodule LogflareWeb.Router do
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog
+  end
+end
+
+defmodule LogflareWeb.Utils do
+  def ws_endpoint() do
+    "blah"
   end
 end
