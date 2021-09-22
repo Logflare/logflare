@@ -59,13 +59,4 @@ defmodule LogflareWeb.Endpoint do
       {:ok, config}
     end
   end
-
-  @doc """
-  Generates the endpoint base websocket URL without any path information.
-  It uses the configuration under `:url` to generate such.
-  """
-  def socket_url() do
-    uri = struct_url()
-    "#{%{uri | scheme: String.replace(uri.scheme, "http", "ws")}}"
-  end
 end
