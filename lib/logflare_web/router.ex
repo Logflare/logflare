@@ -369,9 +369,3 @@ defmodule LogflareWeb.Router do
     post "/syslog", LogController, :syslog
   end
 end
-
-defmodule LogflareWeb.Utils do
-  def ws_endpoint() do
-    "blah"
-  end
-end
