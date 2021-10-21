@@ -22,7 +22,8 @@ defmodule Logflare.Logs.SourceRouting do
     for rule <- rules do
       cond do
         length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
-          sink_source = Sources.Cache.get_by(token: rule.sink)
+          sink_source =
+            Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
           routed_le =
             le
@@ -30,8 +31,8 @@ defmodule Logflare.Logs.SourceRouting do
             |> Map.put(:via_rule, rule)
             |> LE.apply_custom_event_message()
 
-          :ok = ingest(routed_le)
-          :ok = broadcast(routed_le)
+          ingest(routed_le)
+          broadcast(routed_le)
 
         rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
           le
@@ -146,12 +147,13 @@ defmodule Logflare.Logs.SourceRouting do
   end
 
   def route_with_regex(%LE{} = le, %Rule{} = rule) do
-    sink_source = Sources.Cache.get_by(token: rule.sink)
+    sink_source =
+      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
     if sink_source do
       routed_le = %{le | source: sink_source, via_rule: rule}
-      :ok = ingest(routed_le)
-      :ok = broadcast(routed_le)
+      ingest(routed_le)
+      broadcast(routed_le)
     else
       Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
     end

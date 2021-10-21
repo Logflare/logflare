@@ -12,10 +12,12 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
+  alias Logflare.SourceSchemas
   alias Logflare.Source
   alias Logflare.LogEvent
   alias Logflare.AccountEmail
   alias Logflare.Mailer
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @persist_every 60_000
   @timeout 60_000
@@ -53,9 +55,9 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_continue(:boot, state) do
     source = Sources.get_by(token: state.source_token)
 
-    case Sources.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.get_source_schema_by(source_id: source.id) do
       nil ->
-        Sources.Cache.put_bq_schema(state.source_token, state.schema)
+        # persist()
 
         Logger.info("Nil schema: #{state.source_token}")
 
@@ -66,7 +68,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         type_map = BigQuery.SchemaUtils.to_typemap(schema)
         field_count = count_fields(type_map)
 
-        Sources.Cache.put_bq_schema(state.source_token, schema)
+        # persist()
 
         {:noreply,
          %{
@@ -100,25 +102,17 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.call(name(source_token), {:update, schema}, @timeout)
   end
 
-  @spec update_cluster(atom(), map(), map(), non_neg_integer()) :: atom
-  def update_cluster(source_token, schema, type_map, field_count) when is_atom(source_token) do
-    GenServer.abcast(
-      Node.list(),
-      name(source_token),
-      {:update, schema, type_map, field_count}
-    )
-  end
-
-  def set_next_update_cluster(source_token) do
-    GenServer.multi_call(Node.list(), name(source_token), :set_next_update)
-  end
+  # @spec update_cluster(atom(), map(), map(), non_neg_integer()) :: atom
+  # def update_cluster(source_token, schema, type_map, field_count) when is_atom(source_token) do
+  #  GenServer.abcast(
+  #    Node.list(),
+  #    name(source_token),
+  #    {:update, schema, type_map, field_count}
+  #  )
+  # end
 
   def handle_call(:get, _from, state) do
     {:reply, state, state}
-  end
-
-  def handle_call(:set_next_update, _from, state) do
-    {:reply, :ok, %{state | next_update: next_update()}}
   end
 
   def handle_call(
@@ -146,11 +140,11 @@ defmodule Logflare.Source.BigQuery.Schema do
           type_map = BigQuery.SchemaUtils.to_typemap(schema)
           field_count = count_fields(type_map)
 
-          update_cluster(state.source_token, schema, type_map, field_count)
+          # update_cluster(state.source_token, schema, type_map, field_count)
 
           Logger.info("Source schema updated from log_event!")
 
-          Sources.Cache.put_bq_schema(state.source_token, schema)
+          persist()
 
           notify_maybe(state.source_token, schema, state.schema)
 
@@ -180,11 +174,11 @@ defmodule Logflare.Source.BigQuery.Schema do
                       type_map = BigQuery.SchemaUtils.to_typemap(schema)
                       field_count = count_fields(type_map)
 
-                      update_cluster(state.source_token, schema, type_map, field_count)
+                      # update_cluster(state.source_token, schema, type_map, field_count)
 
                       Logger.info("Source schema updated from BigQuery!")
 
-                      Sources.Cache.put_bq_schema(state.source_token, schema)
+                      persist()
 
                       {:reply, :ok,
                        %{
@@ -229,7 +223,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     type_map = BigQuery.SchemaUtils.to_typemap(sorted)
     field_count = count_fields(type_map)
 
-    Sources.Cache.put_bq_schema(state.source_token, sorted)
+    persist()
 
     {:reply, :ok,
      %{
@@ -242,7 +236,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_cast({:update, schema, type_map, field_count}, state) do
-    Sources.Cache.put_bq_schema(state.source_token, schema)
+    send(self(), :persist)
 
     {:noreply,
      %{
@@ -256,15 +250,19 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def handle_info(:persist, state) do
     source = Sources.Cache.get_by(token: state.source_token)
+    flat_map = SchemaUtils.bq_schema_to_flat_typemap(state.schema)
 
-    Sources.create_or_update_source_schema(source, %{bigquery_schema: state.schema})
+    SourceSchemas.create_or_update_source_schema(source, %{
+      bigquery_schema: state.schema,
+      schema_flat_map: flat_map
+    })
 
-    persist()
+    # persist()
 
     {:noreply, state}
   end
 
-  defp persist(persist_every \\ @persist_every) do
+  defp persist(persist_every \\ 0) do
     Process.send_after(self(), :persist, persist_every)
   end
 

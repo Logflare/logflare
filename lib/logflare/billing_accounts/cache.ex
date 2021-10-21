@@ -1,31 +1,17 @@
 defmodule Logflare.BillingAccounts.Cache do
   @moduledoc false
-  import Cachex.Spec
 
   alias Logflare.BillingAccounts
 
-  @ttl 5_000
-
-  @cache __MODULE__
+  require Logger
 
   def child_spec(_) do
-    %{
-      id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          @cache,
-          [expiration: expiration(default: @ttl)]
-        ]
-      }
-    }
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: false, limit: 100_000]]}}
   end
 
-  def get_billing_account_by(keyword), do: apply_fun(__ENV__.function, [keyword])
-
-  def get_billing_account_stripe_plan(billing_account),
-    do: apply_fun(__ENV__.function, [billing_account])
+  def get_billing_account_by(keyword) do
+    apply_fun(__ENV__.function, [keyword])
+  end
 
   defp apply_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(BillingAccounts, arg1, arg2)

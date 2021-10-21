@@ -68,7 +68,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     Plot.new(400, 75, content)
     |> Plot.axis_labels("", "")
     |> Plot.titles("", "")
-    |> Map.put(:margins, %{bottom: 20, left: 20, right: 10, top: 10})
+    |> Map.put(:margins, %{bottom: 20, left: 40, right: 40, top: 10})
     |> Plot.to_svg()
   end
 

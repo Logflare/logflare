@@ -125,7 +125,7 @@ defmodule Logflare.Logs.Search do
       |> limit(100)
 
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
-    BqRepo.query(bq_project_id, q)
+    BqRepo.query(source.user, bq_project_id, q)
   end
 
   def get_and_put_partition_by(%SO{} = so) do

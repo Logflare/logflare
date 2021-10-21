@@ -45,6 +45,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     |> Process.whereis()
     |> if do
       :ok = cancel_query(source_token)
+      :ok = cancel_agg(source_token)
     else
       Logger.error(
         "Cancel query failed: SearchQueryExecutor process for #{source_token} not alive"
@@ -101,6 +102,10 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     GenServer.call(name(params.source.token), {:query_agg, params}, @query_timeout)
   end
 
+  def cancel_agg(source_token) when is_atom(source_token) do
+    GenServer.call(name(source_token), :cancel_agg, @query_timeout)
+  end
+
   def cancel_query(source_token) when is_atom(source_token) do
     GenServer.call(name(source_token), :cancel_query, @query_timeout)
   end
@@ -145,7 +150,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.info(
-        "SeachQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
+        "SearchQueryExecutor: cancelling query task for #{pid_to_string(lv_pid)} live_view..."
       )
 
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
@@ -177,12 +182,29 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   @impl true
+  def handle_call(:cancel_agg, {lv_pid, _ref}, state) do
+    current_lv_task_params = state.agg_tasks[lv_pid]
+
+    if current_lv_task_params && current_lv_task_params[:task] do
+      Logger.info(
+        "SearchQueryExecutor: Cancelling agg task from #{pid_to_string(lv_pid)} live_view..."
+      )
+
+      Task.shutdown(current_lv_task_params.task, :brutal_kill)
+    end
+
+    agg_tasks = Map.put(state.agg_tasks, lv_pid, %{})
+
+    {:reply, :ok, %{state | agg_tasks: agg_tasks}}
+  end
+
+  @impl true
   def handle_call(:cancel_query, {lv_pid, _ref}, state) do
     current_lv_task_params = state.event_tasks[lv_pid]
 
     if current_lv_task_params && current_lv_task_params[:task] do
       Logger.info(
-        "SeachQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
+        "SearchQueryExecutor: Cancelling query task from #{pid_to_string(lv_pid)} live_view..."
       )
 
       Task.shutdown(current_lv_task_params.task, :brutal_kill)
@@ -196,19 +218,19 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
-        state.source_id
-      } source..."
+      "SearchQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {%{params: params}, new_event_tasks} = Map.pop(state.event_tasks, lv_pid)
 
     rows = Enum.map(events_so.rows, &LogEvent.make_from_db(&1, %{source: params.source}))
 
+    old_rows = if params.search_op_log_events, do: params.search_op_log_events.rows, else: []
+
     # prevents removal of log events loaded
     # during initial tailing query
     log_events =
-      params.log_events
+      old_rows
       |> Enum.reject(& &1.is_from_stale_query)
       |> Enum.concat(rows)
       |> Enum.uniq_by(&{&1.body, &1.id})
@@ -229,9 +251,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{aggregates: aggregates_so}}}, state) do
     Logger.info(
-      "SeachQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{
-        state.source_id
-      } source..."
+      "SearchQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {_, new_agg_tasks} = Map.pop(state.agg_tasks, lv_pid)

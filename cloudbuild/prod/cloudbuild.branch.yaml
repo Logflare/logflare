@@ -17,6 +17,14 @@ steps:
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    args:
+      [
+        "gsutil",
+        "cp",
+        "gs://logflare-build-support-prod/gudusoft.gsqlparser-2.3.0.7.jar",
+        "sql/gsp/gudusoft.gsqlparser-2.3.0.7.jar",
+      ]
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
@@ -26,7 +34,7 @@ steps:
         "-t",
         "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA",
         "-t",
-        "gcr.io/$PROJECT_ID/logflare_app:latest",
+        "gcr.io/$PROJECT_ID/logflare_app:branch",
         "-f",
         "docker/prod.app.Dockerfile",
         ".",
@@ -35,7 +43,7 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/$PROJECT_ID/logflare_app:latest"]
+    args: ["push", "gcr.io/$PROJECT_ID/logflare_app:branch"]
 secrets:
   - kmsKeyName: projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
     secretEnv:

@@ -19,6 +19,7 @@ defmodule Logflare.Source.RecentLogsServer do
     field :total_cluster_inserts, integer(), default: 0
     field :recent, list(), default: LQueue.new(100)
     field :billing_last_node_count, integer(), default: 0
+    field :latest_log_event, LE.t()
   end
 
   use GenServer
@@ -46,8 +47,8 @@ defmodule Logflare.Source.RecentLogsServer do
 
   require Logger
 
-  @touch_timer :timer.seconds(60)
-  @broadcast_every 250
+  @touch_timer :timer.minutes(45)
+  @broadcast_every 500
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: source_id)
@@ -118,9 +119,15 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def get_latest_date(source_id) when is_atom(source_id) do
-    case RLS.list(source_id) |> Enum.at(0) do
-      nil -> 0
-      le -> le.body.timestamp
+    case Process.whereis(source_id) do
+      nil ->
+        0
+
+      pid ->
+        case GenServer.call(pid, :latest_le) do
+          {:ok, log_event} -> log_event.body.timestamp
+          {:error, _reason} -> 0
+        end
     end
   end
 
@@ -170,9 +177,17 @@ defmodule Logflare.Source.RecentLogsServer do
     {:reply, {:ok, recent}, state}
   end
 
+  def handle_call(:latest_le, _from, %{latest_log_event: nil} = state) do
+    {:reply, {:error, :no_log_event_yet}, state}
+  end
+
+  def handle_call(:latest_le, _from, state) do
+    {:reply, {:ok, state.latest_log_event}, state}
+  end
+
   def handle_cast({:push, _source_id, %LE{} = le}, state) do
     log_events = LQueue.push(state.recent, le)
-    {:noreply, %{state | recent: log_events}}
+    {:noreply, %{state | recent: log_events, latest_log_event: le}}
   end
 
   def handle_info({:stop_please, reason}, state) do
@@ -224,12 +239,13 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
-    node_inserts = Source.Data.get_node_inserts(state.source_id)
+    current_inserts = Source.Data.get_node_inserts(state.source_id)
+    last_inserts = state.inserts_since_boot
 
-    if node_inserts > state.inserts_since_boot do
+    if current_inserts > last_inserts do
       bq_inserts = Source.Data.get_bq_inserts(state.source_id)
 
-      inserts_payload = %{Node.self() => %{node_inserts: node_inserts, bq_inserts: bq_inserts}}
+      inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
@@ -238,14 +254,15 @@ defmodule Logflare.Source.RecentLogsServer do
       )
     end
 
-    cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_id)
+    current_cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_id)
+    last_cluster_inserts = state.total_cluster_inserts
 
-    if cluster_inserts > state.total_cluster_inserts do
-      payload = %{log_count: cluster_inserts, source_token: state.source_id}
+    if current_cluster_inserts > last_cluster_inserts do
+      payload = %{log_count: current_cluster_inserts, source_token: state.source_id}
       Source.ChannelTopics.broadcast_log_count(payload)
     end
 
-    {:ok, cluster_inserts, node_inserts}
+    {:ok, current_cluster_inserts, current_inserts}
   end
 
   defp load_init_log_message(source_id) do
@@ -273,7 +290,11 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   defp touch() do
-    Process.send_after(self(), :touch, @touch_timer)
+    rand = Enum.random(0..30) * :timer.minutes(1)
+
+    every = rand + @touch_timer
+
+    Process.send_after(self(), :touch, every)
   end
 
   defp broadcast() do

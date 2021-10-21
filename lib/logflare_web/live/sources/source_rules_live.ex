@@ -7,10 +7,9 @@ defmodule LogflareWeb.Sources.RulesLV do
   use LogflareWeb.ModalLiveHelpers
 
   alias LogflareWeb.RuleView
-  alias Logflare.{Sources, Users}
+  alias Logflare.{Sources, SourceSchemas, Users}
   alias Logflare.{Rules, Rule}
   alias Logflare.Lql
-  alias LogflareWeb.Sources.BqSchemaLive
 
   @lql_dialect :routing
   @lql_string ""
@@ -22,12 +21,12 @@ defmodule LogflareWeb.Sources.RulesLV do
 
   @impl true
   def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
-    user = Users.Cache.get_by_and_preload(id: user_id)
+    user = Users.get_by_and_preload(id: user_id)
     source = Sources.get_by_and_preload(id: source_id)
 
     user =
       if user.admin do
-        Users.Cache.get_by_and_preload(id: source.user_id)
+        Users.get_by_and_preload(id: source.user_id)
       else
         user
       end
@@ -67,7 +66,8 @@ defmodule LogflareWeb.Sources.RulesLV do
     lqlstring = rule_params["lql_string"]
 
     socket =
-      with schema <- Sources.Cache.get_bq_schema(source),
+      with source_schema <- SourceSchemas.get_source_schema_by(source_id: source.id),
+           schema <- Map.get(source_schema, :bigquery_schema),
            {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
            {:warnings, nil} <-
              {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do

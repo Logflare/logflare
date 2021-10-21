@@ -7,6 +7,17 @@ defmodule LogflareWeb.Router do
 
   # TODO: move plug calls in SourceController and RuleController into here
 
+  @csp """
+  \
+  default-src 'self';\
+  connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
+  style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
+  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
+  font-src 'self' https://use.fontawesome.com;\
+  frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com/;\
+  """
+
   pipeline :browser do
     plug Plug.RequestId
     plug :accepts, ["html"]
@@ -15,7 +26,12 @@ defmodule LogflareWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, {LogflareWeb.LayoutView, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" => @csp,
+      "referrer-policy" => "same-origin"
+    }
+
     plug LogflareWeb.Plugs.SetVerifyUser
     plug LogflareWeb.Plugs.SetTeamIfNil
     plug LogflareWeb.Plugs.SetTeamUser
@@ -131,6 +147,25 @@ defmodule LogflareWeb.Router do
     get "/dashboard", SourceController, :dashboard
   end
 
+  scope "/endpoints/query", LogflareWeb do
+    pipe_through [:api]
+    get "/:token", EndpointController, :query
+  end
+
+  scope "/endpoints", LogflareWeb do
+    pipe_through [:browser, :require_auth]
+
+    get "/", EndpointController, :index
+    post "/", EndpointController, :create
+
+    get "/new", EndpointController, :new
+    get "/:id", EndpointController, :show
+    get "/:id/edit", EndpointController, :edit
+    put "/:id", EndpointController, :update
+    put "/:id/reset_url", EndpointController, :reset_url
+    delete "/:id", EndpointController, :delete
+  end
+
   scope "/sources", LogflareWeb do
     pipe_through [:browser]
 
@@ -215,13 +250,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/integrations", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+    pipe_through [:browser, :require_auth]
 
     live "/vercel/edit", VercelLogDrainsLive, :edit
   end
 
-  scope "/account/billing", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/billing", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
     post "/", BillingController, :create
     delete "/", BillingController, :delete
@@ -229,8 +264,8 @@ defmodule LogflareWeb.Router do
     get "/sync", BillingController, :sync
   end
 
-  scope "/account/billing/subscription", LogflareWeb do
-    pipe_through [:browser, :require_auth, :check_owner]
+  scope "/billing/subscription", LogflareWeb do
+    pipe_through [:browser, :require_auth]
 
     get "/subscribed", BillingController, :success
     get "/abandoned", BillingController, :abandoned
@@ -321,9 +356,14 @@ defmodule LogflareWeb.Router do
     post "/zeit", LogController, :vercel_ingest
     post "/vercel", LogController, :vercel_ingest
     post "/elixir/logger", LogController, :elixir_logger
+    post "/erlang", LogController, :elixir_logger
+    post "/erlang/logger", LogController, :elixir_logger
+    post "/erlang/lager", LogController, :elixir_logger
     post "/typecasts", LogController, :create_with_typecasts
     post "/logplex", LogController, :syslog
     post "/syslogs", LogController, :syslog
+    post "/github", LogController, :github
+    post "/vector", LogController, :vector
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog

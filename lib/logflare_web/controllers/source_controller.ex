@@ -110,7 +110,7 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 25 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 5 do
     search_tip = Search.Utils.gen_search_tip()
 
     render(
@@ -123,13 +123,27 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 25 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
     search_tip = Search.Utils.gen_search_tip()
+
+    search_path =
+      Routes.live_path(conn, LogflareWeb.Source.SearchLV, source,
+        querystring: "c:count(*) c:group_by(t::minute)",
+        tailing?: true
+      )
+
+    message = [
+      "This source is seeing more than 5 events per second. ",
+      Phoenix.HTML.Link.link("Search",
+        to: "#{search_path}"
+      ),
+      " to see the latest events. Use the explore link to view in Google Data Studio."
+    ]
 
     conn
     |> put_flash(
       :info,
-      "This source is seeing more than 25 events per second. Refresh to see the latest events. Use the explore link to view in Google Data Studio."
+      message
     )
     |> render(
       "show.html",

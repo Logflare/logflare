@@ -69,6 +69,24 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
+  def vector(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+      when is_list(batch) do
+    batch =
+      batch
+      |> Logs.Vector.handle_batch()
+
+    ingest_and_render(conn, batch, source)
+  end
+
+  def vector(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+    batch =
+      event
+      |> List.wrap()
+      |> Logs.Vector.handle_batch()
+
+    ingest_and_render(conn, batch, source)
+  end
+
   def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch =
@@ -101,9 +119,13 @@ defmodule LogflareWeb.LogController do
 
   def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
-    batch =
-      batch
-      |> Logs.Vercel.handle_batch(source)
+    batch = Logs.Vercel.handle_batch(batch, source)
+
+    ingest_and_render(conn, batch, source)
+  end
+
+  def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
+    batch = Logs.Github.handle_batch([params], source)
 
     ingest_and_render(conn, batch, source)
   end

@@ -2,16 +2,13 @@ defmodule Logflare.PubSubRates.Cache do
   require Logger
 
   alias Logflare.Source
+  alias Logflare.Cluster
 
+  @cache __MODULE__
   @default_bucket_width 60
 
   def child_spec(_) do
-    cachex_opts = []
-
-    %{
-      id: __MODULE__,
-      start: {Cachex, :start_link, [__MODULE__, cachex_opts]}
-    }
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: false]]}}
   end
 
   def cache_rates(source_id, rates) when is_atom(source_id) do
@@ -19,12 +16,12 @@ defmodule Logflare.PubSubRates.Cache do
 
     rates =
       if val,
-        do: Map.drop(val, [:cluster]) |> Map.merge(rates),
+        do: Map.merge(val, rates),
         else: rates
 
-    totals = merge_node_rates(rates)
+    cluster_rate = Map.take(rates, Cluster.Utils.node_list_all()) |> merge_node_rates()
 
-    rates = Map.put(rates, :cluster, totals)
+    rates = Map.put(rates, :cluster, cluster_rate)
 
     Cachex.put(__MODULE__, {source_id, "rates"}, rates, ttl: :timer.seconds(5))
   end

@@ -1,4 +1,6 @@
 defmodule Logflare.Users do
+  require Logger
+
   alias Logflare.{User, Repo, Sources, Users}
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.Users.UserPreferences
@@ -9,6 +11,10 @@ defmodule Logflare.Users do
   alias Logflare.Source.Supervisor
 
   @moduledoc false
+
+  def list() do
+    Repo.all(User)
+  end
 
   def get(user_id) do
     User

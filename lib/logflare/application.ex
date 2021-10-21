@@ -1,10 +1,44 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
-  alias Logflare.{Users, Sources, Tracker, Logs, BillingAccounts, Plans, PubSubRates}
+
+  alias Logflare.{
+    Users,
+    Sources,
+    Tracker,
+    Logs,
+    BillingAccounts,
+    Plans,
+    PubSubRates,
+    ContextCache,
+    SourceSchemas
+  }
 
   def start(_type, _args) do
-    import Supervisor.Spec
+    # Database options for Postgres notifications
+    hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
+    username = Application.get_env(:logflare, Logflare.Repo)[:username]
+    password = Application.get_env(:logflare, Logflare.Repo)[:password]
+    database = Application.get_env(:logflare, Logflare.Repo)[:database]
+    slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
+    publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
+
+    env = Application.get_env(:logflare, :env)
+
+    # Start distribution early so that both Cachex and Logflare.SQL
+    # can work with it.
+    unless Node.alive?() do
+      {:ok, _} = Node.start(:logflare)
+    end
+
+    # Setup Goth for GCP connections
+    credentials =
+      if env in [:dev, :test],
+        do: Application.get_env(:goth, :json) |> Jason.decode!(),
+        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
+
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    source = {:service_account, credentials, scopes: scopes}
 
     # TODO: Set node status in GCP when sigterm is received
     :ok =
@@ -17,15 +51,17 @@ defmodule Logflare.Application do
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
 
     children = [
+      ContextCache,
       Users.Cache,
       Sources.Cache,
       BillingAccounts.Cache,
       Plans.Cache,
+      SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
-      worker(
+      {
         Tracker,
         [
           [
@@ -38,8 +74,9 @@ defmodule Logflare.Application do
             log_level: false
           ]
         ]
-      ),
+      },
       Logflare.Repo,
+      {Goth, name: Logflare.Goth, source: source},
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
@@ -49,6 +86,7 @@ defmodule Logflare.Application do
     dev_prod_children = [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+      {Goth, name: Logflare.Goth, source: source},
       Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
@@ -64,32 +102,55 @@ defmodule Logflare.Application do
         ]
       },
       # supervisor(LogflareTelemetry.Supervisor, []),
+
+      # Context Caches
+      ContextCache,
       Users.Cache,
       Sources.Cache,
       BillingAccounts.Cache,
       Plans.Cache,
+      SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
+
+      # Follow Postgresql replication log and bust all our context caches
+      {
+        Cainophile.Adapters.Postgres,
+        register: Logflare.PgPublisher,
+        epgsql: %{
+          host: hostname,
+          username: username,
+          database: database,
+          password: password
+        },
+        slot: slot,
+        wal_position: {"0", "0"},
+        publications: publications
+      },
+      Logflare.CacheBuster,
+
+      # Sources
       Sources.Buffers,
       Sources.BuffersCache,
       Logs.RejectedLogEvents,
-      # init Counters before Manager as Manager calls Counters through table create
-      supervisor(Sources.Counters, []),
-      supervisor(Sources.RateCounters, []),
-      supervisor(Logflare.PubSubRates, []),
-      supervisor(Logflare.Source.Supervisor, []),
-      supervisor(Logflare.SystemMetricsSup, []),
-      supervisor(LogflareWeb.Endpoint, [])
+      # init Counters before Supervisof as Supervisor calls Counters through table create
+      Sources.Counters,
+      Sources.RateCounters,
+      Logflare.PubSubRates,
+      Logflare.Source.Supervisor,
+
+      # If we get a log event and the Source.Supervisor is not up it will 500
+      LogflareWeb.Endpoint,
+
+      # Monitor system level metrics
+      Logflare.SystemMetricsSup,
+
+      # For Logflare Endpoints
+      Logflare.SQL,
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
 
-    env = Application.get_env(:logflare, :env)
-
-    children =
-      if env == :test do
-        children
-      else
-        dev_prod_children
-      end
+    children = if env in [:test], do: children, else: dev_prod_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

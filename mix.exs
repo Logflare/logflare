@@ -43,7 +43,8 @@ defmodule Logflare.Mixfile do
         :ueberauth_google,
         :ssl,
         :phoenix_html,
-        :phoenix
+        :phoenix,
+        :erlexec
       ]
     ]
   end
@@ -134,7 +135,7 @@ defmodule Logflare.Mixfile do
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.52.0"},
-      {:goth, "~> 1.2.0"},
+      {:goth, "~> 1.3-rc"},
 
       # Ecto
       {:ecto, "~> 3.5", override: true},
@@ -185,7 +186,13 @@ defmodule Logflare.Mixfile do
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
 
       # Charting
-      {:contex, "~> 0.3.0"}
+      {:contex, "~> 0.3.0"},
+
+      # SQL
+      {:erlexec, "~>1.18.11"},
+
+      # Postgres Subscribe
+      {:cainophile, "~> 0.1.0"}
     ]
   end
 

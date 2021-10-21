@@ -7,10 +7,15 @@ config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4000,
     transport_options: [max_connections: 16_384, num_acceptors: 100],
+    # https://blog.percy.io/tuning-nginx-behind-google-cloud-platform-http-s-load-balancer-305982ddb340
+    # https://github.com/ninenines/cowboy/issues/1286#issuecomment-699643478
     protocol_options: [
-      max_keepalive: 1_000_000,
-      idle_timeout: 60_000,
-      inactivity_timeout: 620_000
+      # https://ninenines.eu/docs/en/cowboy/2.8/manual/cowboy_http/
+      request_timeout: 30_000,
+      # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
+      # must be greater than 600s
+      idle_timeout: 650_000,
+      max_keepalive: :infinity
     ]
   ],
   url: [host: "logflare.app", scheme: "https", port: 443],
@@ -37,7 +42,7 @@ config :logflare, Logflare.Repo,
   timeout: 30_000,
   queue_target: 5_000,
   database: "logflare",
-  hostname: "10.11.144.7"
+  hostname: "10.11.144.17"
 
 config :logflare, Logflare.Google,
   # gcloud services enable cloudbuild.googleapis.com container.googleapis.com dataproc.googleapis.com redis.googleapis.com cloudfunctions.googleapis.com run.googleapis.com servicenetworking.googleapis.com sourcerepo.googleapis.com
@@ -108,8 +113,11 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
     {"us-central1-a", "logflare-prod-us-central1-a"},
     {"us-central1-a", "logflare-prod-us-central1-a-preempt"},
     {"us-central1-b", "logflare-prod-us-central1-b"},
+    {"us-central1-b", "logflare-prod-us-central1-b-preempt"},
     {"us-central1-c", "logflare-prod-us-central1-c"},
+    {"us-central1-c", "logflare-prod-us-central1-c-preempt"},
     {"us-central1-f", "logflare-prod-us-central1-f"},
+    {"us-central1-f", "logflare-prod-us-central1-f-preempt"},
     {"europe-west3-a", "logflare-prod-eu-west3-a"},
     {"europe-west3-b", "logflare-prod-eu-west3-b"},
     {"europe-west3-c", "logflare-prod-eu-west3-c"}
@@ -128,6 +136,8 @@ config :logflare, Logflare.Vercel.Client,
   client_id: "oac_yEwf1AmqJMbRs2rkmnePdNK3",
   redirect_uri: "https://logflare.app/install/vercel-v2",
   install_vercel_uri: "https://vercel.com/integrations/logflare/new"
+
+config :erlexec, root: true, user: "root"
 
 import_config "telemetry.exs"
 

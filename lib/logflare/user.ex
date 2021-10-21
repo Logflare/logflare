@@ -77,8 +77,9 @@ defmodule Logflare.User do
     field :billing_enabled, :boolean, default: true
     embeds_one :preferences, UserPreferences
 
-    has_many :billing_counts, Logflare.BillingCounts.BillingCount
+    has_many :billing_counts, Logflare.BillingCounts.BillingCount, on_delete: :delete_all
     has_many :sources, Source
+    has_many :endpoint_queries, Logflare.Endpoint.Query
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team

@@ -15,6 +15,8 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
   alias Logflare.User
+  alias Logflare.Plans
+  alias Logflare.Plans.Plan
   alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
@@ -55,9 +57,7 @@ defmodule Logflare.Google.BigQuery do
 
       {:error, message} ->
         Logger.error(
-          "BigQuery dataset create error: #{dataset_id}: #{
-            GenUtils.get_tesla_error_message(message)
-          }"
+          "BigQuery dataset create error: #{dataset_id}: #{GenUtils.get_tesla_error_message(message)}"
         )
     end
   end
@@ -81,7 +81,7 @@ defmodule Logflare.Google.BigQuery do
 
   @spec create_table(atom, binary, binary, any) ::
           {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
-  def create_table(source, dataset_id, project_id, table_ttl) do
+  def create_table(source, dataset_id, project_id, table_ttl) when is_atom(source) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source)
 
@@ -115,7 +115,7 @@ defmodule Logflare.Google.BigQuery do
         timePartitioning: partitioning,
         clustering: clustering,
         description: "Managed by Logflare",
-        labels: %{"managed_by" => "logflare"}
+        labels: %{"managed_by" => "logflare", "logflare_source" => GenUtils.format_key(source)}
       }
     )
     |> GenUtils.maybe_parse_google_api_result()
@@ -208,7 +208,8 @@ defmodule Logflare.Google.BigQuery do
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do
     conn = GenUtils.get_conn()
 
-    %Logflare.User{email: email, provider: provider} = Users.get_by(id: user_id)
+    %User{email: email, provider: provider} = user = Users.get_by(id: user_id)
+    %Plan{name: plan} = Plans.Cache.get_plan_by_user(user)
 
     reference = %Model.DatasetReference{
       datasetId: dataset_id,
@@ -247,7 +248,11 @@ defmodule Logflare.Google.BigQuery do
       datasetReference: reference,
       access: access,
       description: "Managed by Logflare",
-      labels: %{"managed_by" => "logflare"},
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_account" => GenUtils.format_key(user.id)
+      },
       location: dataset_location
     }
 
@@ -295,22 +300,42 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  def sql_query_with_cache(sql, params \\ [], opts \\ []) when is_binary(sql) do
-    project_id = opts[:project_id] || @project_id
+  def patch_dataset_labels(%User{} = user) do
     conn = GenUtils.get_conn()
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
+    project_id = user.bigquery_project_id || @project_id
 
-    conn
-    |> Api.Jobs.bigquery_jobs_query(
-      project_id,
-      body: %Model.QueryRequest{
-        query: sql,
-        useLegacySql: false,
-        useQueryCache: true,
-        parameterMode: "NAMED",
-        queryParameters: params
+    %Plan{name: plan} =
+      user
+      |> Plans.Cache.get_plan_by_user()
+
+    body = %Model.Dataset{
+      description: "Managed by Logflare",
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_account" => GenUtils.format_key(user.id)
       }
-    )
-    |> GenUtils.maybe_parse_google_api_result()
+    }
+
+    case Api.Datasets.bigquery_datasets_patch(
+           conn,
+           project_id,
+           dataset_id,
+           body: body
+         ) do
+      {:ok, %GoogleApi.BigQuery.V2.Model.Dataset{} = resp} ->
+        Logger.info("Dataset labels patched: #{dataset_id}")
+        {:ok, :patched}
+
+      {:ok, response} ->
+        Logger.info("Dataset labels NOT patched: #{dataset_id}", error_string: inspect(response))
+        {:error, :not_patched}
+
+      {:error, response} ->
+        Logger.warn("Dataset labels NOT patched: #{dataset_id}", error_string: inspect(response))
+        {:error, :not_patched}
+    end
   end
 
   defp patch(_dataset_id, [], _project_id, _user_id), do: :noop
@@ -348,8 +373,18 @@ defmodule Logflare.Google.BigQuery do
 
     access = access_emails ++ access_defaults
 
+    %Plan{name: plan} =
+      Users.Cache.get_by(id: user_id)
+      |> Plans.Cache.get_plan_by_user()
+
     body = %Model.Dataset{
-      access: access
+      access: access,
+      description: "Managed by Logflare",
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_account" => GenUtils.format_key(user_id)
+      }
     }
 
     {:ok, _response} =

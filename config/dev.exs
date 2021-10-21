@@ -34,7 +34,7 @@ config :logflare, LogflareWeb.Endpoint,
   ]
 
 config :logger,
-  level: :debug,
+  level: :info,
   backends: [:console, LogflareLogger.HttpBackend]
 
 config :logger, :console,
@@ -93,7 +93,7 @@ config :logflare, Logflare.Vercel.Client,
   client_id: "oac_mfhbqP7U20BH3IbJYmhsNNj1",
   client_secret: "AyAOgIeI4TmOgnqgUTA9u68z",
   redirect_uri: "http://localhost:4000/install/vercel-v2",
-  install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
+  install_vercel_uri: "https://vercel.com/integrations/logflare-v2-dev/new"
 
 config :goth,
   json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()

@@ -10,9 +10,10 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.SourceSchemas
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   import Ecto.Query, only: [from: 2]
 
@@ -34,10 +35,10 @@ defmodule Logflare.Source.Supervisor do
 
   def handle_continue(:boot, _source_ids) do
     # Starting sources by latest events first
-    # Starting sources only when we've seen an event in the last 7 days
+    # Starting sources only when we've seen an event in the last 24 hours
     # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
 
-    milli = :timer.hours(24) * 7
+    milli = :timer.hours(24)
     from_datetime = DateTime.utc_now() |> DateTime.add(-milli, :millisecond)
 
     query =
@@ -55,11 +56,12 @@ defmodule Logflare.Source.Supervisor do
       rls = %RLS{source_id: source.token, source: source}
       Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
-    |> Enum.chunk_every(50)
+    |> Enum.chunk_every(100)
     |> Enum.each(fn children ->
       # BigQuery Rate limit is 100/second
+      # Also gives the database a break on boot
       # Logger.info("Sleeping for startup Logflare.Source.Supervisor")
-      # Process.sleep(100)
+      Process.sleep(250)
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
@@ -118,9 +120,9 @@ defmodule Logflare.Source.Supervisor do
       _ ->
         send(source_id, {:stop_please, :shutdown})
 
-        Process.sleep(1_000)
-
         reset_persisted_schema(source_id)
+
+        Process.sleep(1_000)
 
         case create_source(source_id) do
           {:ok, _pid} ->
@@ -191,39 +193,25 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp reset_persisted_schema(source_id) do
-    # Everything crashed because this got a nil for the get_source_schema_by
-    # Create a source then reset it before schema has had a chance to save it to PG
-
-    # Put management fns in a manager genserver so bad changes don't accidentally crash all the log servers
-    # Require source schema when creating source
+    # Resets our schema so then it'll get merged with BigQuery's when the next log event comes in for a source
     case Sources.get_by(token: source_id) do
       nil ->
         :noop
 
       source ->
-        case Sources.get_source_schema_by(source_id: source.id) do
+        case SourceSchemas.get_source_schema_by(source_id: source.id) do
           nil ->
             :noop
 
           schema ->
-            Sources.update_source_schema(schema, %{
-              bigquery_schema: SchemaBuilder.initial_table_schema()
+            init_schema = SchemaBuilder.initial_table_schema()
+
+            SourceSchemas.update_source_schema(schema, %{
+              bigquery_schema: init_schema,
+              schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
             })
         end
     end
-  end
-
-  def sync_persisted_schema_with_bq(source_token) when is_atom(source_token) do
-    {:ok, %{schema: schema}} = BigQuery.get_table(source_token)
-    Schema.update(source_token, schema)
-
-    %{schema: schema, type_map: type_map, field_count: field_count} =
-      Schema.get_state(source_token)
-
-    Schema.update_cluster(source_token, schema, type_map, field_count)
-    source = Sources.get(source_token)
-    source_schema = Sources.get_source_schema_by(source_id: source.id)
-    {:ok, _} = Sources.update_source_schema(source_schema, %{bigquery_schema: schema})
   end
 
   def ensure_started(source_id) do

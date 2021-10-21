@@ -2,6 +2,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @moduledoc """
   Generic utils for BigQuery.
   """
+  require Logger
+
   alias Logflare.JSON
   alias Logflare.{Sources, Users}
   alias Logflare.{Source, User}
@@ -60,8 +62,15 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   def get_conn() do
-    {:ok, goth} = Goth.Token.for_scope("https://www.googleapis.com/auth/cloud-platform")
-    Connection.new(goth.token)
+    case Goth.fetch(Logflare.Goth) do
+      {:ok, %Goth.Token{} = goth} ->
+        Connection.new(goth.token)
+
+      {:error, reason} ->
+        Logger.error("Goth error!", error_string: inspect(reason))
+        # This is going to give us an unauthorized connection but we are handling it downstream.
+        Connection.new("")
+    end
   end
 
   @spec get_account_id(atom) :: String.t()
@@ -94,4 +103,16 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   def get_tesla_error_message(:timeout), do: "timeout"
   def get_tesla_error_message(:closed), do: "closed"
   def get_tesla_error_message(message), do: inspect(message)
+
+  def format_key(label) when is_binary(label) do
+    # https://cloud.google.com/resource-manager/docs/creating-managing-labels?_ga=2.5645051.-99470436.1587500458#requirements
+
+    label
+    |> String.downcase()
+    |> String.replace(" ", "_")
+    |> String.slice(0, 62)
+  end
+
+  def format_key(label) when is_integer(label), do: label |> Integer.to_string() |> format_key()
+  def format_key(label) when is_atom(label), do: label |> Atom.to_string() |> format_key()
 end
