@@ -43,59 +43,86 @@
     <p>Your total log event count per day for the last 30 days.</p>
     <%= f = form_for :usage, "#", [phx_change: :usage_picker] %>
     <%= select f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}], class: "btn btn-secondary dropdown-toggle", type: "button", id: "dropdownMenuButton"%>
-    </form>
-    <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
+  </form>
+  <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
+</div>
+<div class="sub-form">
+  <%= section_header("Pricing") %>
+  <%= live_render(@socket, LogflareWeb.MeteredPlansLive, id: :plans) %>
+</div>
+<div class="sub-form">
+  <%= section_header("Graduated Pricing Details") %>
+  <p>Loglare metered plans are graduated. Your first million log events are always free. After which, they get less expensive the more you send.</p>
+  <div class="table-responsive">
+    <table class="table table-dark">
+      <thead>
+        <tr>
+          <th scope="col">Log events</th>
+          <th scope="col">Price per million Metered</th>
+          <th scope="col">Price per million Metered BYOB</th>
+        </tr>
+        <tr>
+          <td>0 - 1,000,000</td>
+          <td>$15.00</td>
+          <td>$10.00</td>
+        </tr>
+        <tr>
+          <td>1,000,001 - 50,000,000</td>
+          <td>$15.00 per million</td>
+          <td>$10.00 per million</td>
+        </tr>
+        <tr>
+          <td>50,000,001 - 100,000,000</td>
+          <td>$10.00 per million</td>
+          <td>$15.00 per million</td>
+        </tr>
+        <tr>
+          <td>100,000,001 - ∞</td>
+          <td>$5.00 per million</td>
+          <td>$2.00 per million</td>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
   </div>
-  <div class="sub-form">
-    <%= section_header("Pricing") %>
-    <%= live_render(@socket, LogflareWeb.PlansLive, id: :plans) %>
-  </div>
-  <div class="sub-form">
-    <%= section_header("Enterprise Metered") %>
-    <p>Upgrade to the Enterprise Metered plan. The Enterprise Metered plan is $100 per month which includes 50,000,000
-      events per month. Above 50 million log events you're charged $2.00 per million events. This plan includes 90 days
-      of retention.</p>
-    <div class="w-25">
-      <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered") %>
-    </div>
-  </div>
-  <div class="sub-form">
-    <%= section_header("Enterprise Metered BYOB") %>
-    <p>Choose the Enterprise Metered BYOB plan if you're are using your own BigQuery credentials for log event storage.
-      This plan also starts at $100 per month but includes 200,000,000 events and you're charged only $0.50 per million
-      after that.</p>
-    <div class="w-25">
-      <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Enterprise Metered BYOB") %>
-    </div>
-  </div>
-  <div class="sub-form">
-    <%= section_header("Payment Method") %>
-    <p>Manage your payment methods.</p>
-    <%= live_component @socket, LogflareWeb.BillingAccountLive.PaymentMethodComponent, id: :payment_method, user: @user %>
-  </div>
-  <div class="sub-form">
-    <%= section_header("Custom Invoice Fields") %>
-    <p>Add custom fields to your invoices. These changes will take effect when your next invoice gets created.</p>
-    <%= live_component @socket, LogflareWeb.BillingAccountLive.CustomFieldComponent, id: :custom_fields, billing_account: @user.billing_account %>
-  </div>
-  <div class="sub-form">
-    <%= section_header("Subscriptions") %>
-    <p>Details of your current Logflare subscription.</p>
-    <div class="table-responsive">
-      <table class="table table-dark">
-        <thead>
-          <tr>
-            <th scope="col">Id</th>
-            <th scope="col">Price per unit</th>
-            <th scope="col">Units</th>
-            <th scope="col">Next invoice</th>
-            <th scope="col">Trial start</th>
-            <th scope="col">Trial end</th>
-            <th scope="col"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= if @user.billing_account.stripe_subscriptions["data"] do %>
+</div>
+<div class="sub-form">
+  <%= section_header("Pricing Update October 2021") %>
+  <p>We're announcing new pricing for October 2021 and beyond. You can keep your current plan but if you change plans we ask that you move to one of our new Metered plans.</p>
+  <p>We have had metered plans for a long time, they've been limited to more enterprise customers.</p>
+  <p>We're moving towards metered plans becuase per source pricing is too confusing. No one knows what a Logflare source is until they've used the product for a while. It's also suprising for people when they try to upgrade from the Free plan after adding many sources.</p>
+  <p>Another large reason we're moving to metered pricing is it lets you use your sources more liberally and take advantage of log routing and alerting. This way you can create alerts for lots of types of log events. Previously you would have been charged for each of those sources and now you're only charged for the log events we ingest.<p>
+  <p>If you have any questions please reach out. If you're sending over 200 million or more log events monthly we have even more discounted pricing available. Please contact us, we'd love to work more closely with you.</p>
+</div>
+<div class="sub-form">
+  <%= section_header("Payment Method") %>
+  <p>Manage your payment methods.</p>
+  <%= live_component @socket, LogflareWeb.BillingAccountLive.PaymentMethodComponent, id: :payment_method, user: @user %>
+</div>
+<div class="sub-form">
+  <%= section_header("Custom Invoice Fields") %>
+  <p>Add custom fields to your invoices. These changes will take effect when your next invoice gets created.</p>
+  <%= live_component @socket, LogflareWeb.BillingAccountLive.CustomFieldComponent, id: :custom_fields, billing_account: @user.billing_account %>
+</div>
+<div class="sub-form">
+  <%= section_header("Subscriptions") %>
+  <p>Details of your current Logflare subscription.</p>
+  <div class="table-responsive">
+    <table class="table table-dark">
+      <thead>
+        <tr>
+          <th scope="col">Id</th>
+          <th scope="col">Price per unit</th>
+          <th scope="col">Units</th>
+          <th scope="col">Next invoice</th>
+          <th scope="col">Trial start</th>
+          <th scope="col">Trial end</th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= if @user.billing_account.stripe_subscriptions["data"] do %>
           <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
           <tr>
             <td>

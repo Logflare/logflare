@@ -16,8 +16,8 @@
         </div>
         -->
         <div id="plans">
-            <h2>Standard Plans</h2>
-            <%= live_render(@conn, LogflareWeb.PlansLive) %>
+
+            <%= live_render(@conn, LogflareWeb.MeteredPlansLive) %>
 
         </div>
     </div>
@@ -119,9 +119,9 @@
                 <p>With this storage setup there is no need to archive log data to object storage where it will never be
                     used again. Log event data is stored at object storage pricing and ready to query immediately.</p>
                 <h1 class="scroll-margin" id="rate-limit">What happens when I'm rate limited?</h1>
-                <p>If you're constantly hitting your rate limits we'll likely contact you about upgrading to a custom
-                    enterprise plan. If you hit your rate limit rarely it's not a big deal. You'll be warned when you
-                    hit your rate limit and log events won't be ingested. </p>
+                <p>The free plan is rate limited at 5 log events per second on average for the last 60 seconds. When you hit
+                    that average we will stop ingesting log events. You will be warned via an email and an alert in the interface.</p>
+                <!--
                 <h1 class="scroll-margin" id="fair-use">What is considered fair use?</h1>
                 <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over
                     the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of
@@ -132,6 +132,7 @@
                 <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of
                     Logflare that is feasible for both parties long term. However, we reserve the right to delete your
                     account without notice.</p>
+                -->
             </div>
         </div>
     </div>
