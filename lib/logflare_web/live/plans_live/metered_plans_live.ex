@@ -104,7 +104,7 @@ defmodule LogflareWeb.MeteredPlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white mb-1">$<span class="price">0</span></h2>
-                <small class="text-muted">per <%= @period %> / per source</small>
+                <small class="text-muted">per <%= @period %></small>
               </div>
               <div class="py-4">
                 <%= link "Continue", to: Routes.auth_path(@socket, :login), class: "btn btn-dark text-white w-75 mr-0" %>
@@ -136,7 +136,9 @@ defmodule LogflareWeb.MeteredPlansLive do
                 <h2 class="text-white">
                   <%= Plans.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
+                <small class="text-muted">starts at</small></br>
                 <small class="text-muted">per million log events</small></br>
+                <small class="text-muted">after one million</small></br>
                 <small class="text-muted">paid <%= @period %>ly</small>
               </div>
               <div class="py-4">
@@ -174,7 +176,9 @@ defmodule LogflareWeb.MeteredPlansLive do
                 <h2 class="text-white">
                   <%= Plans.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
+                <small class="text-muted">starts at</small></br>
                 <small class="text-muted">per million log events</small></br>
+                <small class="text-muted">after one million</small></br>
                 <small class="text-muted">paid <%= @period %>ly</small>
               </div>
               <div class="py-4">
