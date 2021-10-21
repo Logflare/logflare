@@ -11,6 +11,8 @@
               title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span></li>
         <li><%= link to: Routes.vercel_log_drains_path(@conn, :edit) do %>▲</i><span class="hide-on-mobile"> vercel
             integration</span><% end %></li>
+        <li><%= link to: Routes.billing_account_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span
+            class="hide-on-mobile"> billing</span><% end %></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
               class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -19,8 +21,9 @@
 </div>
 
 <div class="container d-flex justify-content-center flex-column mb-4">
-  <p class="text-center mb-0">We have some new pricing. Please read →</p>
-  <small class="text-center">Don't worry, you can keep your current plan forever.</small>
+  <p class="text-center mb-0">🙌 Know Erlang? We're looking for feedback on our
+    <%= link "new Erlang API client", to: "https://github.com/Logflare/logflare_erl", target: "_blank" %>. The Quick Start ⚡ should be a super quick start!</p>
+  <small class="text-center">⏳ Stay tuned for the Erlang Logger Handler and the Lager Backend.</small>
 </div>
 
 <div class="dashboard container mx-auto" hidden>
@@ -119,40 +122,17 @@
     </div>
     <div class="col-lg-3">
       <%= img_tag(Routes.static_path(@conn, "/images/app/chase.png"), width: 100, height: 100, loading: "lazy", class: "float-right rounded-circle", style: "transform: rotate(0.1turn);") %>
-      <p>We have some new pricing!</p>
+      <p>👋 Let's build a dashboard!</p>
+      <p>I'm <%= link "Chase Granberry", to: "https://twitter.com/chasers", target: "_blank" %>, the founder of
+        Logflare.</p>
+      <p>I built Logflare to provide insights at scale over the long-term for your website or app at an affordable
+        price.</p>
+      <p>I'd really like to help you build out a Data Studio dashboard, powered by your Logflare account.</p>
+      <p>Schedule a call or learn more about Logflare by watching
+        <%= link "some of our videos", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>.
+      </p>
 
-      <p>Just wanted to let you know we have some new pricing.
-        Going forward we will be charging everyone based on volume at $10 per million log events ingested.
-        Whatever plan you're on now, you can keep it as long as you like.
-        If you change plans it may be more expensive, but it also may be less.</p>
-
-      <p>We're doing this mostly because pricing based on source count was confusing.
-        When you first sign up you don't really know what a "source" is or how it will relate to your usage.
-        Furthermore, it was really inhibiting people from adding sources.</p>
-
-      <p>A cool feature we have is log routing. If you pay by volume, your source count becomes a non-issue so you can
-        add as many as you like to setup different alerts or organize your Logflare account very dynamically.</p>
-
-      <p>So, now you can add another source for all your Stripe callbacks and not pay for another source.
-        Or add a source for all your Mailgun callbacks so you can easily keep track of every email your app ever sent
-        and use a better search UI than Mailgun's :)
-        I think this is better for everyone and I hope you do too.
-        As always please reach out with any feedback (positive or negative).</p>
-
-      <ul class="list-unstyled">
-        <li>
-          <p><%= link "Change my plan →", to: Routes.billing_account_path(@conn, :edit) <> "#pricing" %>
-        </li>
-        <li>
-          <p><%= link "Schedule a call →", to: "https://savvycal.com/logflare/build", target: "_blank" %></p>
-        </li>
-        <li>
-          <p>
-            <%= link "Watch a video →", to: "https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e", target: "_blank" %>
-          </p>
-        </li>
-      </ul>
-
+      <%= link "Schedule a call", to: "https://savvycal.com/logflare/build", class: "btn btn-primary btn-sm mb-3 mr-3", target: "_blank" %>
 
     </div>
   </div>
