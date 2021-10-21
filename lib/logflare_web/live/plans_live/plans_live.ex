@@ -130,7 +130,7 @@ defmodule LogflareWeb.PlansLive do
             <% else %>
               <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
             <% end %>
-            <small class="text-muted">per month / per source</small></br>
+            <small class="text-muted">per month</small></br>
             <small class="text-muted">paid <%= @period %>ly</small>
           </div>
           <div class="py-4">
@@ -170,7 +170,7 @@ defmodule LogflareWeb.PlansLive do
             <% else %>
               <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
             <% end %>
-            <small class="text-muted">per month / per source</small></br>
+            <small class="text-muted">per month</small></br>
             <small class="text-muted">paid <%= @period %>ly</small>
           </div>
           <div class="py-4">
@@ -210,7 +210,7 @@ defmodule LogflareWeb.PlansLive do
             <% else %>
               <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
             <% end %>
-            <small class="text-muted">per month / per source</small></br>
+            <small class="text-muted">per month</small></br>
             <small class="text-muted">paid <%= @period %>ly</small>
           </div>
           <div class="py-4">
