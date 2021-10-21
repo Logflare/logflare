@@ -113,8 +113,6 @@
       <thead>
         <tr>
           <th scope="col">Id</th>
-          <th scope="col">Price per unit</th>
-          <th scope="col">Units</th>
           <th scope="col">Next invoice</th>
           <th scope="col">Trial start</th>
           <th scope="col">Trial end</th>
@@ -127,12 +125,6 @@
           <tr>
             <td>
               <%= sub["id"]%>
-            </td>
-            <td>
-              <%= Money.to_string(Money.new(sub["plan"]["amount"], String.upcase(sub["plan"]["currency"]) |> String.to_atom())) %>
-            </td>
-            <td>
-              <%= sub["quantity"]%>
             </td>
             <td>
               <%= if sub["current_period_end"] do  %>
