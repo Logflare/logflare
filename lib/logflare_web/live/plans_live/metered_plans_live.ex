@@ -83,7 +83,7 @@ defmodule LogflareWeb.MeteredPlansLive do
           </div>
           <div class="card card-active-hover text-center py-3 mx-2">
             <div class="card-header-min-height p-4 border-0">
-              <h3 class="text-white">Free</h3>
+              <h3 class="text-white">Project</h3>
             </div>
             <div class="card-body p-0">
               <ul class="list-unstyled">
