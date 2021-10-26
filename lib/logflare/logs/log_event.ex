@@ -49,8 +49,17 @@ defmodule Logflare.LogEvent do
     timestamp =
       case params["timestamp"] || params[:timestamp] do
         x when is_binary(x) ->
-          {:ok, udt, _} = DateTime.from_iso8601(x)
-          DateTime.to_unix(udt, :microsecond)
+          case DateTime.from_iso8601(x) do
+            {:ok, udt, _} ->
+              DateTime.to_unix(udt, :microsecond)
+
+            {:error, _} ->
+              Logger.warn(
+                "Malformed timesetamp. Usinge DateTime.utc_now/0. Expected iso8601. Got: #{inspect(x)}"
+              )
+
+              System.system_time(:microsecond)
+          end
 
         # FIXME: validate that integer is in appropriate range (and length?)
         x when is_integer(x) ->
