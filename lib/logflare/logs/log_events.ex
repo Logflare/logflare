@@ -13,7 +13,7 @@ defmodule Logflare.Logs.LogEvents do
   def fetch_event_by_id_and_timestamp(source_token, kw) when is_atom(source_token) do
     id = kw[:id]
     timestamp = kw[:timestamp]
-    source = Sources.Cache.get_by_id_and_preload(source_token)
+    source = Sources.get_by_and_preload(token: source_token)
     bq_table_id = source.bq_table_id
     query = SearchQueries.source_log_event_query(bq_table_id, id, timestamp)
 
@@ -48,7 +48,7 @@ defmodule Logflare.Logs.LogEvents do
   def fetch_event_by_id(source_token, id, opts)
       when is_list(opts) and is_atom(source_token) and is_binary(id) do
     partitions_range = Keyword.get(opts, :partitions_range, [])
-    source = Sources.Cache.get_by_id_and_preload(source_token)
+    source = Sources.get_by_and_preload(token: source_token)
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
@@ -77,7 +77,7 @@ defmodule Logflare.Logs.LogEvents do
   @spec fetch_event_by_path(atom(), binary(), term()) :: {:ok, map() | nil} | {:error, any()}
   def fetch_event_by_path(source_token, path, value)
       when is_atom(source_token) and is_binary(path) do
-    source = Sources.Cache.get_by_id_and_preload(source_token)
+    source = Sources.get_by_and_preload(token: source_token)
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
