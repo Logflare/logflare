@@ -8,9 +8,9 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   alias LogflareWeb.SharedView
 
   @impl true
-  def update(%{log_event: {:error, _}} = assigns, socket) do
+  def update(%{error: _} = assigns, socket) do
     socket =
-      assign(socket, :error, "Error!")
+      assign(socket, :error, "Log event not found!")
       |> assign_defaults(assigns)
 
     {:ok, socket}
