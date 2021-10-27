@@ -119,7 +119,7 @@ defmodule Logflare.Logs.Search do
           SearchQueries.source_table_streaming_buffer(source.bq_table_id)
 
         :timestamp ->
-          SearchQueries.source_table_last_5_minutes(source.bq_table_id)
+          SearchQueries.source_table_last_1_minutes(source.bq_table_id)
       end
       |> order_by(desc: :timestamp)
       |> limit(100)
