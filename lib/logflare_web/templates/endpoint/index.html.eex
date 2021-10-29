@@ -9,8 +9,8 @@
             <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false"
               data-clipboard-text="<%= @user.api_key %>" data-toggle="tooltip" data-html=true data-placement="top"
               title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span></li>
-        <li><%= link to: Routes.vercel_log_drains_path(@conn, :edit) do %>▲</i><span
-            class="hide-on-mobile"> vercel integration</span><% end %></li>
+        <li><%= link to: Routes.vercel_log_drains_path(@conn, :edit) do %>▲</i><span class="hide-on-mobile"> vercel
+            integration</span><% end %></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
               class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -18,6 +18,33 @@
   </div>
 </div>
 
+<%= if !@user.endpoints_beta do %>
+<div class="container mx-auto">
+  <div class="row">
+    <div class="col-lg-3">
+    </div>
+    <div class="col-lg-6 mb-4">
+      <%= section_header("Logflare Endpoints Beta") %>
+      <p>We're in the process of releasing a major feature called Logflare Endpoints.</p>
+      <p>Endpoints lets you write ANSI SQL against your structured logs and create API endpoints from the results.</p>
+      <p>With Endpoints you can operationalize structured timestamped events and integrate your data into an end-user facing
+        application without any other complicated data pipelines or batch processing aggregations.</p>
+      <!--
+      <%= section_header("Demo") %>
+      <iframe width="600" height="400" src="https://www.youtube.com/embed/dMBYI7pTR4Q" title="YouTube video player"
+        frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen></iframe>
+      -->
+
+      <%= section_header("Apply") %>
+      <p>If this sounds intereseting to you just click the button below and we'll get in touch.</p>
+      <%= link "I'm interested!", to: Routes.endpoint_path(@conn, :apply), class: "btn btn-primary", id: "new-source-button" %>
+    </div>
+  </div>
+</div>
+<% end %>
+
+<%= if @user.endpoints_beta do %>
 <div class="dashboard container mx-auto">
   <div class="row justify-content-md-center">
     <div class="col-lg-3">
@@ -48,9 +75,11 @@
               <div class="source-meta-data">
                 <small class="source-details">
                   <% url = Routes.endpoint_url(@conn, :query, endpoint_query.token) %>
-                  <span class="pointer-cursor copy-token logflare-tooltip" data-toggle="tooltip" data-html=true data-placement="top" title="<span id=copy-tooltip>Copy this</span>" id="<%= String.replace(endpoint_query.token, ~r/[0-9]|-/, "") %>"
-                        data-clipboard-text="<%= url %>"><%=  url %></span>
-              </small>
+                  <span class="pointer-cursor copy-token logflare-tooltip" data-toggle="tooltip" data-html=true
+                    data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
+                    id="<%= String.replace(endpoint_query.token, ~r/[0-9]|-/, "") %>"
+                    data-clipboard-text="<%= url %>"><%=  url %></span>
+                </small>
               </div>
             </div>
           </li>
@@ -63,12 +92,16 @@
       <h5 class="header-margin">Create an API</h5>
       <p>Easily create an API from your structured log event data.</p>
       <p>Endpoints allow you to write SQL (yes, straight SQL) to materialize data from your Logflare sources.</p>
-      <p>When you create an endpoint and make a request to it, Logflare will query the underlying table and return the response. Then it will periodically and proactively cache those results so whenever you hit that endpoint the results are near real-time and cached for lighting fast response times.</p>
+      <p>When you create an endpoint and make a request to it, Logflare will query the underlying table and return the
+        response. Then it will periodically and proactively cache those results so whenever you hit that endpoint the
+        results are near real-time and cached for lighting fast response times.</p>
       <p>Endpoints are currently in beta and are limited in some ways.</p>
       <p>What do you think?</p>
     </div>
   </div>
 </div>
+<% end %>
+
 <script>
   document.addEventListener("DOMContentLoaded", async () => {
     await Endpoint.main()

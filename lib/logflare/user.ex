@@ -75,6 +75,7 @@ defmodule Logflare.User do
     field :provider_uid, :string
     field :company, :string
     field :billing_enabled, :boolean, default: true
+    field :endpoints_beta, :boolean, default: false
     embeds_one :preferences, UserPreferences
 
     has_many :billing_counts, Logflare.BillingCounts.BillingCount, on_delete: :delete_all

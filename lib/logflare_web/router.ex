@@ -13,9 +13,9 @@ defmodule LogflareWeb.Router do
   connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
   style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
-  img-src 'self' https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
+  img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
   font-src 'self' https://use.fontawesome.com;\
-  frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com/;\
+  frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com https://www.youtube.com;\
   """
 
   pipeline :browser do
@@ -159,6 +159,7 @@ defmodule LogflareWeb.Router do
     post "/", EndpointController, :create
 
     get "/new", EndpointController, :new
+    get "/apply", EndpointController, :apply
     get "/:id", EndpointController, :show
     get "/:id/edit", EndpointController, :edit
     put "/:id", EndpointController, :update
