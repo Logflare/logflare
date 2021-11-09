@@ -18,7 +18,7 @@
     <p><i class="fas fa-info-circle"></i> If you installed a Logflare integration before May 2021 you will need to
       reinstall it to manage your log drains here. You can safely install the integration again without uninstalling it
       first.</p>
-    <%= button "Install integration", to: Application.get_env(:logflare, Logflare.Vercel.Client)[:install_vercel_uri], class: "btn btn-primary"%>
+    <%= link "Install integration", to: Application.get_env(:logflare, Logflare.Vercel.Client)[:install_vercel_uri], class: "btn btn-primary" %>
   </div>
 
   <%= if @selected_auth.installation_id do %>
