@@ -1,8 +1,8 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.5.20"
-    id("org.beryx.runtime") version "1.12.5"
+    kotlin("jvm") version "1.6.0"
+    id("org.beryx.runtime") version "1.12.7"
 }
 
 application {
