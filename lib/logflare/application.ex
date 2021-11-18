@@ -20,6 +20,7 @@ defmodule Logflare.Application do
     username = Application.get_env(:logflare, Logflare.Repo)[:username]
     password = Application.get_env(:logflare, Logflare.Repo)[:password]
     database = Application.get_env(:logflare, Logflare.Repo)[:database]
+    port = Application.get_env(:logflare, Logflare.Repo)[:port]
     slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
 
@@ -119,6 +120,7 @@ defmodule Logflare.Application do
         register: Logflare.PgPublisher,
         epgsql: %{
           host: hostname,
+          port: port,
           username: username,
           database: database,
           password: password

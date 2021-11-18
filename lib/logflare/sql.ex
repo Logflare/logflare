@@ -21,7 +21,7 @@ defmodule Logflare.SQL do
 
   def handle_continue(:run, state) do
     db_config = Logflare.Repo.config
-    db_url = "jdbc:pgsql://#{db_config[:hostname]}/#{db_config[:database]}"
+    db_url = "jdbc:pgsql://#{db_config[:hostname]}:#{db_config[:port] || 5432}/#{db_config[:database]}"
     :exec.run_link(:code.priv_dir(:logflare) |>
                    to_string() |>
                    Path.join("sql/bin/logflare_sql"),
