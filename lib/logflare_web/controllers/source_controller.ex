@@ -464,6 +464,22 @@ defmodule LogflareWeb.SourceController do
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 
+  def toggle_schema_lock(%{assigns: %{source: source}} = conn, params) do
+    case Sources.update_source(source, %{lock_schema: !source.lock_schema}) do
+      {:ok, source} ->
+        msg = if source.lock_schema, do: "Schema locked!", else: "Schema unlocked!"
+
+        conn
+        |> put_flash(:info, msg)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Something went wrong. Please contact support if this continues!")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
   defp preload_sources_for_dashboard(sources) do
     sources
     |> Enum.map(&Sources.preload_defaults/1)
