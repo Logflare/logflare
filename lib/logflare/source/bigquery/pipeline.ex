@@ -77,6 +77,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   def stream_batch(%RLS{source_id: source_id} = context, messages) do
+    Logger.metadata(source_id: source_id)
+
     rows = le_messages_to_bq_rows(messages)
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
@@ -84,7 +86,18 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # See todo in `process_data` also.
 
     case BigQuery.stream_batch!(context, rows) do
-      {:ok, _response} ->
+      {:ok,
+       %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{
+         insertErrors: nil
+       }} ->
+        messages
+
+      {:ok,
+       %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{
+         insertErrors: errors
+       }} ->
+        Logger.warn("BigQuery insert errors.", error_string: inspect(errors))
+
         messages
 
       {:error, %Tesla.Env{} = response} ->
@@ -107,8 +120,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
           _message ->
             Logger.warn("Stream batch response error!",
-              tesla_response: GenUtils.get_tesla_error_message(response),
-              source_id: source_id
+              tesla_response: GenUtils.get_tesla_error_message(response)
             )
 
             messages
@@ -130,6 +142,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         Logger.warn("Stream batch unknown error!", tesla_response: inspect(response))
         messages
     end
+  end
+
+  defp process_data(%LE{source: %Source{lock_schema: true}} = log_event) do
+    log_event
   end
 
   defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
