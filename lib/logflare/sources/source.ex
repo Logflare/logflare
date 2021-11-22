@@ -158,7 +158,8 @@ defmodule Logflare.Source do
       :custom_event_message_keys,
       :log_events_updated_at,
       :notifications_every,
-      :lock_schema
+      :lock_schema,
+      :validate_schema
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -176,7 +177,8 @@ defmodule Logflare.Source do
       :slack_hook_url,
       :custom_event_message_keys,
       :notifications_every,
-      :lock_schema
+      :lock_schema,
+      :validate_schema
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)

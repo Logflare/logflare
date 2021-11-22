@@ -207,6 +207,12 @@
   </p>
   <%= button "#{if @source.lock_schema, do: "Unlock", else: "Lock"} schema", to: Routes.source_path(@conn, :toggle_schema_lock, @source), class: "btn btn-primary form-button" %>
 
+  <%= section_header("Validate Schema") %>
+  <p>Disable schema validation on ingest. Use this for high volume sources. Typically schema validation should be disabled for sources seeing >1,000 log events per second.
+  </p>
+  <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>
+
+
   <%= section_header("Backend TTL") %>
   <%= if @conn.assigns.user.billing_enabled do %>
   <p>Set how long to keep data in your backend.</p>

@@ -480,6 +480,25 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
+  def toggle_schema_validation(%{assigns: %{source: source}} = conn, params) do
+    case Sources.update_source(source, %{validate_schema: !source.validate_schema}) do
+      {:ok, source} ->
+        msg =
+          if source.validate_schema,
+            do: "Schema validation enabled!",
+            else: "Schema validation disabled!"
+
+        conn
+        |> put_flash(:info, msg)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Something went wrong. Please contact support if this continues!")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
   defp preload_sources_for_dashboard(sources) do
     sources
     |> Enum.map(&Sources.preload_defaults/1)

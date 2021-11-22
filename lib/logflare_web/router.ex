@@ -213,6 +213,7 @@ defmodule LogflareWeb.Router do
     get "/:id/clear", SourceController, :clear_logs
     get "/:id/explore", SourceController, :explore
     post "/:id/toggle-schema-lock", SourceController, :toggle_schema_lock
+    post "/:id/toggle-schema-validation", SourceController, :toggle_schema_validation
   end
 
   scope "/profile", LogflareWeb do
