@@ -119,6 +119,7 @@ defmodule Logflare.Source do
     field :log_events_updated_at, :naive_datetime
     field :notifications_every, :integer, default: :timer.hours(4), nullable: false
     field :lock_schema, :boolean, default: false
+    field :validate_schema, :boolean, default: true
 
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
