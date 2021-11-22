@@ -20,6 +20,7 @@ config :logger, :console, metadata: :all
 config :phoenix, :serve_endpoints, true
 
 config :logflare, Logflare.Repo,
+  port: 5432,
   pool_size: 5,
   ssl: true,
   prepare: :unnamed,
