@@ -201,23 +201,18 @@
   </div>
   <%= submit "Generate path", class: "btn btn-primary form-button" %>
   <% end %>
-  <%= section_header("Rate Limit") %>
-  <p>Rate limits are based on the number of events per second on average for the last 60 seconds. This means if your
-    rate limit is 10 per second you can burst up to 600 requests in a 60 second window if you have not sent any other
-    events in during that window. If you've sent in 100 events in that 60 seconds, then you can burst up to 500 at once.
+
+  <%= section_header("Lock Schema") %>
+  <p>Lock this source schema to keep it from updating automagically. Any new fields encountered during ingest will be ignored.
   </p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
-  <div class="form-group">
-    <%= text_input f, :api_quota, class: "form-control form-control-margin", readonly: true %>
-    <%= error_tag f, :api_quota %>
-    <small class="form-text text-muted">
-      Currently seeing <%= @source.metrics.avg %> events per second on average. Email <a
-        href="mailto:support@logflare.app?Subject=Rate%20Limits" target="_top">support@logflare.app</a> to increase your
-      rate limit.
-    </small>
-  </div>
-  <%= submit "Update rate limit", class: "btn btn-primary form-button", disabled: true %>
-  <% end %>
+  <%= button "#{if @source.lock_schema, do: "Unlock", else: "Lock"} schema", to: Routes.source_path(@conn, :toggle_schema_lock, @source), class: "btn btn-primary form-button" %>
+
+  <%= section_header("Validate Schema") %>
+  <p>Disable schema validation on ingest. Use this for high volume sources. Typically schema validation should be disabled for sources seeing >1,000 log events per second.
+  </p>
+  <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>
+
+
   <%= section_header("Backend TTL") %>
   <%= if @conn.assigns.user.billing_enabled do %>
   <p>Set how long to keep data in your backend.</p>

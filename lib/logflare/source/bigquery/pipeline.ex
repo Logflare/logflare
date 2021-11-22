@@ -132,6 +132,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
+  defp process_data(%LE{source: %Source{lock_schema: true}} = log_event) do
+    log_event
+  end
+
   defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.

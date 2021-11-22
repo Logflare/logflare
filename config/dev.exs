@@ -48,6 +48,7 @@ config :logflare, Logflare.Repo,
   password: "",
   database: "logflare",
   hostname: "localhost",
+  port: 5432,
   pool_size: 10,
   prepare: :unnamed,
   log: false
