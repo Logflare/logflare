@@ -7,6 +7,11 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   import Logflare.Google.BigQuery.SchemaUtils
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
+  def validate(%LE{body: body, source: %Source{lock_schema: true} = source}) do
+    :ok
+  end
+
+  @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: body, source: %Source{} = source}) do
     # Convert to a flat type map
     # We're missing the cache too much here.
