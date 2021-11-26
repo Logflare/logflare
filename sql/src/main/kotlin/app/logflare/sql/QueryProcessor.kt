@@ -1,6 +1,7 @@
 package app.logflare.sql
 
 import gudusoft.gsqlparser.EDbVendor
+import gudusoft.gsqlparser.ETokenType
 import gudusoft.gsqlparser.TGSqlParser
 import gudusoft.gsqlparser.nodes.TParseTreeNode
 import gudusoft.gsqlparser.nodes.TTable
@@ -14,6 +15,7 @@ import java.util.*
  */
 class QueryProcessor(
     private val query: String,
+    private val sandboxedQuery: String? = null,
     private val sourceResolver: SourceResolver,
     private val projectId: String,
     private val tableResolver: TableResolver<Source> = DefaultTableResolver,
@@ -27,15 +29,38 @@ class QueryProcessor(
         parser
     }
 
+    private val sandboxedParser : TGSqlParser? by lazy {
+        var parser: TGSqlParser? = null
+        if (sandboxedQuery != null) {
+            parser = TGSqlParser(dbVendor)
+            parser.sqltext = sandboxedQuery
+        }
+        parser
+    }
+
     private fun parse() {
         if (parser.parse() != 0) {
             throw QueryParseError(parser.sqltext, parser.syntaxErrors)
         }
         if (parser.sqlstatements.size() != 1) {
-            throw SingularQueryRequired()
+            throw SingularQueryRequired(parser.sqltext)
         }
         if (parser.sqlstatements[0] !is TSelectSqlStatement) {
-            throw SelectQueryRequired()
+            throw SelectQueryRequired(parser.sqltext)
+        }
+
+        if (sandboxedParser != null) {
+            val p = sandboxedParser!!
+            if (p.parse() != 0) {
+                throw QueryParseError(p.sqltext, p.syntaxErrors)
+            }
+            if (p.sqlstatements.size() != 1) {
+                throw SingularQueryRequired(p.sqltext)
+            }
+            if (p.sqlstatements[0] !is TSelectSqlStatement) {
+                throw SelectQueryRequired(p.sqltext)
+            }
+
         }
     }
 
@@ -44,9 +69,31 @@ class QueryProcessor(
      */
     fun transformForExecution(): String {
         parse()
-        val statement = parser.sqlstatements[0]
+        val statement = parser.sqlstatements[0] as TSelectSqlStatement
         statement.acceptChildren(TransformerVisitor(projectId, sourceResolver, tableResolver, datasetResolver))
-        return statement.toString()
+        if (sandboxedParser != null) {
+            val p = sandboxedParser!!
+            val sandboxSelect = p.sqlstatements[0] as TSelectSqlStatement
+            sandboxSelect.acceptChildren(SandboxVisitor(statement))
+            val sb = StringBuilder()
+            if (statement.cteList != null) {
+                sb.append("WITH ")
+                sb.append(statement.cteList.toString())
+                if (sandboxSelect.cteList != null) {
+                    sb.append(", ")
+                    sb.append(sandboxSelect.cteList.toString())
+                    sandboxSelect.cteList = null
+                    sandboxSelect.startToken = sandboxSelect.selectToken
+                }
+                sb.append(' ')
+                sb.append(sandboxSelect.toString())
+            } else {
+                sb.append(sandboxSelect.toString())
+            }
+            return sb.toString()
+        } else {
+            return statement.toString()
+        }
     }
 
     fun parameters(): Set<String> {

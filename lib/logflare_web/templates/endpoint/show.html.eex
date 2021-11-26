@@ -20,6 +20,10 @@
       <pre><%= @endpoint_query.query %></pre>
     </code>
 
+    <%= if @endpoint_query.sandboxable do %>
+      This endpoint accepts optional sandboxed query through <code>sql</code> parameter
+    <% end%>
+
     <%= unless Enum.empty?(@parameters) do %>
       <div class="mb-4">
       <%= section_header("Parameters") %>
@@ -51,6 +55,20 @@
     <% end %>
     </pre>
     </code>
+
+    <%= if @endpoint_query.sandboxable do %>
+      <%= section_header("cURL Example for sandboxed queries") %>
+
+      <code>
+      <pre class="pt-2">
+      curl "<%= Routes.endpoint_url(@conn, :query, @endpoint_query.token)%>" \
+           -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
+           -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
+      <% end %> \
+           -d "sql=SQL"
+      </pre>
+      </code>
+    <% end%>
 
 
 </div>

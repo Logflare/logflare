@@ -7,6 +7,7 @@ defmodule Logflare.Endpoint.Query do
     field :name, :string
     field :query, :string
     field :source_mapping, :map
+    field :sandboxable, :boolean
 
     belongs_to :user, Logflare.User
 
@@ -16,7 +17,7 @@ defmodule Logflare.Endpoint.Query do
   @doc false
   def changeset(query, attrs) do
     query
-    |> cast(attrs, [:name, :token, :query])
+    |> cast(attrs, [:name, :token, :query, :sandboxable])
     |> validate_required([:name, :token, :query])
   end
 
@@ -25,7 +26,8 @@ defmodule Logflare.Endpoint.Query do
     |> cast(attrs, [
       :name,
       :token,
-      :query
+      :query,
+      :sandboxable
     ])
     |> default_validations()
     |> update_source_mapping()

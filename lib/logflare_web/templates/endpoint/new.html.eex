@@ -25,6 +25,15 @@
       You can change the query later as well.
     </small>
 
+    <div class="form-control form-control-margin">
+      <%= checkbox f, :sandboxable, autofocus: true %>
+      <label for="query_sandboxable">Allow passing sandboxable queries</label>
+    </div>
+    <small class="form-text text-muted">
+      You can turn this on and off later.
+    </small>
+
+
   </div>
   <%= submit "Add endpoint", class: "btn btn-primary form-button" %>
   <% end %>

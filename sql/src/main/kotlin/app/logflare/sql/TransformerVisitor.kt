@@ -2,24 +2,13 @@ package app.logflare.sql
 
 import gudusoft.gsqlparser.nodes.*
 import gudusoft.gsqlparser.stmt.TSelectSqlStatement
-import java.util.*
 
 internal class TransformerVisitor(
     private val projectId: String,
     private val sourceResolver: SourceResolver,
     private val tableResolver: TableResolver<Source>,
     private val datasetResolver: DatasetResolver<Source>
-) : TableVisitor() {
-
-    override fun postVisit(node: TSelectSqlStatement?) {
-        val hasWildcard = node!!.resultColumnList.any {
-            it.columnNameOnly == "*"
-        }
-        if (hasWildcard) {
-            throw RestrictedWildcardResultColumn()
-        }
-        super.postVisit(node)
-    }
+) : RestrictedPatternVisitor() {
 
     override fun visit(table: TTable?, node: TParseTreeNode) {
         val name = table!!.fullTableName()
@@ -39,18 +28,6 @@ internal class TransformerVisitor(
         if (node is TSelectSqlStatement) {
             node.groupByClause?.havingClause?.acceptChildren(tableRenamer)
         }
-    }
-
-    override fun postVisit(node: TFunctionCall?) {
-        if (node!!.functionName.objectString.equals("external_query", ignoreCase = true) ||
-            node.functionName.objectString.equals("session_user", ignoreCase = true)) {
-            throw RestrictedFunctionCall(node.functionName.objectString)
-        }
-        super.postVisit(node)
-    }
-
-    override fun preVisit(node: TIntoClause?) {
-        throw RestrictedIntoClause(node!!.toString())
     }
 
 }
