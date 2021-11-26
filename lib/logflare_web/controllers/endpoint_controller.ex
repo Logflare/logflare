@@ -27,8 +27,8 @@ defmodule LogflareWeb.EndpointController do
 
     endpoint_query = Logflare.Repo.one(query) |> Logflare.Endpoint.Query.map_query()
 
-    case Logflare.Endpoint.Cache.resolve(endpoint_query)
-         |> Logflare.Endpoint.Cache.query(conn.query_params) do
+    case Logflare.Endpoint.Cache.resolve(endpoint_query, conn.query_params)
+         |> Logflare.Endpoint.Cache.query() do
       {:ok, result} ->
         render(conn, "query.json", result: result.rows)
 
@@ -117,7 +117,7 @@ defmodule LogflareWeb.EndpointController do
       |> Logflare.Repo.one()
       |> Logflare.Repo.preload(:user)
 
-    Logflare.Endpoint.Cache.resolve(endpoint_query) |> Logflare.Endpoint.Cache.invalidate()
+    Logflare.Endpoint.Cache.resolve(endpoint_query, %{}) |> Logflare.Endpoint.Cache.invalidate()
 
     Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, params)
     |> Logflare.Repo.update()

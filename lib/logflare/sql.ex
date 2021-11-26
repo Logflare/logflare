@@ -63,7 +63,7 @@ defmodule Logflare.SQL do
     {:noreply, put_in(state.requests[ref], from)}
   end
 
-def handle_call({:source_mapping, query, user_id, source_mapping}, from, state) do
+  def handle_call({:source_mapping, query, user_id, source_mapping}, from, state) do
     ref = make_ref()
     send(state.pid, {:sourceMapping, self(), ref, query, user_id, source_mapping})
     {:noreply, put_in(state.requests[ref], from)}
