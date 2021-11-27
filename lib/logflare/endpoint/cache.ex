@@ -1,4 +1,15 @@
 defmodule Logflare.Endpoint.Cache do
+
+  # Find all processes for the query
+  def resolve(%Logflare.Endpoint.Query{id: id} = query) do
+    Enum.filter(:global.registered_names(), fn {__MODULE__, ^id, _} ->
+      true
+    _ ->
+      false
+    end) |> Enum.map(&:global.whereis_name/1)
+  end
+
+  # Find or spawn a (query * param) process
   def resolve(%Logflare.Endpoint.Query{id: id} = query, params) do
     :global.set_lock({__MODULE__, {id, params}})
 
