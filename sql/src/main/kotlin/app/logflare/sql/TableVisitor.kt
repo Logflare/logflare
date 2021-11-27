@@ -11,11 +11,7 @@ import java.util.*
 internal abstract class TableVisitor : TParseTreeVisitor() {
     private val cte: MutableList<TCTEList> = mutableListOf()
 
-    private fun isInCTE(name: String): Boolean {
-        return cte.any {
-            it.cteNames?.get(TBaseType.getTextWithoutQuoted(name).uppercase(Locale.getDefault())) != null
-        }
-    }
+    protected fun isInCTE(name: String): Boolean = isInCTE(cte, name)
 
     override fun postVisit(node: TCTE?) {
         node!!.subquery.acceptChildren(this)
@@ -39,7 +35,11 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
                         override fun postVisit(stmt: TObjectName?) {
                             if (stmt!!.dbObjectType == EDbObjectType.column) {
                                 if (stmt.sourceTable?.aliasClause == null) {
-                                    stmt.objectToken.setString("`${stmt.sourceTable!!.fullTableName()}`")
+                                    if (stmt.objectToken == null) {
+                                        stmt.objectToken = TSourceToken()
+                                    } else {
+                                        stmt.objectToken.setString("`${stmt.sourceTable!!.fullTableName()}`")
+                                    }
                                 } else {
                                     if (stmt.objectToken == null) {
                                         stmt.objectToken = TSourceToken()
@@ -66,3 +66,7 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
     abstract fun visit(table: TTable?, node: TParseTreeNode)
 }
 
+fun isInCTE(cte: List<TCTEList>, name: String) =
+    cte.any {
+        it.cteNames?.get(TBaseType.getTextWithoutQuoted(name).uppercase(Locale.getDefault())) != null
+    }

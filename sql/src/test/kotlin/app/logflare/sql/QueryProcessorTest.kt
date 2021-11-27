@@ -32,9 +32,10 @@ internal class QueryProcessorTest {
         return "`${projectId}.${datasetResolver().resolve(source)}.${DefaultTableResolver.resolve(source)}`"
     }
 
-    private fun queryProcessor(query: String, dbVendor: EDbVendor = EDbVendor.dbvbigquery): QueryProcessor {
+    private fun queryProcessor(query: String, sandboxedQuery: String? = null, dbVendor: EDbVendor = EDbVendor.dbvbigquery): QueryProcessor {
         return QueryProcessor(
             query,
+            sandboxedQuery,
             sourceResolver = sourceResolver(),
             projectId = projectId,
             datasetResolver = datasetResolver(),
@@ -137,6 +138,76 @@ internal class QueryProcessorTest {
                         "SELECT a FROM something UNION SELECT a FROM something1"
             ).transformForExecution())
     }
+
+    @Test
+    fun testSandboxedQuery() {
+        assertEquals(
+            "WITH something AS (SELECT a,b,c FROM ${tableName("source")}) SELECT a FROM something",
+            queryProcessor("WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "SELECT a FROM something").transformForExecution()
+        )
+        assertEquals(
+            "WITH something AS (SELECT a,b,c FROM ${tableName("source")}), something1 AS (SELECT a,b,c FROM something where c > 1) SELECT a FROM something1",
+            queryProcessor("WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "WITH something1 AS (SELECT a,b,c FROM something where c > 1) SELECT a FROM something1").transformForExecution()
+        )
+    }
+
+    @Test
+    fun testSandboxedQuerySelectInto() {
+        assertThrows<RestrictedIntoClause> {
+            // Using a different vendor here because BigQuery does not
+            // support SELECT INTO, but if/when logflare grows to support
+            // other syntaxes, one'd wish we wouldn't have forgotten
+            // something like this
+            queryProcessor(
+                "WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                dbVendor = EDbVendor.dbvpostgresql,
+                sandboxedQuery = "SELECT a FROM something INTO something"
+            ).transformForExecution()
+        }
+    }
+
+    @Test
+    fun testSandboxedQueryWithWildcard() {
+        assertThrows<RestrictedWildcardResultColumn> {
+            queryProcessor(
+                "WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "SELECT * FROM something"
+            ).transformForExecution()
+        }
+    }
+
+    @Test
+    fun testSandboxedQueryWithRestrictedSources() {
+        assertThrows<SandboxRestrictionViolated> {
+            queryProcessor(
+                "WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "SELECT a FROM source"
+            ).transformForExecution()
+        }
+        assertThrows<SandboxRestrictionViolated> {
+            queryProcessor(
+                "WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "WITH b AS (SELECT a,b,c FROM source) SELECT a FROM b"
+            ).transformForExecution()
+        }
+    }
+
+    @Test
+    fun testSandboxRestrictedFunctions() {
+        assertThrows<RestrictedFunctionCall> {
+            queryProcessor(
+                "WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "SELECT SESSION_USER()").transformForExecution()
+        }
+        assertThrows<RestrictedFunctionCall> {
+            queryProcessor(
+                "WITH something AS (SELECT a,b,c FROM source) SELECT a,b,c FROM something LIMIT 10",
+                sandboxedQuery = "SELECT EXTERNAL_QUERY('','')").transformForExecution()
+        }
+    }
+
 
 
     @Test
@@ -281,5 +352,42 @@ internal class QueryProcessorTest {
             ).transformForExecution()
         }
     }
+
+    @Test
+    fun testImplicitColumnExpansionCase1() {
+        assertDoesNotThrow {
+            queryProcessor("""
+                with 
+                arr as (
+                  SELECT generate_array(1,2) as d
+                ),
+                dates as (
+                  select d from arr, unnest(arr.d) as d
+                ),
+                logs as (
+                  select 
+                    timestamp,
+                    f2.url as url
+                  FROM
+                    a
+                    LEFT JOIN UNNEST(metadata) AS f1 ON TRUE
+                    LEFT JOIN UNNEST(f1.request) AS f2 ON TRUE
+                  WHERE
+                    timestamp >= timestamp_sub(current_timestamp(), interval 7 day) 
+                )
+                
+                SELECT
+                  dates.d as d,
+                FROM
+                  dates left join logs on timestamp_trunc(logs.timestamp,hour) = dates.d
+                GROUP BY
+                  d
+                ORDER BY
+                  d DESC
+            """.trimIndent()).transformForExecution()
+        }
+    }
+
+
 
 }
