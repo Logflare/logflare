@@ -117,7 +117,7 @@ defmodule LogflareWeb.EndpointController do
       |> Logflare.Repo.one()
       |> Logflare.Repo.preload(:user)
 
-    Logflare.Endpoint.Cache.resolve(endpoint_query, %{}) |> Logflare.Endpoint.Cache.invalidate()
+    for q <- Logflare.Endpoint.Cache.resolve(endpoint_query), do: Logflare.Endpoint.Cache.invalidate(q)
 
     Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, params)
     |> Logflare.Repo.update()
