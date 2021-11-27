@@ -353,4 +353,41 @@ internal class QueryProcessorTest {
         }
     }
 
+    @Test
+    fun testImplicitColumnExpansionCase1() {
+        assertDoesNotThrow {
+            queryProcessor("""
+                with 
+                arr as (
+                  SELECT generate_array(1,2) as d
+                ),
+                dates as (
+                  select d from arr, unnest(arr.d) as d
+                ),
+                logs as (
+                  select 
+                    timestamp,
+                    f2.url as url
+                  FROM
+                    a
+                    LEFT JOIN UNNEST(metadata) AS f1 ON TRUE
+                    LEFT JOIN UNNEST(f1.request) AS f2 ON TRUE
+                  WHERE
+                    timestamp >= timestamp_sub(current_timestamp(), interval 7 day) 
+                )
+                
+                SELECT
+                  dates.d as d,
+                FROM
+                  dates left join logs on timestamp_trunc(logs.timestamp,hour) = dates.d
+                GROUP BY
+                  d
+                ORDER BY
+                  d DESC
+            """.trimIndent()).transformForExecution()
+        }
+    }
+
+
+
 }

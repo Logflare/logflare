@@ -35,7 +35,11 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
                         override fun postVisit(stmt: TObjectName?) {
                             if (stmt!!.dbObjectType == EDbObjectType.column) {
                                 if (stmt.sourceTable?.aliasClause == null) {
-                                    stmt.objectToken.setString("`${stmt.sourceTable!!.fullTableName()}`")
+                                    if (stmt.objectToken == null) {
+                                        stmt.objectToken = TSourceToken()
+                                    } else {
+                                        stmt.objectToken.setString("`${stmt.sourceTable!!.fullTableName()}`")
+                                    }
                                 } else {
                                     if (stmt.objectToken == null) {
                                         stmt.objectToken = TSourceToken()
