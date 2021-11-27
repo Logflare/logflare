@@ -65,7 +65,7 @@
            -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
            -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
       <% end %> \
-           -d "sql=SQL"
+           -G -d "sql=SQL"
       </pre>
       </code>
     <% end%>
