@@ -6,7 +6,8 @@ config :logflare, LogflareWeb.Endpoint,
   http: [
     port: System.get_env("PORT") || 4000,
     transport_options: [max_connections: 16_384, num_acceptors: 100],
-    protocol_options: [max_keepalive: 1_000]
+    protocol_options: [max_keepalive: 1_000],
+    compress: true
   ],
   # url: [host: "dev.chasegranberry.net", scheme: "https", port: 443],
   debug_errors: true,

@@ -1,12 +1,14 @@
 defmodule Logflare.Endpoint.Cache do
-
   # Find all processes for the query
   def resolve(%Logflare.Endpoint.Query{id: id} = query) do
-    Enum.filter(:global.registered_names(), fn {__MODULE__, ^id, _} ->
-      true
-    _ ->
-      false
-    end) |> Enum.map(&:global.whereis_name/1)
+    Enum.filter(:global.registered_names(), fn
+      {__MODULE__, ^id, _} ->
+        true
+
+      _ ->
+        false
+    end)
+    |> Enum.map(&:global.whereis_name/1)
   end
 
   # Find or spawn a (query * param) process
@@ -32,15 +34,17 @@ defmodule Logflare.Endpoint.Cache do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @max_results 10_000
   # seconds until cache is invalidated
-  @ttl_secs 60 * 30
+  @ttl_secs 60 * 60
   # minutes until the Cache process is terminated
-  @inactivity_minutes 60
+  @inactivity_minutes 90
   @env Application.get_env(:logflare, :env)
 
   import Ecto.Query, only: [from: 2]
 
   def start_link({query, params}) do
-    GenServer.start_link(__MODULE__, {query, params}, name: {:global, {__MODULE__, query.id, params}})
+    GenServer.start_link(__MODULE__, {query, params},
+      name: {:global, {__MODULE__, query.id, params}}
+    )
   end
 
   defstruct query: nil, params: %{}, last_query_at: nil, last_update_at: nil, cached_result: nil
@@ -69,14 +73,8 @@ defmodule Logflare.Endpoint.Cache do
     if DateTime.diff(now, state.last_query_at || now, :second) >= @inactivity_minutes * 60 do
       {:stop, :normal, state}
     else
-      {:ok, parameters} = Logflare.SQL.parameters(state.query.query)
-
-      if Enum.empty?(parameters) do
-        {:reply, _, state, timeout} = do_query(state)
-        {:noreply, state, timeout}
-      else
-        {:noreply, state}
-      end
+      {:reply, _, state, timeout} = do_query(state)
+      {:noreply, state, timeout}
     end
   end
 
@@ -99,11 +97,13 @@ defmodule Logflare.Endpoint.Cache do
 
     case Logflare.SQL.parameters(state.query.query) do
       {:ok, parameters} ->
-        query = if state.query.sandboxable && Map.get(params, "sql") do
-          {state.query.query, Map.get(params, "sql")}
-        else
-          state.query.query
-        end
+        query =
+          if state.query.sandboxable && Map.get(params, "sql") do
+            {state.query.query, Map.get(params, "sql")}
+          else
+            state.query.query
+          end
+
         case Logflare.SQL.transform(query, state.query.user_id) do
           {:ok, query} ->
             params =
@@ -128,9 +128,9 @@ defmodule Logflare.Endpoint.Cache do
                    maxResults: @max_results
                  ) do
               {:ok, result} ->
-                  # Cache the result (no parameters)
-                  state = %{state | cached_result: result}
-                  {:reply, {:ok, result}, state, timeout_until_fetching(state)}
+                # Cache the result (no parameters)
+                state = %{state | cached_result: result}
+                {:reply, {:ok, result}, state, timeout_until_fetching(state)}
 
               {:error, err} ->
                 error = Jason.decode!(err.body)["error"] |> process_error(state.query.user_id)
