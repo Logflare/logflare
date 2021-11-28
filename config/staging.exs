@@ -3,7 +3,11 @@ use Mix.Config
 config :logflare, env: :staging
 
 config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4_000, transport_options: [max_connections: 16_384, num_acceptors: 10]],
+  http: [
+    port: 4_000,
+    transport_options: [max_connections: 16_384, num_acceptors: 10],
+    compress: true
+  ],
   url: [host: "logflarestaging.com", scheme: "https", port: 443],
   cache_static_manifest: "priv/static/cache_manifest.json",
   check_origin: false,

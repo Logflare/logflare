@@ -16,7 +16,8 @@ config :logflare, LogflareWeb.Endpoint,
       # must be greater than 600s
       idle_timeout: 650_000,
       max_keepalive: :infinity
-    ]
+    ],
+    compress: true
   ],
   url: [host: "logflare.app", scheme: "https", port: 443],
   cache_static_manifest: "priv/static/cache_manifest.json",
