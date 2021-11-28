@@ -34,9 +34,9 @@ defmodule Logflare.Endpoint.Cache do
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @max_results 10_000
   # seconds until cache is invalidated
-  @ttl_secs 60 * 30
+  @ttl_secs 60 * 60
   # minutes until the Cache process is terminated
-  @inactivity_minutes 60
+  @inactivity_minutes 90
   @env Application.get_env(:logflare, :env)
 
   import Ecto.Query, only: [from: 2]
@@ -83,7 +83,6 @@ defmodule Logflare.Endpoint.Cache do
   end
 
   defp do_query(state) do
-    IO.inspect(state)
     # Ensure latest version of the query is used
     state = %{
       state
