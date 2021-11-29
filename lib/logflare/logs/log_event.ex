@@ -210,14 +210,24 @@ defmodule Logflare.LogEvent do
       :"74c7911a-4671-46b7-9c7f-440a18bc6bad" ->
         key = Kernel.get_in(params, ["metadata", "project"])
 
+        if is_nil(key),
+          do: Logger.warn("Clustering key not found for Postgres.", error_string: inspect(params))
+
         params |> Map.put("project", key)
 
       # prod Cloudflare
       :"7b5df630-a551-4c79-ae17-042650b37a3e" ->
         host = Kernel.get_in(params, ["metadata", "request", "host"])
-        project = String.split(host, ".") |> Enum.at(0)
 
-        params |> Map.put("project", project)
+        unless is_nil(host) do
+          project = String.split(host, ".") |> Enum.at(0)
+
+          params |> Map.put("project", project)
+        else
+          Logger.warn("Clustering key not found for Cloudflare.", error_string: inspect(params))
+
+          params
+        end
 
       _ ->
         params
