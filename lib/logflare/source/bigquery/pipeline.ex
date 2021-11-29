@@ -56,23 +56,22 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def le_to_bq_row(%LE{body: body, id: id}) do
     {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
 
-    json = %{
-      "timestamp" => bq_timestamp,
-      "event_message" => body.message,
-      "id" => id
-    }
-
-    json =
+    metadata =
       if map_size(body.metadata) > 0 do
-        metadata = EventUtils.prepare_for_ingest(body.metadata)
-        Map.put(json, "metadata", metadata)
+        EventUtils.prepare_for_ingest(body.metadata)
       else
-        json
+        body.metadata
       end
+
+    body =
+      Map.from_struct(body)
+      |> Map.put(:timestamp, bq_timestamp)
+      |> Map.put(:event_message, body.message)
+      |> Map.put(:metadata, metadata)
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,
-      json: json
+      json: body
     }
   end
 

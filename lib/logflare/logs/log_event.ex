@@ -18,10 +18,14 @@ defmodule Logflare.LogEvent do
 
     @primary_key false
     typed_embedded_schema do
+      field :id, Ecto.UUID.Atom
       field :metadata, :map, default: %{}
       field :message, :string
       field :timestamp, :integer
-      field :created_at, :utc_datetime_usec
+      # dev hack
+      field :level, :string
+      # prod hack
+      field :project, :string
     end
   end
 
@@ -41,13 +45,14 @@ defmodule Logflare.LogEvent do
     field :make_from, :string
   end
 
-  def mapper(params, _source) do
+  def mapper(params, source) do
     message =
       params["log_entry"] || params["message"] ||
         params["event_message"] ||
         params[:event_message]
 
     metadata = params["metadata"] || params[:metadata]
+
     id = id(params)
 
     timestamp =
@@ -80,12 +85,17 @@ defmodule Logflare.LogEvent do
           System.system_time(:microsecond)
       end
 
-    %{
-      "body" => %{
+    body =
+      %{
         "message" => message,
         "metadata" => metadata,
-        "timestamp" => timestamp
-      },
+        "timestamp" => timestamp,
+        "id" => id
+      }
+      |> put_clustering_keys(source)
+
+    %{
+      "body" => body,
       "id" => id,
       "ephemeral" => params[:ephemeral],
       "make_from" => params[:make_from]
@@ -139,7 +149,7 @@ defmodule Logflare.LogEvent do
       |> Map.put(:valid, changeset.valid?)
       |> Map.put(:params, params)
       |> Map.put(:ingested_at, NaiveDateTime.utc_now())
-      |> Map.put(:id, Ecto.UUID.generate())
+      |> Map.put(:id, body.id)
       |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
 
     Logflare.LogEvent
@@ -150,9 +160,11 @@ defmodule Logflare.LogEvent do
   def make_body(_struct, params) do
     %__MODULE__.Body{}
     |> cast(params, [
+      :id,
       :metadata,
       :message,
-      :timestamp
+      :timestamp,
+      :level
     ])
     |> validate_required([:message, :timestamp])
     |> validate_length(:message, min: 1)
@@ -184,6 +196,32 @@ defmodule Logflare.LogEvent do
       joined_errors = inspect(v)
       "#{acc}#{k}: #{joined_errors}\n"
     end)
+  end
+
+  def put_clustering_keys(params, source) do
+    case source.token do
+      # dev
+      :"83e59828-b6ee-408c-92a8-c17bc523e6e0" ->
+        key = Kernel.get_in(params, ["metadata", "level"])
+
+        params |> Map.put("level", key)
+
+      # prod Postgres logs
+      :"74c7911a-4671-46b7-9c7f-440a18bc6bad" ->
+        key = Kernel.get_in(params, ["metadata", "project"])
+
+        params |> Map.put("project", key)
+
+      # prod Cloudflare
+      :"7b5df630-a551-4c79-ae17-042650b37a3e" ->
+        host = Kernel.get_in(params, ["metadata", "request", "host"])
+        project = String.split(host, ".") |> Enum.at(0)
+
+        params |> Map.put("project", project)
+
+      _ ->
+        params
+    end
   end
 
   def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
@@ -234,6 +272,6 @@ defmodule Logflare.LogEvent do
   end
 
   defp id(params) do
-    params["id"] || params[:id]
+    params["id"] || params[:id] || Ecto.UUID.generate()
   end
 end
