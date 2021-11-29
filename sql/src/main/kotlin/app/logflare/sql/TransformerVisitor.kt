@@ -1,5 +1,6 @@
 package app.logflare.sql
 
+import gudusoft.gsqlparser.TBaseType
 import gudusoft.gsqlparser.nodes.*
 import gudusoft.gsqlparser.stmt.TSelectSqlStatement
 
@@ -17,7 +18,7 @@ internal class TransformerVisitor(
         table.tableName.setString(newName)
         val tableRenamer = object : TParseTreeVisitor() {
             override fun postVisit(node: TObjectName?) {
-                if (node?.objectToken != null && node.tableString == name) {
+                if (node?.objectToken != null && TBaseType.getTextWithoutQuoted(node.tableString) == name) {
                     node.objectToken.setString(newName)
                 }
             }

@@ -51,6 +51,36 @@ internal class QueryProcessorTest {
     }
 
     @Test
+    fun testTableNameSubstitutionBackquoted() {
+        assertEquals(
+            "SELECT a,b,c FROM ${tableName("source")} WHERE ${tableName("source")}.d > 4",
+            queryProcessor("SELECT a,b,c FROM `source` WHERE `source`.d > 4").transformForExecution())
+    }
+
+    @Test
+    fun testTableNameSubstitutionBackquotedMatchingCTEName() {
+        assertEquals(
+            """
+                WITH src as (
+                  SELECT
+                  name
+                  FROM ${tableName("first.src")}
+                )
+                SELECT value FROM src
+                """.trimIndent(),
+            queryProcessor(
+                """
+                WITH src as (
+                  SELECT
+                  name
+                  FROM `first.src`
+                )
+                SELECT value FROM src
+                """.trimIndent()
+               ).transformForExecution())
+    }
+
+    @Test
     fun testTableNameSubstitutionSelectClause() {
         assertEquals(
             "SELECT ${tableName("source")}.a,b,c FROM ${tableName("source")}",
