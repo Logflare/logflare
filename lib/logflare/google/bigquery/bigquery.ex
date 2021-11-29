@@ -101,7 +101,7 @@ defmodule Logflare.Google.BigQuery do
     }
 
     clustering = %Model.Clustering{
-      fields: ["timestamp"]
+      fields: ["timestamp", "id"]
     }
 
     conn
@@ -115,7 +115,10 @@ defmodule Logflare.Google.BigQuery do
         timePartitioning: partitioning,
         clustering: clustering,
         description: "Managed by Logflare",
-        labels: %{"managed_by" => "logflare", "logflare_source" => GenUtils.format_key(source)}
+        labels: %{
+          "managed_by" => "logflare",
+          "logflare_source" => GenUtils.format_key(source)
+        }
       }
     )
     |> GenUtils.maybe_parse_google_api_result()
