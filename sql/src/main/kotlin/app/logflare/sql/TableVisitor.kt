@@ -27,7 +27,7 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
 
     override fun postVisit(node: TSelectSqlStatement?) {
         node!!.tables.forEach { table ->
-            val name = table.tableName.tableString
+            val name = table.fullTableName()
             // if table is not coming from CTE
             if (!isInCTE(name)) {
                 if (table.tableType == ETableSource.unnest) {
