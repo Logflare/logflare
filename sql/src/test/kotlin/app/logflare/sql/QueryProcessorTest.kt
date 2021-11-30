@@ -314,6 +314,11 @@ internal class QueryProcessorTest {
     }
 
     @Test
+    fun testParameterExtractionInCTE() {
+        assertEquals(queryProcessor("with q as (SELECT a, @a FROM b WHERE char_length(@c) > 4) select 1").parameters(), setOf("c", "a"))
+    }
+
+    @Test
     fun testSourceExtraction() {
         assertEquals(queryProcessor("SELECT a, b FROM a,b,c").sources(),
             setOf(sourceResolver().resolve("a"),
