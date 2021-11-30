@@ -34,6 +34,7 @@ defmodule Logflare.LogEvent do
     embeds_one :body, Body
     embeds_one :source, Source
     field :valid, :boolean
+    field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
     field :validation_error, {:array, :string}
     field :ingested_at, :utc_datetime_usec

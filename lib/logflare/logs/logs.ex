@@ -11,6 +11,7 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
   alias Logflare.Source.Supervisor
+  alias Logflare.Rule
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
@@ -21,6 +22,7 @@ defmodule Logflare.Logs do
       |> IngestTransformers.transform(:to_bigquery_column_spec)
       |> Map.put(:make_from, "ingest")
       |> LE.make(%{source: source})
+      |> maybe_mark_le_dropped_by_lql()
       |> maybe_ingest_and_broadcast()
     end)
     |> Enum.reduce([], fn le, acc ->
@@ -55,16 +57,40 @@ defmodule Logflare.Logs do
     end
   end
 
+  def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_string: drop_lql_string}} = le)
+      when is_nil(drop_lql_string) do
+    le
+  end
+
+  def maybe_mark_le_dropped_by_lql(
+        %LE{body: body, source: %{drop_lql_string: drop_lql_string, drop_lql_filters: filters}} =
+          le
+      )
+      when is_binary(drop_lql_string) do
+    cond do
+      length(filters) >= 1 && SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) ->
+        Map.put(le, :drop, true)
+
+      true ->
+        le
+    end
+  end
+
   defp maybe_ingest_and_broadcast(%LE{} = le) do
-    if le.valid do
-      le
-      |> tap(&SourceRouting.route_to_sinks_and_ingest/1)
-      |> LE.apply_custom_event_message()
-      |> tap(&ingest/1)
-      |> tap(&broadcast/1)
-    else
-      le
-      |> tap(&RejectedLogEvents.ingest/1)
+    cond do
+      le.drop ->
+        le
+
+      le.valid ->
+        le
+        |> tap(&SourceRouting.route_to_sinks_and_ingest/1)
+        |> LE.apply_custom_event_message()
+        |> tap(&ingest/1)
+        |> tap(&broadcast/1)
+
+      true ->
+        le
+        |> tap(&RejectedLogEvents.ingest/1)
     end
   end
 end

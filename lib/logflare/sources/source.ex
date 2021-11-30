@@ -120,6 +120,8 @@ defmodule Logflare.Source do
     field :notifications_every, :integer, default: :timer.hours(4), nullable: false
     field :lock_schema, :boolean, default: false
     field :validate_schema, :boolean, default: true
+    field :drop_lql_filters, Ecto.Term, default: []
+    field :drop_lql_string, :string
 
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
@@ -159,7 +161,9 @@ defmodule Logflare.Source do
       :log_events_updated_at,
       :notifications_every,
       :lock_schema,
-      :validate_schema
+      :validate_schema,
+      :drop_lql_filters,
+      :drop_lql_string
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -178,7 +182,9 @@ defmodule Logflare.Source do
       :custom_event_message_keys,
       :notifications_every,
       :lock_schema,
-      :validate_schema
+      :validate_schema,
+      :drop_lql_filters,
+      :drop_lql_string
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)

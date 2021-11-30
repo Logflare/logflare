@@ -2,8 +2,11 @@ defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
   plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
 
+  require Logger
+
   alias Logflare.JSON
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans}
+  alias Logflare.Lql
+  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans, SourceSchemas}
   alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
@@ -11,6 +14,7 @@ defmodule LogflareWeb.SourceController do
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+  @lql_dialect :routing
 
   def api_index(%{assigns: %{user: user}} = conn, _params) do
     sources = preload_sources_for_dashboard(user.sources)
@@ -317,6 +321,46 @@ defmodule LogflareWeb.SourceController do
         conn
         |> put_flash(:error, "Delete failed! Contact support if this continues.")
         |> redirect(to: Routes.source_path(conn, :edit, source_id))
+    end
+  end
+
+  def update(
+        %{assigns: %{source: source, user: _user, plan: plan}} = conn,
+        %{"source" => %{"drop_lql_string" => lqlstring} = params}
+      ) do
+    with source_schema <- SourceSchemas.get_source_schema_by(source_id: source.id),
+         schema <- Map.get(source_schema, :bigquery_schema),
+         {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
+         {:warnings, nil} <-
+           {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)},
+         params <- Map.put(params, "drop_lql_filters", lql_rules),
+         {:ok, _changeset} <- Sources.update_source_by_user(source, params) do
+      conn
+      |> put_flash(:info, "Source updated!")
+      |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    else
+      {:error, changeset} ->
+        conn
+        |> put_status(406)
+        |> put_flash(:error, "Something went wrong!")
+        |> render(
+          "edit.html",
+          changeset: changeset,
+          source: source,
+          notifications_opts: notifications_options()
+        )
+
+      {:error, :field_not_found, _suggested_querystring, error} ->
+        conn
+        |> put_flash(:error, error)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      e ->
+        Logger.error("Error updating dropped LQL.", error_string: inspect(e))
+
+        conn
+        |> put_flash(:error, "Something else went wrong. Contact support if this continues.")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
   end
 
