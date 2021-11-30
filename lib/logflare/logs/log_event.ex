@@ -164,7 +164,8 @@ defmodule Logflare.LogEvent do
       :metadata,
       :message,
       :timestamp,
-      :level
+      :level,
+      :project
     ])
     |> validate_required([:message, :timestamp])
     |> validate_length(:message, min: 1)
