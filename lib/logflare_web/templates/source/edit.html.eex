@@ -182,6 +182,7 @@
       Key values will be concatenated with a pipe ( | ).
     </small>
   </div>
+
   <%= submit "Update keys", class: "btn btn-primary form-button" %>
   <% end %>
   <%= section_header("Public Access") %>
@@ -212,6 +213,18 @@
   </p>
   <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>
 
+   <%= section_header("Drop Log Events") %>
+  <p>Use an LQL statement to drop log events on ingest.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn drop -> %>
+  <div class="form-group">
+    <%= text_input drop, :drop_lql_string, placeholder: "", class: "form-control form-control-margin" %>
+    <%= error_tag drop, :drop_lql_string %>
+    <small class="form-text text-muted">
+      Currently in beta.
+    </small>
+  </div>
+  <%= submit "Update LQL", class: "btn btn-primary form-button" %>
+  <% end %>
 
   <%= section_header("Backend TTL") %>
   <%= if @conn.assigns.user.billing_enabled do %>
