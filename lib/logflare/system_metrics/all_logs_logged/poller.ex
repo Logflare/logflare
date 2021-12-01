@@ -8,7 +8,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
   alias Logflare.SystemMetrics.AllLogsLogged
 
-  @poll_per_second 1_000
+  @poll_per_second 10_000
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -33,8 +33,6 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   end
 
   def init(_state) do
-    poll_per_second()
-
     {:ok, metrics} = AllLogsLogged.all_metrics(:total_logs_logged)
 
     state = %{
@@ -45,6 +43,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     }
 
     Logflare.Tracker.track(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
+
+    poll_per_second()
 
     {:ok, state}
   end
@@ -65,8 +65,10 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
     Logflare.Tracker.update(Logflare.Tracker, self(), __MODULE__, Node.self(), state)
 
-    poll_per_second()
     log_stuff(logs_last_second)
+
+    poll_per_second()
+
     {:noreply, state}
   end
 
@@ -78,7 +80,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
   defp log_stuff(logs_last_second) do
     if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("All logs logged!", all_logs_logged: total_logs_logged_cluster())
+      # Logger.info("All logs logged!", all_logs_logged: total_logs_logged_cluster())
       Logger.info("Logs last second!", logs_per_second: logs_last_second)
     end
   end

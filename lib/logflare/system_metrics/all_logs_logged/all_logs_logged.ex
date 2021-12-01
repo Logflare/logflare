@@ -10,15 +10,13 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   @total_logs :total_logs_logged
   @table :system_counter
-  @persist_every 500
+  @persist_every 5_000
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
   def init(state) do
-    persist()
-
     case Repo.get_by(SystemMetric, node: node_name()) do
       nil ->
         create(@total_logs, 0)
@@ -26,6 +24,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
       total_logs ->
         create(@total_logs, total_logs.all_logs_logged)
     end
+
+    persist()
 
     {:ok, state}
   end
