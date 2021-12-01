@@ -314,6 +314,12 @@ internal class QueryProcessorTest {
     }
 
     @Test
+    fun testParameterExtractionNestedInCall() {
+        assertEquals(queryProcessor("SELECT a, @a FROM b WHERE d > timestamp_add(@c, interval 7 day)").parameters(), setOf("c", "a"))
+        assertEquals(queryProcessor("SELECT a, @a FROM b WHERE d > timestamp_sub(@c, interval 7 day)").parameters(), setOf("c", "a"))
+    }
+
+    @Test
     fun testParameterExtractionInCTE() {
         assertEquals(queryProcessor("with q as (SELECT a, @a FROM b WHERE char_length(@c) > 4) select 1").parameters(), setOf("c", "a"))
     }

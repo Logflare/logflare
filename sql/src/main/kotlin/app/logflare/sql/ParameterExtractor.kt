@@ -1,8 +1,6 @@
 package app.logflare.sql
 
-import gudusoft.gsqlparser.nodes.TCTE
-import gudusoft.gsqlparser.nodes.TObjectName
-import gudusoft.gsqlparser.nodes.TParseTreeVisitor
+import gudusoft.gsqlparser.nodes.*
 
 class ParameterExtractor : TParseTreeVisitor() {
 
@@ -17,6 +15,12 @@ class ParameterExtractor : TParseTreeVisitor() {
 
     override fun postVisit(node: TCTE?) {
         node!!.subquery.acceptChildren(this)
+        super.postVisit(node)
+    }
+
+    override fun postVisit(node: TFunctionCall?) {
+        // GSP doesn't iterate over `args` which seem to contain parameters in our case
+        node!!.args.acceptChildren(this)
         super.postVisit(node)
     }
 
