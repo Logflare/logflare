@@ -33,8 +33,6 @@ defmodule Logflare.Endpoint.Cache do
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @max_results 10_000
-  # seconds until cache is invalidated
-  @ttl_secs 60 * 60
   # minutes until the Cache process is terminated
   @inactivity_minutes 90
   @env Application.get_env(:logflare, :env)
@@ -50,7 +48,7 @@ defmodule Logflare.Endpoint.Cache do
   defstruct query: nil, params: %{}, last_query_at: nil, last_update_at: nil, cached_result: nil
 
   def init({query, params}) do
-    {:ok, %__MODULE__{query: query, params: params}}
+    {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint() }
   end
 
   def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
@@ -58,9 +56,13 @@ defmodule Logflare.Endpoint.Cache do
     do_query(state)
   end
 
-  def handle_call(:query, _from, %__MODULE__{} = state) do
+  def handle_call(:query, _from, %__MODULE__{last_update_at: last_update_at} = state) do
     state = %{state | last_query_at: DateTime.utc_now()}
-    {:reply, {:ok, state.cached_result}, state, timeout_until_fetching(state)}
+    if DateTime.diff(DateTime.utc_now(), last_update_at, :second) > state.query.cache_duration_seconds do
+      do_query(state)
+    else
+      {:reply, {:ok, state.cached_result}, state, timeout_until_fetching(state)}
+    end
   end
 
   def handle_call(:invalidate, _from, state) do
@@ -73,18 +75,23 @@ defmodule Logflare.Endpoint.Cache do
     if DateTime.diff(now, state.last_query_at || now, :second) >= @inactivity_minutes * 60 do
       {:stop, :normal, state}
     else
-      {:reply, _, state, timeout} = do_query(state)
-      {:noreply, state, timeout}
+      if state.query.proactive_requerying_seconds > 0 &&
+         state.query.proactive_requerying_seconds - DateTime.diff(DateTime.utc_now(), state.last_update_at, :second) >= 0 do
+        {:reply, _, state, timeout} = do_query(state)
+        {:noreply, state, timeout}
+      else
+        {:noreply, state, timeout_until_fetching(state)}
+      end
     end
   end
 
   defp timeout_until_fetching(state) do
-    max(0, @ttl_secs - DateTime.diff(DateTime.utc_now(), state.last_update_at, :second)) * 1000
+    min(@inactivity_minutes * 60,
+        max(0, state.query.proactive_requerying_seconds - DateTime.diff(DateTime.utc_now(), state.last_update_at, :second))) * 1000
   end
 
-  defp do_query(state) do
-    # Ensure latest version of the query is used
-    state = %{
+  defp fetch_latest_query_endpoint(state) do
+    %{
       state
       | query:
           Logflare.Repo.reload(state.query)
@@ -92,7 +99,11 @@ defmodule Logflare.Endpoint.Cache do
           |> Logflare.Endpoint.Query.map_query(),
         last_update_at: DateTime.utc_now()
     }
+  end
 
+  defp do_query(state) do
+    # Ensure latest version of the query is used
+    state = fetch_latest_query_endpoint(state)
     params = state.params
 
     case Logflare.SQL.parameters(state.query.query) do

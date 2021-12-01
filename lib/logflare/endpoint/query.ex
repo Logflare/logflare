@@ -8,6 +8,8 @@ defmodule Logflare.Endpoint.Query do
     field :query, :string
     field :source_mapping, :map
     field :sandboxable, :boolean
+    field :cache_duration_seconds, :integer
+    field :proactive_requerying_seconds, :integer
 
     belongs_to :user, Logflare.User
 
@@ -17,7 +19,7 @@ defmodule Logflare.Endpoint.Query do
   @doc false
   def changeset(query, attrs) do
     query
-    |> cast(attrs, [:name, :token, :query, :sandboxable])
+    |> cast(attrs, [:name, :token, :query, :sandboxable, :cache_duration_seconds, :proactive_requerying_seconds])
     |> validate_required([:name, :token, :query])
   end
 
@@ -27,7 +29,8 @@ defmodule Logflare.Endpoint.Query do
       :name,
       :token,
       :query,
-      :sandboxable
+      :sandboxable,
+      :cache_duration_seconds, :proactive_requerying_seconds
     ])
     |> default_validations()
     |> update_source_mapping()
