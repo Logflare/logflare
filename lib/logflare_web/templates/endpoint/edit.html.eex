@@ -29,5 +29,23 @@
     <%= submit "Reset", class: "btn btn-primary form-button" %>
     <% end %>
 
+    <%= section_header("Cache settings") %>
+    <div class="form-group">
+      <%= form_for @changeset, Routes.endpoint_path(@conn, :update, @endpoint_query), fn a -> %>
+      <%= text_input a, :cache_duration_seconds, placeholder: "Caching interval", class: "form-control form-control-margin" %>
+      <%= error_tag a, :query %>
+      <small class="form-text text-muted">
+      Cache TTL, in seconds. Zero disables caching.
+      </small>
+
+      <%= text_input a, :proactive_requerying_seconds, placeholder: "Cache warming interval", class: "form-control form-control-margin" %>
+      <%= error_tag a, :query %>
+      <small class="form-text text-muted">
+      Cache proactive warming interval, in seconds. Automatically updates the results of the Endpoint at this interval.
+    </small>
+    </div>
+    <%= submit "Update cache settings", class: "btn btn-primary form-button" %>
+    <% end %>
+
   </div>
 </div>

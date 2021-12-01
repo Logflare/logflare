@@ -203,12 +203,12 @@
   <%= submit "Generate path", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <%= section_header("Lock Schema") %>
-  <p>Lock this source schema to keep it from updating automagically. Any new fields encountered during ingest will be ignored.
+  <%= section_header("Schema Lock") %>
+  <p>Lock this source schema to keep it from updating automatically. Any new fields encountered during ingest will be ignored.
   </p>
   <%= button "#{if @source.lock_schema, do: "Unlock", else: "Lock"} schema", to: Routes.source_path(@conn, :toggle_schema_lock, @source), class: "btn btn-primary form-button" %>
 
-  <%= section_header("Validate Schema") %>
+  <%= section_header("Schema Validation") %>
   <p>Disable schema validation on ingest. Use this for high volume sources. Typically schema validation should be disabled for sources seeing >1,000 log events per second.
   </p>
   <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>

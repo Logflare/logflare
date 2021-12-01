@@ -12,7 +12,7 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
   end
 
   def mount(_params, _session, socket) do
-    if connected?(socket), do: :timer.send_interval(250, self(), :tick)
+    if connected?(socket), do: :timer.send_interval(5_000, self(), :tick)
 
     {:ok, put_data(socket)}
   end

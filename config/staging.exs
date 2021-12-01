@@ -16,7 +16,7 @@ config :logflare, LogflareWeb.Endpoint,
   version: Application.spec(:logflare, :vsn)
 
 config :logger,
-  level: :info,
+  level: :debug,
   backends: [:console]
 
 config :logger, :console, metadata: :all

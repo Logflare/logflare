@@ -8,6 +8,8 @@ defmodule Logflare.Endpoint.Query do
     field :query, :string
     field :source_mapping, :map
     field :sandboxable, :boolean
+    field :cache_duration_seconds, :integer, default: 3_600
+    field :proactive_requerying_seconds, :integer, default: 1_800
 
     belongs_to :user, Logflare.User
 
@@ -17,7 +19,14 @@ defmodule Logflare.Endpoint.Query do
   @doc false
   def changeset(query, attrs) do
     query
-    |> cast(attrs, [:name, :token, :query, :sandboxable])
+    |> cast(attrs, [
+      :name,
+      :token,
+      :query,
+      :sandboxable,
+      :cache_duration_seconds,
+      :proactive_requerying_seconds
+    ])
     |> validate_required([:name, :token, :query])
   end
 
@@ -27,7 +36,9 @@ defmodule Logflare.Endpoint.Query do
       :name,
       :token,
       :query,
-      :sandboxable
+      :sandboxable,
+      :cache_duration_seconds,
+      :proactive_requerying_seconds
     ])
     |> default_validations()
     |> update_source_mapping()
@@ -57,12 +68,14 @@ defmodule Logflare.Endpoint.Query do
     if Enum.empty?(changeset.errors) do
       # Only update source mapping if there are no errors
       query = get_field(changeset, :query)
+
       if query do
         case Logflare.SQL.sources(query, get_field(changeset, :user)) do
           {:ok, source_mapping} ->
             put_change(changeset, :source_mapping, source_mapping)
+
           {:error, error} ->
-             add_error(changeset, :query, error)
+            add_error(changeset, :query, error)
         end
       else
         changeset
@@ -76,6 +89,7 @@ defmodule Logflare.Endpoint.Query do
     case Logflare.SQL.source_mapping(query, user_id, source_mapping) do
       {:ok, query} ->
         Map.put(q, :query, query)
+
       {:error, _} ->
         q
     end
