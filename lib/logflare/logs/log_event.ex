@@ -18,7 +18,7 @@ defmodule Logflare.LogEvent do
 
     @primary_key false
     typed_embedded_schema do
-      field :id, Ecto.UUID.Atom
+      field :id, :string
       field :metadata, :map, default: %{}
       field :message, :string
       field :timestamp, :integer
