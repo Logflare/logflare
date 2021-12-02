@@ -20,7 +20,7 @@ class ParameterExtractor : TParseTreeVisitor() {
 
     override fun postVisit(node: TFunctionCall?) {
         // GSP doesn't iterate over `args` which seem to contain parameters in our case
-        node!!.args.acceptChildren(this)
+        node!!.args?.acceptChildren(this)
         super.postVisit(node)
     }
 
