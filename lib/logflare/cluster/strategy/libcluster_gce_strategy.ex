@@ -6,7 +6,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
   alias __MODULE__, as: GCE
   alias Cluster.Strategy.State
 
-  @default_polling_interval 10_000
+  @default_polling_interval 120_000
   @default_release_name :node
   @regions Application.get_env(:logflare, __MODULE__)[:regions]
   @zones Application.get_env(:logflare, __MODULE__)[:zones]
