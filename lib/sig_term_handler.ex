@@ -16,7 +16,8 @@ defmodule Logflare.SigtermHandler do
   def handle_info(:proceed_with_sigterm, state) do
     Logger.warn("#{__MODULE__}: shutdown grace period reached, stopping the app...")
 
-    :rpc.eval_everywhere(Node.list(), :erlang, :disconnect_node, [Node.self()])
+    # Not sure something is causing the cluster to have issues when an instance gets shutdown
+    # :rpc.eval_everywhere(Node.list(), :erlang, :disconnect_node, [Node.self()])
     :init.stop()
     {:ok, state}
   end
