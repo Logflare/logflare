@@ -226,7 +226,7 @@ defmodule Logflare.Source.Supervisor do
 
         # Without this sleep we get errors on the logs search page sometimes when the search server isn't started yet. Definitely a better way to do this.
 
-        Process.sleep(500)
+        # Process.sleep(500)
 
         {:ok, :started}
 
