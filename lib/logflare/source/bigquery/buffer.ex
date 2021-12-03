@@ -47,6 +47,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
     GenServer.call(name(source_id), :pop, 60_000)
   end
 
+  def pop_many(source_id, count) do
+    GenServer.call(name(source_id), {:pop, count}, 60_000)
+  end
+
   @spec ack(atom(), String.t()) :: {:ok, LE.t()}
   def ack(source_id, log_event_id) do
     # Don't need to run these through the genserver anymore
@@ -81,6 +85,36 @@ defmodule Logflare.Source.BigQuery.Buffer do
     Sources.Buffers.put_buffer_len(state.source_id, len)
 
     {:noreply, %{state | len: len, buffer: new_buffer}}
+  end
+
+  def handle_call({:pop, count}, _from, %{len: len} = state) do
+    cond do
+      len == 0 ->
+        Sources.Buffers.put_buffer_len(state.source_id, 0)
+        {:reply, [], state}
+
+      len > count ->
+        {log_events, new_buffer} = :queue.split(count, state.buffer)
+
+        log_events = :queue.to_list(log_events)
+
+        for le <- log_events do
+          Sources.BuffersCache.put_read_receipt(le)
+        end
+
+        len = state.len - count
+
+        Sources.Buffers.put_buffer_len(state.source_id, len)
+
+        {:reply, log_events, %{state | len: len, buffer: new_buffer}}
+
+      len <= count ->
+        log_events = :queue.to_list(state.buffer)
+
+        Sources.Buffers.put_buffer_len(state.source_id, 0)
+
+        {:reply, log_events, %{state | len: 0, buffer: :queue.new()}}
+    end
   end
 
   def handle_call(:pop, _from, state) do
