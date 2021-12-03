@@ -53,15 +53,14 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   @spec ack(atom(), String.t()) :: {:ok, LE.t()}
   def ack(source_id, log_event_id) do
-    # Don't need to run these through the genserver anymore
     case Sources.BuffersCache.take_read_receipt(log_event_id) do
       {:ok, nil} ->
         # Seeing a lot of these need to figure it out
         #
-        # Logger.warn("Log event not found when acknowledged.",
-        #   source_id: state.source_id,
-        #   log_event_id: log_event_id
-        # )
+        Logger.warn("Log event not found when acknowledged.",
+          source_id: source_id,
+          log_event_id: log_event_id
+        )
 
         {:error, :not_found}
 
@@ -110,6 +109,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
       len <= count ->
         log_events = :queue.to_list(state.buffer)
+
+        for le <- log_events do
+          Sources.BuffersCache.put_read_receipt(le)
+        end
 
         Sources.Buffers.put_buffer_len(state.source_id, 0)
 
