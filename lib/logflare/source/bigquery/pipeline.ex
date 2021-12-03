@@ -16,8 +16,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
 
-  def start_link(%RLS{source: source, plan: plan} = rls) do
-    procs = calc_procs(source, plan)
+  def start_link(%RLS{source: source, plan: _plan} = rls) do
+    #    procs = calc_procs(source, plan)
 
     Broadway.start_link(__MODULE__,
       name: name(source.token),
@@ -26,10 +26,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         hibernate_after: 30_000
       ],
       processors: [
-        default: [concurrency: procs]
+        default: [concurrency: 1]
       ],
       batchers: [
-        bq: [concurrency: procs, batch_size: 100, batch_timeout: 1000]
+        bq: [concurrency: 1, batch_size: 100, batch_timeout: 1000]
       ],
       context: rls
     )

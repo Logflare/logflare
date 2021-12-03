@@ -6,6 +6,14 @@ config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4_000,
     transport_options: [max_connections: 16_384, num_acceptors: 10],
+    protocol_options: [
+      # https://ninenines.eu/docs/en/cowboy/2.8/manual/cowboy_http/
+      request_timeout: 30_000,
+      # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
+      # must be greater than 600s
+      idle_timeout: 650_000,
+      max_keepalive: :infinity
+    ],
     compress: true
   ],
   url: [host: "logflarestaging.com", scheme: "https", port: 443],

@@ -70,20 +70,16 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     reason
   end
 
-  defp receive_messages_from_buffer(%{source_id: source_id}, _total_demand) do
-    source_id
-    |> Buffer.pop()
-    |> case do
-      :empty ->
-        []
+  defp receive_messages_from_buffer(%{source_id: source_id}, total_demand) do
+    events =
+      source_id
+      |> Buffer.pop_many(total_demand)
 
-      %LE{} = log_event ->
-        [
-          %Broadway.Message{
-            data: log_event,
-            acknowledger: {__MODULE__, source_id, "no idea what this does"}
-          }
-        ]
+    for e <- events do
+      %Broadway.Message{
+        data: e,
+        acknowledger: {__MODULE__, source_id, "no idea what this does"}
+      }
     end
   end
 
