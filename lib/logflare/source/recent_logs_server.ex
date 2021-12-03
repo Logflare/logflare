@@ -190,6 +190,11 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, %{state | recent: log_events, latest_log_event: le}}
   end
 
+  def handle_info({:push, _source_id, %LE{} = le}, state) do
+    log_events = LQueue.push(state.recent, le)
+    {:noreply, %{state | recent: log_events, latest_log_event: le}}
+  end
+
   def handle_info({:stop_please, reason}, state) do
     {:stop, reason, state}
   end
@@ -280,13 +285,9 @@ defmodule Logflare.Source.RecentLogsServer do
         }
       )
 
-    Task.start(fn ->
-      Process.sleep(1_000)
+    Process.send_after(self(), {:push, source_id, log_event}, 1_000)
 
-      push(source_id, log_event)
-
-      Source.ChannelTopics.broadcast_new(log_event)
-    end)
+    Source.ChannelTopics.broadcast_new(log_event)
   end
 
   defp touch() do

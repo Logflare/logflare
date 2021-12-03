@@ -221,13 +221,6 @@ defmodule Logflare.Source.Supervisor do
 
         start_source(source_id)
 
-        # Probably eventually don't want to do this. Could slow down an ingest N * rule count if those rules are no started.
-        # Obv slow down source in question on ingest if not started.
-
-        # Without this sleep we get errors on the logs search page sometimes when the search server isn't started yet. Definitely a better way to do this.
-
-        # Process.sleep(500)
-
         {:ok, :started}
 
       _else ->
