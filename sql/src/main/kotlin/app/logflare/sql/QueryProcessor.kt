@@ -122,4 +122,12 @@ class QueryProcessor(
         statement.acceptChildren(SourceMappingVisitor(mapping, sourceResolver))
         return statement.toString()
     }
+
+    fun cteSchema(): Map<String, Map<String, String>> {
+        parse()
+        val statement = parser.sqlstatements[0]
+        val cteSchemaExtractor = CTESchemaExtractor()
+        statement.cteList.acceptChildren(cteSchemaExtractor)
+        return cteSchemaExtractor.schema
+    }
 }

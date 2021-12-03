@@ -429,6 +429,25 @@ internal class QueryProcessorTest {
         }
     }
 
+    @Test
+    fun testCTESchema() {
+        assertEquals(
+            mapOf("tab1" to mapOf("a" to "any", "a1" to "int"), "tab2" to mapOf("b" to "any")),
+            queryProcessor("""
+                WITH tab1 AS (
+                SELECT a,
+                       a + 1,
+                       CAST(a AS INTEGER) AS a1
+                       FROM src
+                   ),
+                   tab2 AS (
+                       SELECT b from src1
+                   )
+                   SELECT 1;
+                """.trimIndent()).cteSchema()
+        )
+    }
+
 
 
 }

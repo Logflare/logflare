@@ -75,6 +75,12 @@ defmodule Logflare.SQL do
     {:noreply, put_in(state.requests[ref], from)}
   end
 
+  def handle_call({:cte_schema, query}, from, state) do
+    ref = make_ref()
+    send(state.pid, {:cteSchema, self(), ref, query})
+    {:noreply, put_in(state.requests[ref], from)}
+  end
+
   def handle_call({:sources, query, user_id}, from, state) do
     ref = make_ref()
     send(state.pid, {:sources, self(), ref, query, user_id})
@@ -136,6 +142,13 @@ defmodule Logflare.SQL do
   """
   def parameters(query, timeout \\ 60_000) do
     GenServer.call(__MODULE__, {:parameters, query}, timeout)
+  end
+
+  @doc """
+  Gets CTE schema from the query
+  """
+  def cte_schema(query, timeout \\ 60_000) do
+    GenServer.call(__MODULE__, {:cte_schema, query}, timeout)
   end
 
   @doc """

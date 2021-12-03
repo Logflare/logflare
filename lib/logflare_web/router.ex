@@ -150,6 +150,7 @@ defmodule LogflareWeb.Router do
   scope "/endpoints/query", LogflareWeb do
     pipe_through [:api]
     get "/:token", EndpointController, :query
+    get "/:token/sandbox_schema", EndpointController, :sandbox_schema
   end
 
   scope "/endpoints", LogflareWeb do

@@ -10,4 +10,12 @@ defmodule LogflareWeb.EndpointView do
         %{error: error}
     end
 
+    def render("sandbox_schema.json", %{schema: data}) do
+        %{schema: data}
+    end
+
+    def render("sandbox_schema.json", %{error: error}) do
+        %{error: error}
+    end
+
   end

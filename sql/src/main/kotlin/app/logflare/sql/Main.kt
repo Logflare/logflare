@@ -1,7 +1,6 @@
 package app.logflare.sql
 
 import com.ericsson.otp.erlang.*
-import com.google.api.gax.rpc.InvalidArgumentException
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.slf4j.LoggerFactory
@@ -238,6 +237,42 @@ object Main {
                         reportError(mailbox, sender, ref, e)
                     }
                 }
+            } else if (isCteSchema(tag, msg)) {
+                val sender = msg.elementAt(1)
+                val ref = msg.elementAt(2)
+                val query = msg.elementAt(3)
+                if (sender is OtpErlangPid) {
+                    val sourceResolver = DatabaseSourceResolver(dataSource = ds, userId = 0)
+                    try {
+                        val schema = QueryProcessor(
+                            sourceResolver = sourceResolver, datasetResolver = datasetResolver,
+                            projectId = projectId,
+                            query = extractQuery(query), sandboxedQuery = extractSanboxedQuery(query)
+                        ).cteSchema()
+                        val schemaMap = OtpErlangMap()
+                        schema.forEach { (tab, map) ->
+                            val tabMap = OtpErlangMap()
+                            map.forEach { (k, v) ->
+                                tabMap.put(
+                                    OtpErlangBinary(k.toByteArray()),
+                                    OtpErlangBinary(v.toByteArray())
+                                )
+                            }
+                            schemaMap.put(OtpErlangBinary(tab.toByteArray()), tabMap)
+                        }
+                        mailbox.send(
+                            sender, OtpErlangTuple(
+                                listOf<OtpErlangObject>(
+                                    OtpErlangAtom("ok"),
+                                    ref,
+                                    schemaMap
+                                ).toTypedArray()
+                            )
+                        )
+                    } catch (e: Throwable) {
+                        reportError(mailbox, sender, ref, e)
+                    }
+                }
             }
         }
     }
@@ -283,5 +318,11 @@ object Main {
         msg: OtpErlangTuple
     ) = tag is OtpErlangAtom && tag.atomValue().equals("transform") &&
             msg.elements().size == 5
+
+    private fun isCteSchema(
+        tag: OtpErlangObject?,
+        msg: OtpErlangTuple
+    ) = tag is OtpErlangAtom && tag.atomValue().equals("cteSchema") &&
+            msg.elements().size == 4
 
 }

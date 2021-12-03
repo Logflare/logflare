@@ -37,6 +37,22 @@ defmodule LogflareWeb.EndpointController do
     end
   end
 
+  def sandbox_schema(%{params: %{"token" => token}} = conn, _) do
+    query =
+      from q in Logflare.Endpoint.Query,
+        where: q.token == ^token
+
+    endpoint_query = Logflare.Repo.one(query) |> Logflare.Endpoint.Query.map_query()
+
+    case Logflare.SQL.cte_schema(endpoint_query.query) do
+      {:ok, result} ->
+        render(conn, "sandbox_schema.json", schema: result)
+
+      {:error, err} ->
+        render(conn, "sandbox_schema.json", error: err)
+    end
+  end
+
   def index(%{assigns: %{user: user}} = conn, _) do
     render(conn, "index.html",
       endpoint_queries: Logflare.Repo.preload(user, :endpoint_queries).endpoint_queries,
