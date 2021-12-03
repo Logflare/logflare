@@ -6,7 +6,12 @@ config :logflare, env: :prod
 config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4000,
-    transport_options: [max_connections: 16_384, num_acceptors: 100],
+    transport_options: [
+      max_connections: 64_000,
+      num_acceptors: 100,
+      # for so_reuseport
+      socket_opts: [{:raw, 1, 15, <<1::32-native>>}]
+    ],
     # https://blog.percy.io/tuning-nginx-behind-google-cloud-platform-http-s-load-balancer-305982ddb340
     # https://github.com/ninenines/cowboy/issues/1286#issuecomment-699643478
     protocol_options: [
