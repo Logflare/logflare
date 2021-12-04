@@ -57,10 +57,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
       {:ok, nil} ->
         # Seeing a lot of these need to figure it out
         #
-        Logger.warn("Log event not found when acknowledged.",
-          source_id: source_id,
-          log_event_id: log_event_id
-        )
+        # Logger.warn("Log event not found when acknowledged.",
+        #  source_id: source_id,
+        #  log_event_id: log_event_id
+        # )
 
         {:error, :not_found}
 
