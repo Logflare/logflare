@@ -5,7 +5,11 @@ config :logflare, env: :staging
 config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4_000,
-    transport_options: [max_connections: 16_384, num_acceptors: 10],
+    transport_options: [
+      max_connections: 16_384,
+      num_acceptors: 10,
+      socket_opts: [{:raw, 1, 15, <<1::32-native>>}]
+    ],
     protocol_options: [
       # https://ninenines.eu/docs/en/cowboy/2.8/manual/cowboy_http/
       request_timeout: 30_000,
