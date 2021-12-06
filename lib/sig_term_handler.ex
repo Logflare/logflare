@@ -18,7 +18,7 @@ defmodule Logflare.SigtermHandler do
 
     # Not sure something is causing the cluster to have issues when an instance gets shutdown
     # :rpc.eval_everywhere(Node.list(), :erlang, :disconnect_node, [Node.self()])
-    :init.stop()
+    System.stop()
     {:ok, state}
   end
 
