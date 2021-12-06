@@ -1,3 +1,6 @@
+#! /bin/bash
+# /logflare/_build/staging/rel/logflare/bin/logflare eval "Logflare.Tasks.ReleaseTasks.setup()" && \
+
 trap "echo TRAPed signal" HUP INT QUIT TERM
 
 export GOOGLE_APPLICATION_CREDENTIALS=/logflare/gcloud.json
