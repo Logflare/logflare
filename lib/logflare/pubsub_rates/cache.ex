@@ -132,7 +132,7 @@ defmodule Logflare.PubSubRates.Cache do
       }
     }
 
-    {:cluster, rates} =
+    {_, rates} =
       Enum.reduce(nodes_rates, acc, fn {_, x}, {_, acc} ->
         ar = x.average_rate + acc.average_rate
         lr = x.last_rate + acc.last_rate
