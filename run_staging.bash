@@ -1,5 +1,5 @@
-#! /bin/bash
-# /logflare/_build/staging/rel/logflare/bin/logflare eval "Logflare.Tasks.ReleaseTasks.setup()" && \
+trap "echo TRAPed signal" HUP INT QUIT TERM
+
 export GOOGLE_APPLICATION_CREDENTIALS=/logflare/gcloud.json
 
 set -ex
@@ -11,4 +11,12 @@ export MY_POD_IP=$(curl \
     -H "Metadata-Flavor: Google")
 
 mix ecto.migrate && \
-exec /logflare/_build/staging/rel/logflare/bin/logflare start
+/logflare/_build/staging/rel/logflare/bin/logflare start
+
+echo "[hit enter key to exit] or run 'docker stop <container>'"
+read
+
+echo "stopping logflare"
+/logflare/_build/staging/rel/logflare/bin/logflare stop
+
+echo "exited $0"
