@@ -62,20 +62,6 @@ defmodule Logflare.Application do
       Logs.LogEvents.Cache,
       Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
-      {
-        Tracker,
-        [
-          [
-            name: Tracker,
-            pubsub_server: Logflare.PubSub,
-            broadcast_period: 1_000,
-            down_period: 5_000,
-            permdown_period: 30_000,
-            pool_size: tracker_pool_size,
-            log_level: false
-          ]
-        ]
-      },
       Logflare.Repo,
       {Goth, name: Logflare.Goth, source: source},
       LogflareWeb.Endpoint,
