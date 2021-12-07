@@ -26,4 +26,6 @@ WORKDIR /logflare
 # erlexec requires SHELL to be set
 ENV SHELL /bin/bash
 
+ENTRYPOINT ["tini", "--"]
+
 CMD [ "/logflare/run_prod.bash" ]

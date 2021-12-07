@@ -10,5 +10,8 @@ export MY_POD_IP=$(curl \
     -s "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip" \
     -H "Metadata-Flavor: Google")
 
-mix ecto.migrate && \
-exec /logflare/_build/staging/rel/logflare/bin/logflare start
+mix ecto.migrate
+
+sleep 10
+
+/logflare/_build/staging/rel/logflare/bin/logflare start
