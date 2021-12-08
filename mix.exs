@@ -44,7 +44,9 @@ defmodule Logflare.Mixfile do
         :ssl,
         :phoenix_html,
         :phoenix,
-        :erlexec
+        :erlexec,
+        :sasl,
+        :os_mon
       ]
     ]
   end

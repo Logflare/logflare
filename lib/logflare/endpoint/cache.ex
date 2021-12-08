@@ -11,6 +11,14 @@ defmodule Logflare.Endpoint.Cache do
     |> Enum.map(&:global.whereis_name/1)
   end
 
+  @high_watermark 0.9
+  @forced_eviction_after_inactivity_minutes 5
+
+  defp child_params(query, params) do
+    %{id: {query, params}, start: {__MODULE__, :start_link, [{query, params}]},
+      restart: :transient}
+  end
+
   # Find or spawn a (query * param) process
   def resolve(%Logflare.Endpoint.Query{id: id} = query, params) do
     :global.set_lock({__MODULE__, {id, params}})
@@ -18,9 +26,37 @@ defmodule Logflare.Endpoint.Cache do
     result =
       case :global.whereis_name({__MODULE__, id, params}) do
         :undefined ->
-          {:ok, pid} = DynamicSupervisor.start_child(__MODULE__, {__MODULE__, {query, params}})
-          pid
-
+          mem = :memsup.get_system_memory_data()
+          # If memory is under pressure
+          if mem[:free_memory] / mem[:total_memory] < @high_watermark do
+            # Dispatch locally
+            {:ok, pid} = DynamicSupervisor.start_child(__MODULE__, child_params(query, params))
+            pid
+          else
+            # Otherwise, start reclaiming memory
+            spawn(fn ->
+              Phoenix.PubSub.broadcast(Logflare.PubSub, "endpoint", {:forced_eviction, node()})
+              :erlang.garbage_collect()
+            end)
+            # and try finding a node with most available memory
+            node = Node.list()
+            |> Enum.map(fn node ->
+              mem = :rpc.call(node, :memsup, :get_system_memory_data, [])
+              mem[:free_memory] / mem[:total_memory]
+            end)
+            |> Enum.sort()
+            # And beflow the watermark
+            |> Enum.filter(fn p -> p < @high_watermark end)
+            |> Enum.at(0)
+            if node do
+               # If it exists, use it
+              {:ok, pid} = :rpc.call(node, DynamicSupervisor, :start_child, [__MODULE__, child_params(query, params)])
+              pid
+            else
+              # Otherwise, bail
+              nil
+            end
+          end
         pid ->
           pid
       end
@@ -48,6 +84,7 @@ defmodule Logflare.Endpoint.Cache do
   defstruct query: nil, params: %{}, last_query_at: nil, last_update_at: nil, cached_result: nil
 
   def init({query, params}) do
+    Phoenix.PubSub.subscribe(Logflare.PubSub, "endpoint")
     {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint() }
   end
 
@@ -83,6 +120,21 @@ defmodule Logflare.Endpoint.Cache do
         {:noreply, state, timeout_until_fetching(state)}
       end
     end
+  end
+
+  def handle_info({:forced_eviction, n}, %__MODULE__{last_query_at: last_query_at} = state) when n == node() and not is_nil(last_query_at) do
+    if DateTime.diff(DateTime.utc_now(), state.last_query_at, :second) > @forced_eviction_after_inactivity_minutes * 60 do
+      # self-evict
+      {:stop, :normal, state}
+    else
+      # don't self-evict
+      {:noreply, state, timeout_until_fetching(state)}
+    end
+  end
+
+  def handle_info({:forced_eviction, _}, %__MODULE__{} = state) do
+    # No last query time, don't self-evict
+    {:noreply, state, timeout_until_fetching(state)}
   end
 
   defp timeout_until_fetching(state) do
@@ -155,6 +207,10 @@ defmodule Logflare.Endpoint.Cache do
       {:error, err} ->
         {:reply, {:error, err}, state}
     end
+  end
+
+  def query(nil) do
+    {:error, "failed to start the endpoint"}
   end
 
   def query(cache) do
