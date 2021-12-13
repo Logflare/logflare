@@ -5,7 +5,10 @@ defmodule LogflareWeb.AdminController do
   alias Logflare.{Repo, Source, Sources, User, Users}
   alias LogflareWeb.AuthController
 
+  require Logger
+
   @page_size 50
+  @node_shutdown_code Application.get_env(:logflare, :node_shutdown_code)
 
   def dashboard(conn, _params) do
     conn
@@ -66,6 +69,67 @@ defmodule LogflareWeb.AdminController do
     |> redirect(to: Routes.admin_path(conn, :accounts))
   end
 
+  def shutdown_node(conn, %{"code" => @node_shutdown_code, "node" => node} = params) do
+    node = String.to_atom(node)
+    nodes = Node.list()
+
+    if Enum.member?([Node.self() | nodes], node) do
+      Logger.warn("Node shutdown initiated!")
+      Logflare.Admin.shutdown(node)
+
+      conn
+      |> put_status(:ok)
+      |> json(%{"message" => "Success, shutting down node: #{node}"})
+    else
+      Logger.warn("Node shutdown requested!")
+
+      conn
+      |> put_status(:unauthorized)
+      |> json(%{
+        "message" => "Error, valid node required!",
+        "nodes" => nodes,
+        "current_node" => Node.self()
+      })
+    end
+  end
+
+  def shutdown_node(conn, %{"code" => @node_shutdown_code}) do
+    Logger.warn("Node shutdown initiated!")
+
+    Logflare.Admin.shutdown()
+
+    conn
+    |> put_status(:ok)
+    |> json(%{"message" => "Success, shutting down node: #{Node.self()}"})
+  end
+
+  def shutdown_node(conn, params) do
+    IO.inspect(params)
+    Logger.warn("Node shutdown requested!")
+
+    conn
+    |> put_status(:unauthorized)
+    |> json(%{"message" => "Error, valid shutdown code required!"})
+  end
+
+  def sources(conn, params) do
+    sort_options = [
+      :fields,
+      :latest,
+      :rejected,
+      :rate,
+      :avg,
+      :max,
+      :buffer,
+      :inserts,
+      :recent
+    ]
+
+    sorted_sources = sorted_sources(params)
+
+    render(conn, "sources.html", sources: sorted_sources, sort_options: sort_options)
+  end
+
   defp paginate_accounts(%{"page" => page, "sort_by" => ""}) do
     query_accounts()
     |> Repo.all()
@@ -100,24 +164,6 @@ defmodule LogflareWeb.AdminController do
     query_accounts()
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: 1})
-  end
-
-  def sources(conn, params) do
-    sort_options = [
-      :fields,
-      :latest,
-      :rejected,
-      :rate,
-      :avg,
-      :max,
-      :buffer,
-      :inserts,
-      :recent
-    ]
-
-    sorted_sources = sorted_sources(params)
-
-    render(conn, "sources.html", sources: sorted_sources, sort_options: sort_options)
   end
 
   defp sorted_sources(%{"page" => page, "sort_by" => sort_by} = _params) do

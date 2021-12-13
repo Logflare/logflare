@@ -7,7 +7,12 @@ use Mix.Config
 
 # General application configuration
 config :logflare,
-  ecto_repos: [Logflare.Repo]
+  ecto_repos: [Logflare.Repo],
+  # https://cloud.google.com/compute/docs/instances/deleting-instance#delete_timeout
+  # preemtible is 30 seconds from shutdown to sigterm
+  # normal instances can be more than 90 seconds
+
+  sigterm_shutdown_grace_period_ms: 15_000
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
@@ -81,13 +86,6 @@ config :scrivener_html,
   routes_helper: LogflareWeb.Router.Helpers,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
   view_style: :bootstrap_v4
-
-config :logflare,
-  # https://cloud.google.com/compute/docs/instances/deleting-instance#delete_timeout
-  # preemtible is 30 seconds from shutdown to sigterm
-  # normal instances can be more than 90 seconds
-
-  sigterm_shutdown_grace_period_ms: 15_000
 
 config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
