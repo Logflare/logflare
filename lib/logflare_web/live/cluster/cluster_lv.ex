@@ -22,7 +22,8 @@ defmodule LogflareWeb.ClusterLV do
   def handle_event("shutdown", %{"node" => node}, socket) do
     msg = "Node shutdown initiated for #{node}"
     Logger.warn(msg)
-    Logflare.Admin.shutdown(node)
+
+    String.to_atom(node) |> Logflare.Admin.shutdown()
 
     {:noreply, socket |> put_flash(:info, msg)}
   end
@@ -45,7 +46,11 @@ defmodule LogflareWeb.ClusterLV do
     {:noreply, socket}
   end
 
-  def handle_info({_from, :ok}, socket) do
+  def handle_info({_ref, :ok}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info({_ref, :abcast}, socket) do
     {:noreply, socket}
   end
 
