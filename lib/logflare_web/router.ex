@@ -299,6 +299,11 @@ defmodule LogflareWeb.Router do
     get "/accounts/:id/become", AdminController, :become_account
   end
 
+  scope "/admin", LogflareWeb do
+    pipe_through [:api]
+    put "/shutdown", AdminController, :shutdown_node
+  end
+
   scope "/install", LogflareWeb do
     pipe_through :browser
 

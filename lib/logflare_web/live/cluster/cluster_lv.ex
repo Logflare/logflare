@@ -2,9 +2,12 @@ defmodule LogflareWeb.ClusterLV do
   @moduledoc """
   Provides real-time data on cluster connectivity
   """
-  alias LogflareWeb.AdminClusterView
   use LogflareWeb, :live_view
+
+  alias LogflareWeb.AdminClusterView
   alias Phoenix.LiveView.Socket
+
+  require Logger
 
   def render(assigns) do
     AdminClusterView.render("index.html", assigns)
@@ -16,9 +19,38 @@ defmodule LogflareWeb.ClusterLV do
     {:ok, socket}
   end
 
+  def handle_event("shutdown", %{"node" => node}, socket) do
+    msg = "Node shutdown initiated for #{node}"
+    Logger.warn(msg)
+
+    String.to_atom(node) |> Logflare.Admin.shutdown()
+
+    {:noreply, socket |> put_flash(:info, msg)}
+  end
+
+  def handle_event("shutdown", params, socket) do
+    msg = "Node shutdown initiated for #{Node.self()}"
+    Logger.warn(msg)
+    Logflare.Admin.shutdown()
+
+    {:noreply, socket |> put_flash(:info, msg)}
+  end
+
   @spec handle_info(:update_cluster_status, Socket.t()) :: {:noreply, Socket.t()}
   def handle_info(:update_cluster_status, socket) do
     socket = assign_cluster_status(socket)
+    {:noreply, socket}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _from, :normal}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info({_ref, :ok}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info({_ref, :abcast}, socket) do
     {:noreply, socket}
   end
 

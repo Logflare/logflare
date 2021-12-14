@@ -18,4 +18,6 @@ RUN mix release --overwrite
 # erlexec requires SHELL to be set
 ENV SHELL /bin/bash
 
-ENTRYPOINT [ "/logflare/run_staging.bash" ]
+ENTRYPOINT ["tini", "--"]
+
+CMD [ "/logflare/run_staging.bash" ]

@@ -21,6 +21,8 @@ RUN apt-get update
 
 RUN apt-get install -y nodejs yarn
 
+RUN apt-get install tini
+
 WORKDIR /logflare
 
 RUN mix local.rebar --force
