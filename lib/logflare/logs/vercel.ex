@@ -8,7 +8,7 @@ defmodule Logflare.Logs.Vercel do
 
   def handle_batch(batch, source) when is_list(batch) do
     Enum.map(batch, fn x ->
-      if x["source"] == "lambda" and x["message"] do
+      if (x["source"] == "lambda" or x["source"] == "edge") and x["message"] do
         {_status, lambda_message} = try_lambda_parse(x["message"], source)
 
         Map.put(x, "parsedLambdaMessage", lambda_message)
