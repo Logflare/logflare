@@ -81,7 +81,7 @@ VALUES
 (23,E'Metered BYOB',E'price_1Jn59kLvvReWx3FxPBXNS4Me',E'2021-07-12 20:29:40',E'2021-10-21 17:36:08',E'month',1000,100,1000,60000,1000,10,10,500,5184000000,E'metered');
 ```
 
-7. Run `PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix mix phx.server`
+7. Run `PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server`
 8. Sign in as a user
 9. Create a source
 10. Update `dev.secrets.exs`, search for the `:logflare_logger_backend` config and update the user api key and source id
