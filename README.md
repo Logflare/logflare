@@ -42,7 +42,7 @@ Use [our Logger backend](https://github.com/Logflare/logflare_logger_backend) to
 
 We are leaving this repo public as an example of a larger Elixir project. We hope to have an open source edition of Logflare at some point in the future.
 
-## Close Source Usage
+## Closed Source Usage
 
 Logflare is using a SQL parser from sqlparser.com. To set this up on your dev machine:
 
@@ -57,7 +57,7 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
    2. Google JWT key - `config/secrets/logflare-dev-238720-63d50e3c9cc8.json`
 2. Run `mix deps.get` to retrieve dependencies
 3. Run `(cd assets; yarn)` from project root, to install js dependencies
-4. Install `sqlparser` by following the steps in **Close Source Usage** section.
+4. Install `sqlparser` by following the steps in **Closed Source Usage** section.
 5. Run `PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix mix ecto.setup`
 6. Restart your postgres server for replication settings to take effect
 7. Insert seed stripe plans:
