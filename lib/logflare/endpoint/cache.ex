@@ -18,8 +18,13 @@ defmodule Logflare.Endpoint.Cache do
     result =
       case :global.whereis_name({__MODULE__, id, params}) do
         :undefined ->
-          {:ok, pid} = DynamicSupervisor.start_child(__MODULE__, {__MODULE__, {query, params}})
-          pid
+          case DynamicSupervisor.start_child(__MODULE__, {__MODULE__, {query, params}}) do
+            {:ok, pid} ->
+              pid
+
+            {:error, {:already_started, pid}} ->
+              pid
+          end
 
         pid ->
           pid
@@ -48,7 +53,7 @@ defmodule Logflare.Endpoint.Cache do
   defstruct query: nil, params: %{}, last_query_at: nil, last_update_at: nil, cached_result: nil
 
   def init({query, params}) do
-    {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint() }
+    {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint()}
   end
 
   def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
@@ -58,7 +63,9 @@ defmodule Logflare.Endpoint.Cache do
 
   def handle_call(:query, _from, %__MODULE__{last_update_at: last_update_at} = state) do
     state = %{state | last_query_at: DateTime.utc_now()}
-    if DateTime.diff(DateTime.utc_now(), last_update_at, :second) > state.query.cache_duration_seconds do
+
+    if DateTime.diff(DateTime.utc_now(), last_update_at, :second) >
+         state.query.cache_duration_seconds do
       do_query(state)
     else
       {:reply, {:ok, state.cached_result}, state, timeout_until_fetching(state)}
@@ -76,7 +83,8 @@ defmodule Logflare.Endpoint.Cache do
       {:stop, :normal, state}
     else
       if state.query.proactive_requerying_seconds > 0 &&
-         state.query.proactive_requerying_seconds - DateTime.diff(DateTime.utc_now(), state.last_update_at, :second) >= 0 do
+           state.query.proactive_requerying_seconds -
+             DateTime.diff(DateTime.utc_now(), state.last_update_at, :second) >= 0 do
         {:reply, _, state, timeout} = do_query(state)
         {:noreply, state, timeout}
       else
@@ -86,8 +94,14 @@ defmodule Logflare.Endpoint.Cache do
   end
 
   defp timeout_until_fetching(state) do
-    min(@inactivity_minutes * 60,
-        max(0, state.query.proactive_requerying_seconds - DateTime.diff(DateTime.utc_now(), state.last_update_at, :second))) * 1000
+    min(
+      @inactivity_minutes * 60,
+      max(
+        0,
+        state.query.proactive_requerying_seconds -
+          DateTime.diff(DateTime.utc_now(), state.last_update_at, :second)
+      )
+    ) * 1000
   end
 
   defp fetch_latest_query_endpoint(state) do
