@@ -27,6 +27,7 @@ defmodule Logflare.Endpoint.Cache do
           end
 
         pid ->
+          GenServer.call(pid, :touch)
           pid
       end
 
@@ -54,6 +55,11 @@ defmodule Logflare.Endpoint.Cache do
 
   def init({query, params}) do
     {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint()}
+  end
+
+  def handle_call(:touch, _from, %__MODULE__{} = state) do
+    state = %{state | last_query_at: DateTime.utc_now()}
+    {:reply, :ok, state}
   end
 
   def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
