@@ -11,8 +11,14 @@ internal class TransformerVisitor(
     private val datasetResolver: DatasetResolver<Source>
 ) : RestrictedPatternVisitor() {
 
+    private val visited = mutableSetOf<TTable>()
+
     override fun visit(table: TTable?, node: TParseTreeNode) {
-        val name = table!!.fullTableName()
+        if (visited.contains(table!!)) {
+            return;
+        }
+        visited.add(table)
+        val name = table.fullTableName()
         val source = sourceResolver.resolve(name)
         val newName = "`${projectId}.${datasetResolver.resolve(source)}.${tableResolver.resolve(source)}`"
         table.tableName.setString(newName)
