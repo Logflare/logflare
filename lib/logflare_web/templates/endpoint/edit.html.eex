@@ -17,6 +17,14 @@
       <%= form_for @changeset, Routes.endpoint_path(@conn, :update, @endpoint_query), fn a -> %>
       <%= textarea a, :query, class: "form-control form-control-margin"  %>
       <%= error_tag a, :query %>
+      <small class="form-text text-muted">
+      SQL
+      </small>
+      <%= text_input a, :max_limit, class: "form-control form-control-margin"  %>
+      <%= error_tag a, :max_limit %>
+      <small class="form-text text-muted">
+      Maximum rows returned.
+      </small>
     </div>
     <%= submit "Update query", class: "btn btn-primary form-button" %>
     <% end %>
