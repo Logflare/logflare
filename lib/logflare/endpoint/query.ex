@@ -10,6 +10,7 @@ defmodule Logflare.Endpoint.Query do
     field :sandboxable, :boolean
     field :cache_duration_seconds, :integer, default: 3_600
     field :proactive_requerying_seconds, :integer, default: 1_800
+    field :max_limit, :integer, default: 1_000
 
     belongs_to :user, Logflare.User
 
@@ -25,7 +26,8 @@ defmodule Logflare.Endpoint.Query do
       :query,
       :sandboxable,
       :cache_duration_seconds,
-      :proactive_requerying_seconds
+      :proactive_requerying_seconds,
+      :max_limit
     ])
     |> validate_required([:name, :token, :query])
   end
@@ -38,7 +40,8 @@ defmodule Logflare.Endpoint.Query do
       :query,
       :sandboxable,
       :cache_duration_seconds,
-      :proactive_requerying_seconds
+      :proactive_requerying_seconds,
+      :max_limit
     ])
     |> default_validations()
     |> update_source_mapping()
@@ -50,6 +53,7 @@ defmodule Logflare.Endpoint.Query do
     |> validate_query(:query)
     |> unique_constraint(:name, name: :endpoint_queries_name_index)
     |> unique_constraint(:token)
+    |> validate_number(:max_limit, greater_than: 0, less_than: 10_001)
   end
 
   def validate_query(changeset, field) when is_atom(field) do
