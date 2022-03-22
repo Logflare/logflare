@@ -20,11 +20,13 @@
   </div>
 </div>
 
+<!--
 <div class="container d-flex justify-content-center flex-column mb-4">
   <p class="text-center mb-0">💚 Logflare is joining Supabase! Read more on
     <%= link "the Supabase blog", to: "http://supabase.com/blog/2021/12/02/supabase-acquires-logflare", target: "_blank" %>.</p>
   <small class="text-center">Don't worry, we'll continue to make your logging life a little better, but now with Postgres too.</small>
 </div>
+-->
 
 <div class="dashboard container mx-auto" hidden>
   <div class="row justify-content-md-center">
