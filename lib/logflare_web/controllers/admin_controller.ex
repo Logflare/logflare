@@ -104,7 +104,6 @@ defmodule LogflareWeb.AdminController do
   end
 
   def shutdown_node(conn, params) do
-    IO.inspect(params)
     Logger.warn("Node shutdown requested!")
 
     conn
