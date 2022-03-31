@@ -87,11 +87,11 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
         assign(conn, :user, user)
 
       api_key when is_binary(api_key) ->
-        message = "Error: please set ingest API key"
+        message = "Error: ingest api_key not authorized"
         put_401(conn, message)
 
       nil ->
-        message = "Error: user not found"
+        message = "Error: ingest api_key required in url parameter or x-api-key request header"
         put_401(conn, message)
     end
   end
