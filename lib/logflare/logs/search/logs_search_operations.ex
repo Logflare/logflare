@@ -361,7 +361,9 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | lql_ts_filters: lql_ts_filters}
   end
 
-  def apply_numeric_aggs(%SO{query: query, chart_rules: chart_rules} = so) do
+  def apply_numeric_aggs(
+        %SO{query: query, chart_rules: chart_rules, lql_meta_and_msg_filters: filter_rules} = so
+      ) do
     chart_period = hd(so.chart_rules).period
 
     query =
@@ -393,16 +395,27 @@ defmodule Logflare.Logs.SearchOperations do
               select_merge_agg_value(query, :count, :timestamp)
           end
 
-        [%{value_type: _, path: p, aggregate: agg}] ->
+        [%{value_type: _, path: p, aggregate: agg} = rule] ->
           last_chart_field =
             p
             |> String.split(".")
             |> List.last()
             |> String.to_existing_atom()
 
-          query
-          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, p)
-          |> select_merge_agg_value(agg, last_chart_field)
+          q =
+            query
+            |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, p)
+            |> select_merge_agg_value(agg, last_chart_field)
+
+          Enum.reduce(filter_rules, q, fn x, acc ->
+            last_filter_field =
+              x.path
+              |> String.split(".")
+              |> List.last()
+              |> String.to_existing_atom()
+
+            where(acc, [..., t1], field(t1, ^last_filter_field) == ^x.value)
+          end)
       end
 
     query = group_by(query, 1)
