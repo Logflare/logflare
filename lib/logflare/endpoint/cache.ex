@@ -149,13 +149,16 @@ defmodule Logflare.Endpoint.Cache do
                 }
               end)
 
+            IO.inspect(state.query.user)
+
             case Logflare.BqRepo.query_with_sql_and_params(
                    state.query.user,
                    state.query.user.bigquery_project_id || @project_id,
                    query,
                    params,
                    parameterMode: "NAMED",
-                   maxResults: state.query.max_limit
+                   maxResults: state.query.max_limit,
+                   location: state.query.user.bigquery_dataset_location
                  ) do
               {:ok, result} ->
                 # Cache the result (no parameters)
