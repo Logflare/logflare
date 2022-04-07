@@ -22,8 +22,8 @@ steps:
       [
         "gsutil",
         "cp",
-        "gs://logflare-build-support-prod/gudusoft.gsqlparser-2.5.0.8.jar",
-        "sql/gsp/gudusoft.gsqlparser-2.5.0.8.jar",
+        "gs://logflare-build-support-prod/gudusoft.gsqlparser-2.5.1.9.jar",
+        "sql/gsp/gudusoft.gsqlparser-2.5.1.9.jar",
       ]
   - name: "gcr.io/cloud-builders/docker"
     args:
