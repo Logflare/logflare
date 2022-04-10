@@ -20,6 +20,11 @@ internal abstract class TableVisitor : TParseTreeVisitor() {
 
     override fun preVisit(node: TSelectSqlStatement?) {
         if (node!!.cteList != null) {
+            // NB: Somewhere between 2.5.0.8 and 2.5.2.5 sqlparser stopped populating
+            // `CTEList.cteNames` that we rely on
+            node!!.cteList.forEach {
+                node!!.cteList.cteNames.put(TBaseType.getTextWithoutQuoted(it.getTableName().toString()).toUpperCase(), it);
+            }
             cte.add(node.cteList)
         }
         super.preVisit(node)
