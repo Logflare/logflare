@@ -46,7 +46,7 @@ We are leaving this repo public as an example of a larger Elixir project. We hop
 
 Logflare is using a SQL parser from sqlparser.com. To set this up on your dev machine:
 
-- Copy parser from sqlparser.com into `sql/gsp`. When extracted it's located at `lib/gudusoft.gsqlparser-2.3.0.7.jar`
+- Copy parser from sqlparser.com into `sql/gsp`. When extracted it's located at `lib/gudusoft.gsqlparser-2.5.2.5.jar`
 - Install Java with homebrew (MacOS) by running `brew install cask java`
 - Run `mix sql`
 
