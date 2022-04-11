@@ -22,8 +22,8 @@ steps:
       [
         "gsutil",
         "cp",
-        "gs://logflare-build-support/gudusoft.gsqlparser-2.5.0.8.jar",
-        "sql/gsp/gudusoft.gsqlparser-2.5.0.8.jar",
+        "gs://logflare-build-support/gudusoft.gsqlparser-2.5.2.5.jar",
+        "sql/gsp/gudusoft.gsqlparser-2.5.2.5.jar",
       ]
   - name: "gcr.io/kaniko-project/executor:latest"
     args:
