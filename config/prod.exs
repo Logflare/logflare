@@ -48,7 +48,7 @@ config :logflare, Logflare.Repo,
   timeout: 30_000,
   queue_target: 5_000,
   database: "logflare",
-  hostname: "10.11.144.22",
+  hostname: "10.11.145.7",
   port: 5432
 
 config :logflare, Logflare.Google,
