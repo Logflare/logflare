@@ -1,7 +1,8 @@
 <%= render_layout LogflareWeb.ErrorView, "error_page_layout.html", assigns do %>
   <div class="col-lg-7">
-    <h1>403 </h1>
-    <h2>Forbidden </h2>
-    <p>Get back <a href="/" target="_blank">to homepage</a></p>
+    <h1>403</h1>
+    <h2 class="text-white mb-4">Forbidden</h2>
+    <p>You may have access to this Source in another team<p>
+    <p>Get back <a href="/dashboard">to your dashboard</a></p>
   </div>
 <% end %>
