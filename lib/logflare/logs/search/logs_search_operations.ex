@@ -380,7 +380,7 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       case chart_rules do
-        [%{path: "timestamp", aggregate: :count, value_type: :datetime}] ->
+        [%Logflare.Lql.ChartRule{path: "timestamp", aggregate: :count, value_type: :datetime}] ->
           case so.chart_data_shape_id do
             :elixir_logger_levels ->
               select_count_log_level(query)
@@ -395,7 +395,7 @@ defmodule Logflare.Logs.SearchOperations do
               select_merge_agg_value(query, :count, :timestamp)
           end
 
-        [%{value_type: _, path: p, aggregate: agg} = rule] ->
+        [%Logflare.Lql.ChartRule{value_type: _, path: p, aggregate: agg}] ->
           last_chart_field =
             p
             |> String.split(".")
@@ -407,14 +407,32 @@ defmodule Logflare.Logs.SearchOperations do
             |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, p)
             |> select_merge_agg_value(agg, last_chart_field)
 
-          Enum.reduce(filter_rules, q, fn x, acc ->
-            last_filter_field =
-              x.path
-              |> String.split(".")
-              |> List.last()
-              |> String.to_existing_atom()
+          Enum.reduce(filter_rules, q, fn
+            %Logflare.Lql.FilterRule{
+              path: ^p,
+              operator: operator,
+              value: value,
+              modifiers: modifiers
+            },
+            acc ->
+              last_filter_field =
+                p
+                |> String.split(".")
+                |> List.last()
+                |> String.to_existing_atom()
 
-            where(acc, [..., t1], field(t1, ^last_filter_field) == ^x.value)
+              where(
+                acc,
+                ^Lql.EctoHelpers.dynamic_where_filter_rule(
+                  last_filter_field,
+                  operator,
+                  value,
+                  modifiers
+                )
+              )
+
+            %Logflare.Lql.FilterRule{}, acc ->
+              acc
           end)
       end
 
