@@ -1,6 +1,6 @@
 defmodule Logflare.Endpoint.Cache do
   # Find all processes for the query
-  def resolve(%Logflare.Endpoint.Query{id: id} = query) do
+  def resolve(%Logflare.Endpoint.Query{id: id}) do
     Enum.filter(:global.registered_names(), fn
       {__MODULE__, ^id, _} ->
         true
@@ -27,7 +27,7 @@ defmodule Logflare.Endpoint.Cache do
           end
 
         pid ->
-          GenServer.call(pid, :touch)
+          GenServer.cast(pid, :touch)
           pid
       end
 
@@ -56,11 +56,6 @@ defmodule Logflare.Endpoint.Cache do
     {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint()}
   end
 
-  def handle_call(:touch, _from, %__MODULE__{} = state) do
-    state = %{state | last_query_at: DateTime.utc_now()}
-    {:reply, :ok, state}
-  end
-
   def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
     state = %{state | last_query_at: DateTime.utc_now()}
     do_query(state)
@@ -79,6 +74,11 @@ defmodule Logflare.Endpoint.Cache do
 
   def handle_call(:invalidate, _from, state) do
     {:reply, :ok, %{state | cached_result: nil}}
+  end
+
+  def handle_cast(:touch, %__MODULE__{} = state) do
+    state = %{state | last_query_at: DateTime.utc_now()}
+    {:noreply, state}
   end
 
   def handle_info(:timeout, state) do
