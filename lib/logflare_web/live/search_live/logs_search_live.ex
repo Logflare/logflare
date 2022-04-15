@@ -126,6 +126,14 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_params(%{"source_id" => source}, uri, socket) do
+    handle_params(
+      %{"source_id" => source, "querystring" => "", "tailing?" => "true"},
+      uri,
+      socket
+    )
+  end
+
   def handle_params(_params, _uri, socket) do
     {:noreply, socket}
   end
