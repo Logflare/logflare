@@ -1,7 +1,7 @@
 <%= render_layout LogflareWeb.ErrorView, "error_page_layout.html", assigns do %>
   <div class="col-lg-7">
     <h1>403</h1>
-    <h2 class="text-white mb-4">Forbidden</h2>
+    <h2 class="text-white mb-3">Forbidden</h2>
     <p>You may have access to this resource in another team<p>
     <p>Get back to <a href="/dashboard">your dashboard</a> to change teams</p>
   </div>

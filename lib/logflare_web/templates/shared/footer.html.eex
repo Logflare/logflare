@@ -11,9 +11,6 @@
             <%= link "System Status", to: "https://datastudio.google.com/s/gIAFsUMbDS4" %>
           </li>
           <li>
-            <a href="https://trello.com/b/wrZusInO/logflare">Roadmap</a>
-          </li>
-          <li>
             <%= link "Contact Us", to: Routes.contact_path(@conn, :contact)%>
           </li>
           <li>
