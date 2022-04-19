@@ -363,6 +363,7 @@ defmodule LogflareWeb.Router do
     post "/cloudflare", LogController, :cloudflare
     post "/zeit", LogController, :vercel_ingest
     post "/vercel", LogController, :vercel_ingest
+    post "/netlify", LogController, :netlify
     post "/elixir/logger", LogController, :elixir_logger
     post "/erlang", LogController, :elixir_logger
     post "/erlang/logger", LogController, :elixir_logger

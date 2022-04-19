@@ -7,6 +7,7 @@ defmodule Logflare.BqRepo do
   alias Logflare.EctoQueryBQ
   alias Logflare.Plans
   alias Logflare.Plans.Plan
+  alias Logflare.User
   import Logflare.TypeCasts
 
   @query_request_timeout 60_000
@@ -16,8 +17,14 @@ defmodule Logflare.BqRepo do
            %{:rows => nil | [term()], :num_rows => non_neg_integer(), optional(atom()) => any()}}
           | {:error, term()}
 
-  @spec query_with_sql_and_params(String.t(), String.t(), [term()], Keyword.t()) :: query_result
-  def query_with_sql_and_params(user, project_id, sql, params, opts \\ [])
+  @spec query_with_sql_and_params(
+          Logflare.User.t(),
+          String.t(),
+          String.t(),
+          maybe_improper_list,
+          maybe_improper_list
+        ) :: query_result()
+  def query_with_sql_and_params(%User{} = user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
 
@@ -70,8 +77,9 @@ defmodule Logflare.BqRepo do
     end
   end
 
-  @spec query(String.t(), Ecto.Query.t(), keyword) :: query_result
-  def query(user, project_id, %Ecto.Query{} = query, opts \\ [])
+  @spec query(Logflare.User.t(), String.t(), Ecto.Query.t(), maybe_improper_list) ::
+          query_result()
+  def query(%User{} = user, project_id, %Ecto.Query{} = query, opts \\ [])
       when not is_nil(project_id) and is_list(opts) do
     {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 

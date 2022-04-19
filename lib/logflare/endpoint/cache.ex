@@ -1,4 +1,5 @@
 defmodule Logflare.Endpoint.Cache do
+  require Logger
   # Find all processes for the query
   def resolve(%Logflare.Endpoint.Query{id: id}) do
     Enum.filter(:global.registered_names(), fn
@@ -90,8 +91,15 @@ defmodule Logflare.Endpoint.Cache do
       if state.query.proactive_requerying_seconds > 0 &&
            state.query.proactive_requerying_seconds -
              DateTime.diff(DateTime.utc_now(), state.last_update_at, :second) >= 0 do
-        {:reply, _, state, timeout} = do_query(state)
-        {:noreply, state, timeout}
+        case do_query(state) do
+          {:reply, _, state, timeout} ->
+            {:noreply, state, timeout}
+
+          unknown ->
+            Logger.warn("Unhandled Endpoint query response", error_string: inspect(unknown))
+
+            {:stop, :normal, state}
+        end
       else
         {:noreply, state, timeout_until_fetching(state)}
       end
@@ -163,9 +171,12 @@ defmodule Logflare.Endpoint.Cache do
                 state = %{state | cached_result: result}
                 {:reply, {:ok, result}, state, timeout_until_fetching(state)}
 
-              {:error, err} ->
-                error = Jason.decode!(err.body)["error"] |> process_error(state.query.user_id)
+              {:error, %{body: body}} ->
+                error = Jason.decode!(body)["error"] |> process_error(state.query.user_id)
                 {:reply, {:error, error}, state}
+
+              {:error, err} when is_atom(err) ->
+                {:reply, {:error, process_error(err, state.query.user_id)}, state}
             end
 
           {:error, err} ->
@@ -185,6 +196,10 @@ defmodule Logflare.Endpoint.Cache do
     GenServer.call(cache, :invalidate)
   end
 
+  defp process_error(error, user_id) when is_atom(error) do
+    %{"message" => process_message(error, user_id)}
+  end
+
   defp process_error(error, user_id) do
     error = %{error | "message" => process_message(error["message"], user_id)}
 
@@ -193,6 +208,10 @@ defmodule Logflare.Endpoint.Cache do
     else
       error
     end
+  end
+
+  defp process_message(message, _user_id) when is_atom(message) do
+    message
   end
 
   defp process_message(message, user_id) do
