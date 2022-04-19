@@ -171,12 +171,12 @@ defmodule Logflare.Endpoint.Cache do
                 state = %{state | cached_result: result}
                 {:reply, {:ok, result}, state, timeout_until_fetching(state)}
 
-              {:error, :timeout = err} ->
-                {:reply, {:error, process_error(err, state.query.user_id)}, state}
-
-              {:error, err} ->
-                error = Jason.decode!(err.body)["error"] |> process_error(state.query.user_id)
+              {:error, %{body: body}} ->
+                error = Jason.decode!(body)["error"] |> process_error(state.query.user_id)
                 {:reply, {:error, error}, state}
+
+              {:error, err} when is_atom(err) ->
+                {:reply, {:error, process_error(err, state.query.user_id)}, state}
             end
 
           {:error, err} ->
