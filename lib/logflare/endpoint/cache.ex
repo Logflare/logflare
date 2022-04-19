@@ -1,4 +1,5 @@
 defmodule Logflare.Endpoint.Cache do
+  require Logger
   # Find all processes for the query
   def resolve(%Logflare.Endpoint.Query{id: id}) do
     Enum.filter(:global.registered_names(), fn
@@ -90,8 +91,15 @@ defmodule Logflare.Endpoint.Cache do
       if state.query.proactive_requerying_seconds > 0 &&
            state.query.proactive_requerying_seconds -
              DateTime.diff(DateTime.utc_now(), state.last_update_at, :second) >= 0 do
-        {:reply, _, state, timeout} = do_query(state)
-        {:noreply, state, timeout}
+        case do_query(state) do
+          {:reply, _, state, timeout} ->
+            {:noreply, state, timeout}
+
+          unknown ->
+            Logger.warn("Unhandled Endpoint query response", error_string: inspect(unknown))
+
+            {:stop, :normal, state}
+        end
       else
         {:noreply, state, timeout_until_fetching(state)}
       end
