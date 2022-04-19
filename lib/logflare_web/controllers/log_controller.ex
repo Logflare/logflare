@@ -124,6 +124,12 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
+  def netlify(%{assigns: %{source: source}} = conn, %{"_json" => batch}) when is_list(batch) do
+    batch = Logs.Netlify.handle_batch(batch, source)
+
+    ingest_and_render(conn, batch, source)
+  end
+
   def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
     batch = Logs.Github.handle_batch([params], source)
 

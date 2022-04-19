@@ -137,14 +137,17 @@ defmodule Logflare.Logs.SearchOperations do
 
     chart_data_shape_id =
       cond do
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.level") ->
-          :elixir_logger_levels
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.status_code") ->
+          :netlify_status_codes
 
         path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
         path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
           :vercel_status_codes
+
+        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.level") ->
+          :elixir_logger_levels
 
         true ->
           nil
@@ -390,6 +393,9 @@ defmodule Logflare.Logs.SearchOperations do
 
             :vercel_status_codes ->
               select_count_vercel_http_status_code(query)
+
+            :netlify_status_codes ->
+              select_count_netlify_http_status_code(query)
 
             nil ->
               select_merge_agg_value(query, :count, :timestamp)

@@ -125,6 +125,26 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
+  def select_count_netlify_http_status_code(q) do
+    q
+    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.status_code")
+    |> select_merge([..., t], %{
+      other:
+        fragment(
+          "COUNTIF(? <= 99 OR ? >= 601 OR ? IS NULL) as other",
+          t.status_code,
+          t.status_code,
+          t.status_code
+        ),
+      status_1xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_1xx", t.status_code, 100, 199),
+      status_2xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_2xx", t.status_code, 200, 299),
+      status_3xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_3xx", t.status_code, 300, 399),
+      status_4xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_4xx", t.status_code, 400, 499),
+      status_5xx: fragment("COUNTIF(? BETWEEN ? AND ?) as status_5xx", t.status_code, 500, 599)
+    })
+    |> select_merge_total()
+  end
+
   def select_count_cloudflare_http_status_code(q) do
     q
     |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.response.status_code")
