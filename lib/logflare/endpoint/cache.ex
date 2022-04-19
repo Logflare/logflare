@@ -163,6 +163,9 @@ defmodule Logflare.Endpoint.Cache do
                 state = %{state | cached_result: result}
                 {:reply, {:ok, result}, state, timeout_until_fetching(state)}
 
+              {:error, :timeout = err} ->
+                {:reply, {:error, process_error(err, state.query.user_id)}, state}
+
               {:error, err} ->
                 error = Jason.decode!(err.body)["error"] |> process_error(state.query.user_id)
                 {:reply, {:error, error}, state}
@@ -185,6 +188,10 @@ defmodule Logflare.Endpoint.Cache do
     GenServer.call(cache, :invalidate)
   end
 
+  defp process_error(error, user_id) when is_atom(error) do
+    %{"message" => process_message(error, user_id)}
+  end
+
   defp process_error(error, user_id) do
     error = %{error | "message" => process_message(error["message"], user_id)}
 
@@ -193,6 +200,10 @@ defmodule Logflare.Endpoint.Cache do
     else
       error
     end
+  end
+
+  defp process_message(message, _user_id) when is_atom(message) do
+    message
   end
 
   defp process_message(message, user_id) do
