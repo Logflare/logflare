@@ -108,6 +108,7 @@ defmodule Logflare.Mixfile do
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
+      {:finch, "~> 0.11.0"},
       {:mint, "~> 1.0"},
       # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
@@ -117,8 +118,9 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.4.0"},
 
       # Concurrency and pipelines
-      {:broadway, "~> 0.6.0"},
+      {:broadway, "~> 1.0.3"},
       {:flow, "~> 1.0"},
+      {:nimble_options, "~>0.4.0"},
 
       # Test
       {:placebo, "~> 2.0"},
