@@ -29,6 +29,10 @@ defmodule Logflare.Logs.Netlify do
     end
   end
 
+  defp handle_event(%{"message" => message}) do
+    %{"message" => message, "metadata" => %{"log_type" => "validate"}}
+  end
+
   defp custom_message(%{
          "log_type" => log_type,
          "method" => method,
