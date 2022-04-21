@@ -29,7 +29,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         default: [concurrency: 1]
       ],
       batchers: [
-        bq: [concurrency: 2, batch_size: 250, batch_timeout: 1000]
+        bq: [concurrency: 5, batch_size: 250, batch_timeout: 1000]
       ],
       context: rls
     )
@@ -56,12 +56,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def le_to_bq_row(%LE{body: body, id: id}) do
     {:ok, bq_timestamp} = DateTime.from_unix(body.timestamp, :microsecond)
 
-    metadata =
-      if map_size(body.metadata) > 0 do
-        EventUtils.prepare_for_ingest(body.metadata)
-      else
-        body.metadata
-      end
+    metadata = EventUtils.prepare_for_ingest(body.metadata)
 
     body =
       Map.from_struct(body)
@@ -153,9 +148,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    if map_size(body.metadata) > 0 do
-      Schema.update(source_id, log_event)
-    end
+    Schema.update(source_id, log_event)
 
     log_event
   end
