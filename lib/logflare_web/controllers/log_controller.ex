@@ -130,6 +130,13 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
+  def netlify(%{assigns: %{source: source}, body_params: params} = conn, _params)
+      when is_map(params) do
+    batch = Logs.Netlify.handle_batch([params], source)
+
+    ingest_and_render(conn, batch, source)
+  end
+
   def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
     batch = Logs.Github.handle_batch([params], source)
 
