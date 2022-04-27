@@ -87,6 +87,7 @@ defmodule Logflare.Lql.Encoder do
       case op do
         :string_contains -> ""
         :"~" -> "~"
+        := -> ""
       end
 
     v =
