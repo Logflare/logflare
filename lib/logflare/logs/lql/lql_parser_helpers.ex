@@ -72,11 +72,21 @@ defmodule Logflare.Lql.Parser.Helpers do
   def metadata_clause do
     metadata_field()
     |> concat(operator())
-    |> concat(metadata_field_value())
+    |> concat(field_value())
     |> reduce({:to_rule, [:filter]})
     |> reduce(:apply_value_modifiers)
     |> map({:check_for_no_invalid_metadata_field_values, [:metadata]})
     |> label("metadata filter rule clause")
+  end
+
+  def field_clause do
+    any_field()
+    |> concat(operator())
+    |> concat(field_value())
+    |> reduce({:to_rule, [:filter]})
+    |> reduce(:apply_value_modifiers)
+    |> map({:check_for_no_invalid_metadata_field_values, [:metadata]})
+    |> label("field filter rule clause")
   end
 
   def chart_clause() do
@@ -126,13 +136,20 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> ignore(string(")"))
   end
 
+  def any_field do
+    ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
+    |> reduce({List, :to_string, []})
+    |> unwrap_and_tag(:path)
+    |> label("schema field")
+  end
+
   def metadata_field do
     choice([string("metadata"), string("m") |> replace("metadata")])
     |> string(".")
     |> ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(:path)
-    |> label("metadata BQ field")
+    |> label("metadata field")
   end
 
   @list_includes_op :list_includes
@@ -163,7 +180,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> label("number")
   end
 
-  def metadata_field_value do
+  def field_value do
     choice([
       range_operator(number()),
       number(),
@@ -666,9 +683,7 @@ defmodule Logflare.Lql.Parser.Helpers do
         :timestamp
       ) do
     throw(
-      "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got '#{
-        v
-      }'"
+      "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got '#{v}'"
     )
   end
 

@@ -17,6 +17,7 @@ defmodule Logflare.Lql.Parser do
         timestamp_clause(),
         metadata_level_clause(),
         metadata_clause(),
+        field_clause(),
         quoted_string(:quoted_event_message),
         word()
       ])
@@ -105,30 +106,14 @@ defmodule Logflare.Lql.Parser do
         )
 
       nil ->
-        case get_most_similar_path(typemap, path) do
-          "metadata." <> maybe_rest_of_path = maybe_this ->
-            "metadata." <> rest_of_path = path
-            suggested_querystring = String.replace(querystring, rest_of_path, maybe_rest_of_path)
-
-            throw(
-              {suggested_querystring,
-               [
-                 "LQL Parser error: path '#{path}' not present in source schema. Did you mean '",
-                 maybe_this,
-                 "'?"
-               ]}
-            )
-
-          _ ->
-            throw(
-              {"",
-               [
-                 "No fields found to match `#{path}` your query. See this source schema for queryable fields.",
-                 "",
-                 ""
-               ]}
-            )
-        end
+        throw(
+          {"",
+           [
+             "LQL parser error: path `#{path}` not present in source schema.",
+             "",
+             ""
+           ]}
+        )
 
       _type ->
         type
@@ -137,6 +122,7 @@ defmodule Logflare.Lql.Parser do
 
   defp get_most_similar_path(paths, user_path) do
     paths
+    |> Enum.reject(fn {_, v} -> v == :map end)
     |> Enum.map(fn {k, _} -> k end)
     |> Enum.max_by(&String.jaro_distance(&1, user_path))
   end
