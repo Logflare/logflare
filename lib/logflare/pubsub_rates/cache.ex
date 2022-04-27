@@ -19,7 +19,7 @@ defmodule Logflare.PubSubRates.Cache do
         do: Map.merge(val, rates),
         else: rates
 
-    cluster_rate = Map.take(rates, Cluster.Utils.node_list_all()) |> merge_node_rates()
+    cluster_rate = merge_node_rates(rates)
 
     rates = Map.put(rates, :cluster, cluster_rate)
 
@@ -111,10 +111,17 @@ defmodule Logflare.PubSubRates.Cache do
   end
 
   def merge_buffers(node_buffers) do
-    Enum.map(node_buffers, fn {_node, y} -> y.len end) |> Enum.sum()
+    nodes = Cluster.Utils.node_list_all()
+
+    Map.take(node_buffers, nodes)
+    |> Enum.map(fn {_, y} -> y.len end)
+    |> Enum.sum()
   end
 
   defp merge_inserts(nodes_inserts) do
+    nodes = Cluster.Utils.node_list_all()
+    nodes_inserts = Map.take(nodes_inserts, nodes)
+
     nodes_total = Enum.map(nodes_inserts, fn {_node, y} -> y.node_inserts end) |> Enum.sum()
     bq_max = Enum.map(nodes_inserts, fn {_node, y} -> y.bq_inserts end) |> Enum.max()
 
@@ -122,6 +129,9 @@ defmodule Logflare.PubSubRates.Cache do
   end
 
   defp merge_node_rates(nodes_rates) do
+    nodes = Cluster.Utils.node_list_all()
+    nodes_rates = Map.take(nodes_rates, nodes)
+
     acc = {
       :nonode@nohost,
       %{
