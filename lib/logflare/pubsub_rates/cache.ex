@@ -119,11 +119,9 @@ defmodule Logflare.PubSubRates.Cache do
   end
 
   defp merge_inserts(nodes_inserts) do
-    nodes = Cluster.Utils.node_list_all()
-    nodes_inserts = Map.take(nodes_inserts, nodes)
-
     nodes_total = Enum.map(nodes_inserts, fn {_node, y} -> y.node_inserts end) |> Enum.sum()
-    bq_max = Enum.map(nodes_inserts, fn {_node, y} -> y.bq_inserts end) |> Enum.max(&>=/2, 0)
+
+    bq_max = Enum.map(nodes_inserts, fn {_node, y} -> y.bq_inserts end) |> Enum.max()
 
     nodes_total + bq_max
   end

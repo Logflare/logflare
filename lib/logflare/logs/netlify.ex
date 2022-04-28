@@ -37,6 +37,28 @@ defmodule Logflare.Logs.Netlify do
          "log_type" => log_type,
          "method" => method,
          "status_code" => status_code,
+         "request_id" => request_id,
+         "path" => url
+       }) do
+    separator = " | "
+
+    IO.chardata_to_string([
+      log_type,
+      separator,
+      method,
+      separator,
+      Integer.to_charlist(status_code),
+      separator,
+      request_id,
+      separator,
+      url
+    ])
+  end
+
+  defp custom_message(%{
+         "log_type" => log_type,
+         "method" => method,
+         "status_code" => status_code,
          "client_ip" => client_ip,
          "request_id" => request_id,
          "url" => url,
@@ -59,5 +81,18 @@ defmodule Logflare.Logs.Netlify do
       separator,
       user_agent
     ])
+  end
+
+  defp custom_message(event) do
+    case Jason.encode(event) do
+      {:ok, json} ->
+        Logger.warn("Unhandled Netlify log event!", error_string: inspect(event))
+        json
+
+      {:error, reason} ->
+        msg = "Error in decoding unhandled Netflify log event format!"
+        Logger.error(msg, error_string: inspect(reason))
+        msg
+    end
   end
 end
