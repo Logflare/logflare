@@ -1,23 +1,14 @@
-version: '2.2'
+version: "3.9"
 services:
-  lf-pg:
+  db:
     image: postgres:13.4
-    container_name: lf-pg
-    environment:
-      - POSTGRES_USER=chasegranberry
-      - POSTGRES_PASSWORD=
-    ports:
-      - ${POSTGRESQL_PORT:-15432}:5432
     volumes:
-      - lf-pg:/var/lib/postgresql/data
-    networks:
-      - lf
-
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    ports:
+      - "5432:5432"
 
 volumes:
-  lf-pg:
-    driver: local
-
-networks:
-  lf:
-    driver: bridge
+  pg-data:
