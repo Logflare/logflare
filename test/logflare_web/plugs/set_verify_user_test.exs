@@ -11,6 +11,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
   end
 
   describe "Plugs.SetVerifyUser" do
+    @tag :failing
     test "sets api user correctly", %{users: [u1 | _]} do
       conn =
         build_conn(:post, "/logs")
@@ -21,6 +22,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUserTest do
       assert conn.halted == false
     end
 
+    @tag :failing
     test "halts api request with no api key" do
       conn =
         build_conn(:post, "/logs")

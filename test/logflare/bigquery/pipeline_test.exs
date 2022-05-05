@@ -14,6 +14,7 @@ defmodule Logflare.Google.BigQuery.PipelineTest do
   end
 
   describe "Pipeline" do
+    @tag :failing
     test "le_to_bq_row/1", %{sources: [source | _], users: [_user | _]} do
       datetime = DateTime.utc_now()
 

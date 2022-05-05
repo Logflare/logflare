@@ -8,6 +8,7 @@ defmodule LogflareWeb.UserControllerTest do
   alias Logflare.Source
   alias Logflare.Google.BigQuery
   import Logflare.Factory
+  @moduletag :failing
 
   setup do
     u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")

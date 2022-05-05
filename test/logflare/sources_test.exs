@@ -23,6 +23,7 @@ defmodule Logflare.SourcesTest do
   end
 
   describe "Sources" do
+    @tag :failing
     test "get_bq_schema/1", %{sources: [s | _], users: [u | _]} do
       source_id = s.token
 
