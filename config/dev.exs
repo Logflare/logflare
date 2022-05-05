@@ -51,8 +51,8 @@ config :logger, :console,
 config :phoenix, :stacktrace_depth, 20
 
 config :logflare, Logflare.Repo,
-  username: "chasegranberry",
-  password: "",
+  username: "postgres",
+  password: "postgres",
   database: "logflare",
   hostname: "localhost",
   port: 5432,
