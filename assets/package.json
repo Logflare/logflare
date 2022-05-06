@@ -19,7 +19,7 @@
     "localforage": "^1.7.3",
     "lodash": "^4.17.19",
     "luxon": "^1.17.1",
-    "node-fetch": "^2.6.1",
+    "node-fetch": "^2.6.7",
     "phoenix": "file:../deps/phoenix",
     "phoenix_html": "file:../deps/phoenix_html",
     "phoenix_live_react": "file:../deps/phoenix_live_react",
