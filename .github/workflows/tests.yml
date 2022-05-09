@@ -14,11 +14,11 @@ jobs:
 
     name: Build and test
     runs-on: ubuntu-latest
-    ports:
-      - 5432:5432
     services:
       postgres:
         image: postgres:13
+        ports:
+          - 5432:5432
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
