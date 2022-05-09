@@ -20,7 +20,7 @@ defmodule Logflare.Application do
 
     # Start distribution early so that both Cachex and Logflare.SQL
     # can work with it.
-    unless Node.alive?() do
+    unless Node.alive?() or env in [:test] do
       {:ok, _} = Node.start(:logflare)
     end
 

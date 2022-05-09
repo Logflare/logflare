@@ -207,10 +207,10 @@ defmodule Logflare.Mixfile do
   defp aliases do
     [
       setup: ["deps.get", "cmd PORT=4000 elixir --sname orange --cookie monster -S mix ecto.setup"],
-      "test.run": [
-        "cmd MIX_ENV=test elixir --sname orange --cookie monster -S mix ecto.create --quiet",
-        "cmd MIX_ENV=test elixir --sname orange --cookie monster -S mix ecto.migrate",
-        "cmd MIX_ENV=test elixir --sname orange --cookie monster -S mix test"
+      test: [
+        "ecto.create --quiet",
+        "ecto.migrate",
+        "test"
       ],
       "test.compile": ["compile --warnings-as-errors"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
