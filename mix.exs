@@ -181,7 +181,7 @@ defmodule Logflare.Mixfile do
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
-      {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
+      {:sobelow, "~> 0.11", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.11", only: :test, runtime: false},
 
       # Telemetry
@@ -211,6 +211,7 @@ defmodule Logflare.Mixfile do
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
+      "test.security": ["sobelow --threshold high"],
       "lint": ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
