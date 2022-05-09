@@ -34,6 +34,8 @@ jobs:
       with:
         elixir-version: '1.12.3' # Define the elixir version [required]
         otp-version: '24.1' # Define the OTP version [required]
+      env:
+        MIX_ENV: test
     - name: Restore dependencies cache
       uses: actions/cache@v3
       with:
