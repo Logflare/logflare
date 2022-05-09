@@ -206,15 +206,12 @@ defmodule Logflare.Mixfile do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "cmd PORT=4000 elixir --sname orange --cookie monster -S mix ecto.setup"],
-      test: [
-        "ecto.create --quiet",
-        "ecto.migrate",
-        "test"
-      ],
+      setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
+      start: "cmd PORT=4000 iex --sname orange --cookie monster -S mix phx.server",
+      test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
   end
 end
