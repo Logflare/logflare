@@ -210,6 +210,7 @@ defmodule Logflare.Mixfile do
       start: "cmd PORT=4000 iex --sname orange --cookie monster -S mix phx.server",
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
+      "test.format": ["format --check-formatted"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
