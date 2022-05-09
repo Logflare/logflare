@@ -13,12 +13,13 @@ defmodule Logflare.Mixfile do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test
+        lint: :test,
+        "lint.diff": :test,
+        "test.format": :test,
+        "test.compile": :test,
+        "test.security": :test,
+        "test.typings": :test,
       ],
       releases: [
         logflare: [
@@ -53,9 +54,6 @@ defmodule Logflare.Mixfile do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
-  # Specifies your project dependencies.
-  #
-  # Type `mix help deps` for examples and options.
   defp deps do
     [
       # Phoenix and LogflareWeb
@@ -197,12 +195,6 @@ defmodule Logflare.Mixfile do
     ]
   end
 
-  # Aliases are shortcuts or tasks specific to the current project.
-  # For example, to create, migrate and run the seeds file at once:
-  #
-  #     $ mix ecto.setup
-  #
-  # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
       setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
@@ -212,7 +204,7 @@ defmodule Logflare.Mixfile do
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high"],
       "test.typings": ["dialyzer --format short"],
-      "lint": ["credo"],
+      lint: ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
