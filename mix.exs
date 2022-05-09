@@ -125,7 +125,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:placebo, "~> 2.0"},
       {:mox, "~> 0.5", only: :test},
-      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
+      {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:faker, "~> 0.12", only: :test},
       {:mimic, "~> 1.0", only: :test},
 
