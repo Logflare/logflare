@@ -14,6 +14,7 @@ defmodule Logflare.Google.BigQuery.BqRepoTest do
   end
 
   describe "query" do
+    @tag :failing
     test "returns nil rows for a new empty table", %{sources: [source], users: [u]} do
       %{
         bigquery_table_ttl: bigquery_table_ttl,

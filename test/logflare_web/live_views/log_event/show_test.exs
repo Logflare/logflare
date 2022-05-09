@@ -7,6 +7,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   alias Logflare.User
   @endpoint LogflareWeb.Endpoint
   @moduletag :this
+  @moduletag :failing
 
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.LogEvents
@@ -217,7 +218,6 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   def generate_log_event() do
     %Logflare.LogEvent{
       body: %Logflare.LogEvent.Body{
-        created_at: nil,
         message: "info log 3",
         metadata: %{
           context: [

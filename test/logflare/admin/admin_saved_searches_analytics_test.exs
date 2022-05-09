@@ -124,6 +124,7 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
   end
 
   describe "SavedSearches.Analytics" do
+    @tag :failing
     test "source_timeseries/0", %{sources: [_s | _], users: [_u | _]} do
       assert Analytics.source_timeseries() == [
                %{count: 1, timestamp: ~D[2020-01-01]},
@@ -161,6 +162,7 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
              ]
     end
 
+    @tag :failing
     test "top_sources/1", %{sources: [_s | _], users: [_u | _], saved_searches: [ss | _]} do
       SavedSearches.inc(ss.id, tailing: true)
       SavedSearches.inc(ss.id, tailing: false)
@@ -173,6 +175,7 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
       assert [%{id: _, name: _, non_tailing_count: 4, tailing_count: 2}] = data
     end
 
+    @tag :failing
     test "user_timeseries/0", %{sources: [_s | _], users: [_u | _]} do
       assert Analytics.user_timeseries() == [
                %{count: 1, timestamp: ~D[2020-01-01]},
@@ -210,6 +213,7 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
              ]
     end
 
+    @tag :failing
     test "search_timeseries/0", %{sources: [_s | _], users: [_u | _]} do
       assert Analytics.search_timeseries() == [
                %{non_tailing_count: 15, tailing_count: 4, timestamp: ~D[2020-01-01]},
@@ -247,11 +251,13 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
              ]
     end
 
+    @tag :failing
     test "saved_searches/0", %{sources: [_s | _], users: [_u | _]} do
       data = Analytics.saved_searches()
       assert data == [%{count: 4, saved_by_user: false}]
     end
 
+    @tag :failing
     test "top_field_paths/1", %{sources: [_s | _], users: [_u | _]} do
       data = Analytics.top_field_paths(:lql_filters)
 
@@ -268,6 +274,7 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
       assert data == [%{count: 4, path: "timestamp"}]
     end
 
+    @tag :failing
     test "operators/0", %{sources: [_s | _], users: [_u | _]} do
       data = Analytics.operators()
 

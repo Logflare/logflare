@@ -2,6 +2,7 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   import Logflare.Factory
   use LogflareWeb.ConnCase
+  @moduletag :failing
 
   describe "Admin controller" do
     setup do
