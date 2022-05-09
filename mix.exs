@@ -180,7 +180,7 @@ defmodule Logflare.Mixfile do
       {:ex_unicode, "~> 1.0"},
 
       # Code quality
-      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
       {:excoveralls, "~> 0.11", only: :test, runtime: false},
 
@@ -211,6 +211,9 @@ defmodule Logflare.Mixfile do
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
+      "lint": ["credo"],
+      "lint.diff": ["credo diff master"],
+      "lint.all": ["credo --strict"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]

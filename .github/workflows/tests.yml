@@ -36,3 +36,5 @@ jobs:
       run: mix test
     # - name: Code quality - formatting
     #   run: mix test.format
+    # - name: Code quality - linting
+    #   run: mix lint.diff
