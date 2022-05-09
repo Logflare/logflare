@@ -38,5 +38,7 @@ jobs:
     #   run: mix test.security
     # - name: Code quality - formatting
     #   run: mix test.format
+    # - name: Code quality - typings
+    #   run: mix test.typings
     # - name: Code quality - linting
     #   run: mix lint.diff

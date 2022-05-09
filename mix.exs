@@ -169,7 +169,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_react, "~> 0.4"},
 
       # Dev
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
 
       # Billing
       {:stripity_stripe, "~> 2.9.0"},
@@ -211,6 +211,7 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high"],
+      "test.typings": ["dialyzer --format short"],
       "lint": ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
