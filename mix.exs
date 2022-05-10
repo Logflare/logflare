@@ -13,12 +13,13 @@ defmodule Logflare.Mixfile do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test
+        lint: :test,
+        "lint.diff": :test,
+        "test.format": :test,
+        "test.compile": :test,
+        "test.security": :test,
+        "test.typings": :test,
       ],
       releases: [
         logflare: [
@@ -53,9 +54,6 @@ defmodule Logflare.Mixfile do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
-  # Specifies your project dependencies.
-  #
-  # Type `mix help deps` for examples and options.
   defp deps do
     [
       # Phoenix and LogflareWeb
@@ -125,7 +123,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:placebo, "~> 2.0"},
       {:mox, "~> 0.5", only: :test},
-      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
+      {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:faker, "~> 0.12", only: :test},
       {:mimic, "~> 1.0", only: :test},
 
@@ -169,7 +167,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_react, "~> 0.4"},
 
       # Dev
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
 
       # Billing
       {:stripity_stripe, "~> 2.9.0"},
@@ -180,9 +178,8 @@ defmodule Logflare.Mixfile do
       {:ex_unicode, "~> 1.0"},
 
       # Code quality
-      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
-      {:excoveralls, "~> 0.11", only: :test, runtime: false},
+      {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.11", only: [:dev, :test], runtime: false},
 
       # Telemetry
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
@@ -198,23 +195,20 @@ defmodule Logflare.Mixfile do
     ]
   end
 
-  # Aliases are shortcuts or tasks specific to the current project.
-  # For example, to create, migrate and run the seeds file at once:
-  #
-  #     $ mix ecto.setup
-  #
-  # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "cmd PORT=4000 elixir --sname orange --cookie monster -S mix ecto.setup"],
-      "test.run": [
-        "cmd MIX_ENV=test elixir --sname orange --cookie monster -S mix ecto.create --quiet",
-        "cmd MIX_ENV=test elixir --sname orange --cookie monster -S mix ecto.migrate",
-        "cmd MIX_ENV=test elixir --sname orange --cookie monster -S mix test"
-      ],
+      setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
+      start: "cmd PORT=4000 iex --sname orange --cookie monster -S mix phx.server",
+      test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
+      "test.format": ["format --check-formatted"],
+      "test.security": ["sobelow --threshold high"],
+      "test.typings": ["dialyzer --format short"],
+      lint: ["credo"],
+      "lint.diff": ["credo diff master"],
+      "lint.all": ["credo --strict"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
   end
 end
