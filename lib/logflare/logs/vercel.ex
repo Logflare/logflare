@@ -71,8 +71,6 @@ defmodule Logflare.Logs.Vercel do
   end
 
   defp custom_message(event) do
-    "#{event["proxy"]["statusCode"]} | #{event["proxy"]["host"]} | #{event["proxy"]["path"]} | #{
-      event["proxy"]["clientIp"]
-    } | #{event["proxy"]["userAgent"]}"
+    "#{event["proxy"]["statusCode"]} | #{event["proxy"]["host"]} | #{event["proxy"]["path"]} | #{event["proxy"]["clientIp"]} | #{event["proxy"]["userAgent"]}"
   end
 end

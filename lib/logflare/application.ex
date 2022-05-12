@@ -14,7 +14,6 @@ defmodule Logflare.Application do
   }
 
   def start(_type, _args) do
-
     env = Application.get_env(:logflare, :env)
 
     # Start distribution early so that both Cachex and Logflare.SQL
@@ -22,7 +21,6 @@ defmodule Logflare.Application do
     unless Node.alive?() or env in [:test] do
       {:ok, _} = Node.start(:logflare)
     end
-
 
     # TODO: Set node status in GCP when sigterm is received
     :ok =
@@ -72,7 +70,6 @@ defmodule Logflare.Application do
     ]
   end
 
-
   defp get_children(_) do
     # Database options for Postgres notifications
     hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
@@ -85,6 +82,7 @@ defmodule Logflare.Application do
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
     topologies = Application.get_env(:libcluster, :topologies)
+
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},

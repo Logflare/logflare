@@ -6,7 +6,6 @@ defmodule Mix.Tasks.Sql do
 
   @impl Mix.Task
   def run(_) do
-    Mix.shell.cmd("./gradlew runtime", cd: "sql")
+    Mix.shell().cmd("./gradlew runtime", cd: "sql")
   end
-
 end

@@ -185,5 +185,4 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         )
     end
   end
-
 end

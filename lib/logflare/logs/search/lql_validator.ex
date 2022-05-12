@@ -28,17 +28,13 @@ defmodule Logflare.Lql.Validator do
           hd(chart_rules).path != "timestamp" ->
         chart_rule = hd(chart_rules)
 
-        "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{
-          chart_rule.path
-        }. Check the source schema for the field used with chart operator."
+        "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{chart_rule.path}. Check the source schema for the field used with chart operator."
 
       Timex.diff(max_ts, min_ts, chart_period) == 0 ->
         "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
 
       get_number_of_chart_ticks(min_ts, max_ts, chart_period) > @default_max_n_chart_ticks ->
-        "The interval length between min and max timestamp is larger than #{
-          @default_max_n_chart_ticks
-        } periods, please use a longer chart aggregation period."
+        "The interval length between min and max timestamp is larger than #{@default_max_n_chart_ticks} periods, please use a longer chart aggregation period."
 
       true ->
         nil

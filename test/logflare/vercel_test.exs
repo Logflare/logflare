@@ -6,9 +6,27 @@ defmodule Logflare.VercelTest do
   describe "vercel_auths" do
     alias Logflare.Vercel.Auth
 
-    @valid_attrs %{access_token: "some access_token", installation_id: "some installation_id", team_id: "some team_id", token_type: "some token_type", vercel_user_id: "some vercel_user_id"}
-    @update_attrs %{access_token: "some updated access_token", installation_id: "some updated installation_id", team_id: "some updated team_id", token_type: "some updated token_type", vercel_user_id: "some updated vercel_user_id"}
-    @invalid_attrs %{access_token: nil, installation_id: nil, team_id: nil, token_type: nil, vercel_user_id: nil}
+    @valid_attrs %{
+      access_token: "some access_token",
+      installation_id: "some installation_id",
+      team_id: "some team_id",
+      token_type: "some token_type",
+      vercel_user_id: "some vercel_user_id"
+    }
+    @update_attrs %{
+      access_token: "some updated access_token",
+      installation_id: "some updated installation_id",
+      team_id: "some updated team_id",
+      token_type: "some updated token_type",
+      vercel_user_id: "some updated vercel_user_id"
+    }
+    @invalid_attrs %{
+      access_token: nil,
+      installation_id: nil,
+      team_id: nil,
+      token_type: nil,
+      vercel_user_id: nil
+    }
 
     def auth_fixture(attrs \\ %{}) do
       {:ok, auth} =

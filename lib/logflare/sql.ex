@@ -20,41 +20,58 @@ defmodule Logflare.SQL do
   end
 
   def handle_continue(:run, state) do
-    db_config = Logflare.Repo.config
-    db_url = "jdbc:pgsql://#{db_config[:hostname]}:#{db_config[:port] || 5432}/#{db_config[:database]}"
-    :exec.run_link(:code.priv_dir(:logflare) |>
-                   to_string() |>
-                   Path.join("sql/bin/logflare_sql"),
-                   [
-                     {:stdout, fn _, _, b -> IO.puts "[SQL] #{b}" end},
-                     {:stderr, fn _, _, b -> IO.puts "[SQL(error)] #{b}" end},
-                     {:env, [
-                       {"NODE_NAME", node() |> to_string()},
-                       {"COOKIE", Node.get_cookie |> to_string()},
-                       {"DATABASE_URL", db_url},
-                       {"DB_USER", db_config[:username]},
-                       {"DB_PASSWORD", db_config[:password]},
-                       {"LOGFLARE_ENV", Application.get_env(:logflare, :env) |> to_string() },
-                       {"PROJECT_ID", Application.get_env(:logflare, Logflare.Google)[:project_id]}
-                     ]}
-                   ])
+    db_config = Logflare.Repo.config()
+
+    db_url =
+      "jdbc:pgsql://#{db_config[:hostname]}:#{db_config[:port] || 5432}/#{db_config[:database]}"
+
+    :exec.run_link(
+      :code.priv_dir(:logflare)
+      |> to_string()
+      |> Path.join("sql/bin/logflare_sql"),
+      [
+        {:stdout, fn _, _, b -> IO.puts("[SQL] #{b}") end},
+        {:stderr, fn _, _, b -> IO.puts("[SQL(error)] #{b}") end},
+        {:env,
+         [
+           {"NODE_NAME", node() |> to_string()},
+           {"COOKIE", Node.get_cookie() |> to_string()},
+           {"DATABASE_URL", db_url},
+           {"DB_USER", db_config[:username]},
+           {"DB_PASSWORD", db_config[:password]},
+           {"LOGFLARE_ENV", Application.get_env(:logflare, :env) |> to_string()},
+           {"PROJECT_ID", Application.get_env(:logflare, Logflare.Google)[:project_id]}
+         ]}
+      ]
+    )
+
     {:noreply, state}
   end
 
   def handle_call({:transform, query, user_id}, from, %__MODULE__{ready: false} = state) do
-    {:noreply, %{state | ready_queue: [{{:transform, query, user_id}, from}|state.ready_queue]}}
+    {:noreply, %{state | ready_queue: [{{:transform, query, user_id}, from} | state.ready_queue]}}
   end
 
-  def handle_call({:source_mapping, query, user_id, source_mapping}, from, %__MODULE__{ready: false} = state) do
-    {:noreply, %{state | ready_queue: [{{:source_mapping, query, user_id, source_mapping}, from}|state.ready_queue]}}
+  def handle_call(
+        {:source_mapping, query, user_id, source_mapping},
+        from,
+        %__MODULE__{ready: false} = state
+      ) do
+    {:noreply,
+     %{
+       state
+       | ready_queue: [
+           {{:source_mapping, query, user_id, source_mapping}, from} | state.ready_queue
+         ]
+     }}
   end
 
   def handle_call({:parameters, query}, from, %__MODULE__{ready: false} = state) do
-    {:noreply, %{state | ready_queue: [{{:parameters, query}, from}|state.ready_queue]}}
+    {:noreply, %{state | ready_queue: [{{:parameters, query}, from} | state.ready_queue]}}
   end
 
   def handle_call({:sources, query, user_id}, from, %__MODULE__{ready: false} = state) do
-    {:noreply, %{state | ready_queue: [{{:sources, query, user_id}, from}|state.ready_queue]}}
+    {:noreply, %{state | ready_queue: [{{:sources, query, user_id}, from} | state.ready_queue]}}
   end
 
   def handle_call({:transform, query, user_id}, from, state) do
@@ -83,22 +100,28 @@ defmodule Logflare.SQL do
 
   def handle_info({:ready, pid}, %__MODULE__{} = state) do
     Logger.info("Logflare.SQL is ready")
-    state = Enum.reduce(state.ready_queue, %__MODULE__ { state | pid: pid, ready_queue: [], ready: true },
-    fn {call, from}, state ->
-      {:noreply, state} = handle_call(call, from, state)
-      state
-    end)
+
+    state =
+      Enum.reduce(
+        state.ready_queue,
+        %__MODULE__{state | pid: pid, ready_queue: [], ready: true},
+        fn {call, from}, state ->
+          {:noreply, state} = handle_call(call, from, state)
+          state
+        end
+      )
+
     {:noreply, state}
   end
 
   def handle_info({:ok, ref, response}, state) do
     GenServer.reply(state.requests[ref], {:ok, response})
-    {:noreply, pop_in(state.requests[ref]) |> elem(1) }
+    {:noreply, pop_in(state.requests[ref]) |> elem(1)}
   end
 
   def handle_info({:error, ref, response}, state) do
     GenServer.reply(state.requests[ref], {:error, response})
-    {:noreply, pop_in(state.requests[ref]) |> elem(1) }
+    {:noreply, pop_in(state.requests[ref]) |> elem(1)}
   end
 
   @doc """
@@ -152,6 +175,4 @@ defmodule Logflare.SQL do
   defp do_sources(query, user_id, timeout) do
     GenServer.call(__MODULE__, {:sources, query, user_id}, timeout)
   end
-
-
 end
