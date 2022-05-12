@@ -91,7 +91,7 @@ defmodule Logflare.Lql.Parser do
       {:error, err}
   end
 
-  defp get_path_type(typemap, path, querystring) do
+  defp get_path_type(typemap, path, _querystring) do
     type = Map.get(typemap, path)
 
     case type do
@@ -118,13 +118,6 @@ defmodule Logflare.Lql.Parser do
       _type ->
         type
     end
-  end
-
-  defp get_most_similar_path(paths, user_path) do
-    paths
-    |> Enum.reject(fn {_, v} -> v == :map end)
-    |> Enum.map(fn {k, _} -> k end)
-    |> Enum.max_by(&String.jaro_distance(&1, user_path))
   end
 
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)

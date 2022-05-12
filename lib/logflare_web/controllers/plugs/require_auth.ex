@@ -3,7 +3,6 @@ defmodule LogflareWeb.Plugs.RequireAuth do
   import Phoenix.Controller
 
   alias LogflareWeb.Router.Helpers, as: Routes
-  alias Logflare.TeamUsers.TeamUser
 
   def init(_opts), do: nil
 

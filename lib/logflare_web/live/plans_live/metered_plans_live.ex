@@ -5,7 +5,6 @@ defmodule LogflareWeb.MeteredPlansLive do
 
   alias Logflare.Plans
   alias Logflare.Users
-  alias LogflareWeb.BillingHelpers
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
@@ -200,7 +199,4 @@ defmodule LogflareWeb.MeteredPlansLive do
         your BigQuery tables. Never archive to object storage again.</p>
     """
   end
-
-  defp period!("month"), do: "year"
-  defp period!("year"), do: "month"
 end

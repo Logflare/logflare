@@ -142,7 +142,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     log_event
   end
 
-  defp process_data(%LE{body: body, source: %Source{token: source_id}} = log_event) do
+  defp process_data(%LE{body: _body, source: %Source{token: source_id}} = log_event) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
@@ -186,13 +186,4 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     end
   end
 
-  defp calc_procs(source, plan) do
-    limit =
-      if plan.name == "Legacy",
-        do: source.api_quota,
-        else: plan.limit_rate_limit
-
-    # Really only one worker per pipeline. Some contention probably in the buffer.
-    Kernel.ceil(limit / 5000)
-  end
 end

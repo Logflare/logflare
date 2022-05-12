@@ -19,7 +19,6 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Mailer
   alias Logflare.Google.BigQuery.SchemaUtils
 
-  @persist_every 60_000
   @timeout 60_000
   @updates_per_minute 6
 

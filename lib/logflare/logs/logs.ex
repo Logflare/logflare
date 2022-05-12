@@ -63,7 +63,7 @@ defmodule Logflare.Logs do
   end
 
   def maybe_mark_le_dropped_by_lql(
-        %LE{body: body, source: %{drop_lql_string: drop_lql_string, drop_lql_filters: filters}} =
+        %LE{body: _body, source: %{drop_lql_string: drop_lql_string, drop_lql_filters: filters}} =
           le
       )
       when is_binary(drop_lql_string) do
