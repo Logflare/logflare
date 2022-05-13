@@ -6,6 +6,7 @@ defmodule Logflare.Factory do
   alias Logflare.{User, Source, Rule, LogEvent}
   alias Logflare.Users.UserPreferences
   alias Logflare.Plans.Plan
+  alias Logflare.Teams.Team
 
   def user_factory do
     %User{
@@ -17,6 +18,12 @@ defmodule Logflare.Factory do
       api_key: Faker.String.base64(10),
       provider_uid: "provider_uid",
       bigquery_udfs_hash: ""
+    }
+  end
+  def team_factory do
+    %Team{
+      name: "my team #{random_string()}",
+      user: build(:user)
     }
   end
 
@@ -55,5 +62,9 @@ defmodule Logflare.Factory do
     %UserPreferences{
       timezone: "Phoenix/Arizona"
     }
+  end
+
+  defp random_string(length \\ 6) do
+    :crypto.strong_rand_bytes(length) |> Base.url_encode64 |> binary_part(0, length)
   end
 end
