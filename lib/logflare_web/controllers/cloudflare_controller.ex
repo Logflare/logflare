@@ -4,7 +4,7 @@ defmodule LogflareWeb.CloudflareController do
   alias Logflare.JSON
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.Auth.OauthAccessToken
 
   def event(conn, params) do
     user_token = params["authentications"]["account"]["token"]["token"]

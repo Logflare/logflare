@@ -1,4 +1,4 @@
-defmodule Logflare.OauthAccessGrants.OauthAccessGrant do
+defmodule Logflare.Auth.OauthAccessGrant do
   use TypedEctoSchema
   use ExOauth2Provider.AccessGrants.AccessGrant, otp_app: :logflare
 
