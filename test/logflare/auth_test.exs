@@ -11,16 +11,16 @@ defmodule Logflare.AuthTest do
     [user: user, team: Factory.insert(:team, user: user) ]
   end
 
-  describe "api keys" do
+  describe "api access tokens" do
     test "can create api key", %{user: user, team: team} do
       {:ok, %ApiKey{}} = Auth.create_access_token(user)
       {:ok, %ApiKey{}} = Auth.create_access_token(team)
     end
-    test "can revoke api key", %{user: user} do
+    test "can revoke access tokens", %{user: user} do
       key = access_token_fixture(user)
       :ok = Auth.revoke_access_token(key)
     end
-    test "verify api key", %{user: %{id: user_id} = user, team: %{id: team_id} = team} do
+    test "verify access tokens", %{user: %{id: user_id} = user, team: %{id: team_id} = team} do
       # api key without a team
       key = access_token_fixture(user)
       {:ok, %User{}, nil} = Auth.verify_access_token(key)
