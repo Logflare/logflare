@@ -2,7 +2,6 @@ defmodule Logflare.Logs.Search.Utils do
   @moduledoc """
   Utilities for Logs search and Logs live view modules
   """
-  alias Logflare.JSON
   require Logger
 
   def gen_search_tip() do
@@ -52,8 +51,4 @@ defmodule Logflare.Logs.Search.Utils do
   def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
   def put_result_in(value, so, path), do: %{so | path => value}
-
-  defp search_error_message(host, status) do
-    "Invalid JSON response from backend #{host}. Recieved an HTTP status code: #{status}. This is likely temporary. Please contact support if it continues."
-  end
 end

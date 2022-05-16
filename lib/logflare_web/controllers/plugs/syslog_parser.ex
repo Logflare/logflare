@@ -52,9 +52,7 @@ defmodule Plug.Parsers.SYSLOG do
 
           {:error, error} ->
             Logger.warn(
-              "Syslog message parsing error: #{error}, message: |#{syslog_message_string}|, source: #{
-                conn.params["source"]
-              }"
+              "Syslog message parsing error: #{error}, message: |#{syslog_message_string}|, source: #{conn.params["source"]}"
             )
 
             nil
@@ -66,6 +64,18 @@ defmodule Plug.Parsers.SYSLOG do
   rescue
     e ->
       reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
+  end
+
+  def decode({:more, _, conn}) do
+    {:error, :too_large, conn}
+  end
+
+  def decode({:error, :timeout}) do
+    raise Plug.TimeoutError
+  end
+
+  def decode({:error, _}) do
+    raise Plug.BadRequestError
   end
 
   def to_log_params(%SyslogMessage{} = syslog_msg) do
@@ -82,17 +92,5 @@ defmodule Plug.Parsers.SYSLOG do
       "timestamp" => timestamp,
       "metadata" => MapKeys.to_strings(metadata)
     }
-  end
-
-  def decode({:more, _, conn}) do
-    {:error, :too_large, conn}
-  end
-
-  def decode({:error, :timeout}) do
-    raise Plug.TimeoutError
-  end
-
-  def decode({:error, _}) do
-    raise Plug.BadRequestError
   end
 end

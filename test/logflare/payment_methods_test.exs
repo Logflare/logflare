@@ -75,7 +75,6 @@ defmodule Logflare.PaymentMethodsTest do
       end
     end
 
-
     @tag :failing
     test "change_payment_method/1 returns a payment_method changeset" do
       payment_method = payment_method_fixture()

@@ -216,7 +216,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     """
   end
 
-  defp update_all_subscription(nil, params),
+  defp update_all_subscription(nil, _params),
     do: {:ok, "Default payment method set for your billing account!"}
 
   defp update_all_subscription(subs, params) do

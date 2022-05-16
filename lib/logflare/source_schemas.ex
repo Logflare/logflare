@@ -5,7 +5,6 @@ defmodule Logflare.SourceSchemas do
 
   alias Logflare.Repo
   alias Logflare.SourceSchemas.SourceSchema
-  alias Logflare.Google.BigQuery.SchemaUtils
 
   require Logger
 

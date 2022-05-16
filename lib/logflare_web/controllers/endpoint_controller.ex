@@ -1,10 +1,6 @@
 defmodule LogflareWeb.EndpointController do
   use LogflareWeb, :controller
-
-  alias Logflare.Logs.IngestTypecasting
-
   import Ecto.Query, only: [from: 2]
-
   require Logger
 
   plug CORSPlug,
@@ -117,7 +113,8 @@ defmodule LogflareWeb.EndpointController do
       |> Logflare.Repo.one()
       |> Logflare.Repo.preload(:user)
 
-    for q <- Logflare.Endpoint.Cache.resolve(endpoint_query), do: Logflare.Endpoint.Cache.invalidate(q)
+    for q <- Logflare.Endpoint.Cache.resolve(endpoint_query),
+        do: Logflare.Endpoint.Cache.invalidate(q)
 
     Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, params)
     |> Logflare.Repo.update()
@@ -168,7 +165,7 @@ defmodule LogflareWeb.EndpointController do
   end
 
   def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
-    endpoint_query =
+    _endpoint_query =
       from(q in Logflare.Endpoint.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
@@ -176,7 +173,7 @@ defmodule LogflareWeb.EndpointController do
       |> Logflare.Repo.preload(:user)
       |> Logflare.Repo.delete()
       |> case do
-        {:ok, endpoint_query} ->
+        {:ok, _endpoint_query} ->
           conn
           |> put_flash(:info, "Endpoint deleted!")
           |> redirect(to: Routes.endpoint_path(conn, :index))
@@ -189,7 +186,7 @@ defmodule LogflareWeb.EndpointController do
       end
   end
 
-  def apply(%{assigns: %{user: user}} = conn, params) do
+  def apply(%{assigns: %{user: user}} = conn, _params) do
     Logger.info("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
     conn
