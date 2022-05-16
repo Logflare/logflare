@@ -7,7 +7,7 @@ defmodule LogflareWeb.CloudflareControllerV1 do
   alias Logflare.JSON
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.Auth.OauthAccessToken
+  alias Logflare.OauthAccessTokens.OauthAccessToken
 
   @doc """
   Takes the conn and params and builds a response based on the authentication token from Cloudflare.
