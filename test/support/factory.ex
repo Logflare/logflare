@@ -20,6 +20,7 @@ defmodule Logflare.Factory do
       bigquery_udfs_hash: ""
     }
   end
+
   def team_factory do
     %Team{
       name: "my team #{random_string()}",
@@ -65,6 +66,6 @@ defmodule Logflare.Factory do
   end
 
   defp random_string(length \\ 6) do
-    :crypto.strong_rand_bytes(length) |> Base.url_encode64 |> binary_part(0, length)
+    :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)
   end
 end
