@@ -52,9 +52,7 @@ defmodule Plug.Parsers.SYSLOG do
 
           {:error, error} ->
             Logger.warn(
-              "Syslog message parsing error: #{error}, message: |#{syslog_message_string}|, source: #{
-                conn.params["source"]
-              }"
+              "Syslog message parsing error: #{error}, message: |#{syslog_message_string}|, source: #{conn.params["source"]}"
             )
 
             nil
@@ -95,5 +93,4 @@ defmodule Plug.Parsers.SYSLOG do
       "metadata" => MapKeys.to_strings(metadata)
     }
   end
-
 end

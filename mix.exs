@@ -19,7 +19,7 @@ defmodule Logflare.Mixfile do
         "test.format": :test,
         "test.compile": :test,
         "test.security": :test,
-        "test.typings": :test,
+        "test.typings": :test
       ],
       releases: [
         logflare: [

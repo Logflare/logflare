@@ -26,7 +26,6 @@ config :logflare, Logflare.Repo,
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
 
-
 config :logger,
   level: :error,
   backends: [:console]

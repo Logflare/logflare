@@ -148,6 +148,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert get_flash(conn, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
     end
+
     @tag :failing
     test "returns 200 but doesn't change restricted params", %{
       conn: conn,

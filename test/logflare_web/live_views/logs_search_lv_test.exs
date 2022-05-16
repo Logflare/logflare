@@ -271,6 +271,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
                }
              ]
     end
+
     @tag :failing
     test "shows notification error for malformed query", %{
       conn: conn,

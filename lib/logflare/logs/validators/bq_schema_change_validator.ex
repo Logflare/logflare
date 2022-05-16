@@ -38,6 +38,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def merge_flat_typemaps(new, nil), do: new
   def merge_flat_typemaps(new, original) when new == %{}, do: original
   def merge_flat_typemaps(new, original) when new == original, do: original
+
   def merge_flat_typemaps(new, original) do
     Map.merge(new, original, fn k, v1, v2 ->
       if v1 != v2,
