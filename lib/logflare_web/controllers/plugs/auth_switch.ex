@@ -30,9 +30,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
     end
   end
 
-  @doc """
-    As a team user I should not be able to switch to an account owner who is not me.
-  """
+  # As a team user I should not be able to switch to an account owner who is not me.
   def call(
         %{
           assigns: %{user: _user, team_user: team_user, team: _team},
@@ -46,10 +44,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
     end
   end
 
-  @doc """
-    As an account owner I should not be able to switch to another team as a team user who is not me.
-  """
-
+  # As an account owner I should not be able to switch to another team as a team user who is not me.
   def call(
         %{
           assigns: %{user: user, team: _team},
@@ -63,10 +58,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
     end
   end
 
-  @doc """
-   As an account owner I should not be able to switch to another account as a different account owner.
-  """
-
+  # As an account owner I should not be able to switch to another account as a different account owner.
   def call(
         %{assigns: %{user: user, team: _team}, query_params: %{"user_id" => user_id}} = conn,
         opts

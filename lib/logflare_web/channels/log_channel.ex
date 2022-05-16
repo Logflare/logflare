@@ -33,7 +33,7 @@ defmodule LogflareWeb.LogChannel do
         socket = socket |> assign(:source, source)
 
         send(
-          self,
+          self(),
           {:notify,
            %{
              message: "💥 Connected to Logflare! Can we haz all your datas? 👀 ➡️ #{url}",
@@ -66,14 +66,14 @@ defmodule LogflareWeb.LogChannel do
     end
   end
 
-  def handle_in("ping", payload, socket) do
+  def handle_in("ping", _payload, socket) do
     push(socket, "pong", %{message: "Pong"})
     {:noreply, socket}
   end
 
-  def handle_in(event, payload, socket) do
+  def handle_in(_event, payload, socket) do
     send(
-      self,
+      self(),
       {:notify,
        %{
          message: "Unhandled event type. Please verify.",

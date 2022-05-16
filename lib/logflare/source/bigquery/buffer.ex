@@ -52,7 +52,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
   end
 
   @spec ack(atom(), String.t()) :: {:ok, LE.t()}
-  def ack(source_id, log_event_id) do
+  def ack(_source_id, log_event_id) do
     case Sources.BuffersCache.take_read_receipt(log_event_id) do
       {:ok, nil} ->
         # Seeing a lot of these need to figure it out

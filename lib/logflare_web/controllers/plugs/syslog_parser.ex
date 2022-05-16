@@ -68,6 +68,18 @@ defmodule Plug.Parsers.SYSLOG do
       reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
   end
 
+  def decode({:more, _, conn}) do
+    {:error, :too_large, conn}
+  end
+
+  def decode({:error, :timeout}) do
+    raise Plug.TimeoutError
+  end
+
+  def decode({:error, _}) do
+    raise Plug.BadRequestError
+  end
+
   def to_log_params(%SyslogMessage{} = syslog_msg) do
     {message, metadata} =
       syslog_msg
@@ -84,15 +96,4 @@ defmodule Plug.Parsers.SYSLOG do
     }
   end
 
-  def decode({:more, _, conn}) do
-    {:error, :too_large, conn}
-  end
-
-  def decode({:error, :timeout}) do
-    raise Plug.TimeoutError
-  end
-
-  def decode({:error, _}) do
-    raise Plug.BadRequestError
-  end
 end

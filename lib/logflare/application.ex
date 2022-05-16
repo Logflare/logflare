@@ -5,7 +5,6 @@ defmodule Logflare.Application do
   alias Logflare.{
     Users,
     Sources,
-    Tracker,
     Logs,
     BillingAccounts,
     Plans,
