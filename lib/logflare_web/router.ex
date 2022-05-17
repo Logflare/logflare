@@ -250,6 +250,9 @@ defmodule LogflareWeb.Router do
     delete "/", UserController, :delete
     get "/edit/api-key", UserController, :new_api_key
     put "/edit/owner", UserController, :change_owner
+
+    # access token management
+    live "/access-tokens", AccessTokensLive, :index
   end
 
   scope "/integrations", LogflareWeb do

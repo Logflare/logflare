@@ -3,6 +3,9 @@
     <h5>~/endpoints</h5>
     <div class="log-settings">
       <ul>
+        <li><%= link to: Routes.access_tokens_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile">
+          Manage access tokens
+        </span><% end %></li>
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
           <span>Ingest API key is

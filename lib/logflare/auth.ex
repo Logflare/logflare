@@ -5,7 +5,8 @@ defmodule Logflare.Auth do
   alias Logflare.User
   alias Logflare.Teams.Team
   alias Logflare.OauthAccessTokens.OauthAccessToken
-
+  alias Logflare.Repo
+  import Ecto.Query
   @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @oauth_config Application.get_env(:logflare, ExOauth2Provider)
 
@@ -30,6 +31,14 @@ defmodule Logflare.Auth do
   def gen_gravatar_link(email) do
     hash = :crypto.hash(:md5, String.trim(email)) |> Base.encode16(case: :lower)
     "https://www.gravatar.com/avatar/" <> hash
+  end
+
+  @doc """
+  Lsit Oauth access tokens by user
+  """
+  @spec list_valid_access_tokens(%User{}) :: [%OauthAccessToken{}]
+  def list_valid_access_tokens(%User{id: user_id}) do
+    Repo.all(from t in OauthAccessToken, where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at))
   end
 
   @doc """
