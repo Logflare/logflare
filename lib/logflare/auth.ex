@@ -73,6 +73,7 @@ defmodule Logflare.Auth do
     ExOauth2Provider.AccessTokens.get_by_token(token)
     |> revoke_access_token()
   end
+
   def revoke_access_token(%OauthAccessToken{} = token) do
     with {:ok, _token} = ExOauth2Provider.AccessTokens.revoke(token, @oauth_config) do
       :ok

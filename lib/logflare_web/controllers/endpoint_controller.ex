@@ -3,6 +3,7 @@ defmodule LogflareWeb.EndpointController do
   import Ecto.Query, only: [from: 2]
   require Logger
   alias Logflare.Endpoint
+
   plug CORSPlug,
     origin: "*",
     max_age: 1_728_000,
