@@ -7,7 +7,8 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Plans.Plan
   alias Logflare.Teams.Team
-
+  alias Logflare.Endpoint.Query
+  alias Logflare.OauthAccessTokens.OauthAccessToken
   def user_factory do
     %User{
       name: "JaneJohn Jones",
@@ -62,6 +63,19 @@ defmodule Logflare.Factory do
   def user_preferences_factory() do
     %UserPreferences{
       timezone: "Phoenix/Arizona"
+    }
+  end
+
+  def endpoint_factory do
+    %Query{
+      user: build(:user),
+      token: Ecto.UUID.generate()
+    }
+  end
+  def access_token_factory do
+    %OauthAccessToken{
+      token: random_string(20),
+      resource_owner: build(:user)
     }
   end
 

@@ -2,7 +2,7 @@ defmodule LogflareWeb.EndpointController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
   require Logger
-
+  alias Logflare.Endpoint
   plug CORSPlug,
     origin: "*",
     max_age: 1_728_000,
@@ -17,11 +17,7 @@ defmodule LogflareWeb.EndpointController do
     send_preflight_response?: true
 
   def query(%{params: %{"token" => token}} = conn, _) do
-    query =
-      from q in Logflare.Endpoint.Query,
-        where: q.token == ^token
-
-    endpoint_query = Logflare.Repo.one(query) |> Logflare.Endpoint.Query.map_query()
+    endpoint_query = Endpoint.get_query_by_token(token)
 
     case Logflare.Endpoint.Cache.resolve(endpoint_query, conn.query_params)
          |> Logflare.Endpoint.Cache.query() do
