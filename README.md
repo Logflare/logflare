@@ -68,5 +68,5 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 12. In `iex` console, test that everything works:
 
 ```elixir
-iex> LogflareLogger.info("testing.123")
+iex> LogflareLogger.info("testing log message")
 ```
