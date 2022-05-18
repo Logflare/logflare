@@ -33,7 +33,7 @@
     <div class="mb-2">
       <%= Routes.endpoint_url(@conn, :query, @endpoint_query.token) %>
     </div>
-    <%= form_for @changeset, Routes.endpoint_path(@conn, :reset_url, @endpoint_query), fn a -> %>
+    <%= form_for @changeset, Routes.endpoint_path(@conn, :reset_url, @endpoint_query), fn _a -> %>
     <%= submit "Reset", class: "btn btn-primary form-button" %>
     <% end %>
 

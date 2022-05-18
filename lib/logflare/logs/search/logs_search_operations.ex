@@ -2,7 +2,7 @@ defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
   alias Logflare.BqRepo
   alias Logflare.DateTimeUtils
-  alias Logflare.Google.BigQuery.{GenUtils, SchemaUtils}
+  alias Logflare.Google.BigQuery.{GenUtils}
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Logs.Search.Utils
   alias Logflare.Lql

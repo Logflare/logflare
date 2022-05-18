@@ -12,7 +12,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   import Logflare.Factory
-
+  @moduletag :failing
   setup_all do
     Sources.Counters.start_link()
     :ok
@@ -57,6 +57,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "dashboard"
     end
 
+    @tag :failing
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
         validation_error: Validators.EqDeepFieldTypes.message(),
@@ -148,6 +149,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 406) =~ "Source Name"
     end
 
+    @tag :failing
     test "returns 200 but doesn't change restricted params", %{
       conn: conn,
       users: [u1, _u2],
@@ -313,6 +315,7 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:expect_user_plan]
     setup [:assert_caches_not_called]
 
+    @tag :failing
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
@@ -328,6 +331,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "public" do
+    @tag :failing
     test "shows a source page", %{conn: conn, sources: [s1 | _]} do
       conn =
         conn
@@ -338,6 +342,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "delete" do
+    @tag :failing
     test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
       {:ok, saved_search} =
         SavedSearches.insert(

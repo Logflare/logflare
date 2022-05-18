@@ -69,7 +69,7 @@ defmodule LogflareWeb.AdminController do
     |> redirect(to: Routes.admin_path(conn, :accounts))
   end
 
-  def shutdown_node(conn, %{"code" => @node_shutdown_code, "node" => node} = params) do
+  def shutdown_node(conn, %{"code" => @node_shutdown_code, "node" => node}) do
     node = String.to_atom(node)
     nodes = Node.list()
 
@@ -103,7 +103,7 @@ defmodule LogflareWeb.AdminController do
     |> json(%{"message" => "Success, shutting down node: #{Node.self()}"})
   end
 
-  def shutdown_node(conn, params) do
+  def shutdown_node(conn, _params) do
     Logger.warn("Node shutdown requested!")
 
     conn

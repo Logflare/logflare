@@ -1,0 +1,62 @@
+name: Elixir CI
+
+on:
+  push:
+    branches: [staging]
+  pull_request:
+    branches: [staging]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: logflare_test
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Elixir
+        uses: erlef/setup-beam@988e02bfe678367a02564f65ca2e37726dc0268f
+        with:
+          elixir-version: "1.12.3" # Define the elixir version [required]
+          otp-version: "24.1" # Define the OTP version [required]
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - name: Install dependencies
+        run: mix deps.get
+      - name: Run unit tests
+        run: mix test
+    # - name: Test - compilation warnings
+    #   run: mix test.compile
+    # - name: Test - security
+    #   run: mix test.security
+    - name: Code quality - formatting
+      run: mix test.format
+    # - name: Code quality - typings
+    #   run: mix test.typings
+    # - name: Code quality - linting
+    #   run: mix lint.diff

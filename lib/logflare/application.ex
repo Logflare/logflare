@@ -5,7 +5,6 @@ defmodule Logflare.Application do
   alias Logflare.{
     Users,
     Sources,
-    Tracker,
     Logs,
     BillingAccounts,
     Plans,
@@ -15,31 +14,13 @@ defmodule Logflare.Application do
   }
 
   def start(_type, _args) do
-    # Database options for Postgres notifications
-    hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
-    username = Application.get_env(:logflare, Logflare.Repo)[:username]
-    password = Application.get_env(:logflare, Logflare.Repo)[:password]
-    database = Application.get_env(:logflare, Logflare.Repo)[:database]
-    port = Application.get_env(:logflare, Logflare.Repo)[:port]
-    slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
-    publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
-
     env = Application.get_env(:logflare, :env)
 
     # Start distribution early so that both Cachex and Logflare.SQL
     # can work with it.
-    unless Node.alive?() do
+    unless Node.alive?() or env in [:test] do
       {:ok, _} = Node.start(:logflare)
     end
-
-    # Setup Goth for GCP connections
-    credentials =
-      if env in [:dev, :test],
-        do: Application.get_env(:goth, :json) |> Jason.decode!(),
-        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
-
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-    source = {:service_account, credentials, scopes: scopes}
 
     # TODO: Set node status in GCP when sigterm is received
     :ok =
@@ -49,9 +30,29 @@ defmodule Logflare.Application do
         {Logflare.SigtermHandler, []}
       )
 
-    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
+    children = get_children(env)
 
-    children = [
+    # See https://hexdocs.pm/elixir/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: Logflare.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  defp get_goth_child_spec() do
+    env = Application.get_env(:logflare, :env)
+    # Setup Goth for GCP connections
+    credentials =
+      if env in [:dev, :test],
+        do: Application.get_env(:goth, :json) |> Jason.decode!(),
+        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
+
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    source = {:service_account, credentials, scopes: scopes}
+    {Goth, name: Logflare.Goth, source: source}
+  end
+
+  defp get_children(:test) do
+    [
       ContextCache,
       Users.Cache,
       Sources.Cache,
@@ -63,17 +64,29 @@ defmodule Logflare.Application do
       Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
       Logflare.Repo,
-      {Goth, name: Logflare.Goth, source: source},
+      # get_goth_child_spec(),
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
+  end
 
+  defp get_children(_) do
+    # Database options for Postgres notifications
+    hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
+    username = Application.get_env(:logflare, Logflare.Repo)[:username]
+    password = Application.get_env(:logflare, Logflare.Repo)[:password]
+    database = Application.get_env(:logflare, Logflare.Repo)[:database]
+    port = Application.get_env(:logflare, Logflare.Repo)[:port]
+    slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
+    publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
+
+    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
     topologies = Application.get_env(:libcluster, :topologies)
 
-    dev_prod_children = [
+    [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
-      {Goth, name: Logflare.Goth, source: source},
+      get_goth_child_spec(),
       Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub},
       {
@@ -137,13 +150,6 @@ defmodule Logflare.Application do
       Logflare.SQL,
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
-
-    children = if env in [:test], do: children, else: dev_prod_children
-
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Logflare.Supervisor]
-    Supervisor.start_link(children, opts)
   end
 
   def config_change(changed, _new, removed) do

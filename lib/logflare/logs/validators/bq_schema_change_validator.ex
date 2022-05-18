@@ -2,12 +2,10 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
   alias Logflare.LogEvent, as: LE
   alias Logflare.{Source, SourceSchemas}
-  alias Logflare.Source.BigQuery.SchemaBuilder
-
   import Logflare.Google.BigQuery.SchemaUtils
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
-  def validate(%LE{body: body, source: %Source{validate_schema: false} = source}) do
+  def validate(%LE{body: _body, source: %Source{validate_schema: false}}) do
     :ok
   end
 
@@ -39,7 +37,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def merge_flat_typemaps(nil, original), do: original
   def merge_flat_typemaps(new, nil), do: new
   def merge_flat_typemaps(new, original) when new == %{}, do: original
-  def merge_flat_typempas(new, original) when new == original, do: original
+  def merge_flat_typemaps(new, original) when new == original, do: original
 
   def merge_flat_typemaps(new, original) do
     Map.merge(new, original, fn k, v1, v2 ->

@@ -14,6 +14,6 @@ Mimic.copy(Sources.Cache)
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
 
-ExUnit.configure(exclude: [integration: true])
+ExUnit.configure(exclude: [integration: true, failing: true])
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)

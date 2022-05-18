@@ -51,10 +51,10 @@ defmodule Logflare.SystemMetrics.Cachex.Poller do
           {:ok, %{hit_rate: hr, miss_rate: mr} = stats} when is_float(hr) and is_float(mr) ->
             stats |> Map.put(:name, c)
 
-          {:ok, %{hit_rate: hr, miss_rate: mr} = stats} ->
+          {:ok, %{hit_rate: _hr, miss_rate: _mr} = _stats} ->
             :rates_not_floats
 
-          {:ok, stats} ->
+          {:ok, _stats} ->
             :missing_rates
 
           {:error, :stats_disabled} ->

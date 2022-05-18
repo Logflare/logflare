@@ -325,7 +325,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def update(
-        %{assigns: %{source: source, user: _user, plan: plan}} = conn,
+        %{assigns: %{source: source, user: _user, plan: _plan}} = conn,
         %{"source" => %{"drop_lql_string" => lqlstring} = params}
       ) do
     with source_schema <- SourceSchemas.get_source_schema_by(source_id: source.id),
@@ -508,7 +508,7 @@ defmodule LogflareWeb.SourceController do
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 
-  def toggle_schema_lock(%{assigns: %{source: source}} = conn, params) do
+  def toggle_schema_lock(%{assigns: %{source: source}} = conn, _params) do
     case Sources.update_source(source, %{lock_schema: !source.lock_schema}) do
       {:ok, source} ->
         msg = if source.lock_schema, do: "Schema locked!", else: "Schema unlocked!"
@@ -524,7 +524,7 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def toggle_schema_validation(%{assigns: %{source: source}} = conn, params) do
+  def toggle_schema_validation(%{assigns: %{source: source}} = conn, _params) do
     case Sources.update_source(source, %{validate_schema: !source.validate_schema}) do
       {:ok, source} ->
         msg =

@@ -1,7 +1,6 @@
 defmodule LogflareWeb.LiveHelpers do
   @moduledoc false
   import Phoenix.LiveView.Helpers
-  import Phoenix.HTML.Link, only: [link: 2]
 
   def live_alert(socket, opts) do
     key = Keyword.fetch!(opts, :key)

@@ -104,8 +104,8 @@ defmodule LogflareWeb.VercelLogDrainsLive do
         "create_drain",
         %{
           "fields" => %{
-            "name" => name,
-            "project" => project_id
+            "name" => _name,
+            "project" => _project_id
           }
         },
         socket

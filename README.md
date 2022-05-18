@@ -55,20 +55,18 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 1. Copy over secrets to two locations
    1. Dev secrets - `configs/dev.secret.exs`
    2. Google JWT key - `config/secrets/logflare-dev-238720-63d50e3c9cc8.json`
-2. Run `mix deps.get` to retrieve dependencies
-3. Run `(cd assets; yarn)` from project root, to install js dependencies
-4. Install `sqlparser` by following the steps in **Closed Source Usage** section.
-5. Start database
-   - `docker-compose up -d`
-6. Run `PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix ecto.setup`, which runs migrations and inserts stripe seed data.
-7. Restart your postgres server for replication settings to take effect
-   - `docker-compose restart`
-8. Run `PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server`
-9. Sign in as a user
-10. Create a source
-11. Update `dev.secrets.exs`, search for the `:logflare_logger_backend` config and update the user api key and source id
-12. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
-13. In `iex` console, test that everything works:
+2. Start database `docker-compose up -d`
+3. Run `mix setup` for deps, migrations, and seed data.
+4. Restart your postgres server for replication settings to take effect `docker-compose restart`
+5. Run `(cd assets; yarn)` from project root, to install js dependencies
+6. Install `sqlparser` by following the steps in **Closed Source Usage** section.
+7. Start server`mix start`
+8. Sign in as a user
+9. Create a source
+10. Update `dev.secrets.exs`, search for the `:logflare_logger_backend` config and update the user api key and source id
+11. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
+12. In `iex` console, test that everything works:
+
 
 ```elixir
 iex> LogflareLogger.info("testing.123")

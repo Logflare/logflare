@@ -117,8 +117,6 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   end
 
   def generate_message(period) do
-    "Your timestamp filter is an unbounded interval. Max number of chart ticks is limited to #{
-      @default_open_interval_length
-    } #{to_timex_shift_key(period)}."
+    "Your timestamp filter is an unbounded interval. Max number of chart ticks is limited to #{@default_open_interval_length} #{to_timex_shift_key(period)}."
   end
 end
