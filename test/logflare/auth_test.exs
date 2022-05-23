@@ -14,8 +14,9 @@ defmodule Logflare.AuthTest do
     test "can create api key", %{user: user, team: team} do
       {:ok, %OauthAccessToken{}} = Auth.create_access_token(user)
       {:ok, %OauthAccessToken{}} = Auth.create_access_token(team)
+      {:ok, %OauthAccessToken{description: "some test"}} = Auth.create_access_token(user, %{description: "some test"})
 
-      assert Auth.list_valid_access_tokens(user)  |> length() == 2
+      assert Auth.list_valid_access_tokens(user)  |> length() == 3
     end
 
     test "can revoke access tokens", %{user: user} do

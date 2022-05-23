@@ -263,6 +263,12 @@ a:focus {
 .text-bold {
   font-weight: bold;
 }
+.hidden {
+  display: none;
+}
+.w-full{
+  width: 100%;
+}
 .subhead a:hover {
   text-decoration: none;
   color: black !important;

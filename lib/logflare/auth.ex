@@ -44,15 +44,21 @@ defmodule Logflare.Auth do
   @doc """
   Creates an Oauth access token with no expiry, linked to the given user or team's user.
   """
-  @spec create_access_token(%Team{} | %User{}) :: {:ok, %OauthAccessToken{}} | {:error, term()}
-  def create_access_token(%Team{user_id: user_id}) do
+  @typep create_attrs :: %{description: String.t()} | map()
+  @spec create_access_token(%Team{} | %User{}, create_attrs()) :: {:ok, %OauthAccessToken{}} | {:error, term()}
+  def create_access_token(user_or_team, attrs \\ %{})
+  def create_access_token(%Team{user_id: user_id}, attrs) do
     user_id
     |> Logflare.Users.get()
-    |> create_access_token()
+    |> create_access_token(attrs)
   end
 
-  def create_access_token(%User{} = user) do
-    ExOauth2Provider.AccessTokens.create_token(user, %{}, @oauth_config)
+  def create_access_token(%User{} = user, attrs) do
+    with {:ok, token} = ExOauth2Provider.AccessTokens.create_token(user, %{}, @oauth_config) do
+      token
+      |> Ecto.Changeset.cast(attrs, [:description])
+      |> Repo.update()
+    end
   end
 
   @doc """
