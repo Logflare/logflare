@@ -3,7 +3,8 @@
     <h5>~/account/edit</h5>
     <div class="log-settings">
       <ul>
-        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> authorized apps</span><% end %></li>
+        <li><%= link to: Routes.access_tokens_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile"> Manage access tokens</span><% end %></li>
+        <li><%= link to: Routes.oauth_authorized_application_path(@conn, :index) do %><i class="fas fa-window-maximize "></i><span class="hide-on-mobile"> Authorized apps</span><% end %></li>
       </ul>
     </div>
   </div>
