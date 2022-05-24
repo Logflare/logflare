@@ -38,15 +38,19 @@ defmodule Logflare.Auth do
   """
   @spec list_valid_access_tokens(%User{}) :: [%OauthAccessToken{}]
   def list_valid_access_tokens(%User{id: user_id}) do
-    Repo.all(from t in OauthAccessToken, where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at))
+    Repo.all(
+      from t in OauthAccessToken, where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at)
+    )
   end
 
   @doc """
   Creates an Oauth access token with no expiry, linked to the given user or team's user.
   """
   @typep create_attrs :: %{description: String.t()} | map()
-  @spec create_access_token(%Team{} | %User{}, create_attrs()) :: {:ok, %OauthAccessToken{}} | {:error, term()}
+  @spec create_access_token(%Team{} | %User{}, create_attrs()) ::
+          {:ok, %OauthAccessToken{}} | {:error, term()}
   def create_access_token(user_or_team, attrs \\ %{})
+
   def create_access_token(%Team{user_id: user_id}, attrs) do
     user_id
     |> Logflare.Users.get()

@@ -83,6 +83,14 @@
                     id="<%= String.replace(endpoint_query.token, ~r/[0-9]|-/, "") %>"
                     data-clipboard-text="<%= url %>"><%=  url %></span>
                 </small>
+                <div></div>
+                <small>
+                  <%= if endpoint_query.enable_auth do %>
+                  <i class="fa fa-lock"></i><span> Secure</span>
+                  <% else %>
+                  <i class="fa fa-lock-open"></i> <span> Unsecure</span>
+                  <% end %>
+                </small>
               </div>
             </div>
           </li>

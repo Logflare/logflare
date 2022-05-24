@@ -2,6 +2,7 @@ defmodule LogflareWeb.AccessTokensLive do
   use LogflareWeb, :live_view
   require Logger
   alias Logflare.Auth
+
   def render(assigns) do
     ~L"""
     <div class="subhead subhead-fixed">
@@ -15,12 +16,12 @@ defmodule LogflareWeb.AccessTokensLive do
         <p>
           <strong>Accesss tokens are only supported for Logflare Endpoints for now.</strong>
         </p>
-        <p style="white-space: pre-wrap">Theree 3 ways of authenticating with the API: in the <code>Authentication</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
+        <p style="white-space: pre-wrap">Theree 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
 
-The <code>Authentication</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
-The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
-The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.
-</p>
+    The <code>Authorization</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
+    The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
+    The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.
+    </p>
         <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
           Create access token
         </button>
@@ -84,8 +85,7 @@ The <code>api_key</code> query parameter method expects the search format <code>
     """
   end
 
-
-  def mount(_params, %{"user_id"=> user_id} , socket) do
+  def mount(_params, %{"user_id" => user_id}, socket) do
     user = Logflare.Users.get(user_id)
 
     socket =
@@ -98,39 +98,55 @@ The <code>api_key</code> query parameter method expects the search format <code>
     {:ok, socket}
   end
 
-  def handle_event("toggle-create-form", %{"show"=> value}, socket)
+  def handle_event("toggle-create-form", %{"show" => value}, socket)
       when value in ["true", "false"],
-      do: {:noreply, assign(socket, show_create_form: (value === "true"))}
+      do: {:noreply, assign(socket, show_create_form: value === "true")}
 
-    def handle_event("dismiss-created-token", _params, socket) do
-      {:noreply, assign(socket, created_token: nil)}
-    end
+  def handle_event("dismiss-created-token", _params, socket) do
+    {:noreply, assign(socket, created_token: nil)}
+  end
 
-  def handle_event("create-token", %{"description" => description} = params, %{assigns: %{user: user}}= socket) do
-    Logger.debug("Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}")
+  def handle_event(
+        "create-token",
+        %{"description" => description} = params,
+        %{assigns: %{user: user}} = socket
+      ) do
+    Logger.debug(
+      "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
+    )
+
     {:ok, token} = Auth.create_access_token(user, %{description: description})
-    socket = socket
-    |> do_refresh()
-    |> assign(:show_create_form, false)
-    |> assign(:created_token,token)
+
+    socket =
+      socket
+      |> do_refresh()
+      |> assign(:show_create_form, false)
+      |> assign(:created_token, token)
 
     {:noreply, socket}
   end
 
-  def handle_event("revoke-token", %{"token-id"=> token_id}, %{ assigns: %{access_tokens: tokens}} = socket) do
+  def handle_event(
+        "revoke-token",
+        %{"token-id" => token_id},
+        %{assigns: %{access_tokens: tokens}} = socket
+      ) do
     IO.inspect(token_id)
     token = Enum.find(tokens, &("#{&1.id}" == token_id))
     Logger.debug("Revoking access token")
-    :ok  = Auth.revoke_access_token(token)
-    socket = socket
+    :ok = Auth.revoke_access_token(token)
+
+    socket =
+      socket
       |> do_refresh()
+
     {:noreply, socket}
   end
 
-  defp do_refresh(%{assigns: %{user: user}}= socket) do
-    tokens =  user |> Auth.list_valid_access_tokens() |> Enum.sort_by(&(&1.inserted_at), :desc)
+  defp do_refresh(%{assigns: %{user: user}} = socket) do
+    tokens = user |> Auth.list_valid_access_tokens() |> Enum.sort_by(& &1.inserted_at, :desc)
+
     socket
     |> assign(access_tokens: tokens)
-
   end
 end

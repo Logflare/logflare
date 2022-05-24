@@ -95,6 +95,10 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.CheckTeamUser
   end
 
+  pipeline :api_auth do
+    plug LogflareWeb.Plugs.VerifyApiAccess
+  end
+
   pipeline :auth_switch do
     plug LogflareWeb.Plugs.AuthSwitch
   end
@@ -148,7 +152,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/endpoints/query", LogflareWeb do
-    pipe_through [:api]
+    pipe_through [:api, :api_auth]
     get "/:token", EndpointController, :query
   end
 

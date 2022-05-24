@@ -7,34 +7,38 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   import Plug.Conn
   import Phoenix.Controller
   alias Logflare.Auth
-  alias Logflare.{Users, User}
+  alias Logflare.{Endpoint}
 
   def init(_), do: nil
 
-  def call(%{request_path: "/endpoints/query" <> _} = conn, opts) do
-    do_auth(:endpoints, conn, opts)
+  def call(%{request_path: "/endpoints/query" <> _} = conn, _) do
+    do_auth(:endpoints, conn)
   end
 
-  def call(%{request_path: _} = conn, opts) do
-    do_auth(nil, conn, opts)
+  def call(%{request_path: _} = conn) do
+    do_auth(nil, conn)
   end
 
-  defp do_auth(:endpoints, conn, opts) do
+  defp do_auth(:endpoints, conn) do
     conn = fetch_query_params(conn)
     # fetch endpoint info
-    with {:ok, token} <- extract_token(conn),
+    with endpoint_token <- conn.params["token"],
+         %Endpoint.Query{enable_auth: true, user_id: user_id} <-
+           Logflare.Endpoint.get_query_by_token(endpoint_token),
+         {:ok, token} <- extract_token(conn),
          {:ok, user} <- Auth.verify_access_token(token),
-         endpoint_token <- conn.params["token"],
-         endpoint <- Logflare.Endpoint.get_query_by_token(endpoint_token),
-         true <- endpoint.user_id == user.id do
+         true <- user_id == user.id do
       assign(conn, :user, user)
     else
+      %Endpoint.Query{enable_auth: false} ->
+        conn
+
       _ ->
         send_error_response(conn, 401, "Error: Unauthorized")
     end
   end
 
-  defp do_auth(_resource, conn, opts) do
+  defp do_auth(_resource, conn) do
     # unknown resource, reject as bad request
     send_error_response(conn, 400, "Error: Bad request")
   end
