@@ -3,6 +3,9 @@
     <h5>~/endpoints</h5>
     <div class="log-settings">
       <ul>
+        <li><%= link to: Routes.access_tokens_path(@conn, :index) do %><i class="fas fa-key"></i><span class="hide-on-mobile">
+          Manage access tokens
+        </span><% end %></li>
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
           <span>Ingest API key is
@@ -79,6 +82,14 @@
                     data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
                     id="<%= String.replace(endpoint_query.token, ~r/[0-9]|-/, "") %>"
                     data-clipboard-text="<%= url %>"><%=  url %></span>
+                </small>
+                <div></div>
+                <small>
+                  <%= if endpoint_query.enable_auth do %>
+                  <i class="fa fa-lock"></i><span> Secure</span>
+                  <% else %>
+                  <i class="fa fa-lock-open"></i> <span> Unsecure</span>
+                  <% end %>
                 </small>
               </div>
             </div>

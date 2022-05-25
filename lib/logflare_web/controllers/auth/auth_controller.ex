@@ -35,7 +35,7 @@ defmodule LogflareWeb.AuthController do
         |> signin(auth_params)
 
       invite_token ->
-        case Auth.verify_token(invite_token, @max_age) do
+        case Auth.verify_email_token(invite_token, @max_age) do
           {:ok, invited_by_team_id} ->
             conn
             |> invited_signin(auth_params, invited_by_team_id)

@@ -41,7 +41,7 @@ config :logflare, LogflareWeb.Endpoint,
   ]
 
 config :logger,
-  level: :info,
+  level: :debug,
   backends: [:console, LogflareLogger.HttpBackend]
 
 config :logger, :console,

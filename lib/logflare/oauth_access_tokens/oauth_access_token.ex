@@ -4,7 +4,7 @@ defmodule Logflare.OauthAccessTokens.OauthAccessToken do
 
   typed_schema "oauth_access_tokens" do
     access_token_fields()
-
+    field(:description, :string)
     timestamps()
   end
 end

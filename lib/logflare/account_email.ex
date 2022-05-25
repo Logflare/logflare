@@ -50,7 +50,7 @@ defmodule Logflare.AccountEmail do
   end
 
   def source_notification(%User{} = user, rate, source) do
-    signature = Auth.gen_token(user.email_preferred)
+    signature = Auth.gen_email_token(user.email_preferred)
     source_link = Routes.source_url(Endpoint, :show, source.id)
     unsubscribe_link = Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature)
 
@@ -64,7 +64,7 @@ defmodule Logflare.AccountEmail do
   end
 
   def source_notification(%TeamUser{} = user, rate, source) do
-    signature = Auth.gen_token(user.email_preferred)
+    signature = Auth.gen_email_token(user.email_preferred)
     source_link = Routes.source_url(Endpoint, :show, source.id)
 
     unsubscribe_link =
@@ -80,7 +80,7 @@ defmodule Logflare.AccountEmail do
   end
 
   def source_notification_for_others(email, rate, source) do
-    signature = Auth.gen_token(email)
+    signature = Auth.gen_email_token(email)
     source_link = Routes.source_url(Endpoint, :show, source.id)
 
     unsubscribe_link =
@@ -139,7 +139,7 @@ defmodule Logflare.AccountEmail do
     manage_schema_notifications_link =
       Routes.source_url(Endpoint, :edit, source.id) <> "#schema-change-alerts"
 
-    signature = Auth.gen_token(email)
+    signature = Auth.gen_email_token(email)
 
     unsubscribe_link =
       Routes.unsubscribe_url(Endpoint, :unsubscribe, source.id, signature, type: type)

@@ -256,6 +256,19 @@ a:focus {
   color: #386c26 !important;
 }
 
+.text-danger {
+  color: #d62f0a !important;
+}
+
+.text-bold {
+  font-weight: bold;
+}
+.hidden {
+  display: none;
+}
+.w-full{
+  width: 100%;
+}
 .subhead a:hover {
   text-decoration: none;
   color: black !important;

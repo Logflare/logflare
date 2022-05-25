@@ -29,6 +29,18 @@
     <%= submit "Update query", class: "btn btn-primary form-button" %>
     <% end %>
 
+    <%= section_header("Endpoint Auth") %>
+      <div class="form-group">
+        <%= form_for @changeset, Routes.endpoint_path(@conn, :update, @endpoint_query), fn a -> %>
+        <%= checkbox a, :enable_auth  %>
+        <%= label a, :enable_auth do %>
+          Authenticate requests using access tokens
+        <% end %>
+        <%= error_tag a, :enable_auth %>
+      </div>
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+    <% end %>
+
     <%= section_header("Endpoint URL") %>
     <div class="mb-2">
       <%= Routes.endpoint_url(@conn, :query, @endpoint_query.token) %>

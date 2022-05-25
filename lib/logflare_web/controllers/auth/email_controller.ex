@@ -34,7 +34,7 @@ defmodule LogflareWeb.Auth.EmailController do
   def callback(conn, %{"token" => token}) do
     token = String.trim(token)
 
-    case Auth.verify_token(token, @max_age) do
+    case Auth.verify_email_token(token, @max_age) do
       {:ok, email} ->
         auth_params = %{
           token: token,
@@ -42,7 +42,7 @@ defmodule LogflareWeb.Auth.EmailController do
           email_preferred: email,
           provider: "email",
           provider_uid: email,
-          image: Auth.gravatar_link(email)
+          image: Auth.gen_gravatar_link(email)
         }
 
         AuthController.check_invite_token_and_signin(conn, auth_params)

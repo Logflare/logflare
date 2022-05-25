@@ -6,7 +6,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
 
   @max_age 86_400
   def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "team_user"}) do
-    case Auth.verify_token(token, @max_age) do
+    case Auth.verify_email_token(token, @max_age) do
       {:ok, email} ->
         team_user = TeamUsers.get_team_user_by(email: email)
         source = Sources.get(String.to_integer(source_id))
@@ -32,7 +32,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   end
 
   def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "user"}) do
-    case Auth.verify_token(token, @max_age) do
+    case Auth.verify_email_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
         source = Sources.get(String.to_integer(source_id))
@@ -53,7 +53,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   end
 
   def unsubscribe(conn, %{"id" => source_id, "token" => token}) do
-    case Auth.verify_token(token, @max_age) do
+    case Auth.verify_email_token(token, @max_age) do
       {:ok, _email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
         source = Sources.get(String.to_integer(source_id))
@@ -74,7 +74,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   end
 
   def unsubscribe_stranger(conn, %{"id" => source_id, "token" => token}) do
-    case Auth.verify_token(token, @max_age) do
+    case Auth.verify_email_token(token, @max_age) do
       {:ok, email} ->
         # We don't have the source in the assigns because we don't require auth to unsubscribe
         source = Sources.get(String.to_integer(source_id))
@@ -98,7 +98,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   end
 
   def unsubscribe_team_user(conn, %{"id" => source_id, "token" => token}) do
-    case Auth.verify_token(token, @max_age) do
+    case Auth.verify_email_token(token, @max_age) do
       {:ok, email} ->
         team_user = TeamUsers.get_team_user_by(email: email)
         source = Sources.get(String.to_integer(source_id))

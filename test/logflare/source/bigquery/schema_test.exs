@@ -4,7 +4,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
   import Logflare.Factory
-  use Placebo
 
   setup do
     u1 = insert(:user)
