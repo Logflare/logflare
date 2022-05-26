@@ -11,12 +11,11 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
   def init(_), do: nil
 
-  def call(%{request_path: "/endpoints/query" <> _} = conn, _) do
-    do_auth(:endpoints, conn)
-  end
-
-  def call(%{request_path: _} = conn) do
-    do_auth(nil, conn)
+  def call(%{request_path: path} = conn, _) do
+    cond do
+      path =~ "/endpoints" -> do_auth(:endpoints, conn)
+      true -> do_auth(nil, conn)
+    end
   end
 
   defp do_auth(:endpoints, conn) do
