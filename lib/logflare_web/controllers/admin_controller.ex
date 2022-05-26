@@ -2,7 +2,7 @@ defmodule LogflareWeb.AdminController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source, Sources, User, Users}
+  alias Logflare.{Repo, Source, Sources, User, Users, Admin}
   alias LogflareWeb.AuthController
 
   require Logger
@@ -74,8 +74,7 @@ defmodule LogflareWeb.AdminController do
     nodes = Node.list()
 
     if Enum.member?([Node.self() | nodes], node) do
-      Logger.warn("Node shutdown initiated!")
-      Logflare.Admin.shutdown(node)
+      Admin.shutdown(node)
 
       conn
       |> put_status(:ok)
@@ -94,9 +93,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   def shutdown_node(conn, %{"code" => @node_shutdown_code}) do
-    Logger.warn("Node shutdown initiated!")
-
-    Logflare.Admin.shutdown()
+    Admin.shutdown()
 
     conn
     |> put_status(:ok)
