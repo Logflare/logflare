@@ -294,7 +294,7 @@ defmodule LogflareWeb.Router do
     get "/sources", AdminController, :sources
     get "/accounts", AdminController, :accounts
     live "/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
-    get "/cluster", AdminClusterController, :index
+    live "/cluster", Admin.ClusterLive, :index
 
     get "/plans", AdminPlanController, :index
     get "/plans/new", AdminPlanController, :new
