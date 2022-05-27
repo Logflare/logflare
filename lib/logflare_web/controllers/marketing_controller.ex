@@ -11,6 +11,10 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "index.html", log_count: Delimit.number_to_delimited(log_count))
   end
 
+  def contact(conn, _params) do
+    render(conn, "contact.html")
+  end
+
   def pricing(conn, _params) do
     render(conn, "pricing.html")
   end
