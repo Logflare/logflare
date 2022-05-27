@@ -48,7 +48,7 @@ defmodule Logflare.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
+    ContextCache.bust_keys(Logflare.Billing, String.to_integer(id))
   end
 
   defp handle_record(%UpdatedRecord{
@@ -72,7 +72,7 @@ defmodule Logflare.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    ContextCache.bust_keys(Logflare.BillingAccounts, :not_found)
+    ContextCache.bust_keys(Logflare.Billing, :not_found)
   end
 
   defp handle_record(%NewRecord{
@@ -115,7 +115,7 @@ defmodule Logflare.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    ContextCache.bust_keys(Logflare.BillingAccounts, String.to_integer(id))
+    ContextCache.bust_keys(Logflare.Billing, String.to_integer(id))
   end
 
   defp handle_record(%DeletedRecord{

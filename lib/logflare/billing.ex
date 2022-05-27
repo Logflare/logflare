@@ -1,4 +1,4 @@
-defmodule Logflare.BillingAccounts do
+defmodule Logflare.Billing do
   @moduledoc """
   The Billing context.
   """
@@ -11,7 +11,7 @@ defmodule Logflare.BillingAccounts do
   alias Logflare.Users
   alias Logflare.Source
   alias __MODULE__
-  alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.Billing.BillingAccount
 
   require Protocol
   Protocol.derive(Jason.Encoder, Stripe.List)
@@ -96,7 +96,7 @@ defmodule Logflare.BillingAccounts do
 
   def sync_subscriptions(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
     with {:ok, subscriptions} <-
-           BillingAccounts.Stripe.list_customer_subscriptions(stripe_customer_id) do
+           Billing.Stripe.list_customer_subscriptions(stripe_customer_id) do
       attrs = %{stripe_subscriptions: subscriptions}
 
       update_billing_account(billing_account, attrs)
@@ -108,7 +108,7 @@ defmodule Logflare.BillingAccounts do
   def sync_invoices(nil), do: :noop
 
   def sync_invoices(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
-    with {:ok, invoices} <- BillingAccounts.Stripe.list_customer_invoices(stripe_customer_id) do
+    with {:ok, invoices} <- Billing.Stripe.list_customer_invoices(stripe_customer_id) do
       attrs = %{stripe_invoices: invoices}
 
       update_billing_account(billing_account, attrs)
@@ -121,9 +121,9 @@ defmodule Logflare.BillingAccounts do
         %BillingAccount{stripe_customer: customer_id} = billing_account,
         attrs \\ %{}
       ) do
-    with {:ok, subscriptions} <- BillingAccounts.Stripe.list_customer_subscriptions(customer_id),
-         {:ok, invoices} <- BillingAccounts.Stripe.list_customer_invoices(customer_id),
-         {:ok, customer} <- BillingAccounts.Stripe.retrieve_customer(customer_id) do
+    with {:ok, subscriptions} <- Billing.Stripe.list_customer_subscriptions(customer_id),
+         {:ok, invoices} <- Billing.Stripe.list_customer_invoices(customer_id),
+         {:ok, customer} <- Billing.Stripe.retrieve_customer(customer_id) do
       attrs =
         Map.put(attrs, :stripe_subscriptions, subscriptions)
         |> Map.put(:stripe_invoices, invoices)

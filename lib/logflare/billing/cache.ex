@@ -1,7 +1,7 @@
-defmodule Logflare.BillingAccounts.Cache do
+defmodule Logflare.Billing.Cache do
   @moduledoc false
 
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
 
   require Logger
 
@@ -14,6 +14,6 @@ defmodule Logflare.BillingAccounts.Cache do
   end
 
   defp apply_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun(BillingAccounts, arg1, arg2)
+    Logflare.ContextCache.apply_fun(Billing, arg1, arg2)
   end
 end

@@ -7,7 +7,7 @@ defmodule Logflare.Plans do
 
   import Ecto.Query, warn: false
   alias Logflare.Repo
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
   alias Logflare.Plans.Plan
   alias Logflare.User
 
@@ -61,18 +61,18 @@ defmodule Logflare.Plans do
 
   def get_plan_by_user(%User{} = user) do
     if user.billing_enabled do
-      case BillingAccounts.get_billing_account_by(user_id: user.id) do
+      case Billing.get_billing_account_by(user_id: user.id) do
         nil ->
           get_plan_by(name: "Free")
 
-        %BillingAccounts.BillingAccount{lifetime_plan: true} ->
+        %Billing.BillingAccount{lifetime_plan: true} ->
           get_plan_by(name: "Lifetime")
 
-        %BillingAccounts.BillingAccount{stripe_subscriptions: nil} ->
+        %Billing.BillingAccount{stripe_subscriptions: nil} ->
           get_plan_by(name: "Free")
 
         billing_account ->
-          case BillingAccounts.get_billing_account_stripe_plan(billing_account) do
+          case Billing.get_billing_account_stripe_plan(billing_account) do
             {:ok, nil} ->
               get_plan_by(name: "Free")
 

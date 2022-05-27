@@ -1,4 +1,4 @@
-defmodule Logflare.BillingAccounts.BillingAccount do
+defmodule Logflare.Billing.BillingAccount do
   use Ecto.Schema
   import Ecto.Changeset
 

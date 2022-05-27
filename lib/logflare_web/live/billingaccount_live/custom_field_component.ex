@@ -7,7 +7,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
   use Phoenix.HTML
   import LogflareWeb.ErrorHelpers
 
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
 
   require Logger
 
@@ -25,7 +25,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
     socket =
       socket
       |> assign(billing_account: ba)
-      |> assign(changeset: BillingAccounts.change_billing_account(ba))
+      |> assign(changeset: Billing.change_billing_account(ba))
 
     {:ok, socket}
   end
@@ -42,9 +42,9 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
     fields = Enum.filter(ba.custom_invoice_fields, fn %{"name" => x} -> x != key end)
 
     with {:ok, ba} <-
-           BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}),
+           Billing.update_billing_account(ba, %{custom_invoice_fields: fields}),
          {:ok, _customer} <-
-           BillingAccounts.Stripe.update_customer(ba.stripe_customer, %{
+           Billing.Stripe.update_customer(ba.stripe_customer, %{
              invoice_settings: %{custom_fields: fields}
            }) do
       socket =
@@ -70,11 +70,11 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
     fields = f ++ [params]
 
     with {:ok, _customer} <-
-           BillingAccounts.Stripe.update_customer(ba.stripe_customer, %{
+           Billing.Stripe.update_customer(ba.stripe_customer, %{
              invoice_settings: %{custom_fields: fields}
            }),
          {:ok, ba} <-
-           BillingAccounts.update_billing_account(ba, %{custom_invoice_fields: fields}) do
+           Billing.update_billing_account(ba, %{custom_invoice_fields: fields}) do
       socket =
         socket
         |> assign(billing_account: ba)

@@ -3,8 +3,8 @@ defmodule LogflareWeb.StripeController do
 
   require Logger
 
-  alias Logflare.BillingAccounts
-  alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.Billing
+  alias Logflare.Billing.BillingAccount
   alias Logflare.PaymentMethods
   alias Logflare.PaymentMethods.PaymentMethod
 
@@ -25,8 +25,8 @@ defmodule LogflareWeb.StripeController do
     case type do
       "invoice." <> _sub_type ->
         with %BillingAccount{} = ba <-
-               BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, _billing_account} <- BillingAccounts.sync_invoices(ba) do
+               Billing.get_billing_account_by(stripe_customer: customer),
+             {:ok, _billing_account} <- Billing.sync_invoices(ba) do
           ok(conn)
         else
           nil ->
@@ -42,9 +42,9 @@ defmodule LogflareWeb.StripeController do
       "charge.succeeded" ->
         if lifetime_plan_charge?(event) do
           with %BillingAccount{} = ba <-
-                 BillingAccounts.get_billing_account_by(stripe_customer: customer),
+                 Billing.get_billing_account_by(stripe_customer: customer),
                {:ok, _ba} <-
-                 BillingAccounts.update_billing_account(ba, %{
+                 Billing.update_billing_account(ba, %{
                    lifetime_plan: true,
                    lifetime_plan_invoice: object["receipt_url"]
                  }) do
@@ -66,8 +66,8 @@ defmodule LogflareWeb.StripeController do
 
       "customer.subscription" <> _sub_type ->
         with %BillingAccount{} = ba <-
-               BillingAccounts.get_billing_account_by(stripe_customer: customer),
-             {:ok, _ba} <- BillingAccounts.sync_subscriptions(ba) do
+               Billing.get_billing_account_by(stripe_customer: customer),
+             {:ok, _ba} <- Billing.sync_subscriptions(ba) do
           Logger.info("Stripe webhook: #{type}")
 
           ok(conn)
