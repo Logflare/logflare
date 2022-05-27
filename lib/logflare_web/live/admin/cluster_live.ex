@@ -8,8 +8,10 @@ defmodule LogflareWeb.Admin.ClusterLive do
   require Logger
 
   def mount(_params, _session, socket) do
-    socket = assign_cluster_status(socket)
-      |>assign(:node_self, Node.self())
+    socket =
+      assign_cluster_status(socket)
+      |> assign(:node_self, Node.self())
+
     :timer.send_interval(1_000, self(), :update_cluster_status)
     {:ok, socket}
   end

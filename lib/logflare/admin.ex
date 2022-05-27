@@ -1,6 +1,7 @@
 defmodule Logflare.Admin do
   @moduledoc false
   require Logger
+
   @doc """
   Shuts down a given node asyncronously in a separate process.
 
@@ -8,12 +9,14 @@ defmodule Logflare.Admin do
   """
   @spec shutdown(node(), integer()) :: {:ok, %Task{}}
   def shutdown(node \\ Node.self(), delay \\ 5000) when is_atom(node) do
-    task = Task.async(fn ->
-      Logger.warn("Node shutdown initialized, shutting down in #{delay}ms. node=#{node}")
-      Process.sleep(delay)
+    task =
+      Task.async(fn ->
+        Logger.warn("Node shutdown initialized, shutting down in #{delay}ms. node=#{node}")
+        Process.sleep(delay)
 
-      :rpc.eval_everywhere([node], System, :stop, [])
-    end)
+        :rpc.eval_everywhere([node], System, :stop, [])
+      end)
+
     {:ok, task}
   end
 end
