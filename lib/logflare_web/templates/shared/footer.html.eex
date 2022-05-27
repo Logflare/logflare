@@ -11,7 +11,7 @@
             <%= link "System Status", to: "https://datastudio.google.com/s/gIAFsUMbDS4" %>
           </li>
           <li>
-            <%= link "Contact Us", to: Routes.contact_path(@conn, :contact)%>
+            <%= link "Contact Us", to: Routes.marketing_path(@conn, :contact)%>
           </li>
           <li>
             <%= link "Terms of Service", to: Routes.marketing_path(@conn, :terms)%>

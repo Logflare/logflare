@@ -101,7 +101,7 @@
               <%= link "Pricing", to: Routes.marketing_path(@conn, :pricing), class: "nav-link" %>
             </li>
             <li class="nav-item">
-              <%= link "Contact us", to: Routes.contact_path(@conn, :contact), class: "nav-link" %>
+              <%= link "Contact us", to: Routes.marketing_path(@conn, :contact), class: "nav-link" %>
             </li>
             <li class="nav-item">
               <%= link "Continue with Github", to: Routes.oauth_path(@conn, :request, "github"), class: "nav-link" %>
