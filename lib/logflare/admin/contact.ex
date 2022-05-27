@@ -1,6 +1,11 @@
-defmodule Logflare.Contact do
-  use TypedEctoSchema
+defmodule Logflare.Admin.Contact do
+  @moduledoc """
+  Modue used for sending contact email to support. Ecto.Schema is used purely for type validation.
 
+  TODO: replace with Params.
+  """
+  use TypedEctoSchema
+  alias Logflare.Admin.Contact
   import Ecto.Changeset
 
   typed_schema "contact" do
@@ -10,6 +15,7 @@ defmodule Logflare.Contact do
     field :body, :string
   end
 
+  @spec changeset(%Contact{}, map()) :: %Ecto.Changeset{}
   def changeset(form_fields, attrs) do
     form_fields
     |> cast(attrs, [

@@ -1,4 +1,4 @@
-defmodule Logflare.Contact.RecaptchaClient do
+defmodule Logflare.Auth.RecaptchaClient do
   require Logger
 
   use Tesla

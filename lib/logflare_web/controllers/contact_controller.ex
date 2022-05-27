@@ -2,7 +2,7 @@ defmodule LogflareWeb.ContactController do
   use LogflareWeb, :controller
 
   alias Ecto.Changeset
-  alias Logflare.{Contact.Emails, Mailer, Contact}
+  alias Logflare.{Admin.Emails, Mailer, Auth.RecaptchaClient, Admin.Contact}
 
   @recaptcha_site_key Application.get_env(:logflare, :recaptcha_site_key)
   @recaptcha_secret Application.get_env(:logflare, :recaptcha_secret)
@@ -20,11 +20,11 @@ defmodule LogflareWeb.ContactController do
   def new(conn, %{"contact" => %{"recaptcha_token" => token} = contact}) do
     changeset = Contact.changeset(%Contact{}, contact)
 
-    case Contact.RecaptchaClient.verify(token) do
+    case RecaptchaClient.verify(token) do
       {:ok, %Tesla.Env{body: %{"success" => true}}} ->
         case Changeset.apply_action(changeset, :insert) do
           {:ok, _changeset} ->
-            Emails.contact(contact)
+            Emails.contact_email(contact)
             |> Mailer.deliver()
 
             changeset = Contact.changeset(%Contact{}, %{})
