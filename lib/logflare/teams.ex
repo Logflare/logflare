@@ -1,47 +1,25 @@
 defmodule Logflare.Teams do
-  @moduledoc """
-  The Teams context.
-  """
-
+  @moduledoc false
   import Ecto.Query, warn: false
+  alias Logflare.{Repo, Teams.Team, TeamUsers.TeamUser, Users, User}
 
-  alias Logflare.Repo
-  alias Logflare.Teams.Team
-  alias Logflare.TeamUsers.TeamUser
-  alias Logflare.Users
-
-  @doc """
-  Returns the list of teams.
-
-  ## Examples
-
-      iex> list_teams()
-      [%Team{}, ...]
-
-  """
+  @doc "Returns a list of teams. Unfiltered."
+  @spec list_teams() :: [%Team{}]
   def list_teams do
     Repo.all(Team)
   end
 
-  @doc """
-  Gets a single team.
-
-  Raises `Ecto.NoResultsError` if the Team does not exist.
-
-  ## Examples
-
-      iex> get_team!(123)
-      %Team{}
-
-      iex> get_team!(456)
-      ** (Ecto.NoResultsError)
-
-  """
+  @doc "Gets a single team. Raises `Ecto.NoResultsError` if the Team does not exist."
+  @spec get_team!(String.t() | number()) :: %Team{}
   def get_team!(id), do: Repo.get!(Team, id)
 
+  @doc "Gets a single team by attribute. Returns nil if not found"
+  @spec get_team_by(keyword()) :: %Team{} | nil
   def get_team_by(keyword), do: Repo.get_by(Team, keyword)
 
-  def get_home_team!(%TeamUser{email: email} = _team_user) do
+  @doc "Gets a user's home team. A home team is set on the `User`'s `:team` key. Uses email as an identifier."
+  @spec get_home_team(%TeamUser{}) :: %Team{} | nil
+  def get_home_team(%TeamUser{email: email}) do
     case Users.get_by(email: email) |> Users.preload_team() do
       nil ->
         nil
@@ -51,22 +29,18 @@ defmodule Logflare.Teams do
     end
   end
 
+  @doc "Preloads the `:user` assoc"
+  @spec preload_user(nil | %Team{}) :: %Team{}
+  def preload_user(nil), do: nil
   def preload_user(team), do: Repo.preload(team, :user)
 
+  @doc "preloads the `:team_users` assoc"
+  @spec preload_team_users(nil | %Team{}) :: %Team{}
+  def preload_team_users(nil), do: nil
   def preload_team_users(team), do: Repo.preload(team, :team_users)
 
-  @doc """
-  Creates a team.
-
-  ## Examples
-
-      iex> create_team(%{field: value})
-      {:ok, %Team{}}
-
-      iex> create_team(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Creates a team from a user."
+  @spec create_team(%User{}, %{name: String.t()}) :: {:ok, %Team{}} | {:error, %Ecto.Changeset{}}
   def create_team(user, %{name: _name} = attrs) do
     user
     |> Ecto.build_assoc(:team)
@@ -74,50 +48,19 @@ defmodule Logflare.Teams do
     |> Repo.insert()
   end
 
-  @doc """
-  Updates a team.
-
-  ## Examples
-
-      iex> update_team(team, %{field: new_value})
-      {:ok, %Team{}}
-
-      iex> update_team(team, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Updates a team"
+  @spec update_team(%Team{}, map()) :: {:ok, %Team{}} | {:error, %Ecto.Changeset{}}
   def update_team(%Team{} = team, attrs) do
     team
     |> Team.changeset(attrs)
     |> Repo.update()
   end
 
-  @doc """
-  Deletes a Team.
+  @doc "Deletes a Team"
+  @spec delete_team(%Team{}) :: {:ok, %Team{}} | {:error, %Ecto.Changeset{}}
+  def delete_team(%Team{} = team), do: Repo.delete(team)
 
-  ## Examples
-
-      iex> delete_team(team)
-      {:ok, %Team{}}
-
-      iex> delete_team(team)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_team(%Team{} = team) do
-    Repo.delete(team)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking team changes.
-
-  ## Examples
-
-      iex> change_team(team)
-      %Ecto.Changeset{source: %Team{}}
-
-  """
-  def change_team(%Team{} = team) do
-    Team.changeset(team, %{})
-  end
+  @doc "Returns an `%Ecto.Changeset{}` for tracking team changes"
+  @spec change_team(%Team{}) :: %Ecto.Changeset{}
+  def change_team(%Team{} = team), do: Team.changeset(team, %{})
 end

@@ -25,7 +25,7 @@ defmodule LogflareWeb.SourceController do
   def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
     sources = preload_sources_for_dashboard(user.sources)
 
-    home_team = Teams.get_home_team!(team_user)
+    home_team = Teams.get_home_team(team_user)
 
     team_users_with_teams =
       TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
