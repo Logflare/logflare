@@ -36,7 +36,7 @@ defmodule Logflare.BillingTest do
     end
 
     test "stripe get in helpers" do
-      ba = build(:billing_account) |> IO.inspect()
+      ba = build(:billing_account)
       assert Billing.get_billing_account_stripe_plan(ba) != nil
       assert Billing.get_billing_account_stripe_subscription_item(ba) != nil
     end
