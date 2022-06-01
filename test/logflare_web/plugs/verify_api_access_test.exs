@@ -27,7 +27,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       conn =
         conn
         |> put_req_header("x-api-key", token.token)
-        |> VerifyApiAccess.call(%{})
+        |> VerifyApiAccess.call(%{resource: :endpoints})
 
       assert conn.halted == false
       assert conn.assigns.user.id == user.id
@@ -37,7 +37,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer #{token.token}")
-        |> VerifyApiAccess.call(%{})
+        |> VerifyApiAccess.call(%{resource: :endpoints})
 
       assert conn.halted == false
       assert conn.assigns.user.id == user.id
@@ -49,7 +49,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       conn =
         conn
         |> Map.put(:params, new_params)
-        |> VerifyApiAccess.call(%{})
+        |> VerifyApiAccess.call(%{resource: :endpoints})
 
       assert conn.halted == false
       assert conn.assigns.user.id == user.id
@@ -59,7 +59,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       conn =
         conn
         |> put_req_header("x-api-key", "123")
-        |> VerifyApiAccess.call(%{})
+        |> VerifyApiAccess.call(%{resource: :endpoints})
 
       assert_unauthorized(conn)
     end
@@ -71,7 +71,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       conn =
         conn
         |> put_req_header("x-api-key", token2.token)
-        |> VerifyApiAccess.call(%{})
+        |> VerifyApiAccess.call(%{resource: :endpoints})
 
       assert_unauthorized(conn)
     end
@@ -87,7 +87,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
     test "does not halt request", %{conn: conn} do
       conn =
         conn
-        |> VerifyApiAccess.call(%{})
+        |> VerifyApiAccess.call(%{resource: :endpoints})
 
       assert conn.halted == false
       assert Map.get(conn.assigns, :user) == nil

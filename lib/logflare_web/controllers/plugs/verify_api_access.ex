@@ -3,6 +3,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   Verifies if a user has access to a requested resource.
 
   Assigns the token's associated user if the token is provided
+
+  Options:
+  - `:resource`, required - an atom determining the resource accessed, as each resource has its own authorization verification flow.
   """
   import Plug.Conn
   import Phoenix.Controller
@@ -11,12 +14,11 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
   def init(_), do: nil
 
-  def call(%{request_path: "/endpoints/query" <> _} = conn, _) do
-    do_auth(:endpoints, conn)
-  end
-
-  def call(%{request_path: _} = conn) do
-    do_auth(nil, conn)
+  def call(conn, opts) do
+    opts
+    |> Enum.into(%{})
+    |> Map.get(:resource)
+    |> do_auth(conn)
   end
 
   defp do_auth(:endpoints, conn) do
