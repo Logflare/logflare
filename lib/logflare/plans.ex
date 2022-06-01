@@ -73,10 +73,10 @@ defmodule Logflare.Plans do
 
         billing_account ->
           case Billing.get_billing_account_stripe_plan(billing_account) do
-            {:ok, nil} ->
+            nil ->
               get_plan_by(name: "Free")
 
-            {:ok, stripe_plan} ->
+            stripe_plan ->
               get_plan_by(stripe_id: stripe_plan["id"])
           end
       end
