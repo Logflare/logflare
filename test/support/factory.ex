@@ -5,10 +5,9 @@ defmodule Logflare.Factory do
   use ExMachina.Ecto, repo: Logflare.Repo
   alias Logflare.{User, Source, Rule, LogEvent}
   alias Logflare.Users.UserPreferences
-  alias Logflare.Plans.Plan
-  alias Logflare.Teams.Team
   alias Logflare.Endpoint.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.{Plans.Plan, Teams.Team, TeamUsers.TeamUser}
 
   def user_factory do
     %User{
@@ -27,6 +26,13 @@ defmodule Logflare.Factory do
     %Team{
       name: "my team #{random_string()}",
       user: build(:user)
+    }
+  end
+
+  def team_user_factory do
+    %TeamUser{
+      name: "some name #{random_string()}",
+      team: build(:team)
     }
   end
 
