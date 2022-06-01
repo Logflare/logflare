@@ -74,7 +74,7 @@ defmodule Logflare.ContextCache do
       %Logflare.Source{} ->
         value.id
 
-      %Logflare.BillingAccounts.BillingAccount{} ->
+      %Logflare.Billing.BillingAccount{} ->
         value.id
 
       %Logflare.User{} ->

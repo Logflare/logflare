@@ -3,7 +3,7 @@ defmodule Logflare.Source.BillingWriter do
 
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.BillingCounts
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
   alias Logflare.Source.Data
 
   require Logger
@@ -55,9 +55,9 @@ defmodule Logflare.Source.BillingWriter do
     billing_account = rls.user.billing_account
 
     with {:ok, si} <-
-           BillingAccounts.get_billing_account_stripe_subscription_item(billing_account),
+           Billing.get_billing_account_stripe_subscription_item(billing_account),
          {:ok, _response} <-
-           BillingAccounts.Stripe.record_usage(si["id"], count) do
+           Billing.Stripe.record_usage(si["id"], count) do
       :noop
     else
       {:error, resp} ->

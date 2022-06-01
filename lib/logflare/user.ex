@@ -8,7 +8,7 @@ defmodule Logflare.User do
 
   alias Logflare.Source
   alias Logflare.Teams.Team
-  alias Logflare.BillingAccounts.BillingAccount
+  alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
   alias Logflare.Users.UserPreferences
   alias Logflare.Vercel

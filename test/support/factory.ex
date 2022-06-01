@@ -3,7 +3,7 @@ defmodule Logflare.Factory do
   Generates fixtures for schemas
   """
   use ExMachina.Ecto, repo: Logflare.Repo
-  alias Logflare.{User, Source, Rule, LogEvent}
+  alias Logflare.{User, Source, Rule, LogEvent, Billing.BillingAccount}
   alias Logflare.Users.UserPreferences
   alias Logflare.Endpoint.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -67,6 +67,25 @@ defmodule Logflare.Factory do
     }
   end
 
+  def billing_account_factory() do
+    %BillingAccount{
+      stripe_customer: random_string(10),
+      stripe_subscriptions: %{
+        "data" => [
+          %{
+            "plan" => "some plan id #{random_string()}",
+            "items" => [
+              %{
+                "data" => [%{}]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  end
+
+  @spec user_preferences_factory :: Logflare.Users.UserPreferences.t()
   def user_preferences_factory() do
     %UserPreferences{
       timezone: "Phoenix/Arizona"

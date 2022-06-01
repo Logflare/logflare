@@ -5,7 +5,7 @@ defmodule Logflare.PaymentMethods do
 
   import Ecto.Query, warn: false
   alias Logflare.Repo
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
 
   alias Logflare.PaymentMethods.PaymentMethod
 
@@ -28,7 +28,7 @@ defmodule Logflare.PaymentMethods do
 
   def sync_payment_methods(customer_id) do
     with {:ok, %Stripe.List{data: payment_methods}} <-
-           BillingAccounts.Stripe.list_payment_methods(customer_id),
+           Billing.Stripe.list_payment_methods(customer_id),
          {_count, _response} <-
            delete_all_payment_methods_by(customer_id: customer_id) do
       methods_list =
@@ -97,7 +97,7 @@ defmodule Logflare.PaymentMethods do
         %{"customer_id" => cust_id, "stripe_id" => pm_id} = params
       ) do
     with {:ok, _resp} <-
-           BillingAccounts.Stripe.attatch_payment_method(cust_id, pm_id),
+           Billing.Stripe.attatch_payment_method(cust_id, pm_id),
          {:ok, payment_method} <-
            create_payment_method(params) do
       {:ok, payment_method}
@@ -151,7 +151,7 @@ defmodule Logflare.PaymentMethods do
     with methods <- list_payment_methods_by(customer_id: payment_method.customer_id),
          count when count > 1 <- Enum.count(methods),
          {:ok, _respons} <-
-           BillingAccounts.Stripe.detach_payment_method(payment_method.stripe_id),
+           Billing.Stripe.detach_payment_method(payment_method.stripe_id),
          {:ok, response} <-
            Repo.delete(payment_method) do
       {:ok, response}

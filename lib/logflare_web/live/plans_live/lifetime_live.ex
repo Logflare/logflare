@@ -5,7 +5,7 @@ defmodule LogflareWeb.LifetimeLive do
 
   alias Logflare.Plans
   alias Logflare.Users
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
@@ -163,7 +163,7 @@ defmodule LogflareWeb.LifetimeLive do
   end
 
   defp count_billing_accounts() do
-    BillingAccounts.list_billing_accounts()
+    Billing.list_billing_accounts()
     |> Enum.count(fn ba -> ba.lifetime_plan == true end)
   end
 end

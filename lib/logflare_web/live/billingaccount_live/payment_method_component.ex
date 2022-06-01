@@ -7,7 +7,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   use Phoenix.HTML
 
   alias Logflare.PaymentMethods
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
 
   require Logger
 
@@ -136,7 +136,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     user = socket.assigns.user
 
     with {:ok, payment_methods} <- PaymentMethods.sync_payment_methods(customer),
-         {:ok, billing_account} <- BillingAccounts.sync_billing_account(billing_account) do
+         {:ok, billing_account} <- Billing.sync_billing_account(billing_account) do
       socket =
         socket
         |> assign(:user, Map.put(user, :billing_account, billing_account))
@@ -164,13 +164,13 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     }
 
     with {:ok, _response} <-
-           BillingAccounts.Stripe.update_customer(stripe_customer, invoice_settings),
+           Billing.Stripe.update_customer(stripe_customer, invoice_settings),
          {:ok, message} <-
            update_all_subscription(billing_account.stripe_subscriptions, %{
              default_payment_method: id
            }),
          {:ok, billing_account} <-
-           BillingAccounts.update_billing_account(billing_account, %{default_payment_method: id}) do
+           Billing.update_billing_account(billing_account, %{default_payment_method: id}) do
       socket =
         socket
         |> assign(:user, Map.put(user, :billing_account, billing_account))
@@ -222,7 +222,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   defp update_all_subscription(subs, params) do
     updated =
       for s <- subs["data"] do
-        BillingAccounts.Stripe.update_subscription(s["id"], params)
+        Billing.Stripe.update_subscription(s["id"], params)
       end
       |> Enum.filter(fn {:ok, _} -> true end)
       |> Enum.count()
