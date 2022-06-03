@@ -106,5 +106,7 @@ config :logflare, Logflare.Vercel.Client,
 config :goth,
   json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
 
+config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
+
 import_config "dev.secret.exs"
 import_config "telemetry.exs"
