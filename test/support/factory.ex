@@ -3,7 +3,7 @@ defmodule Logflare.Factory do
   Generates fixtures for schemas
   """
   use ExMachina.Ecto, repo: Logflare.Repo
-  alias Logflare.{User, Source, Rule, LogEvent, Billing.BillingAccount}
+  alias Logflare.{User, Source, Rule, LogEvent, Billing.BillingAccount, Billing.PaymentMethod}
   alias Logflare.Users.UserPreferences
   alias Logflare.Endpoint.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -83,6 +83,25 @@ defmodule Logflare.Factory do
         ]
       }
     }
+  end
+
+  def payment_method_factory(attrs) do
+    customer_id = Map.get(attrs, :customer_id)
+
+    customer_id =
+      if customer_id == nil do
+        ba = build(:billing_account)
+        Map.get(ba, :stripe_customer)
+      else
+        customer_id
+      end
+
+    %PaymentMethod{
+      stripe_id: "stripe_#{random_string()}",
+      customer_id: customer_id,
+      price_id: "price_#{random_string()}"
+    }
+    |> merge_attributes(attrs)
   end
 
   @spec user_preferences_factory :: Logflare.Users.UserPreferences.t()

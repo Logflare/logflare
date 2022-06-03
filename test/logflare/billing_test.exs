@@ -1,6 +1,6 @@
 defmodule Logflare.BillingTest do
   use Logflare.DataCase
-  alias Logflare.{User, Billing, Billing.BillingAccount}
+  alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod}
 
   describe "billing accounts" do
     @valid_attrs %{stripe_customer: "some stripe id"}
@@ -39,6 +39,53 @@ defmodule Logflare.BillingTest do
       ba = build(:billing_account)
       assert Billing.get_billing_account_stripe_plan(ba) != nil
       assert Billing.get_billing_account_stripe_subscription_item(ba) != nil
+    end
+  end
+
+  describe "payment methods" do
+    @valid_attrs %{price_id: "some price_id", stripe_id: "some stripe_id"}
+    @update_attrs %{price_id: "some updated price_id", stripe_id: "some updated stripe_id"}
+    @invalid_attrs %{price_id: nil, stripe_id: nil, customer_id: nil}
+    setup do
+      {:ok, billing_account: insert(:billing_account)}
+    end
+
+    test "list_payment_methods_by/1, get_payment_method!/1, get_payment_method_by/1 returns correctly",
+         %{billing_account: ba} do
+      payment_method = insert(:payment_method, customer_id: ba.stripe_customer)
+      assert Billing.list_payment_methods_by(customer_id: ba.stripe_customer) == [payment_method]
+      assert Billing.get_payment_method!(payment_method.id) == payment_method
+      assert Billing.get_payment_method_by(customer_id: ba.stripe_customer) == payment_method
+    end
+
+    test "create_payment_method/1, update_payment_method/2, delete_payment_method/1  with valid data creates a payment_method",
+         %{billing_account: ba} do
+      attrs = Enum.into([customer_id: ba.stripe_customer], @valid_attrs)
+      assert {:ok, %PaymentMethod{} = payment_method} = Billing.create_payment_method(attrs)
+
+      assert @valid_attrs = payment_method
+
+      assert {:ok, %PaymentMethod{} = payment_method} =
+               Billing.update_payment_method(payment_method, @update_attrs)
+
+      assert @update_attrs = payment_method
+
+      # invalid data
+      assert {:error, %Ecto.Changeset{}} = Billing.create_payment_method(@invalid_attrs)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Billing.update_payment_method(payment_method, @invalid_attrs)
+
+      assert {:ok, %PaymentMethod{}} = Billing.delete_payment_method(payment_method)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Billing.get_payment_method!(payment_method.id)
+      end
+    end
+
+    test "change_payment_method/1 returns a payment_method changeset", %{billing_account: ba} do
+      payment_method = insert(:payment_method, customer_id: ba.stripe_customer)
+      assert %Ecto.Changeset{} = Billing.change_payment_method(payment_method)
     end
   end
 end
