@@ -6,7 +6,7 @@ defmodule LogflareWeb.BillingAccountLive do
   use LogflareWeb, :live_view
 
   alias LogflareWeb.BillingAccountView
-  alias Logflare.{Users, Plans}
+  alias Logflare.{Users, Billing}
   alias LogflareWeb.Router.Helpers, as: Routes
 
   @impl true
@@ -33,12 +33,12 @@ defmodule LogflareWeb.BillingAccountLive do
         {:ok, socket}
 
       _billing_account ->
-        plan = Plans.get_plan_by_user(user)
+        plan = Billing.get_plan_by_user(user)
 
         socket =
           socket
           |> assign(:period, "month")
-          |> assign(:plans, Plans.list_plans())
+          |> assign(:plans, Billing.list_plans())
           |> assign(:plan, plan)
           |> assign(:user, user)
           |> assign(:payment_methods, [])

@@ -3,7 +3,7 @@ defmodule LogflareWeb.MeteredPlansLive do
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, "live_widget.html"}
   use Phoenix.HTML
 
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias Logflare.Users
 
   alias LogflareWeb.Router.Helpers, as: Routes
@@ -14,12 +14,12 @@ defmodule LogflareWeb.MeteredPlansLive do
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 
-    plan = Plans.get_plan_by_user(user)
+    plan = Billing.get_plan_by_user(user)
 
     socket =
       socket
       |> assign(:period, "month")
-      |> assign(:plans, Plans.list_plans())
+      |> assign(:plans, Billing.list_plans())
       |> assign(:plan, plan)
       |> assign(:user, user)
 
@@ -30,7 +30,7 @@ defmodule LogflareWeb.MeteredPlansLive do
     socket =
       socket
       |> assign(:period, "month")
-      |> assign(:plans, Plans.list_plans())
+      |> assign(:plans, Billing.list_plans())
       |> assign(:plan, nil)
       |> assign(:user, nil)
 
@@ -133,7 +133,7 @@ defmodule LogflareWeb.MeteredPlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
-                  <%= Plans.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
+                  <%= Billing.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
                 <small class="text-muted">starts at</small></br>
                 <small class="text-muted">per million log events</small></br>
@@ -173,7 +173,7 @@ defmodule LogflareWeb.MeteredPlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
-                  <%= Plans.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
+                  <%= Billing.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
                 <small class="text-muted">starts at</small></br>
                 <small class="text-muted">per million log events</small></br>

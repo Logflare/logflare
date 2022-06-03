@@ -5,7 +5,7 @@ defmodule Logflare.TeamUsers do
   import Ecto.Query, warn: false
 
   alias Logflare.Teams
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias Logflare.Repo
   alias Logflare.TeamUsers.TeamUser
 
@@ -77,7 +77,7 @@ defmodule Logflare.TeamUsers do
 
       true ->
         count = list_team_users_by(id: team_id) |> Enum.count()
-        %Plans.Plan{limit_team_users_limit: limit} = Plans.get_plan_by_user(user)
+        %Billing.Plan{limit_team_users_limit: limit} = Billing.get_plan_by_user(user)
 
         if count < limit do
           create_team_user(team_id, auth_params)

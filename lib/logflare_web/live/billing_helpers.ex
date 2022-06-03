@@ -1,11 +1,11 @@
 defmodule LogflareWeb.BillingHelpers do
   use Phoenix.HTML
 
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias LogflareWeb.Router.Helpers, as: Routes
 
   def sub_button(plan, socket, plans, period, plan_name) do
-    new_plan = Plans.find_plan(plans, period, plan_name)
+    new_plan = Billing.find_plan(plans, period, plan_name)
 
     cond do
       is_nil(plan) ->

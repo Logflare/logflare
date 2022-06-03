@@ -4,9 +4,8 @@ defmodule Logflare.Billing.Stripe do
   """
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-  alias Logflare.Billing.BillingAccount
+  alias Logflare.Billing.{BillingAccount, Plan}
   alias Logflare.Billing
-  alias Logflare.Plans.Plan
   alias Logflare.User
   alias Logflare.Sources
 

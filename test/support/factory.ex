@@ -7,7 +7,7 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Endpoint.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
-  alias Logflare.{Plans.Plan, Teams.Team, TeamUsers.TeamUser}
+  alias Logflare.{Billing.Plan, Teams.Team, TeamUsers.TeamUser}
 
   def user_factory do
     %User{

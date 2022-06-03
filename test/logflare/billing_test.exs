@@ -1,6 +1,6 @@
 defmodule Logflare.BillingTest do
   use Logflare.DataCase
-  alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod}
+  alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod, Billing.Plan}
 
   describe "billing accounts" do
     @valid_attrs %{stripe_customer: "some stripe id"}
@@ -86,6 +86,36 @@ defmodule Logflare.BillingTest do
     test "change_payment_method/1 returns a payment_method changeset", %{billing_account: ba} do
       payment_method = insert(:payment_method, customer_id: ba.stripe_customer)
       assert %Ecto.Changeset{} = Billing.change_payment_method(payment_method)
+    end
+  end
+
+  describe "plans" do
+    @valid_attrs %{name: "Free"}
+    @update_attrs %{name: "Legacy"}
+    @invalid_attrs %{name: nil}
+    test "list_plans/0" do
+      plan = insert(:plan)
+      assert Billing.list_plans() == [plan]
+      assert Billing.get_plan!(plan.id) == plan
+      assert Billing.get_plan_by(name: plan.name) == plan
+    end
+    test "create_plan/1, update_plan/2, delete_plan/1" do
+      assert {:ok, %Plan{name: "Free"} = plan} = Billing.create_plan(@valid_attrs)
+      assert {:ok, %Plan{name: "Legacy"} = plan} = Billing.update_plan(plan, @update_attrs)
+      assert {:ok, %Plan{}} = Billing.delete_plan(plan)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Billing.get_plan!(plan.id)
+      end
+    end
+    test "find_plan/3"
+    test "get_plan_by_user/1"
+    test "change_plan/1 returns changeset" do
+      plan = insert(:plan)
+      assert %Ecto.Changeset{} = Billing.change_plan(plan)
+    end
+    test "legacy_plan/0 returns legacy plan" do
+      assert %Plan{name: "Legacy"} = Billing.legacy_plan()
     end
   end
 end
