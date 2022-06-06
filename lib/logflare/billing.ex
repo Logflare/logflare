@@ -235,7 +235,7 @@ defmodule Logflare.Billing do
          {_count, _} <- delete_all_payment_methods_by(customer_id: cust_id) do
       new_pms =
         for x <- stripe_payment_methods,
-            {:ok, new_pm} <-
+            {:ok, new_pm} =
               create_payment_method(%{
                 stripe_id: x.id,
                 customer_id: x.customer,
