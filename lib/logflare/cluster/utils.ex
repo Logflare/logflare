@@ -2,7 +2,7 @@ defmodule Logflare.Cluster.Utils do
   @moduledoc false
   require Logger
 
-  @min_cluster_size 2
+  @min_cluster_size Application.get_env(:logflare, __MODULE__)[:min_cluster_size]
 
   def node_list_all() do
     [Node.self() | Node.list()]
