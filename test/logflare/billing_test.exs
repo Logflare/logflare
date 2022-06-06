@@ -87,5 +87,70 @@ defmodule Logflare.BillingTest do
       payment_method = insert(:payment_method, customer_id: ba.stripe_customer)
       assert %Ecto.Changeset{} = Billing.change_payment_method(payment_method)
     end
+
+    test "delete_all_payment_methods_by/1 deletes PaymentMethod by keyword", %{
+      billing_account: ba
+    } do
+      payment_method = insert(:payment_method, customer_id: ba.stripe_customer)
+      assert {1, _} = Billing.delete_all_payment_methods_by(customer_id: ba.stripe_customer)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Billing.get_payment_method!(payment_method.id)
+      end
+    end
+
+    test "create_payment_method_with_stripe/1 and delete_payment_method_with_stripe/1 interfaces with stripe",
+         %{billing_account: ba} do
+      Stripe.PaymentMethod
+      |> expect(:attach, 2, fn _ -> {:ok, %{}} end)
+      |> expect(:detach, fn _ -> {:ok, %{}} end)
+
+      [_, pm] =
+        for n <- 1..2,
+            pm_id = "some payment id #{n}" do
+          assert {:ok, %PaymentMethod{} = pm} =
+                   Billing.create_payment_method_with_stripe(%{
+                     "customer_id" => ba.stripe_customer,
+                     "stripe_id" => pm_id
+                   })
+
+          pm
+        end
+
+      assert {:ok, %PaymentMethod{}} = Billing.delete_payment_method_with_stripe(pm)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Billing.get_payment_method!(pm.id)
+      end
+    end
+
+    test "sync_payment_methods/1 ensures all payment data is correct", %{billing_account: ba} do
+      cust_id = ba.stripe_customer
+
+      Stripe.PaymentMethod
+      |> expect(:list, 1, fn _ ->
+        {:ok,
+         %Stripe.List{
+           data: [
+             %{
+               id: "some payment method id",
+               customer: cust_id,
+               card: %{last4: "1234", exp_month: "02", exp_year: "2022", brand: "visa"}
+             }
+           ]
+         }}
+      end)
+
+      assert {:ok,
+              [
+                %PaymentMethod{
+                  customer_id: ^cust_id,
+                  stripe_id: "some payment method id",
+                  last_four: "1234"
+                }
+              ]} = Billing.sync_payment_methods(cust_id)
+
+      assert Billing.list_payment_methods_by(customer_id: cust_id) |> length() == 1
+    end
   end
 end
