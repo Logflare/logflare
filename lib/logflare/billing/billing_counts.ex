@@ -5,7 +5,6 @@ defmodule Logflare.Billing.BillingCounts do
   require Logger
   import Ecto.Query, warn: false
   alias Logflare.{User, Repo}
-  alias __MODULE__
   def timeseries(%User{id: user_id}, start_date, end_date) do
     q =
       from(c in Count,
