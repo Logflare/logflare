@@ -1,4 +1,4 @@
-defmodule Logflare.PaymentMethods.PaymentMethod do
+defmodule Logflare.Billing.PaymentMethod do
   use Ecto.Schema
   import Ecto.Changeset
 

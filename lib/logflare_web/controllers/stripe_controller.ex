@@ -5,8 +5,7 @@ defmodule LogflareWeb.StripeController do
 
   alias Logflare.Billing
   alias Logflare.Billing.BillingAccount
-  alias Logflare.PaymentMethods
-  alias Logflare.PaymentMethods.PaymentMethod
+  alias Logflare.Billing.PaymentMethod
 
   def event(
         conn,
@@ -93,9 +92,9 @@ defmodule LogflareWeb.StripeController do
           stripe_id: stripe_id
         }
 
-        with nil <- PaymentMethods.get_payment_method_by(stripe_id: stripe_id),
+        with nil <- Billing.get_payment_method_by(stripe_id: stripe_id),
              {:ok, pm} <-
-               PaymentMethods.create_payment_method(params) do
+               Billing.create_payment_method(params) do
           Phoenix.PubSub.broadcast(
             Logflare.PubSub,
             "billing",
@@ -139,9 +138,9 @@ defmodule LogflareWeb.StripeController do
       "payment_method.detached" ->
         stripe_id = object["id"]
 
-        with %PaymentMethod{} = pm <- PaymentMethods.get_payment_method_by(stripe_id: stripe_id),
+        with %PaymentMethod{} = pm <- Billing.get_payment_method_by(stripe_id: stripe_id),
              {:ok, _pm} <-
-               PaymentMethods.delete_payment_method(pm) do
+               Billing.delete_payment_method(pm) do
           Phoenix.PubSub.broadcast(
             Logflare.PubSub,
             "billing",

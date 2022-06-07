@@ -3,7 +3,7 @@ defmodule Logflare.Billing do
   require Logger
   alias __MODULE__
   import Ecto.Query, warn: false
-  alias Logflare.{Repo, Users, Source, User, Billing.BillingAccount}
+  alias Logflare.{Repo, Users, Source, User, Billing.BillingAccount, Billing.PaymentMethod}
   require Protocol
   Protocol.derive(Jason.Encoder, Stripe.List)
   Protocol.derive(Jason.Encoder, Stripe.Subscription)
@@ -15,6 +15,8 @@ defmodule Logflare.Billing do
   Protocol.derive(Jason.Encoder, Stripe.Price)
   Protocol.derive(Jason.Encoder, Stripe.Discount)
   Protocol.derive(Jason.Encoder, Stripe.Coupon)
+
+  # BillingAccount
 
   @doc "Returns the list of billing_accounts"
   @spec list_billing_accounts() :: [%BillingAccount{}]
@@ -145,4 +147,107 @@ defmodule Logflare.Billing do
       do: item
 
   def get_billing_account_stripe_subscription_item(_), do: nil
+
+  # PaymentMethod
+
+  @doc "list PaymentMethod by keyword"
+  @spec list_payment_methods_by(keyword()) :: [%PaymentMethod{}]
+  def list_payment_methods_by(kv), do: Repo.all(from pm in PaymentMethod, where: ^kv)
+
+  @doc "Gets a single payment_method.Raises `Ecto.NoResultsError` if the Payment method does not exist."
+  @spec get_payment_method!(number() | String.t()) :: %PaymentMethod{}
+  def get_payment_method!(id), do: Repo.get!(PaymentMethod, id)
+
+  @doc "get PaymentMethod by keyword"
+  @spec get_payment_method_by(keyword()) :: %PaymentMethod{}
+  def get_payment_method_by(kv), do: Repo.get_by(PaymentMethod, kv)
+
+  @doc "Creates a payment_method."
+  @spec create_payment_method_with_stripe(map()) ::
+          {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  def create_payment_method_with_stripe(
+        %{"customer_id" => cust_id, "stripe_id" => pm_id} = params
+      ) do
+    with {:ok, _resp} <- Billing.Stripe.attatch_payment_method(cust_id, pm_id) do
+      create_payment_method(params)
+    end
+  end
+
+  @doc "creates a PaymentMethod"
+  @spec create_payment_method(map()) :: {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  def create_payment_method(attrs \\ %{}) when is_map(attrs) do
+    %PaymentMethod{}
+    |> PaymentMethod.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc "updates a PaymentMethod"
+  @spec update_payment_method(%PaymentMethod{}, map()) ::
+          {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  def update_payment_method(%PaymentMethod{} = payment_method, attrs) do
+    payment_method
+    |> PaymentMethod.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc "Deletes a payment_method"
+  @spec delete_payment_method(%PaymentMethod{}) ::
+          {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  def delete_payment_method(%PaymentMethod{} = payment_method) do
+    Repo.delete(payment_method)
+  end
+
+  @doc "Deletes multiple payment_methods matching a keyword"
+  @spec delete_all_payment_methods_by(keyword()) :: {integer(), nil}
+  def delete_all_payment_methods_by(kv), do: Repo.delete_all(from pm in PaymentMethod, where: ^kv)
+
+  @doc "Deletes PaymentMethod both in db and stripe. User must have minimally 1 payment method"
+  @spec delete_payment_method_with_stripe(%PaymentMethod{}) ::
+          {:ok, %PaymentMethod{}} | {:error, String.t()}
+  def delete_payment_method_with_stripe(%PaymentMethod{} = payment_method) do
+    with methods <- list_payment_methods_by(customer_id: payment_method.customer_id),
+         count when count > 1 <- Enum.count(methods),
+         {:ok, _respons} <- Billing.Stripe.detach_payment_method(payment_method.stripe_id) do
+      delete_payment_method(payment_method)
+    else
+      {:error, %Stripe.Error{message: message}} ->
+        {:error, message}
+
+      1 ->
+        {:error, "You need at least one payment method!"}
+
+      _err ->
+        {:error, "Failed to delete payment method!"}
+    end
+  end
+
+  @doc "Returns an `%Ecto.Changeset{}` for tracking payment_method changes."
+  @spec change_payment_method(%PaymentMethod{}) :: %Ecto.Changeset{}
+  def change_payment_method(%PaymentMethod{} = payment_method, attrs \\ %{}) do
+    PaymentMethod.changeset(payment_method, attrs)
+  end
+
+  @doc "Syncs db PaymentMethod with stripe as a souce of truth"
+  @spec sync_payment_methods(String.t()) :: {:ok, [%PaymentMethod{}]}
+  def sync_payment_methods(cust_id) do
+    with {:ok, %Stripe.List{data: stripe_payment_methods}} <-
+           Billing.Stripe.list_payment_methods(cust_id),
+         {_count, _} <- delete_all_payment_methods_by(customer_id: cust_id) do
+      new_pms =
+        for x <- stripe_payment_methods,
+            {:ok, new_pm} =
+              create_payment_method(%{
+                stripe_id: x.id,
+                customer_id: x.customer,
+                last_four: x.card.last4,
+                exp_month: x.card.exp_month,
+                exp_year: x.card.exp_year,
+                brand: x.card.brand
+              }) do
+          new_pm
+        end
+
+      {:ok, new_pms}
+    end
+  end
 end
