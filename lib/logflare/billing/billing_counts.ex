@@ -39,11 +39,6 @@ defmodule Logflare.Billing.BillingCounts do
     Enum.map(timeseries, fn [x, y, z] -> [Calendar.strftime(x, "%b %d"), y, z] end)
   end
 
-  def list_by(kv) do
-    BillingCount
-    |> where(^kv)
-    |> Repo.all()
-  end
 
   def insert(user, source, params) do
     assoc = params |> assoc(user) |> assoc(source)
