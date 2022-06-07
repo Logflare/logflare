@@ -5,6 +5,7 @@ defmodule Logflare.Billing.BillingCounts do
   require Logger
   import Ecto.Query, warn: false
   alias Logflare.{User, Repo}
+
   def timeseries(%User{id: user_id}, start_date, end_date) do
     q =
       from(c in Count,
@@ -38,7 +39,6 @@ defmodule Logflare.Billing.BillingCounts do
   def timeseries_to_ext(timeseries) do
     Enum.map(timeseries, fn [x, y, z] -> [Calendar.strftime(x, "%b %d"), y, z] end)
   end
-
 
   def insert(user, source, params) do
     assoc = params |> assoc(user) |> assoc(source)
@@ -83,5 +83,4 @@ defmodule Logflare.Billing.BillingCounts do
     #   q -> select_merge(q, [t: t], %{^c => coalesce(field(t, ^c), 0)})
     # end
   end
-
 end
