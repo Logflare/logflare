@@ -3,7 +3,17 @@ defmodule Logflare.Billing do
   require Logger
   alias __MODULE__
   import Ecto.Query, warn: false
-  alias Logflare.{Repo, Users, Source, User, Billing.Plan, Billing.BillingAccount, Billing.PaymentMethod}
+
+  alias Logflare.{
+    Repo,
+    Users,
+    Source,
+    User,
+    Billing.Plan,
+    Billing.BillingAccount,
+    Billing.PaymentMethod
+  }
+
   require Protocol
   Protocol.derive(Jason.Encoder, Stripe.List)
   Protocol.derive(Jason.Encoder, Stripe.Subscription)
@@ -254,45 +264,48 @@ defmodule Logflare.Billing do
   # Plans
 
   @doc "Returns the list of plans."
+  @spec list_plans() :: [Plan.t()]
   def list_plans do
     Repo.all(Plan)
   end
 
+  @doc "Finds a plan from a list of plans"
+  @spec find_plan([Plan.t()], String.t(), String.t()) :: Plan.t() | nil
   def find_plan(plans, period, name) do
-    Enum.filter(plans, fn x -> x.period == period end)
-    |> Enum.find(fn x -> x.name == name end)
+    plans
+    |> Enum.find(fn
+      %{period: ^period, name: ^name} -> true
+      _ -> false
+    end)
   end
 
-  @doc """
-  Gets a single plan.
-
-  Raises `Ecto.NoResultsError` if the Plan does not exist.
-
-  ## Examples
-
-      iex> get_plan!(123)
-      %Plan{}
-
-      iex> get_plan!(456)
-      ** (Ecto.NoResultsError)
-
-  """
+  @doc "Gets a single plan. Raises `Ecto.NoResultsError` if the Plan does not exist."
+  @spec get_plan!(String.t() | number()) :: Plan.t()
   def get_plan!(id), do: Repo.get!(Plan, id)
 
+  @doc "Gets a single plan by attribute. Returns Free plan if the plan does not exist."
+  @spec get_plan_by(keyword()) :: Plan.t() | nil
   def get_plan_by(kw) do
     plan = Repo.get_by(Plan, kw)
+    # nil plan blows everything up. Should never return a nil plan
+    cond do
+      is_nil(plan) and kw == [name: "Free"] ->
+        raise "No Free Plan created yet in database."
 
-    # nil plan blows everything up. Should never return a nil plan.
+      is_nil(plan) ->
+        Logger.error(
+          "Customer is on a Stripe plan which doesn't exist in our plan list, defaulting to Free"
+        )
 
-    if is_nil(plan) do
-      Logger.error("Customer is on a Stripe plan which doesn't exist in our plan list!!!!!")
+        get_plan_by(name: "Free")
 
-      get_plan_by(name: "Free")
-    else
-      plan
+      true ->
+        plan
     end
   end
 
+  @doc "Retrieve a user's plan. Defaults to legacy plan if billing is not enabled."
+  @spec get_plan_by_user(%User{}) :: Plan.t()
   def get_plan_by_user(%User{} = user) do
     if user.billing_enabled do
       case Billing.get_billing_account_by(user_id: user.id) do
@@ -319,71 +332,36 @@ defmodule Logflare.Billing do
     end
   end
 
-  @doc """
-  Creates a plan.
-
-  ## Examples
-
-      iex> create_plan(%{field: value})
-      {:ok, %Plan{}}
-
-      iex> create_plan(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Creates a plan."
+  @spec create_plan(map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def create_plan(attrs \\ %{}) do
     %Plan{}
     |> Plan.changeset(attrs)
     |> Repo.insert()
   end
 
-  @doc """
-  Updates a plan.
-
-  ## Examples
-
-      iex> update_plan(plan, %{field: new_value})
-      {:ok, %Plan{}}
-
-      iex> update_plan(plan, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Updates a plan."
+  @spec update_plan(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def update_plan(%Plan{} = plan, attrs) do
     plan
     |> Plan.changeset(attrs)
     |> Repo.update()
   end
 
-  @doc """
-  Deletes a plan.
-
-  ## Examples
-
-      iex> delete_plan(plan)
-      {:ok, %Plan{}}
-
-      iex> delete_plan(plan)
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Deletes a plan."
+  @spec delete_plan(Plan.t()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def delete_plan(%Plan{} = plan) do
     Repo.delete(plan)
   end
 
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking plan changes.
-
-  ## Examples
-
-      iex> change_plan(plan)
-      %Ecto.Changeset{source: %Plan{}}
-
-  """
+  @doc "Returns an `%Ecto.Changeset{}` for tracking plan changes."
+  @spec change_plan(Plan.t()) :: Ecto.Changeset.t()
   def change_plan(%Plan{} = plan) do
     Plan.changeset(plan, %{})
   end
 
+  @doc "Returns the legacy plan"
+  @spec legacy_plan :: Plan.t()
   def legacy_plan() do
     %Plan{
       limit_rate_limit: 150,
@@ -394,6 +372,4 @@ defmodule Logflare.Billing do
       limit_source_fields_limit: 500
     }
   end
-
-
 end
