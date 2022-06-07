@@ -70,7 +70,7 @@ defmodule Logflare.Source.BillingWriter do
 
   defp record_to_db(rls, count) do
     with {:ok, _resp} <-
-           Billing.insert(rls.user, rls.source, %{
+           BillingCounts.insert(rls.user, rls.source, %{
              node: Atom.to_string(Node.self()),
              count: count
            }) do
