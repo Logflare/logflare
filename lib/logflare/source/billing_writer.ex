@@ -2,7 +2,7 @@ defmodule Logflare.Source.BillingWriter do
   use GenServer
 
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.BillingCounts
+  alias Logflare.Billing.BillingCounts
   alias Logflare.Billing
   alias Logflare.Source.Data
 
@@ -70,7 +70,7 @@ defmodule Logflare.Source.BillingWriter do
 
   defp record_to_db(rls, count) do
     with {:ok, _resp} <-
-           BillingCounts.insert(rls.user, rls.source, %{
+           Billing.insert(rls.user, rls.source, %{
              node: Atom.to_string(Node.self()),
              count: count
            }) do
