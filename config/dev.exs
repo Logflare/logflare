@@ -41,7 +41,7 @@ config :logflare, LogflareWeb.Endpoint,
   ]
 
 config :logger,
-  level: :info,
+  level: :debug,
   backends: [:console, LogflareLogger.HttpBackend]
 
 config :logger, :console,
@@ -106,9 +106,7 @@ config :logflare, Logflare.Vercel.Client,
 config :goth,
   json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
 
-config :logflare,
-  recaptcha_site_key: "6LerPsoUAAAAAMPNe7nb4dBMDDN4w6tGtmQXn8bh",
-  recaptcha_secret: "6LerPsoUAAAAAM2MP18GAsePKntkjBiANAV35Z1z"
+config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 import_config "dev.secret.exs"
 import_config "telemetry.exs"

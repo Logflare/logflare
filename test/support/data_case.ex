@@ -23,6 +23,7 @@ defmodule Logflare.DataCase do
       import Ecto.Query
       import Logflare.DataCase
       import Logflare.Factory
+      use Mimic
     end
   end
 

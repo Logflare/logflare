@@ -14,7 +14,7 @@ defmodule Logflare.SystemMetrics.Cachex.Poller do
     Logflare.Plans.Cache,
     Logflare.Users.Cache,
     Logflare.Sources.Cache,
-    Logflare.BillingAccounts.Cache,
+    Logflare.Billing.Cache,
     Logflare.SourceSchemas.Cache,
     Logflare.PubSubRates.Cache
   ]

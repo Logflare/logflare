@@ -3,7 +3,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
   import Plug.Conn
   import Phoenix.Controller
   alias LogflareWeb.Router.Helpers, as: Routes
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing
 
   def init(_params) do
   end
@@ -38,11 +38,11 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
          source_count
        ) do
     {:ok, item} =
-      BillingAccounts.Cache.get_billing_account_by(user_id: user.id)
-      |> BillingAccounts.get_billing_account_stripe_subscription_item()
+      Billing.Cache.get_billing_account_by(user_id: user.id)
+      |> Billing.get_billing_account_stripe_subscription_item()
 
     if item do
-      BillingAccounts.Stripe.update_subscription_item(item["id"], %{quantity: source_count + 1})
+      Billing.Stripe.update_subscription_item(item["id"], %{quantity: source_count + 1})
     end
 
     conn
@@ -53,11 +53,11 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
          source_count
        ) do
     {:ok, item} =
-      BillingAccounts.Cache.get_billing_account_by(user_id: user.id)
-      |> BillingAccounts.get_billing_account_stripe_subscription_item()
+      Billing.Cache.get_billing_account_by(user_id: user.id)
+      |> Billing.get_billing_account_stripe_subscription_item()
 
     if item do
-      BillingAccounts.Stripe.update_subscription_item(item["id"], %{quantity: source_count - 1})
+      Billing.Stripe.update_subscription_item(item["id"], %{quantity: source_count - 1})
     end
 
     conn

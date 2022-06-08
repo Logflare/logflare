@@ -20,7 +20,7 @@ defmodule LogflareWeb.BillingHelpers do
 
       plan.name == "Lifetime" ->
         link("Contact us",
-          to: Routes.contact_path(socket, :contact),
+          to: Routes.marketing_path(socket, :contact),
           class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
         )
 
@@ -76,7 +76,7 @@ defmodule LogflareWeb.BillingHelpers do
 
       true ->
         link("Contact Us",
-          to: Routes.contact_path(socket, :contact),
+          to: Routes.marketing_path(socket, :contact),
           class: "btn btn-dark text-white form-button w-75 mr-0 mb-1"
         )
     end

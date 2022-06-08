@@ -13,8 +13,14 @@
   </div>
 </div>
 <div class="container mx-auto">
+    <%= if @endpoint_query.enable_auth == false do %>
+      <p class="alert-warning px-4 py-2">
+        <strong>Authentication Not Enabled!</strong> Authentication has not been enabled for this endpoint, and may pose a security risk.
+      </p>
+    <% end %>
 
     <%= section_header("Query") %>
+
 
     <code>
       <pre><%= @endpoint_query.query %></pre>
@@ -50,6 +56,7 @@
     <code>
     <pre class="pt-2">
     curl "<%= Routes.endpoint_url(@conn, :query, @endpoint_query.token)%>" \
+         -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
          -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
          -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
     <% end %>
@@ -62,6 +69,7 @@
       <code>
       <pre class="pt-2">
       curl "<%= Routes.endpoint_url(@conn, :query, @endpoint_query.token)%>" \
+           -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
            -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
            -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
       <% end %> \

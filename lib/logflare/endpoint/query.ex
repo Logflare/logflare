@@ -11,6 +11,7 @@ defmodule Logflare.Endpoint.Query do
     field :cache_duration_seconds, :integer, default: 3_600
     field :proactive_requerying_seconds, :integer, default: 1_800
     field :max_limit, :integer, default: 1_000
+    field :enable_auth, :boolean, default: false
 
     belongs_to :user, Logflare.User
 
@@ -27,7 +28,8 @@ defmodule Logflare.Endpoint.Query do
       :sandboxable,
       :cache_duration_seconds,
       :proactive_requerying_seconds,
-      :max_limit
+      :max_limit,
+      :enable_auth
     ])
     |> validate_required([:name, :token, :query])
   end
@@ -41,7 +43,8 @@ defmodule Logflare.Endpoint.Query do
       :sandboxable,
       :cache_duration_seconds,
       :proactive_requerying_seconds,
-      :max_limit
+      :max_limit,
+      :enable_auth
     ])
     |> default_validations()
     |> update_source_mapping()

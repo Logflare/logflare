@@ -1,7 +1,6 @@
 defmodule Logflare.Logs.SourceRoutingTest do
   @moduledoc false
   use Logflare.DataCase
-  use Placebo
   import Logflare.Factory
 
   alias Logflare.LogEvent, as: LE

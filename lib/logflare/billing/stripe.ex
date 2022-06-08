@@ -1,11 +1,11 @@
-defmodule Logflare.BillingAccounts.Stripe do
+defmodule Logflare.Billing.Stripe do
   @moduledoc """
     Communicate with the Stripe API.
   """
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
-  alias Logflare.BillingAccounts.BillingAccount
-  alias Logflare.BillingAccounts
+  alias Logflare.Billing.BillingAccount
+  alias Logflare.Billing
   alias Logflare.Plans.Plan
   alias Logflare.User
   alias Logflare.Sources
@@ -117,7 +117,7 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def change_subscription(billing_account, sources, to_plan) do
     [subscription] = billing_account.stripe_subscriptions["data"]
-    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+    {:ok, item} = Billing.get_billing_account_stripe_subscription_item(billing_account)
 
     delete_item = %{id: item["id"], deleted: true}
     add_item = %{price: to_plan.stripe_id, quantity: Enum.count(sources)}
@@ -128,7 +128,7 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def change_from_metered_subscription(billing_account, _sources, to_plan) do
     [subscription] = billing_account.stripe_subscriptions["data"]
-    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+    {:ok, item} = Billing.get_billing_account_stripe_subscription_item(billing_account)
 
     delete_item = %{id: item["id"], deleted: true, clear_usage: true}
     add_item = %{price: to_plan.stripe_id}
@@ -139,7 +139,7 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def change_to_metered_subscription(billing_account, _sources, to_plan) do
     [subscription] = billing_account.stripe_subscriptions["data"]
-    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+    {:ok, item} = Billing.get_billing_account_stripe_subscription_item(billing_account)
 
     delete_item = %{id: item["id"], deleted: true}
     add_item = %{price: to_plan.stripe_id}
@@ -150,7 +150,7 @@ defmodule Logflare.BillingAccounts.Stripe do
 
   def change_metered_to_standard_subscription(billing_account, sources, to_plan) do
     [subscription] = billing_account.stripe_subscriptions["data"]
-    {:ok, item} = BillingAccounts.get_billing_account_stripe_subscription_item(billing_account)
+    {:ok, item} = Billing.get_billing_account_stripe_subscription_item(billing_account)
 
     delete_item = %{id: item["id"], deleted: true, clear_usage: true}
     add_item = %{price: to_plan.stripe_id, quantity: Enum.count(sources)}

@@ -95,6 +95,10 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.CheckTeamUser
   end
 
+  pipeline :api_auth_endpoints do
+    plug LogflareWeb.Plugs.VerifyApiAccess, resource: :endpoints
+  end
+
   pipeline :auth_switch do
     plug LogflareWeb.Plugs.AuthSwitch
   end
@@ -125,8 +129,7 @@ defmodule LogflareWeb.Router do
     get "/terms", MarketingController, :terms
     get "/privacy", MarketingController, :privacy
     get "/cookies", MarketingController, :cookies
-    get "/contact", ContactController, :contact
-    post "/contact", ContactController, :new
+    get "/contact", MarketingController, :contact
     get "/guides", MarketingController, :guides
   end
 
@@ -148,7 +151,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/endpoints/query", LogflareWeb do
-    pipe_through [:api]
+    pipe_through [:api, :api_auth_endpoints]
     get "/:token", EndpointController, :query
   end
 
@@ -250,6 +253,9 @@ defmodule LogflareWeb.Router do
     delete "/", UserController, :delete
     get "/edit/api-key", UserController, :new_api_key
     put "/edit/owner", UserController, :change_owner
+
+    # access token management
+    live "/access-tokens", AccessTokensLive, :index
   end
 
   scope "/integrations", LogflareWeb do
@@ -287,7 +293,7 @@ defmodule LogflareWeb.Router do
     get "/sources", AdminController, :sources
     get "/accounts", AdminController, :accounts
     live "/search", AdminSearchDashboardLive, layout: {LayoutView, :root}
-    get "/cluster", AdminClusterController, :index
+    live "/cluster", Admin.ClusterLive, :index
 
     get "/plans", AdminPlanController, :index
     get "/plans/new", AdminPlanController, :new
@@ -349,6 +355,11 @@ defmodule LogflareWeb.Router do
   scope "/api/logs", LogflareWeb do
     pipe_through [:api, :require_ingest_api_auth]
     post "/", LogController, :create
+  end
+
+  scope "/api/endpoints", LogflareWeb do
+    pipe_through [:api, :api_auth_endpoints]
+    get "/query/:token", EndpointController, :query
   end
 
   # Log ingest goes through https://api.logflare.app/logs

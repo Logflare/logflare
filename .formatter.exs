@@ -7,7 +7,6 @@
     :phoenix,
     :phoenix_live_view,
     :plug,
-    :placebo,
     :typed_struct,
     :nimble_parsec,
     :typed_ecto_schema
