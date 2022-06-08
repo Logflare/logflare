@@ -6,6 +6,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
   setup do
     user = insert(:user)
+
     Logflare.SQL
     |> expect(:source_mapping, fn _, _, _ -> {:ok, "the query"} end)
 
