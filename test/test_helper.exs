@@ -11,6 +11,7 @@ Mimic.copy(Plans.Cache)
 Mimic.copy(Sources.Counters)
 Mimic.copy(Sources.Cache)
 Mimic.copy(Stripe.PaymentMethod)
+Mimic.copy(Logflare.SQL)
 
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
