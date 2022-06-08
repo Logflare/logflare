@@ -3,7 +3,6 @@ defmodule Logflare.Source.RecentLogsServer do
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
   """
-  use Publicist
   use TypedStruct
   alias Logflare.Plans.Plan
 
