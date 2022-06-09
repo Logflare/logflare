@@ -1,7 +1,6 @@
 defmodule Logflare.Logs do
   @moduledoc false
   require Logger
-  use Publicist
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.{RejectedLogEvents}

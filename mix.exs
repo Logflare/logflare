@@ -87,7 +87,6 @@ defmodule Logflare.Mixfile do
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
       {:typed_struct, "~> 0.1"},
-      {:publicist, "~> 1.1.0"},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
       {:ex_machina, "~> 2.3"},
