@@ -5,8 +5,8 @@ defmodule Logflare.BqRepo do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.EctoQueryBQ
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   alias Logflare.User
   import Logflare.TypeCasts
 
@@ -28,7 +28,7 @@ defmodule Logflare.BqRepo do
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
 
-    %Plan{name: plan} = Plans.Cache.get_plan_by_user(user)
+    %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
     query_request =
       %QueryRequest{

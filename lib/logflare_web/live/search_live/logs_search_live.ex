@@ -8,7 +8,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
-  alias Logflare.{Sources, Users, Plans, TeamUsers}
+  alias Logflare.{Sources, Users, Billing, TeamUsers}
   alias Logflare.User
 
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
@@ -478,7 +478,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     log_lv_received_event(ev, source)
 
-    %Plans.Plan{limit_saved_search_limit: limit} = Plans.get_plan_by_user(user)
+    %Billing.Plan{limit_saved_search_limit: limit} = Billing.get_plan_by_user(user)
 
     if Enum.count(source.saved_searches) < limit do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do

@@ -3,7 +3,6 @@ defmodule LogflareWeb.LifetimeLive do
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, "live_widget.html"}
   use Phoenix.HTML
 
-  alias Logflare.Plans
   alias Logflare.Users
   alias Logflare.Billing
 
@@ -15,14 +14,14 @@ defmodule LogflareWeb.LifetimeLive do
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 
-    plan = Plans.get_plan_by_user(user)
+    plan = Billing.get_plan_by_user(user)
     count = count_billing_accounts()
     left = 100 - count
 
     socket =
       socket
       |> assign(:period, "life")
-      |> assign(:plans, Plans.list_plans())
+      |> assign(:plans, Billing.list_plans())
       |> assign(:plan, plan)
       |> assign(:user, user)
       |> assign(:time, nil)
@@ -43,7 +42,7 @@ defmodule LogflareWeb.LifetimeLive do
     socket =
       socket
       |> assign(:period, "life")
-      |> assign(:plans, Plans.list_plans())
+      |> assign(:plans, Billing.list_plans())
       |> assign(:plan, nil)
       |> assign(:user, nil)
       |> assign(:time, nil)
@@ -137,7 +136,7 @@ defmodule LogflareWeb.LifetimeLive do
         <%= link("Get Logflare for life for only $500",
                   to:
                     Routes.billing_path(@socket, :confirm_subscription, %{
-                      "stripe_id" => Plans.find_plan(@plans, @period, "Lifetime").stripe_id,
+                      "stripe_id" => Billing.find_plan(@plans, @period, "Lifetime").stripe_id,
                       "mode" => "payment"
                     }),
                   class: "btn btn-pink px-4 py-2 my-4"
@@ -149,7 +148,7 @@ defmodule LogflareWeb.LifetimeLive do
         <%= link("Get Logflare for life for only $500",
                   to:
                     Routes.billing_path(@socket, :confirm_subscription, %{
-                      "stripe_id" => Plans.find_plan(@plans, @period, "Lifetime").stripe_id,
+                      "stripe_id" => Billing.find_plan(@plans, @period, "Lifetime").stripe_id,
                       "mode" => "payment"
                     }),
                   class: "btn btn-pink px-4 py-2 my-4"

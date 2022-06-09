@@ -6,7 +6,18 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.JSON
   alias Logflare.Lql
-  alias Logflare.{Source, Sources, Repo, Google.BigQuery, TeamUsers, Teams, Plans, SourceSchemas}
+
+  alias Logflare.{
+    Source,
+    Sources,
+    Repo,
+    Google.BigQuery,
+    TeamUsers,
+    Teams,
+    Billing,
+    SourceSchemas
+  }
+
   alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.{RejectedLogEvents, Search}
@@ -247,9 +258,10 @@ defmodule LogflareWeb.SourceController do
 
     plans =
       if env == :dev || :staging do
-        Plans.list_plans() ++ [Plans.legacy_plan()] ++ [%Plans.Plan{limit_alert_freq: 60_000}]
+        Billing.list_plans() ++
+          [Billing.legacy_plan()] ++ [%Billing.Plan{limit_alert_freq: 60_000}]
       else
-        Plans.list_plans() ++ [Plans.legacy_plan()]
+        Billing.list_plans() ++ [Billing.legacy_plan()]
       end
       |> Enum.sort_by(& &1.limit_alert_freq, :desc)
 

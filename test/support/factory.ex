@@ -7,7 +7,7 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Endpoint.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
-  alias Logflare.{Plans.Plan, Teams.Team, TeamUsers.TeamUser}
+  alias Logflare.{Billing.Plan, Teams.Team, TeamUsers.TeamUser}
 
   def user_factory do
     %User{
@@ -67,13 +67,17 @@ defmodule Logflare.Factory do
     }
   end
 
-  def billing_account_factory() do
+  def billing_account_factory(attrs) do
+    stripe_plan_id = Map.get(attrs, :stripe_plan_id, "some plan id #{random_string()}")
+    attrs = Map.delete(attrs, :stripe_plan_id)
+
     %BillingAccount{
+      user: build(:user),
       stripe_customer: random_string(10),
       stripe_subscriptions: %{
         "data" => [
           %{
-            "plan" => "some plan id #{random_string()}",
+            "plan" => %{"id" => stripe_plan_id},
             "items" => [
               %{
                 "data" => [%{}]
@@ -83,6 +87,7 @@ defmodule Logflare.Factory do
         ]
       }
     }
+    |> merge_attributes(attrs)
   end
 
   def payment_method_factory(attrs) do

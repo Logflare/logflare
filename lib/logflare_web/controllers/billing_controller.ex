@@ -4,7 +4,6 @@ defmodule LogflareWeb.BillingController do
   require Logger
 
   alias Logflare.Billing
-  alias Logflare.Plans
   alias Logflare.Source
   alias Logflare.{User, Users}
   alias Logflare.Billing.Stripe
@@ -97,7 +96,7 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id, "mode" => "payment"}
       ) do
-    with plan <- Plans.get_plan_by(stripe_id: stripe_id),
+    with plan <- Billing.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_payment_session(user, plan) do
       conn
@@ -118,7 +117,7 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id, "type" => "metered"}
       ) do
-    with plan <- Plans.get_plan_by(stripe_id: stripe_id),
+    with plan <- Billing.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
          false <- billing_account.lifetime_plan,
          {:ok, session} <- Stripe.create_metered_customer_session(user, plan) do
@@ -140,7 +139,7 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id}
       ) do
-    with plan <- Plans.get_plan_by(stripe_id: stripe_id),
+    with plan <- Billing.get_plan_by(stripe_id: stripe_id),
          false <- billing_accoount_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_customer_session(user, plan) do
       conn
@@ -161,12 +160,12 @@ defmodule LogflareWeb.BillingController do
         %{
           assigns: %{
             user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Plans.Plan{type: "standard"}
+            plan: %Billing.Plan{type: "standard"}
           }
         } = conn,
         %{"plan" => plan_id, "type" => "metered"}
       ) do
-    with plan <- Plans.get_plan!(plan_id),
+    with plan <- Billing.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <- Stripe.change_to_metered_subscription(billing_account, sources, plan) do
       success_and_redirect(conn, "Plan successfully changed!")
@@ -185,12 +184,12 @@ defmodule LogflareWeb.BillingController do
         %{
           assigns: %{
             user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Plans.Plan{type: "metered"}
+            plan: %Billing.Plan{type: "metered"}
           }
         } = conn,
         %{"plan" => plan_id, "type" => "metered"}
       ) do
-    with plan <- Plans.get_plan!(plan_id),
+    with plan <- Billing.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <-
            Stripe.change_from_metered_subscription(billing_account, sources, plan) do
@@ -210,12 +209,12 @@ defmodule LogflareWeb.BillingController do
         %{
           assigns: %{
             user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Plans.Plan{type: "standard"}
+            plan: %Billing.Plan{type: "standard"}
           }
         } = conn,
         %{"plan" => plan_id, "type" => "standard"}
       ) do
-    with plan <- Plans.get_plan!(plan_id),
+    with plan <- Billing.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <- Stripe.change_subscription(billing_account, sources, plan) do
       success_and_redirect(conn, "Plan successfully changed!")
@@ -234,12 +233,12 @@ defmodule LogflareWeb.BillingController do
         %{
           assigns: %{
             user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Plans.Plan{type: "metered"}
+            plan: %Billing.Plan{type: "metered"}
           }
         } = conn,
         %{"plan" => plan_id, "type" => "standard"}
       ) do
-    with plan <- Plans.get_plan!(plan_id),
+    with plan <- Billing.get_plan!(plan_id),
          true <- billing_accoount_has_subscription?(billing_account),
          {:ok, _response} <-
            Stripe.change_from_metered_subscription(billing_account, sources, plan) do

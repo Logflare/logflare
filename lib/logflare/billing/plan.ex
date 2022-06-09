@@ -1,4 +1,4 @@
-defmodule Logflare.Plans.Plan do
+defmodule Logflare.Billing.Plan do
   use TypedEctoSchema
   import Ecto.Changeset
 

@@ -4,7 +4,7 @@ defmodule Logflare.Source do
 
   import Ecto.Changeset
 
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias Logflare.Users
 
   @default_source_api_quota 25
@@ -202,7 +202,7 @@ defmodule Logflare.Source do
   def validate_source_ttl(changeset, source) do
     if source.user_id do
       user = Users.get(source.user_id)
-      plan = Plans.get_plan_by_user(user)
+      plan = Billing.get_plan_by_user(user)
 
       validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->
         days = round(plan.limit_source_ttl / :timer.hours(24))

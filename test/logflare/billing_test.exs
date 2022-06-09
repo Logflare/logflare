@@ -1,6 +1,6 @@
 defmodule Logflare.BillingTest do
   use Logflare.DataCase
-  alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod}
+  alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod, Billing.Plan}
 
   describe "billing accounts" do
     @valid_attrs %{stripe_customer: "some stripe id"}
@@ -151,6 +151,78 @@ defmodule Logflare.BillingTest do
               ]} = Billing.sync_payment_methods(cust_id)
 
       assert Billing.list_payment_methods_by(customer_id: cust_id) |> length() == 1
+    end
+  end
+
+  describe "plans" do
+    @valid_attrs %{name: "Month", period: "month"}
+    @update_attrs %{name: "Legacy", period: "annual"}
+    @invalid_attrs %{name: nil}
+
+    test "list_plans/0" do
+      plan = insert(:plan)
+      assert Billing.list_plans() == [plan]
+      assert Billing.get_plan!(plan.id) == plan
+      assert Billing.get_plan_by(name: plan.name) == plan
+    end
+
+    test "create_plan/1, update_plan/2, delete_plan/1" do
+      assert {:ok, %Plan{name: "Month"} = plan} = Billing.create_plan(@valid_attrs)
+      assert {:error, %Ecto.Changeset{}} = Billing.create_plan(@invalid_attrs)
+      assert {:ok, %Plan{name: "Legacy"} = plan} = Billing.update_plan(plan, @update_attrs)
+      assert {:error, %Ecto.Changeset{}} = Billing.update_plan(plan, @invalid_attrs)
+      assert {:ok, %Plan{}} = Billing.delete_plan(plan)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Billing.get_plan!(plan.id)
+      end
+    end
+
+    test "find_plan/3 finds a specific plan" do
+      insert(:plan, @valid_attrs)
+      insert(:plan, @update_attrs)
+      plans = Billing.list_plans()
+      assert %Plan{} = Billing.find_plan(plans, "annual", "Legacy")
+      assert Billing.find_plan(plans, "month", "Legacy") == nil
+    end
+
+    test "get_plan_by_user/1" do
+      user = insert(:user, billing_enabled: true)
+      assert_raise(RuntimeError, fn -> Billing.get_plan_by_user(user) end)
+      insert(:plan, name: "Free")
+      insert(:plan, name: "Lifetime")
+      # no billing account, return Free
+      assert %Plan{name: "Free"} = Billing.get_plan_by_user(user)
+      # on lifetime plan
+      ba = insert(:billing_account, lifetime_plan: true) |> Repo.preload(:user)
+      assert %Plan{name: "Lifetime"} = Billing.get_plan_by_user(ba.user)
+      # no stripe subscription
+      user_no_stripe = insert(:user, billing_enabled: true)
+
+      ba =
+        insert(:billing_account, user: user_no_stripe, stripe_subscriptions: nil)
+        |> Repo.preload(:user)
+
+      assert %Plan{name: "Free"} = Billing.get_plan_by_user(ba.user)
+
+      # have billing account
+      user_custom = insert(:user, billing_enabled: true)
+      plan = insert(:plan, name: "Custom", stripe_id: "stripe-id")
+
+      ba =
+        insert(:billing_account, user: user_custom, stripe_plan_id: plan.stripe_id)
+        |> Repo.preload(:user)
+
+      assert %Plan{name: "Custom"} = Billing.get_plan_by_user(ba.user)
+    end
+
+    test "change_plan/1 returns changeset" do
+      plan = insert(:plan)
+      assert %Ecto.Changeset{} = Billing.change_plan(plan)
+    end
+
+    test "legacy_plan/0 returns legacy plan" do
+      assert %Plan{name: "Legacy"} = Billing.legacy_plan()
     end
   end
 end

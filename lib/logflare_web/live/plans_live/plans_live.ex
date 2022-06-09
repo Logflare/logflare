@@ -1,9 +1,9 @@
-defmodule LogflareWeb.PlansLive do
+defmodule LogflareWeb.BillingLive do
   @moduledoc false
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, "live_widget.html"}
   use Phoenix.HTML
 
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias Logflare.Users
   alias LogflareWeb.BillingHelpers
 
@@ -15,12 +15,12 @@ defmodule LogflareWeb.PlansLive do
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 
-    plan = Plans.get_plan_by_user(user)
+    plan = Billing.get_plan_by_user(user)
 
     socket =
       socket
       |> assign(:period, "month")
-      |> assign(:plans, Plans.list_plans())
+      |> assign(:plans, Billing.list_plans())
       |> assign(:plan, plan)
       |> assign(:user, user)
 
@@ -31,7 +31,7 @@ defmodule LogflareWeb.PlansLive do
     socket =
       socket
       |> assign(:period, "month")
-      |> assign(:plans, Plans.list_plans())
+      |> assign(:plans, Billing.list_plans())
       |> assign(:plan, nil)
       |> assign(:user, nil)
 
@@ -126,9 +126,9 @@ defmodule LogflareWeb.PlansLive do
           </ul>
           <div class="py-4">
             <%= if @period == "year" do %>
-              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Hobby").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
+              <h2 class="text-white"><%= Billing.find_plan(@plans, @period, "Hobby").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
             <% else %>
-              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
+              <h2 class="text-white"><%= Billing.find_plan(@plans, @period, "Hobby").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
             <% end %>
             <small class="text-muted">per month</small></br>
             <small class="text-muted">paid <%= @period %>ly</small>
@@ -166,9 +166,9 @@ defmodule LogflareWeb.PlansLive do
           </ul>
           <div class="py-4">
             <%= if @period == "year" do %>
-              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
+              <h2 class="text-white"><%= Billing.find_plan(@plans, @period, "Pro").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
             <% else %>
-              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
+              <h2 class="text-white"><%= Billing.find_plan(@plans, @period, "Pro").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
             <% end %>
             <small class="text-muted">per month</small></br>
             <small class="text-muted">paid <%= @period %>ly</small>
@@ -206,9 +206,9 @@ defmodule LogflareWeb.PlansLive do
           </ul>
           <div class="py-4">
             <%= if @period == "year" do %>
-              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
+              <h2 class="text-white"><%= Billing.find_plan(@plans, @period, "Business").price |> div(12) |> Money.new(:USD) |> Money.to_string(fractional_unit: true) %></h2>
             <% else %>
-              <h2 class="text-white"><%= Plans.find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
+              <h2 class="text-white"><%= Billing.find_plan(@plans, @period, "Business").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %></h2>
             <% end %>
             <small class="text-muted">per month</small></br>
             <small class="text-muted">paid <%= @period %>ly</small>
