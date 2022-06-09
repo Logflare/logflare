@@ -131,7 +131,6 @@ defmodule Logflare.Application do
       Logflare.CacheBuster,
 
       # Sources
-      Sources.Buffers,
       Sources.BuffersCache,
       Logs.RejectedLogEvents,
       # init Counters before Supervisof as Supervisor calls Counters through table create
