@@ -14,8 +14,18 @@ defmodule LogflareWeb.ConnCase do
   """
 
   use ExUnit.CaseTemplate
-
-  using do
+  using opts do
+    opts = opts |> Enum.into(%{mock_sql: false})
+    mock_sql = if opts.mock_sql do
+      quote do
+        setup do
+          Logflare.SQL
+          |> Mimic.stub( :source_mapping, fn _, _, _ -> {:ok, "the query"} end)
+          |> Mimic.stub( :parameters, fn  _ -> :ok end)
+          :ok
+        end
+      end
+    end
     quote do
       import Plug.Conn
       import Phoenix.ConnTest
@@ -24,9 +34,14 @@ defmodule LogflareWeb.ConnCase do
       import Logflare.Factory
       import Phoenix.LiveViewTest
       use Mimic
+      unquote(mock_sql)
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
+
+      setup context do
+        Mimic.verify_on_exit!(context)
+      end
     end
   end
 
@@ -35,6 +50,8 @@ defmodule LogflareWeb.ConnCase do
 
     unless tags[:async] do
       Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      # for global Mimic mocs
+      Mimic.set_mimic_global(tags)
     end
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}
