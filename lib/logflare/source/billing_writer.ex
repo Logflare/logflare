@@ -2,7 +2,7 @@ defmodule Logflare.Source.BillingWriter do
   use GenServer
 
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.BillingCounts
+  alias Logflare.Billing.BillingCounts
   alias Logflare.Billing
   alias Logflare.Source.Data
 

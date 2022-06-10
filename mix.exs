@@ -87,7 +87,6 @@ defmodule Logflare.Mixfile do
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
       {:typed_struct, "~> 0.1"},
-      {:publicist, "~> 1.1.0"},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
       {:ex_machina, "~> 2.3"},
@@ -121,11 +120,9 @@ defmodule Logflare.Mixfile do
       {:nimble_options, "~>0.4.0"},
 
       # Test
-      {:mox, "~> 0.5", only: :test},
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:faker, "~> 0.12", only: :test},
       {:mimic, "~> 1.0", only: :test},
-      {:meck, "~> 0.9.2", only: :test},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},

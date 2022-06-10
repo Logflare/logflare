@@ -80,7 +80,7 @@ defmodule Logflare.ContextCache do
       %Logflare.User{} ->
         value.id
 
-      %Logflare.Plans.Plan{} ->
+      %Logflare.Billing.Plan{} ->
         value.id
 
       true ->

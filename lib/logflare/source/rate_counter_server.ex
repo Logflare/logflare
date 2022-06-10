@@ -20,7 +20,6 @@ defmodule Logflare.Source.RateCounterServer do
   @ets_table_name :rate_counters
 
   use TypedStruct
-  use Publicist
 
   typedstruct do
     field :source_id, atom(), enforce: false

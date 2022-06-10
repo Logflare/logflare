@@ -11,8 +11,8 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   alias Logflare.Rule
   alias Logflare.Users
   import Logflare.Factory
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   use Mimic
 
   setup_all do
@@ -24,7 +24,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
     setup :set_mimic_global
 
     setup do
-      stub(Plans, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
+      stub(Billing, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
       user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
       user = Users.get(user.id)
 

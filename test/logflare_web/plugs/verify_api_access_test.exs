@@ -2,15 +2,13 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.VerifyApiAccess
-  import Logflare.Factory
+  use Mimic
 
   setup do
     user = insert(:user)
-    :meck.expect(Logflare.SQL, :source_mapping, fn _, _, _ -> {:ok, "the query"} end)
 
-    on_exit(fn ->
-      :meck.reset(Logflare.SQL)
-    end)
+    Logflare.SQL
+    |> expect(:source_mapping, fn _, _, _ -> {:ok, "the query"} end)
 
     {:ok, user: user}
   end

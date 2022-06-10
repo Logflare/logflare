@@ -3,9 +3,8 @@ defmodule Logflare.Source.RecentLogsServer do
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
   """
-  use Publicist
   use TypedStruct
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing.Plan
 
   typedstruct do
     field :source_id, atom(), enforce: true
@@ -38,7 +37,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
   alias Logflare.Users
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias Logflare.Sources
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.PubSubRates
@@ -140,7 +139,7 @@ defmodule Logflare.Source.RecentLogsServer do
       |> Users.maybe_preload_bigquery_defaults()
       |> Users.preload_billing_account()
 
-    plan = Plans.get_plan_by_user(user)
+    plan = Billing.get_plan_by_user(user)
 
     rls = %{
       rls

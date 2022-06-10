@@ -56,7 +56,7 @@ defmodule Logflare.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    ContextCache.bust_keys(Logflare.Plans, String.to_integer(id))
+    ContextCache.bust_keys(Logflare.Billing, String.to_integer(id))
   end
 
   defp handle_record(%UpdatedRecord{

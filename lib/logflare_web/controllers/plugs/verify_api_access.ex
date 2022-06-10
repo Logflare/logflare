@@ -12,11 +12,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   alias Logflare.Auth
   alias Logflare.{Endpoint}
 
-  def init(_), do: nil
+  def init(args), do: args |> Enum.into(%{})
 
   def call(conn, opts) do
     opts
-    |> Enum.into(%{})
     |> Map.get(:resource)
     |> do_auth(conn)
   end

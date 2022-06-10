@@ -6,7 +6,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   alias Logflare.Teams
   alias Logflare.{Sources, Repo, LogEvent}
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing.Plan
   alias Logflare.Lql.FilterRule
   alias Logflare.Logs.Validators
   alias Logflare.SavedSearches
@@ -381,7 +381,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   def expect_user_plan(_ctx) do
-    expect(Logflare.Plans, :get_plan_by_user, fn _ ->
+    expect(Logflare.Billing, :get_plan_by_user, fn _ ->
       %Plan{
         stripe_id: "31415"
       }

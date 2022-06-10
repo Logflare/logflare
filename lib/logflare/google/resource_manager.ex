@@ -10,7 +10,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.User
   alias Logflare.TeamUsers
-  alias Logflare.Plans
+  alias Logflare.Billing
 
   @project_number Application.get_env(:logflare, Logflare.Google)[:project_number]
   @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
@@ -214,14 +214,14 @@ defmodule Logflare.Google.CloudResourceManager do
     all_paid_users =
       Repo.all(query)
       |> Enum.filter(fn x ->
-        case Plans.get_plan_by_user(x) do
-          %Plans.Plan{name: "Free"} ->
+        case Billing.get_plan_by_user(x) do
+          %Billing.Plan{name: "Free"} ->
             false
 
-          %Plans.Plan{name: "Legacy"} ->
+          %Billing.Plan{name: "Legacy"} ->
             true
 
-          %Plans.Plan{name: "Lifetime"} ->
+          %Billing.Plan{name: "Lifetime"} ->
             true
 
           _plan ->

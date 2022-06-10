@@ -7,7 +7,6 @@ defmodule Logflare.Application do
     Sources,
     Logs,
     Billing,
-    Plans,
     PubSubRates,
     ContextCache,
     SourceSchemas
@@ -57,7 +56,6 @@ defmodule Logflare.Application do
       Users.Cache,
       Sources.Cache,
       Billing.Cache,
-      Plans.Cache,
       SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,
@@ -108,7 +106,6 @@ defmodule Logflare.Application do
       Users.Cache,
       Sources.Cache,
       Billing.Cache,
-      Plans.Cache,
       SourceSchemas.Cache,
       PubSubRates.Cache,
       Logs.LogEvents.Cache,

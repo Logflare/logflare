@@ -1,4 +1,4 @@
-defmodule Logflare.BillingCounts.BillingCount do
+defmodule Logflare.Billing.BillingCount do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -7,10 +7,6 @@ defmodule Logflare.BillingCounts.BillingCount do
     field :node, :string
     belongs_to :user, Logflare.User
     belongs_to :source, Logflare.Source
-
-    # field :user_id, :id
-    # field :source_id, :id
-
     timestamps()
   end
 

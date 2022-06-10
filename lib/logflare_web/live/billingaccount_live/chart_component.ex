@@ -7,7 +7,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   use Phoenix.HTML
 
   alias Contex.{Plot, Dataset, BarChart}
-  alias Logflare.BillingCounts
+  alias Logflare.Billing.BillingCounts
 
   require Logger
 

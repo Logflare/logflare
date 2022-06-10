@@ -1,6 +1,5 @@
 defmodule Logflare.Source.BigQuery.SchemaBuilder do
   @moduledoc false
-  use Publicist
   require Logger
   alias GoogleApi.BigQuery.V2.Model
   alias Model.TableFieldSchema, as: TFS

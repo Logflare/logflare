@@ -1,24 +1,24 @@
 defmodule LogflareWeb.AdminPlanController do
   use LogflareWeb, :controller
 
-  alias Logflare.Plans
+  alias Logflare.Billing
 
   def index(conn, _params) do
-    plans = Plans.list_plans() |> Enum.sort_by(& &1.id, :asc)
+    plans = Billing.list_plans() |> Enum.sort_by(& &1.id, :asc)
 
     conn
     |> render("index.html", plans: plans)
   end
 
   def new(conn, _params) do
-    changeset = Plans.Plan.changeset(%Plans.Plan{}, %{})
+    changeset = Billing.Plan.changeset(%Billing.Plan{}, %{})
 
     conn
     |> render("new.html", changeset: changeset)
   end
 
   def create(conn, %{"plan" => params}) do
-    case Plans.create_plan(params) do
+    case Billing.create_plan(params) do
       {:ok, _plan} ->
         conn
         |> put_flash(:info, "Plan created!")
@@ -32,17 +32,17 @@ defmodule LogflareWeb.AdminPlanController do
   end
 
   def edit(conn, %{"id" => plan_id}) do
-    plan = Plans.get_plan!(plan_id)
-    changeset = Plans.Plan.changeset(plan, %{})
+    plan = Billing.get_plan!(plan_id)
+    changeset = Billing.Plan.changeset(plan, %{})
 
     conn
     |> render("edit.html", changeset: changeset, plan: plan)
   end
 
   def update(conn, %{"plan" => %{"id" => id} = params}) do
-    plan = Plans.get_plan!(id)
+    plan = Billing.get_plan!(id)
 
-    case Plans.update_plan(plan, params) do
+    case Billing.update_plan(plan, params) do
       {:ok, _plan} ->
         conn
         |> put_flash(:info, "Plan updated!")

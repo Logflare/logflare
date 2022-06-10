@@ -4,7 +4,7 @@ defmodule Logflare.Users.APIIntegrationTest do
   alias Logflare.Source.RateCounterServer, as: SRC
   alias Logflare.Sources
   import Logflare.Factory
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing.Plan
 
   use Logflare.DataCase
 
