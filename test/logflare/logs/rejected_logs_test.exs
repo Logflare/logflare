@@ -44,7 +44,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     end
 
     @tag :failing
-    test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
+    test "gets logs for all sources for user", %{users: [_u1], sources: [s1, s2]} do
       source1 = Sources.get_by(token: s1.token)
       source2 = Sources.get_by(token: s2.token)
       # user = Users.get_by_and_preload(id: u1.id)
