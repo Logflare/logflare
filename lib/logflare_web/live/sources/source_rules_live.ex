@@ -4,7 +4,6 @@ defmodule LogflareWeb.Sources.RulesLV do
   """
   require Logger
   use LogflareWeb, :live_view
-  use LogflareWeb.ModalLiveHelpers
 
   alias LogflareWeb.RuleView
   alias Logflare.{Sources, SourceSchemas, Users}

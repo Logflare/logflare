@@ -381,8 +381,6 @@ defmodule LogflareWeb.LogControllerTest do
       assert SourceBuffer.get_count(s.token) == 1
       [le] = SourceBuffer.get_log_events(s.token)
 
-      sname = s.name
-
       assert %Logflare.LogEvent.Body{
                message: "yo",
                metadata: %{
@@ -438,8 +436,6 @@ defmodule LogflareWeb.LogControllerTest do
       assert SourceBuffer.get_count(s.token) == 1
       [le] = SourceBuffer.get_log_events(s.token)
 
-      sname = s.name
-
       assert %Logflare.LogEvent.Body{
                message: "info message",
                metadata: %{
@@ -486,8 +482,6 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert SourceBuffer.get_count(s.token) == 5
       [le1, le2, le3, le4, le5] = SourceBuffer.get_log_events(s.token)
-
-      sname = s.name
 
       assert %Logflare.LogEvent.Body{
                message:

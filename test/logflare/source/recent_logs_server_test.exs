@@ -2,7 +2,6 @@ defmodule Logflare.Source.RecentLogsServerTest do
   @moduledoc false
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
-  alias Logflare.Source.Data
   use LogflareWeb.ChannelCase
   import Phoenix.ChannelTest
   import Logflare.Factory
@@ -17,7 +16,7 @@ defmodule Logflare.Source.RecentLogsServerTest do
 
   describe "GenServer" do
     test "load_init_log_message/2", %{sources: [s1 | _]} do
-      log_count = 1
+      # log_count = 1
       Phoenix.PubSub.subscribe(Logflare.PubSub, "source:#{s1.token}")
 
       # allow Data.get_log_count(s1.token, "project-id"), return: log_count

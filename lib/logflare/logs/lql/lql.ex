@@ -4,7 +4,7 @@ defmodule Logflare.Lql do
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias __MODULE__.{Parser, Encoder}
 
-  @deprecated "Delete when all source rules are migrated to LQL"
+  @doc "Delete when all source rules are migrated to LQL"
   def build_message_filter_from_regex(regex) when is_binary(regex) do
     __MODULE__.Parser.parse(regex, SchemaBuilder.initial_table_schema())
   end
