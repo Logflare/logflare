@@ -4,11 +4,12 @@ defmodule Logflare.Billing.BillingCounts do
   """
   require Logger
   import Ecto.Query, warn: false
-  alias Logflare.{User, Repo}
+  alias Logflare.{User, Repo, Billing.BillingCount}
 
+  @spec timeseries(Logflare.User.t(), any, any) :: any
   def timeseries(%User{id: user_id}, start_date, end_date) do
     q =
-      from(c in Count,
+      from(c in BillingCount,
         where: c.user_id == ^user_id,
         where: c.inserted_at >= ^start_date and c.inserted_at <= ^end_date,
         group_by: fragment("date(?)", c.inserted_at),
