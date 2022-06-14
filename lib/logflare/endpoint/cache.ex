@@ -189,7 +189,7 @@ defmodule Logflare.Endpoint.Cache do
   end
 
   def query(cache) do
-    GenServer.call(cache, :query, :infinity)
+    GenServer.call(cache, :query, 60_000)
   end
 
   def invalidate(cache) do
