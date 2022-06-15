@@ -65,7 +65,8 @@ defmodule Logflare.Application do
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
-      Logflare.SystemMetricsSup
+      Logflare.SystemMetricsSup,
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
     ]
   end
 
