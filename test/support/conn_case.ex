@@ -14,18 +14,23 @@ defmodule LogflareWeb.ConnCase do
   """
 
   use ExUnit.CaseTemplate
+
   using opts do
     opts = opts |> Enum.into(%{mock_sql: false})
-    mock_sql = if opts.mock_sql do
-      quote do
-        setup do
-          Logflare.SQL
-          |> Mimic.stub( :source_mapping, fn _, _, _ -> {:ok, "the query"} end)
-          |> Mimic.stub( :parameters, fn  _ -> :ok end)
-          :ok
+
+    mock_sql =
+      if opts.mock_sql do
+        quote do
+          setup do
+            Logflare.SQL
+            |> Mimic.stub(:source_mapping, fn _, _, _ -> {:ok, "the query"} end)
+            |> Mimic.stub(:parameters, fn _ -> :ok end)
+
+            :ok
+          end
         end
       end
-    end
+
     quote do
       import Plug.Conn
       import Phoenix.ConnTest

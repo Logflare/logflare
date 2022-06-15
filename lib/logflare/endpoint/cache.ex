@@ -149,8 +149,11 @@ defmodule Logflare.Endpoint.Cache do
   def do_query(state) do
     params = state.params
 
+    # determine the parameters used in this query
     case Logflare.SQL.parameters(state.query.query) do
       {:ok, parameters} ->
+        Logger.debug("[#{__MODULE__}] Parameters: #{inspect(parameters)} ")
+        # if it is sandboxable, then retrieve the sandboxed sql and add it as a query.
         query =
           if state.query.sandboxable && Map.get(params, "sql") do
             {state.query.query, Map.get(params, "sql")}
@@ -158,8 +161,13 @@ defmodule Logflare.Endpoint.Cache do
             state.query.query
           end
 
+        Logger.debug("[#{__MODULE__}] query: #{inspect(query)} ")
+
+        # insert the bigquery source-table references
         case Logflare.SQL.transform(query, state.query.user_id) do
           {:ok, query} ->
+            Logger.debug("[#{__MODULE__}] transformed query: #{inspect(query)} ")
+
             params =
               Enum.map(parameters, fn x ->
                 %{
@@ -173,6 +181,7 @@ defmodule Logflare.Endpoint.Cache do
                 }
               end)
 
+            # execute the queryon bigquery
             case Logflare.BqRepo.query_with_sql_and_params(
                    state.query.user,
                    state.query.user.bigquery_project_id || @project_id,
