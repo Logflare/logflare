@@ -15,7 +15,7 @@ defmodule Logflare.Users.APIIntegrationTest do
     source_id = Faker.UUID.v4()
     source = insert(:source, token: source_id, user: user)
     source_id_atom = source.token
-    SRC.setup_ets_table(source_id_atom)
+    # SRC.setup_ets_table(source_id_atom)
     src = SRC.new(source_id_atom)
     # simulates 100 passed seconds with 10 event/s
     src_state =

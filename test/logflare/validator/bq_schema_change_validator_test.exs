@@ -7,7 +7,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   import Logflare.Google.BigQuery.SchemaUtils
 
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  # alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaFactory
   alias Logflare.Factory
   alias Logflare.Sources
@@ -18,7 +18,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       u1 = Factory.insert(:user)
       s1 = Factory.insert(:source, user_id: u1.id)
       s1 = Sources.get_by(id: s1.id)
-      schema = SchemaBuilder.initial_table_schema()
+      # schema = SchemaBuilder.initial_table_schema()
       # allow Sources.Cache.get_bq_schema(s1), return: schema
 
       le =

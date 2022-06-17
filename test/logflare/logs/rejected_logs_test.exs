@@ -44,10 +44,10 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
     end
 
     @tag :failing
-    test "gets logs for all sources for user", %{users: [u1], sources: [s1, s2]} do
+    test "gets logs for all sources for user", %{users: [_u1], sources: [s1, s2]} do
       source1 = Sources.get_by(token: s1.token)
       source2 = Sources.get_by(token: s2.token)
-      user = Users.get_by_and_preload(id: u1.id)
+      # user = Users.get_by_and_preload(id: u1.id)
 
       validator = Logflare.Logs.Validators.EqDeepFieldTypes
       timestamp = System.system_time(:microsecond)
@@ -95,8 +95,8 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
       _ = RejectedLogEvents.ingest(log_event_2_source_1)
       _ = RejectedLogEvents.ingest(log_event_1_source_2)
 
-      result = RejectedLogEvents.get_by_user(user)
-
+      # result = RejectedLogEvents.get_by_user(user)
+      result = nil
       assert map_size(result) == 2
 
       assert [
@@ -106,7 +106,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
 
       assert [
                %LogEvent{
-                 validation_error: validator_message,
+                 validation_error: ^validator_message,
                  body: _,
                  params: _,
                  ingested_at: _

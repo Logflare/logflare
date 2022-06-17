@@ -259,7 +259,7 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
-      name = Faker.Name.name()
+      name = Faker.Person.name()
 
       conn =
         conn

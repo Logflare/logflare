@@ -34,7 +34,7 @@ defmodule Logflare.Rule do
     |> foreign_key_constraint(:source_id)
   end
 
-  @deprecated "Delete when all source rules are upgraded to LQL"
+  @doc "Delete when all source rules are upgraded to LQL"
   @spec regex_to_lql_upgrade_changeset(Rule.t()) :: Ecto.Changeset.t()
   def regex_to_lql_upgrade_changeset(rule) do
     if rule.regex do

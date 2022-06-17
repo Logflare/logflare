@@ -5,7 +5,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
   alias Logflare.Sources
   alias Logflare.Users
   @endpoint LogflareWeb.Endpoint
-  alias Logflare.BigQuery.PredefinedTestUser
+  # alias Logflare.BigQuery.PredefinedTestUser
   alias Logflare.Source.RecentLogsServer, as: RLS
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
   @moduletag :this
@@ -26,7 +26,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
 
     @tag :failing
     test "successfully for admin", %{conn: conn, user: [user | _], source: [_source | _]} do
-      assert {:ok, view, html} =
+      assert {:ok, _view, html} =
                conn
                |> assign(:user, %{user | admin: true})
                |> live("/admin/search")
@@ -57,7 +57,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
   defp assign_user_source(_context) do
     user = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
-    SourceSchemas.Cache.put_bq_schema(@test_token, PredefinedTestUser.table_schema())
+    # SourceSchemas.Cache.put_bq_schema(@test_token, PredefinedTestUser.table_schema())
     source = Sources.get_by(token: @test_token)
 
     conn =
