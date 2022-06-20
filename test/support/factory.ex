@@ -63,7 +63,9 @@ defmodule Logflare.Factory do
 
   def plan_factory() do
     %Plan{
-      stripe_id: "31415"
+      stripe_id: "31415",
+      price: 123,
+      period: "month"
     }
   end
 

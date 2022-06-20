@@ -10,15 +10,8 @@
                 </div>
             </div>
         </div>
-        <!--
-        <div class="my-5">
-        <%= live_render(@conn, LogflareWeb.LifetimeLive) %>
-        </div>
-        -->
         <div id="plans">
-
             <%= live_render(@conn, LogflareWeb.MeteredPlansLive) %>
-
         </div>
     </div>
 
@@ -86,7 +79,7 @@
         <div class="col-md-12">
             <div class="trialwork">
                 <h1>How do I sign up for an Enterprise plan?</h1>
-                <p><%= link "Contact us", to: Routes.marketing_path(@conn, :new) %> to learn more about our Enterprise
+                <p><%= link "Contact us", to: Routes.marketing_path(@conn, :contact) %> to learn more about our Enterprise
                     plans and support options. We can handle any event volume required. Need to ingest directly to the
                     EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you
                     do just about anything you need with your data pipeline so please reach out.</p>
@@ -121,18 +114,6 @@
                 <h1 class="scroll-margin" id="rate-limit">What happens when I'm rate limited?</h1>
                 <p>The free plan is rate limited at 5 log events per second on average for the last 60 seconds. When you hit
                     that average we will stop ingesting log events. You will be warned via an email and an alert in the interface.</p>
-                <!--
-                <h1 class="scroll-margin" id="fair-use">What is considered fair use?</h1>
-                <p>We provide unlimited log event data for all standard plans up to 25 events per second on average over
-                    the last 60 seconds. Our rate limiting actually allows bursting above this limit up to a maximum of
-                    1,500 log events ingested in a single second. As an example, if you're doing 5 requests a second
-                    you'd be able to burst up to 1200 requests in a second (1500 - (5 * 60) = 1200).</p>
-                <p>If you require more throughput please <%= link "contact us", to: Routes.marketing_path(@conn, :new) %>
-                    about our Enterprise plans & support.</p>
-                <p>If we notice abuse of our fair use policy we'll typically reach out to discuss your continued use of
-                    Logflare that is feasible for both parties long term. However, we reserve the right to delete your
-                    account without notice.</p>
-                -->
             </div>
         </div>
     </div>
