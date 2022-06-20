@@ -58,5 +58,4 @@ defmodule LogflareWeb.MarketingController do
   def event_analytics_demo(conn, _params) do
     render(conn, "event_analytics_demo.html")
   end
-
 end
