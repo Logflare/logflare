@@ -19,6 +19,22 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "pricing.html")
   end
 
+  def terms(conn, _params) do
+    render(conn, "terms_of_service.html")
+  end
+
+  def privacy(conn, _params) do
+    render(conn, "privacy_policy.html")
+  end
+
+  def cookies(conn, _params) do
+    render(conn, "cookie_policy.html")
+  end
+
+  def guides(conn, _params) do
+    render(conn, "guides.html")
+  end
+
   def overview(conn, _params) do
     render(conn, "overview.html")
   end
@@ -43,23 +59,4 @@ defmodule LogflareWeb.MarketingController do
     render(conn, "event_analytics_demo.html")
   end
 
-  def terms(conn, _params) do
-    render(conn, "terms_of_service.html")
-  end
-
-  def privacy(conn, _params) do
-    render(conn, "privacy_policy.html")
-  end
-
-  def cookies(conn, _params) do
-    render(conn, "cookie_policy.html")
-  end
-
-  def guides(conn, _params) do
-    render(conn, "guides.html")
-  end
-
-  def log_search(conn, _params) do
-    render(conn, "log_search.html")
-  end
 end
