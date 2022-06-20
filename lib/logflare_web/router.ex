@@ -143,6 +143,7 @@ defmodule LogflareWeb.Router do
     get "/slack-app-setup", MarketingController, :slack_app_setup
     get "/vercel-setup", MarketingController, :vercel_setup
   end
+
   scope "/", LogflareWeb do
     pipe_through [:browser, :require_auth]
     get "/dashboard", SourceController, :dashboard
