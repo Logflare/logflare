@@ -62,8 +62,4 @@ defmodule LogflareWeb.MarketingController do
   def log_search(conn, _params) do
     render(conn, "log_search.html")
   end
-
-  def getting_started(conn, _params) do
-    render(conn, "getting_started.html")
-  end
 end
