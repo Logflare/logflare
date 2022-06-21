@@ -138,7 +138,7 @@ defmodule Logflare.Billing do
   end
 
   @doc "retrieves the stripe plan stored on the BillingAccount"
-  @spec get_billing_account_stripe_plan(%BillingAccount{}) :: nil | term()
+  @spec get_billing_account_stripe_plan(%BillingAccount{}) :: nil | map()
   def get_billing_account_stripe_plan(%BillingAccount{
         stripe_subscriptions: %{"data" => [%{"plan" => plan} | _]}
       }),
@@ -147,7 +147,7 @@ defmodule Logflare.Billing do
   def get_billing_account_stripe_plan(_), do: nil
 
   @doc "gets the stripe subscription item data stored on the BillingAccount"
-  @spec get_billing_account_stripe_subscription_item(%BillingAccount{}) :: nil | term()
+  @spec get_billing_account_stripe_subscription_item(%BillingAccount{}) :: nil | map()
 
   def get_billing_account_stripe_subscription_item(%BillingAccount{
         stripe_subscriptions: %{

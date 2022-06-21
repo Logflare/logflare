@@ -37,7 +37,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
          %{assigns: %{user: user}, method: "POST"} = conn,
          source_count
        ) do
-    {:ok, item} =
+    item =
       Billing.Cache.get_billing_account_by(user_id: user.id)
       |> Billing.get_billing_account_stripe_subscription_item()
 
@@ -52,7 +52,7 @@ defmodule LogflareWeb.Plugs.CheckSourceCount do
          %{assigns: %{user: user}, method: "DELETE"} = conn,
          source_count
        ) do
-    {:ok, item} =
+    item =
       Billing.Cache.get_billing_account_by(user_id: user.id)
       |> Billing.get_billing_account_stripe_subscription_item()
 
