@@ -19,7 +19,7 @@ defmodule LogflareWeb.EndpointController do
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
 
-  def query(%{params: %{"token" => token}} = conn, _) do
+  def query(conn, %{"token" => token}) do
     endpoint_query = Endpoint.get_query_by_token(token)
 
     case Endpoint.Resolver.resolve(endpoint_query, conn.query_params)
