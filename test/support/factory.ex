@@ -41,7 +41,7 @@ defmodule Logflare.Factory do
       name: Faker.Superhero.name(),
       token: Faker.UUID.v4(),
       rules: [],
-      favorite: false,
+      favorite: false
     }
   end
 
