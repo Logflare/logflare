@@ -2,7 +2,7 @@ defmodule Logflare.Endpoint.Resolver do
   @moduledoc """
   Finds or spawns Endpoint.Cache processes across the cluster. Unique process for query plus query params.
   """
-  alias Logflare.Endpoint.Cache2
+  alias Logflare.Endpoint.Cache
 
   def resolve(%Logflare.Endpoint.Query{id: id}) do
     Enum.filter(:global.registered_names(), fn
@@ -16,14 +16,14 @@ defmodule Logflare.Endpoint.Resolver do
   end
 
   def resolve(%Logflare.Endpoint.Query{id: id} = query, params) do
-    :global.set_lock({Cache2, {id, params}})
+    :global.set_lock({Cache, {id, params}})
 
     result =
-      case :global.whereis_name({Cache2, id, params}) do
+      case :global.whereis_name({Cache, id, params}) do
         :undefined ->
-          spec = {Cache2, {query, params}}
+          spec = {Cache, {query, params}}
 
-          case DynamicSupervisor.start_child(Cache2, spec) do
+          case DynamicSupervisor.start_child(Cache, spec) do
             {:ok, pid} ->
               pid
 
@@ -32,11 +32,11 @@ defmodule Logflare.Endpoint.Resolver do
           end
 
         pid ->
-          Cache2.touch(pid)
+          Cache.touch(pid)
           pid
       end
 
-    :global.del_lock({Cache2, {id, params}})
+    :global.del_lock({Cache, {id, params}})
 
     result
   end
