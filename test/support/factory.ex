@@ -42,7 +42,6 @@ defmodule Logflare.Factory do
       token: Faker.UUID.v4(),
       rules: [],
       favorite: false,
-      user: build(:user)
     }
   end
 

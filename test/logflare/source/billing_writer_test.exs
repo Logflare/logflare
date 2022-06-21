@@ -8,9 +8,9 @@ defmodule Logflare.Source.BillingWriterTest do
 
   setup do
     user = insert(:user)
+    source = insert(:source, user: user)
     _billing_account = insert(:billing_account, user: user)
     user = user |> Logflare.Repo.preload(:billing_account)
-    source = insert(:source, user: user)
     plan = insert(:plan, type: "metered")
 
     pid =
