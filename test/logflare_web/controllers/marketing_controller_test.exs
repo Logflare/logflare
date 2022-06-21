@@ -15,8 +15,7 @@ defmodule LogflareWeb.MarketingControllerTest do
         :terms,
         :privacy,
         :cookies,
-        :guides,
-        :log_search
+        :guides
       ] do
     test "public marketing path #{action} ", %{
       conn: conn

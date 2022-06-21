@@ -139,7 +139,6 @@ defmodule LogflareWeb.Router do
     get "/bigquery-setup", MarketingController, :big_query_setup
     get "/data-studio-setup", MarketingController, :data_studio_setup
     get "/event-analytics", MarketingController, :event_analytics_demo
-    get "/log-search", MarketingController, :log_search
     get "/slack-app-setup", MarketingController, :slack_app_setup
     get "/vercel-setup", MarketingController, :vercel_setup
   end
