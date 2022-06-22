@@ -61,6 +61,11 @@ defmodule Logflare.Source.BillingWriter do
            Billing.Stripe.record_usage(si_id, count) do
       :noop
     else
+      nil ->
+        Logger.warning(
+          "User's billing account does not have a stripe subscription item, ignoring usage record. user_id: #{rls.user.id}"
+        )
+
       {:error, resp} ->
         Logger.error("Error recording usage with Stripe. #{inspect(resp)}",
           source_id: rls.source.token,
