@@ -28,6 +28,10 @@ config :logflare, LogflareWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
   code_reloader: false,
+  check_origin: [
+    "https://logflare.app",
+    "//*.logflare.app"
+  ],
   version: Application.spec(:logflare, :vsn)
 
 config :logger,
