@@ -269,7 +269,7 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, current_cluster_inserts, current_inserts}
   end
 
-  defp load_init_log_message(source_id) do
+  def load_init_log_message(source_id) do
     message =
       "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 

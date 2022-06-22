@@ -131,7 +131,6 @@ defmodule LogflareWeb.AccessTokensLive do
         %{"token-id" => token_id},
         %{assigns: %{access_tokens: tokens}} = socket
       ) do
-    IO.inspect(token_id)
     token = Enum.find(tokens, &("#{&1.id}" == token_id))
     Logger.debug("Revoking access token")
     :ok = Auth.revoke_access_token(token)

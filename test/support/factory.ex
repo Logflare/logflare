@@ -63,13 +63,22 @@ defmodule Logflare.Factory do
 
   def plan_factory() do
     %Plan{
-      stripe_id: "31415"
+      stripe_id: "31415",
+      price: 123,
+      period: "month"
     }
   end
 
   def billing_account_factory(attrs) do
     stripe_plan_id = Map.get(attrs, :stripe_plan_id, "some plan id #{random_string()}")
-    attrs = Map.delete(attrs, :stripe_plan_id)
+
+    stripe_sub_item_id =
+      Map.get(attrs, :stripe_subscription_item_id, "some sub id #{random_string()}")
+
+    attrs =
+      attrs
+      |> Map.delete(:stripe_plan_id)
+      |> Map.delete(:stripe_subscription_item_id)
 
     %BillingAccount{
       user: build(:user),
@@ -80,7 +89,7 @@ defmodule Logflare.Factory do
             "plan" => %{"id" => stripe_plan_id},
             "items" => [
               %{
-                "data" => [%{}]
+                "data" => [%{"id" => stripe_sub_item_id}]
               }
             ]
           }

@@ -23,6 +23,7 @@ defmodule LogflareWeb.ConnCase do
       alias LogflareWeb.Router.Helpers, as: Routes
       import Logflare.Factory
       import Phoenix.LiveViewTest
+      use Mimic
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint

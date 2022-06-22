@@ -12,10 +12,13 @@ defmodule Logflare.BqRepo do
 
   @query_request_timeout 60_000
   @use_query_cache true
+  @type results :: %{
+          :rows => nil | [term()],
+          :num_rows => non_neg_integer(),
+          optional(atom()) => any()
+        }
   @type query_result ::
-          {:ok,
-           %{:rows => nil | [term()], :num_rows => non_neg_integer(), optional(atom()) => any()}}
-          | {:error, term()}
+          {:ok, results()} | {:error, term()}
 
   @spec query_with_sql_and_params(
           Logflare.User.t(),

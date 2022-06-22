@@ -4,8 +4,8 @@ defmodule LogflareWeb.UserControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.{Users}
-  alias Logflare.Source
-  alias Logflare.Google.BigQuery
+  # alias Logflare.Source
+  # alias Logflare.Google.BigQuery
   import Logflare.Factory
   @moduletag :failing
 

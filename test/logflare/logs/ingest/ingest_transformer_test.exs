@@ -70,7 +70,7 @@ defmodule Logflare.Logs.IngestTransformerTest do
     @batch [
       %{
         "metadata" => %{
-          "1level_key" => "value",
+          # "1level_key" => "value",
           "1level_key" => %{
             "2level_key" => %{
               "3level_key" => "value"
