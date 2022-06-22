@@ -41,6 +41,9 @@ defmodule Logflare.Endpoint.Cache do
   """
   def query(cache) when is_pid(cache) do
     GenServer.call(cache, :query, 90_000)
+  catch
+    :exit, _reason ->
+      {:error, "Backend query timeout! If this continues please contact support."}
   end
 
   @doc """
