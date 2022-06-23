@@ -37,7 +37,7 @@ defmodule Logflare.Endpoint.Cache do
   end
 
   @doc """
-  Initiate a query. Times out at 60 seconds. BigQuery should also timeout at 60 seconds.
+  Initiate a query. Times out at 30 seconds. BigQuery should also timeout at 60 seconds.
   We have a %GoogleApi.BigQuery.V2.Model.ErrorProto{} model but it's missing fields we see in error responses.
   """
   def query(cache) when is_pid(cache) do
@@ -45,11 +45,23 @@ defmodule Logflare.Endpoint.Cache do
   catch
     :exit, {:timeout, _call} ->
       Logger.warn("Endpoint query timeout")
+
+      message = """
+      "Backend query timeout! Optimizing your query will help. Some tips:
+
+      - `select` fewer columns. Only columns in the `select` statement are scanned.
+      - Narrow the date range - e.g `where timestamp > timestamp_sub(current_timestamp, interval 1 hour)`.
+      - Aggregate data. Analytics databases are designed to perform well when using aggregate functions.
+      - Run the query again. This error could be intermittent.
+
+      If you continue to see this error please contact support.
+      """
+
       err =
         %{
           "code" => 504,
           "errors" => [],
-          "message" => "Backend query timeout! If this continues please contact support.",
+          "message" => message,
           "status" => "TIMEOUT"
         }
         |> process_error()
