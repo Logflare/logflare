@@ -47,7 +47,7 @@ defmodule Logflare.Endpoint.Cache do
       Logger.warn("Endpoint query timeout")
 
       message = """
-      "Backend query timeout! Optimizing your query will help. Some tips:
+      Backend query timeout! Optimizing your query will help. Some tips:
 
       - `select` fewer columns. Only columns in the `select` statement are scanned.
       - Narrow the date range - e.g `where timestamp > timestamp_sub(current_timestamp, interval 1 hour)`.
