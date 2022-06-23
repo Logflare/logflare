@@ -44,6 +44,7 @@ defmodule Logflare.Endpoint.Cache do
     GenServer.call(cache, :query, 60_000)
   catch
     :exit, {:timeout, _call} ->
+      Logger.warn("Endpoint query timeout")
       err =
         %{
           "code" => 504,
@@ -55,7 +56,9 @@ defmodule Logflare.Endpoint.Cache do
 
       {:error, err}
 
-    :exit, _reason ->
+    :exit, reason ->
+      Logger.error("Endpoint query exited for an unknown reason", error_string: inspect(reason))
+
       err =
         %{
           "code" => 502,
