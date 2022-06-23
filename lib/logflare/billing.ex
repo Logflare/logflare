@@ -151,7 +151,18 @@ defmodule Logflare.Billing do
 
   def get_billing_account_stripe_subscription_item(%BillingAccount{
         stripe_subscriptions: %{
-          "data" => [%{"items" => [%{"data" => [item | _]} | _]} | _]
+          "data" => [
+            # get first sub
+            %{
+              "items" => %{
+                "data" => [
+                  # get first sub item
+                  item | _
+                ]
+              }
+            }
+            | _
+          ]
         }
       }),
       do: item
