@@ -87,11 +87,9 @@ defmodule Logflare.Factory do
         "data" => [
           %{
             "plan" => %{"id" => stripe_plan_id},
-            "items" => [
-              %{
-                "data" => [%{"id" => stripe_sub_item_id}]
-              }
-            ]
+            "items" => %{
+              "data" => [%{"id" => stripe_sub_item_id}]
+            }
           }
         ]
       }
