@@ -41,7 +41,7 @@ defmodule Logflare.Endpoint.Cache do
   We have a %GoogleApi.BigQuery.V2.Model.ErrorProto{} model but it's missing fields we see in error responses.
   """
   def query(cache) when is_pid(cache) do
-    GenServer.call(cache, :query, 60_000)
+    GenServer.call(cache, :query, 30_000)
   catch
     :exit, {:timeout, _call} ->
       Logger.warn("Endpoint query timeout")
