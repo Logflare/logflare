@@ -40,7 +40,7 @@ defmodule Logflare.Endpoint.Cache do
   Initiate a query. Times out at 90 seconds. BigQuery should timeout at 60 seconds.
   """
   def query(cache) when is_pid(cache) do
-    GenServer.call(cache, :query, 90_000)
+    GenServer.call(cache, :query, 60_000)
   catch
     :exit, _reason ->
       {:error, "Backend query timeout! If this continues please contact support."}
