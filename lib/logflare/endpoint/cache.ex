@@ -110,7 +110,7 @@ defmodule Logflare.Endpoint.Cache do
   end
 
   def handle_call(:invalidate, _from, state) do
-    {:stop, :normal, state}
+    {:stop, :normal, {:ok, :stopped}, state}
   end
 
   def handle_cast(:touch, state) do
