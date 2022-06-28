@@ -13,24 +13,16 @@ defmodule LogflareWeb.ConnCase do
   of the test unless the test case is marked as async.
   """
 
+  @session Plug.Session.init(
+             store: :cookie,
+             key: "_app",
+             encryption_salt: "yadayada",
+             signing_salt: "yadayada"
+           )
+
   use ExUnit.CaseTemplate
 
-  using opts do
-    opts = opts |> Enum.into(%{mock_sql: false})
-
-    mock_sql =
-      if opts.mock_sql do
-        quote do
-          setup do
-            Logflare.SQL
-            |> Mimic.stub(:source_mapping, fn _, _, _ -> {:ok, "the query"} end)
-            |> Mimic.stub(:parameters, fn _ -> :ok end)
-
-            :ok
-          end
-        end
-      end
-
+  using _opts do
     quote do
       import Plug.Conn
       import Phoenix.ConnTest
@@ -39,7 +31,6 @@ defmodule LogflareWeb.ConnCase do
       import Logflare.Factory
       import Phoenix.LiveViewTest
       use Mimic
-      unquote(mock_sql)
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
@@ -59,6 +50,10 @@ defmodule LogflareWeb.ConnCase do
       Mimic.set_mimic_global(tags)
     end
 
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    {:ok,
+     conn:
+       Phoenix.ConnTest.build_conn()
+       |> Plug.Session.call(@session)
+       |> Plug.Conn.fetch_session()}
   end
 end

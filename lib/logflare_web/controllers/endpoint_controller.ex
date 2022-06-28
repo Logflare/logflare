@@ -25,6 +25,7 @@ defmodule LogflareWeb.EndpointController do
     case Endpoint.Resolver.resolve(endpoint_query, conn.query_params)
          |> Endpoint.Cache.query() do
       {:ok, result} ->
+        Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
 
       {:error, err} ->

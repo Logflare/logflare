@@ -49,3 +49,4 @@ gcloud_prod.json
 # Project exclude paths
 /cover/
 /node_modules/
+.vscode/

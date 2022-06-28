@@ -128,7 +128,8 @@ defmodule Logflare.Factory do
   def endpoint_factory do
     %Query{
       user: build(:user),
-      token: Ecto.UUID.generate()
+      token: Ecto.UUID.generate(),
+      query: "select current_date() as date"
     }
   end
 
