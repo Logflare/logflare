@@ -37,10 +37,51 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   @doc """
-  Initiate a query. Times out at 90 seconds. BigQuery should timeout at 60 seconds.
+  Initiate a query. Times out at 30 seconds. BigQuery should also timeout at 60 seconds.
+  We have a %GoogleApi.BigQuery.V2.Model.ErrorProto{} model but it's missing fields we see in error responses.
   """
   def query(cache) when is_pid(cache) do
-    GenServer.call(cache, :query, 90_000)
+    GenServer.call(cache, :query, 30_000)
+  catch
+    :exit, {:timeout, _call} ->
+      Logger.warn("Endpoint query timeout")
+
+      message = """
+      Backend query timeout! Optimizing your query will help. Some tips:
+
+      - `select` fewer columns. Only columns in the `select` statement are scanned.
+      - Narrow the date range - e.g `where timestamp > timestamp_sub(current_timestamp, interval 1 hour)`.
+      - Aggregate data. Analytics databases are designed to perform well when using aggregate functions.
+      - Run the query again. This error could be intermittent.
+
+      If you continue to see this error please contact support.
+      """
+
+      err =
+        %{
+          "code" => 504,
+          "errors" => [],
+          "message" => message,
+          "status" => "TIMEOUT"
+        }
+        |> process_error()
+
+      {:error, err}
+
+    :exit, reason ->
+      Logger.error("Endpoint query exited for an unknown reason", error_string: inspect(reason))
+
+      err =
+        %{
+          "code" => 502,
+          "errors" => [],
+          "message" =>
+            "Something went wrong! Unknown error. If this continues please contact support.",
+          "status" => "UNKNOWN"
+        }
+        |> process_error()
+
+      {:error, err}
   end
 
   @doc """
@@ -73,6 +114,9 @@ defmodule Logflare.Endpoints.Cache do
     {:ok, state}
   end
 
+  @doc """
+  Queries BigQuery. Public because it's spawned in a task.
+  """
   def handle_call(:query, _from, %__MODULE__{cached_result: nil, disable_cache: false} = state) do
     case do_query(state) do
       {:ok, result} = response ->
@@ -107,7 +151,7 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def handle_call(:invalidate, _from, state) do
-    {:stop, :normal, state}
+    {:stop, :normal, {:ok, :stopped}, state}
   end
 
   def handle_cast(:touch, state) do
@@ -239,11 +283,15 @@ defmodule Logflare.Endpoints.Cache do
       else: %{state | disable_cache: false}
   end
 
+  defp process_error(error) when is_map(error) do
+    %{error | "message" => process_message(error["message"])}
+  end
+
   defp process_error(error, user_id) when is_atom(error) do
     %{"message" => process_message(error, user_id)}
   end
 
-  defp process_error(error, user_id) do
+  defp process_error(error, user_id) when is_map(error) do
     error = %{error | "message" => process_message(error["message"], user_id)}
 
     if is_list(error["errors"]) do
@@ -253,11 +301,19 @@ defmodule Logflare.Endpoints.Cache do
     end
   end
 
+  defp process_message(message) when is_binary(message) do
+    message
+  end
+
+  defp process_message(%{"message" => message}) when is_map(message) do
+    message
+  end
+
   defp process_message(message, _user_id) when is_atom(message) do
     message
   end
 
-  defp process_message(message, user_id) do
+  defp process_message(message, user_id) when is_binary(message) do
     regex =
       ~r/#{@project_id}\.#{user_id}_#{@env}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
 

@@ -59,8 +59,20 @@ defmodule Logflare.Source.BillingWriter do
            Billing.get_billing_account_stripe_subscription_item(billing_account),
          {:ok, _response} <-
            Billing.Stripe.record_usage(si_id, count) do
+      Logger.info("Successfully recorded usage counts (#{inspect(count)}) to Stripe",
+        user_id: rls.user.id,
+        count: count
+      )
+
       :noop
     else
+      nil ->
+        Logger.warning(
+          "User's billing account does not have a stripe subscription item, ignoring usage record",
+          user_id: rls.user.id,
+          count: count
+        )
+
       {:error, resp} ->
         Logger.error("Error recording usage with Stripe. #{inspect(resp)}",
           source_id: rls.source.token,
