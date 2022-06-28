@@ -1,4 +1,4 @@
-defmodule Logflare.Endpoint.Cache do
+defmodule Logflare.Endpoints.Cache do
   @moduledoc """
   Handles the Endpoint caching logic.
   """
@@ -21,7 +21,7 @@ defmodule Logflare.Endpoint.Cache do
             disable_cache: false
 
   @type t :: %__MODULE__{
-          query: %Logflare.Endpoint.Query{},
+          query: %Logflare.Endpoints.Query{},
           query_tasks: list(%Task{}),
           params: map(),
           last_query_at: DateTime.t(),
@@ -229,7 +229,7 @@ defmodule Logflare.Endpoint.Cache do
       | query:
           Logflare.Repo.reload(state.query)
           |> Logflare.Repo.preload(:user)
-          |> Logflare.Endpoint.Query.map_query()
+          |> Logflare.Endpoints.Query.map_query()
     }
   end
 

@@ -150,22 +150,22 @@ defmodule LogflareWeb.Router do
 
   scope "/endpoints/query", LogflareWeb do
     pipe_through [:api, :api_auth_endpoints]
-    get "/:token", EndpointController, :query
+    get "/:token", EndpointsController, :query
   end
 
   scope "/endpoints", LogflareWeb do
     pipe_through [:browser, :require_auth]
 
-    get "/", EndpointController, :index
-    post "/", EndpointController, :create
+    get "/", EndpointsController, :index
+    post "/", EndpointsController, :create
 
-    get "/new", EndpointController, :new
-    get "/apply", EndpointController, :apply
-    get "/:id", EndpointController, :show
-    get "/:id/edit", EndpointController, :edit
-    put "/:id", EndpointController, :update
-    put "/:id/reset_url", EndpointController, :reset_url
-    delete "/:id", EndpointController, :delete
+    get "/new", EndpointsController, :new
+    get "/apply", EndpointsController, :apply
+    get "/:id", EndpointsController, :show
+    get "/:id/edit", EndpointsController, :edit
+    put "/:id", EndpointsController, :update
+    put "/:id/reset_url", EndpointsController, :reset_url
+    delete "/:id", EndpointsController, :delete
   end
 
   scope "/sources", LogflareWeb do
@@ -357,7 +357,7 @@ defmodule LogflareWeb.Router do
 
   scope "/api/endpoints", LogflareWeb do
     pipe_through [:api, :api_auth_endpoints]
-    get "/query/:token", EndpointController, :query
+    get "/query/:token", EndpointsController, :query
   end
 
   # Log ingest goes through https://api.logflare.app/logs

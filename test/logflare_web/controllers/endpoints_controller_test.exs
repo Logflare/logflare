@@ -56,7 +56,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
 
-      conn = get(conn, Routes.endpoint_path(conn, :index))
+      conn = get(conn, Routes.endpoints_path(conn, :index))
 
       assert html_response(conn, 200) =~ "/endpoints"
     end
@@ -75,12 +75,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
       }
 
       conn =
-        conn |> assign(:user, user) |> post(Routes.endpoint_path(conn, :create), query: params)
+        conn |> assign(:user, user) |> post(Routes.endpoints_path(conn, :create), query: params)
 
       assert %{id: id} = redirected_params(conn)
-      assert redirected_to(conn) == Routes.endpoint_path(conn, :show, id)
+      assert redirected_to(conn) == Routes.endpoints_path(conn, :show, id)
 
-      conn = get(conn, Routes.endpoint_path(conn, :show, id))
+      conn = get(conn, Routes.endpoints_path(conn, :show, id))
       assert html_response(conn, 200) =~ "/endpoints/"
     end
   end

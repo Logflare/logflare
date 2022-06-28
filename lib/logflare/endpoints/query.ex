@@ -1,4 +1,4 @@
-defmodule Logflare.Endpoint.Query do
+defmodule Logflare.Endpoints.Query do
   use Ecto.Schema
   import Ecto.Changeset
   require Logger

@@ -66,7 +66,7 @@ defmodule Logflare.Application do
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       Logflare.SystemMetricsSup,
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
     ]
   end
 
@@ -147,7 +147,7 @@ defmodule Logflare.Application do
 
       # For Logflare Endpoints
       Logflare.SQL,
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
     ]
   end
 
