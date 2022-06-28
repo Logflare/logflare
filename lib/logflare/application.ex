@@ -64,8 +64,7 @@ defmodule Logflare.Application do
       Logflare.Repo,
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
-      Logflare.SystemMetricsSup
+      {Task.Supervisor, name: Logflare.TaskSupervisor}
     ]
   end
 

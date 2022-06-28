@@ -2,6 +2,10 @@ defmodule LogflareWeb.MarketingControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  setup do
+    start_supervised!(Logflare.SystemMetricsSup)
+    :ok
+  end
   for action <- [
         :index,
         :contact,
