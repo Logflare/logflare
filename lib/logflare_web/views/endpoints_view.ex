@@ -1,4 +1,4 @@
-defmodule LogflareWeb.EndpointView do
+defmodule LogflareWeb.EndpointsView do
   import LogflareWeb.Helpers.Forms
   use LogflareWeb, :view
 

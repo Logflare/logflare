@@ -1,11 +1,11 @@
 <div class="subhead subhead-fixed">
   <div class="container mx-auto">
 
-    <h5>~/endpoints/<%= link @endpoint_query.name, to: Routes.endpoint_path(@conn, :show, @endpoint_query), class: "text-primary" %></h5>
+    <h5>~/endpoints/<%= link @endpoint_query.name, to: Routes.endpoints_path(@conn, :show, @endpoint_query), class: "text-primary" %></h5>
 
     <div class="log-settings">
       <ul>
-        <li><%= link to: Routes.endpoint_path(@conn, :edit, @endpoint_query) do %><i class="fas fa-edit"></i><span class="hide-on-mobile"> edit</span> <% end %></li>
+        <li><%= link to: Routes.endpoints_path(@conn, :edit, @endpoint_query) do %><i class="fas fa-edit"></i><span class="hide-on-mobile"> edit</span> <% end %></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
     </div>
@@ -45,7 +45,7 @@
     <% end %>
 
     <div class="mt-4">
-      <button class="btn btn-primary" onclick="Endpoint.query('<%= @endpoint_query.token %>', collectParameters())">Run</button>
+      <button class="btn btn-primary" onclick="Endpoints.Query('<%= @endpoint_query.token %>', collectParameters())">Run</button>
     </div>
 
     <div id="queryResult" class="mt-4">
@@ -55,7 +55,7 @@
 
     <code>
     <pre class="pt-2">
-    curl "<%= Routes.endpoint_url(@conn, :query, @endpoint_query.token)%>" \
+    curl "<%= Routes.endpoints_url(@conn, :query, @endpoint_query.token)%>" \
          -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
          -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
          -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>
@@ -68,7 +68,7 @@
 
       <code>
       <pre class="pt-2">
-      curl "<%= Routes.endpoint_url(@conn, :query, @endpoint_query.token)%>" \
+      curl "<%= Routes.endpoints_url(@conn, :query, @endpoint_query.token)%>" \
            -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
            -H 'Content-Type: application/json; charset=utf-8' <%= unless Enum.empty?(@parameters) do %> \
            -G <%= for parameter <- @parameters do %>-d "<%= parameter %>=VALUE" <% end%>

@@ -12,6 +12,8 @@ Mimic.copy(Sources.Cache)
 Mimic.copy(Stripe.PaymentMethod)
 Mimic.copy(Logflare.SQL)
 Mimic.copy(Stripe.SubscriptionItem.Usage)
+Mimic.copy(GoogleApi.BigQuery.V2.Api.Jobs)
+Mimic.copy(Goth)
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
 

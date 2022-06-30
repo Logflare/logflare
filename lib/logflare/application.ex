@@ -64,7 +64,8 @@ defmodule Logflare.Application do
       Logflare.Repo,
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
-      {Task.Supervisor, name: Logflare.TaskSupervisor}
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
     ]
   end
 
@@ -145,7 +146,7 @@ defmodule Logflare.Application do
 
       # For Logflare Endpoints
       Logflare.SQL,
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoint.Cache}
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
     ]
   end
 
