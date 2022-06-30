@@ -1,45 +1,12 @@
-defmodule LogflareWeb.MeteredPlansLive do
+defmodule LogflareWeb.PlansLive do
   @moduledoc false
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, "live_widget.html"}
   use Phoenix.HTML
 
-  alias Logflare.Plans
+  alias Logflare.Billing
   alias Logflare.Users
 
   alias LogflareWeb.Router.Helpers, as: Routes
-
-  def mount(_params, %{"user_id" => user_id}, socket) do
-    user =
-      Users.get(user_id)
-      |> Users.preload_sources()
-      |> Users.preload_billing_account()
-
-    plan = Plans.get_plan_by_user(user)
-
-    socket =
-      socket
-      |> assign(:period, "month")
-      |> assign(:plans, Plans.list_plans())
-      |> assign(:plan, plan)
-      |> assign(:user, user)
-
-    {:ok, socket}
-  end
-
-  def mount(_params, _session, socket) do
-    socket =
-      socket
-      |> assign(:period, "month")
-      |> assign(:plans, Plans.list_plans())
-      |> assign(:plan, nil)
-      |> assign(:user, nil)
-
-    {:ok, socket}
-  end
-
-  def handle_event("switch_period", %{"period" => period}, socket) do
-    {:noreply, assign(socket, :period, period)}
-  end
 
   def render(assigns) do
     ~L"""
@@ -133,7 +100,7 @@ defmodule LogflareWeb.MeteredPlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
-                  <%= Plans.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
+                  <%= Billing.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
                 <small class="text-muted">starts at</small></br>
                 <small class="text-muted">per million log events</small></br>
@@ -173,7 +140,7 @@ defmodule LogflareWeb.MeteredPlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
-                  <%= Plans.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
+                  <%= Billing.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
                 <small class="text-muted">starts at</small></br>
                 <small class="text-muted">per million log events</small></br>
@@ -198,5 +165,28 @@ defmodule LogflareWeb.MeteredPlansLive do
         access to your Google Cloud Platform account and all reads and writes from Logflare will be performed directly on
         your BigQuery tables. Never archive to object storage again.</p>
     """
+  end
+
+  def mount(_params, session, socket) do
+    socket =
+      socket
+      |> assign(plan: nil, user: nil, period: "month")
+      |> assign(:plans, Billing.list_plans())
+      |> assign(:user_id, Map.get(session, "user_id"))
+      |> maybe_load_user_and_plan()
+
+    {:ok, socket}
+  end
+
+  defp maybe_load_user_and_plan(%{assigns: %{user_id: nil}} = socket), do: socket
+
+  defp maybe_load_user_and_plan(%{assigns: %{user_id: user_id}} = socket) do
+    user =
+      Users.get(user_id)
+      |> Users.preload_sources()
+      |> Users.preload_billing_account()
+
+    plan = Billing.get_plan_by_user(user)
+    assign(socket, plan: plan, user: user)
   end
 end

@@ -3,6 +3,8 @@ defmodule LogflareWeb.EndpointController do
   import Ecto.Query, only: [from: 2]
   require Logger
   alias Logflare.Endpoint
+  alias Logflare.Repo
+  alias Logflare.SQL
 
   plug CORSPlug,
     origin: "*",
@@ -17,11 +19,11 @@ defmodule LogflareWeb.EndpointController do
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
 
-  def query(%{params: %{"token" => token}} = conn, _) do
+  def query(conn, %{"token" => token}) do
     endpoint_query = Endpoint.get_query_by_token(token)
 
-    case Logflare.Endpoint.Cache.resolve(endpoint_query, conn.query_params)
-         |> Logflare.Endpoint.Cache.query() do
+    case Endpoint.Resolver.resolve(endpoint_query, conn.query_params)
+         |> Endpoint.Cache.query() do
       {:ok, result} ->
         render(conn, "query.json", result: result.rows)
 
@@ -32,21 +34,21 @@ defmodule LogflareWeb.EndpointController do
 
   def index(%{assigns: %{user: user}} = conn, _) do
     render(conn, "index.html",
-      endpoint_queries: Logflare.Repo.preload(user, :endpoint_queries).endpoint_queries,
+      endpoint_queries: Repo.preload(user, :endpoint_queries).endpoint_queries,
       current_node: Node.self()
     )
   end
 
   def show(%{assigns: %{user: user}, params: %{"id" => id}} = conn, _) do
     endpoint_query =
-      from(q in Logflare.Endpoint.Query,
+      from(q in Endpoint.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
-      |> Logflare.Repo.one()
-      |> Logflare.Endpoint.Query.map_query()
+      |> Repo.one()
+      |> Endpoint.Query.map_query()
 
     parameters =
-      case Logflare.SQL.parameters(endpoint_query.query) do
+      case SQL.parameters(endpoint_query.query) do
         {:ok, params} -> params
         _ -> []
       end
@@ -60,14 +62,14 @@ defmodule LogflareWeb.EndpointController do
 
   def edit(%{assigns: %{user: user}, params: %{"id" => id}} = conn, _) do
     endpoint_query =
-      from(q in Logflare.Endpoint.Query,
+      from(q in Endpoint.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
-      |> Logflare.Repo.one()
-      |> Logflare.Repo.preload(:user)
-      |> Logflare.Endpoint.Query.map_query()
+      |> Repo.one()
+      |> Repo.preload(:user)
+      |> Endpoint.Query.map_query()
 
-    changeset = Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, %{})
+    changeset = Endpoint.Query.update_by_user_changeset(endpoint_query, %{})
 
     render(conn, "edit.html",
       endpoint_query: endpoint_query,
@@ -77,7 +79,7 @@ defmodule LogflareWeb.EndpointController do
   end
 
   def new(conn, _) do
-    changeset = Logflare.Endpoint.Query.update_by_user_changeset(%Logflare.Endpoint.Query{}, %{})
+    changeset = Endpoint.Query.update_by_user_changeset(%Endpoint.Query{}, %{})
     render(conn, "new.html", changeset: changeset)
   end
 
@@ -86,8 +88,8 @@ defmodule LogflareWeb.EndpointController do
       params
       |> Map.put("token", Ecto.UUID.generate())
 
-    Logflare.Endpoint.Query.update_by_user_changeset(%Logflare.Endpoint.Query{user: user}, params)
-    |> Logflare.Repo.insert()
+    Endpoint.Query.update_by_user_changeset(%Endpoint.Query{user: user}, params)
+    |> Repo.insert()
     |> case do
       {:ok, endpoint_query} ->
         conn
@@ -104,17 +106,17 @@ defmodule LogflareWeb.EndpointController do
 
   def update(%{assigns: %{user: user}} = conn, %{"id" => id, "query" => params}) do
     endpoint_query =
-      from(q in Logflare.Endpoint.Query,
+      from(q in Endpoint.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
-      |> Logflare.Repo.one()
-      |> Logflare.Repo.preload(:user)
+      |> Repo.one()
+      |> Repo.preload(:user)
 
-    for q <- Logflare.Endpoint.Cache.resolve(endpoint_query),
-        do: Logflare.Endpoint.Cache.invalidate(q)
+    for q <- Endpoint.Resolver.resolve(endpoint_query),
+        do: Endpoint.Cache.invalidate(q)
 
-    Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, params)
-    |> Logflare.Repo.update()
+    Endpoint.Query.update_by_user_changeset(endpoint_query, params)
+    |> Repo.update()
     |> case do
       {:ok, endpoint_query} ->
         conn
@@ -134,16 +136,16 @@ defmodule LogflareWeb.EndpointController do
 
   def reset_url(%{assigns: %{user: user}} = conn, %{"id" => id}) do
     endpoint_query =
-      from(q in Logflare.Endpoint.Query,
+      from(q in Endpoint.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
-      |> Logflare.Repo.one()
-      |> Logflare.Repo.preload(:user)
+      |> Repo.one()
+      |> Repo.preload(:user)
 
-    Logflare.Endpoint.Query.update_by_user_changeset(endpoint_query, %{
+    Endpoint.Query.update_by_user_changeset(endpoint_query, %{
       token: Ecto.UUID.generate()
     })
-    |> Logflare.Repo.update()
+    |> Repo.update()
     |> case do
       {:ok, endpoint_query} ->
         conn
@@ -163,12 +165,12 @@ defmodule LogflareWeb.EndpointController do
 
   def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
     _endpoint_query =
-      from(q in Logflare.Endpoint.Query,
+      from(q in Endpoint.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
-      |> Logflare.Repo.one()
-      |> Logflare.Repo.preload(:user)
-      |> Logflare.Repo.delete()
+      |> Repo.one()
+      |> Repo.preload(:user)
+      |> Repo.delete()
       |> case do
         {:ok, _endpoint_query} ->
           conn

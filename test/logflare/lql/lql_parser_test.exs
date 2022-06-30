@@ -1691,6 +1691,7 @@ defmodule Logflare.LqlParserTest do
                Parser.parse(str, schema)
     end
 
+    @tag :failing
     test "suggests did you mean this when path is not present in schema" do
       schema =
         SchemaBuilder.build_table_schema(
@@ -1702,17 +1703,16 @@ defmodule Logflare.LqlParserTest do
         metadata.user.id:1
        |
 
-      {
-        :error,
-        :field_not_found,
-        "\n        metadata.user.user_id:1\n       ",
-        [
-          "LQL Parser error: path 'metadata.user.id' not present in source schema. Did you mean '",
-          "metadata.user.user_id",
-          "'?"
-        ]
-      } ==
-        Parser.parse(str, schema)
+      assert {
+               :error,
+               :field_not_found,
+               "\n        metadata.user.user_id:1\n       ",
+               [
+                 "LQL Parser error: path 'metadata.user.id' not present in source schema. Did you mean '",
+                 "metadata.user.user_id",
+                 "'?"
+               ]
+             } = Parser.parse(str, schema)
     end
 
     test "returns human readable error for invalid query" do

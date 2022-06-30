@@ -6,8 +6,8 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.BigQuery.Buffer, as: SourceBuffer
   alias Logflare.SystemMetricsSup
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   use Mimic
   @moduletag :failing
 
@@ -381,8 +381,6 @@ defmodule LogflareWeb.LogControllerTest do
       assert SourceBuffer.get_count(s.token) == 1
       [le] = SourceBuffer.get_log_events(s.token)
 
-      sname = s.name
-
       assert %Logflare.LogEvent.Body{
                message: "yo",
                metadata: %{
@@ -438,8 +436,6 @@ defmodule LogflareWeb.LogControllerTest do
       assert SourceBuffer.get_count(s.token) == 1
       [le] = SourceBuffer.get_log_events(s.token)
 
-      sname = s.name
-
       assert %Logflare.LogEvent.Body{
                message: "info message",
                metadata: %{
@@ -486,8 +482,6 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert SourceBuffer.get_count(s.token) == 5
       [le1, le2, le3, le4, le5] = SourceBuffer.get_log_events(s.token)
-
-      sname = s.name
 
       assert %Logflare.LogEvent.Body{
                message:
@@ -611,7 +605,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   def expect_plan_cache(_ctx) do
-    expect(Plans.Cache, :get_plan_by, fn _ ->
+    expect(Billing.Cache, :get_plan_by, fn _ ->
       %Plan{
         stripe_id: "31415"
       }
@@ -621,7 +615,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   def mock_plan_cache(_ctx) do
-    stub(Plans.Cache, :get_plan_by, fn _ ->
+    stub(Billing.Cache, :get_plan_by, fn _ ->
       %Plan{
         stripe_id: "31415"
       }

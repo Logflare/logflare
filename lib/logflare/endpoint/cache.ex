@@ -1,49 +1,34 @@
 defmodule Logflare.Endpoint.Cache do
+  @moduledoc """
+  Handles the Endpoint caching logic.
+  """
+
   require Logger
-  # Find all processes for the query
-  def resolve(%Logflare.Endpoint.Query{id: id}) do
-    Enum.filter(:global.registered_names(), fn
-      {__MODULE__, ^id, _} ->
-        true
 
-      _ ->
-        false
-    end)
-    |> Enum.map(&:global.whereis_name/1)
-  end
-
-  # Find or spawn a (query * param) process
-  def resolve(%Logflare.Endpoint.Query{id: id} = query, params) do
-    :global.set_lock({__MODULE__, {id, params}})
-
-    result =
-      case :global.whereis_name({__MODULE__, id, params}) do
-        :undefined ->
-          case DynamicSupervisor.start_child(__MODULE__, {__MODULE__, {query, params}}) do
-            {:ok, pid} ->
-              pid
-
-            {:error, {:already_started, pid}} ->
-              pid
-          end
-
-        pid ->
-          GenServer.cast(pid, :touch)
-          pid
-      end
-
-    :global.del_lock({__MODULE__, {id, params}})
-    result
-  end
-
-  use GenServer
+  use GenServer, restart: :temporary
 
   @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  # minutes until the Cache process is terminated
-  @inactivity_minutes 90
   @env Application.get_env(:logflare, :env)
 
   import Ecto.Query, only: [from: 2]
+
+  defstruct query: nil,
+            query_tasks: [],
+            params: %{},
+            last_query_at: nil,
+            last_update_at: nil,
+            cached_result: nil,
+            disable_cache: false
+
+  @type t :: %__MODULE__{
+          query: %Logflare.Endpoint.Query{},
+          query_tasks: list(%Task{}),
+          params: map(),
+          last_query_at: DateTime.t(),
+          last_update_at: DateTime.t(),
+          cached_result: Logflare.BqRepo.results(),
+          disable_cache: boolean()
+        }
 
   def start_link({query, params}) do
     GenServer.start_link(__MODULE__, {query, params},
@@ -51,86 +36,161 @@ defmodule Logflare.Endpoint.Cache do
     )
   end
 
-  defstruct query: nil, params: %{}, last_query_at: nil, last_update_at: nil, cached_result: nil
+  @doc """
+  Initiate a query. Times out at 30 seconds. BigQuery should also timeout at 60 seconds.
+  We have a %GoogleApi.BigQuery.V2.Model.ErrorProto{} model but it's missing fields we see in error responses.
+  """
+  def query(cache) when is_pid(cache) do
+    GenServer.call(cache, :query, 30_000)
+  catch
+    :exit, {:timeout, _call} ->
+      Logger.warn("Endpoint query timeout")
+
+      message = """
+      Backend query timeout! Optimizing your query will help. Some tips:
+
+      - `select` fewer columns. Only columns in the `select` statement are scanned.
+      - Narrow the date range - e.g `where timestamp > timestamp_sub(current_timestamp, interval 1 hour)`.
+      - Aggregate data. Analytics databases are designed to perform well when using aggregate functions.
+      - Run the query again. This error could be intermittent.
+
+      If you continue to see this error please contact support.
+      """
+
+      err =
+        %{
+          "code" => 504,
+          "errors" => [],
+          "message" => message,
+          "status" => "TIMEOUT"
+        }
+        |> process_error()
+
+      {:error, err}
+
+    :exit, reason ->
+      Logger.error("Endpoint query exited for an unknown reason", error_string: inspect(reason))
+
+      err =
+        %{
+          "code" => 502,
+          "errors" => [],
+          "message" =>
+            "Something went wrong! Unknown error. If this continues please contact support.",
+          "status" => "UNKNOWN"
+        }
+        |> process_error()
+
+      {:error, err}
+  end
+
+  @doc """
+  Invalidates the cache by stopping the cache process.
+  """
+  def invalidate(cache) when is_pid(cache) do
+    GenServer.call(cache, :invalidate)
+  end
+
+  @doc """
+  Updates the `last_query_at` key in the process state to act as if a query was recently made.
+  """
+  def touch(cache) when is_pid(cache) do
+    GenServer.cast(cache, :touch)
+  end
 
   def init({query, params}) do
-    {:ok, %__MODULE__{query: query, params: params} |> fetch_latest_query_endpoint()}
+    state =
+      %__MODULE__{
+        query: query,
+        params: params,
+        last_update_at: DateTime.utc_now(),
+        last_query_at: DateTime.utc_now()
+      }
+      |> fetch_latest_query_endpoint()
+      |> put_disable_cache()
+
+    unless state.disable_cache, do: refresh(proactive_querying_ms(state))
+
+    {:ok, state}
   end
 
-  def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
-    state = %{state | last_query_at: DateTime.utc_now()}
-    do_query(state)
-  end
+  @doc """
+  Queries BigQuery. Public because it's spawned in a task.
+  """
+  def handle_call(:query, _from, %__MODULE__{cached_result: nil, disable_cache: false} = state) do
+    case do_query(state) do
+      {:ok, result} = response ->
+        state =
+          state
+          |> Map.put(:last_query_at, DateTime.utc_now())
+          |> Map.put(:cached_result, result)
 
-  def handle_call(:query, _from, %__MODULE__{last_update_at: last_update_at} = state) do
-    state = %{state | last_query_at: DateTime.utc_now()}
+        {:reply, response, state}
 
-    if DateTime.diff(DateTime.utc_now(), last_update_at, :second) >
-         state.query.cache_duration_seconds do
-      do_query(state)
-    else
-      {:reply, {:ok, state.cached_result}, state, timeout_until_fetching(state)}
+      {:error, _err} = response ->
+        {:reply, response, state}
     end
   end
 
-  def handle_call(:invalidate, _from, state) do
-    {:reply, :ok, %{state | cached_result: nil}}
+  def handle_call(:query, _from, %__MODULE__{cached_result: nil, disable_cache: true} = state) do
+    case do_query(state) do
+      {:ok, _result} = response ->
+        {:stop, :normal, response, state}
+
+      {:error, _err} = response ->
+        {:stop, :normal, response, state}
+    end
   end
 
-  def handle_cast(:touch, %__MODULE__{} = state) do
+  def handle_call(:query, _from, %__MODULE__{cached_result: cached_result} = state) do
+    state =
+      state
+      |> Map.put(:last_query_at, DateTime.utc_now())
+
+    {:reply, {:ok, cached_result}, state}
+  end
+
+  def handle_call(:invalidate, _from, state) do
+    {:stop, :normal, {:ok, :stopped}, state}
+  end
+
+  def handle_cast(:touch, state) do
     state = %{state | last_query_at: DateTime.utc_now()}
     {:noreply, state}
   end
 
-  def handle_info(:timeout, state) do
-    now = DateTime.utc_now()
+  def handle_info(:refresh, state) do
+    task = Task.async(__MODULE__, :do_query, [state])
+    tasks = [task | state.query_tasks]
 
-    if DateTime.diff(now, state.last_query_at || now, :second) >= @inactivity_minutes * 60 do
-      {:stop, :normal, state}
-    else
-      if state.query.proactive_requerying_seconds > 0 &&
-           state.query.proactive_requerying_seconds -
-             DateTime.diff(DateTime.utc_now(), state.last_update_at, :second) >= 0 do
-        case do_query(state) do
-          {:reply, _, state, timeout} ->
-            {:noreply, state, timeout}
+    {:noreply, %{state | query_tasks: tasks}}
+  end
 
-          unknown ->
-            Logger.warn("Unhandled Endpoint query response", error_string: inspect(unknown))
+  def handle_info({_from_task, {:ok, results}}, state) do
+    {:noreply, %{state | cached_result: results}}
+  end
 
-            {:stop, :normal, state}
-        end
-      else
-        {:noreply, state, timeout_until_fetching(state)}
-      end
+  def handle_info({_from_task, {:error, _response}}, state) do
+    {:stop, :normal, state}
+  end
+
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    tasks = Enum.reject(state.query_tasks, &(&1.pid == pid))
+
+    cond do
+      since_last_query(state) < state.query.cache_duration_seconds ->
+        refresh(proactive_querying_ms(state))
+        {:noreply, %{state | query_tasks: tasks}}
+
+      tasks == [] ->
+        {:stop, :normal, state}
+
+      true ->
+        {:stop, :normal, state}
     end
   end
 
-  defp timeout_until_fetching(state) do
-    min(
-      @inactivity_minutes * 60,
-      max(
-        0,
-        state.query.proactive_requerying_seconds -
-          DateTime.diff(DateTime.utc_now(), state.last_update_at, :second)
-      )
-    ) * 1000
-  end
-
-  defp fetch_latest_query_endpoint(state) do
-    %{
-      state
-      | query:
-          Logflare.Repo.reload(state.query)
-          |> Logflare.Repo.preload(:user)
-          |> Logflare.Endpoint.Query.map_query(),
-        last_update_at: DateTime.utc_now()
-    }
-  end
-
-  defp do_query(state) do
-    # Ensure latest version of the query is used
-    state = fetch_latest_query_endpoint(state)
+  def do_query(state) do
     params = state.params
 
     case Logflare.SQL.parameters(state.query.query) do
@@ -167,40 +227,62 @@ defmodule Logflare.Endpoint.Cache do
                    location: state.query.user.bigquery_dataset_location
                  ) do
               {:ok, result} ->
-                # Cache the result (no parameters)
-                state = %{state | cached_result: result}
-                {:reply, {:ok, result}, state, timeout_until_fetching(state)}
+                {:ok, result}
 
               {:error, %{body: body}} ->
                 error = Jason.decode!(body)["error"] |> process_error(state.query.user_id)
-                {:reply, {:error, error}, state}
+                {:error, error}
 
               {:error, err} when is_atom(err) ->
-                {:reply, {:error, process_error(err, state.query.user_id)}, state}
+                {:error, process_error(err, state.query.user_id)}
             end
 
           {:error, err} ->
-            {:reply, {:error, err}, state}
+            {:error, err}
         end
 
       {:error, err} ->
-        {:reply, {:error, err}, state}
+        {:error, err}
     end
   end
 
-  def query(cache) do
-    GenServer.call(cache, :query, :infinity)
+  defp refresh(every) do
+    Process.send_after(self(), :refresh, every)
   end
 
-  def invalidate(cache) do
-    GenServer.call(cache, :invalidate)
+  defp since_last_query(state) do
+    DateTime.diff(DateTime.utc_now(), state.last_query_at, :second)
+  end
+
+  defp proactive_querying_ms(state) do
+    state.query.proactive_requerying_seconds * 1_000
+  end
+
+  defp fetch_latest_query_endpoint(state) do
+    %{
+      state
+      | query:
+          Logflare.Repo.reload(state.query)
+          |> Logflare.Repo.preload(:user)
+          |> Logflare.Endpoint.Query.map_query()
+    }
+  end
+
+  defp put_disable_cache(state) do
+    if state.query.cache_duration_seconds == 0,
+      do: %{state | disable_cache: true},
+      else: %{state | disable_cache: false}
+  end
+
+  defp process_error(error) when is_map(error) do
+    %{error | "message" => process_message(error["message"])}
   end
 
   defp process_error(error, user_id) when is_atom(error) do
     %{"message" => process_message(error, user_id)}
   end
 
-  defp process_error(error, user_id) do
+  defp process_error(error, user_id) when is_map(error) do
     error = %{error | "message" => process_message(error["message"], user_id)}
 
     if is_list(error["errors"]) do
@@ -210,11 +292,19 @@ defmodule Logflare.Endpoint.Cache do
     end
   end
 
+  defp process_message(message) when is_binary(message) do
+    message
+  end
+
+  defp process_message(%{"message" => message}) when is_map(message) do
+    message
+  end
+
   defp process_message(message, _user_id) when is_atom(message) do
     message
   end
 
-  defp process_message(message, user_id) do
+  defp process_message(message, user_id) when is_binary(message) do
     regex =
       ~r/#{@project_id}\.#{user_id}_#{@env}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
 

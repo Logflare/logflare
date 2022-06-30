@@ -1,8 +1,9 @@
 defmodule Logflare.Source.BillingWriter do
+  @moduledoc false
   use GenServer
 
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.BillingCounts
+  alias Logflare.Billing.BillingCounts
   alias Logflare.Billing
   alias Logflare.Source.Data
 
@@ -54,14 +55,26 @@ defmodule Logflare.Source.BillingWriter do
   defp record_to_stripe(rls, count) do
     billing_account = rls.user.billing_account
 
-    with {:ok, si} <-
+    with %{"id" => si_id} <-
            Billing.get_billing_account_stripe_subscription_item(billing_account),
          {:ok, _response} <-
-           Billing.Stripe.record_usage(si["id"], count) do
+           Billing.Stripe.record_usage(si_id, count) do
+      Logger.info("Successfully recorded usage counts (#{inspect(count)}) to Stripe",
+        user_id: rls.user.id,
+        count: count
+      )
+
       :noop
     else
+      nil ->
+        Logger.warning(
+          "User's billing account does not have a stripe subscription item, ignoring usage record",
+          user_id: rls.user.id,
+          count: count
+        )
+
       {:error, resp} ->
-        Logger.error("Error recording usage with Stripe",
+        Logger.error("Error recording usage with Stripe. #{inspect(resp)}",
           source_id: rls.source.token,
           error_string: inspect(resp)
         )

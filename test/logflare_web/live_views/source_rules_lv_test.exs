@@ -6,13 +6,13 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   alias Logflare.Sources
   alias Logflare.Lql.FilterRule
   alias Logflare.Repo
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  # alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Rule
   alias Logflare.Users
   import Logflare.Factory
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   use Mimic
 
   setup_all do
@@ -24,13 +24,13 @@ defmodule LogflareWeb.Source.RulesLqlTest do
     setup :set_mimic_global
 
     setup do
-      stub(Plans, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
+      stub(Billing, :get_plan_by_user, fn _ -> %Plan{limit_source_fields_limit: 500} end)
       user = insert(:user, email: System.get_env("LOGFLARE_TEST_USER_2"))
       user = Users.get(user.id)
 
       source = params_for(:source)
       {:ok, source} = Sources.create_source(source, user)
-      SourceSchemas.Cache.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
+      # SourceSchemas.Cache.put_bq_schema(source.token, SchemaBuilder.initial_table_schema())
 
       {:ok, sink} =
         :source
@@ -71,15 +71,14 @@ defmodule LogflareWeb.Source.RulesLqlTest do
 
     @tag :failing
     test "mount with admin owner", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
-      rule =
-        insert(:rule,
-          sink: sink.token,
-          source_id: s.id,
-          lql_filters: [
-            %FilterRule{operator: "~", path: "message", modifiers: %{}, value: "info"},
-            lql_string: "message:info"
-          ]
-        )
+      insert(:rule,
+        sink: sink.token,
+        source_id: s.id,
+        lql_filters: [
+          %FilterRule{operator: "~", path: "message", modifiers: %{}, value: "info"},
+          lql_string: "message:info"
+        ]
+      )
 
       user = insert(:user, email: "example@example.org", admin: true)
       user = Users.get(user.id)
@@ -144,7 +143,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
     end
 
     @tag :failing
-    test "mount with non-existing source", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
+    test "mount with non-existing source", %{conn: conn, sources: [s, _sink | _], user: [u | _]} do
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: u.id})

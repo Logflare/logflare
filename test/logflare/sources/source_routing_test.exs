@@ -98,7 +98,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     test "string_contains operator 1" do
       source = build(:source, token: Faker.UUID.v4(), rules: [])
 
-      build_filter = fn value ->
+      build_filter = fn _value ->
         %Rule{
           lql_string: "",
           lql_filters: [

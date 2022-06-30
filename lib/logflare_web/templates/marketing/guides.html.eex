@@ -73,18 +73,6 @@
         <% end %>
       </div>
     </div>
-    <!-- <div class="row">
-			<div class="col-lg-4">
-				<%= link to: Routes.marketing_path(@conn, :log_search), class: "miniboxguid fr1" do %>
-					<img class="leftbg" src="/images/marketing/guides/fr1bgimg.png" alt="">
-					<h2>Structured Log Search</h2>
-					<p>Search your structured logs with Logflare.</p>
-					<div class="miniimgbox">
-						<img src="/images/marketing/guides/bigquerylogo.png" alt="">
-					</div>
-				<% end %>
-			</div>
-		</div> -->
   </div>
 </div>
 <%= render LogflareWeb.SharedView, "footer.html", assigns %>

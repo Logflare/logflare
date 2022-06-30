@@ -5,7 +5,7 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
   import Plug.Conn
 
   alias Logflare.User
-  alias Logflare.Plans
+  alias Logflare.Billing
 
   def init(_), do: nil
 
@@ -14,7 +14,7 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
   def call(conn, _opts), do: conn
 
   defp set_plan(%{assigns: %{user: user}} = conn, _opts) do
-    plan = Plans.Cache.get_plan_by_user(user)
+    plan = Billing.Cache.get_plan_by_user(user)
 
     conn
     |> assign(:plan, plan)

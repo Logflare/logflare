@@ -22,7 +22,10 @@ config :logflare, LogflareWeb.Endpoint,
   ],
   url: [host: "logflarestaging.com", scheme: "https", port: 443],
   cache_static_manifest: "priv/static/cache_manifest.json",
-  check_origin: false,
+  check_origin: [
+    "https://logflarestaging.com",
+    "//*.logflarestaging.com"
+  ],
   server: true,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)

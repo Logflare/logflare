@@ -15,8 +15,8 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
   alias Logflare.User
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
@@ -212,7 +212,7 @@ defmodule Logflare.Google.BigQuery do
     conn = GenUtils.get_conn()
 
     %User{email: email, provider: provider} = user = Users.get_by(id: user_id)
-    %Plan{name: plan} = Plans.Cache.get_plan_by_user(user)
+    %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
     reference = %Model.DatasetReference{
       datasetId: dataset_id,
@@ -310,7 +310,7 @@ defmodule Logflare.Google.BigQuery do
 
     %Plan{name: plan} =
       user
-      |> Plans.Cache.get_plan_by_user()
+      |> Billing.Cache.get_plan_by_user()
 
     body = %Model.Dataset{
       description: "Managed by Logflare",
@@ -378,7 +378,7 @@ defmodule Logflare.Google.BigQuery do
 
     %Plan{name: plan} =
       Users.Cache.get_by(id: user_id)
-      |> Plans.Cache.get_plan_by_user()
+      |> Billing.Cache.get_plan_by_user()
 
     body = %Model.Dataset{
       access: access,

@@ -22,7 +22,7 @@ defmodule Logflare.LogsTest do
   @moduletag :this
 
   setup_all do
-    Counters.start_link() |> IO.inspect()
+    Counters.start_link()
     :ok
   end
 

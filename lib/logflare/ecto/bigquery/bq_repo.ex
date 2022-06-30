@@ -5,17 +5,20 @@ defmodule Logflare.BqRepo do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.EctoQueryBQ
-  alias Logflare.Plans
-  alias Logflare.Plans.Plan
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   alias Logflare.User
   import Logflare.TypeCasts
 
   @query_request_timeout 60_000
   @use_query_cache true
+  @type results :: %{
+          :rows => nil | [term()],
+          :num_rows => non_neg_integer(),
+          optional(atom()) => any()
+        }
   @type query_result ::
-          {:ok,
-           %{:rows => nil | [term()], :num_rows => non_neg_integer(), optional(atom()) => any()}}
-          | {:error, term()}
+          {:ok, results()} | {:error, term()}
 
   @spec query_with_sql_and_params(
           Logflare.User.t(),
@@ -28,7 +31,7 @@ defmodule Logflare.BqRepo do
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
 
-    %Plan{name: plan} = Plans.Cache.get_plan_by_user(user)
+    %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
     query_request =
       %QueryRequest{
