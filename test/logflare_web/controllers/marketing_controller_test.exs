@@ -6,6 +6,7 @@ defmodule LogflareWeb.MarketingControllerTest do
     start_supervised!(Logflare.SystemMetricsSup)
     :ok
   end
+
   for action <- [
         :index,
         :contact,
