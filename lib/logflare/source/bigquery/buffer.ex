@@ -25,9 +25,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def init(state) do
     Process.flag(:trap_exit, true)
-
-    Sources.Buffers.put_buffer_len(state.source_id, state.len)
-
     {:ok, state, {:continue, :boot}}
   end
 
@@ -80,16 +77,12 @@ defmodule Logflare.Source.BigQuery.Buffer do
   def handle_cast({:push, %LE{} = event}, state) do
     new_buffer = :queue.in(event, state.buffer)
     len = state.len + 1
-
-    Sources.Buffers.put_buffer_len(state.source_id, len)
-
     {:noreply, %{state | len: len, buffer: new_buffer}}
   end
 
   def handle_call({:pop, count}, _from, %{len: len} = state) do
     cond do
       len == 0 ->
-        Sources.Buffers.put_buffer_len(state.source_id, 0)
         {:reply, [], state}
 
       len > count ->
@@ -102,9 +95,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
         end
 
         len = state.len - count
-
-        Sources.Buffers.put_buffer_len(state.source_id, len)
-
         {:reply, log_events, %{state | len: len, buffer: new_buffer}}
 
       len <= count ->
@@ -113,27 +103,17 @@ defmodule Logflare.Source.BigQuery.Buffer do
         for le <- log_events do
           Sources.BuffersCache.put_read_receipt(le)
         end
-
-        Sources.Buffers.put_buffer_len(state.source_id, 0)
-
         {:reply, log_events, %{state | len: 0, buffer: :queue.new()}}
     end
   end
 
   def handle_call(:pop, _from, state) do
     if :queue.is_empty(state.buffer) do
-      Sources.Buffers.put_buffer_len(state.source_id, 0)
-
       {:reply, :empty, %{state | len: 0}}
     else
       {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
-
       Sources.BuffersCache.put_read_receipt(log_event)
-
       len = state.len - 1
-
-      Sources.Buffers.put_buffer_len(state.source_id, len)
-
       {:reply, log_event, %{state | len: len, buffer: new_buffer}}
     end
   end

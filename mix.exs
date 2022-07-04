@@ -46,7 +46,8 @@ defmodule Logflare.Mixfile do
         :phoenix_html,
         :phoenix,
         :erlexec
-      ]
+      ],
+      included_applications: [:mnesia]
     ]
   end
 
@@ -189,6 +190,7 @@ defmodule Logflare.Mixfile do
 
       # Postgres Subscribe
       {:cainophile, "~> 0.1.0"}
+      # {:honeydew, "~> 1.5.0"}
     ]
   end
 
