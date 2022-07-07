@@ -4,13 +4,13 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.{LogEvent, Backends, Backends.SourceBackend}
 
   setup do
-    source_backend = insert(:source_backend)
+    source_backend = insert(:source_backend, type: :webhook)
     {:ok, source_backend: source_backend}
   end
   test "dispatch_ingest", %{source_backend: source_backend} do
     # send the log event through rules
     log_event = %LogEvent{}
-    assert :ok = Backends.dispatch_ingest(source_backend,[log_event])
+    assert :ok = Backends.dispatch_ingest(source_backend, [log_event])
 
     raise "not impl"
   end

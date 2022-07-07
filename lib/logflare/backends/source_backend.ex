@@ -6,7 +6,7 @@ defmodule Logflare.Backends.SourceBackend do
 
   typed_schema "source_backends" do
     belongs_to :source, Source
-    field :type, :string
+    field :type, Ecto.Enum, values: [:bigquery, :webhook]
     field :config, :map
     timestamps()
   end
@@ -14,6 +14,6 @@ defmodule Logflare.Backends.SourceBackend do
   def changeset(source_backend, attrs) do
     source_backend
     |> cast(attrs, [:source_id, :type])
-    |> validate_required([:source_id, :type, :config])
+    |> validate_required([:source_id, :type])
   end
 end

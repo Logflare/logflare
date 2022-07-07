@@ -1,42 +1,42 @@
 defmodule Logflare.BackendsTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.{Backends, Backends.SourceBackend}
+  alias Logflare.{LogEvent, Backends, Backends.SourceBackend}
 
-  test "can attach multiple backends to a source", %{source: source} do
-    assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source)
-    assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source, %{type: :webhook})
+  describe "backend management" do
+    setup do
+      user = insert(:user)
+      [source: insert(:source, user_id: user.id)]
+    end
+    test "can attach multiple backends to a source", %{source: source} do
+      assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source)
+      assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source, :webhook)
+    end
 
-    # cannot attach multiple instances of the same backend type to the source
-    assert {:error, %Ecto.Changeset{}} = Backends.create_source_backend(source, %{type: :webhook})
   end
-
 
   describe ("dispatch_ingest") do
     setup do
-      source_backend = insert(:source_backend)
+      source_backend = insert(:source_backend, type: :webhook)
       {:ok, source_backend: source_backend}
     end
     test "dispatch_ingest", %{source_backend: source_backend} do
-      # send the log event through rules
+      Backends.Adaptor.WebhookAdaptor
+      |> expect(:ingest, 2, fn _-> :ok end )
       log_event = %LogEvent{}
-      assert :ok = Backends.dispatch_ingest(source_backend,[log_event])
+      assert :ok = Backends.dispatch_ingest(source_backend,[log_event, log_event])
 
       raise "not impl"
     end
   end
-  describe ("dispatch_execute_query") do
+
+
+  describe "SourceManager" do
     setup do
-      source_backend = insert(:source_backend)
-      {:ok, source_backend: source_backend}
-    end
-    test "dispatch_ingest", %{source_backend: source_backend} do
-      # send the log event through rules
-      log_event = %LogEvent{}
-      assert :ok = Backends.dispatch_ingest(source_backend,[log_event])
 
-      raise "not impl"
     end
+    test "can start a SourceSup"
+    test "can stop a SourceSup"
+    test "can restart a SourceSup"
   end
-
 end

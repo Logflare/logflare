@@ -24,6 +24,7 @@ defmodule LogflareWeb.ConnCase do
       import Logflare.Factory
       import Phoenix.LiveViewTest
       use Mimic
+      alias Logflare.TestUtils
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
