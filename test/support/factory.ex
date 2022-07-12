@@ -47,7 +47,9 @@ defmodule Logflare.Factory do
   end
 
   def source_backend_factory do
-    %SourceBackend{}
+    %SourceBackend{
+      type: :bigquery
+    }
   end
 
   def rule_factory do

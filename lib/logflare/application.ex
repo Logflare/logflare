@@ -64,7 +64,10 @@ defmodule Logflare.Application do
       Logflare.Repo,
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
-      {Task.Supervisor, name: Logflare.TaskSupervisor}
+      {Task.Supervisor, name: Logflare.TaskSupervisor},
+      # v2 ingestion pipelines
+      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ]
   end
 
