@@ -81,7 +81,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           concurrency: 1
         ],
         processors: [
-          default: [concurrency: 5, min_demand: 1]
+          default: [concurrency: 3, min_demand: 1]
         ],
         context: adaptor_state
       )

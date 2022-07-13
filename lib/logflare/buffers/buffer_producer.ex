@@ -30,7 +30,7 @@ defmodule Logflare.Buffers.BufferProducer do
     {:noreply, items, state}
   end
 
-  defp loop, do: Process.send_after(self(), :resolve, 1000)
+  defp loop, do: Process.send_after(self(), :resolve, 250)
 
   def handle_demand(demand, state) do
     {items, state} = resolve_demand(state, demand)

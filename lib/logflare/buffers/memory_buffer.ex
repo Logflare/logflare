@@ -10,8 +10,8 @@ defmodule Logflare.Buffers.MemoryBuffer do
   # GenServer state and init callbacks
   defstruct queue: nil
 
-  def start_link(_) do
-    GenServer.start_link(__MODULE__, [])
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, [], opts)
   end
 
   @impl true

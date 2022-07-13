@@ -4,9 +4,11 @@ defmodule Logflare.Backends do
     SourceBackend,
     SourceDispatcher,
     SourceRegistry,
-    SourceBackendRegistry
+    SourceBackendRegistry,
+    SourceSup
   }
 
+  alias Logflare.Buffers.MemoryBuffer
   alias Logflare.Source
   alias Logflare.Repo
   import Ecto.Query
@@ -23,14 +25,22 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Dispatch a log events to a given source backend.
+  Adds log events to the source event buffer.
+  The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
+  """
+  def ingest_log_events(log_events, source) do
+    via = via_source(source, :buffer)
+    MemoryBuffer.add_many(via, log_events)
+  end
 
+  @doc """
+  Dispatch log events to a given source backend.
   It requires the source supervisor and registry to be running.
   """
   def dispatch_ingest(log_events, source) do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, {adaptor_module, :ingest}} <- entries do
-        # TODO: spawn tasks to do this concurrently
+      # TODO: spawn tasks to do this concurrently
         apply(adaptor_module, :ingest, [pid, log_events])
       end
     end)
@@ -38,8 +48,12 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  @spec via_source(Source.t()) :: tuple()
-  def via_source(%Source{id: id}), do: {:via, Registry, {SourceRegistry, id}}
+  @doc """
+  Registeres a unique source-related process on the source registry. Unique.
+  """
+  @spec via_source(Source.t(), atom()) :: tuple()
+  def via_source(%Source{id: id}, process_type),
+    do: {:via, Registry, {SourceRegistry, {id, process_type}}}
 
   @spec via_source_backend(SourceBackend.t()) :: tuple()
   def via_source_backend(%SourceBackend{id: id}),
