@@ -5,6 +5,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends
   alias Logflare.Source
   alias Logflare.Buffers.MemoryBuffer
+  alias Logflare.LogEvent
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -38,7 +39,7 @@ defmodule Logflare.Backends.SourceSup do
     @spec start_link(Source.t()) :: {:ok, pid()}
     def start_link(%Source{} = source) do
       Broadway.start_link(__MODULE__,
-        name: __MODULE__,
+        name: Backends.via_source(source, __MODULE__),
         producer: [
           module:
             {BufferProducer,
@@ -50,15 +51,27 @@ defmodule Logflare.Backends.SourceSup do
           default: [concurrency: 1]
         ],
         batchers: [
-          backends: [concurrency: 1, batch_size: 10],
+          backends: [concurrency: 1, batch_size: 10]
         ],
         context: source
       )
     end
 
+    # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
+    def process_name({:via, module, {registry, {id, pipeline}}}, base_name) do
+      {:via, module, {registry, {id, pipeline, base_name}}}
+    end
+
     def handle_message(_processor_name, message, source) do
       message
+      |> Message.update_data(&maybe_convert_to_log_event(&1, source))
       |> Message.put_batcher(:backends)
+    end
+
+    defp maybe_convert_to_log_event(%_{} = event, _source), do: event
+
+    defp maybe_convert_to_log_event(%{} = params, source) do
+      LogEvent.make(params, %{source: source})
     end
 
     def handle_batch(:backends, messages, _batch_info, source) do

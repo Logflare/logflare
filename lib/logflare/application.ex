@@ -67,6 +67,7 @@ defmodule Logflare.Application do
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
       # v2 ingestion pipelines
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ]

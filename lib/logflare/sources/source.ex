@@ -122,6 +122,7 @@ defmodule Logflare.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.Term, default: []
     field :drop_lql_string, :string
+    field :v2_pipeline, :boolean, default: false
 
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
