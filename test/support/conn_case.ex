@@ -13,9 +13,16 @@ defmodule LogflareWeb.ConnCase do
   of the test unless the test case is marked as async.
   """
 
+  @session Plug.Session.init(
+             store: :cookie,
+             key: "_app",
+             encryption_salt: "yadayada",
+             signing_salt: "yadayada"
+           )
+
   use ExUnit.CaseTemplate
 
-  using do
+  using _opts do
     quote do
       import Plug.Conn
       import Phoenix.ConnTest
@@ -28,6 +35,10 @@ defmodule LogflareWeb.ConnCase do
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
+
+      setup context do
+        Mimic.verify_on_exit!(context)
+      end
     end
   end
 
@@ -36,8 +47,14 @@ defmodule LogflareWeb.ConnCase do
 
     unless tags[:async] do
       Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      # for global Mimic mocs
+      Mimic.set_mimic_global(tags)
     end
 
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    {:ok,
+     conn:
+       Phoenix.ConnTest.build_conn()
+       |> Plug.Session.call(@session)
+       |> Plug.Conn.fetch_session()}
   end
 end

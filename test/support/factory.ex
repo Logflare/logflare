@@ -5,7 +5,7 @@ defmodule Logflare.Factory do
   use ExMachina.Ecto, repo: Logflare.Repo
   alias Logflare.{User, Source, Rule, LogEvent, Billing.BillingAccount, Billing.PaymentMethod}
   alias Logflare.Users.UserPreferences
-  alias Logflare.Endpoint.Query
+  alias Logflare.Endpoints.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.{Billing.Plan, Teams.Team, TeamUsers.TeamUser, Backends.SourceBackend}
   import Logflare.TestUtils
@@ -133,7 +133,8 @@ defmodule Logflare.Factory do
   def endpoint_factory do
     %Query{
       user: build(:user),
-      token: Ecto.UUID.generate()
+      token: Ecto.UUID.generate(),
+      query: "select current_date() as date"
     }
   end
 

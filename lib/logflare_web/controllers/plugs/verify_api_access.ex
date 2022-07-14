@@ -9,8 +9,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   """
   import Plug.Conn
   import Phoenix.Controller
-  alias Logflare.Auth
-  alias Logflare.{Endpoint}
+  alias Logflare.{Auth, Endpoints}
 
   def init(args), do: args |> Enum.into(%{})
 
@@ -24,14 +23,14 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     conn = fetch_query_params(conn)
     # fetch endpoint info
     with endpoint_token <- conn.params["token"],
-         %Endpoint.Query{enable_auth: true, user_id: user_id} <-
-           Logflare.Endpoint.get_query_by_token(endpoint_token),
+         %Endpoints.Query{enable_auth: true, user_id: user_id} <-
+           Endpoints.get_query_by_token(endpoint_token),
          {:ok, token} <- extract_token(conn),
          {:ok, user} <- Auth.verify_access_token(token),
          true <- user_id == user.id do
       assign(conn, :user, user)
     else
-      %Endpoint.Query{enable_auth: false} ->
+      %Endpoints.Query{enable_auth: false} ->
         conn
 
       _ ->
