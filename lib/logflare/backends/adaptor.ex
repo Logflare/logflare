@@ -5,7 +5,7 @@ defmodule Logflare.Backends.Adaptor do
   It should be the **only** point of entry for the backend.
   """
 
-  alias Logflare.{LogEvent, Endpoint.Query, Backends.Adaptor}
+  alias Logflare.{LogEvent, Endpoints.Query, Backends.Adaptor}
   @type t :: module()
   @doc """
   Ingest many log events.
