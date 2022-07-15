@@ -1,7 +1,7 @@
 defmodule Logflare.Backends.SourceSup do
   use Supervisor
 
-  alias Logflare.Backends.{SourceBackend}
+  alias Logflare.Backends.{SourceBackend, RecentLogs}
   alias Logflare.Backends
   alias Logflare.Source
   alias Logflare.Buffers.MemoryBuffer
@@ -20,6 +20,7 @@ defmodule Logflare.Backends.SourceSup do
     children =
       [
         # {Stack, [:hello]}
+        {RecentLogs, source},
         {MemoryBuffer, name: Backends.via_source(source, :buffer)},
         {__MODULE__.Pipeline, source}
       ] ++ source_backend_specs
@@ -68,6 +69,7 @@ defmodule Logflare.Backends.SourceSup do
       |> Message.put_batcher(:backends)
     end
 
+
     defp maybe_convert_to_log_event(%_{} = event, _source), do: event
 
     defp maybe_convert_to_log_event(%{} = params, source) do
@@ -78,6 +80,10 @@ defmodule Logflare.Backends.SourceSup do
       # dispatch messages to backends
       log_events = for %{data: msg} <- messages, do: msg
       Backends.dispatch_ingest(log_events, source)
+
+      Backends.via_source(source, RecentLogs)
+      |> RecentLogs.push(log_events)
+
       messages
     end
 

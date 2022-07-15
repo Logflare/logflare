@@ -6,7 +6,8 @@ defmodule Logflare.Backends do
     SourceRegistry,
     SourceBackendRegistry,
     SourceSup,
-    SourcesSup
+    SourcesSup,
+    RecentLogs
   }
 
   alias Logflare.Buffers.MemoryBuffer
@@ -94,5 +95,10 @@ defmodule Logflare.Backends do
          :ok <- start_source_sup(source) do
       :ok
     end
+  end
+
+  def list_recent_logs(%Source{} = source) do
+    via_source(source, RecentLogs)
+    |> GenServer.call(:list)
   end
 end

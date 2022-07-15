@@ -3,6 +3,7 @@ defmodule Logflare.BackendsTest do
   use Logflare.DataCase
   alias Logflare.{Backends, Backends.SourceBackend, Backends.SourceSup}
 
+  @valid_event %{some: "event"}
   describe "backend management" do
     setup do
       user = insert(:user)
@@ -43,6 +44,23 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "ingestion" do
+    setup :set_mimic_global
+
+    setup do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      start_supervised!({SourceSup, source})
+      {:ok, source: source}
+    end
+
+    test "gets cached to recent logs", %{source: source} do
+      assert :ok = Backends.ingest_logs([%{some: "event"}], source)
+      :timer.sleep(1500)
+      assert [_] = Backends.list_recent_logs(source)
+    end
+  end
+
+  describe "ingestion with backend" do
     setup :set_mimic_global
 
     setup do
