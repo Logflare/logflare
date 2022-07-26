@@ -44,8 +44,6 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "ingestion" do
-    setup :set_mimic_global
-
     setup do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -54,9 +52,13 @@ defmodule Logflare.BackendsTest do
     end
 
     test "gets cached to recent logs", %{source: source} do
-      assert :ok = Backends.ingest_logs([%{some: "event"}], source)
+      assert :ok = Backends.ingest_logs([@valid_event], source)
       :timer.sleep(1500)
       assert [_] = Backends.list_recent_logs(source)
+    end
+
+    test "if recent logs process dies post-entry, restart a new one", %{source: source} do
+      assert [] = Backends.list_recent_logs(source)
     end
   end
 

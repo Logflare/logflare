@@ -2,14 +2,16 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @moduledoc false
   use GenServer
   alias Logflare.Backends.{SourceBackend, Adaptor, Adaptor.WebhookAdaptor, SourceDispatcher}
-  alias Logflare.Buffers.MemoryBuffer
+  alias Logflare.{Backends, Buffers.MemoryBuffer}
   use Adaptor
   use TypedStruct
 
-  typedstruct do
-    field :buffer_module, Adaptor.t(), enforce: true
-    field :buffer_pid, pid(), enforce: true
-    field :config, map, enforce: true
+  typedstruct enforce: true do
+    field :buffer_module, Adaptor.t()
+    field :buffer_pid, pid()
+    field :config, map
+    field :source_backend, SourceBackend.t()
+    field :pipeline_name, tuple()
   end
 
   def start_link(%SourceBackend{} = source_backend) do
@@ -26,7 +28,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     state = %__MODULE__{
       buffer_module: MemoryBuffer,
       buffer_pid: buffer_pid,
-      config: source_backend.config
+      config: source_backend.config,
+      source_backend: source_backend,
+      pipeline_name: Backends.via_source_backend(source_backend, __MODULE__.Pipeline)
     }
 
     {:ok, _pipeline_pid} = __MODULE__.Pipeline.start_link(state)
@@ -66,13 +70,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     use Broadway
     alias Broadway.Message
     alias Logflare.Buffers.BufferProducer
-    alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
-    alias Logflare.Backends.Adaptor.WebhookAdaptor
+    alias Logflare.Backends.Adaptor.{WebhookAdaptor, WebhookAdaptor.Client}
 
     @spec start_link(WebhookAdaptor.t()) :: {:ok, pid()}
     def start_link(adaptor_state) do
       Broadway.start_link(__MODULE__,
-        name: __MODULE__,
+        name: adaptor_state.pipeline_name,
         producer: [
           module:
             {BufferProducer,
@@ -85,6 +88,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         ],
         context: adaptor_state
       )
+    end
+
+    # see the implementation for Backends.via_source_backend/2 for how tuples are used to identify child processes
+    def process_name({:via, module, {registry, identifier}}, base_name) do
+      new_identifier = Tuple.append(identifier, base_name)
+      {:via, module, {registry, new_identifier}}
     end
 
     def handle_message(_processor_name, message, adaptor_state) do

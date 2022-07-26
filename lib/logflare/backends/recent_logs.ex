@@ -15,12 +15,30 @@ defmodule Logflare.Backends.RecentLogs do
     field :data, list(LogEvent.t())
   end
 
-  def start_link(%Source{id: id} = source) do
-    GenServer.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
+  def start_link(%Source{} = source) do
+    GenServer.start_link(__MODULE__, source, name: get_global_name(source))
   end
 
   def init(source) do
     {:ok, %__MODULE__{source: source, data: []}}
+  end
+
+  # Convenience function to retrieve the globally registered name of a source's RecentLogs process.
+  defp get_global_name(%Source{} = source) do
+    {:global, Backends.via_source(source, __MODULE__)}
+  end
+
+  @doc """
+  Convenience function to retrieve the globally registered pid of a source's RecentLogs process.
+  """
+  @spec get_pid(Source.t()) :: pid() | nil
+  def get_pid(%Source{} = source) do
+    Backends.via_source(source, __MODULE__)
+    |> :global.whereis_name()
+    |> case do
+      :undefined -> nil
+      pid -> pid
+    end
   end
 
   @doc """
@@ -31,12 +49,24 @@ defmodule Logflare.Backends.RecentLogs do
     GenServer.cast(pid, {:push, events})
   end
 
+  def set_lock(source) do
+    source
+    |> get_global_name()
+    |> :global.set_lock()
+  end
+
+  def del_lock(source) do
+    source
+    |> get_global_name()
+    |> :global.del_lock()
+  end
+
   @doc """
   Returns the list of cached log events, sorted.
   """
-  @spec push(pid(), list(LogEvent.t())) :: :ok
-  def push(pid, events) do
-    GenServer.cast(pid, {:push, events})
+  @spec list(pid()) :: list(LogEvent.t())
+  def list(pid) do
+    GenServer.call(pid, :list)
   end
 
   def handle_cast({:push, log_events}, state) when is_list(log_events) do
@@ -49,7 +79,7 @@ defmodule Logflare.Backends.RecentLogs do
     {:noreply, %{state | data: data}}
   end
 
-  def handle_call(list, _from, state) do
+  def handle_call(:list, _from, state) do
     {:reply, state.data, state}
   end
 end

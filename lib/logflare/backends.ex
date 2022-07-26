@@ -4,15 +4,12 @@ defmodule Logflare.Backends do
     SourceBackend,
     SourceDispatcher,
     SourceRegistry,
-    SourceBackendRegistry,
     SourceSup,
     SourcesSup,
-    RecentLogs
+    RecentLogs,
+    RecentLogsSup
   }
-
-  alias Logflare.Buffers.MemoryBuffer
-  alias Logflare.Source
-  alias Logflare.Repo
+  alias Logflare.{Buffers.MemoryBuffer, Source, LogEvent, Repo}
   import Ecto.Query
 
   def list_source_backends(%Source{id: id}) do
@@ -35,6 +32,7 @@ defmodule Logflare.Backends do
   def ingest_logs(log_events, source) do
     via = via_source(source, :buffer)
     MemoryBuffer.add_many(via, log_events)
+    :ok
   end
 
   @doc """
@@ -54,16 +52,22 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Registeres a unique source-related process on the source registry. Unique.
+  Registers a unique source-related process on the source registry. Unique.
   For internal use only, should not be called outside of the `Logflare` namespace.
   """
   @spec via_source(Source.t(), term()) :: tuple()
   def via_source(%Source{id: id}, process_id),
     do: {:via, Registry, {SourceRegistry, {id, process_id}}}
 
-  @spec via_source_backend(SourceBackend.t()) :: tuple()
-  def via_source_backend(%SourceBackend{id: id}),
-    do: {:via, Registry, {SourceBackendRegistry, id}}
+  @doc """
+  Registers a unique source-related process on the source registry. Unique.
+  For internal use only by adaptors, should not be called outside of the `Logflare` namespace.
+  """
+  @spec via_source_backend(SourceBackend.t(), term()) :: tuple()
+  def via_source_backend(%SourceBackend{id: id, source_id: source_id}, process_id \\ nil) do
+    identifier = {source_id, SourceBackend, id, process_id}
+    {:via, Registry, {SourceRegistry, identifier}}
+  end
 
   @spec source_sup_started?(Source.t()) :: boolean()
   def source_sup_started?(%Source{id: id}),
@@ -97,8 +101,46 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Lists the latest recent logs of a cache.
+  Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
+  """
+  @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
   def list_recent_logs(%Source{} = source) do
-    via_source(source, RecentLogs)
-    |> GenServer.call(:list)
+    pid = ensure_recent_logs_started(source)
+    RecentLogs.list(pid)
+  end
+
+  @doc """
+  Pushes events into the global RecentLogs cache for a given source.any()
+  Sets a global resource lock when pushing data into the cache.
+  Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
+  """
+  @spec push_recent_logs(Source.t(), [LogEvent.t()]) :: :ok
+  def push_recent_logs(%Source{} = source, log_events) do
+    pid = ensure_recent_logs_started(source)
+    RecentLogs.set_lock(source)
+    results = RecentLogs.push(pid, log_events)
+    RecentLogs.del_lock(source)
+    results
+  end
+
+  # checks if a recent logs cache is started. If not, starts the process.
+  # returns the pid of the cache process if found
+  defp ensure_recent_logs_started(%Source{} = source) do
+    source
+    |> RecentLogs.get_pid()
+    |> case do
+      nil -> start_recent_logs_cache(source)
+      pid -> pid
+    end
+  end
+
+  # starts the recent logs cache process locally for a given source
+  defp start_recent_logs_cache(%Source{} = source) do
+    case DynamicSupervisor.start_child(RecentLogsSup, {RecentLogs, source}) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
+    end
   end
 end
