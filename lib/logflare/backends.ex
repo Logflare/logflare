@@ -135,16 +135,12 @@ defmodule Logflare.Backends do
 
   @doc """
   Pushes events into the global RecentLogs cache for a given source.any()
-  Sets a global resource lock when pushing data into the cache.
   Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
   """
   @spec push_recent_logs(Source.t(), [LogEvent.t()]) :: :ok
   def push_recent_logs(%Source{} = source, log_events) do
     pid = ensure_recent_logs_started(source)
-    RecentLogs.set_lock(source)
-    results = RecentLogs.push(pid, log_events)
-    RecentLogs.del_lock(source)
-    results
+    RecentLogs.push(pid, log_events)
   end
 
   # checks if a recent logs cache is started. If not, starts the process.
@@ -160,9 +156,12 @@ defmodule Logflare.Backends do
 
   # starts the recent logs cache process locally for a given source
   defp start_recent_logs_cache(%Source{} = source) do
-    case DynamicSupervisor.start_child(RecentLogsSup, {RecentLogs, source}) do
+    :global.set_lock({RecentLogs, source.id})
+    pid = case DynamicSupervisor.start_child(RecentLogsSup, {RecentLogs, source}) do
       {:ok, pid} -> pid
       {:error, {:already_started, pid}} -> pid
     end
+    :global.del_lock({RecentLogs, source.id})
+    pid
   end
 end

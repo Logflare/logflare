@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.RecentLogs do
+  @moduledoc false
   @doc """
-  A distributed cache of latest 100 logs.
+  A global cache of latest 100 logs. One per cluster.
 
   Listens to the cluster-wide recent_logs channel topic.
 
@@ -49,18 +50,6 @@ defmodule Logflare.Backends.RecentLogs do
     GenServer.cast(pid, {:push, events})
   end
 
-  def set_lock(source) do
-    source
-    |> get_global_name()
-    |> :global.set_lock()
-  end
-
-  def del_lock(source) do
-    source
-    |> get_global_name()
-    |> :global.del_lock()
-  end
-
   @doc """
   Returns the list of cached log events, sorted.
   """
@@ -68,6 +57,8 @@ defmodule Logflare.Backends.RecentLogs do
   def list(pid) do
     GenServer.call(pid, :list)
   end
+
+  # GENSERVER CALLBACKs
 
   def handle_cast({:push, log_events}, state) when is_list(log_events) do
     sorted = Enum.sort_by(log_events, & &1.body.timestamp)
