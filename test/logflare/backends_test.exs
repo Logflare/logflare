@@ -11,8 +11,8 @@ defmodule Logflare.BackendsTest do
     end
 
     test "can attach multiple backends to a source", %{source: source} do
-      assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source)
-      assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source, :webhook)
+      assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source, :webhook, %{})
+      assert {:ok, %SourceBackend{}} = Backends.create_source_backend(source, :webhook, %{})
     end
   end
 
@@ -89,8 +89,7 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
-      log_event = %{some: "event"}
-      assert :ok = Backends.ingest_logs([log_event, log_event], source)
+      assert :ok = Backends.ingest_logs([@valid_event, @valid_event], source)
       :timer.sleep(1500)
     end
   end

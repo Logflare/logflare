@@ -13,11 +13,20 @@ defmodule Logflare.Backends do
   alias Logflare.{Buffers.MemoryBuffer, Source, LogEvent, Repo}
   import Ecto.Query
 
+  @doc """
+  Lists `SourceBackend`s for a given source.
+  """
+  @spec list_source_backends(Source.t()) :: list(SourceBackend.t())
   def list_source_backends(%Source{id: id}) do
     Repo.all(from sb in SourceBackend, where: sb.source_id == ^id)
   end
 
-  def create_source_backend(%Source{} = source, type \\ :bigquery, config \\ nil) do
+  @doc """
+  Creates a SourceBackend for a given source.
+  """
+  @spec create_source_backend(Source.t(), atom(), map()) ::
+          {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
+  def create_source_backend(%Source{} = source, type, %{} = config) when is_atom(type) do
     source
     |> Ecto.build_assoc(:source_backends)
     |> SourceBackend.changeset(%{config: config, type: type})
@@ -70,10 +79,16 @@ defmodule Logflare.Backends do
     {:via, Registry, {SourceRegistry, identifier}}
   end
 
+  @doc """
+  checks if the SourceSup for a given source has been started.
+  """
   @spec source_sup_started?(Source.t()) :: boolean()
   def source_sup_started?(%Source{id: id}),
     do: Registry.lookup(SourceRegistry, {id, SourceSup}) != []
 
+  @doc """
+  Starts a given SourceSup for a source. If already started, will return an error tuple.
+  """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
     with {:ok, _pid} <- DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
@@ -83,6 +98,9 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Stops a given SourceSup for a source. if not started, it will return an error tuple.
+  """
   @spec stop_source_sup(Source.t()) :: :ok | {:error, :not_started}
   def stop_source_sup(%Source{} = source) do
     with [{pid, _}] <- Registry.lookup(SourceRegistry, {source.id, SourceSup}),
@@ -93,6 +111,9 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Restarts a SourceSup of a given source.
+  """
   @spec restart_source_sup(Source.t()) ::
           :ok | {:error, :already_started} | {:error, :not_started}
   def restart_source_sup(%Source{} = source) do
