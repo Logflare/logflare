@@ -103,6 +103,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
         for le <- log_events do
           Sources.BuffersCache.put_read_receipt(le)
         end
+
         {:reply, log_events, %{state | len: 0, buffer: :queue.new()}}
     end
   end

@@ -144,5 +144,4 @@ defmodule Logflare.Factory do
       resource_owner: build(:user)
     }
   end
-
 end

@@ -27,6 +27,7 @@ defmodule Logflare.Backends.Adaptor do
       @behaviour Adaptor
 
       def queryable?(), do: false
+
       def execute_query(_pid, _query) do
         if function_exported?(__MODULE__, :queryable, 0) do
           raise "queryable?/0 callback implemented but query execution callback has not been implemented yet!"
@@ -34,6 +35,7 @@ defmodule Logflare.Backends.Adaptor do
           {:error, :not_queryable}
         end
       end
+
       def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")
 
       defoverridable Adaptor

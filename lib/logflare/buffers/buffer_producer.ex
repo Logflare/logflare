@@ -38,9 +38,9 @@ defmodule Logflare.Buffers.BufferProducer do
   end
 
   defp resolve_demand(
-        %{buffer_module: module, buffer_pid: pid, demand: prev_demand} = state,
-        new_demand \\ 0
-      ) do
+         %{buffer_module: module, buffer_pid: pid, demand: prev_demand} = state,
+         new_demand \\ 0
+       ) do
     total_demand = prev_demand + new_demand
     {:ok, items} = module.pop_many(pid, total_demand)
 

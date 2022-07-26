@@ -9,6 +9,7 @@ defmodule Logflare.Backends do
     RecentLogs,
     RecentLogsSup
   }
+
   alias Logflare.{Buffers.MemoryBuffer, Source, LogEvent, Repo}
   import Ecto.Query
 
