@@ -51,14 +51,12 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source}
     end
 
-    test "gets cached to recent logs", %{source: source} do
-      assert :ok = Backends.ingest_logs([@valid_event], source)
+    test "correctly retains the 100 items", %{source: source} do
+      events = for n <- 1..105, do: %{n: n}
+      assert :ok = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
-      assert [_] = Backends.list_recent_logs(source)
-    end
-
-    test "if recent logs process dies post-entry, restart a new one", %{source: source} do
-      assert [] = Backends.list_recent_logs(source)
+      cached = Backends.list_recent_logs(source)
+      assert length(cached) == 100
     end
   end
 
