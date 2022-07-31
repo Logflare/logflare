@@ -9,7 +9,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   typedstruct enforce: true do
     field :buffer_module, Adaptor.t()
     field :buffer_pid, pid()
-    field :config, map
+
+    field :config, %{
+      url: String.t()
+    }
+
     field :source_backend, SourceBackend.t()
     field :pipeline_name, tuple()
   end
@@ -41,6 +45,19 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Adaptor
   def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
+
+  @impl Adaptor
+  def cast_config(params) do
+    {%{}, %{url: :string}}
+    |> Ecto.Changeset.cast(params, [:url])
+  end
+
+  @impl Adaptor
+  def validate_config(changeset) do
+    changeset
+    |> Ecto.Changeset.validate_required([:url])
+    |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+  end
 
   # GenServer
   @impl true

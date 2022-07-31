@@ -19,4 +19,23 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     assert :ok = WebhookAdaptor.ingest(pid, [%LogEvent{}])
     :timer.sleep(1_500)
   end
+
+  test "cast_and_validate_config/1" do
+    for valid <- [
+          %{url: "http://example.com"},
+          %{url: "https://example.com"}
+        ] do
+      assert %Ecto.Changeset{valid?: true} = WebhookAdaptor.cast_and_validate_config(valid),
+             "valid: #{inspect(valid)}"
+    end
+
+    for invalid <- [
+          %{},
+          %{url: nil},
+          %{url: "htp://invalid.com"}
+        ] do
+      assert %Ecto.Changeset{valid?: false} = WebhookAdaptor.cast_and_validate_config(invalid),
+             "invalid: #{inspect(invalid)}"
+    end
+  end
 end

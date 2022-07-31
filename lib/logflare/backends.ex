@@ -7,11 +7,16 @@ defmodule Logflare.Backends do
     SourceSup,
     SourcesSup,
     RecentLogs,
-    RecentLogsSup
+    RecentLogsSup,
+    Adaptor.WebhookAdaptor
   }
 
   alias Logflare.{Buffers.MemoryBuffer, Source, LogEvent, Repo}
   import Ecto.Query
+
+  @adaptor_mapping %{
+    webhook: WebhookAdaptor
+  }
 
   @doc """
   Lists `SourceBackend`s for a given source.
@@ -19,6 +24,10 @@ defmodule Logflare.Backends do
   @spec list_source_backends(Source.t()) :: list(SourceBackend.t())
   def list_source_backends(%Source{id: id}) do
     Repo.all(from sb in SourceBackend, where: sb.source_id == ^id)
+    |> Enum.map(fn sb ->
+      sb
+      |> typecast_config_string_map_to_atom_map()
+    end)
   end
 
   @doc """
@@ -30,8 +39,78 @@ defmodule Logflare.Backends do
     source
     |> Ecto.build_assoc(:source_backends)
     |> SourceBackend.changeset(%{config: config, type: type})
+    |> validate_config()
     |> Repo.insert()
+    |> case do
+      {:ok, updated} ->
+        {:ok,
+         updated
+         |> typecast_config_string_map_to_atom_map()}
+
+      other ->
+        other
+    end
   end
+
+  @doc """
+  Updates the config of a SourceBackend.
+  """
+  @spec update_source_backend_config(SourceBackend.t(), map()) ::
+          {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
+  def update_source_backend_config(%SourceBackend{} = source_backend, %{} = config) do
+    source_backend
+    |> SourceBackend.changeset(%{config: config})
+    |> validate_config()
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        {:ok,
+         updated
+         |> typecast_config_string_map_to_atom_map()}
+
+      other ->
+        other
+    end
+  end
+
+  # common config validation function
+  defp validate_config(changeset) do
+    type = Ecto.Changeset.get_field(changeset, :type)
+
+    changeset
+    |> Ecto.Changeset.validate_change(:config, fn :config, config ->
+      case @adaptor_mapping[type].cast_and_validate_config(config) do
+        %{valid?: true} ->
+          []
+
+        %{valid?: false, errors: errors} ->
+          for {key, err} <- errors, do: {:"config.#{key}", err}
+      end
+    end)
+  end
+
+  # common typecasting from string map to attom for config
+  defp typecast_config_string_map_to_atom_map(%SourceBackend{type: type} = source_backend) do
+    source_backend
+    |> Map.update!(:config, fn config ->
+      mod = @adaptor_mapping[type]
+      typecasted =
+        mod.cast_config(config)
+        |> Ecto.Changeset.apply_changes()
+
+      mod_struct = struct(mod, %{config: typecasted})
+      mod_struct.config
+    end)
+  end
+
+  @doc """
+  Retrieves a SourceBackend by id.
+  """
+  @spec get_source_backend(integer()) :: SourceBackend.t() | nil
+  def get_source_backend(id),
+    do:
+      Repo.get(SourceBackend, id)
+      |> typecast_config_string_map_to_atom_map()
 
   @doc """
   Adds log events to the source event buffer.
@@ -157,10 +236,13 @@ defmodule Logflare.Backends do
   # starts the recent logs cache process locally for a given source
   defp start_recent_logs_cache(%Source{} = source) do
     :global.set_lock({RecentLogs, source.id})
-    pid = case DynamicSupervisor.start_child(RecentLogsSup, {RecentLogs, source}) do
-      {:ok, pid} -> pid
-      {:error, {:already_started, pid}} -> pid
-    end
+
+    pid =
+      case DynamicSupervisor.start_child(RecentLogsSup, {RecentLogs, source}) do
+        {:ok, pid} -> pid
+        {:error, {:already_started, pid}} -> pid
+      end
+
     :global.del_lock({RecentLogs, source.id})
     pid
   end

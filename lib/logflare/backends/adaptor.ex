@@ -22,6 +22,17 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback execute_query(identifier(), [%Query{}]) :: {:ok, term()} | {:error, :not_queryable}
 
+  @doc """
+  Typecasts config params.
+  """
+  @callback cast_config(param :: map()) :: Ecto.Changeset.t()
+
+  @doc """
+  Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
+  """
+  @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
+
+
   defmacro __using__(_opts) do
     quote do
       @behaviour Adaptor
@@ -37,6 +48,13 @@ defmodule Logflare.Backends.Adaptor do
       end
 
       def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")
+      def validate_config(_config_changeset), do: raise("Config validation callback not implemented!")
+      def cast_config(_config), do: raise("Config casting callback not implemented!")
+      def cast_and_validate_config(params) do
+        params
+        |> cast_config()
+        |> validate_config()
+      end
 
       defoverridable Adaptor
     end

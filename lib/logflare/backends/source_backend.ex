@@ -15,8 +15,8 @@ defmodule Logflare.Backends.SourceBackend do
 
   def changeset(source_backend, attrs) do
     source_backend
-    |> cast(attrs, [:source_id, :type])
-    |> validate_required([:source_id, :type])
+    |> cast(attrs, [:source_id, :type, :config])
+    |> validate_required([:source_id, :type, :config])
   end
 
   @spec child_spec(SourceBackend.t()) :: map()
