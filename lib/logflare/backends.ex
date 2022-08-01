@@ -90,10 +90,13 @@ defmodule Logflare.Backends do
   end
 
   # common typecasting from string map to attom for config
+  defp typecast_config_string_map_to_atom_map(nil), do: nil
+
   defp typecast_config_string_map_to_atom_map(%SourceBackend{type: type} = source_backend) do
     source_backend
     |> Map.update!(:config, fn config ->
       mod = @adaptor_mapping[type]
+
       typecasted =
         mod.cast_config(config)
         |> Ecto.Changeset.apply_changes()
@@ -111,6 +114,14 @@ defmodule Logflare.Backends do
     do:
       Repo.get(SourceBackend, id)
       |> typecast_config_string_map_to_atom_map()
+
+  @doc """
+  Deletes a Sourcebackend
+  """
+  @spec delete_source_backend(SourceBackend.t()) :: {:ok, SourceBackend.t()}
+  def delete_source_backend(%SourceBackend{} = sb) do
+    Repo.delete(sb)
+  end
 
   @doc """
   Adds log events to the source event buffer.

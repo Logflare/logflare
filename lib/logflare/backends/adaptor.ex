@@ -32,7 +32,6 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
 
-
   defmacro __using__(_opts) do
     quote do
       @behaviour Adaptor
@@ -48,8 +47,12 @@ defmodule Logflare.Backends.Adaptor do
       end
 
       def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")
-      def validate_config(_config_changeset), do: raise("Config validation callback not implemented!")
+
+      def validate_config(_config_changeset),
+        do: raise("Config validation callback not implemented!")
+
       def cast_config(_config), do: raise("Config casting callback not implemented!")
+
       def cast_and_validate_config(params) do
         params
         |> cast_config()

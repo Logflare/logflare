@@ -10,6 +10,14 @@ defmodule Logflare.BackendsTest do
       [source: insert(:source, user_id: user.id)]
     end
 
+    test "delete backend", %{source: source} do
+      assert {:ok, sb} =
+               Backends.create_source_backend(source, :webhook, %{url: "http://some.url"})
+
+      assert {:ok, %SourceBackend{}} = Backends.delete_source_backend(sb)
+      assert Backends.get_source_backend(sb.id) == nil
+    end
+
     test "can attach multiple backends to a source", %{source: source} do
       assert {:ok, %SourceBackend{}} =
                Backends.create_source_backend(source, :webhook, %{url: "http://some.url"})
