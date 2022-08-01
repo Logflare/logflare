@@ -15,7 +15,8 @@ defmodule LogflareWeb.SourceController do
     TeamUsers,
     Teams,
     Billing,
-    SourceSchemas
+    SourceSchemas,
+    Backends
   }
 
   alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}

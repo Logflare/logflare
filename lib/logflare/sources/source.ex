@@ -165,7 +165,8 @@ defmodule Logflare.Source do
       :lock_schema,
       :validate_schema,
       :drop_lql_filters,
-      :drop_lql_string
+      :drop_lql_string,
+      :v2_pipeline
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -186,7 +187,8 @@ defmodule Logflare.Source do
       :lock_schema,
       :validate_schema,
       :drop_lql_filters,
-      :drop_lql_string
+      :drop_lql_string,
+      :v2_pipeline
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)

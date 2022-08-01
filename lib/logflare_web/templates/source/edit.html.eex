@@ -243,6 +243,26 @@
   <p>Add a Google Cloud Platform project ID to get started!</p>
   <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
   <% end %>
+
+  <%= if @conn.assigns.user.admin do %>
+    <%= section_header("V2 Pipeline (Admin only)") %>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+    <div class="form-group">
+      <%= label f, :v2_pipeline do %>
+        Toggle v2 pipeline for this source
+      <% end %>
+      <%= checkbox f, :v2_pipeline %>
+      <%= error_tag f, :v2_pipeline %>
+    </div>
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+    <% end %>
+
+    <%= if @conn.assigns.source.v2_pipeline do %>
+      <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @conn.assigns.source.id})%>
+    <% end %>
+  <% end %>
+
+
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
       const clipboard = new ClipboardJS('#copy-path')
