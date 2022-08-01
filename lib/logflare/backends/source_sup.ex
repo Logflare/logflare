@@ -5,7 +5,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends
   alias Logflare.Source
   alias Logflare.Buffers.MemoryBuffer
-  alias Logflare.LogEvent
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
