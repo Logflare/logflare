@@ -7,21 +7,22 @@ defmodule LogflareWeb.SourceBackendsLive do
     ~L"""
     <div class="mt-4">
       <%= if !@show_create_form do %>
-        <button phx-click="toggle-create-form">Add a backend</button>
-      <% else %>
-        <button type="button" phx-click="toggle-create-form">Cancel</button>
+        <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
       <% end %>
       <%= if @show_create_form do %>
-      <%= f = form_for :source_backend, "#", [phx_submit: :save_source_backend] %>
+      <%= f = form_for :source_backend, "#", [phx_submit: :save_source_backend, class: "mt-4"] %>
         Add <%= select f, :type, [:webhook], phx_change: :change_create_form_type %> backend
-        <%= for f_config <- inputs_for(f, :config) do %>
-          <%= case @create_form_type do %>
-            <% "webhook" -> %>
-              <%= label f_config, :url %>
-              <%= text_input f_config, :url %>
+        <div class="form-group mt-2">
+          <%= for f_config <- inputs_for(f, :config) do %>
+            <%= case @create_form_type do %>
+              <% "webhook" -> %>
+                <%= label f_config, :url %>
+                <%= text_input f_config, :url %>
+            <% end %>
           <% end %>
-        <% end %>
-        <%= submit "Add" %>
+        </div>
+        <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">Cancel</button>
+        <%= submit "Add", class: "btn btn-primary" %>
       </form>
       <% end %>
 
@@ -30,7 +31,7 @@ defmodule LogflareWeb.SourceBackendsLive do
         <ul>
           <%= for sb <- @source_backends do %>
             <li>
-                <%= sb.type %> (id: <%= sb.id %>) <button class="ml-2" phx-click="remove_source_backend" phx-value-id="<%= sb.id %>">Remove</button>
+                <%= sb.type %> <button class="ml-2 btn btn-danger" phx-click="remove_source_backend" phx-value-id="<%= sb.id %>">Remove</button>
                 <%= case sb.type do %>
                 <% :webhook -> %>
                   <ul>
@@ -85,6 +86,7 @@ defmodule LogflareWeb.SourceBackendsLive do
       case Logflare.Backends.create_source_backend(source, params["type"], params["config"]) do
         {:ok, _} ->
           socket
+          |> assign(:show_create_form, false)
 
         {:error, changeset} ->
           # TODO: move this to a helper function

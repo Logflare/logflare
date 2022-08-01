@@ -27,7 +27,7 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
                config: %{url: "http://localhost:1234"}
              }
            }) =~ "localhost"
-
+    refute view |> render() =~ "Url"
     refute view
            |> element("button", "Remove")
            |> render_click() =~ "localhost"
