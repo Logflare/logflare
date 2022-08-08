@@ -1,6 +1,7 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
   alias Logflare.Logs.IngestTypecasting
+  alias Logflare.Backends
 
   plug CORSPlug,
        [
@@ -144,7 +145,15 @@ defmodule LogflareWeb.LogController do
   end
 
   def ingest_and_render(conn, log_params_batch, source) do
-    case Logs.ingest_logs(log_params_batch, source) do
+    result =
+      if source.v2_pipeline do
+        Backends.start_source_sup(source)
+        Backends.ingest_logs(log_params_batch, source)
+      else
+        Logs.ingest_logs(log_params_batch, source)
+      end
+
+    case result do
       :ok ->
         render(conn, "index.json", message: @message)
 

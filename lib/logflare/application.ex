@@ -65,7 +65,12 @@ defmodule Logflare.Application do
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+      # v2 ingestion pipelines
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ]
   end
 
@@ -129,7 +134,6 @@ defmodule Logflare.Application do
       Logflare.CacheBuster,
 
       # Sources
-      Sources.Buffers,
       Sources.BuffersCache,
       Logs.RejectedLogEvents,
       # init Counters before Supervisof as Supervisor calls Counters through table create

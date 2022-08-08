@@ -17,6 +17,7 @@ defmodule Logflare.DataCase do
   using do
     quote do
       alias Logflare.Repo
+      alias Logflare.TestUtils
 
       import Ecto
       import Ecto.Changeset

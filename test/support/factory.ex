@@ -7,7 +7,8 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Endpoints.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
-  alias Logflare.{Billing.Plan, Teams.Team, TeamUsers.TeamUser}
+  alias Logflare.{Billing.Plan, Teams.Team, TeamUsers.TeamUser, Backends.SourceBackend}
+  import Logflare.TestUtils
 
   def user_factory do
     %User{
@@ -42,6 +43,12 @@ defmodule Logflare.Factory do
       token: Faker.UUID.v4(),
       rules: [],
       favorite: false
+    }
+  end
+
+  def source_backend_factory do
+    %SourceBackend{
+      type: :bigquery
     }
   end
 
@@ -136,9 +143,5 @@ defmodule Logflare.Factory do
       token: random_string(20),
       resource_owner: build(:user)
     }
-  end
-
-  defp random_string(length \\ 6) do
-    :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)
   end
 end
