@@ -196,6 +196,9 @@ defmodule Logflare.Mixfile do
     [
       setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
       start: "cmd PORT=4000 iex --sname orange --cookie monster -S mix phx.server",
+      "start.orange":
+        "cmd PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server",
+      "start.pink": "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server",
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
