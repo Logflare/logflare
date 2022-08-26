@@ -122,6 +122,7 @@ defmodule Logflare.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.Term, default: []
     field :drop_lql_string, :string
+    field :v2_pipeline, :boolean, default: false
 
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
@@ -129,6 +130,7 @@ defmodule Logflare.Source do
     belongs_to :user, Logflare.User
 
     has_many :rules, Logflare.Rule
+    has_many :source_backends, Logflare.Backends.SourceBackend
     has_many :saved_searches, Logflare.SavedSearch
     has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing
 
@@ -163,7 +165,8 @@ defmodule Logflare.Source do
       :lock_schema,
       :validate_schema,
       :drop_lql_filters,
-      :drop_lql_string
+      :drop_lql_string,
+      :v2_pipeline
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -184,7 +187,8 @@ defmodule Logflare.Source do
       :lock_schema,
       :validate_schema,
       :drop_lql_filters,
-      :drop_lql_string
+      :drop_lql_string,
+      :v2_pipeline
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)

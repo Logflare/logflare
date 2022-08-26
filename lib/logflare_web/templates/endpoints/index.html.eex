@@ -41,7 +41,7 @@
 
       <%= section_header("Apply") %>
       <p>If this sounds intereseting to you just click the button below and we'll get in touch.</p>
-      <%= link "I'm interested!", to: Routes.endpoint_path(@conn, :apply), class: "btn btn-primary", id: "new-source-button" %>
+      <%= link "I'm interested!", to: Routes.endpoints_path(@conn, :apply), class: "btn btn-primary", id: "new-source-button" %>
     </div>
   </div>
 </div>
@@ -63,21 +63,21 @@
           <li class="list-group-item">
             <div>
               <div class="float-right">
-                <%= link to: Routes.endpoint_path(@conn, :edit, endpoint_query.id), class: "dashboard-links" do %>
+                <%= link to: Routes.endpoints_path(@conn, :edit, endpoint_query.id), class: "dashboard-links" do %>
                 <i class="fas fa-edit"></i>
                 <% end %>
-                <%= link to: Routes.endpoint_path(@conn, :delete, endpoint_query.id), method: :delete, class: "dashboard-links", data: [confirm: "Are you sure?"] do %>
+                <%= link to: Routes.endpoints_path(@conn, :delete, endpoint_query.id), method: :delete, class: "dashboard-links", data: [confirm: "Are you sure?"] do %>
                 <i class="fa fa-trash"></i>
                 <% end %>
               </div>
               <div class="source-link word-break-all">
-                <%= link endpoint_query.name, to: Routes.endpoint_path(@conn, :show, endpoint_query.id) %>
+                <%= link endpoint_query.name, to: Routes.endpoints_path(@conn, :show, endpoint_query.id) %>
                 <span id="<%= endpoint_query.token %>">
                 </span>
               </div>
               <div class="source-meta-data">
                 <small class="source-details">
-                  <% url = Routes.endpoint_url(@conn, :query, endpoint_query.token) %>
+                  <% url = Routes.endpoints_url(@conn, :query, endpoint_query.token) %>
                   <span class="pointer-cursor copy-token logflare-tooltip" data-toggle="tooltip" data-html=true
                     data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
                     id="<%= String.replace(endpoint_query.token, ~r/[0-9]|-/, "") %>"
@@ -96,7 +96,7 @@
           </li>
           <% end %>
         </ul>
-        <%= link "New endpoint query", to: Routes.endpoint_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
+        <%= link "New endpoint query", to: Routes.endpoints_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
       </div>
     </div>
     <div class="col-lg-3">

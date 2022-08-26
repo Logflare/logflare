@@ -9,6 +9,7 @@ defmodule Logflare.BqRepo do
   alias Logflare.Billing.Plan
   alias Logflare.User
   import Logflare.TypeCasts
+  require Logger
 
   @query_request_timeout 60_000
   @use_query_cache true
@@ -59,6 +60,8 @@ defmodule Logflare.BqRepo do
       |> GenUtils.maybe_parse_google_api_result()
 
     with {:ok, response} <- result do
+      Logger.debug("Bigquery response, #{inspect(response, pretty: true)}")
+
       response =
         response
         |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))

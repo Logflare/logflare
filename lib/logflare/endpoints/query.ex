@@ -1,6 +1,7 @@
-defmodule Logflare.Endpoint.Query do
+defmodule Logflare.Endpoints.Query do
   use Ecto.Schema
   import Ecto.Changeset
+  require Logger
 
   schema "endpoint_queries" do
     field :token, Ecto.UUID
@@ -79,6 +80,7 @@ defmodule Logflare.Endpoint.Query do
       if query do
         case Logflare.SQL.sources(query, get_field(changeset, :user)) do
           {:ok, source_mapping} ->
+            Logger.debug("Source mapping: #{inspect(source_mapping, pretty: true)}")
             put_change(changeset, :source_mapping, source_mapping)
 
           {:error, error} ->

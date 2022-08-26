@@ -1,4 +1,4 @@
-defmodule Logflare.Endpoint.Cache do
+defmodule Logflare.Endpoints.Cache do
   @moduledoc """
   Handles the Endpoint caching logic.
   """
@@ -21,7 +21,7 @@ defmodule Logflare.Endpoint.Cache do
             disable_cache: false
 
   @type t :: %__MODULE__{
-          query: %Logflare.Endpoint.Query{},
+          query: %Logflare.Endpoints.Query{},
           query_tasks: list(%Task{}),
           params: map(),
           last_query_at: DateTime.t(),
@@ -47,7 +47,7 @@ defmodule Logflare.Endpoint.Cache do
       Logger.warn("Endpoint query timeout")
 
       message = """
-      "Backend query timeout! Optimizing your query will help. Some tips:
+      Backend query timeout! Optimizing your query will help. Some tips:
 
       - `select` fewer columns. Only columns in the `select` statement are scanned.
       - Narrow the date range - e.g `where timestamp > timestamp_sub(current_timestamp, interval 1 hour)`.
@@ -193,8 +193,11 @@ defmodule Logflare.Endpoint.Cache do
   def do_query(state) do
     params = state.params
 
+    # determine the parameters used in this query
     case Logflare.SQL.parameters(state.query.query) do
       {:ok, parameters} ->
+        Logger.debug("[#{__MODULE__}] Parameters: #{inspect(parameters)} ")
+        # if it is sandboxable, then retrieve the sandboxed sql and add it as a query.
         query =
           if state.query.sandboxable && Map.get(params, "sql") do
             {state.query.query, Map.get(params, "sql")}
@@ -202,8 +205,13 @@ defmodule Logflare.Endpoint.Cache do
             state.query.query
           end
 
+        Logger.debug("[#{__MODULE__}] query: #{inspect(query)} ")
+
+        # insert the bigquery source-table references
         case Logflare.SQL.transform(query, state.query.user_id) do
           {:ok, query} ->
+            Logger.debug("[#{__MODULE__}] transformed query: #{inspect(query)} ")
+
             params =
               Enum.map(parameters, fn x ->
                 %{
@@ -217,6 +225,7 @@ defmodule Logflare.Endpoint.Cache do
                 }
               end)
 
+            # execute the queryon bigquery
             case Logflare.BqRepo.query_with_sql_and_params(
                    state.query.user,
                    state.query.user.bigquery_project_id || @project_id,
@@ -264,7 +273,7 @@ defmodule Logflare.Endpoint.Cache do
       | query:
           Logflare.Repo.reload(state.query)
           |> Logflare.Repo.preload(:user)
-          |> Logflare.Endpoint.Query.map_query()
+          |> Logflare.Endpoints.Query.map_query()
     }
   end
 

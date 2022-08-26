@@ -1,6 +1,7 @@
-defmodule Logflare.Endpoint do
+defmodule Logflare.Endpoints do
+  @moduledoc false
   import Ecto.Query
-  alias Logflare.Endpoint.Query
+  alias __MODULE__.Query
   alias Logflare.Repo
 
   @spec get_query_by_token(binary()) :: %Query{} | nil

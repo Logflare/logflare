@@ -1,8 +1,8 @@
-defmodule LogflareWeb.EndpointController do
+defmodule LogflareWeb.EndpointsController do
   use LogflareWeb, :controller
   import Ecto.Query, only: [from: 2]
   require Logger
-  alias Logflare.Endpoint
+  alias Logflare.Endpoints
   alias Logflare.Repo
   alias Logflare.SQL
 
@@ -20,11 +20,12 @@ defmodule LogflareWeb.EndpointController do
     send_preflight_response?: true
 
   def query(conn, %{"token" => token}) do
-    endpoint_query = Endpoint.get_query_by_token(token)
+    endpoint_query = Endpoints.get_query_by_token(token)
 
-    case Endpoint.Resolver.resolve(endpoint_query, conn.query_params)
-         |> Endpoint.Cache.query() do
+    case Endpoints.Resolver.resolve(endpoint_query, conn.query_params)
+         |> Endpoints.Cache.query() do
       {:ok, result} ->
+        Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
 
       {:error, err} ->
@@ -41,11 +42,11 @@ defmodule LogflareWeb.EndpointController do
 
   def show(%{assigns: %{user: user}, params: %{"id" => id}} = conn, _) do
     endpoint_query =
-      from(q in Endpoint.Query,
+      from(q in Endpoints.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
       |> Repo.one()
-      |> Endpoint.Query.map_query()
+      |> Endpoints.Query.map_query()
 
     parameters =
       case SQL.parameters(endpoint_query.query) do
@@ -62,14 +63,14 @@ defmodule LogflareWeb.EndpointController do
 
   def edit(%{assigns: %{user: user}, params: %{"id" => id}} = conn, _) do
     endpoint_query =
-      from(q in Endpoint.Query,
+      from(q in Endpoints.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
       |> Repo.one()
       |> Repo.preload(:user)
-      |> Endpoint.Query.map_query()
+      |> Endpoints.Query.map_query()
 
-    changeset = Endpoint.Query.update_by_user_changeset(endpoint_query, %{})
+    changeset = Endpoints.Query.update_by_user_changeset(endpoint_query, %{})
 
     render(conn, "edit.html",
       endpoint_query: endpoint_query,
@@ -79,7 +80,7 @@ defmodule LogflareWeb.EndpointController do
   end
 
   def new(conn, _) do
-    changeset = Endpoint.Query.update_by_user_changeset(%Endpoint.Query{}, %{})
+    changeset = Endpoints.Query.update_by_user_changeset(%Endpoints.Query{}, %{})
     render(conn, "new.html", changeset: changeset)
   end
 
@@ -88,13 +89,13 @@ defmodule LogflareWeb.EndpointController do
       params
       |> Map.put("token", Ecto.UUID.generate())
 
-    Endpoint.Query.update_by_user_changeset(%Endpoint.Query{user: user}, params)
+    Endpoints.Query.update_by_user_changeset(%Endpoints.Query{user: user}, params)
     |> Repo.insert()
     |> case do
       {:ok, endpoint_query} ->
         conn
         |> put_flash(:info, "Endpoint created!")
-        |> redirect(to: Routes.endpoint_path(conn, :show, endpoint_query.id))
+        |> redirect(to: Routes.endpoints_path(conn, :show, endpoint_query.id))
 
       {:error, changeset} ->
         conn
@@ -106,22 +107,22 @@ defmodule LogflareWeb.EndpointController do
 
   def update(%{assigns: %{user: user}} = conn, %{"id" => id, "query" => params}) do
     endpoint_query =
-      from(q in Endpoint.Query,
+      from(q in Endpoints.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
       |> Repo.one()
       |> Repo.preload(:user)
 
-    for q <- Endpoint.Resolver.resolve(endpoint_query),
-        do: Endpoint.Cache.invalidate(q)
+    for q <- Endpoints.Resolver.resolve(endpoint_query),
+        do: Endpoints.Cache.invalidate(q)
 
-    Endpoint.Query.update_by_user_changeset(endpoint_query, params)
+    Endpoints.Query.update_by_user_changeset(endpoint_query, params)
     |> Repo.update()
     |> case do
       {:ok, endpoint_query} ->
         conn
         |> put_flash(:info, "Endpoint updated!")
-        |> redirect(to: Routes.endpoint_path(conn, :show, endpoint_query.id))
+        |> redirect(to: Routes.endpoints_path(conn, :show, endpoint_query.id))
 
       {:error, changeset} ->
         conn
@@ -136,13 +137,13 @@ defmodule LogflareWeb.EndpointController do
 
   def reset_url(%{assigns: %{user: user}} = conn, %{"id" => id}) do
     endpoint_query =
-      from(q in Endpoint.Query,
+      from(q in Endpoints.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
       |> Repo.one()
       |> Repo.preload(:user)
 
-    Endpoint.Query.update_by_user_changeset(endpoint_query, %{
+    Endpoints.Query.update_by_user_changeset(endpoint_query, %{
       token: Ecto.UUID.generate()
     })
     |> Repo.update()
@@ -150,7 +151,7 @@ defmodule LogflareWeb.EndpointController do
       {:ok, endpoint_query} ->
         conn
         |> put_flash(:info, "Endpoint updated!")
-        |> redirect(to: Routes.endpoint_path(conn, :edit, endpoint_query.id))
+        |> redirect(to: Routes.endpoints_path(conn, :edit, endpoint_query.id))
 
       {:error, changeset} ->
         conn
@@ -165,7 +166,7 @@ defmodule LogflareWeb.EndpointController do
 
   def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
     _endpoint_query =
-      from(q in Endpoint.Query,
+      from(q in Endpoints.Query,
         where: q.user_id == ^user.id and q.id == ^id
       )
       |> Repo.one()
@@ -175,13 +176,13 @@ defmodule LogflareWeb.EndpointController do
         {:ok, _endpoint_query} ->
           conn
           |> put_flash(:info, "Endpoint deleted!")
-          |> redirect(to: Routes.endpoint_path(conn, :index))
+          |> redirect(to: Routes.endpoints_path(conn, :index))
 
         {:error, changeset} ->
           conn
           |> put_flash(:error, "Something went wrong!")
           |> assign(:changeset, changeset)
-          |> redirect(to: Routes.endpoint_path(conn, :index))
+          |> redirect(to: Routes.endpoints_path(conn, :index))
       end
   end
 
@@ -190,6 +191,6 @@ defmodule LogflareWeb.EndpointController do
 
     conn
     |> put_flash(:info, "Successfully applied for the Endpoints beta. We'll be in touch!")
-    |> redirect(to: Routes.endpoint_path(conn, :index))
+    |> redirect(to: Routes.endpoints_path(conn, :index))
   end
 end
