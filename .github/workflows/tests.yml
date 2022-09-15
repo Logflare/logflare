@@ -51,7 +51,7 @@ jobs:
       - name: Run compilation warnings check
         run: mix test.compile
       - name: Run unit tests with code coverage check
-        run: mix test
+        run: mix test.coverage
     # - name: Test - security
     #   run: mix test.security
       - name: Code quality - formatting

@@ -208,11 +208,12 @@ defmodule Logflare.Mixfile do
         "cmd PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server",
       "start.pink": "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server",
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate", "coveralls"],
+      test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high"],
       "test.typings": ["dialyzer --format short"],
+      "test.coverage": ["coveralls"],
       lint: ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
