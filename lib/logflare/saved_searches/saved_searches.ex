@@ -8,6 +8,7 @@ defmodule Logflare.SavedSearches do
   alias Logflare.DateTimeUtils
   require Logger
 
+  @spec get(number()) :: SavedSearch.t()
   def get(id) do
     Repo.get(SavedSearch, id)
   end
@@ -31,16 +32,19 @@ defmodule Logflare.SavedSearches do
     |> Repo.insert()
   end
 
+  @spec delete(SavedSearch.t()) :: {:ok, SavedSearch.t()}
   def delete(search) do
     Repo.delete(search)
   end
 
+  @spec delete_by_user(SavedSearch.t()) :: {:ok, SavedSearch.t()}
   def delete_by_user(search) do
     search
     |> SavedSearch.changeset(%{saved_by_user: false})
     |> Repo.update()
   end
 
+  @spec save_by_user(String.t(), list(), Source.t(), boolean()) :: {:ok, SavedSearch.t()}
   def save_by_user(querystring, lql_rules, source, tailing?) do
     search = get_by_qs_source_id(querystring, source.id)
 
@@ -84,17 +88,12 @@ defmodule Logflare.SavedSearches do
     )
   end
 
+  @spec get_by_qs_source_id(String.t(), number()) :: SavedSearch.t()
   def get_by_qs_source_id(querystring, source_id) do
     SavedSearch
     |> where([s], s.querystring == ^querystring)
     |> where([s], s.source_id == ^source_id)
     |> Repo.one()
-  end
-
-  def mark_as_saved_by_users() do
-    SavedSearch
-    |> where([s], is_nil(s.saved_by_user))
-    |> Repo.update_all(set: [saved_by_user: true])
   end
 
   def suggest_saved_searches(querystring, source_id) do
