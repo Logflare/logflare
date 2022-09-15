@@ -50,7 +50,7 @@ jobs:
         run: mix deps.get
       - name: Run compilation warnings check
         run: mix test.compile
-      - name: Run unit tests
+      - name: Run unit tests with code coverage check
         run: mix test
     # - name: Test - security
     #   run: mix test.security
