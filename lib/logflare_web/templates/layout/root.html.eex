@@ -39,7 +39,7 @@
     <% end %>
   </head>
   <body>
-    <nav class="app navbar fixed-top navbar-expand-lg navbar-light bg-light">
+    <nav class="app navbar  navbar-expand-lg navbar-light bg-light" >
     <%= if Plug.Conn.get_session(@conn, :vercel_setup) do %>
       <div class="navbar-brand">
         <%= render LogflareWeb.SharedView, "logo.html", assigns %>
@@ -128,6 +128,10 @@
         <% end %>
       </div>
     </nav>
+
+    <%= if assigns[:banner] do  %>
+      <%= render "banner.html", @banner %>
+    <% end %>
 
     <%= @inner_content %>
     <%= render("js_libs.html") %>

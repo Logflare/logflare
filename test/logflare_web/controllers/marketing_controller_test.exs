@@ -33,6 +33,9 @@ defmodule LogflareWeb.MarketingControllerTest do
       path = Routes.marketing_path(conn, unquote(action))
       conn = conn |> get(path)
       assert conn.status == 200
+
+      # has announcement banner
+      assert html_response(conn, 200) =~ "now part of Supabase"
     end
   end
 end

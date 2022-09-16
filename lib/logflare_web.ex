@@ -26,6 +26,18 @@ defmodule LogflareWeb do
       import Phoenix.LiveView.Controller
 
       alias LogflareWeb.Router.Helpers, as: Routes
+
+      # define global controller functions
+
+      @doc """
+      plug helper function for controller level assings setting.
+      It will set the assigns for each controller action.
+      ```
+      plug :assign {:banner, @some_value}
+      ```
+      """
+      def assign(conn, {key, value}), do: assign(conn, key, value)
+
     end
   end
 

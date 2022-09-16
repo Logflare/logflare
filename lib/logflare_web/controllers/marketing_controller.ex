@@ -5,6 +5,14 @@ defmodule LogflareWeb.MarketingController do
   alias Number.Delimit
 
   @system_counter :total_logs_logged
+  @announcement %{
+    message: "Logflare is now part of Supabase.",
+    cta_text: "Read more →",
+    cta_link: "https://supabase.com/blog/supabase-acquires-logflare?utm_source=logflare-site&utm_medium=referral&utm_campaign=logflare-acquired"
+  }
+
+  # only set the banner assigns on marketing pages
+  plug :assign, {:banner, @announcement}
 
   def index(conn, _params) do
     {:ok, log_count} = AllLogsLogged.log_count(@system_counter)
