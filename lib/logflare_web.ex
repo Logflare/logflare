@@ -37,7 +37,6 @@ defmodule LogflareWeb do
       ```
       """
       def assign(conn, {key, value}), do: assign(conn, key, value)
-
     end
   end
 

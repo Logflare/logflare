@@ -8,7 +8,8 @@ defmodule LogflareWeb.MarketingController do
   @announcement %{
     message: "Logflare is now part of Supabase.",
     cta_text: "Read more →",
-    cta_link: "https://supabase.com/blog/supabase-acquires-logflare?utm_source=logflare-site&utm_medium=referral&utm_campaign=logflare-acquired"
+    cta_link:
+      "https://supabase.com/blog/supabase-acquires-logflare?utm_source=logflare-site&utm_medium=referral&utm_campaign=logflare-acquired"
   }
 
   # only set the banner assigns on marketing pages
