@@ -1,6 +1,6 @@
 defmodule Logflare.SavedSearchesTest do
   use Logflare.DataCase
-  alias Logflare.{SavedSearches, SavedSearch}
+  alias Logflare.{SavedSearches, SavedSearch, SavedSearchCounter}
 
   setup do
     user = insert(:user)
@@ -19,13 +19,38 @@ defmodule Logflare.SavedSearchesTest do
 
   test "save_by_user/4, delete_by_user/1 marks search as saved & unsaved", %{source: source} do
     # inserts the SavedSearch if does not exist
-    assert {:ok, %SavedSearch{saved_by_user: true}} = SavedSearches.save_by_user("other-query-string", @valid_attrs.lql_rules, source, @valid_attrs.tailing)
+    assert {:ok, %SavedSearch{saved_by_user: true}} =
+             SavedSearches.save_by_user(
+               "other-query-string",
+               @valid_attrs.lql_rules,
+               source,
+               @valid_attrs.tailing
+             )
+
     # updates the SavedSearch if it exists
     assert {:ok, saved_search} = SavedSearches.insert(@valid_attrs, source)
-    assert {:ok, %SavedSearch{saved_by_user: true}} = SavedSearches.save_by_user(@valid_attrs.querystring, @valid_attrs.lql_rules, source, @valid_attrs.tailing)
+
+    assert {:ok, %SavedSearch{saved_by_user: true}} =
+             SavedSearches.save_by_user(
+               @valid_attrs.querystring,
+               @valid_attrs.lql_rules,
+               source,
+               @valid_attrs.tailing
+             )
+
     assert {:ok, %SavedSearch{saved_by_user: false}} = SavedSearches.delete_by_user(saved_search)
   end
 
-  test "suggest_saved_searches/2"
-  test "inc/2"
+  test "suggest_saved_searches/2", %{source: source} do
+    assert {:ok, %SavedSearch{} = saved_search} =
+             SavedSearches.insert(%{@valid_attrs | querystring: "sometestsomething"}, source)
+
+    assert [saved_search] == SavedSearches.suggest_saved_searches("test", source.id)
+    assert [] == SavedSearches.suggest_saved_searches("other", source.id)
+  end
+
+  test "inc/2", %{source: source} do
+    assert {:ok, search} = SavedSearches.insert(@valid_attrs, source)
+    assert {:ok, %SavedSearchCounter{}} = SavedSearches.inc(search.id, tailing: true)
+  end
 end
