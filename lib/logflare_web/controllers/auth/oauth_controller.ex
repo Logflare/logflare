@@ -86,7 +86,11 @@ defmodule LogflareWeb.Auth.OauthController do
         %{assigns: %{ueberauth_failure: failure}} = conn,
         %{"provider" => provider} = params
       ) do
-    Logger.warn("Oauth failure for #{provider}. #{inspect(failure)}", ueberauth_failure: failure, params: params)
+    Logger.warn("Oauth failure for #{provider}. #{inspect(failure)}",
+      ueberauth_failure: failure,
+      params: params
+    )
+
     auth_error_redirect(conn)
   end
 
