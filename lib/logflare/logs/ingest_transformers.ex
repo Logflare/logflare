@@ -1,6 +1,10 @@
 defmodule Logflare.Logs.IngestTransformers do
+  @moduledoc false
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
+  @doc """
+  - [BigQuery Reference](https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical)
+  """
   @spec transform(map, list(atom) | atom) :: map
   def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
     transform(log_params, [
@@ -18,7 +22,6 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  @spec do_transform(map, atom) :: map
   defp do_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) and byte_size(key) > max ->

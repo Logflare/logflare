@@ -1,4 +1,4 @@
-defmodule Logflare.LogsTest do
+defmodule Logflare.Logs.LogsTest do
   @moduledoc false
   use Logflare.DataCase
   import Logflare.Factory
