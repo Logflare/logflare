@@ -1,4 +1,4 @@
-stdefmodule LogflareWeb.Plugs.CheckAdmin do
+defmodule LogflareWeb.Plugs.CheckAdmin do
   @moduledoc """
   Verifies that user is admin
   """
