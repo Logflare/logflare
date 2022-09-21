@@ -1,6 +1,6 @@
 defmodule Logflare.LogsTest do
   @moduledoc false
-  use Logflare.DataCase
+  use ExUnit.Case, async: true
   alias Logflare.{Logs.IngestTransformers}
 
   describe "ingest transformers" do
