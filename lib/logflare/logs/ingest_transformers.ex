@@ -18,11 +18,17 @@ defmodule Logflare.Logs.IngestTransformers do
 
   def transform(log_params, rules) when is_map(log_params) and is_list(rules) do
     Map.update(log_params, "metadata", %{}, fn m ->
-      Enum.reduce(rules, m, &do_transform(&2, &1))
+      Enum.reduce(rules, m, &do_key_transform(&2, &1))
     end)
   end
 
-  defp do_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
+  def transform(log_params, _rules), do: log_params
+
+  defp do_key_transform(log_params, rule) when is_list(log_params) do
+    Enum.map(log_params, fn item -> do_key_transform(item, rule) end)
+  end
+
+  defp do_key_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) and byte_size(key) > max ->
         "_" <> String.slice(key, 0..(max - 1))
@@ -32,7 +38,7 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  defp do_transform(log_params, :alphanumeric_only) when is_map(log_params) do
+  defp do_key_transform(log_params, :alphanumeric_only) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) ->
         case Regex.match?(~r/\W/, key) do
@@ -45,7 +51,7 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  defp do_transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
+  defp do_key_transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       "_TABLE_" <> _rest = key -> "_" <> key
       "_FILE_" <> _rest = key -> "_" <> key
@@ -54,7 +60,7 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  defp do_transform(log_params, :dashes_to_underscores) when is_map(log_params) do
+  defp do_key_transform(log_params, :dashes_to_underscores) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) ->
         case String.contains?(key, "-") do
@@ -67,7 +73,7 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
   end
 
-  defp do_transform(log_params, :alter_leading_numbers) when is_map(log_params) do
+  defp do_key_transform(log_params, :alter_leading_numbers) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       <<symbol::binary-size(1), rest::binary>> when symbol in ~w(0 1 2 3 4 5 6 7 8 9) ->
         "_" <> symbol <> rest
@@ -76,4 +82,7 @@ defmodule Logflare.Logs.IngestTransformers do
         key
     end)
   end
+
+  # passthrough for non-matching data types
+  defp do_key_transform(log_params, _rule), do: log_params
 end

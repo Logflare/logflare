@@ -73,6 +73,20 @@ defmodule Logflare.LogsTest do
       assert key == "_1test"
     end
 
+    test "non-map datatypes" do
+      params = %{"metadata" => "some string"}
+      assert ^params = IngestTransformers.transform(params, :to_bigquery_column_spec)
+
+      params = %{"metadata" => ["some string"]}
+      assert ^params = IngestTransformers.transform(params, :to_bigquery_column_spec)
+
+      params = %{"metadata" => [%{"some" => "some string"}]}
+      assert ^params = IngestTransformers.transform(params, :to_bigquery_column_spec)
+
+      params = %{"metadata" => nil}
+      assert ^params = IngestTransformers.transform(params, :to_bigquery_column_spec)
+    end
+
     defp log_params_fixture(key),
       do: %{"metadata" => %{key => "value"}}
   end
