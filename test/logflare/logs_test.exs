@@ -87,6 +87,11 @@ defmodule Logflare.LogsTest do
       assert ^params = IngestTransformers.transform(params, :to_bigquery_column_spec)
     end
 
+    test "transforms top level params" do
+      params = %{"123test" => "something"}
+      assert %{"_123test" => _} = IngestTransformers.transform(params, :to_bigquery_column_spec)
+    end
+
     defp log_params_fixture(key),
       do: %{"metadata" => %{key => "value"}}
   end
