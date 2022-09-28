@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/<%= link "login", to: Routes.auth_path(@conn, :login), class: "text-primary" %>/email</h5>
   </div>
