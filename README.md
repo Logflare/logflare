@@ -46,7 +46,9 @@ We are leaving this repo public as an example of a larger Elixir project. We hop
 
 Logflare is using a SQL parser from sqlparser.com. To set this up on your dev machine:
 
-## Dev Setup
+## Developer
+
+## Env Setup
 
 1. Install dependencies with `asdf` using `asdf install`
    1. **IMPORTANT**: [Set `JAVA_HOME`](https://github.com/halcyon/asdf-java#java_home)
@@ -71,3 +73,9 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 ```elixir
 iex> LogflareLogger.info("testing log message")
 ```
+
+### Logging
+
+Use the `:error_string` metadata key when logging, which is for additional information that we want to log but don't necessarily want searchable or parsed for schema updating.
+
+For example, do `Logger.error("Some error", error_string: inspect(params) )`
