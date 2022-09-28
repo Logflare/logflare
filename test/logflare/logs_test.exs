@@ -7,7 +7,7 @@ defmodule Logflare.LogsTest do
     test "transform/2 with :field_length" do
       for {input_n, expected_n, max_n, starts_with_underscore?} <- [
             # TODO: Verify that underscore prefixing resulting in exceeding total n is expected.
-            {130, 101, 100, true},
+            {130, 100, 100, true},
             {50, 50, 100, false}
           ] do
         key = String.duplicate("f", input_n)

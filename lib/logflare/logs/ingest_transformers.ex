@@ -30,7 +30,7 @@ defmodule Logflare.Logs.IngestTransformers do
   defp do_key_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) and byte_size(key) > max ->
-        "_" <> String.slice(key, 0..(max - 1))
+        "_" <> String.slice(key, 0..(max - 2))
 
       key ->
         key
