@@ -1,6 +1,7 @@
 defmodule Logflare.Logs.IngestTransformers do
   @moduledoc false
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
+  require Logger
 
   @doc """
   - [BigQuery Reference](https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical)
@@ -51,10 +52,29 @@ defmodule Logflare.Logs.IngestTransformers do
 
   defp do_key_transform(log_params, :strip_bq_prefixes) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
-      "_TABLE_" <> _rest = key -> "_" <> key
-      "_FILE_" <> _rest = key -> "_" <> key
-      "_PARTITION_" <> _rest = key -> "_" <> key
-      key -> key
+      "_TABLE_" <> _rest = key ->
+        Logger.info("Transforming log event parameter key with _TABLE prefix",
+          error_string: inspect(log_params)
+        )
+
+        "_" <> key
+
+      "_FILE_" <> _rest = key ->
+        Logger.info("Transforming log event parameter key with _FILE prefix",
+          error_string: inspect(log_params)
+        )
+
+        "_" <> key
+
+      "_PARTITION_" <> _rest = key ->
+        Logger.info("Transforming log event parameter key with _PARTITION prefix",
+          error_string: inspect(log_params)
+        )
+
+        "_" <> key
+
+      key ->
+        key
     end)
   end
 
