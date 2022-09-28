@@ -341,7 +341,6 @@ defmodule Logflare.Logs.SearchOperations do
             values =
               for value <- values do
                 value
-                # FIXME: user local timezone is needed during disconnected mount
                 |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
                 |> Timex.Timezone.convert("Etc/UTC")
               end
@@ -351,7 +350,6 @@ defmodule Logflare.Logs.SearchOperations do
           %{path: "timestamp", value: value} = pvo ->
             value =
               value
-              # FIXME: user local timezone is needed during disconnected mount
               |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
               |> Timex.Timezone.convert("Etc/UTC")
 
