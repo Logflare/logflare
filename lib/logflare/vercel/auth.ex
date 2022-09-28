@@ -1,4 +1,5 @@
 defmodule Logflare.Vercel.Auth do
+  @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
 

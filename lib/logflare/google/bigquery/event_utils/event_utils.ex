@@ -1,4 +1,5 @@
 defmodule Logflare.Google.BigQuery.EventUtils do
+  @moduledoc false
   @doc """
   Prepares an event for ingest into BigQuery
   """

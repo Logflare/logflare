@@ -1,4 +1,5 @@
 defmodule Logflare.AccountEmail do
+  @moduledoc false
   import Swoosh.Email
 
   require Logger

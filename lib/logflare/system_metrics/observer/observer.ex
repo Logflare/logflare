@@ -1,4 +1,5 @@
 defmodule Logflare.SystemMetrics.Observer do
+  @moduledoc false
   # def observer_metrics() do
   #   :observer_backend.sys_info()
   #   |> Keyword.drop([:alloc_info])

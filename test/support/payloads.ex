@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Logs.PayloadTestUtils do
+  @moduledoc false
   def standard_metadata(:cloudflare) do
     %{
       "request" => %{

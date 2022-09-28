@@ -1,4 +1,5 @@
 defmodule Logflare.Google.BigQuery.Debug do
+  @moduledoc false
   def gen_bq_ui_url(user, source_token) when is_binary(source_token) do
     base = "https://console.cloud.google.com/bigquery"
 

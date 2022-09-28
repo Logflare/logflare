@@ -1,4 +1,5 @@
 defmodule Logflare.Logs.IngestTransformers do
+  @moduledoc false
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
   @spec transform(map, list(atom) | atom) :: map

@@ -1,4 +1,5 @@
 defmodule LogflareWeb.AccessTokensLive do
+  @moduledoc false
   use LogflareWeb, :live_view
   require Logger
   alias Logflare.Auth

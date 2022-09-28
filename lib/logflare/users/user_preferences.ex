@@ -1,4 +1,5 @@
 defmodule Logflare.Users.UserPreferences do
+  @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
 

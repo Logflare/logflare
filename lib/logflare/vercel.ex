@@ -1,4 +1,5 @@
 defmodule Logflare.Vercel do
+  @moduledoc false
   alias Logflare.Vercel.Auth
   alias Logflare.Repo
   alias __MODULE__

@@ -1,4 +1,5 @@
 defmodule Logflare.Source.SlackHookServer.Client do
+  @moduledoc false
   require Logger
 
   alias Logflare.Sources

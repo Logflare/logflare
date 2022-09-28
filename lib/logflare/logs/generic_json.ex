@@ -1,4 +1,5 @@
 defmodule Logflare.Logs.GenericJson do
+  @moduledoc false
   require Logger
 
   def handle_batch(batch) when is_list(batch) do

@@ -1,4 +1,5 @@
 defmodule LogflareWeb.AdminSearchDashboardLive do
+  @moduledoc false
   use LogflareWeb, :live_view
   alias LogflareWeb.AdminView
   alias Logflare.SavedSearches.Analytics

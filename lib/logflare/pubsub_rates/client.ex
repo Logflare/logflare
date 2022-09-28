@@ -1,4 +1,5 @@
 defmodule Logflare.PubSubRates do
+  @moduledoc false
   alias Phoenix.PubSub
   alias Logflare.PubSubRates.Cache
 

@@ -1,4 +1,5 @@
 defmodule Logflare.Logs.SyslogParser do
+  @moduledoc false
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
   alias Logflare.Logs.SyslogMessage
