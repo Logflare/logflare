@@ -282,7 +282,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                        "pid" => 7,
                        "time" => 1_582_754_345_208,
                        "user" => %{
-                         "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "dealer" => %{
+                           "id" => 13_201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
                          "email" => "example2@example.com"
                        },
                        "v" => 1
@@ -304,7 +308,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                        "pid" => 7,
                        "time" => 1_582_754_345_208,
                        "user" => %{
-                         "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "dealer" => %{
+                           "id" => 13_201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
                          "email" => "example2@example.com"
                        },
                        "v" => 1
@@ -402,7 +410,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                        "pid" => 7,
                        "time" => 1_582_754_345_208,
                        "user" => %{
-                         "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "dealer" => %{
+                           "id" => 13_201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
                          "email" => "example2@example.com"
                        },
                        "v" => 1
@@ -424,7 +436,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                        "pid" => 7,
                        "time" => 1_582_754_345_208,
                        "user" => %{
-                         "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "dealer" => %{
+                           "id" => 13_201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
                          "email" => "example2@example.com"
                        },
                        "v" => 1
@@ -446,7 +462,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                        "pid" => 7,
                        "time" => 1_582_754_345_208,
                        "user" => %{
-                         "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "dealer" => %{
+                           "id" => 13_201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
                          "email" => "example2@example.com"
                        },
                        "v" => 1
@@ -468,7 +488,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                        "pid" => 7,
                        "time" => 1_582_754_345_208,
                        "user" => %{
-                         "dealer" => %{"id" => 13_201, "location" => 2, "name" => "Wagon Trail RV"},
+                         "dealer" => %{
+                           "id" => 13_201,
+                           "location" => 2,
+                           "name" => "Wagon Trail RV"
+                         },
                          "email" => "example2@example.com"
                        },
                        "v" => 1
