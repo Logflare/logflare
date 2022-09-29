@@ -5,27 +5,65 @@ title: Introduction
 hide_title: true
 ---
 
-import ThemedImage from '@theme/ThemedImage';
-import useBaseUrl from '@docusaurus/useBaseUrl';
+import ThemedImage from "@theme/ThemedImage";
+import useBaseUrl from "@docusaurus/useBaseUrl";
 
-
-Logflare is a log ingestion and querying engine that allows the storage and querying of log events in a columnar database (BigQuery). 
-
+Logflare is a log ingestion and querying engine that allows the storage and querying of log events in a columnar database (BigQuery).
 
 <ThemedImage
   alt="Logflare Dashboard"
   sources={{
-    light: '/img/dashboard.png',
-    dark: '/img/dashboard-dark.png'
+    light: "/img/dashboard.png",
+    dark: "/img/dashboard-dark.png",
   }}
+  style={{maxHeight: 800, maxWidth: "100%"}}
 />
 
-Logflare has recently been [acquired by Supabase](https://supabase.com/blog/supabase-acquires-logflare), however the service still operates and powers the [Supabase Platform's](https://supabase.com/) logging and observability features. 
+Logflare has recently been [acquired by Supabase](https://supabase.com/blog/supabase-acquires-logflare), however the service still operates and powers the [Supabase Platform's](https://supabase.com/) logging and observability features.
 
-## Scalable Storage and Querying Costs
+## Features
+### Scalable Storage and Querying Costs
 
 Columnar databases allows for fast analysis while providing compact storage mechanisms, allowing you to store orders of magnitude more event data at the same cost that our competitors offer. Furthermore, the costs scale predictably according to the amount of data stored, allowing you to have a peace of mind when managing billing and infrastructure costs.
 
-## Bring Your Own Backend
+### Bring Your Own Backend
 
 Logflare can integrate with your very own backends, allowing Logflare to only manage the pipeline and throughput of log events. This ensures maximum flexibility for storing sensitive data and managing your own storage and querying costs.
+
+### Querying UI and API
+Logflare provides a fully featured [querying interface](./querying). [Logflare Endpoints](./endpoints.md) provides a programmatic interface for executing SQL queries on your stored log events, allowing you to analyze and leverage your event data in downstream applications.
+
+---
+
+## Getting Started
+
+1. **Create an Account**
+
+   Head over to the [Logflare site](https://logflare.app/) and [create an account](https://logflare.app/auth/login).
+
+2. **Create a Source**
+
+   Once you're logged in, you can create a **New Source**.<br />
+   Retrieve your source ID and API Key by clicking on the setup button.
+
+3. **Send a Log**
+
+   Once your source is created , execute this cURL command to send a log event to Logflare.
+
+   Replace `YOUR-SOURCE-ID-HERE` and `YOUR-API-KEY-HERE` placeholders with the values from step 2.
+
+   ```bash
+   curl -X "POST" "https://api.logflare.app/logs/json?source=YOUR-SOURCE-ID-HERE" \
+           -H 'Content-Type: application/json; charset=utf-8' \
+           -H 'X-API-KEY: YOUR-API-KEY-HERE' \
+           -d $'[{
+           "message": "This is the main event message",
+           "metadata": {"some": "log event"}
+       }]'
+   ```
+
+4. **Check the Source**
+
+   Congratulations, your first log event should be successfully POST-ed to Logflare! You can then search and filter the source for specific events using the [Logflare Query Language](./lql).
+
+   Of course, the JSON endpoint is not the only way to send log events to Logflare, check out our [integrations](./integrations) to the list of supported clients.

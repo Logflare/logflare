@@ -53,7 +53,7 @@ You can also directly execute SQL queries in BigQuery instead of through the Log
 
 ### Unnesting Repeated Records
 
-Nested columns are represeted as as repeated `RECORD`s in BigQuery. To query inside a nested record you must UNNEST it like so:
+Nested columns are represeted as repeated `RECORD`s in BigQuery. To query inside a nested record you must UNNEST it like so:
 
 ```sql
 SELECT timestamp, req.url, h.cf_cache_status
