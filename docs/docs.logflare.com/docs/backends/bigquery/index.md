@@ -1,4 +1,3 @@
-
 # BigQuery
 
 Logflare natively supports the storage of log events to BigQuery. You can also Bring Your Own Backend by allowing Logflare to manage a GCP project's BigQuery.
@@ -57,11 +56,11 @@ Nested columns are represeted as repeated `RECORD`s in BigQuery. To query inside
 
 ```sql
 SELECT timestamp, req.url, h.cf_cache_status
-FROM `your_project_id.your_dataset_name.your_table_name`,
-UNNEST(metadata) m,
-UNNEST(m.request) req,
-UNNEST(m.response) resp,
-UNNEST(resp.headers) h
+FROM `your_project_id.your_dataset_name.your_table_name` t
+CROSS JOIN UNNEST(t.metadata) m
+CROSS JOIN UNNEST(m.request) req
+CROSS JOIN UNNEST(m.response) resp
+CROSS JOIN UNNEST(resp.headers) h
 WHERE DATE(timestamp) = "2019-05-09"
 ORDER BY timestamp DESC
 LIMIT 10
