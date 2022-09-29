@@ -1,0 +1,30 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+import ThemedImage from '@theme/ThemedImage';
+import useBaseUrl from '@docusaurus/useBaseUrl';
+
+# Introduction
+
+Logflare is a log ingestion and querying engine that allows the storage and querying of log events in a columnar database (BigQuery). 
+
+
+<ThemedImage
+  alt="Logflare Dashboard"
+  sources={{
+    light: '/img/dashboard.png',
+    dark: '/img/dashboard-dark.png'
+  }}
+/>
+
+Logflare has recently been [acquired by Supabase](https://supabase.com/blog/supabase-acquires-logflare), however the service still operates and powers the [Supabase platform's](https://supabase.com/) logging and observability features. 
+
+## Scalable Storage and Querying Costs
+
+Columnar databases allows for fast analysis while providing compact storage mechanisms, allowing you to store orders of magnitude more event data at the same cost that our competitors offer. Furthermore, the costs scale predictably according to the amount of data stored, allowing you to have a peace of mind when managing billing and infrastructure costs.
+
+## Bring Your Own Backend
+
+Logflare can integrate with your very own backends, allowing Logflare to only manage the pipeline and throughput of log events. This ensures maximum flexibility for storing sensitive data and managing your own storage and querying costs.
