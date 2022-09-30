@@ -207,7 +207,7 @@ defmodule LogflareWeb.StripeController do
   end
 
   defp lifetime_plan_charge?(event) do
-    event["data"]["object"]["amount"] == 50000
+    event["data"]["object"]["amount"] == 50_000
   end
 
   defp customer_not_found(conn) do

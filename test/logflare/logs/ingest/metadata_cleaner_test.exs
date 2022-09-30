@@ -54,7 +54,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
       meta_with_nils = %{
         "request" => %{
           "cf" => %{
-            "asn" => 15169,
+            "asn" => 15_169,
             "clientTrustScore" => 1,
             "colo" => [""],
             "country" => nil
@@ -65,7 +65,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
       meta_cleaned = Cleaner.deep_reject_nil_and_empty(meta_with_nils)
 
       assert meta_cleaned == %{
-               "request" => %{"cf" => %{"asn" => 15169, "clientTrustScore" => 1}}
+               "request" => %{"cf" => %{"asn" => 15_169, "clientTrustScore" => 1}}
              }
 
       meta_with_nils =

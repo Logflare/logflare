@@ -194,7 +194,7 @@ defmodule Logflare.Logs.IngestTypecastingTest do
           ]
         })
 
-      assert casted == %{"metadata" => %{"key1" => 10000.00001}}
+      assert casted == %{"metadata" => %{"key1" => 10_000.00001}}
     end
 
     test "nested strings to numbers" do
@@ -240,10 +240,10 @@ defmodule Logflare.Logs.IngestTypecastingTest do
 
       assert casted == %{
                "metadata" => %{
-                 "key1" => 10000.00001,
+                 "key1" => 10_000.00001,
                  "key2" => %{
                    "key3" => [
-                     %{"key4" => 10000.000001},
+                     %{"key4" => 10_000.000001},
                      %{"key4.1" => "10000.0001"}
                    ],
                    "key3.1" => 3.1415
