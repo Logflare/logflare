@@ -1,4 +1,5 @@
 defmodule LogflareWeb.BillingHelpers do
+  @moduledoc false
   use Phoenix.HTML
 
   alias Logflare.Billing

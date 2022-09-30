@@ -1,4 +1,5 @@
 defmodule Logflare.Billing.Plan do
+  @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
 

@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Plugs.RequireAuth do
+  @moduledoc false
   import Plug.Conn
   import Phoenix.Controller
 

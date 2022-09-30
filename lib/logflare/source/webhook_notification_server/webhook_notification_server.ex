@@ -1,4 +1,5 @@
 defmodule Logflare.Source.WebhookNotificationServer do
+  @moduledoc false
   use GenServer
 
   require Logger

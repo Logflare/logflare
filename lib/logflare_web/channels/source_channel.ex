@@ -1,4 +1,5 @@
 defmodule LogflareWeb.SourceChannel do
+  @moduledoc false
   use LogflareWeb, :channel
 
   def join("source:" <> source_token, _payload, socket) do

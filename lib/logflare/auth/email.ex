@@ -1,4 +1,5 @@
 defmodule Logflare.Auth.Email do
+  @moduledoc false
   import Swoosh.Email
 
   alias Logflare.Auth

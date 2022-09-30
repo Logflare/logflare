@@ -1,4 +1,5 @@
 defmodule Logflare.EnumDeepUpdate do
+  @moduledoc false
   def update_in_enum(data, [key], fun) when is_map(data) do
     if data[key] do
       Map.update!(data, key, fun)

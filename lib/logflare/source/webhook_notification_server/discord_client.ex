@@ -1,4 +1,5 @@
 defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
+  @moduledoc false
   require Logger
 
   alias LogflareWeb.Router.Helpers, as: Routes

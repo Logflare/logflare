@@ -1,4 +1,5 @@
 defmodule Logflare.Logs.SyslogParser.Helpers do
+  @moduledoc false
   alias Logflare.JSON
   import NimbleParsec
   @ascii_printable_chars [33..126]

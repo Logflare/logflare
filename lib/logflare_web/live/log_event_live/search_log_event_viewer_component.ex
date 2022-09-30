@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Search.LogEventViewerComponent do
+  @moduledoc false
   use LogflareWeb, :live_component
   alias LogflareWeb.LogView
   require Logger

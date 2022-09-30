@@ -1,4 +1,5 @@
 defmodule Logflare.TeamUsers.TeamUser do
+  @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
   alias Logflare.Users.UserPreferences

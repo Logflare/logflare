@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Plugs.SetHeaders do
+  @moduledoc false
   import Plug.Conn
 
   alias Logflare.User

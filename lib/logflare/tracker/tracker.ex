@@ -1,4 +1,5 @@
 defmodule Logflare.Tracker do
+  @moduledoc false
   @behaviour Phoenix.Tracker
 
   require Logger

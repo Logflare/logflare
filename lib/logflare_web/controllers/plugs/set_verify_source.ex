@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Plugs.SetVerifySource do
+  @moduledoc false
   use Plug.Builder
 
   import Plug.Conn
