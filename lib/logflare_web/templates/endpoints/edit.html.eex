@@ -41,6 +41,20 @@
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
 
+
+    <%= section_header("Endpoint Query Sandboxing") %>
+      <div class="form-group">
+        <%= form_for @changeset, Routes.endpoints_path(@conn, :update, @endpoint_query), fn a -> %>
+        <%= checkbox a, :sandboxable  %>
+        <%= label a, :sandboxable do %>
+          Sandbox the query using CTEs
+        <% end %>
+        <%= error_tag a, :sandboxable %>
+      </div>
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+    <% end %>
+
+
     <%= section_header("Endpoint URL") %>
     <div class="mb-2">
       <%= Routes.endpoints_url(@conn, :query, @endpoint_query.token) %>
