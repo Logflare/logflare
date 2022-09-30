@@ -71,7 +71,6 @@ defmodule Logflare.LogEvent do
               System.system_time(:microsecond)
           end
 
-        # FIXME: validate that integer is in appropriate range (and length?)
         x when is_integer(x) ->
           case Integer.digits(x) |> Enum.count() do
             19 -> Kernel.round(x / 1_000)
