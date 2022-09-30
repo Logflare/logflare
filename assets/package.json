@@ -46,7 +46,7 @@
     "file-loader": "^5.0.2",
     "fstream": "^1.0.12",
     "mini-css-extract-plugin": "^2.1.0",
-    "node-sass": "^6.0.1",
+    "node-sass": "^7.0.0",
     "postcss-loader": "^3.0.0",
     "prettier": "^2.0.0",
     "prop-types": "^15.7.2",
