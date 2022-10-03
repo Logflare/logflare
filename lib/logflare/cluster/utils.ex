@@ -18,7 +18,7 @@ defmodule Logflare.Cluster.Utils do
         cluster_size: lib_cluster_size
       )
 
-      @min_cluster_size
+      env_min_cluster_size()
     end
   end
 
