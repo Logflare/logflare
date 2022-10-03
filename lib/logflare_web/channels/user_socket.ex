@@ -4,7 +4,7 @@ defmodule LogflareWeb.UserSocket do
   alias Logflare.User
   alias Logflare.Repo
 
-  @salt Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
+  defp env_salt, do: Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   @max_age 86_400
 
   channel "source:*", LogflareWeb.SourceChannel
@@ -50,5 +50,5 @@ defmodule LogflareWeb.UserSocket do
   end
 
   defp verify_token(token),
-    do: Phoenix.Token.verify(LogflareWeb.Endpoint, @salt, token, max_age: @max_age)
+    do: Phoenix.Token.verify(LogflareWeb.Endpoint, env_salt(), token, max_age: @max_age)
 end

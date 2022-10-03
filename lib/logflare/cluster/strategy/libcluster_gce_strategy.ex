@@ -8,8 +8,8 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
 
   @default_polling_interval 120_000
   @default_release_name :node
-  @regions Application.get_env(:logflare, __MODULE__)[:regions]
-  @zones Application.get_env(:logflare, __MODULE__)[:zones]
+  defp env_regions, do: Application.get_env(:logflare, __MODULE__)[:regions]
+  defp env_zones, do: Application.get_env(:logflare, __MODULE__)[:zones]
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -61,13 +61,13 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
       auth_token = Map.get(metadata, "access_token")
 
       region_nodes =
-        Enum.map(@regions, fn {region, group_name} ->
+        Enum.map(env_regions(), fn {region, group_name} ->
           get_region_nodes(state, region, group_name, auth_token)
         end)
         |> Enum.concat()
 
       zone_nodes =
-        Enum.map(@zones, fn {zone, group_name} ->
+        Enum.map(env_zones(), fn {zone, group_name} ->
           get_zone_nodes(state, zone, group_name, auth_token)
         end)
         |> Enum.concat()

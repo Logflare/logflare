@@ -3,10 +3,10 @@ defmodule LogflareWeb.Auth.OauthProviderController do
 
   alias ExOauth2Provider.Token
 
-  @config Application.get_env(:logflare, ExOauth2Provider)
+  defp env_config, do: Application.get_env(:logflare, ExOauth2Provider)
 
   def vercel_grant(conn, params) do
-    case Token.grant(params, @config) do
+    case Token.grant(params, env_config()) do
       {:ok, access_token} ->
         conn
         |> json(access_token)
@@ -19,7 +19,7 @@ defmodule LogflareWeb.Auth.OauthProviderController do
   end
 
   def cloudflare_grant(conn, params) do
-    case Token.grant(params, @config) do
+    case Token.grant(params, env_config()) do
       {:ok, access_token} ->
         conn
         |> json(Map.drop(access_token, [:expires_in, :refresh_token]))

@@ -6,7 +6,7 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.{User, Repo, Users, TeamUsers, Source.Supervisor, Billing.Stripe}
 
-  @service_account Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
+  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   def api_show(%{assigns: %{user: user}} = conn, _params) do
     conn
@@ -19,7 +19,7 @@ defmodule LogflareWeb.UserController do
     render(conn, "edit.html",
       changeset: changeset,
       user: user,
-      service_account: @service_account
+      service_account: env_service_account()
     )
   end
 
@@ -59,7 +59,7 @@ defmodule LogflareWeb.UserController do
         |> render("edit.html",
           changeset: changeset,
           user: conn.assigns.user,
-          service_account: @service_account
+          service_account: env_service_account()
         )
     end
   end

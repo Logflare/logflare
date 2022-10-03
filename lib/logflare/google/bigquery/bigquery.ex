@@ -5,9 +5,12 @@ defmodule Logflare.Google.BigQuery do
 
   require Logger
 
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
-  @service_account Application.get_env(:logflare, Logflare.Google)[:service_account]
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+  defp env_dataset_id_append,
+    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+
+  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
 
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model
@@ -73,7 +76,7 @@ defmodule Logflare.Google.BigQuery do
     conn
     |> Api.Tables.bigquery_tables_delete(
       project_id,
-      dataset_id || Integer.to_string(user_id) <> @dataset_id_append,
+      dataset_id || Integer.to_string(user_id) <> env_dataset_id_append(),
       table_name
     )
     |> GenUtils.maybe_parse_google_api_result()
@@ -128,7 +131,7 @@ defmodule Logflare.Google.BigQuery do
   def patch_table_ttl(source_id, table_ttl, dataset_id, project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
 
     partitioning = %Model.TimePartitioning{
       type: "DAY",
@@ -146,7 +149,7 @@ defmodule Logflare.Google.BigQuery do
   def patch_table(source_id, schema, dataset_id, project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
 
     conn
     |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
@@ -165,7 +168,7 @@ defmodule Logflare.Google.BigQuery do
       bigquery_dataset_id: dataset_id
     } = GenUtils.get_bq_user_info(source_id)
 
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> @dataset_id_append
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
 
     conn
     |> Api.Tables.bigquery_tables_get(
@@ -208,7 +211,7 @@ defmodule Logflare.Google.BigQuery do
   """
   @spec create_dataset(integer, binary, binary, binary) ::
           {:error, Tesla.Env.t()} | {:ok, Model.Dataset.t()}
-  def create_dataset(user_id, dataset_id, dataset_location, project_id \\ @project_id) do
+  def create_dataset(user_id, dataset_id, dataset_location, project_id \\ env_project_id()) do
     conn = GenUtils.get_conn()
 
     %User{email: email, provider: provider} = user = Users.get_by(id: user_id)
@@ -236,7 +239,7 @@ defmodule Logflare.Google.BigQuery do
           },
           %Model.DatasetAccess{
             role: "OWNER",
-            userByEmail: @service_account
+            userByEmail: env_service_account()
           },
           %Model.DatasetAccess{
             role: "READER",
@@ -295,8 +298,8 @@ defmodule Logflare.Google.BigQuery do
   @spec delete_dataset(User.t()) :: ok_err_tup
   def delete_dataset(user) do
     conn = GenUtils.get_conn()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
-    project_id = user.bigquery_project_id || @project_id
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    project_id = user.bigquery_project_id || env_project_id()
 
     conn
     |> Api.Datasets.bigquery_datasets_delete(project_id, dataset_id, deleteContents: true)
@@ -305,8 +308,8 @@ defmodule Logflare.Google.BigQuery do
 
   def patch_dataset_labels(%User{} = user) do
     conn = GenUtils.get_conn()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> @dataset_id_append
-    project_id = user.bigquery_project_id || @project_id
+    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    project_id = user.bigquery_project_id || env_project_id()
 
     %Plan{name: plan} =
       user
@@ -345,7 +348,7 @@ defmodule Logflare.Google.BigQuery do
 
   defp patch(dataset_id, emails, project_id, user_id) do
     conn = GenUtils.get_conn()
-    dataset_id = dataset_id || Integer.to_string(user_id) <> @dataset_id_append
+    dataset_id = dataset_id || Integer.to_string(user_id) <> env_dataset_id_append()
 
     access_emails =
       Enum.map(emails, fn x ->
@@ -366,7 +369,7 @@ defmodule Logflare.Google.BigQuery do
       },
       %GoogleApi.BigQuery.V2.Model.DatasetAccess{
         role: "OWNER",
-        userByEmail: @service_account
+        userByEmail: env_service_account()
       },
       %GoogleApi.BigQuery.V2.Model.DatasetAccess{
         role: "READER",
@@ -391,7 +394,9 @@ defmodule Logflare.Google.BigQuery do
     }
 
     {:ok, _response} =
-      Api.Datasets.bigquery_datasets_patch(conn, project_id || @project_id, dataset_id, body: body)
+      Api.Datasets.bigquery_datasets_patch(conn, project_id || env_project_id(), dataset_id,
+        body: body
+      )
 
     Logger.info("Dataset patched: #{dataset_id} | #{inspect(emails)}")
   end

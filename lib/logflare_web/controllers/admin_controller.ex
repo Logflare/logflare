@@ -8,7 +8,7 @@ defmodule LogflareWeb.AdminController do
   require Logger
 
   @page_size 50
-  @node_shutdown_code Application.get_env(:logflare, :node_shutdown_code)
+  defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
 
   def dashboard(conn, _params) do
     conn
@@ -68,8 +68,15 @@ defmodule LogflareWeb.AdminController do
     |> put_flash(:error, "You are not chase@logflare.app!")
     |> redirect(to: Routes.admin_path(conn, :accounts))
   end
+  def shutdown_node(conn, params) do
+    if (Map.get(params, "code") == env_node_shutdown_code()) do
+      do_authorized_code_shutdown(conn, params)
+    else
+      do_unauthorized_code_shutdown(conn, params)
+    end
+  end
 
-  def shutdown_node(conn, %{"code" => @node_shutdown_code, "node" => node}) do
+  defp do_authorized_code_shutdown(conn, %{"node" => node}) do
     node = String.to_atom(node)
     nodes = Node.list()
 
@@ -91,8 +98,7 @@ defmodule LogflareWeb.AdminController do
       })
     end
   end
-
-  def shutdown_node(conn, %{"code" => @node_shutdown_code}) do
+  defp do_authorized_code_shutdown(conn, _params) do
     Admin.shutdown()
 
     conn
@@ -100,7 +106,7 @@ defmodule LogflareWeb.AdminController do
     |> json(%{"message" => "Success, shutting down node: #{Node.self()}"})
   end
 
-  def shutdown_node(conn, _params) do
+  defp do_unauthorized_code_shutdown(conn, _params) do
     Logger.warn("Node shutdown requested!")
 
     conn

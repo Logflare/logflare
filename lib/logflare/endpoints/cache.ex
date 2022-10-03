@@ -7,8 +7,8 @@ defmodule Logflare.Endpoints.Cache do
 
   use GenServer, restart: :temporary
 
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  @env Application.get_env(:logflare, :env)
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+  defp env, do: Application.get_env(:logflare, :env)
 
   import Ecto.Query, only: [from: 2]
 
@@ -228,7 +228,7 @@ defmodule Logflare.Endpoints.Cache do
             # execute the queryon bigquery
             case Logflare.BqRepo.query_with_sql_and_params(
                    state.query.user,
-                   state.query.user.bigquery_project_id || @project_id,
+                   state.query.user.bigquery_project_id || env_project_id(),
                    query,
                    params,
                    parameterMode: "NAMED",
@@ -315,7 +315,7 @@ defmodule Logflare.Endpoints.Cache do
 
   defp process_message(message, user_id) when is_binary(message) do
     regex =
-      ~r/#{@project_id}\.#{user_id}_#{@env}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
+      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
 
     names = Regex.named_captures(regex, message)
 

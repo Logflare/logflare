@@ -26,7 +26,8 @@ defmodule Logflare.Source do
              :notifications,
              :custom_event_message_keys
            ]}
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+  defp env_dataset_id_append,
+    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
@@ -234,7 +235,7 @@ defmodule Logflare.Source do
 
     table = format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> @dataset_id_append
+    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> env_dataset_id_append()
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
   end
