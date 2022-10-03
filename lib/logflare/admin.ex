@@ -7,7 +7,7 @@ defmodule Logflare.Admin do
 
   A delay (default is 5s) occurs just before systen stop is triggered.
   """
-  @spec shutdown(node(), integer()) :: {:ok, %Task{}}
+  @spec shutdown(node(), integer()) :: {:ok, Task.t()}
   def shutdown(node \\ Node.self(), delay \\ 5000) when is_atom(node) do
     task =
       Task.async(fn ->

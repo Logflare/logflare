@@ -1,9 +1,9 @@
 defmodule Logflare.Teams.Team do
   @moduledoc false
-  use Ecto.Schema
   import Ecto.Changeset
+  use TypedEctoSchema
 
-  schema "teams" do
+  typed_schema "teams" do
     field :name, :string
     belongs_to :user, Logflare.User
     has_many :team_users, Logflare.TeamUsers.TeamUser

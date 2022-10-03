@@ -1,9 +1,9 @@
 defmodule Logflare.Billing.PaymentMethod do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
-  schema "payment_methods" do
+  typed_schema "payment_methods" do
     field :price_id, :string
     field :stripe_id, :string
     field :customer_id, :string

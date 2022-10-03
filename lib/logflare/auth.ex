@@ -28,7 +28,7 @@ defmodule Logflare.Auth do
   end
 
   @doc "List Oauth access tokens by user"
-  @spec list_valid_access_tokens(%User{}) :: [%OauthAccessToken{}]
+  @spec list_valid_access_tokens(User.t()) :: [OauthAccessToken.t()]
   def list_valid_access_tokens(%User{id: user_id}) do
     Repo.all(
       from t in OauthAccessToken, where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at)
@@ -37,8 +37,8 @@ defmodule Logflare.Auth do
 
   @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
   @typep create_attrs :: %{description: String.t()} | map()
-  @spec create_access_token(%Team{} | %User{}, create_attrs()) ::
-          {:ok, %OauthAccessToken{}} | {:error, term()}
+  @spec create_access_token(Team.t() | User.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t()} | {:error, term()}
   def create_access_token(user_or_team, attrs \\ %{})
 
   def create_access_token(%Team{user_id: user_id}, attrs) do
@@ -56,7 +56,7 @@ defmodule Logflare.Auth do
   end
 
   @doc "Verifies a  `%OauthAccessToken{}` or string access token. If valid, returns the token's associated user."
-  @spec verify_access_token(%OauthAccessToken{} | binary()) :: {:ok, %User{}} | {:error, term()}
+  @spec verify_access_token(OauthAccessToken.t() | binary()) :: {:ok, User.t()} | {:error, term()}
   def verify_access_token(%OauthAccessToken{token: str_token}) do
     verify_access_token(str_token)
   end
@@ -73,7 +73,7 @@ defmodule Logflare.Auth do
   end
 
   @doc "Revokes a given access token."
-  @spec revoke_access_token(%OauthAccessToken{} | binary()) :: :ok | {:error, term()}
+  @spec revoke_access_token(OauthAccessToken.t() | binary()) :: :ok | {:error, term()}
   def revoke_access_token(token) when is_binary(token) do
     ExOauth2Provider.AccessTokens.get_by_token(token)
     |> revoke_access_token()
