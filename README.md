@@ -48,7 +48,7 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 
 ## Developer
 
-## Env Setup
+### Env Setup
 
 1. Install dependencies with `asdf` using `asdf install`
    1. **IMPORTANT**: [Set `JAVA_HOME`](https://github.com/halcyon/asdf-java#java_home)
