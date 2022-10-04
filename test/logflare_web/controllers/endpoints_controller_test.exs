@@ -1,6 +1,17 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
 
+  setup do
+    # mock sql behaviour
+    Logflare.SQL
+    |> stub(:source_mapping, fn query, _, _ -> {:ok, query} end)
+    |> stub(:parameters, fn _query -> {:ok, %{}} end)
+    |> stub(:transform, fn query, _user_id -> {:ok, query} end)
+    |> stub(:sources, fn _query, _user_id -> {:ok, %{}} end)
+
+    :ok
+  end
+
   describe "query" do
     setup :set_mimic_global
 
@@ -8,11 +19,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       source = build(:source, rules: [])
       user = insert(:user, sources: [source])
       _plan = insert(:plan, name: "Free")
-      # mock sql behaviour
-      Logflare.SQL
-      |> stub(:source_mapping, fn query, _, _ -> {:ok, query} end)
-      |> stub(:parameters, fn _query -> {:ok, %{}} end)
-      |> stub(:transform, fn query, _user_id -> {:ok, query} end)
 
       # mock goth behaviour
       Goth
@@ -45,43 +51,53 @@ defmodule LogflareWeb.EndpointsControllerTest do
     end
   end
 
-  # TODO: migrate endpoints ui to use liveview
   describe "ui" do
-    test "Endpoints index", %{conn: conn} do
+    @valid_params %{
+      name: "current date",
+      query: "select current_date() as date"
+    }
+    setup %{conn: conn} do
       plan = insert(:plan, name: "Free", type: "standard")
       user = insert(:user)
       _source = insert(:source, user: user)
       _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
       user = user |> Logflare.Repo.preload(:billing_account)
-
       conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+      [conn: conn]
+    end
 
+    test "Endpoints index", %{conn: conn} do
       conn = get(conn, Routes.endpoints_path(conn, :index))
-
       assert html_response(conn, 200) =~ "/endpoints"
     end
 
-    @tag :failing
-    test "Endpoint for User", %{conn: conn} do
-      _plan = insert(:plan, name: "Free", type: "standard")
-      user = insert(:user)
-      _source = insert(:source, user: user)
-      _billing_account = insert(:billing_account, user: user)
-      user = user |> Logflare.Repo.preload(:billing_account)
+    test "Edit Endpoint", %{conn: conn} do
+      conn =
+        conn
+        |> post(Routes.endpoints_path(conn, :create), query: @valid_params)
 
-      params = %{
-        "name" => "current date",
-        "query" => "select current_date() as date"
-      }
+      assert %{id: id} = redirected_params(conn)
 
       conn =
-        conn |> assign(:user, user) |> post(Routes.endpoints_path(conn, :create), query: params)
+        conn
+        |> get(Routes.endpoints_path(conn, :edit, id))
+
+      assert html_response(conn, 200) =~ "Query Sandboxing"
+    end
+
+    test "Endpoint for User", %{conn: conn} do
+      conn =
+        conn
+        |> post(Routes.endpoints_path(conn, :create), query: @valid_params)
 
       assert %{id: id} = redirected_params(conn)
       assert redirected_to(conn) == Routes.endpoints_path(conn, :show, id)
 
-      conn = get(conn, Routes.endpoints_path(conn, :show, id))
-      assert html_response(conn, 200) =~ "/endpoints/"
+      conn = conn |> get(Routes.endpoints_path(conn, :show, id))
+      assert html = html_response(conn, 200)
+      assert html =~ "/endpoints/"
+      assert html =~ "current date"
+      assert html =~ @valid_params.query
     end
   end
 
