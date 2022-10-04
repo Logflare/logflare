@@ -49,23 +49,19 @@ body {
   background-color: #161616;
   color: #9a9a9a;
   font-size: 1em;
+  display: flex;
+  flex-direction: column;
+  .navbar {
+    position: sticky;
+    top:0;
+    right: 0;
+    left: 0;
+    z-index: 1030;
+  }
 }
 
 main.app {
-  margin-top: 180px;
   padding-bottom: 10px;
-  /*  & h2 {
-    color: $whitecolor;
-  }
-
-  & h3 {
-    color: $whitecolor;
-    margin-top: 1.5em;
-  }
-
-  & h4 {
-    margin-top: 1em;
-  } */
 }
 
 .pre-metadata {

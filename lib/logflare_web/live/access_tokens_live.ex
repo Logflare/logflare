@@ -6,7 +6,7 @@ defmodule LogflareWeb.AccessTokensLive do
 
   def render(assigns) do
     ~L"""
-    <div class="subhead subhead-fixed">
+    <div class="subhead">
     <div class="container mx-auto">
     <h5>~/account/access tokens</h5>
     </div>
