@@ -46,26 +46,27 @@ We are leaving this repo public as an example of a larger Elixir project. We hop
 
 Logflare is using a SQL parser from sqlparser.com. To set this up on your dev machine:
 
-- Copy parser from sqlparser.com into `sql/gsp`. When extracted it's located at `lib/gudusoft.gsqlparser-2.5.2.5.jar`
-- Install Java with homebrew (MacOS) by running `brew install cask java`
-- Run `mix sql`
-
 ## Dev Setup
 
-1. Copy over secrets to two locations
+1. Install dependencies with `asdf` using `asdf install`
+   1. **IMPORTANT**: [Set `JAVA_HOME`](https://github.com/halcyon/asdf-java#java_home)
+2. Install SQL Parser
+   1. Copy parser from sqlparser.com into `sql/gsp`. When extracted it's located at `lib/gudusoft.gsqlparser-2.5.2.5.jar`
+   2. Run `mix sql`
+3. Copy over secrets to two locations
    1. Dev secrets - `configs/dev.secret.exs`
    2. Google JWT key - `config/secrets/logflare-dev-238720-63d50e3c9cc8.json`
-2. Start database `docker-compose up -d`
-3. Run `mix setup` for deps, migrations, and seed data.
-4. Restart your postgres server for replication settings to take effect `docker-compose restart`
-5. Run `(cd assets; yarn)` from project root, to install js dependencies
-6. Install `sqlparser` by following the steps in **Closed Source Usage** section.
-7. Start server`mix start`
-8. Sign in as a user
-9. Create a source
-10. Update `dev.secrets.exs`, search for the `:logflare_logger_backend` config and update the user api key and source id
-11. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
-12. In `iex` console, test that everything works:
+4. Start database `docker-compose up -d`
+5. Run `mix setup` for deps, migrations, and seed data.
+6. Restart your postgres server for replication settings to take effect `docker-compose restart`
+7. Run `(cd assets; yarn)` from project root, to install js dependencies
+8. Install `sqlparser` by following the steps in **Closed Source Usage** section.
+9. Start server`mix start`
+10. Sign in as a user
+11. Create a source
+12. Update `dev.secrets.exs`, search for the `:logflare_logger_backend` config and update the user api key and source id
+13. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
+14. In `iex` console, test that everything works:
 
 ```elixir
 iex> LogflareLogger.info("testing log message")
