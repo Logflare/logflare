@@ -58,5 +58,5 @@ jobs:
         run: mix test.format
     # - name: Code quality - typings
     #   run: mix test.typings
-    # - name: Code quality - linting
-    #   run: mix lint.diff
+    - name: Code quality - linting
+      run: mix lint --only warnings

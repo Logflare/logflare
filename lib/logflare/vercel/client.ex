@@ -4,9 +4,9 @@ defmodule Logflare.Vercel.Client do
 
   alias Logflare.Vercel
 
-  @client_id Application.get_env(:logflare, __MODULE__)[:client_id]
-  @client_secret Application.get_env(:logflare, __MODULE__)[:client_secret]
-  @redirect_uri Application.get_env(:logflare, __MODULE__)[:redirect_uri]
+  defp env_client_id, do: Application.get_env(:logflare, __MODULE__)[:client_id]
+  defp env_client_secret, do: Application.get_env(:logflare, __MODULE__)[:client_secret]
+  defp env_redirect_uri, do: Application.get_env(:logflare, __MODULE__)[:redirect_uri]
 
   def new() do
     new(%Vercel.Auth{})
@@ -27,10 +27,10 @@ defmodule Logflare.Vercel.Client do
 
   def get_access_token(client, code) do
     body = %{
-      client_id: @client_id,
-      client_secret: @client_secret,
+      client_id: env_client_id(),
+      client_secret: env_client_secret(),
       code: code,
-      redirect_uri: @redirect_uri
+      redirect_uri: env_redirect_uri()
     }
 
     make_form_encoded(client)

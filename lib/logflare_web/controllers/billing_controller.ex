@@ -8,8 +8,8 @@ defmodule LogflareWeb.BillingController do
   alias Logflare.{User, Users}
   alias Logflare.Billing.Stripe
 
-  @stripe_publishable_key Application.get_env(:stripity_stripe, :publishable_key)
   @default_error_message "Something went wrong. Try that again! If this continues please contact support."
+  defp env_stripe_publishable_key, do: Application.get_env(:stripity_stripe, :publishable_key)
 
   def create(%{assigns: %{user: %User{} = user}} = conn, _params) do
     with {:ok, customer} <- Stripe.create_customer(user),
@@ -101,7 +101,7 @@ defmodule LogflareWeb.BillingController do
          {:ok, session} <- Stripe.create_payment_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
-      |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
+      |> render("confirm.html", stripe_key: env_stripe_publishable_key(), stripe_session: session)
     else
       true ->
         error_and_redirect(conn, "Please delete your current subscription first!")
@@ -123,7 +123,7 @@ defmodule LogflareWeb.BillingController do
          {:ok, session} <- Stripe.create_metered_customer_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
-      |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
+      |> render("confirm.html", stripe_key: env_stripe_publishable_key(), stripe_session: session)
     else
       true ->
         error_and_redirect(conn, "Please delete your current subscription first!")
@@ -144,7 +144,7 @@ defmodule LogflareWeb.BillingController do
          {:ok, session} <- Stripe.create_customer_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
-      |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
+      |> render("confirm.html", stripe_key: env_stripe_publishable_key(), stripe_session: session)
     else
       true ->
         error_and_redirect(conn, "Please delete your current subscription first!")
@@ -277,7 +277,7 @@ defmodule LogflareWeb.BillingController do
          {:ok, session} <- Stripe.create_add_credit_card_session(billing_account) do
       conn
       |> put_session(:stripe_session, session)
-      |> render("confirm.html", stripe_key: @stripe_publishable_key, stripe_session: session)
+      |> render("confirm.html", stripe_key: env_stripe_publishable_key(), stripe_session: session)
     else
       false ->
         error_and_redirect(conn, "Please subscribe first!")

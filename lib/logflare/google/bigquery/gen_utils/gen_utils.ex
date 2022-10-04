@@ -9,18 +9,21 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   alias Logflare.{Source, User}
   alias GoogleApi.BigQuery.V2.Connection
 
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
   @table_ttl 604_800_000
   @default_dataset_location "US"
-  @default_table_name_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] ||
-                               ""
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+  defp env_default_table_name_append,
+    do:
+      Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] ||
+        ""
 
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
     %Source{user_id: user_id} = Sources.get_by(token: source_id)
     %User{bigquery_project_id: project_id} = Users.get_by(id: user_id)
 
-    project_id || @project_id
+    project_id || env_project_id()
   end
 
   @spec get_bq_user_info(atom) :: map
@@ -42,9 +45,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
         true -> ttl * 86_400_000
       end
 
-    new_project_id = project_id || @project_id
+    new_project_id = project_id || env_project_id()
     new_dataset_location = dataset_location || @default_dataset_location
-    new_dataset_id = dataset_id || "#{user_id}" <> @default_table_name_append
+    new_dataset_id = dataset_id || "#{user_id}" <> env_default_table_name_append()
 
     %{
       user_id: user_id,

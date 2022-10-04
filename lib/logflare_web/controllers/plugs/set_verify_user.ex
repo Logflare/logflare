@@ -7,7 +7,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
   alias Logflare.{Users, User}
   alias ExOauth2Provider.AccessTokens
 
-  @oauth_config Application.get_env(:logflare, ExOauth2Provider)
+  defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
 
   def init(_), do: nil
 
@@ -69,7 +69,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
         put_401(conn, message)
 
       true ->
-        oauth_access_token = AccessTokens.get_by_token(bearer, @oauth_config)
+        oauth_access_token = AccessTokens.get_by_token(bearer, env_oauth_config())
         user = Users.Cache.get_by_and_preload(id: oauth_access_token.resource_owner_id)
 
         assign(conn, :user, user)
@@ -113,7 +113,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
   end
 
   defp is_expired?(bearer) do
-    AccessTokens.get_by_token(bearer, @oauth_config)
+    AccessTokens.get_by_token(bearer, env_oauth_config())
     |> AccessTokens.is_expired?()
   end
 end

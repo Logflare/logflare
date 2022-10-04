@@ -4,7 +4,7 @@ defmodule Logflare.Endpoints do
   alias __MODULE__.Query
   alias Logflare.Repo
 
-  @spec get_query_by_token(binary()) :: %Query{} | nil
+  @spec get_query_by_token(binary()) :: Query.t() | nil
   def get_query_by_token(token) when is_binary(token) do
     query =
       from q in Query,

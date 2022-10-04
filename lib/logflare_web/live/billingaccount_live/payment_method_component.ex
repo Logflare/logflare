@@ -10,14 +10,14 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   require Logger
 
-  @stripe_publishable_key Application.get_env(:stripity_stripe, :publishable_key)
+  defp env_stripe_publishable_key, do: Application.get_env(:stripity_stripe, :publishable_key)
 
   def preload(assigns) when is_list(assigns) do
     assigns
   end
 
   def mount(socket) do
-    socket = assign(socket, :stripe_key, @stripe_publishable_key)
+    socket = assign(socket, :stripe_key, env_stripe_publishable_key())
 
     {:ok, socket}
   end

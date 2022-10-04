@@ -29,20 +29,20 @@ defmodule Logflare.Billing do
   # BillingAccount
 
   @doc "Returns the list of billing_accounts"
-  @spec list_billing_accounts() :: [%BillingAccount{}]
+  @spec list_billing_accounts() :: [BillingAccount.t()]
   def list_billing_accounts, do: Repo.all(BillingAccount)
 
   @doc "Gets a single billing_account by a keyword."
-  @spec get_billing_account_by(keyword()) :: %BillingAccount{} | nil
+  @spec get_billing_account_by(keyword()) :: BillingAccount.t() | nil
   def get_billing_account_by(kv), do: Repo.get_by(BillingAccount, kv)
 
   @doc "Gets a single billing_account. Raises `Ecto.NoResultsError` if the Billing account does not exist."
-  @spec get_billing_account!(String.t() | number()) :: %BillingAccount{}
+  @spec get_billing_account!(String.t() | number()) :: BillingAccount.t()
   def get_billing_account!(id), do: Repo.get!(BillingAccount, id)
 
   @doc "Creates a billing_account."
-  @spec create_billing_account(%User{}, map()) ::
-          {:ok, %BillingAccount{}} | {:error, %Ecto.Changeset{}}
+  @spec create_billing_account(User.t(), map()) ::
+          {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def create_billing_account(%User{} = user, attrs \\ %{}) do
     user
     |> Ecto.build_assoc(:billing_account)
@@ -62,8 +62,8 @@ defmodule Logflare.Billing do
   end
 
   @doc "Syncs stripe subscription with %BillingAccount{} with Stripe as source of truth."
-  @spec sync_subscriptions(nil | %BillingAccount{}) ::
-          :noop | {:ok, %BillingAccount{}} | {:error, %Ecto.Changeset{}}
+  @spec sync_subscriptions(nil | BillingAccount.t()) ::
+          :noop | {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def sync_subscriptions(nil), do: :noop
 
   def sync_subscriptions(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
@@ -74,8 +74,8 @@ defmodule Logflare.Billing do
   end
 
   @doc "Syncs stripe invoices with %BillingAccount{} with Stripe as source of truth."
-  @spec sync_invoices(nil | %BillingAccount{}) ::
-          :noop | {:ok, %BillingAccount{}} | {:error, %Ecto.Changeset{}}
+  @spec sync_invoices(nil | BillingAccount.t()) ::
+          :noop | {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def sync_invoices(nil), do: :noop
 
   def sync_invoices(%BillingAccount{stripe_customer: stripe_customer_id} = billing_account) do
@@ -89,8 +89,8 @@ defmodule Logflare.Billing do
   end
 
   @doc "Syncs stripe data with %BillingAccount{} with Stripe as source of truth."
-  @spec sync_billing_account(nil | %BillingAccount{}) ::
-          :noop | {:ok, %BillingAccount{}} | {:error, %Ecto.Changeset{}}
+  @spec sync_billing_account(nil | BillingAccount.t()) ::
+          :noop | {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def sync_billing_account(
         %BillingAccount{stripe_customer: customer_id} = billing_account,
         attrs \\ %{}
@@ -110,8 +110,8 @@ defmodule Logflare.Billing do
   end
 
   @doc "Updates a billing_account"
-  @spec update_billing_account(%BillingAccount{}, map()) ::
-          {:ok, %BillingAccount{}} | {:error, %Ecto.Changeset{}}
+  @spec update_billing_account(BillingAccount.t(), map()) ::
+          {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def update_billing_account(%BillingAccount{} = billing_account, attrs) do
     billing_account
     |> BillingAccount.changeset(attrs)
@@ -119,11 +119,12 @@ defmodule Logflare.Billing do
   end
 
   @doc "Preloads the payment methods field"
-  @spec preload_payment_methods(%BillingAccount{}) :: %BillingAccount{}
+  @spec preload_payment_methods(BillingAccount.t()) :: BillingAccount.t()
   def preload_payment_methods(ba), do: Repo.preload(ba, :payment_methods)
 
   @doc "Deletes a BillingAccount for a User"
-  @spec delete_billing_account(%User{}) :: {:ok, %BillingAccount{}} | {:error, %Ecto.Changeset{}}
+  @spec delete_billing_account(User.t()) ::
+          {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def delete_billing_account(%User{billing_account: billing_account} = user) do
     with {:ok, _} = res <- Repo.delete(billing_account) do
       Source.Supervisor.reset_all_user_sources(user)
@@ -132,13 +133,13 @@ defmodule Logflare.Billing do
   end
 
   @doc "Returns an `%Ecto.Changeset{}` for tracking billing_account changes."
-  @spec change_billing_account(%BillingAccount{}) :: %Ecto.Changeset{}
+  @spec change_billing_account(BillingAccount.t()) :: Ecto.Changeset.t()
   def change_billing_account(%BillingAccount{} = billing_account) do
     BillingAccount.changeset(billing_account, %{})
   end
 
   @doc "retrieves the stripe plan stored on the BillingAccount"
-  @spec get_billing_account_stripe_plan(%BillingAccount{}) :: nil | map()
+  @spec get_billing_account_stripe_plan(BillingAccount.t()) :: nil | map()
   def get_billing_account_stripe_plan(%BillingAccount{
         stripe_subscriptions: %{"data" => [%{"plan" => plan} | _]}
       }),
@@ -147,8 +148,7 @@ defmodule Logflare.Billing do
   def get_billing_account_stripe_plan(_), do: nil
 
   @doc "gets the stripe subscription item data stored on the BillingAccount"
-  @spec get_billing_account_stripe_subscription_item(%BillingAccount{}) :: nil | map()
-
+  @spec get_billing_account_stripe_subscription_item(BillingAccount.t()) :: nil | map()
   def get_billing_account_stripe_subscription_item(%BillingAccount{
         stripe_subscriptions: %{
           "data" => [
@@ -172,20 +172,20 @@ defmodule Logflare.Billing do
   # PaymentMethod
 
   @doc "list PaymentMethod by keyword"
-  @spec list_payment_methods_by(keyword()) :: [%PaymentMethod{}]
+  @spec list_payment_methods_by(keyword()) :: [PaymentMethod.t()]
   def list_payment_methods_by(kv), do: Repo.all(from pm in PaymentMethod, where: ^kv)
 
   @doc "Gets a single payment_method.Raises `Ecto.NoResultsError` if the Payment method does not exist."
-  @spec get_payment_method!(number() | String.t()) :: %PaymentMethod{}
+  @spec get_payment_method!(number() | String.t()) :: PaymentMethod.t()
   def get_payment_method!(id), do: Repo.get!(PaymentMethod, id)
 
   @doc "get PaymentMethod by keyword"
-  @spec get_payment_method_by(keyword()) :: %PaymentMethod{}
+  @spec get_payment_method_by(keyword()) :: PaymentMethod.t()
   def get_payment_method_by(kv), do: Repo.get_by(PaymentMethod, kv)
 
   @doc "Creates a payment_method."
   @spec create_payment_method_with_stripe(map()) ::
-          {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+          {:ok, PaymentMethod.t()} | {:error, Ecto.Changeset.t()}
   def create_payment_method_with_stripe(
         %{"customer_id" => cust_id, "stripe_id" => pm_id} = params
       ) do
@@ -195,7 +195,7 @@ defmodule Logflare.Billing do
   end
 
   @doc "creates a PaymentMethod"
-  @spec create_payment_method(map()) :: {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  @spec create_payment_method(map()) :: {:ok, PaymentMethod.t()} | {:error, Ecto.Changeset.t()}
   def create_payment_method(attrs \\ %{}) when is_map(attrs) do
     %PaymentMethod{}
     |> PaymentMethod.changeset(attrs)
@@ -203,8 +203,8 @@ defmodule Logflare.Billing do
   end
 
   @doc "updates a PaymentMethod"
-  @spec update_payment_method(%PaymentMethod{}, map()) ::
-          {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  @spec update_payment_method(PaymentMethod.t(), map()) ::
+          {:ok, PaymentMethod.t()} | {:error, Ecto.Changeset.t()}
   def update_payment_method(%PaymentMethod{} = payment_method, attrs) do
     payment_method
     |> PaymentMethod.changeset(attrs)
@@ -212,8 +212,8 @@ defmodule Logflare.Billing do
   end
 
   @doc "Deletes a payment_method"
-  @spec delete_payment_method(%PaymentMethod{}) ::
-          {:ok, %PaymentMethod{}} | {:error, %Ecto.Changeset{}}
+  @spec delete_payment_method(PaymentMethod.t()) ::
+          {:ok, PaymentMethod.t()} | {:error, Ecto.Changeset.t()}
   def delete_payment_method(%PaymentMethod{} = payment_method) do
     Repo.delete(payment_method)
   end
@@ -223,8 +223,8 @@ defmodule Logflare.Billing do
   def delete_all_payment_methods_by(kv), do: Repo.delete_all(from pm in PaymentMethod, where: ^kv)
 
   @doc "Deletes PaymentMethod both in db and stripe. User must have minimally 1 payment method"
-  @spec delete_payment_method_with_stripe(%PaymentMethod{}) ::
-          {:ok, %PaymentMethod{}} | {:error, String.t()}
+  @spec delete_payment_method_with_stripe(PaymentMethod.t()) ::
+          {:ok, PaymentMethod.t()} | {:error, String.t()}
   def delete_payment_method_with_stripe(%PaymentMethod{} = payment_method) do
     with methods <- list_payment_methods_by(customer_id: payment_method.customer_id),
          count when count > 1 <- Enum.count(methods),
@@ -243,13 +243,13 @@ defmodule Logflare.Billing do
   end
 
   @doc "Returns an `%Ecto.Changeset{}` for tracking payment_method changes."
-  @spec change_payment_method(%PaymentMethod{}) :: %Ecto.Changeset{}
+  @spec change_payment_method(PaymentMethod.t()) :: Ecto.Changeset.t()
   def change_payment_method(%PaymentMethod{} = payment_method, attrs \\ %{}) do
     PaymentMethod.changeset(payment_method, attrs)
   end
 
   @doc "Syncs db PaymentMethod with stripe as a souce of truth"
-  @spec sync_payment_methods(String.t()) :: {:ok, [%PaymentMethod{}]}
+  @spec sync_payment_methods(String.t()) :: {:ok, [PaymentMethod.t()]}
   def sync_payment_methods(cust_id) do
     with {:ok, %Stripe.List{data: stripe_payment_methods}} <-
            Billing.Stripe.list_payment_methods(cust_id),
@@ -316,7 +316,7 @@ defmodule Logflare.Billing do
   end
 
   @doc "Retrieve a user's plan. Defaults to legacy plan if billing is not enabled."
-  @spec get_plan_by_user(%User{}) :: Plan.t()
+  @spec get_plan_by_user(User.t()) :: Plan.t()
   def get_plan_by_user(%User{} = user) do
     if user.billing_enabled do
       case Billing.get_billing_account_by(user_id: user.id) do

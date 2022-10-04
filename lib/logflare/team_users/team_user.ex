@@ -1,11 +1,11 @@
 defmodule Logflare.TeamUsers.TeamUser do
   @moduledoc false
-  use Ecto.Schema
   import Ecto.Changeset
   alias Logflare.Users.UserPreferences
   alias Logflare.Teams.Team
+  use TypedEctoSchema
 
-  schema "team_users" do
+  typed_schema "team_users" do
     field :email, :string
     field :email_me_product, :boolean, default: true
     field :email_preferred, :string

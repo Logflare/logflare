@@ -7,17 +7,6 @@ defmodule LogflareWeb.Router do
 
   # TODO: move plug calls in SourceController and RuleController into here
 
-  @csp """
-  \
-  default-src 'self';\
-  connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
-  style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
-  img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
-  font-src 'self' https://use.fontawesome.com;\
-  frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com https://www.youtube.com;\
-  """
-
   pipeline :browser do
     plug Plug.RequestId
     plug :accepts, ["html"]
@@ -28,7 +17,19 @@ defmodule LogflareWeb.Router do
     plug :protect_from_forgery
 
     plug :put_secure_browser_headers, %{
-      "content-security-policy" => @csp,
+      "content-security-policy" =>
+        (fn ->
+           """
+           \
+           default-src 'self';\
+           connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
+           script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
+           style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
+           img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
+           font-src 'self' https://use.fontawesome.com;\
+           frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com https://www.youtube.com;\
+           """
+         end).(),
       "referrer-policy" => "same-origin"
     }
 

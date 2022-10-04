@@ -3,10 +3,8 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.ComputeClient do
   Inteface to GCP for the cluster strategy.
   """
   require Logger
-
   use Tesla
-
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 
   plug Tesla.Middleware.Retry,
     delay: 500,
@@ -19,7 +17,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.ComputeClient do
     end
 
   plug Tesla.Middleware.BaseUrl,
-       "https://compute.googleapis.com/compute/v1/projects/#{@project_id}"
+       "https://compute.googleapis.com/compute/v1/projects/#{env_project_id()}"
 
   plug Tesla.Middleware.JSON
 
