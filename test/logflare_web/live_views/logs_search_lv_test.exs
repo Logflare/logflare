@@ -9,21 +9,124 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql
   alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Repo
+  alias Logflare.Logs.SearchQueryExecutor
+  alias LogflareWeb.Source.SearchLV
   @test_token :"2e051ba4-50ab-4d2a-b048-0dc595bfd6cf"
   @moduletag :this
 
-  setup_all do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
-    Sources.Counters.start_link()
+  @default_search_params %{
+    "querystring" => "c:count(*) c:group_by(t::minute)",
+    "chart_period" => "minute",
+    "chart_aggregate" => "count",
+    "tailing?" => "false"
+  }
 
-    source = Sources.get_by(token: @test_token)
+  setup %{conn: conn} do
+    start_supervised!(Sources.Counters)
 
-    {:ok, pid} = RLS.start_link(%RLS{source_id: @test_token, source: source})
-    Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+    plan = insert(:plan, name: "Free", type: "standard")
+    user = insert(:user)
+    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
+    user = user |> Logflare.Repo.preload(:billing_account)
+    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+    source = insert(:source, user_id: user.id)
+    rls = %RLS{source_id: source.token, plan: plan}
+    start_supervised!({Schema, rls})
+    start_supervised!({SearchQueryExecutor, rls})
 
-    :ok
+    # mocks
+    Goth
+    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+      {:ok, TestUtils.gen_bq_response(:source)}
+    end)
+
+    on_exit(fn ->
+      Logflare.Utils.Tasks.kill_all_tasks()
+    end)
+
+    [conn: conn, user: user, source: source]
   end
+
+  test "load page", %{conn: conn, source: source} do
+    {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+    assert html =~ "~/logs/"
+    assert html =~ source.name
+    assert html =~ "/search"
+
+    # wait for async search task to complete
+    :timer.sleep(1000)
+    html = view |> element("#logs-list-container") |> render()
+    assert html =~ "some event message"
+
+    html = view |> render()
+    assert html =~ "Elapsed since last query"
+
+    # default input values
+    assert find_selected_chart_period(html) == "minute"
+    assert find_chart_aggregate(html) == "count"
+    assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
+  end
+
+  test "lql filters", %{conn: conn, source: source} do
+    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+    :timer.sleep(1000)
+
+    html = view |> element("#logs-list-container") |> render()
+    assert html =~ "some event message"
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      params = opts[:body].queryParameters
+      if length(params) > 2 do
+        assert Enum.any?(params, fn param -> param.parameterValue.value == "crasher" end )
+        assert Enum.any?(params, fn param -> param.parameterValue.value == "error" end )
+      end
+
+      {:ok, TestUtils.gen_bq_response(:source, "some error message")}
+
+    end)
+
+    view
+    |> render_change(:form_update, %{
+      "search" => %{
+        @default_search_params
+        | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
+      }
+    })
+
+    :timer.sleep(1000)
+    view
+    |> render_change(:start_search, %{
+      "search" => %{
+        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
+      }
+    })
+
+    # wait for async search task to complete
+    :timer.sleep(1000)
+
+    html = view |> element("#logs-list-container") |> render()
+
+    assert html =~ "some error message"
+    refute html =~ "some event message"
+  end
+
+  # setup_all do
+  #   :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+  #   Sources.Counters.start_link()
+
+  #   source = Sources.get_by(token: @test_token)
+
+  #   {:ok, pid} = RLS.start_link(%RLS{source_id: @test_token, source: source})
+  #   Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+
+  #   :ok
+  # end
 
   describe "user action flow simulation" do
     setup [:assign_user_source]
