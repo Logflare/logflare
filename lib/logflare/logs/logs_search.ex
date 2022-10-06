@@ -7,6 +7,7 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.BqRepo
+  alias Logflare.Utils.Tasks
   alias Logflare.Google.BigQuery.GCPConfig
   import Ecto.Query
 
@@ -15,7 +16,7 @@ defmodule Logflare.Logs.Search do
     so = get_and_put_partition_by(so)
 
     tasks = [
-      Task.async(fn -> search_events(so) end)
+      Tasks.async(fn -> search_events(so) end)
     ]
 
     tasks_with_results = Task.yield_many(tasks, 30_000)
@@ -46,7 +47,7 @@ defmodule Logflare.Logs.Search do
     so = get_and_put_partition_by(so)
 
     tasks = [
-      Task.async(fn -> search_result_aggregates(so) end)
+      Tasks.async(fn -> search_result_aggregates(so) end)
     ]
 
     tasks_with_results = Task.yield_many(tasks, 30_000)

@@ -12,6 +12,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Source
   alias Logflare.SavedSearches
   alias Logflare.Lql
+  alias Logflare.Utils.Tasks
   use TypedStruct
   require Logger
   @query_timeout 60_000
@@ -54,7 +55,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_execute_events_query(source_token, params) when is_atom(source_token) do
-    Task.start_link(fn ->
+    Tasks.start_child(fn ->
       update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
     end)
 
@@ -303,7 +304,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       start_cache_streaming_buffer_task(so.source)
     end
 
-    Task.async(fn ->
+    Tasks.async(fn ->
       so
       |> Search.search()
       |> case do
@@ -319,7 +320,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   def start_aggs_task(lv_pid, params) do
     so = SO.new(params)
 
-    Task.async(fn ->
+    Tasks.async(fn ->
       so
       |> Search.aggs()
       |> case do
@@ -333,7 +334,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def start_cache_streaming_buffer_task(%Source{} = source) do
-    Task.start_link(fn ->
+    Tasks.start_child(fn ->
       source
       |> Search.query_source_streaming_buffer()
       |> case do
