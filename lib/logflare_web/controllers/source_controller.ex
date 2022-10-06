@@ -24,7 +24,10 @@ defmodule LogflareWeb.SourceController do
   alias LogflareWeb.AuthController
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-  defp env_dataset_id_append, do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+
+  defp env_dataset_id_append,
+    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+
   @lql_dialect :routing
 
   def api_index(%{assigns: %{user: user}} = conn, _params) do
