@@ -3,8 +3,10 @@ defmodule Logflare.SigtermHandler do
   @behaviour :gen_event
   require Logger
 
-  defp env_grace_period, do: Application.get_env(:logflare, :sigterm_shutdown_grace_period_ms) ||
-                  throw("Not configured")
+  defp env_grace_period,
+    do:
+      Application.get_env(:logflare, :sigterm_shutdown_grace_period_ms) ||
+        throw("Not configured")
 
   @impl true
   def init(_) do
@@ -21,7 +23,9 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_event(:sigterm, state) do
-    Logger.warn("#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds")
+    Logger.warn(
+      "#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds"
+    )
 
     # Not sure something is causing the cluster to have issues when an instance gets shutdown
     :rpc.eval_everywhere(Node.list(), :erlang, :disconnect_node, [Node.self()])
@@ -34,7 +38,9 @@ defmodule Logflare.SigtermHandler do
   end
 
   def handle_event(:sigquit, state) do
-    Logger.warn("#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds")
+    Logger.warn(
+      "#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds"
+    )
 
     Process.send_after(self(), :proceed_with_sigterm, env_grace_period())
 
