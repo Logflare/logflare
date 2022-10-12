@@ -1,0 +1,66 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-primary: #2e8555;
+  --ifm-color-primary-dark: #29784c;
+  --ifm-color-primary-darker: #277148;
+  --ifm-color-primary-darkest: #205d3b;
+  --ifm-color-primary-light: #33925d;
+  --ifm-color-primary-lighter: #359962;
+  --ifm-color-primary-lightest: #3cad6e;
+  --ifm-font-size-base: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #5eeb8f;
+  --ifm-color-primary-dark: #41e77b;
+  --ifm-color-primary-darker: #32e670;
+  --ifm-color-primary-darkest: #19cd58;
+  --ifm-color-primary-light: #7befa3;
+  --ifm-color-primary-lighter: #8af0ae;
+  --ifm-color-primary-lightest: #b6f6cc;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* custom navbar color */
+.navbar {
+  background-color: #5eeb8f;
+  /* drop shadow */
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.1)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.06));
+}
+
+.navbar__item, .navbar__title, .navbar button, .navbar a{
+  color: #000000;
+  stroke: #000000;
+  &:hover{
+    color: #0d662c;
+    stroke: #0d662c;
+  }
+}
+div[class^='toggle'] {
+    background: none;
+  button {
+    &:hover{
+      color: #ffffff;
+      stroke: #ffffff;
+    background: #414141;
+  }
+}
+}
+
+/* custom image css */
+.markdown img {
+  display: block;;
+  max-height: 300px;
+  max-width: 80%;
+  margin-left: auto;
+  margin-right: auto;
+  object-fit: contain;
+}
