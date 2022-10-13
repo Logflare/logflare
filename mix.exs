@@ -65,7 +65,7 @@ defmodule Logflare.Mixfile do
       # Phoenix and LogflareWeb
       {:phoenix, "~> 1.5.0", override: true},
       {:phoenix_pubsub, "~> 2.0.0"},
-      {:phoenix_ecto, "~> 4.0"},
+      {:phoenix_ecto, "~> 4.4"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       # {:plug, "~> 1.8"},
@@ -83,7 +83,7 @@ defmodule Logflare.Mixfile do
 
       # Oauth2 provider
       {:phoenix_oauth2_provider, "~> 0.5.1"},
-      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
+      {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
       {:postgrex, ">= 0.0.0"},
@@ -141,8 +141,8 @@ defmodule Logflare.Mixfile do
       {:goth, "~> 1.3-rc"},
 
       # Ecto
-      {:ecto, "~> 3.5", override: true},
-      {:ecto_sql, "~> 3.5"},
+      {:ecto, "~> 3.9", override: true},
+      {:ecto_sql, "~> 3.9"},
       {:typed_ecto_schema, "~> 0.1.0"},
 
       # Telemetry & logging
