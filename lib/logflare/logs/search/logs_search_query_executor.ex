@@ -118,21 +118,17 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # Callbacks
 
   @impl true
-  def init(%{source_id: source_id} = args) do
+  def init(%{source_id: source_id}) do
     Logger.debug("SearchQueryExecutor #{name(source_id)} is being initialized...")
-    {:ok, args, {:continue, :after_init}}
-  end
 
-  @impl true
-  def handle_continue(:after_init, state) do
     state = %__MODULE__{
-      user: Users.get_by_source(state.source_id),
+      user: Users.get_by_source(source_id),
       agg_tasks: %{},
       event_tasks: %{},
-      source_id: state.source_id
+      source_id: source_id
     }
 
-    {:noreply, state}
+    {:ok, state}
   end
 
   @impl true
