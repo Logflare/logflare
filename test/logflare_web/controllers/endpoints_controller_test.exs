@@ -100,5 +100,4 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert html =~ @valid_params.query
     end
   end
-
 end

@@ -68,8 +68,9 @@ defmodule LogflareWeb.AdminController do
     |> put_flash(:error, "You are not chase@logflare.app!")
     |> redirect(to: Routes.admin_path(conn, :accounts))
   end
+
   def shutdown_node(conn, params) do
-    if (Map.get(params, "code") == env_node_shutdown_code()) do
+    if Map.get(params, "code") == env_node_shutdown_code() do
       do_authorized_code_shutdown(conn, params)
     else
       do_unauthorized_code_shutdown(conn, params)
@@ -98,6 +99,7 @@ defmodule LogflareWeb.AdminController do
       })
     end
   end
+
   defp do_authorized_code_shutdown(conn, _params) do
     Admin.shutdown()
 

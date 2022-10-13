@@ -6,7 +6,8 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.{User, Repo, Users, TeamUsers, Source.Supervisor, Billing.Stripe}
 
-  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
+  defp env_service_account,
+    do: Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   def api_show(%{assigns: %{user: user}} = conn, _params) do
     conn
