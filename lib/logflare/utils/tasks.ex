@@ -13,14 +13,12 @@ defmodule Logflare.Utils.Tasks do
     Task.Supervisor.async(Logflare.TaskSupervisor, func, opts)
   end
 
-
   @doc """
   Not linked to caller, only to supervisor.
   """
   def start_child(func, opts \\ []) do
     Task.Supervisor.start_child(Logflare.TaskSupervisor, func, opts)
   end
-
 
   @doc """
   Kills all tasks under the supervisor.
