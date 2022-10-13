@@ -77,13 +77,13 @@ defmodule Logflare.Source do
              ]}
 
     embedded_schema do
-      field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
-      field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_email, {:array, :string}, default: []
+      field :team_user_ids_for_sms, {:array, :string}, default: []
       field :other_email_notifications, :string
       field :user_email_notifications, :boolean, default: false
       field :user_text_notifications, :boolean, default: false
       field :user_schema_update_notifications, :boolean, default: true
-      field :team_user_ids_for_schema_updates, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_schema_updates, {:array, :string}, default: []
     end
 
     def changeset(notifications, attrs) do
@@ -118,7 +118,7 @@ defmodule Logflare.Source do
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
-    field :notifications_every, :integer, default: :timer.hours(4), nullable: false
+    field :notifications_every, :integer, default: :timer.hours(4)
     field :lock_schema, :boolean, default: false
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.Term, default: []
