@@ -1934,54 +1934,20 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
-  describe "LQL encoding" do
-    test "to_datetime_with_range" do
-      lv = "2020-01-01T03:14:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-01-01T03:54:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{14..54}:15"
-    end
-
-    test "to_datetime_with_range 2" do
-      lv = "2020-01-01T03:40:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-01-01T03:45:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{40..45}:15"
-    end
-
-    test "to_datetime_with_range 3" do
-      lv = "2020-01-01T03:05:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-01-01T03:59:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T03:{05..59}:15"
-    end
-
-    test "to_datetime_with_range 4" do
-      lv = "2020-01-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-01-01T23:00:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-01T{17..23}:00:15"
-    end
-
-    test "to_datetime_with_range 5" do
-      lv = "2020-01-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-01-15T17:00:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-01-{01..15}T17:00:15"
-    end
-
-    test "to_datetime_with_range 6" do
-      lv = "2020-12-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-12-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-12-01T17:00:15"
-    end
-
-    test "to_datetime_with_range 7" do
-      lv = "2020-12-01T17:00:15Z" |> NaiveDateTime.from_iso8601!()
-      rv = "2020-12-01T17:50:15Z" |> NaiveDateTime.from_iso8601!()
-
-      assert Lql.Encoder.to_datetime_with_range(lv, rv) == "2020-12-01T17:{00..50}:15"
+  test "Encoder.to_datetime_with_range/2" do
+    for {start_str, end_str, expected} <- [
+          # minutes
+          {"2020-01-01T03:05:15Z", "2020-01-01T03:59:15Z", "2020-01-01T03:{05..59}:15"},
+          # hour
+          {"2020-01-01T17:00:15Z", "2020-01-01T23:00:15Z", "2020-01-01T{17..23}:00:15"},
+          # day
+          {"2020-01-01T17:00:15Z", "2020-01-15T17:00:15Z", "2020-01-{01..15}T17:00:15"},
+          # none
+          {"2020-12-01T17:00:15Z", "2020-12-01T17:00:15Z", "2020-12-01T17:00:15"}
+        ] do
+      start_value = NaiveDateTime.from_iso8601!(start_str)
+      end_value = NaiveDateTime.from_iso8601!(end_str)
+      assert Lql.Encoder.to_datetime_with_range(start_value, end_value) == expected
     end
   end
 
