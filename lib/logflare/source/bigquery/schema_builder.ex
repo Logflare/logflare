@@ -15,6 +15,102 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   * old_schema: existing Model.TableFieldSchema,
 
   Accepts both metadata map and metadata map wrapped in a list.
+
+  By default, will generate 4 top-level fields:
+  - metadata
+  - id
+  - timestamp
+  - event_message
+
+    iex> %TS{fields: fields} = SchemaBuilder.build_table_schema(%{}, @default_schema)
+    iex> length(fields)
+    4
+    iex> fields |> Enum.map( &(&1.name)) |> Enum.sort()
+    ["event_message", "id", "metadata", "timestamp"]
+
+  The metadata field will ways be of `RECORD` type and `REPEATED` mode.
+    iex> %TS{fields: fields} = SchemaBuilder.build_table_schema(%{}, @default_schema)
+    iex> Enum.find(fields, &(&1.name == "metadata"))
+    %TFS{name: "metadata", fields: [], type: "RECORD", mode: "REPEATED"}
+
+  Metadata map will result in nested fields on the respective `fields` key on the `TableFieldSchema`.any()
+
+  For nested string fields:
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> "some thing"}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "STRING" }
+
+  For nested integer fields:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "INTEGER" }
+
+
+  For nested float fields:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1.0}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "FLOAT" }
+
+  For nested boolean fields:
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> true}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "BOOL" }
+
+
+  ### Maps
+
+  For nested fields, the intermediate level will be a `RECORD`
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1.0}}, @default_schema)
+    iex> b_schema = TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a")
+    %TFS{ name: "a", mode: "REPEATED", type: "RECORD", fields: [b_schema] }
+
+  When there is an array of maps, it results in the following:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> [
+    ...>  %{"b1"=> "seomthing"},
+    ...>  %{"b2"=> 1.0},
+    ...>]}, @default_schema)
+    iex> b1_schema =  TestUtils.BigQuery.get_field(schema, "metadata.a.b1")
+    %TFS{ name: "b1", mode: "NULLABLE", type: "STRING" }
+    iex> b2_schema =  TestUtils.BigQuery.get_field(schema, "metadata.a.b2")
+    %TFS{ name: "b2", mode: "NULLABLE", type: "FLOAT" }
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a")
+    %TFS{ name: "a", mode: "REPEATED", type: "RECORD", fields: [b1_schema, b2_schema] }
+
+  Notice that for both cases, the `a` key is set to `REPEATED`
+
+  ### Arrays
+  For arrays fields, the mode will be repeated, and the array type set to the `:type` key:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> [1.0]}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{ name: "b", mode: "REPEATED", type: "FLOAT" }
+
+  Likewise, the same occurs for string arrays:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> ["something"]}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{ name: "b", mode: "REPEATED", type: "STRING" }
+
+
+
+  ### Empty Maps
+  For empty maps, there will not be any inner fields created for the record created:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> %{}}}, @default_schema)
+    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    %TFS{fields: [], mode: "REPEATED", name: "b", type: "RECORD"}
+
+  ### Exceptions
+  There are certain cases where the inner field types are ambiguous and an error is raised.
+  - Single nested arrays `[]`
+  - Double nested arrays `[[]]`
+
+    iex> func = &(fn -> SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> &1}}, @default_schema) end)
+    iex> assert_raise ArgumentError, func.([])
+    %ArgumentError{message: "errors were found at the given arguments:\\n\\n  * 1st argument: not a nonempty list\\n"}
+    iex> assert_raise ArgumentError, func.([[]])
+    %ArgumentError{message: "errors were found at the given arguments:\\n\\n  * 1st argument: not a nonempty list\\n"}
+
   """
   @spec build_table_schema([map], TFS.t()) :: TFS.t()
   def build_table_schema([metadata], old_schema) do
@@ -69,7 +165,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   end
 
   @spec build_metadata_fields_schemas(map, TFS.t()) :: TFS.t()
-  def build_metadata_fields_schemas(metadata, old_metadata_schema) do
+  defp build_metadata_fields_schemas(metadata, old_metadata_schema) do
     new_metadata_schema = build_fields_schemas({"metadata", metadata})
 
     old_metadata_schema
@@ -77,7 +173,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> DeepMerge.deep_merge(new_metadata_schema)
   end
 
-  def build_fields_schemas({params_key, params_val}) when is_map(params_val) do
+  defp build_fields_schemas({params_key, params_val}) when is_map(params_val) do
     %TFS{
       description: nil,
       mode: "REPEATED",
@@ -87,7 +183,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     }
   end
 
-  def build_fields_schemas(maps) when is_list(maps) do
+  defp build_fields_schemas(maps) when is_list(maps) do
     maps
     |> Enum.reduce(%{}, &DeepMerge.deep_merge/2)
     |> Enum.reject(fn
@@ -97,7 +193,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> Enum.map(&build_fields_schemas/1)
   end
 
-  def build_fields_schemas({params_key, params_value}) do
+  defp build_fields_schemas({params_key, params_value}) do
     case SchemaTypes.to_schema_type(params_value) do
       {"ARRAY", "RECORD"} ->
         %TFS{
