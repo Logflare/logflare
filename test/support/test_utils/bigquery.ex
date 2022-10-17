@@ -6,6 +6,19 @@ defmodule Logflare.TestUtils.BigQuery do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
 
+  def get_field(%TS{} = schema, str_path) when is_binary(str_path) do
+    str_path
+    |> String.split(".")
+    |> Enum.reduce(schema, fn
+      _key, nil -> nil
+      key, %_{} = schema -> get_nested_field(schema, key)
+    end)
+  end
+
+  defp get_nested_field(%_{fields: fields}, name) do
+    Enum.find(fields, fn field -> field.name == name end)
+  end
+
   @doc """
   Utility function for removing everything except schemas names from TableFieldSchema structs
   for easier debugging of errors when not all fields schemas are present in the result
@@ -33,7 +46,7 @@ defmodule Logflare.TestUtils.BigQuery do
   Utility function for a cleaner code
   """
   def schemas() do
-    for id <- ~w(initial first second third list_of_maps)a, into: Map.new() do
+    for id <- ~w(initial second third list_of_maps)a, into: Map.new() do
       sorted_schema = id |> get_schema() |> SchemaUtils.deep_sort_by_fields_name()
       {id, sorted_schema}
     end
@@ -43,49 +56,9 @@ defmodule Logflare.TestUtils.BigQuery do
   Utility function for a cleaner code
   """
   def metadatas() do
-    for id <- ~w(first second third third_deep_nested_removed list_of_maps)a, into: Map.new() do
+    for id <- ~w(third third_deep_nested_removed)a, into: Map.new() do
       {id, get_params(id)["metadata"]}
     end
-  end
-
-  def get_params(:first) do
-    %{
-      "event_message" => "This is an example.",
-      "id" => "uuid",
-      "metadata" => [
-        %{
-          "datacenter" => "aws",
-          "ip_address" => "100.100.100.100",
-          "request_method" => "POST"
-        }
-      ],
-      "timestamp" => ~N[2019-04-12 16:38:37]
-    }
-  end
-
-  def get_params(:second) do
-    %{
-      "event_message" => "This is an example.",
-      "id" => "uuid",
-      "metadata" => [
-        %{
-          "datacenter" => "aws",
-          "ip_address" => "100.100.100.100",
-          "request_method" => "POST",
-          "user" => %{
-            "address" => %{
-              "city" => "New York",
-              "st" => "NY",
-              "street" => "123 W Main St"
-            },
-            "browser" => "Firefox",
-            "id" => 38,
-            "vip" => true
-          }
-        }
-      ],
-      "timestamp" => ~N[2019-04-12 16:41:56]
-    }
   end
 
   def get_params(:third_deep_nested_removed) do
@@ -138,36 +111,6 @@ defmodule Logflare.TestUtils.BigQuery do
     }
   end
 
-  def get_params(:list_of_maps) do
-    %{
-      "event_message" => "This is an example.",
-      "id" => "uuid",
-      "metadata" => [
-        %{
-          "datacenter" => "aws",
-          "ip_address" => "100.100.100.100",
-          "request_method" => "POST",
-          "stacktrace" => [
-            %{
-              "arity_or_args" => 0,
-              "file" => "lib/logflare_pinger/log_pinger.ex",
-              "function" => "-handle_info/2-fun-0-/0",
-              "line" => 18,
-              "module" => "LogflareLoggerPinger.Server"
-            },
-            %{
-              "arity_or_args" => 2,
-              "file" => "lib/logflare_pinger/log_pinger.ex",
-              "function" => "-handle_info/2-fun-0-/0",
-              "line" => 25,
-              "module" => "LogflareLoggerPinger.Server"
-            }
-          ]
-        }
-      ],
-      "timestamp" => ~N[2019-04-12 16:38:37]
-    }
-  end
 
   def schema_and_payload_metadata(:list_of_maps_of_varying_shapes) do
     metadata = [
@@ -392,63 +335,6 @@ defmodule Logflare.TestUtils.BigQuery do
 
   def get_schema(:initial) do
     SchemaBuilder.initial_table_schema()
-  end
-
-  def get_schema(:first) do
-    %TS{
-      fields: [
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "id",
-          type: "STRING"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "event_message",
-          type: "STRING"
-        },
-        %TFS{
-          description: nil,
-          fields: [
-            %TFS{
-              description: nil,
-              fields: nil,
-              mode: "NULLABLE",
-              name: "datacenter",
-              type: "STRING"
-            },
-            %TFS{
-              description: nil,
-              fields: nil,
-              mode: "NULLABLE",
-              name: "ip_address",
-              type: "STRING"
-            },
-            %TFS{
-              description: nil,
-              fields: nil,
-              mode: "NULLABLE",
-              name: "request_method",
-              type: "STRING"
-            }
-          ],
-          mode: "REPEATED",
-          name: "metadata",
-          type: "RECORD"
-        }
-      ]
-    }
   end
 
   def get_schema(:second) do
