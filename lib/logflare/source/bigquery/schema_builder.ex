@@ -38,24 +38,24 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   For nested string fields:
 
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> "some thing"}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{ name: "b", mode: "NULLABLE", type: "STRING" }
 
   For nested integer fields:
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{ name: "b", mode: "NULLABLE", type: "INTEGER" }
 
 
   For nested float fields:
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1.0}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{ name: "b", mode: "NULLABLE", type: "FLOAT" }
 
   For nested boolean fields:
 
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> true}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{ name: "b", mode: "NULLABLE", type: "BOOL" }
 
 
@@ -63,8 +63,8 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
 
   For nested fields, the intermediate level will be a `RECORD`
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1.0}}, @default_schema)
-    iex> b_schema = TestUtils.BigQuery.get_field(schema, "metadata.a.b")
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a")
+    iex> b_schema = TestUtils.get_bq_field_schema(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a")
     %TFS{ name: "a", mode: "REPEATED", type: "RECORD", fields: [b_schema] }
 
   When there is an array of maps, it results in the following:
@@ -72,11 +72,11 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     ...>  %{"b1"=> "seomthing"},
     ...>  %{"b2"=> 1.0},
     ...>]}, @default_schema)
-    iex> b1_schema =  TestUtils.BigQuery.get_field(schema, "metadata.a.b1")
+    iex> b1_schema =  TestUtils.get_bq_field_schema(schema, "metadata.a.b1")
     %TFS{ name: "b1", mode: "NULLABLE", type: "STRING" }
-    iex> b2_schema =  TestUtils.BigQuery.get_field(schema, "metadata.a.b2")
+    iex> b2_schema =  TestUtils.get_bq_field_schema(schema, "metadata.a.b2")
     %TFS{ name: "b2", mode: "NULLABLE", type: "FLOAT" }
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a")
     %TFS{ name: "a", mode: "REPEATED", type: "RECORD", fields: [b1_schema, b2_schema] }
 
   Notice that for both cases, the `a` key is set to `REPEATED`
@@ -84,12 +84,12 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   ### Arrays
   For arrays fields, the mode will be repeated, and the array type set to the `:type` key:
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> [1.0]}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{ name: "b", mode: "REPEATED", type: "FLOAT" }
 
   Likewise, the same occurs for string arrays:
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> ["something"]}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{ name: "b", mode: "REPEATED", type: "STRING" }
 
 
@@ -97,7 +97,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   ### Empty Maps
   For empty maps, there will not be any inner fields created for the record created:
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> %{}}}, @default_schema)
-    iex> TestUtils.BigQuery.get_field(schema, "metadata.a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "metadata.a.b")
     %TFS{fields: [], mode: "REPEATED", name: "b", type: "RECORD"}
 
   ### Exceptions

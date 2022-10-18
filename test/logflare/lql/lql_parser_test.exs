@@ -5,7 +5,7 @@ defmodule Logflare.LqlParserTest do
   alias Logflare.Lql.{Parser, ChartRule, FilterRule}
   alias Logflare.DateTimeUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
-  @default_schema TestUtils.BigQuery.schemas().initial
+  @default_schema SchemaBuilder.initial_table_schema()
 
   describe "LQL parsing" do
     test "word string regexp with special characters" do

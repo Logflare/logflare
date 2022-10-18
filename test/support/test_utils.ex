@@ -2,15 +2,16 @@ defmodule Logflare.TestUtils do
   @moduledoc """
   Testing utilities. Globally alised under the `TestUtils` namespace.
   """
+  alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
 
   @spec random_string(non_neg_integer()) :: String.t()
   def random_string(length \\ 6) do
     :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)
   end
 
-  # this is a successful bq response retrieved manually
   @doc """
   Generates a mock BigQuery response.
+  This is a successful bq response retrieved manually
   """
   def gen_bq_response(type, event_message \\ "some event message")
 
@@ -110,5 +111,25 @@ defmodule Logflare.TestUtils do
       totalBytesProcessed: "0",
       totalRows: "1"
     }
+  end
+
+  @doc """
+  Used to retrieve a nested BigQuery field schema from a table schema. Returns nil if not found.
+
+  ### Example
+    iex> get_bq_field_schema(%TableSchema{...}, "metadata.a.b")
+    %TableFieldSchema{...}
+  """
+  @spec get_bq_field_schema(TableSchema.t(), String.t()) :: nil | TableFieldSchema.t()
+  def get_bq_field_schema(%TableSchema{} = schema, str_path) when is_binary(str_path) do
+    str_path
+    |> String.split(".")
+    |> Enum.reduce(schema, fn
+      _key, nil ->
+        nil
+
+      key, %_{fields: fields} ->
+        Enum.find(fields, fn field -> field.name == key end)
+    end)
   end
 end
