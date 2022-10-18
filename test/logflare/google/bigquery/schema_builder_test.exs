@@ -5,106 +5,62 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
-  @default_schema TestUtils.BigQuery.schemas().initial
+  @default_schema SchemaBuilder.initial_table_schema()
   doctest SchemaBuilder
 
-  describe "integration" do
-    test "schema not updated if keys missing: correctly builds schemas for metadata with deeply nested keys removed" do
-      new =
-        TestUtils.BigQuery.metadatas().third_deep_nested_removed
-        |> SchemaBuilder.build_table_schema(TestUtils.BigQuery.schemas().second)
+  describe "schema diffing" do
+    test "schema not updated if keys missing" do
+      prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
+      curr_schema = SchemaBuilder.build_table_schema(%{"a" => %{}}, prev_schema)
 
-      expected = TestUtils.BigQuery.schemas().second
+      assert %TFS{name: "b", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.b")
 
-      assert TestUtils.BigQuery.deep_schema_to_field_names(new) ===
-               TestUtils.BigQuery.deep_schema_to_field_names(expected)
-
-      assert new === expected
+      assert prev_schema == curr_schema
     end
 
-    test "add new schemas: correctly builds schema from third params metadata" do
-      new =
-        TestUtils.BigQuery.metadatas().third
-        |> SchemaBuilder.build_table_schema(TestUtils.BigQuery.schemas().second)
+    test "adding new field schemas" do
+      prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
+      curr_schema = SchemaBuilder.build_table_schema(%{"a" => [%{"c" => 1.0}]}, prev_schema)
 
-      expected = TestUtils.BigQuery.schemas().third
+      assert %TFS{name: "b", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.b")
 
-      assert TestUtils.BigQuery.deep_schema_to_field_names(new) ===
-               TestUtils.BigQuery.deep_schema_to_field_names(expected)
-
-      assert new === expected
+      assert %TFS{name: "c", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.c")
     end
 
-    test "maps with varying shape: correctly builds schema for lists of maps with various shapes" do
-      %{schema: expected, metadata: metadata} =
-        TestUtils.BigQuery.schema_and_payload_metadata(:list_of_maps_of_varying_shapes)
-
-      new = SchemaBuilder.build_table_schema(metadata, TestUtils.BigQuery.schemas().initial)
-
-      assert TestUtils.BigQuery.deep_schema_to_field_names(new) ===
-               TestUtils.BigQuery.deep_schema_to_field_names(expected)
-
-      assert new === expected
-    end
-  end
-
-  describe "schema update" do
-    test "schema builder errors on " do
-      fun = fn ->
+    test "highly nested map with map array" do
+      schema =
         SchemaBuilder.build_table_schema(
-          %{
-            "string1" => [
-              %{
-                "nested_string" => "string",
-                "nested_string2" => "string"
-              }
-            ]
-          },
-          existing()
+          %{"a" => [%{"b" => %{"c" => [%{"d" => 1.0}]}}]},
+          @default_schema
         )
-      end
 
-      assert catch_error(fun.()) == %Protocol.UndefinedError{
-               description: "",
-               protocol: Enumerable,
-               value: nil
-             }
+      assert %TFS{name: "d", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "metadata.a.b.c.d")
+
+      for path <- ["metadata.a", "metadata.a.b", "metadata.a.b.c"] do
+        [name | _] = String.split(path, ".") |> Enum.reverse()
+
+        assert %TFS{name: ^name, type: "RECORD", mode: "REPEATED"} =
+                 TestUtils.get_bq_field_schema(schema, path)
+      end
     end
   end
 
-  def existing() do
-    %TS{
-      fields: [
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "event_message",
-          type: "STRING"
-        },
-        %TFS{
-          description: nil,
-          fields: [
-            %TFS{
-              description: nil,
-              mode: "NULLABLE",
-              name: "string1",
-              type: "STRING",
-              fields: nil
-            }
-          ],
-          mode: "NULLABLE",
-          name: "metadata",
-          type: "RECORD"
-        }
-      ]
-    }
+  test "schema update: params do not match schema" do
+    schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
+
+    for params <- [
+          %{"a" => [1.0]},
+          %{"a" => ["test"]},
+          %{"a" => [%{"b" => %{"c" => 1.0}}]},
+          %{"a" => [%{"b" => [%{"c" => 1.0}]}]}
+        ] do
+      assert_raise Protocol.UndefinedError, fn ->
+        SchemaBuilder.build_table_schema(params, schema)
+      end
+    end
   end
 end
