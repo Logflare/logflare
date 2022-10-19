@@ -32,7 +32,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:ok, gen_mock_bq_response("2022-06-21")}
+        {:ok, TestUtils.gen_bq_response("2022-06-21")}
       end)
 
       conn =
@@ -99,42 +99,5 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert html =~ "current date"
       assert html =~ @valid_params.query
     end
-  end
-
-  # this is a successful bq response retrieved manually
-  defp gen_mock_bq_response(date) when is_binary(date) do
-    %GoogleApi.BigQuery.V2.Model.QueryResponse{
-      cacheHit: false,
-      errors: nil,
-      jobComplete: true,
-      jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{
-        jobId: "job_0rQLvVW-T5P3wSz1CnHRamZj0MiM",
-        location: "US",
-        projectId: "logflare-dev-238720"
-      },
-      kind: "bigquery#queryResponse",
-      numDmlAffectedRows: nil,
-      pageToken: nil,
-      rows: [
-        %GoogleApi.BigQuery.V2.Model.TableRow{
-          f: [%GoogleApi.BigQuery.V2.Model.TableCell{v: date}]
-        }
-      ],
-      schema: %GoogleApi.BigQuery.V2.Model.TableSchema{
-        fields: [
-          %GoogleApi.BigQuery.V2.Model.TableFieldSchema{
-            categories: nil,
-            description: nil,
-            fields: nil,
-            mode: "NULLABLE",
-            name: "date",
-            policyTags: nil,
-            type: "DATE"
-          }
-        ]
-      },
-      totalBytesProcessed: "0",
-      totalRows: "1"
-    }
   end
 end
