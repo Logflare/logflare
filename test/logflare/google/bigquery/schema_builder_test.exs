@@ -47,6 +47,22 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
                  TestUtils.get_bq_field_schema(schema, path)
       end
     end
+
+    test "build schema with top-level fields" do
+      schema =
+        SchemaBuilder.build_table_schema(%{"a" => "something"}, @default_schema, top_level: true)
+
+      assert %TFS{name: "a", type: "STRING", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a")
+
+      schema =
+        SchemaBuilder.build_table_schema(%{"a" => %{"b" => "something"}}, @default_schema,
+          top_level: true
+        )
+
+      assert %TFS{name: "b", type: "STRING", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a.b")
+    end
   end
 
   test "schema update: params do not match schema" do

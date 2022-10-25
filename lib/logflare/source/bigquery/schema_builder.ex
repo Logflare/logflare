@@ -111,28 +111,50 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     iex> assert_raise ArgumentError, func.([[]])
     %ArgumentError{message: "errors were found at the given arguments:\\n\\n  * 1st argument: not a nonempty list\\n"}
 
+
+  ### Top level fields
+  To enable top-level fields, the `:top_level` option needs to be passed.
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> "something"}, @default_schema, top_level: true)
+    iex> TestUtils.get_bq_field_schema(schema, "metadata")
+    nil
+    iex> TestUtils.get_bq_field_schema(schema, "a")
+    %TFS{name: "a", mode: "NULLABLE", type: "STRING"}
+
   """
-  @spec build_table_schema([map], TFS.t()) :: TFS.t()
-  def build_table_schema([metadata], old_schema) do
-    build_table_schema(metadata, old_schema)
+  @type opts :: {:top_level, boolean()}
+  @spec build_table_schema([map()] | map(), TFS.t(), [opts()]) :: TFS.t()
+  def build_table_schema(params, old_schema, opts \\ [])
+
+  def build_table_schema([metadata], old_schema, opts) do
+    build_table_schema(metadata, old_schema, opts)
   end
 
-  @spec build_table_schema(map, TFS.t()) :: TFS.t()
-  def build_table_schema(metadata, %{fields: old_fields}) do
-    old_metadata_schema = Enum.find(old_fields, &(&1.name == "metadata")) || %{}
+  def build_table_schema(params, %{fields: old_fields}, opts) do
+    opts = Enum.into(opts, %{top_level: false})
 
-    metadata_field = build_metadata_fields_schemas(metadata, old_metadata_schema)
+    if opts.top_level do
+      new_fields =
+        for param_key <- Map.keys(params) do
+          param_value = Map.get(params, param_key)
+          build_fields_schemas({param_key, param_value})
+        end
 
-    initial_table_schema()
-    |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
-    |> deep_sort_by_fields_name()
-  end
+      updated_fields =
+        (old_fields ++ new_fields ++ initial_table_schema().fields)
+        |> Enum.uniq_by(fn f -> f.name end)
 
-  def build_table_schema(metadata) do
-    metadata_field = build_fields_schemas({"metadata", metadata})
+      initial_table_schema()
+      |> Map.put(:fields, updated_fields)
+    else
+      # only update the metadata field
+      old_metadata_schema = Enum.find(old_fields, &(&1.name == "metadata")) || %{}
 
-    initial_table_schema()
-    |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
+      metadata_field = build_metadata_fields_schemas(params, old_metadata_schema)
+
+      initial_table_schema()
+      |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
+    end
     |> deep_sort_by_fields_name()
   end
 
