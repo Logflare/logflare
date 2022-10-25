@@ -8,6 +8,24 @@ defmodule Logflare.LqlParserTest do
   @default_schema SchemaBuilder.initial_table_schema()
 
   describe "LQL parsing" do
+    test "other top-level fields" do
+      schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}}, top_level: true)
+      qs = ~S|a:testing b.c.d:"nested"|
+
+      lql_rules = [
+        %FilterRule{operator: :=, path: "a", value: "testing"},
+        %FilterRule{
+          operator: :=,
+          path: "b.c.d",
+          value: "nested",
+          modifiers: %{quoted_string: true}
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, schema)
+      assert Lql.encode!(lql_rules) == qs
+    end
+
     test "regexp" do
       qs = ~S|~new ~"user sign up" ~^error$|
 
@@ -516,7 +534,7 @@ defmodule Logflare.LqlParserTest do
     |> String.replace("(metadata.", "(m.")
   end
 
-  defp build_schema(input) do
-    SchemaBuilder.build_table_schema(input, @default_schema)
+  defp build_schema(input, opts \\ []) do
+    SchemaBuilder.build_table_schema(input, @default_schema, opts)
   end
 end
