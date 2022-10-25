@@ -1,193 +1,66 @@
 defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
   @moduledoc false
-  import Logflare.Source.BigQuery.SchemaBuilder
-  import Logflare.Google.BigQuery.TestUtils
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   use ExUnit.Case, async: true
+  alias Logflare.TestUtils
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  @default_schema SchemaBuilder.initial_table_schema()
+  doctest SchemaBuilder
 
-  describe "schema builder" do
-    test "build_table_schema/1 @list(map) of depth 1" do
-      tfs =
-        build_fields_schemas([
-          %{"string1" => "string1val"},
-          %{"string2" => "string1val"}
-        ])
+  describe "schema diffing" do
+    test "schema not updated if keys missing" do
+      prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
+      curr_schema = SchemaBuilder.build_table_schema(%{"a" => %{}}, prev_schema)
 
-      assert tfs == [
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "NULLABLE",
-                 name: "string1",
-                 type: "STRING"
-               },
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "NULLABLE",
-                 name: "string2",
-                 type: "STRING"
-               }
-             ]
+      assert %TFS{name: "b", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.b")
+
+      assert prev_schema == curr_schema
     end
 
-    test "build_table_schema/1 @list(map) of depth 2" do
-      tfs =
-        build_fields_schemas([
-          %{
-            "string1" => "string1val",
-            "map_lvl_2" => %{
-              "string3" => "string"
-            }
-          },
-          %{
-            "string2" => "string1val",
-            "map_lvl_2" => %{
-              "string4" => "string"
-            }
-          }
-        ])
+    test "adding new field schemas" do
+      prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
+      curr_schema = SchemaBuilder.build_table_schema(%{"a" => [%{"c" => 1.0}]}, prev_schema)
 
-      expected = [
-        %TFS{
-          description: nil,
-          mode: "REPEATED",
-          name: "map_lvl_2",
-          type: "RECORD",
-          fields: [
-            %TFS{
-              description: nil,
-              fields: nil,
-              mode: "NULLABLE",
-              name: "string3",
-              type: "STRING"
-            },
-            %TFS{
-              description: nil,
-              fields: nil,
-              mode: "NULLABLE",
-              name: "string4",
-              type: "STRING"
-            }
-          ]
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "string1",
-          type: "STRING"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "string2",
-          type: "STRING"
-        }
-      ]
+      assert %TFS{name: "b", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.b")
 
-      assert_equal_schemas(tfs, expected)
+      assert %TFS{name: "c", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.c")
     end
 
-    test "build_fields_schema/1 @list(String) of depth 1" do
-      tfs =
-        build_fields_schemas([
-          %{"string1" => ["string", "string"]},
-          %{"string2" => ["string1", "string2"]}
-        ])
+    test "highly nested map with map array" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"a" => [%{"b" => %{"c" => [%{"d" => 1.0}]}}]},
+          @default_schema
+        )
 
-      assert tfs == [
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "REPEATED",
-                 name: "string1",
-                 type: "STRING"
-               },
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "REPEATED",
-                 name: "string2",
-                 type: "STRING"
-               }
-             ]
+      assert %TFS{name: "d", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "metadata.a.b.c.d")
+
+      for path <- ["metadata.a", "metadata.a.b", "metadata.a.b.c"] do
+        [name | _] = String.split(path, ".") |> Enum.reverse()
+
+        assert %TFS{name: ^name, type: "RECORD", mode: "REPEATED"} =
+                 TestUtils.get_bq_field_schema(schema, path)
+      end
     end
+  end
 
-    test "build_fields_schema/1 @list(String) with empty containers" do
-      tfs =
-        build_fields_schemas([
-          %{"string1" => ["string", "string"]},
-          %{"string2" => []}
-        ])
+  test "schema update: params do not match schema" do
+    schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
 
-      assert tfs == [
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "REPEATED",
-                 name: "string1",
-                 type: "STRING"
-               }
-             ]
-
-      tfs =
-        build_fields_schemas([
-          %{"string1" => ["string", "string"]},
-          %{"string2" => %{}}
-        ])
-
-      assert tfs == [
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "REPEATED",
-                 name: "string1",
-                 type: "STRING"
-               }
-             ]
-
-      tfs =
-        build_fields_schemas([
-          %{"string1" => ["string", "string"]},
-          %{"string2" => [[]]}
-        ])
-
-      assert tfs == [
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 mode: "REPEATED",
-                 name: "string1",
-                 type: "STRING"
-               }
-             ]
-    end
-
-    test "build_fields_schema/1 @list(integer|float) of depth 1" do
-      tfs =
-        build_fields_schemas([
-          %{"field1" => [1, 2]},
-          %{"field2" => [1.0, 2.0]}
-        ])
-
-      assert tfs == [
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 name: "field1",
-                 mode: "REPEATED",
-                 type: "INTEGER"
-               },
-               %TFS{
-                 description: nil,
-                 fields: nil,
-                 name: "field2",
-                 mode: "REPEATED",
-                 type: "FLOAT"
-               }
-             ]
+    for params <- [
+          %{"a" => [1.0]},
+          %{"a" => ["test"]},
+          %{"a" => [%{"b" => %{"c" => 1.0}}]},
+          %{"a" => [%{"b" => [%{"c" => 1.0}]}]}
+        ] do
+      assert_raise Protocol.UndefinedError, fn ->
+        SchemaBuilder.build_table_schema(params, schema)
+      end
     end
   end
 end
