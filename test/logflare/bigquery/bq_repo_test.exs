@@ -1,44 +1,59 @@
-defmodule Logflare.Google.BigQuery.BqRepoTest do
+defmodule Logflare.BigQuery.BqRepoTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Google.BigQuery
-  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.BqRepo
-  alias Logflare.Users
-  import Logflare.Factory
 
   setup do
-    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-    s = insert(:source, user_id: u.id)
-    {:ok, sources: [s], users: [u]}
+    insert(:plan, name: "Free", type: "standard")
+    user = insert(:user)
+    source = insert(:source, user_id: user.id)
+
+    Goth
+    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+    stub(GoogleApi.BigQuery.V2.Api.Jobs)
+
+    {:ok, source: source, user: user}
   end
 
   describe "query" do
-    @tag :failing
-    test "returns nil rows for a new empty table", %{sources: [source], users: [u]} do
-      %{
-        bigquery_table_ttl: bigquery_table_ttl,
-        bigquery_dataset_location: bigquery_dataset_location,
-        bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id
-      } = GenUtils.get_bq_user_info(source.token)
+    test "query_with_sql_and_params returns nil rows for a new empty table", %{user: user} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 2, fn
+        _conn, "project-id", _opts ->
+          {:ok, TestUtils.gen_bq_response([])}
 
-      {:ok, table} =
-        BigQuery.init_table!(
-          u.id,
-          source.token,
-          bigquery_project_id,
-          bigquery_table_ttl,
-          bigquery_dataset_location,
-          bigquery_dataset_id
+        _conn, "project-id1", _opts ->
+          {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      {:ok, response} =
+        BqRepo.query_with_sql_and_params(
+          user,
+          "project-id",
+          "select timestamp from `my_table`",
+          []
         )
 
-      table_id = table.id |> String.replace(":", ".")
-      sql = "SELECT timestamp FROM `#{table_id}`"
-
-      {:ok, response} = BqRepo.query_with_sql_and_params(u, bigquery_project_id, sql, [])
       assert response.rows == []
       assert response.total_rows == 0
+      query = Ecto.Query.from(f in "mytable", select: "a")
+
+      {:ok, response} = BqRepo.query(user, "project-id1", query, [])
+      assert [%{event_message: "some event message"}] = response.rows
+      assert response.total_rows == 1
+    end
+
+    test "query/4 handles ecto sql", %{user: user} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, "project-id", _opts ->
+        {:ok, TestUtils.gen_bq_response(%{"event_message" => "something"})}
+      end)
+
+      query = Ecto.Query.from(f in "mytable", select: "a")
+      {:ok, response} = BqRepo.query(user, "project-id", query, [])
+      assert [%{event_message: "something"}] = response.rows
+      assert response.total_rows == 1
     end
   end
 end
