@@ -2,7 +2,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
   alias Logflare.LogEvent, as: LE
   alias Logflare.{Source, SourceSchemas}
-  import Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @spec validate(LE.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: _body, source: %Source{validate_schema: false}}) do
@@ -13,13 +13,12 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def validate(%LE{body: body, source: %Source{} = source}) do
     # Convert to a flat type map
     # We're missing the cache too much here.
-    schema_flatmap =
-      if source.id, do: SourceSchemas.Cache.get_source_schema_by(source_id: source.id), else: %{}
+    schema_flatmap = if source.id, do: SourceSchemas.Cache.get_source_schema_by(source_id: source.id), else: %{}
 
     # Convert to a flat type map
     metadata_flatmap =
-      to_typemap(%{metadata: body.metadata})
-      |> flatten_typemap()
+      SchemaUtils.to_typemap(body)
+      |> SchemaUtils.flatten_typemap()
 
     try_merge(metadata_flatmap, schema_flatmap)
   end
@@ -51,12 +50,12 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   end
 
   # Currently for tests. Change tests.
-  def valid?(metadata, schema) do
-    schema_flatmap = bq_schema_to_flat_typemap(schema)
+  def valid?(body, schema) do
+    schema_flatmap = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
     new_schema_flatmap =
-      to_typemap(%{metadata: metadata})
-      |> flatten_typemap()
+      SchemaUtils.to_typemap(body)
+      |> SchemaUtils.flatten_typemap()
 
     try do
       merge_flat_typemaps(new_schema_flatmap, schema_flatmap)

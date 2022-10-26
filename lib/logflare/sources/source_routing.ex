@@ -50,7 +50,7 @@ defmodule Logflare.Logs.SourceRouting do
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
   def route_with_lql_rules?(%LE{} = le, %Rule{lql_filters: lql_filters})
       when length(lql_filters) >= 1 do
-    le = Map.put(le.params, "event_message", le.body.message)
+    le = Map.put(le.params, "event_message", le.body["message"])
 
     lql_rules_match? =
       Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->

@@ -231,7 +231,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       |> Enum.reject(& &1.is_from_stale_query)
       |> Enum.concat(rows)
       |> Enum.uniq_by(&{&1.body, &1.id})
-      |> Enum.sort_by(& &1.body.timestamp, &>=/2)
+      |> Enum.sort_by(& &1.body["timestamp"], &>=/2)
       |> Enum.take(100)
 
     maybe_send(

@@ -12,26 +12,10 @@ defmodule Logflare.LogEvent do
 
   @validators [EqDeepFieldTypes, BigQuerySchemaChange]
 
-  defmodule Body do
-    @moduledoc false
-    use TypedEctoSchema
-
-    @primary_key false
-    typed_embedded_schema do
-      field :id, :string
-      field :metadata, :map, default: %{}
-      field :message, :string
-      field :timestamp, :integer
-      # dev hack
-      field :level, :string
-      # prod hack
-      field :project, :string
-    end
-  end
 
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
-    embeds_one :body, Body
+    field :body, :map, default: %{}
     embeds_one :source, Source
     field :valid, :boolean
     field :drop, :boolean, default: false
@@ -147,12 +131,13 @@ defmodule Logflare.LogEvent do
       end
 
     body =
-      %{
+      params
+      |> Map.merge(%{
         "message" => message,
         "metadata" => metadata,
         "timestamp" => timestamp,
         "id" => id
-      }
+      })
       |> put_clustering_keys(source)
 
     %{
@@ -164,19 +149,73 @@ defmodule Logflare.LogEvent do
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
-  defp make_body(_struct, params) do
-    %__MODULE__.Body{}
-    |> cast(params, [
-      :id,
-      :metadata,
-      :message,
-      :timestamp,
-      :level,
-      :project
-    ])
-    |> validate_required([:message, :timestamp])
-    |> validate_length(:message, min: 1)
+  @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()
+  def make_from_db(params, %{source: %Source{} = source}) do
+    mapped_params =
+      params
+      |> Map.update(:metadata, %{}, fn
+        [] -> %{}
+        [metadata] -> metadata
+      end)
+      |> Map.put(:make_from, "db")
+      |> mapper(source)
+
+    changes =
+      %__MODULE__{}
+      |> cast(mapped_params, [:valid, :validation_error, :id, :make_from])
+      # |> cast_embed(:body, with: &make_body/2)
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+      |> Map.get(:changes)
+
+    # body = struct!(Body, changes.body.changes)
+
+    __MODULE__
+    |> struct!(changes)
+    |> Map.put(:body, params)
+    |> Map.replace!(:source, source)
   end
+
+  @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
+  def make(params, %{source: source}) do
+    changeset =
+      %__MODULE__{}
+      |> cast(mapper(params, source), [:body, :valid, :validation_error, :ephemeral, :make_from])
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+      # |> cast_embed(:body, with: &make_body/2)
+      |> validate_required([:body])
+
+    # body = struct!(Body, changeset.changes.body.changes)
+
+    le_map =
+      changeset.changes
+      # |> Map.put(:body, body)
+      |> Map.put(:validation_error, changeset_error_to_string(changeset))
+      |> Map.put(:source, source)
+      |> Map.put(:origin_source_id, source.token)
+      |> Map.put(:valid, changeset.valid?)
+      |> Map.put(:params, params)
+      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
+      |> Map.put(:id, changeset.changes.body["id"])
+      |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+
+    Logflare.LogEvent
+    |> struct!(le_map)
+    |> validate()
+  end
+
+  # def make_body(_struct, params) do
+  #   %__MODULE__.Body{}
+  #   |> cast(params, [
+  #     :id,
+  #     :metadata,
+  #     :message,
+  #     :timestamp,
+  #     :level,
+  #     :project
+  #   ])
+  #   |> validate_required([:message, :timestamp])
+  #   |> validate_length(:message, min: 1)
+  # end
 
   @spec validate(LE.t()) :: LE.t()
   defp validate(%LE{valid: false} = le), do: le
