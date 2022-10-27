@@ -1,5 +1,9 @@
 {
   "coverage_options": {
     "minimum_coverage": 20
-  }
+  },
+  "skip_files": [
+    "test",
+    "lib/mix"
+  ]
 }
