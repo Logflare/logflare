@@ -120,7 +120,7 @@ defmodule Logflare.LogEvent do
         "id" => id
       })
       |> case do
-        %{"message" => m, "event_message" => _} = map ->
+        %{"message" => _m, "event_message" => _} = map ->
           Map.delete(map, "event_message")
 
         other ->
