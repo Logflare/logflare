@@ -16,7 +16,7 @@
             <%= message %>
             <%= unless log.ephemeral do %>
               <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body["timestamp"]) do %>
-                <span>metadata</span>
+                <span>event data</span>
               <% end %>
             <% end %>
           </li>

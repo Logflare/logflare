@@ -46,7 +46,8 @@ defmodule Logflare.LogEventTest do
              ephemeral: nil,
              # validity gets overwritten
              valid: true,
-             validation_error: ""
+             validation_error: "",
+             source: %_{}
            } = LogEvent.make(params, %{source: source})
   end
 
@@ -58,7 +59,7 @@ defmodule Logflare.LogEventTest do
 
     params = %{"metadata" => [%{"some" => "value"}]}
     le = LogEvent.make_from_db(params, %{source: source})
-    assert %{body: %{"metadata" => %{"some" => "value"}}} = le
+    assert %{body: %{"metadata" => %{"some" => "value"}}, source: %_{}} = le
     assert le.body["event_message"] == nil
 
   end

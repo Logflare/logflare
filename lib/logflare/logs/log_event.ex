@@ -47,6 +47,7 @@ defmodule Logflare.LogEvent do
     |> cast(params, [:valid, :validation_error, :id, :make_from, :body])
     |> cast_embed(:source, with: &Source.no_casting_changeset/1)
     |> apply_changes()
+    |> Map.put(:source, source)
   end
 
   @doc """
