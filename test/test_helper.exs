@@ -1,6 +1,6 @@
 ExUnit.start()
 Faker.start()
-alias Logflare.{Lql, Billing, Logs, Sources}
+alias Logflare.{Lql, Billing, Logs, Sources, SystemMetrics}
 
 # Mimick mocks setup
 Mimic.copy(Logs.LogEvents)
@@ -8,6 +8,7 @@ Mimic.copy(Logs.SearchQueryExecutor)
 Mimic.copy(Lql)
 Mimic.copy(Billing)
 Mimic.copy(Sources.Counters)
+Mimic.copy(SystemMetrics.AllLogsLogged)
 Mimic.copy(Sources.Cache)
 Mimic.copy(Stripe.PaymentMethod)
 Mimic.copy(Logflare.SQL)
