@@ -47,7 +47,7 @@ defmodule Logflare.Source.ChannelTopics do
 
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
-      body: body |> Map.from_struct(),
+      body: body,
       via_rule: le.via_rule && Map.take(le.via_rule, [:regex]),
       origin_source_id: le.origin_source_id
     })
