@@ -24,7 +24,7 @@ defmodule Logflare.BigQuery.BqRepoTest do
           {:ok, TestUtils.gen_bq_response([])}
 
         _conn, "project-id1", _opts ->
-          {:ok, TestUtils.gen_bq_response()}
+          {:ok, TestUtils.gen_bq_response(%{"event_message" => "some event message", "a" => "value"})}
       end)
 
       {:ok, response} =
@@ -40,19 +40,19 @@ defmodule Logflare.BigQuery.BqRepoTest do
       query = Ecto.Query.from(f in "mytable", select: "a")
 
       {:ok, response} = BqRepo.query(user, "project-id1", query, [])
-      assert [%{event_message: "some event message"}] = response.rows
+      assert [%{"event_message"=> "some event message", "a"=> "value"}] = response.rows
       assert response.total_rows == 1
     end
 
     test "query/4 handles ecto sql", %{user: user} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, fn _conn, "project-id", _opts ->
-        {:ok, TestUtils.gen_bq_response(%{"event_message" => "something"})}
+        {:ok, TestUtils.gen_bq_response(%{"event_message" => "something", "a" => "value"})}
       end)
 
       query = Ecto.Query.from(f in "mytable", select: "a")
       {:ok, response} = BqRepo.query(user, "project-id", query, [])
-      assert [%{event_message: "something"}] = response.rows
+      assert [%{"event_message"=> "something", "a" => "value"}] = response.rows
       assert response.total_rows == 1
     end
   end

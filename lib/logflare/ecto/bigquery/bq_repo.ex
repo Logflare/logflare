@@ -73,7 +73,6 @@ defmodule Logflare.BqRepo do
           }
         end)
         |> Map.new()
-        |> MapKeys.to_atoms_unsafe!()
 
       {:ok, response}
     else

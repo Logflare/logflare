@@ -76,20 +76,20 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def render(%{log_event: %LE{body: %{metadata: metadata}} = le} = assigns) do
+  def render(%{log_event: %LE{body: %{"metadata" => metadata}} = le} = assigns) do
     tz =
       if assigns.team_user,
         do: assigns.team_user.preferences.timezone,
         else: assigns.user.preferences.timezone
 
-    timestamp = Timex.from_unix(le.body.timestamp, :microsecond)
+    timestamp = Timex.from_unix(le.body["timestamp"], :microsecond)
     local_timestamp = Timex.to_datetime(timestamp, tz)
 
     LogView.render("log_event_body.html",
       source: le.source,
       metadata: metadata,
       fmt_metadata: BqSchema.encode_metadata(metadata),
-      message: le.body.message,
+      message: le.body["message"],
       id: le.id,
       timestamp: timestamp,
       local_timezone: tz,

@@ -83,7 +83,7 @@ defmodule Logflare.LogEvent do
     id = id(params)
 
     timestamp =
-      case params["timestamp"]do
+      case params["timestamp"] do
         x when is_binary(x) ->
           case DateTime.from_iso8601(x) do
             {:ok, udt, _} ->
@@ -119,6 +119,13 @@ defmodule Logflare.LogEvent do
         "timestamp" => timestamp,
         "id" => id
       })
+      |> case do
+        %{"message" => m, "event_message" => _} = map ->
+          Map.delete(map, "event_message")
+
+        other ->
+          other
+      end
       |> put_clustering_keys(source)
 
     %{

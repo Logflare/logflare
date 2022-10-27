@@ -29,8 +29,8 @@ defmodule Logflare.LogEventTest do
              via_rule: nil
            } = LogEvent.make(@valid_params, %{source: source})
 
-    assert id == body.id
-    assert body.metadata["my"] == "key"
+    assert id == body["id"]
+    assert body["metadata"]["my"] == "key"
   end
 
   test "make/2 cast custom param values", %{source: source} do
@@ -51,15 +51,16 @@ defmodule Logflare.LogEventTest do
   end
 
   test "make_from_db/2", %{source: source} do
-    params = %{metadata: []}
+    params = %{"metadata" => []}
+    assert %{body: body, make_from: "db"} = LogEvent.make_from_db(params, %{source: source})
+    # metadata should be rejected
+    assert body["metadata"] == nil
 
-    assert %{body: %{metadata: %{}}, make_from: "db"} =
-             LogEvent.make_from_db(params, %{source: source})
+    params = %{"metadata" => [%{"some" => "value"}]}
+    le = LogEvent.make_from_db(params, %{source: source})
+    assert %{body: %{"metadata" => %{"some" => "value"}}} = le
+    assert le.body["event_message"] == nil
 
-    params = %{metadata: [%{"some" => "value"}]}
-
-    assert %{body: %{metadata: %{"some" => "value"}}} =
-             LogEvent.make_from_db(params, %{source: source})
   end
 
   test "apply_custom_event_message/1 generates custom event message from source setting", %{
@@ -74,8 +75,8 @@ defmodule Logflare.LogEventTest do
       LogEvent.make(params, %{source: %{source | custom_event_message_keys: "id, message, m.a"}})
 
     le = LogEvent.apply_custom_event_message(le)
-    assert le.body.message =~ le.id
-    assert le.body.message =~ "value"
-    assert le.body.message =~ "some message"
+    assert le.body["message"] =~ le.id
+    assert le.body["message"] =~ "value"
+    assert le.body["message"] =~ "some message"
   end
 end

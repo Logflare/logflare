@@ -40,7 +40,12 @@ defmodule Logflare.TestUtils do
         })
       end)
 
-    schema = SchemaBuilder.initial_table_schema()
+
+    schema = if length(results) > 0 do
+      SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema(), top_level: true)
+    else
+      SchemaBuilder.initial_table_schema()
+    end
 
     rows =
       for result <- results do

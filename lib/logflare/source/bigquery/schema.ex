@@ -125,7 +125,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_call({:update, %LogEvent{body: body, id: event_id}}, _from, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    schema = try_schema_update(body.metadata, state.schema)
+    schema = try_schema_update(body["metadata"], state.schema)
 
     if not same_schemas?(state.schema, schema) and
          state.next_update < System.system_time(:second) do
@@ -161,7 +161,7 @@ defmodule Logflare.Source.BigQuery.Schema do
             "Provided Schema does not match Table" <> _tail = _message ->
               case BigQuery.get_table(state.source_token) do
                 {:ok, table} ->
-                  schema = try_schema_update(body.metadata, table.schema)
+                  schema = try_schema_update(body["metadata"], table.schema)
 
                   case BigQuery.patch_table(
                          state.source_token,

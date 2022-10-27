@@ -34,7 +34,7 @@ defmodule Logflare.Logs.SourceRouting do
           ingest(routed_le)
           broadcast(routed_le)
 
-        rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
+        rule.regex_struct && Regex.match?(rule.regex_struct, body["message"]) ->
           le
           |> LE.apply_custom_event_message()
           |> route_with_regex(rule)
