@@ -164,7 +164,6 @@ defmodule Logflare.LogEvent do
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
-
   defp make_body(_struct, params) do
     %__MODULE__.Body{}
     |> cast(params, [

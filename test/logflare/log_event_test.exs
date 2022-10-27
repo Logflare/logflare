@@ -9,7 +9,7 @@ defmodule Logflare.LogEventTest do
     [source: source, user: user]
   end
 
-  @valid_params %{"message" => "something", "metadata"=> %{"my"=> "key"}}
+  @valid_params %{"message" => "something", "metadata" => %{"my" => "key"}}
   test "make/2 from valid params", %{source: source} do
     params = @valid_params
 
@@ -34,30 +34,45 @@ defmodule Logflare.LogEventTest do
   end
 
   test "make/2 cast custom param values", %{source: source} do
-    params = Map.merge(@valid_params, %{ "make_from"=> "custom", "valid"=> false, "validation_error"=> "some error"})
+    params =
+      Map.merge(@valid_params, %{
+        "make_from" => "custom",
+        "valid" => false,
+        "validation_error" => "some error"
+      })
+
     assert %LogEvent{
-      drop: false,
-      ephemeral: nil,
-      # validity gets overwritten
-      valid: true,
-      validation_error: "",
-    } = LogEvent.make(params, %{source: source})
+             drop: false,
+             ephemeral: nil,
+             # validity gets overwritten
+             valid: true,
+             validation_error: ""
+           } = LogEvent.make(params, %{source: source})
   end
 
   test "make_from_db/2", %{source: source} do
     params = %{metadata: []}
-    assert %{body: %{metadata: %{}}, make_from: "db"} = LogEvent.make_from_db(params, %{source: source})
 
-    params = %{metadata: [%{"some"=> "value"}]}
-    assert %{body: %{metadata: %{"some"=> "value"}}} = LogEvent.make_from_db(params, %{source: source})
+    assert %{body: %{metadata: %{}}, make_from: "db"} =
+             LogEvent.make_from_db(params, %{source: source})
+
+    params = %{metadata: [%{"some" => "value"}]}
+
+    assert %{body: %{metadata: %{"some" => "value"}}} =
+             LogEvent.make_from_db(params, %{source: source})
   end
 
-  test "apply_custom_event_message/1 generates custom event message from source setting", %{source: source} do
+  test "apply_custom_event_message/1 generates custom event message from source setting", %{
+    source: source
+  } do
     params = %{
-      "message"=> "some message",
-      "metadata"=> %{"a"=> "value"}
+      "message" => "some message",
+      "metadata" => %{"a" => "value"}
     }
-    le =  LogEvent.make(params, %{source: %{source | custom_event_message_keys: "id, message, m.a"}})
+
+    le =
+      LogEvent.make(params, %{source: %{source | custom_event_message_keys: "id, message, m.a"}})
+
     le = LogEvent.apply_custom_event_message(le)
     assert le.body.message =~ le.id
     assert le.body.message =~ "value"
