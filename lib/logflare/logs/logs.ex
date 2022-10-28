@@ -19,7 +19,7 @@ defmodule Logflare.Logs do
       log
       |> IngestTypecasting.maybe_apply_transform_directives()
       |> IngestTransformers.transform(:to_bigquery_column_spec)
-      |> Map.put(:make_from, "ingest")
+      |> Map.put("make_from", "ingest")
       |> LE.make(%{source: source})
       |> maybe_mark_le_dropped_by_lql()
       |> maybe_ingest_and_broadcast()

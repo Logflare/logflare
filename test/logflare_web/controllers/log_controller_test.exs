@@ -3,7 +3,7 @@ defmodule LogflareWeb.LogControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
-  @valid %{"log_entry" => "valid log entry"}
+  @valid %{"some" => "valid log entry"}
 
   describe "v2 pipeline" do
     setup do
