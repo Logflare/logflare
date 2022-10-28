@@ -11,8 +11,9 @@ defmodule Logflare.TestUtils do
   end
 
   def gen_bq_timestamp do
-    inspect((DateTime.utc_now() |> DateTime.to_unix(:microsecond)) / 1_000_000_000_000_000) <>
-      "E9"
+    micro = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
+    exp_first_part = (micro / 1_000_000_000_000_000 )
+    Float.to_string(exp_first_part) <> "E9"
   end
 
   def gen_uuid do
@@ -42,7 +43,7 @@ defmodule Logflare.TestUtils do
 
 
     schema = if length(results) > 0 do
-      SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema(), top_level: true)
+      SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
     else
       SchemaBuilder.initial_table_schema()
     end
