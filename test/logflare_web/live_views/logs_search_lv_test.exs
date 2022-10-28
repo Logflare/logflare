@@ -35,7 +35,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     GoogleApi.BigQuery.V2.Api.Jobs
     |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-      {:ok, TestUtils.gen_bq_response(:source)}
+      {:ok, TestUtils.gen_bq_response()}
     end)
 
     # let genserver post-init finish
@@ -86,7 +86,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert Enum.any?(params, fn param -> param.parameterValue.value == "error" end)
       end
 
-      {:ok, TestUtils.gen_bq_response(:source, "some error message")}
+      {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
     end)
 
     view
@@ -126,7 +126,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert Enum.any?(params, fn param -> param.parameterValue.value == 120 end)
       end
 
-      {:ok, TestUtils.gen_bq_response(:source)}
+      {:ok, TestUtils.gen_bq_response()}
     end)
 
     {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))

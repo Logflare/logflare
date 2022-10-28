@@ -32,21 +32,21 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response("2022-06-21")}
+        {:ok, TestUtils.gen_bq_response()}
       end)
 
       conn =
         init_conn
         |> get("/endpoints/query/#{endpoint.token}")
 
-      assert [%{"date" => "2022-06-21"}] = json_response(conn, 200)["result"]
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
 
       conn =
         init_conn
         |> get("/api/endpoints/query/#{endpoint.token}")
 
-      assert [%{"date" => "2022-06-21"}] = json_response(conn, 200)["result"]
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
     end
   end
