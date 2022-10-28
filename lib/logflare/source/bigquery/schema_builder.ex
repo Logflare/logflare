@@ -133,8 +133,11 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     opts = Enum.into(opts, %{top_level: true})
 
     if opts.top_level do
+      protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
+
       new_fields =
-        for param_key <- Map.keys(params) do
+        for param_key <- Map.keys(params),
+            param_key not in protected_keys do
           prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
           param_value = Map.get(params, param_key)
           new_field_schema = build_fields_schemas({param_key, param_value})
@@ -143,7 +146,9 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
           |> DeepMerge.deep_merge(new_field_schema)
         end
 
-      unrejected_fields = old_fields |> Enum.reject(&( &1.name in Map.keys(params)))
+      # reject old fields that are now included in the params
+      unrejected_fields = old_fields |> Enum.reject(&(&1.name in Map.keys(params)))
+
       updated_fields =
         (unrejected_fields ++ new_fields ++ initial_table_schema().fields)
         |> Enum.uniq_by(fn f -> f.name end)
