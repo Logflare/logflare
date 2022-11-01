@@ -3,7 +3,7 @@ defmodule LogflareWeb.LogControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
-  @valid %{"some" => "valid log entry"}
+  @valid %{"some" => "valid log entry", "message" => "hi!"}
 
   describe "v2 pipeline" do
     setup do
@@ -37,7 +37,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "v1 pipeline" do
-    setup do
+    setup %{conn: conn} do
       _plan = insert(:plan, name: "Free")
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -53,16 +53,40 @@ defmodule LogflareWeb.LogControllerTest do
       Logflare.SystemMetrics.AllLogsLogged
       |> stub(:incriment, fn v -> v end)
 
-      {:ok, source: source, user: user}
-    end
+      Logflare.Logs
+      |> expect(:broadcast, 1, fn le ->
+        assert match?(@valid, le.body)
+        assert le.body["message"] != nil
+        assert Map.keys(le.body) |> length() == 4, inspect(Map.keys(le.body))
 
-    test "top level json ingestion", %{conn: conn, source: source, user: user} do
+        le
+      end)
+
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
+
+      {:ok, source: source, user: user, conn: conn}
+    end
+
+    test ":create ingestion", %{conn: conn, source: source} do
+      conn =
+        conn
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
+
+    test ":cloudflare ingestion", %{conn: new_conn, source: source} do
+      path = Routes.log_path(new_conn, :cloudflare, source: source.token)
+
+      assert new_conn |> post(path, @valid) |> json_response(200) == %{"message" => "Logged!"}
+
+      assert new_conn
+             |> post(path, %{batch: [@valid]})
+             |> json_response(200) == %{
+               "message" => "Logged!"
+             }
     end
   end
 end

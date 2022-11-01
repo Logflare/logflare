@@ -39,13 +39,8 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
-  def cloudflare(%{assigns: %{source: source}} = conn, log_params) do
-    batch =
-      log_params
-      |> Map.take(~w[log_entry metadata timestamp])
-      |> List.wrap()
-
-    ingest_and_render(conn, batch, source)
+  def cloudflare(%{assigns: %{source: source}} = conn, log_params) when is_map(log_params) do
+    ingest_and_render(conn, [log_params], source)
   end
 
   def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
@@ -145,6 +140,12 @@ defmodule LogflareWeb.LogController do
   end
 
   def ingest_and_render(conn, log_params_batch, source) do
+    log_params_batch =
+      log_params_batch
+      |> Enum.map(fn params ->
+        Map.drop(params, ["source", "tiemstamp", "id"])
+      end)
+
     result =
       if source.v2_pipeline do
         Backends.start_source_sup(source)
