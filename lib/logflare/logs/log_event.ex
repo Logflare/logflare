@@ -26,7 +26,6 @@ defmodule Logflare.LogEvent do
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
     field :ephemeral, :boolean
-    field :make_from, :string
   end
 
   @doc """
@@ -40,11 +39,10 @@ defmodule Logflare.LogEvent do
         [] -> %{}
         [metadata] -> metadata
       end)
-      |> Map.put("make_from", "db")
       |> mapper(source)
 
     %__MODULE__{}
-    |> cast(params, [:valid, :validation_error, :id, :make_from, :body])
+    |> cast(params, [:valid, :validation_error, :id, :body])
     |> cast_embed(:source, with: &Source.no_casting_changeset/1)
     |> apply_changes()
     |> Map.put(:source, source)
@@ -54,10 +52,10 @@ defmodule Logflare.LogEvent do
   Used to make log event from user-provided parameters, for ingestion.
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}) do
+  def make(params, %{source: source} = opts) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params, source), [:body, :valid, :validation_error, :ephemeral, :make_from])
+      |> cast(mapper(params, source), [:body, :valid, :validation_error, :ephemeral])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> validate_required([:body])
 
@@ -132,8 +130,7 @@ defmodule Logflare.LogEvent do
     %{
       "body" => body,
       "id" => id,
-      "ephemeral" => params["ephemeral"],
-      "make_from" => params["make_from"]
+      "ephemeral" => params["ephemeral"]
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end

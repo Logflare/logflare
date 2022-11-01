@@ -13,6 +13,36 @@ defmodule Logflare.LogsTest do
     :ok
   end
 
+  describe "ingest input" do
+    test "empty list" do
+      source = insert(:source, user: build(:user))
+
+      Logs
+      |> Mimic.reject(:broadcast, 1)
+
+      assert :ok = Logs.ingest_logs([], source)
+    end
+
+    test "top level keys" do
+      source = insert(:source, user: build(:user))
+
+      Logs
+      |> expect(:broadcast, 1, fn le ->
+        # TODO: should be event_message
+        assert %{"message" => "testing 123"} = le.body
+        assert Map.keys(le.body) |> length() == 3
+
+        le
+      end)
+
+      batch = [
+        %{"event_message" => "testing 123"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+    end
+  end
+
   describe "ingest rules/filters" do
     setup do
       user = insert(:user)

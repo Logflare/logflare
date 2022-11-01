@@ -20,7 +20,6 @@ defmodule Logflare.LogEventTest do
              id: id,
              ingested_at: _,
              is_from_stale_query: nil,
-             make_from: nil,
              params: ^params,
              source: %_{},
              sys_uint: _,
@@ -36,7 +35,6 @@ defmodule Logflare.LogEventTest do
   test "make/2 cast custom param values", %{source: source} do
     params =
       Map.merge(@valid_params, %{
-        "make_from" => "custom",
         "valid" => false,
         "validation_error" => "some error"
       })
@@ -53,7 +51,7 @@ defmodule Logflare.LogEventTest do
 
   test "make_from_db/2", %{source: source} do
     params = %{"metadata" => []}
-    assert %{body: body, make_from: "db"} = LogEvent.make_from_db(params, %{source: source})
+    assert %{body: body} = LogEvent.make_from_db(params, %{source: source})
     # metadata should be rejected
     assert body["metadata"] == nil
 
