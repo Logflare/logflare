@@ -487,8 +487,8 @@ defmodule Logflare.Logs.SearchOperations do
         ts = dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
 
         %{
-          "timestamp"=> ts,
-          "datetime"=> dt
+          "timestamp" => ts,
+          "datetime" => dt
         }
       end)
 

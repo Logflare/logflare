@@ -36,7 +36,6 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
-
   describe "v1 pipeline" do
     setup do
       _plan = insert(:plan, name: "Free")
@@ -47,17 +46,17 @@ defmodule LogflareWeb.LogControllerTest do
       # TODO: remove once rate limiting logic is refactored
       LogflareWeb.Plugs.RateLimiter
       |> stub(:call, fn x, _ -> x end)
+
       Logflare.Sources.Counters
       |> stub(:incriment, fn v -> v end)
+
       Logflare.SystemMetrics.AllLogsLogged
       |> stub(:incriment, fn v -> v end)
-
 
       {:ok, source: source, user: user}
     end
 
-    test "top level json ingestion",  %{conn: conn, source: source, user: user}  do
-
+    test "top level json ingestion", %{conn: conn, source: source, user: user} do
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)

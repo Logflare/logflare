@@ -5,6 +5,8 @@ defmodule Logflare.TestUtils do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
 
+  def default_bq_schema, do: SchemaBuilder.initial_table_schema()
+
   @spec random_string(non_neg_integer()) :: String.t()
   def random_string(length \\ 6) do
     :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)
@@ -12,7 +14,7 @@ defmodule Logflare.TestUtils do
 
   def gen_bq_timestamp do
     micro = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
-    exp_first_part = (micro / 1_000_000_000_000_000 )
+    exp_first_part = micro / 1_000_000_000_000_000
     Float.to_string(exp_first_part) <> "E9"
   end
 
@@ -41,12 +43,12 @@ defmodule Logflare.TestUtils do
         })
       end)
 
-
-    schema = if length(results) > 0 do
-      SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
-    else
-      SchemaBuilder.initial_table_schema()
-    end
+    schema =
+      if length(results) > 0 do
+        SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
+      else
+        SchemaBuilder.initial_table_schema()
+      end
 
     rows =
       for result <- results do

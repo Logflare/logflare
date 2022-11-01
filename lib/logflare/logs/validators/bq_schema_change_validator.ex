@@ -13,7 +13,8 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def validate(%LE{body: body, source: %Source{} = source}) do
     # Convert to a flat type map
     # We're missing the cache too much here.
-    schema_flatmap = if source.id, do: SourceSchemas.Cache.get_source_schema_by(source_id: source.id), else: %{}
+    schema_flatmap =
+      if source.id, do: SourceSchemas.Cache.get_source_schema_by(source_id: source.id), else: %{}
 
     # Convert to a flat type map
     metadata_flatmap =

@@ -85,7 +85,8 @@ defmodule Logflare.Logs do
         |> tap(&SourceRouting.route_to_sinks_and_ingest/1)
         |> LE.apply_custom_event_message()
         |> tap(&ingest/1)
-        |> tap(&broadcast/1)
+        # use module reference namespace for Mimic mocking
+        |> tap(&__MODULE__.broadcast/1)
 
       true ->
         le

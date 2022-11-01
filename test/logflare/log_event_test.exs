@@ -61,7 +61,6 @@ defmodule Logflare.LogEventTest do
     le = LogEvent.make_from_db(params, %{source: source})
     assert %{body: %{"metadata" => %{"some" => "value"}}, source: %_{}} = le
     assert le.body["event_message"] == nil
-
   end
 
   test "apply_custom_event_message/1 generates custom event message from source setting", %{

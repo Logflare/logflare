@@ -3,6 +3,7 @@ Faker.start()
 alias Logflare.{Lql, Billing, Logs, Sources, SystemMetrics}
 
 # Mimick mocks setup
+Mimic.copy(Logs)
 Mimic.copy(Logs.LogEvents)
 Mimic.copy(Logs.SearchQueryExecutor)
 Mimic.copy(Lql)

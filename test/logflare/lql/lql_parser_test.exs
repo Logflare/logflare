@@ -49,7 +49,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "range int/float" do
-      schema = build_schema(%{"metadata"=> %{"float" => 1.0, "int" => 1}})
+      schema = build_schema(%{"metadata" => %{"float" => 1.0, "int" => 1}})
       qs = ~S|m.float:30.1..300.1 m.int:50..200|
 
       lql_rules = [
@@ -70,7 +70,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "negated filter, full timestamp ranges" do
-      schema = build_schema(%{"metadata"=> %{"str" => "str", "int" => 1}})
+      schema = build_schema(%{"metadata" => %{"str" => "str", "int" => 1}})
 
       qs = ~S|
         -m.int:>=100
@@ -325,7 +325,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "list contains operator: float" do
-      schema = build_schema(%{"metadata"=> %{"arr" => [1.0]}})
+      schema = build_schema(%{"metadata" => %{"arr" => [1.0]}})
 
       for {qs, modifier} <- [
             {~S(m.arr:@>1.0), %{}},
@@ -346,7 +346,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "lt, range for float values" do
-      schema = build_schema(%{"metadata"=> %{"metric" => 10.0, "user" => 1.0}})
+      schema = build_schema(%{"metadata" => %{"metric" => 10.0, "user" => 1.0}})
       qs = "m.metric:<10.0 m.user:0.1..100.111"
 
       lql_rules = [
@@ -367,7 +367,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "boolean" do
-      schema = build_schema(%{"metadata"=> %{"isAllowed" => true}})
+      schema = build_schema(%{"metadata" => %{"isAllowed" => true}})
       qs = "m.isAllowed:true m.isAllowed:false"
 
       lql_rules = [
@@ -388,7 +388,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "chart period, chart aggregate" do
-      schema = build_schema(%{"metadata"=> %{"metric" => 10.0}})
+      schema = build_schema(%{"metadata" => %{"metric" => 10.0}})
       qs = "c:sum(m.metric) c:group_by(t::minute)"
       assert {:ok, result} = Parser.parse(qs, schema)
 

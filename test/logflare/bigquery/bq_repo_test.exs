@@ -24,7 +24,8 @@ defmodule Logflare.BigQuery.BqRepoTest do
           {:ok, TestUtils.gen_bq_response([])}
 
         _conn, "project-id1", _opts ->
-          {:ok, TestUtils.gen_bq_response(%{"event_message" => "some event message", "a" => "value"})}
+          {:ok,
+           TestUtils.gen_bq_response(%{"event_message" => "some event message", "a" => "value"})}
       end)
 
       {:ok, response} =
@@ -40,7 +41,7 @@ defmodule Logflare.BigQuery.BqRepoTest do
       query = Ecto.Query.from(f in "mytable", select: "a")
 
       {:ok, response} = BqRepo.query(user, "project-id1", query, [])
-      assert [%{"event_message"=> "some event message", "a"=> "value"}] = response.rows
+      assert [%{"event_message" => "some event message", "a" => "value"}] = response.rows
       assert response.total_rows == 1
     end
 
@@ -52,7 +53,7 @@ defmodule Logflare.BigQuery.BqRepoTest do
 
       query = Ecto.Query.from(f in "mytable", select: "a")
       {:ok, response} = BqRepo.query(user, "project-id", query, [])
-      assert [%{"event_message"=> "something", "a" => "value"}] = response.rows
+      assert [%{"event_message" => "something", "a" => "value"}] = response.rows
       assert response.total_rows == 1
     end
   end
