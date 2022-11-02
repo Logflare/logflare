@@ -52,7 +52,7 @@ defmodule Logflare.LogEvent do
   Used to make log event from user-provided parameters, for ingestion.
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source} = opts) do
+  def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
       |> cast(mapper(params, source), [:body, :valid, :validation_error, :ephemeral])
