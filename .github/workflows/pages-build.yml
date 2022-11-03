@@ -26,6 +26,7 @@ jobs:
       - name: Restore cache
         uses: actions/cache@v3
         with:
+          key: ${{ runner.os }}-primes
           path: |
             docs/docs.logflare.com/node_modules
       - name: Install dependencies
