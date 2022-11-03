@@ -25,7 +25,6 @@ defmodule Logflare.LogEvent do
     field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
-    field :ephemeral, :boolean
   end
 
   @doc """
@@ -55,7 +54,7 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params, source), [:body, :valid, :validation_error, :ephemeral])
+      |> cast(mapper(params, source), [:body, :valid, :validation_error])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> validate_required([:body])
 
@@ -130,7 +129,6 @@ defmodule Logflare.LogEvent do
     %{
       "body" => body,
       "id" => id,
-      "ephemeral" => params["ephemeral"]
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
