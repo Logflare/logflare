@@ -22,7 +22,7 @@ defmodule LogflareWeb.Router do
            """
            \
            default-src 'self';\
-           connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
+           connect-src 'self' #{if Application.compile_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
            script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
            style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
            img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
@@ -47,7 +47,7 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.MaybeContentTypeToJson
 
     plug Plug.Parsers,
-      parsers: [:json, :bert, :syslog],
+      parsers: [:json, :bert, :syslog, :logpush],
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
