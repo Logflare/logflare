@@ -128,7 +128,7 @@ defmodule Logflare.LogEvent do
 
     %{
       "body" => body,
-      "id" => id,
+      "id" => id
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
