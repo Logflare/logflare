@@ -108,6 +108,9 @@ defmodule Logflare.Mixfile do
       {:warpath, "~> 0.5.0"},
       {:timber_logfmt, github: "Logflare/logfmt-elixir"},
 
+      # in-app docs
+      {:earmark, "~> 1.4.33"},
+
       # Outbound Requests
       {:castore, "~> 0.1.0"},
       {:finch, "~> 0.11.0"},
