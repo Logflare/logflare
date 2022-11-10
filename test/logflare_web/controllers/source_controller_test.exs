@@ -1,24 +1,28 @@
 defmodule LogflareWeb.SourceControllerTest do
   @moduledoc false
-  import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
   use Mimic
 
+  import Logflare.Factory
+  import LogflareWeb.Router.Helpers
+
   alias Logflare.Teams
-  alias Logflare.{Sources, Repo, LogEvent}
+  alias Logflare.Sources
+  alias Logflare.Repo
+  alias Logflare.LogEvent
   alias Logflare.Billing.Plan
   alias Logflare.Lql.FilterRule
   alias Logflare.Logs.Validators
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
-  import Logflare.Factory
-  @moduletag :failing
+
   setup_all do
     Sources.Counters.start_link()
     :ok
   end
 
   setup do
+    insert(:plan, name: "Free")
     u1 = insert(:user)
     u2 = insert(:user)
     Teams.create_team(u1, %{name: "u1 team"})
@@ -36,8 +40,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard" do
-    setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
+    setup [:expect_user_plan, :assert_caches_not_called]
 
     test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, s2 | _]} do
       conn =
@@ -86,10 +89,8 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "update" do
-    setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
+    setup [:expect_user_plan, :assert_caches_not_called]
 
-    @tag :skip
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
 
@@ -209,8 +210,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "show" do
-    setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
+    setup [:expect_user_plan, :assert_caches_not_called]
 
     test "renders source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
@@ -255,8 +255,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "create" do
-    setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
+    setup [:expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = Faker.Person.name()
@@ -312,8 +311,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    setup [:expect_user_plan]
-    setup [:assert_caches_not_called]
+    setup [:expect_user_plan, :assert_caches_not_called]
 
     @tag :failing
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
@@ -374,13 +372,7 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
-  def login_user(conn, u) do
-    conn
-    |> Plug.Test.init_test_session(%{user_id: u.id})
-    |> assign(:user, u)
-  end
-
-  def expect_user_plan(_ctx) do
+  defp expect_user_plan(_ctx) do
     expect(Logflare.Billing, :get_plan_by_user, fn _ ->
       %Plan{
         stripe_id: "31415"
@@ -390,7 +382,7 @@ defmodule LogflareWeb.SourceControllerTest do
     :ok
   end
 
-  def assert_caches_not_called(_) do
+  defp assert_caches_not_called(_) do
     reject(&Sources.Cache.get_by/1)
     :ok
   end

@@ -1,9 +1,11 @@
 defmodule Logflare.Source.BillingWriterTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Source.{BillingWriter, RecentLogsServer}
   alias Logflare.Billing.BillingCount
   alias Logflare.Repo
+  alias Logflare.Source.BillingWriter
+  alias Logflare.Source.RecentLogsServer
+
   setup :set_mimic_global
 
   setup do
@@ -13,14 +15,14 @@ defmodule Logflare.Source.BillingWriterTest do
     user = user |> Logflare.Repo.preload(:billing_account)
     plan = insert(:plan, type: "metered")
 
-    pid =
-      start_supervised!(
+    {:ok, pid} =
+      start_supervised(
         {BillingWriter,
          %RecentLogsServer{source_id: source.token, source: source, user: user, plan: plan}}
       )
 
     # increase log count
-    start_supervised!(Logflare.Sources.Counters)
+    start_supervised(Logflare.Sources.Counters)
     Logflare.Sources.Counters.incriment(source.token)
 
     # Stripe mocks

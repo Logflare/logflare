@@ -347,7 +347,7 @@ defmodule LogflareWeb.Router do
   scope "/api", LogflareWeb do
     pipe_through [:api, :require_mgmt_api_auth]
     get "/account", UserController, :api_show
-    get "/sources", SourceController, :api_index
+    resources "/sources", Api.SourceController, only: [:index]
   end
 
   # Old log ingest endpoint. Deprecate.
