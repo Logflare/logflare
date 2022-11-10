@@ -5,6 +5,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   import Logflare.Factory
   import Assertions
 
+  alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Teams
 
@@ -40,6 +41,35 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       expected = Enum.map([s1, s2], & &1.id)
 
       assert_lists_equal(response, expected)
+    end
+  end
+
+  describe "create/2" do
+    test "returns list of sources for given user", %{
+      conn: conn,
+      users: [u1, _u2]
+    } do
+      name = TestUtils.random_string()
+
+      conn
+      |> login_user(u1)
+      |> post("/api/sources", %{name: name})
+      |> response(204)
+
+      assert Enum.find(Sources.get_sources_by_user(u1), &(&1.name == name))
+    end
+
+    test "changeset errors handled gracefully", %{
+      conn: conn,
+      users: [u1, _u2]
+    } do
+      resp =
+        conn
+        |> login_user(u1)
+        |> post("/api/sources")
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
     end
   end
 end
