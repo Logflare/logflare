@@ -178,8 +178,7 @@ defmodule Logflare.Sources do
 
   def preload_defaults(source) do
     source
-    |> Repo.preload(:user)
-    |> Repo.preload(:rules)
+    |> Repo.preload([:user, :rules])
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
     |> put_bq_table_id()
@@ -198,7 +197,7 @@ defmodule Logflare.Sources do
 
     Repo.preload(
       source,
-      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user)
+      saved_searches: from(s in SavedSearch, where: s.saved_by_user)
     )
   end
 
@@ -354,5 +353,15 @@ defmodule Logflare.Sources do
       nil -> :pseudo
       x -> x
     end
+  end
+
+  @spec preload_for_dashboard(list(Source.t())) :: list(Source.t())
+  def preload_for_dashboard(sources) do
+    sources
+    |> Enum.map(&preload_defaults/1)
+    |> Enum.map(&preload_saved_searches/1)
+    |> Enum.map(&put_schema_field_count/1)
+    |> Enum.sort_by(& &1.name, &<=/2)
+    |> Enum.sort_by(& &1.favorite, &>=/2)
   end
 end

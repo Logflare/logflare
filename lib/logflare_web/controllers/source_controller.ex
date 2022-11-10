@@ -1,27 +1,26 @@
 defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
-  plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
-
   require Logger
 
+  alias Logflare.Billing
+  alias Logflare.Google.BigQuery
   alias Logflare.JSON
+  alias Logflare.Logs.RejectedLogEvents
+  alias Logflare.Logs.Search
   alias Logflare.Lql
-
-  alias Logflare.{
-    Source,
-    Sources,
-    Repo,
-    Google.BigQuery,
-    TeamUsers,
-    Teams,
-    Billing,
-    SourceSchemas
-  }
-
-  alias Logflare.Source.{Supervisor, WebhookNotificationServer, SlackHookServer}
+  alias Logflare.Repo
+  alias Logflare.Source
+  alias Logflare.Source.SlackHookServer
+  alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Logs.{RejectedLogEvents, Search}
+  alias Logflare.Source.Supervisor
+  alias Logflare.Sources
+  alias Logflare.SourceSchemas
+  alias Logflare.Teams
+  alias Logflare.TeamUsers
   alias LogflareWeb.AuthController
+
+  plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 
@@ -30,14 +29,8 @@ defmodule LogflareWeb.SourceController do
 
   @lql_dialect :routing
 
-  def api_index(%{assigns: %{user: user}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
-
-    conn |> json(sources)
-  end
-
   def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+    sources = Sources.preload_for_dashboard(user.sources)
 
     home_team = Teams.get_home_team(team_user)
 
@@ -53,7 +46,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
-    sources = preload_sources_for_dashboard(user.sources)
+    sources = Sources.preload_for_dashboard(user.sources)
 
     home_team = team
 
@@ -556,15 +549,6 @@ defmodule LogflareWeb.SourceController do
         |> put_flash(:error, "Something went wrong. Please contact support if this continues!")
         |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
-  end
-
-  defp preload_sources_for_dashboard(sources) do
-    sources
-    |> Enum.map(&Sources.preload_defaults/1)
-    |> Enum.map(&Sources.preload_saved_searches/1)
-    |> Enum.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(& &1.name, &<=/2)
-    |> Enum.sort_by(& &1.favorite, &>=/2)
   end
 
   defp get_and_encode_logs(%Source{} = source) do

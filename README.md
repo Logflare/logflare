@@ -53,8 +53,9 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 1. Install dependencies with `asdf` using `asdf install`
    1. **IMPORTANT**: [Set `JAVA_HOME`](https://github.com/halcyon/asdf-java#java_home)
 2. Install SQL Parser
-   1. Copy parser from sqlparser.com into `sql/gsp`. When extracted it's located at `lib/gudusoft.gsqlparser-2.5.2.5.jar`
-   2. Run `mix sql`
+   1. Download the Java parser from [sqlparser.com](https://www.sqlparser.com/download.php) by clicking on `General SQL Parser v{version} for Java`. 
+   2. Extract the files and copy the `{folder}/lib/gudusoft.gsqlparser-{version}.jar` into `./sql/gsp`
+   3. Run `mix sql`
 3. Copy over secrets to two locations
    1. Dev secrets - `configs/dev.secret.exs`
    2. Google JWT key - `config/secrets/logflare-dev-238720-63d50e3c9cc8.json`
