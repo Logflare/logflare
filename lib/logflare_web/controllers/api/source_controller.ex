@@ -19,4 +19,13 @@ defmodule LogflareWeb.Api.SourceController do
       |> Plug.Conn.halt()
     end
   end
+
+  def update(%{assigns: %{user: user}} = conn, %{"id" => id} = params) do
+    with source when not is_nil(source) <- Sources.get_by(id: id, user_id: user.id),
+         {:ok, _} <- Sources.update_source_by_user(source, params) do
+      conn
+      |> Plug.Conn.send_resp(204, [])
+      |> Plug.Conn.halt()
+    end
+  end
 end

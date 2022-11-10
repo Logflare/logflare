@@ -9,4 +9,10 @@ defmodule LogflareWeb.Api.FallbackController do
     |> put_status(:unprocessable_entity)
     |> json(%{errors: errors})
   end
+
+  def call(conn, nil) do
+    conn
+    |> put_status(:not_found)
+    |> text("")
+  end
 end

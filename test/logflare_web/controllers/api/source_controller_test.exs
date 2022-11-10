@@ -2,10 +2,12 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   use ExUnit.Case
   use LogflareWeb.ConnCase
 
-  import Logflare.Factory
   import Assertions
+  import Ecto.Query
+  import Logflare.Factory
 
-  alias Logflare.Sources
+  alias Logflare.Repo
+  alias Logflare.Source
   alias Logflare.Sources.Counters
   alias Logflare.Teams
 
@@ -45,7 +47,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   end
 
   describe "create/2" do
-    test "returns list of sources for given user", %{
+    test "creates a new source for an authenticated user", %{
       conn: conn,
       users: [u1, _u2]
     } do
@@ -56,20 +58,62 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       |> post("/api/sources", %{name: name})
       |> response(204)
 
-      assert Enum.find(Sources.get_sources_by_user(u1), &(&1.name == name))
-    end
+      user_source_names =
+        from(s in Source,
+          where: s.user_id == ^u1.id,
+          select: s.name
+        )
+        |> Repo.all()
 
-    test "changeset errors handled gracefully", %{
+      assert Enum.find(user_source_names, &(&1 == name))
+    end
+  end
+
+  describe "update/2" do
+    test "updates an existing user", %{
       conn: conn,
-      users: [u1, _u2]
+      users: [u1, _u2],
+      sources: [s1 | _]
     } do
-      resp =
-        conn
-        |> login_user(u1)
-        |> post("/api/sources")
-        |> json_response(422)
+      name = TestUtils.random_string()
 
-      assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
+      conn
+      |> login_user(u1)
+      |> patch("/api/sources/#{s1.id}", %{name: name})
+      |> response(204)
+
+      source_name =
+        from(s in Source,
+          where: s.id == ^s1.id,
+          select: s.name
+        )
+        |> Repo.one()
+
+      assert source_name == name
     end
+
+    test "returns not found if doesn't own the source", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [_s1, _s2, s3]
+    } do
+      conn
+      |> login_user(u1)
+      |> patch("/api/sources/#{s3.id}", %{name: TestUtils.random_string()})
+      |> response(404)
+    end
+  end
+
+  test "changeset errors handled gracefully", %{
+    conn: conn,
+    users: [u1, _u2]
+  } do
+    resp =
+      conn
+      |> login_user(u1)
+      |> post("/api/sources")
+      |> json_response(422)
+
+    assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
   end
 end
