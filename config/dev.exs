@@ -104,7 +104,7 @@ config :logflare, Logflare.Vercel.Client,
   install_vercel_uri: "https://vercel.com/integrations/logflare-v2-dev/new"
 
 config :goth,
-  json: "config/secrets/logflare-dev-238720-63d50e3c9cc8.json" |> File.read!()
+  json: "config/secrets/logflare-dev-238720-344624644919.json" |> File.read!()
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
