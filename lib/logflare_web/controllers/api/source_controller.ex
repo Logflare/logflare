@@ -28,4 +28,13 @@ defmodule LogflareWeb.Api.SourceController do
       |> Plug.Conn.halt()
     end
   end
+
+  def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
+    with source when not is_nil(source) <- Sources.get_by(id: id, user_id: user.id),
+         {:ok, _} <- Sources.delete_source(source) do
+      conn
+      |> Plug.Conn.send_resp(204, [])
+      |> Plug.Conn.halt()
+    end
+  end
 end

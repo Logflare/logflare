@@ -58,19 +58,18 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       |> post("/api/sources", %{name: name})
       |> response(204)
 
-      user_source_names =
-        from(s in Source,
-          where: s.user_id == ^u1.id,
-          select: s.name
-        )
-        |> Repo.all()
-
-      assert Enum.find(user_source_names, &(&1 == name))
+      assert Repo.one(
+               from(s in Source,
+                 where: s.user_id == ^u1.id,
+                 where: s.name == ^name,
+                 select: s.name
+               )
+             )
     end
   end
 
   describe "update/2" do
-    test "updates an existing user", %{
+    test "updates an existing source from a user", %{
       conn: conn,
       users: [u1, _u2],
       sources: [s1 | _]
@@ -82,14 +81,13 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       |> patch("/api/sources/#{s1.id}", %{name: name})
       |> response(204)
 
-      source_name =
-        from(s in Source,
-          where: s.id == ^s1.id,
-          select: s.name
-        )
-        |> Repo.one()
-
-      assert source_name == name
+      assert name ==
+               Repo.one(
+                 from(s in Source,
+                   where: s.id == ^s1.id,
+                   select: s.name
+                 )
+               )
     end
 
     test "returns not found if doesn't own the source", %{
@@ -100,6 +98,40 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       conn
       |> login_user(u1)
       |> patch("/api/sources/#{s3.id}", %{name: TestUtils.random_string()})
+      |> response(404)
+    end
+  end
+
+  describe "delete/2" do
+    test "deletes an existing source from a user", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1 | _]
+    } do
+      name = TestUtils.random_string()
+
+      conn
+      |> login_user(u1)
+      |> delete("/api/sources/#{s1.id}", %{name: name})
+      |> response(204)
+
+      assert nil ==
+               Repo.one(
+                 from(s in Source,
+                   where: s.id == ^s1.id,
+                   select: s.name
+                 )
+               )
+    end
+
+    test "returns not found if doesn't own the source", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [_s1, _s2, s3]
+    } do
+      conn
+      |> login_user(u1)
+      |> delete("/api/sources/#{s3.id}", %{name: TestUtils.random_string()})
       |> response(404)
     end
   end
