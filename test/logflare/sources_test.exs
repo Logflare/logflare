@@ -12,7 +12,14 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Sources.Counters
   alias Logflare.Users
 
-  @tag :failing
+  test "list_sources_by_user/1" do
+    user  = insert(:user)
+    source = insert(:source, user: user)
+    assert [%Source{}] = Sources.list_sources_by_user(user)
+    assert [] ==   insert(:user) |> Sources.list_sources_by_user()
+  end
+
+
   describe "Sources" do
     setup do
       u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
@@ -23,9 +30,10 @@ defmodule Logflare.SourcesTest do
         plan: %{limit_source_fields_limit: 500}
       })
 
-      {:ok, sources: [s], users: [u]}
+    {:ok, sources: [s], users: [u]}
     end
 
+    @tag :failing
     test "get_bq_schema/1", %{sources: [s | _], users: [u | _]} do
       source_id = s.token
 
