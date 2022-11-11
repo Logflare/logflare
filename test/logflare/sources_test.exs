@@ -1,13 +1,16 @@
 defmodule Logflare.SourcesTest do
   @moduledoc false
   use Logflare.DataCase
+
   import Logflare.Factory
-  alias Logflare.Sources
-  alias Logflare.Users
+
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
+  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
+  alias Logflare.Users
 
   @tag :failing
   describe "Sources" do
@@ -84,6 +87,8 @@ defmodule Logflare.SourcesTest do
 
   describe "preload_for_dashboard/1" do
     setup do
+      Counters.start_link()
+
       %{user: insert(:user)}
     end
 
@@ -102,7 +107,7 @@ defmodule Logflare.SourcesTest do
       source_3 = insert(:source, %{user: user, name: "A"})
       sources = Sources.preload_for_dashboard([source_1, source_2, source_3])
 
-      assert Enum.map(sources, & &1.id) == Enum.map([source_2, source_3, source_1], & &1.id)
+      assert Enum.map(sources, & &1.name) == Enum.map([source_2, source_3, source_1], & &1.name)
     end
   end
 end

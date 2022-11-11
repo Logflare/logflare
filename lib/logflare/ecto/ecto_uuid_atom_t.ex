@@ -11,6 +11,8 @@ defmodule Ecto.UUID.Atom do
   def cast(value) when is_binary(value), do: {:ok, String.to_atom(value)}
   def cast(_), do: :error
 
+  def autogenerate(), do: String.to_atom(Ecto.UUID.generate())
+
   def load(value) do
     with {:ok, value} <- Ecto.UUID.load(value) do
       {:ok, String.to_atom(value)}
