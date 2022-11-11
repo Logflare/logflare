@@ -13,7 +13,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
-         {:ok, source} <- Sources.preload_for_dashboard([source]) do
+         [source] <- Sources.preload_for_dashboard([source]) do
       json(conn, source)
     end
   end
