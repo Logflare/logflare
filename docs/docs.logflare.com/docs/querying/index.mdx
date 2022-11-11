@@ -71,6 +71,20 @@ Timestamps will be automatically converted to UTC if Logflare is set to display 
 | Timestamp | datetime range                 | `t:2022-04-{07..09}T00:{00..40}:00`                             |
 | Timestamp | datetime range with subseconds | `t:2022-04-{07..09}T00:{00..40}:00.{001..314}`                  |
 
+#### Chart Aggregations
+
+Chart aggregations rules will display the aggergated trends in the chart. Chart rules use the special prefix `c`
+
+| Field | Aggregation | Example            |
+| ----- | ----------- | ------------------ |
+| c     | `count`     | `c:count(*)`       |
+| c     | `avg`       | `c:avg(m.latency)` |
+| c     | `sum`       | `c:sum(m.latency)` |
+| c     | `max`       | `c:max(m.latency)` |
+| c     | `p50`       | `c:p50(m.latency)` |
+| c     | `p95`       | `c:p95(m.latency)` |
+| c     | `p99`       | `c:p99(m.latency)` |
+
 ## Querying Outside of Logflare
 
 Certain backends provide querying functionality. Documentation on each can be found in specific backend guide.
