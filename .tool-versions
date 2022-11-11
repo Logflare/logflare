@@ -4,3 +4,4 @@ gradle 7.3.3
 kotlin 1.5.20
 nodejs 16.4.2
 java openjdk-17
+rust 1.64.0

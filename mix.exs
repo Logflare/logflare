@@ -108,6 +108,7 @@ defmodule Logflare.Mixfile do
       {:nimble_parsec, "~> 1.0"},
       {:warpath, "~> 0.5.0"},
       {:timber_logfmt, github: "Logflare/logfmt-elixir"},
+      {:epg_query, path: "../epg_query"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
@@ -164,7 +165,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.29.0"},
 
       # Rust NIFs
-      {:rustler, "~> 0.21.0", override: true},
+      {:rustler, "~> 0.25.0"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
