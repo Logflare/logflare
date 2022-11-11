@@ -11,26 +11,32 @@ defmodule LogflareWeb.Api.SourceController do
     json(conn, sources)
   end
 
+  def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
+         {:ok, source} <- Sources.preload_for_dashboard([source]) do
+      json(conn, source)
+    end
+  end
+
   def create(%{assigns: %{user: user}} = conn, params) do
-    with params <- Map.put(params, "token", Ecto.UUID.generate()),
-         {:ok, _} <- Sources.create_source(params, user) do
+    with {:ok, source} <- Sources.create_source(params, user) do
       conn
-      |> Plug.Conn.send_resp(204, [])
-      |> Plug.Conn.halt()
+      |> put_status(201)
+      |> json(source)
     end
   end
 
-  def update(%{assigns: %{user: user}} = conn, %{"id" => id} = params) do
-    with source when not is_nil(source) <- Sources.get_by(id: id, user_id: user.id),
-         {:ok, _} <- Sources.update_source_by_user(source, params) do
+  def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
+         {:ok, source} <- Sources.update_source_by_user(source, params) do
       conn
-      |> Plug.Conn.send_resp(204, [])
-      |> Plug.Conn.halt()
+      |> put_status(204)
+      |> json(source)
     end
   end
 
-  def delete(%{assigns: %{user: user}} = conn, %{"id" => id}) do
-    with source when not is_nil(source) <- Sources.get_by(id: id, user_id: user.id),
+  def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
          {:ok, _} <- Sources.delete_source(source) do
       conn
       |> Plug.Conn.send_resp(204, [])

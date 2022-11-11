@@ -102,7 +102,7 @@ defmodule Logflare.Source do
 
   schema "sources" do
     field :name, :string
-    field :token, Ecto.UUID.Atom
+    field :token, Ecto.UUID.Atom, autogenerate: true
     field :public_token, :string
     field :favorite, :boolean, default: false
     field :bigquery_table_ttl, :integer
@@ -197,7 +197,7 @@ defmodule Logflare.Source do
 
   def default_validations(changeset, source) do
     changeset
-    |> validate_required([:name, :token])
+    |> validate_required([:name])
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)

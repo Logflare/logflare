@@ -346,7 +346,6 @@ defmodule Logflare.Sources do
     |> Enum.map(&preload_defaults/1)
     |> Enum.map(&preload_saved_searches/1)
     |> Enum.map(&put_schema_field_count/1)
-    |> Enum.sort_by(& &1.name, &<=/2)
-    |> Enum.sort_by(& &1.favorite, &>=/2)
+    |> Enum.sort_by(&{!&1.favorite, &1.name})
   end
 end
