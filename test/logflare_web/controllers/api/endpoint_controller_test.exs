@@ -27,4 +27,32 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       assert response == expected
     end
   end
+
+  describe "show/2" do
+    test "returns single sources for given user", %{
+      conn: conn,
+      user: user,
+      endpoints: [endpoint | _]
+    } do
+      response =
+        conn
+        |> login_user(user)
+        |> get("/api/endpoints/#{endpoint.token}")
+        |> json_response(200)
+
+      assert response["token"] == endpoint.token
+    end
+
+    test "returns not found if doesn't own the source", %{
+      conn: conn,
+      endpoints: [endpoint | _]
+    } do
+      invalid_user = insert(:user)
+
+      conn
+      |> login_user(invalid_user)
+      |> get("/api/endpoints/#{endpoint.token}")
+      |> response(404)
+    end
+  end
 end
