@@ -4,6 +4,18 @@ defmodule Logflare.Endpoints.Query do
   import Ecto.Changeset
   require Logger
 
+  @derive {Jason.Encoder,
+           only: [
+             :token,
+             :name,
+             :query,
+             :source_mapping,
+             :sandboxable,
+             :cache_duration_seconds,
+             :proactive_requerying_seconds,
+             :max_limit,
+             :enable_auth
+           ]}
   schema "endpoint_queries" do
     field :token, Ecto.UUID
     field :name, :string

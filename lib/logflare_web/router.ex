@@ -351,6 +351,10 @@ defmodule LogflareWeb.Router do
     resources "/sources", Api.SourceController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
+
+    resources "/endpoints", Api.EndpointController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
   end
 
   # Old log ingest endpoint. Deprecate.

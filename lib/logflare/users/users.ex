@@ -1,14 +1,17 @@
 defmodule Logflare.Users do
   require Logger
 
-  alias Logflare.{User, Repo, Sources, Users}
-  alias Logflare.TeamUsers.TeamUser
-  alias Logflare.Users.UserPreferences
-  alias Logflare.Repo
-  alias Logflare.Sources
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.Repo
+  alias Logflare.Repo
   alias Logflare.Source.Supervisor
+  alias Logflare.Sources
+  alias Logflare.Sources
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.User
+  alias Logflare.Users
+  alias Logflare.Users.UserPreferences
 
   @moduledoc false
 
@@ -17,37 +20,32 @@ defmodule Logflare.Users do
   end
 
   def get(user_id) do
-    User
-    |> Repo.get(user_id)
+    Repo.get(User, user_id)
   end
 
   def get_by(keyword) do
-    User
-    |> Repo.get_by(keyword)
+    Repo.get_by(User, keyword)
   end
 
   def get_by_and_preload(keyword) do
-    User
-    |> Repo.get_by(keyword)
-    |> case do
+    user = Repo.get_by(User, keyword)
+
+    case user do
       %User{} = u -> preload_defaults(u)
       nil -> nil
     end
   end
 
   def preload_team(user) do
-    user
-    |> Repo.preload(:team)
+    Repo.preload(user, :team)
   end
 
   def preload_billing_account(user) do
-    user
-    |> Repo.preload(:billing_account)
+    Repo.preload(user, :billing_account)
   end
 
   def preload_vercel_auths(user) do
-    user
-    |> Repo.preload(:vercel_auths)
+    Repo.preload(user, :vercel_auths)
   end
 
   def preload_defaults(user) do
@@ -57,22 +55,23 @@ defmodule Logflare.Users do
   end
 
   def preload_sources(user) do
-    user
-    |> Repo.preload(:sources)
+    Repo.preload(user, :sources)
+  end
+
+  def preload_endpoints(user) do
+    Repo.preload(user, :endpoint_queries)
   end
 
   def maybe_preload_bigquery_defaults(user) do
     user =
-      if is_nil(user.bigquery_dataset_id) do
-        %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}
-      else
-        user
+      case user.bigquery_dataset_id do
+        nil -> %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}
+        _ -> user
       end
 
-    if is_nil(user.bigquery_project_id) do
-      %{user | bigquery_project_id: BigQuery.GCPConfig.default_project_id()}
-    else
-      user
+    case user.bigquery_project_id do
+      nil -> %{user | bigquery_project_id: BigQuery.GCPConfig.default_project_id()}
+      _ -> user
     end
   end
 
@@ -97,7 +96,8 @@ defmodule Logflare.Users do
     api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
     params = Map.put(params, :api_key, api_key)
 
-    User.changeset(%User{}, params)
+    %User{}
+    |> User.changeset(params)
     |> Repo.insert()
   end
 
