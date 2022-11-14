@@ -16,7 +16,6 @@ defmodule Logflare.LogEventTest do
     assert %LogEvent{
              body: body,
              drop: false,
-             ephemeral: nil,
              id: id,
              ingested_at: _,
              is_from_stale_query: nil,
@@ -41,7 +40,6 @@ defmodule Logflare.LogEventTest do
 
     assert %LogEvent{
              drop: false,
-             ephemeral: nil,
              # validity gets overwritten
              valid: true,
              validation_error: "",
