@@ -1,5 +1,5 @@
 # setup node names for SQL testing
-Node.start(:"orange_test", :shortnames)
+Node.start(:orange_test, :shortnames)
 
 ExUnit.start()
 Faker.start()

@@ -13,12 +13,11 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Users
 
   test "list_sources_by_user/1" do
-    user  = insert(:user)
+    user = insert(:user)
     source = insert(:source, user: user)
     assert [%Source{}] = Sources.list_sources_by_user(user)
-    assert [] ==   insert(:user) |> Sources.list_sources_by_user()
+    assert [] == insert(:user) |> Sources.list_sources_by_user()
   end
-
 
   describe "Sources" do
     setup do
@@ -30,7 +29,7 @@ defmodule Logflare.SourcesTest do
         plan: %{limit_source_fields_limit: 500}
       })
 
-    {:ok, sources: [s], users: [u]}
+      {:ok, sources: [s], users: [u]}
     end
 
     @tag :failing
