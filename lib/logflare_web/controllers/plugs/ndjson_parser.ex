@@ -1,4 +1,4 @@
-defmodule Plug.Parsers.LOGPUSH do
+defmodule Plug.Parsers.NDJSON do
   @moduledoc """
   Parse Cloudflare Log Push request bodies.
   """
@@ -11,7 +11,7 @@ defmodule Plug.Parsers.LOGPUSH do
   def init(_params) do
   end
 
-  def parse(conn, "text", "plain", _headers, _opts) do
+  def parse(conn, "application", "x-ndjson", _headers, _opts) do
     conn
     |> read_body()
     |> decode()

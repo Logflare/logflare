@@ -42,12 +42,16 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetHeaders
   end
 
+  pipeline :logpush do
+    plug :handle_logpush_headers
+  end
+
   pipeline :api do
     plug Plug.RequestId
     plug LogflareWeb.Plugs.MaybeContentTypeToJson
 
     plug Plug.Parsers,
-      parsers: [:json, :bert, :syslog, :logpush],
+      parsers: [:json, :bert, :syslog, :ndjson],
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
@@ -370,7 +374,6 @@ defmodule LogflareWeb.Router do
     options "/browser/reports", LogController, :browser_reports
     post "/json", LogController, :generic_json
     options "/json", LogController, :generic_json
-    post "/cloudflare", LogController, :cloudflare
     post "/zeit", LogController, :vercel_ingest
     post "/vercel", LogController, :vercel_ingest
     post "/netlify", LogController, :netlify
@@ -386,5 +389,20 @@ defmodule LogflareWeb.Router do
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog
+  end
+
+  scope "/logs/cloudflare", LogflareWeb do
+    pipe_through [:logpush, :api, :require_ingest_api_auth]
+    post "/", LogController, :cloudflare
+  end
+
+  def handle_logpush_headers(conn, _opts) do
+    case get_req_header(conn, "content-type") do
+      ["text/plain; charset=utf-8"] = type ->
+        put_req_header(conn, "content-type", "application/x-ndjson")
+
+      type ->
+        conn
+    end
   end
 end
