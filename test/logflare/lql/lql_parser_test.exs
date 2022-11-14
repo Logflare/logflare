@@ -8,6 +8,24 @@ defmodule Logflare.LqlParserTest do
   @default_schema SchemaBuilder.initial_table_schema()
 
   describe "LQL parsing" do
+    test "other top-level fields" do
+      schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})
+      qs = ~S|a:testing b.c.d:"nested"|
+
+      lql_rules = [
+        %FilterRule{operator: :=, path: "a", value: "testing"},
+        %FilterRule{
+          operator: :=,
+          path: "b.c.d",
+          value: "nested",
+          modifiers: %{quoted_string: true}
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, schema)
+      assert Lql.encode!(lql_rules) == qs
+    end
+
     test "regexp" do
       qs = ~S|~new ~"user sign up" ~^error$|
 
@@ -31,7 +49,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "range int/float" do
-      schema = build_schema(%{"float" => 1.0, "int" => 1})
+      schema = build_schema(%{"metadata" => %{"float" => 1.0, "int" => 1}})
       qs = ~S|m.float:30.1..300.1 m.int:50..200|
 
       lql_rules = [
@@ -52,7 +70,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "negated filter, full timestamp ranges" do
-      schema = build_schema(%{"str" => "str", "int" => 1})
+      schema = build_schema(%{"metadata" => %{"str" => "str", "int" => 1}})
 
       qs = ~S|
         -m.int:>=100
@@ -90,10 +108,12 @@ defmodule Logflare.LqlParserTest do
     test "timestamp operators, value quoting" do
       schema =
         build_schema(%{
-          "context" => %{
-            "file" => "string",
-            "address" => "string",
-            "line_number" => 1
+          "metadata" => %{
+            "context" => %{
+              "file" => "string",
+              "address" => "string",
+              "line_number" => 1
+            }
           }
         })
 
@@ -226,7 +246,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "NULL" do
-      schema = build_schema(%{"nullable" => "val"})
+      schema = build_schema(%{"metadata" => %{"nullable" => "val"}})
       qs = "metadata.nullable:NULL"
 
       lql_rules = [
@@ -241,7 +261,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "level ranges" do
-      schema = build_schema(%{"level" => "info"})
+      schema = build_schema(%{"metadata" => %{"level" => "info"}})
 
       for {qs, levels} <- [
             {"metadata.level:debug..critical",
@@ -263,7 +283,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "list contains operator: string" do
-      schema = build_schema(%{"arr" => ["a"]})
+      schema = build_schema(%{"metadata" => %{"arr" => ["a"]}})
 
       for {qs, modifier} <- [
             {~S(m.arr:@>a), %{}},
@@ -284,7 +304,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "list contains operator: integer" do
-      schema = build_schema(%{"arr" => [1]})
+      schema = build_schema(%{"metadata" => %{"arr" => [1]}})
 
       for {qs, modifier} <- [
             {~S(m.arr:@>1), %{}},
@@ -305,7 +325,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "list contains operator: float" do
-      schema = build_schema(%{"arr" => [1.0]})
+      schema = build_schema(%{"metadata" => %{"arr" => [1.0]}})
 
       for {qs, modifier} <- [
             {~S(m.arr:@>1.0), %{}},
@@ -326,7 +346,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "lt, range for float values" do
-      schema = build_schema(%{"metric" => 10.0, "user" => 1.0})
+      schema = build_schema(%{"metadata" => %{"metric" => 10.0, "user" => 1.0}})
       qs = "m.metric:<10.0 m.user:0.1..100.111"
 
       lql_rules = [
@@ -347,7 +367,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "boolean" do
-      schema = build_schema(%{"isAllowed" => true})
+      schema = build_schema(%{"metadata" => %{"isAllowed" => true}})
       qs = "m.isAllowed:true m.isAllowed:false"
 
       lql_rules = [
@@ -368,7 +388,7 @@ defmodule Logflare.LqlParserTest do
     end
 
     test "chart period, chart aggregate" do
-      schema = build_schema(%{"metric" => 10.0})
+      schema = build_schema(%{"metadata" => %{"metric" => 10.0}})
       qs = "c:sum(m.metric) c:group_by(t::minute)"
       assert {:ok, result} = Parser.parse(qs, schema)
 
@@ -516,7 +536,7 @@ defmodule Logflare.LqlParserTest do
     |> String.replace("(metadata.", "(m.")
   end
 
-  defp build_schema(input) do
-    SchemaBuilder.build_table_schema(input, @default_schema)
+  defp build_schema(input, opts \\ []) do
+    SchemaBuilder.build_table_schema(input, @default_schema, opts)
   end
 end

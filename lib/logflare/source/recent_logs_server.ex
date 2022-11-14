@@ -109,7 +109,7 @@ defmodule Logflare.Source.RecentLogsServer do
           events
         end
         |> List.flatten()
-        |> Enum.sort_by(& &1.body.timestamp, &<=/2)
+        |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
         |> Enum.take(-100)
 
       _else ->
@@ -124,7 +124,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
       pid ->
         case GenServer.call(pid, :latest_le) do
-          {:ok, log_event} -> log_event.body.timestamp
+          {:ok, log_event} -> log_event.body["timestamp"]
           {:error, _reason} -> 0
         end
     end

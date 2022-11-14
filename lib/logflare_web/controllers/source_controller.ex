@@ -559,7 +559,6 @@ defmodule LogflareWeb.SourceController do
         le
         |> Map.from_struct()
         |> Map.take([:body, :via_rule, :origin_source_id])
-        |> Map.update!(:body, &Map.from_struct/1)
 
       if le.via_rule do
         %{le | via_rule: %{regex: le.via_rule.regex}}

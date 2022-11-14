@@ -543,7 +543,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Enum.map(fn la ->
         Map.update!(
           la,
-          :timestamp,
+          "timestamp",
           &BqSchemaHelpers.format_timestamp(&1, timezone)
         )
       end)

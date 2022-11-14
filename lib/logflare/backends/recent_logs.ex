@@ -61,7 +61,7 @@ defmodule Logflare.Backends.RecentLogs do
   # GENSERVER CALLBACKs
 
   def handle_cast({:push, log_events}, state) when is_list(log_events) do
-    sorted = Enum.sort_by(log_events, & &1.body.timestamp)
+    sorted = Enum.sort_by(log_events, & &1.body["timestamp"])
 
     data =
       (sorted ++ state.data)

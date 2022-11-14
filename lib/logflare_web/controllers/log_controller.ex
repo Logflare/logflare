@@ -27,25 +27,17 @@ defmodule LogflareWeb.LogController do
   end
 
   def create(%{assigns: %{source: source}} = conn, log_params) do
-    batch =
-      log_params
-      |> Map.take(~w[log_entry message metadata timestamp @logflareTransformDirectives])
-      |> List.wrap()
-
-    ingest_and_render(conn, batch, source)
+    log_params = Map.drop(log_params, ["source", "timestamp", "id"])
+    ingest_and_render(conn, [log_params], source)
   end
 
   def cloudflare(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
     ingest_and_render(conn, batch, source)
   end
 
-  def cloudflare(%{assigns: %{source: source}} = conn, log_params) do
-    batch =
-      log_params
-      |> Map.take(~w[log_entry metadata timestamp])
-      |> List.wrap()
-
-    ingest_and_render(conn, batch, source)
+  def cloudflare(%{assigns: %{source: source}} = conn, log_params) when is_map(log_params) do
+    log_params = Map.drop(log_params, ["source", "timestamp", "id"])
+    ingest_and_render(conn, [log_params], source)
   end
 
   def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do

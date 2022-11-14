@@ -65,6 +65,6 @@ defmodule Logflare.Source.WebhookNotificationServer.Client do
 
   defp prep_recent_events(recent_events) do
     Enum.take(recent_events, -5)
-    |> Enum.map(fn x -> x.body.message end)
+    |> Enum.map(fn x -> x.body["message"] end)
   end
 end

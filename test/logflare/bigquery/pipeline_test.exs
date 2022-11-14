@@ -20,6 +20,8 @@ defmodule Logflare.BigQuery.PipelineTest do
       LogEvent.make(
         %{
           "message" => "valid",
+          "top_level" => "top",
+          "project" => "my-project",
           "metadata" => %{"a" => "nested"},
           "timestamp" => datetime |> DateTime.to_unix(:microsecond)
         },
@@ -31,13 +33,12 @@ defmodule Logflare.BigQuery.PipelineTest do
     assert %TableDataInsertAllRequestRows{
              insertId: ^id,
              json: %{
-               event_message: "valid",
-               timestamp: ^datetime,
-               metadata: [%{"a" => "nested"}],
-               id: ^id,
-               # not too sure about these fields
-               level: nil,
-               project: nil
+               "event_message" => "valid",
+               "top_level" => "top",
+               "timestamp" => ^datetime,
+               "metadata" => [%{"a" => "nested"}],
+               "id" => ^id,
+               "project" => "my-project"
              }
            } = Pipeline.le_to_bq_row(le)
   end

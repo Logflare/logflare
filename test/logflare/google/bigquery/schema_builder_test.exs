@@ -14,7 +14,7 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
       curr_schema = SchemaBuilder.build_table_schema(%{"a" => %{}}, prev_schema)
 
       assert %TFS{name: "b", type: "FLOAT", mode: "NULLABLE"} =
-               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.b")
+               TestUtils.get_bq_field_schema(curr_schema, "a.b")
 
       assert prev_schema == curr_schema
     end
@@ -24,10 +24,10 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
       curr_schema = SchemaBuilder.build_table_schema(%{"a" => [%{"c" => 1.0}]}, prev_schema)
 
       assert %TFS{name: "b", type: "FLOAT", mode: "NULLABLE"} =
-               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.b")
+               TestUtils.get_bq_field_schema(curr_schema, "a.b")
 
       assert %TFS{name: "c", type: "FLOAT", mode: "NULLABLE"} =
-               TestUtils.get_bq_field_schema(curr_schema, "metadata.a.c")
+               TestUtils.get_bq_field_schema(curr_schema, "a.c")
     end
 
     test "highly nested map with map array" do
@@ -38,14 +38,29 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
         )
 
       assert %TFS{name: "d", type: "FLOAT", mode: "NULLABLE"} =
-               TestUtils.get_bq_field_schema(schema, "metadata.a.b.c.d")
+               TestUtils.get_bq_field_schema(schema, "a.b.c.d")
 
-      for path <- ["metadata.a", "metadata.a.b", "metadata.a.b.c"] do
+      for path <- ["a", "a.b", "a.b.c"] do
         [name | _] = String.split(path, ".") |> Enum.reverse()
 
         assert %TFS{name: ^name, type: "RECORD", mode: "REPEATED"} =
                  TestUtils.get_bq_field_schema(schema, path)
       end
+    end
+
+    test "build schema with top-level fields" do
+      schema = SchemaBuilder.build_table_schema(%{"a" => "something"}, @default_schema)
+
+      assert %TFS{name: "a", type: "STRING", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a")
+
+      schema =
+        SchemaBuilder.build_table_schema(%{"a" => %{"b" => "something"}}, @default_schema,
+          top_level: true
+        )
+
+      assert %TFS{name: "b", type: "STRING", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a.b")
     end
   end
 

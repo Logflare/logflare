@@ -3,7 +3,17 @@ defmodule Logflare.Factory do
   Generates fixtures for schemas
   """
   use ExMachina.Ecto, repo: Logflare.Repo
-  alias Logflare.{User, Source, Rule, LogEvent, Billing.BillingAccount, Billing.PaymentMethod}
+
+  alias Logflare.{
+    Lql,
+    User,
+    Source,
+    Rule,
+    LogEvent,
+    Billing.BillingAccount,
+    Billing.PaymentMethod
+  }
+
   alias Logflare.Users.UserPreferences
   alias Logflare.Endpoints.Query
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -52,8 +62,16 @@ defmodule Logflare.Factory do
     }
   end
 
-  def rule_factory do
-    %Rule{}
+  def rule_factory(attrs) do
+    lql = Map.get(attrs, "lql_string", "testing")
+    {:ok, lql_filters} = Lql.Parser.parse(lql, default_bq_schema())
+
+    %Rule{
+      lql_string: lql,
+      lql_filters: lql_filters,
+      sink: attrs[:sink],
+      source_id: attrs[:source_id]
+    }
   end
 
   def log_event_factory(attrs) do

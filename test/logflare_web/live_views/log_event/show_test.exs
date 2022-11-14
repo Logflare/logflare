@@ -217,7 +217,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
 
   def generate_log_event() do
     %Logflare.LogEvent{
-      body: %Logflare.LogEvent.Body{
+      body: %{
         message: "info log 3",
         metadata: %{
           context: [
