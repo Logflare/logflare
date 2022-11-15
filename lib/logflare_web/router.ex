@@ -398,10 +398,10 @@ defmodule LogflareWeb.Router do
 
   def handle_logpush_headers(conn, _opts) do
     case get_req_header(conn, "content-type") do
-      ["text/plain; charset=utf-8"] = type ->
+      ["text/plain; charset=utf-8"] ->
         put_req_header(conn, "content-type", "application/x-ndjson")
 
-      type ->
+      _type ->
         conn
     end
   end
