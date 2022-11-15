@@ -45,11 +45,12 @@ defmodule Plug.Parsers.NDJSON do
             }
 
           {:error, error} ->
-            Logger.warn(inspect(error))
+            Logger.error("NDJSON parser error: " <> inspect(error))
 
             nil
         end
       end
+      |> Enum.reject(&is_nil(&1))
 
     {:ok, %{"batch" => batch}, conn}
   rescue
