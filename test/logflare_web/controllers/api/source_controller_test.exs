@@ -1,5 +1,4 @@
 defmodule LogflareWeb.Api.SourceControllerTest do
-  use ExUnit.Case
   use LogflareWeb.ConnCase
 
   import Logflare.Factory

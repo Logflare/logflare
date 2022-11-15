@@ -4,8 +4,20 @@ defmodule Logflare.Endpoints.Query do
   import Ecto.Changeset
   require Logger
 
+  @derive {Jason.Encoder,
+           only: [
+             :token,
+             :name,
+             :query,
+             :source_mapping,
+             :sandboxable,
+             :cache_duration_seconds,
+             :proactive_requerying_seconds,
+             :max_limit,
+             :enable_auth
+           ]}
   schema "endpoint_queries" do
-    field :token, Ecto.UUID
+    field :token, Ecto.UUID, autogenerate: true
     field :name, :string
     field :query, :string
     field :source_mapping, :map
@@ -33,7 +45,7 @@ defmodule Logflare.Endpoints.Query do
       :max_limit,
       :enable_auth
     ])
-    |> validate_required([:name, :token, :query])
+    |> validate_required([:name, :query])
   end
 
   def update_by_user_changeset(query, attrs) do
@@ -54,7 +66,7 @@ defmodule Logflare.Endpoints.Query do
 
   def default_validations(changeset) do
     changeset
-    |> validate_required([:name, :token, :query, :user])
+    |> validate_required([:name, :query, :user])
     |> validate_query(:query)
     |> unique_constraint(:name, name: :endpoint_queries_name_index)
     |> unique_constraint(:token)
@@ -73,27 +85,20 @@ defmodule Logflare.Endpoints.Query do
     end)
   end
 
-  def update_source_mapping(changeset) do
-    if Enum.empty?(changeset.errors) do
-      # Only update source mapping if there are no errors
-      query = get_field(changeset, :query)
+  # Only update source mapping if there are no errors
+  def update_source_mapping(%{errors: [], changes: %{query: query}} = changeset)
+      when is_binary(query) do
+    case Logflare.SQL.sources(query, get_field(changeset, :user)) do
+      {:ok, source_mapping} ->
+        Logger.debug("Source mapping: #{inspect(source_mapping, pretty: true)}")
+        put_change(changeset, :source_mapping, source_mapping)
 
-      if query do
-        case Logflare.SQL.sources(query, get_field(changeset, :user)) do
-          {:ok, source_mapping} ->
-            Logger.debug("Source mapping: #{inspect(source_mapping, pretty: true)}")
-            put_change(changeset, :source_mapping, source_mapping)
-
-          {:error, error} ->
-            add_error(changeset, :query, error)
-        end
-      else
-        changeset
-      end
-    else
-      changeset
+      {:error, error} ->
+        add_error(changeset, :query, error)
     end
   end
+
+  def update_source_mapping(changeset), do: changeset
 
   def map_query(%__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q) do
     case Logflare.SQL.source_mapping(query, user_id, source_mapping) do

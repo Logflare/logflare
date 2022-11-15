@@ -4,21 +4,22 @@ defmodule Logflare.Factory do
   """
   use ExMachina.Ecto, repo: Logflare.Repo
 
-  alias Logflare.{
-    Lql,
-    User,
-    Source,
-    Rule,
-    LogEvent,
-    Billing.BillingAccount,
-    Billing.PaymentMethod
-  }
-
-  alias Logflare.Users.UserPreferences
-  alias Logflare.Endpoints.Query
-  alias Logflare.OauthAccessTokens.OauthAccessToken
-  alias Logflare.{Billing.Plan, Teams.Team, TeamUsers.TeamUser, Backends.SourceBackend}
   import Logflare.TestUtils
+
+  alias Logflare.Backends.SourceBackend
+  alias Logflare.Billing.BillingAccount
+  alias Logflare.Billing.PaymentMethod
+  alias Logflare.Billing.Plan
+  alias Logflare.Endpoints.Query
+  alias Logflare.LogEvent
+  alias Logflare.Lql
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.Rule
+  alias Logflare.Source
+  alias Logflare.Teams.Team
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.User
+  alias Logflare.Users.UserPreferences
 
   def user_factory do
     %User{
