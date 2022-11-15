@@ -12,6 +12,7 @@ defmodule Logflare.Factory do
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.Query
   alias Logflare.LogEvent
+  alias Logflare.Lql
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Rule
   alias Logflare.Source
