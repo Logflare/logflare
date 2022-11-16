@@ -19,12 +19,25 @@
   background-color: #1d1d1d;
 }
 
+.navbar {
+  position: sticky;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1030;
+  height: 66px;
+}
+
 .subhead {
+  position: sticky;
+  top: 66px;
   background-color: #63ff99;
   padding-top: 0.35em;
   padding-bottom: 0.35em;
   color: black;
   box-shadow: 0 0 35px #000000;
+  opacity: 100;
+  z-index: 1029;
 
   & code {
     color: white;
@@ -46,8 +59,6 @@
     overflow: hidden;
     white-space: nowrap;
   }
-
-  & a {}
 
   & li {
     display: inline-block;

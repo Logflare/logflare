@@ -51,13 +51,6 @@ body {
   font-size: 1em;
   display: flex;
   flex-direction: column;
-  .navbar {
-    position: sticky;
-    top:0;
-    right: 0;
-    left: 0;
-    z-index: 1030;
-  }
 }
 
 main.app {
