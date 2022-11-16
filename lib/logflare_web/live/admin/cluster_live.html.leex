@@ -1,11 +1,13 @@
 <div class="subhead ">
   <div class="container mx-auto">
     <h5>~/admin/cluster</h5>
+    <div class="log-settings">
     <%= render LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket %>
+    </div>
   </div>
 </div>
 
-<div class="content container mx-auto">
+<div class="content dashboard container mx-auto">
   <h1>Self node</h1>
   <%= @node_self %> <%= link "shutdown", to: "#", phx_click: "shutdown", phx_value_node: @node_self, class: "btn btn-danger btn-sm form-button ml-4", data: [confirm: "Really?"] %>
   <h1>Nodes</h1>
