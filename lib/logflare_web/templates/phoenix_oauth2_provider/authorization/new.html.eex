@@ -4,7 +4,7 @@
   </div>
 </div>
 
-<div id="authorize-container" class="container mx-auto">
+<div id="authorize-container" class="content container mx-auto">
 <h5>Authorize <strong><%= @client.name %></strong> to use your account?</h5>
 
 <div class="oauth-permissions">

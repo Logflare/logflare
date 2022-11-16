@@ -20,7 +20,7 @@
   </div>
 </div>
 
-<div class="dashboard container mx-auto" hidden>
+<div class="content dashboard container mx-auto" hidden>
   <div class="row justify-content-md-center">
     <div id="saved-searches" class="col-lg-3">
       <h5 class="header-margin">Saved Searches</h5>

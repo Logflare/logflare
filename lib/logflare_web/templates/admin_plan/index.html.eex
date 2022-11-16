@@ -6,7 +6,7 @@
     </div>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <h1>Plans</h1>
   <div class="table-responsive">
     <table class="table table-dark">

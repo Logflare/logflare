@@ -6,7 +6,7 @@
     </div>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <h1>Edit Plan</h1>
   <%= render "form.html", Map.put(assigns, :action, Routes.admin_plan_path(@conn, :edit, @plan)) %>
 </div>
