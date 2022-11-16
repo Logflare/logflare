@@ -8,7 +8,7 @@
         <h5>~/<%= link "billing", to: Routes.billing_account_path(@conn, :edit), class: "text-primary" %>/subscription/confirm</h5>
       </div>
     </div>
-    <div class="container mx-auto">
+    <div class="content container mx-auto">
       <h4 class="header-margin">Redirecting...</h4>
       <p>You're being redirect to Stripe. If you're not redirected automatically click the button below.</p>
       <button onclick="return checkout();" class="btn btn-primary form-button">Continue</button>

@@ -12,7 +12,7 @@ defmodule LogflareWeb.AccessTokensLive do
     </div>
     </div>
 
-    <section class="container mx-auto flex flex-col w-full">
+    <section class="content container mx-auto flex flex-col w-full">
       <div class="mb-4">
         <p>
           <strong>Accesss tokens are only supported for Logflare Endpoints for now.</strong>

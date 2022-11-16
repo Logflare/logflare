@@ -3,7 +3,7 @@
     <h5>~/<%= link "login", to: Routes.auth_path(@conn, :login), class: "text-primary" %>/email/verify</h5>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <p>
     Click the link in the sign in email or submit the sign in token here.
   </p>
