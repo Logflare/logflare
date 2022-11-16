@@ -36,7 +36,7 @@ defmodule Logflare.Ecto.BQQueryAPI.UDF do
   def quoted_interval(interval) do
     case interval do
       interval when is_binary(interval) or is_atom(interval) -> interval
-      {:^, [line: _], [interval_no_hat]} -> interval_no_hat
+      {:^, _, [interval_no_hat]} -> interval_no_hat
     end
   end
 
