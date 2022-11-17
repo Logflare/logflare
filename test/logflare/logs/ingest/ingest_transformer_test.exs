@@ -244,9 +244,9 @@ defmodule Logflare.Logs.IngestTransformerTest do
 
     test "max length" do
       assert Enum.map(@batch, &transform(&1, [{:field_length, max: 5}])) == [
-               %{"metadata" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
-               %{"metadata" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
-               %{"metadata" => %{"_12345" => [%{"_12345" => %{"12345" => "value"}}]}}
+               %{"_metad" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
+               %{"_metad" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
+               %{"_metad" => %{"_12345" => [%{"_12345" => %{"12345" => "value"}}]}}
              ]
     end
   end
