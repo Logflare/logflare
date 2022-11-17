@@ -1,3 +1,11 @@
+.banner{
+  padding: 10px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
 .jumbotron {
   background-color: #1d1d1d;
   margin-top: 1em;

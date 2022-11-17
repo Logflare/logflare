@@ -1,4 +1,5 @@
 defmodule LogflareWeb.LiveCommons do
+  @moduledoc false
   import Phoenix.LiveView
 
   defmacro __using__(_context) do

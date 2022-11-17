@@ -7,8 +7,8 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   """
 
   # Public
-  def validate(%LE{body: %{metadata: metadata}}) do
-    if valid?(metadata) do
+  def validate(%LE{body: body}) do
+    if valid?(body) do
       :ok
     else
       {:error, message()}
@@ -51,7 +51,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   end
 
   def message do
-    "Metadata validation error: values with the same field path must have the same type."
+    "Validation error: values with the same field path must have the same type."
   end
 
   def tuple_error_message(v) do

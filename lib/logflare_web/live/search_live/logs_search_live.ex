@@ -62,7 +62,14 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
-      |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
+      |> case do
+        %{assigns: %{user: %{sources: %Ecto.Association.NotLoaded{}}}} = socket ->
+          socket
+          |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
+
+        socket ->
+          socket
+      end
       |> assign(:show_modal, false)
       |> assign(uri: URI.parse(uri))
       |> assign(uri_params: params)
@@ -536,7 +543,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> Enum.map(fn la ->
         Map.update!(
           la,
-          :timestamp,
+          "timestamp",
           &BqSchemaHelpers.format_timestamp(&1, timezone)
         )
       end)

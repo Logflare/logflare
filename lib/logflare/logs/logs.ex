@@ -19,7 +19,6 @@ defmodule Logflare.Logs do
       log
       |> IngestTypecasting.maybe_apply_transform_directives()
       |> IngestTransformers.transform(:to_bigquery_column_spec)
-      |> Map.put(:make_from, "ingest")
       |> LE.make(%{source: source})
       |> maybe_mark_le_dropped_by_lql()
       |> maybe_ingest_and_broadcast()
@@ -85,7 +84,8 @@ defmodule Logflare.Logs do
         |> tap(&SourceRouting.route_to_sinks_and_ingest/1)
         |> LE.apply_custom_event_message()
         |> tap(&ingest/1)
-        |> tap(&broadcast/1)
+        # use module reference namespace for Mimic mocking
+        |> tap(&__MODULE__.broadcast/1)
 
       true ->
         le

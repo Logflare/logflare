@@ -1,4 +1,5 @@
 defmodule Logflare.Billing.Plan do
+  @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
 
@@ -15,7 +16,7 @@ defmodule Logflare.Billing.Plan do
     field :limit_team_users_limit, :integer, default: 2
     field :limit_source_fields_limit, :integer, default: 500
     field :limit_source_ttl, :integer, default: :timer.hours(72)
-    field :type, :string, default: "standard", nullable: false
+    field :type, :string, default: "standard"
 
     timestamps()
   end

@@ -12,26 +12,9 @@ defmodule Logflare.LogEvent do
 
   @validators [EqDeepFieldTypes, BigQuerySchemaChange]
 
-  defmodule Body do
-    @moduledoc false
-    use TypedEctoSchema
-
-    @primary_key false
-    typed_embedded_schema do
-      field :id, :string
-      field :metadata, :map, default: %{}
-      field :message, :string
-      field :timestamp, :integer
-      # dev hack
-      field :level, :string
-      # prod hack
-      field :project, :string
-    end
-  end
-
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
-    embeds_one :body, Body
+    field :body, :map, default: %{}
     embeds_one :source, Source
     field :valid, :boolean
     field :drop, :boolean, default: false
@@ -42,22 +25,63 @@ defmodule Logflare.LogEvent do
     field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
-    field :ephemeral, :boolean
-    field :make_from, :string
   end
 
-  def mapper(params, source) do
-    message =
-      params["log_entry"] || params["message"] ||
-        params["event_message"] ||
-        params[:event_message]
+  @doc """
+  Used to generate log events from bigquery rows.
+  """
+  @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()
+  def make_from_db(params, %{source: %Source{} = source}) do
+    params =
+      params
+      |> Map.update("metadata", %{}, fn
+        [] -> %{}
+        [metadata] -> metadata
+      end)
+      |> mapper(source)
 
-    metadata = params["metadata"] || params[:metadata]
+    %__MODULE__{}
+    |> cast(params, [:valid, :validation_error, :id, :body])
+    |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+    |> apply_changes()
+    |> Map.put(:source, source)
+  end
 
+  @doc """
+  Used to make log event from user-provided parameters, for ingestion.
+  """
+  @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
+  def make(params, %{source: source}) do
+    changeset =
+      %__MODULE__{}
+      |> cast(mapper(params, source), [:body, :valid, :validation_error])
+      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+      |> validate_required([:body])
+
+    le_map =
+      changeset.changes
+      |> Map.put(:validation_error, changeset_error_to_string(changeset))
+      |> Map.put(:source, source)
+      |> Map.put(:origin_source_id, source.token)
+      |> Map.put(:valid, changeset.valid?)
+      |> Map.put(:params, params)
+      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
+      |> Map.put(:id, changeset.changes.body["id"])
+      |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+
+    Logflare.LogEvent
+    |> struct!(le_map)
+    |> validate()
+  end
+
+  # Parses input parameters and performs casting.
+  defp mapper(params, source) do
+    message = params["log_entry"] || params["message"] || params["event_message"]
+    metadata = params["metadata"]
     id = id(params)
 
     timestamp =
-      case params["timestamp"] || params[:timestamp] do
+      case params["timestamp"] do
         x when is_binary(x) ->
           case DateTime.from_iso8601(x) do
             {:ok, udt, _} ->
@@ -71,7 +95,6 @@ defmodule Logflare.LogEvent do
               System.system_time(:microsecond)
           end
 
-        # FIXME: validate that integer is in appropriate range (and length?)
         x when is_integer(x) ->
           case Integer.digits(x) |> Enum.count() do
             19 -> Kernel.round(x / 1_000)
@@ -87,95 +110,33 @@ defmodule Logflare.LogEvent do
       end
 
     body =
-      %{
+      params
+      |> Map.merge(%{
         "message" => message,
         "metadata" => metadata,
         "timestamp" => timestamp,
         "id" => id
-      }
+      })
+      |> case do
+        %{"message" => _m, "event_message" => _} = map ->
+          Map.delete(map, "event_message")
+
+        other ->
+          other
+      end
       |> put_clustering_keys(source)
 
     %{
       "body" => body,
-      "id" => id,
-      "ephemeral" => params[:ephemeral],
-      "make_from" => params[:make_from]
+      "id" => id
     }
     |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
-  @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()
-  def make_from_db(params, %{source: %Source{} = source}) do
-    params =
-      params
-      |> Map.update(:metadata, %{}, fn
-        [] -> %{}
-        [metadata] -> metadata
-      end)
-      |> Map.put(:make_from, "db")
-      |> mapper(source)
-
-    changes =
-      %__MODULE__{}
-      |> cast(params, [:valid, :validation_error, :id, :make_from])
-      |> cast_embed(:body, with: &make_body/2)
-      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
-      |> Map.get(:changes)
-
-    body = struct!(Body, changes.body.changes)
-
-    __MODULE__
-    |> struct!(changes)
-    |> Map.put(:body, body)
-    |> Map.replace!(:source, source)
-  end
-
-  @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}) do
-    changeset =
-      %__MODULE__{}
-      |> cast(mapper(params, source), [:valid, :validation_error, :ephemeral, :make_from])
-      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
-      |> cast_embed(:body, with: &make_body/2)
-      |> validate_required([:body])
-
-    body = struct!(Body, changeset.changes.body.changes)
-
-    le_map =
-      changeset.changes
-      |> Map.put(:body, body)
-      |> Map.put(:validation_error, changeset_error_to_string(changeset))
-      |> Map.put(:source, source)
-      |> Map.put(:origin_source_id, source.token)
-      |> Map.put(:valid, changeset.valid?)
-      |> Map.put(:params, params)
-      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
-      |> Map.put(:id, body.id)
-      |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
-
-    Logflare.LogEvent
-    |> struct!(le_map)
-    |> validate()
-  end
-
-  def make_body(_struct, params) do
-    %__MODULE__.Body{}
-    |> cast(params, [
-      :id,
-      :metadata,
-      :message,
-      :timestamp,
-      :level,
-      :project
-    ])
-    |> validate_required([:message, :timestamp])
-    |> validate_length(:message, min: 1)
-  end
-
   @spec validate(LE.t()) :: LE.t()
-  def validate(%LE{valid: false} = le), do: le
+  defp validate(%LE{valid: false} = le), do: le
 
-  def validate(%LE{valid: true} = le) do
+  defp validate(%LE{valid: true} = le) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do
@@ -188,7 +149,9 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  def changeset_error_to_string(changeset) do
+  # used to stringify changeset errors
+  # TODO: move to utils
+  defp changeset_error_to_string(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Enum.reduce(opts, msg, fn {key, value}, acc ->
         String.replace(acc, "%{#{key}}", to_string(value))
@@ -200,7 +163,8 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  def put_clustering_keys(params, source) do
+  # hack for adding top level keys to payload
+  defp put_clustering_keys(params, source) do
     case source.token do
       # dev
       :"83e59828-b6ee-408c-92a8-c17bc523e6e0" ->
@@ -236,14 +200,21 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @doc """
+  Generates a custom event message from source settings.any()
+
+  The `:custom_event_message_keys` key on the source determines what values are extracted from the log event body and set into the `message` key.
+
+  Configuration should be comma separated, and it accepts json query syntax.
+  """
   def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
     message = make_message(le, source)
 
-    Kernel.put_in(le.body.message, message)
+    Kernel.put_in(le.body["message"], message)
   end
 
   defp make_message(le, source) do
-    message = le.body.message
+    message = le.body["message"]
 
     if keys = source.custom_event_message_keys do
       keys
@@ -258,10 +229,10 @@ defmodule Logflare.LogEvent do
             message
 
           "metadata." <> rest ->
-            query_json(le.body.metadata, "$.#{rest}")
+            query_json(le.body["metadata"], "$.#{rest}")
 
           "m." <> rest ->
-            query_json(le.body.metadata, "$.#{rest}")
+            query_json(le.body["metadata"], "$.#{rest}")
 
           keys ->
             ["Invalid custom message keys. Are your keys comma separated? Got: #{inspect(keys)}"]

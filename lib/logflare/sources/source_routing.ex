@@ -4,7 +4,7 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.Rule
   alias Logflare.Lql
   alias Logflare.LogEvent, as: LE
-  import Logflare.Logs, only: [ingest: 1, broadcast: 1]
+  alias Logflare.Logs
   require Logger
 
   @spec route_to_sinks_and_ingest(LE.t()) :: :ok | :noop
@@ -31,10 +31,10 @@ defmodule Logflare.Logs.SourceRouting do
             |> Map.put(:via_rule, rule)
             |> LE.apply_custom_event_message()
 
-          ingest(routed_le)
-          broadcast(routed_le)
+          Logs.ingest(routed_le)
+          Logs.broadcast(routed_le)
 
-        rule.regex_struct && Regex.match?(rule.regex_struct, body.message) ->
+        rule.regex_struct && Regex.match?(rule.regex_struct, body["message"]) ->
           le
           |> LE.apply_custom_event_message()
           |> route_with_regex(rule)
@@ -50,7 +50,7 @@ defmodule Logflare.Logs.SourceRouting do
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
   def route_with_lql_rules?(%LE{} = le, %Rule{lql_filters: lql_filters})
       when length(lql_filters) >= 1 do
-    le = Map.put(le.params, "event_message", le.body.message)
+    le = Map.put(le.params, "event_message", le.body["message"])
 
     lql_rules_match? =
       Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->
@@ -152,8 +152,8 @@ defmodule Logflare.Logs.SourceRouting do
 
     if sink_source do
       routed_le = %{le | source: sink_source, via_rule: rule}
-      ingest(routed_le)
-      broadcast(routed_le)
+      Logs.ingest(routed_le)
+      Logs.broadcast(routed_le)
     else
       Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
     end

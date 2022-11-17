@@ -19,8 +19,13 @@ defmodule Logflare.Mixfile do
         "test.format": :test,
         "test.compile": :test,
         "test.security": :test,
-        "test.typings": :test
+        "test.typings": :test,
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
       ],
+      test_coverage: [tool: ExCoveralls],
       releases: [
         logflare: [
           version: @version,
@@ -60,7 +65,7 @@ defmodule Logflare.Mixfile do
       # Phoenix and LogflareWeb
       {:phoenix, "~> 1.5.0", override: true},
       {:phoenix_pubsub, "~> 2.0.0"},
-      {:phoenix_ecto, "~> 4.0"},
+      {:phoenix_ecto, "~> 4.4"},
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       # {:plug, "~> 1.8"},
@@ -78,7 +83,7 @@ defmodule Logflare.Mixfile do
 
       # Oauth2 provider
       {:phoenix_oauth2_provider, "~> 0.5.1"},
-      {:ex_oauth2_provider, github: "danschultzer/ex_oauth2_provider", override: true},
+      {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
       {:postgrex, ">= 0.0.0"},
@@ -136,8 +141,8 @@ defmodule Logflare.Mixfile do
       {:goth, "~> 1.3-rc"},
 
       # Ecto
-      {:ecto, "~> 3.5", override: true},
-      {:ecto_sql, "~> 3.5"},
+      {:ecto, "~> 3.9", override: true},
+      {:ecto_sql, "~> 3.9"},
       {:typed_ecto_schema, "~> 0.1.0"},
 
       # Telemetry & logging
@@ -178,6 +183,7 @@ defmodule Logflare.Mixfile do
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.11", only: [:dev, :test], runtime: false},
+      {:excoveralls, "~> 0.10", only: :test},
 
       # Telemetry
       # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
@@ -201,11 +207,13 @@ defmodule Logflare.Mixfile do
       "start.orange":
         "cmd PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server",
       "start.pink": "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server",
+      # coveralls will trigger unit tests as well
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high"],
       "test.typings": ["dialyzer --format short"],
+      "test.coverage": ["coveralls"],
       lint: ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],

@@ -225,12 +225,7 @@ defmodule Logflare.Logs.SearchQueries do
       from(bq_table_id)
       |> where([t], t.id == ^id)
       |> or_where([t], t.timestamp == ^timestamp)
-      |> select([t], %{
-        metadata: t.metadata,
-        id: t.id,
-        timestamp: t.timestamp,
-        message: t.event_message
-      })
+      |> select([t], fragment("*"))
 
     le_date = Timex.to_date(timestamp)
 
@@ -253,10 +248,10 @@ defmodule Logflare.Logs.SearchQueries do
 
     from(bq_table_id)
     |> select([t], %{
-      metadata: t.metadata,
-      id: t.id,
-      timestamp: t.timestamp,
-      message: t.event_message
+      t
+      | id: t.id,
+        timestamp: t.timestamp,
+        message: t.event_message
     })
     |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, path)
     |> where([..., t1], field(t1, ^last_column) == ^value)
@@ -265,12 +260,7 @@ defmodule Logflare.Logs.SearchQueries do
   def source_log_event_id(bq_table_id, id) when is_binary(bq_table_id) when is_binary(id) do
     from(bq_table_id)
     |> where([t], t.id == ^id)
-    |> select([t], %{
-      metadata: t.metadata,
-      id: t.id,
-      timestamp: t.timestamp,
-      message: t.event_message
-    })
+    |> select([t], fragment("*"))
   end
 
   def select_default_fields(query, :events) do
@@ -279,13 +269,13 @@ defmodule Logflare.Logs.SearchQueries do
 
   def source_table_streaming_buffer(bq_table_id) when is_binary(bq_table_id) do
     from(bq_table_id)
-    |> select([:id, :metadata, :timestamp, :event_message])
+    |> select([:id, :timestamp, :event_message])
     |> where(in_streaming_buffer())
   end
 
   def source_table_last_1_minutes(bq_table_id) when is_binary(bq_table_id) do
     from(bq_table_id)
-    |> select([:id, :metadata, :timestamp, :event_message])
+    |> select([:id, :timestamp, :event_message])
     |> where([t], t.timestamp >= ^Timex.shift(DateTime.utc_now(), seconds: -60))
   end
 

@@ -1,17 +1,18 @@
 defmodule LogflareWeb.AccessTokensLive do
+  @moduledoc false
   use LogflareWeb, :live_view
   require Logger
   alias Logflare.Auth
 
   def render(assigns) do
     ~L"""
-    <div class="subhead subhead-fixed">
+    <div class="subhead">
     <div class="container mx-auto">
     <h5>~/account/access tokens</h5>
     </div>
     </div>
 
-    <section class="container mx-auto flex flex-col w-full">
+    <section class="content container mx-auto flex flex-col w-full">
       <div class="mb-4">
         <p>
           <strong>Accesss tokens are only supported for Logflare Endpoints for now.</strong>

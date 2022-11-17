@@ -26,7 +26,8 @@ defmodule Logflare.Source do
              :notifications,
              :custom_event_message_keys
            ]}
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+  defp env_dataset_id_append,
+    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
@@ -76,13 +77,13 @@ defmodule Logflare.Source do
              ]}
 
     embedded_schema do
-      field :team_user_ids_for_email, {:array, :string}, default: [], nullable: false
-      field :team_user_ids_for_sms, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_email, {:array, :string}, default: []
+      field :team_user_ids_for_sms, {:array, :string}, default: []
       field :other_email_notifications, :string
       field :user_email_notifications, :boolean, default: false
       field :user_text_notifications, :boolean, default: false
       field :user_schema_update_notifications, :boolean, default: true
-      field :team_user_ids_for_schema_updates, {:array, :string}, default: [], nullable: false
+      field :team_user_ids_for_schema_updates, {:array, :string}, default: []
     end
 
     def changeset(notifications, attrs) do
@@ -101,7 +102,7 @@ defmodule Logflare.Source do
 
   schema "sources" do
     field :name, :string
-    field :token, Ecto.UUID.Atom
+    field :token, Ecto.UUID.Atom, autogenerate: true
     field :public_token, :string
     field :favorite, :boolean, default: false
     field :bigquery_table_ttl, :integer
@@ -117,7 +118,7 @@ defmodule Logflare.Source do
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
-    field :notifications_every, :integer, default: :timer.hours(4), nullable: false
+    field :notifications_every, :integer, default: :timer.hours(4)
     field :lock_schema, :boolean, default: false
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.Term, default: []
@@ -196,7 +197,7 @@ defmodule Logflare.Source do
 
   def default_validations(changeset, source) do
     changeset
-    |> validate_required([:name, :token])
+    |> validate_required([:name])
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)
@@ -234,7 +235,7 @@ defmodule Logflare.Source do
 
     table = format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> @dataset_id_append
+    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> env_dataset_id_append()
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
   end

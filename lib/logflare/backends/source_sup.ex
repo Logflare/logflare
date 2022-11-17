@@ -1,4 +1,5 @@
 defmodule Logflare.Backends.SourceSup do
+  @moduledoc false
   use Supervisor
 
   alias Logflare.Backends.{SourceBackend, CommonIngestPipeline}

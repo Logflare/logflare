@@ -29,7 +29,7 @@
     <li class="list-group-item">
       <ul class="nav d-flex" id="metadata-nav" role="tablist">
         <li class="nav-item">
-          <a class="nav-link active" id="metadata-viewer-link" data-toggle="tab" href="#metadata-viewer" role="tab" >Metadata</a>
+          <a class="nav-link active" id="metadata-viewer-link" data-toggle="tab" href="#metadata-viewer" role="tab" >Event Body</a>
         </li>
         <li class="nav-item">
           <a class="nav-link" data-toggle="tab" href="#metadata-raw" role="tab" >Raw JSON</a>
@@ -47,10 +47,10 @@
     <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
       <div class="tab-content">
         <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
-          <pre class="blurred"></code><%= String.replace(@fmt_metadata, ~r/[\{\}]/, "") %></code></pre>
+          <pre class="blurred"></code><%= String.replace(@fmt_body, ~r/[\{\}]/, "") %></code></pre>
         </div>
         <div class="tab-pane" id="metadata-raw" role="tabpanel">
-          <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code id="metadata-raw-json-code"><%= @fmt_metadata %></code></pre>
+          <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code id="metadata-raw-json-code"><%= @fmt_body %></code></pre>
         </div>
       </div>
     </li>

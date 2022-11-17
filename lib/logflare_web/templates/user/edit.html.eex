@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/account/edit</h5>
     <div class="log-settings">
@@ -9,7 +9,7 @@
     </div>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <h4 class="header-margin">Account Owner Preferences</h4>
   <p>Preferences for the Logflare account owner.</p>
   <div class="sub-form">

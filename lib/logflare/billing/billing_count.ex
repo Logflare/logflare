@@ -1,4 +1,5 @@
 defmodule Logflare.Billing.BillingCount do
+  @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
 

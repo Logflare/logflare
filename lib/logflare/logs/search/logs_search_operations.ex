@@ -175,7 +175,7 @@ defmodule Logflare.Logs.SearchOperations do
   def process_query_result(%SO{query_result: %{rows: rows}, type: :aggregates} = so) do
     rows =
       Enum.map(rows, fn agg ->
-        Map.put(agg, :datetime, Timex.from_unix(agg.timestamp, :microsecond))
+        Map.put(agg, "datetime", Timex.from_unix(agg["timestamp"], :microsecond))
       end)
 
     %{so | rows: rows}
@@ -341,7 +341,6 @@ defmodule Logflare.Logs.SearchOperations do
             values =
               for value <- values do
                 value
-                # FIXME: user local timezone is needed during disconnected mount
                 |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
                 |> Timex.Timezone.convert("Etc/UTC")
               end
@@ -351,7 +350,6 @@ defmodule Logflare.Logs.SearchOperations do
           %{path: "timestamp", value: value} = pvo ->
             value =
               value
-              # FIXME: user local timezone is needed during disconnected mount
               |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
               |> Timex.Timezone.convert("Etc/UTC")
 
@@ -489,15 +487,15 @@ defmodule Logflare.Logs.SearchOperations do
         ts = dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
 
         %{
-          timestamp: ts,
-          datetime: dt
+          "timestamp" => ts,
+          "datetime" => dt
         }
       end)
 
     [aggs | empty_aggs]
     |> List.flatten()
-    |> Enum.uniq_by(& &1.timestamp)
-    |> Enum.sort_by(& &1.timestamp, :desc)
+    |> Enum.uniq_by(& &1["timestamp"])
+    |> Enum.sort_by(& &1["timestamp"], :desc)
   end
 
   def put_time_stats(%SO{} = so) do

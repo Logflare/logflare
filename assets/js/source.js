@@ -114,7 +114,7 @@ async function logTemplate(e) {
     origin_source_id,
     body
   } = e
-  const metadata = JSON.stringify(body.metadata, null, 2)
+  const metadata = JSON.stringify(body, null, 2)
   const formatter = await userSelectedFormatter()
   const formattedDatetime = formatter(body.timestamp)
   const randomId = Math.random() * 10e16
@@ -123,7 +123,7 @@ async function logTemplate(e) {
   const metadataElement = !_.isEmpty(body.metadata) ?
     `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
-        metadata
+        event body
     </a>
     <div class="collapse metadata" id="${metadataId}">
         <pre class="pre-metadata"><code>${_.escape(metadata)}</code></pre>

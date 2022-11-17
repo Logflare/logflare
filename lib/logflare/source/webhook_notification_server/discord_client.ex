@@ -1,4 +1,5 @@
 defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
+  @moduledoc false
   require Logger
 
   alias LogflareWeb.Router.Helpers, as: Routes
@@ -98,8 +99,8 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
   end
 
   defp discord_event_message(x) do
-    timestamp = DateTime.from_unix!(x.body.timestamp, :microsecond) |> DateTime.to_string()
-    {message, _} = String.split_at(x.body.message, 1018)
+    timestamp = DateTime.from_unix!(x.body["timestamp"], :microsecond) |> DateTime.to_string()
+    {message, _} = String.split_at(x.body["message"], 1018)
 
     %{name: timestamp, value: "```#{message}```"}
   end

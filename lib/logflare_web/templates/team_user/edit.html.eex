@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/profile/edit</h5>
     <div class="log-settings">
@@ -9,7 +9,7 @@
     </div>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <h5 class="header-margin">Profile Preferences</h5>
   <p>Set your profile preferences.</p>
   <%= form_for @changeset, Routes.team_user_path(@conn, :update), fn f -> %>

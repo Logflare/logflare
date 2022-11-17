@@ -15,28 +15,155 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   * old_schema: existing Model.TableFieldSchema,
 
   Accepts both metadata map and metadata map wrapped in a list.
+
+  By default, will generate 4 top-level fields:
+  - id
+  - timestamp
+  - event_message
+
+    iex> %TS{fields: fields} = SchemaBuilder.build_table_schema(%{}, @default_schema)
+    iex> length(fields)
+    3
+    iex> fields |> Enum.map( &(&1.name)) |> Enum.sort()
+    ["event_message", "id", "timestamp"]
+
+  The nested object fields will ways be of `RECORD` type and `REPEATED` mode.
+    iex> %TS{fields: fields} = SchemaBuilder.build_table_schema(%{"a"=> %{}}, @default_schema)
+    iex> Enum.find(fields, &(&1.name == "a"))
+    %TFS{name: "a", fields: [], type: "RECORD", mode: "REPEATED"}
+
+  Metadata map will result in nested fields on the respective `fields` key on the `TableFieldSchema`.any()
+
+  For nested string fields:
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> "some thing"}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "STRING" }
+
+  For nested integer fields:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "INTEGER" }
+
+
+  For nested float fields:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1.0}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "FLOAT" }
+
+  For nested boolean fields:
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> true}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{ name: "b", mode: "NULLABLE", type: "BOOL" }
+
+
+  ### Maps
+
+  For nested fields, the intermediate level will be a `RECORD`
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1.0}}, @default_schema)
+    iex> b_schema = TestUtils.get_bq_field_schema(schema, "a.b")
+    iex> TestUtils.get_bq_field_schema(schema, "a")
+    %TFS{ name: "a", mode: "REPEATED", type: "RECORD", fields: [b_schema] }
+
+  When there is an array of maps, it results in the following:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> [
+    ...>  %{"b1"=> "seomthing"},
+    ...>  %{"b2"=> 1.0},
+    ...>]}, @default_schema)
+    iex> b1_schema =  TestUtils.get_bq_field_schema(schema, "a.b1")
+    %TFS{ name: "b1", mode: "NULLABLE", type: "STRING" }
+    iex> b2_schema =  TestUtils.get_bq_field_schema(schema, "a.b2")
+    %TFS{ name: "b2", mode: "NULLABLE", type: "FLOAT" }
+    iex> TestUtils.get_bq_field_schema(schema, "a")
+    %TFS{ name: "a", mode: "REPEATED", type: "RECORD", fields: [b1_schema, b2_schema] }
+
+  Notice that for both cases, the `a` key is set to `REPEATED`
+
+  ### Arrays
+  For arrays fields, the mode will be repeated, and the array type set to the `:type` key:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> [1.0]}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{ name: "b", mode: "REPEATED", type: "FLOAT" }
+
+  Likewise, the same occurs for string arrays:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> ["something"]}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{ name: "b", mode: "REPEATED", type: "STRING" }
+
+
+
+  ### Empty Maps
+  For empty maps, there will not be any inner fields created for the record created:
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> %{}}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    %TFS{fields: [], mode: "REPEATED", name: "b", type: "RECORD"}
+
+  ### Exceptions
+  There are certain cases where the inner field types are ambiguous and an error is raised.
+  - Single nested arrays `[]`
+  - Double nested arrays `[[]]`
+
+    iex> func = &(fn -> SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> &1}}, @default_schema) end)
+    iex> assert_raise ArgumentError, func.([])
+    %ArgumentError{message: "errors were found at the given arguments:\\n\\n  * 1st argument: not a nonempty list\\n"}
+    iex> assert_raise ArgumentError, func.([[]])
+    %ArgumentError{message: "errors were found at the given arguments:\\n\\n  * 1st argument: not a nonempty list\\n"}
+
+
+  ### Top level fields
+  To enable top-level fields, the `:top_level` option needs to be passed.
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> "something"}, @default_schema, top_level: true)
+    iex> TestUtils.get_bq_field_schema(schema, "metadata")
+    nil
+    iex> TestUtils.get_bq_field_schema(schema, "a")
+    %TFS{name: "a", mode: "NULLABLE", type: "STRING"}
+
   """
-  @spec build_table_schema([map], TFS.t()) :: TFS.t()
-  def build_table_schema([metadata], old_schema) do
-    build_table_schema(metadata, old_schema)
+  @type opts :: {:top_level, boolean()}
+  @spec build_table_schema([map()] | map(), TFS.t(), [opts()]) :: TFS.t()
+  def build_table_schema(params, old_schema, opts \\ [])
+
+  def build_table_schema([metadata], old_schema, opts) do
+    build_table_schema(metadata, old_schema, opts)
   end
 
-  @spec build_table_schema(map, TFS.t()) :: TFS.t()
-  def build_table_schema(metadata, %{fields: old_fields}) do
-    old_metadata_schema = Enum.find(old_fields, &(&1.name == "metadata")) || %{}
+  def build_table_schema(params, %{fields: old_fields}, opts) do
+    opts = Enum.into(opts, %{top_level: true})
 
-    metadata_field = build_metadata_fields_schemas(metadata, old_metadata_schema)
+    if opts.top_level do
+      protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
 
-    initial_table_schema()
-    |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
-    |> deep_sort_by_fields_name()
-  end
+      new_fields =
+        for param_key <- Map.keys(params),
+            param_key not in protected_keys do
+          prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
+          param_value = Map.get(params, param_key)
+          new_field_schema = build_fields_schemas({param_key, param_value})
 
-  def build_table_schema(metadata) do
-    metadata_field = build_fields_schemas({"metadata", metadata})
+          prev_field_schema
+          |> DeepMerge.deep_merge(new_field_schema)
+        end
 
-    initial_table_schema()
-    |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
+      # reject old fields that are now included in the params
+      unrejected_fields = old_fields |> Enum.reject(&(&1.name in Map.keys(params)))
+
+      updated_fields =
+        (unrejected_fields ++ new_fields ++ initial_table_schema().fields)
+        |> Enum.uniq_by(fn f -> f.name end)
+
+      initial_table_schema()
+      |> Map.put(:fields, updated_fields)
+    else
+      # only update the metadata field
+      old_metadata_schema = Enum.find(old_fields, &(&1.name == "metadata")) || %{}
+
+      metadata_field = build_metadata_fields_schemas(params, old_metadata_schema)
+
+      initial_table_schema()
+      |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
+    end
     |> deep_sort_by_fields_name()
   end
 
@@ -69,7 +196,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
   end
 
   @spec build_metadata_fields_schemas(map, TFS.t()) :: TFS.t()
-  def build_metadata_fields_schemas(metadata, old_metadata_schema) do
+  defp build_metadata_fields_schemas(metadata, old_metadata_schema) do
     new_metadata_schema = build_fields_schemas({"metadata", metadata})
 
     old_metadata_schema
@@ -77,7 +204,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> DeepMerge.deep_merge(new_metadata_schema)
   end
 
-  def build_fields_schemas({params_key, params_val}) when is_map(params_val) do
+  defp build_fields_schemas({params_key, params_val}) when is_map(params_val) do
     %TFS{
       description: nil,
       mode: "REPEATED",
@@ -87,7 +214,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     }
   end
 
-  def build_fields_schemas(maps) when is_list(maps) do
+  defp build_fields_schemas(maps) when is_list(maps) do
     maps
     |> Enum.reduce(%{}, &DeepMerge.deep_merge/2)
     |> Enum.reject(fn
@@ -97,7 +224,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> Enum.map(&build_fields_schemas/1)
   end
 
-  def build_fields_schemas({params_key, params_value}) do
+  defp build_fields_schemas({params_key, params_value}) do
     case SchemaTypes.to_schema_type(params_value) do
       {"ARRAY", "RECORD"} ->
         %TFS{

@@ -1,4 +1,5 @@
 defmodule Logflare.PubSubRates.Cache do
+  @moduledoc false
   require Logger
 
   alias Logflare.Source

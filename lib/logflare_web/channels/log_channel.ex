@@ -1,4 +1,5 @@
 defmodule LogflareWeb.LogChannel do
+  @moduledoc false
   use LogflareWeb, :channel
 
   alias Logflare.{Logs, Sources, Source}

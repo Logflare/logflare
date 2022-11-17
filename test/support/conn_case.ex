@@ -24,14 +24,16 @@ defmodule LogflareWeb.ConnCase do
 
   using _opts do
     quote do
+      use Mimic
+
       import Plug.Conn
       import Phoenix.ConnTest
       import LogflareWeb.Router.Helpers
-      alias LogflareWeb.Router.Helpers, as: Routes
       import Logflare.Factory
       import Phoenix.LiveViewTest
-      use Mimic
+
       alias Logflare.TestUtils
+      alias LogflareWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
@@ -39,14 +41,20 @@ defmodule LogflareWeb.ConnCase do
       setup context do
         Mimic.verify_on_exit!(context)
       end
+
+      def login_user(conn, u) do
+        conn
+        |> Plug.Test.init_test_session(%{user_id: u.id})
+        |> Plug.Conn.assign(:user, u)
+      end
     end
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Logflare.Repo, shared: not tags[:async])
+    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
       # for global Mimic mocs
       Mimic.set_mimic_global(tags)
     end

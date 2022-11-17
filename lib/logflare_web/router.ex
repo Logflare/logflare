@@ -7,17 +7,6 @@ defmodule LogflareWeb.Router do
 
   # TODO: move plug calls in SourceController and RuleController into here
 
-  @csp """
-  \
-  default-src 'self';\
-  connect-src 'self' #{if Application.get_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
-  style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
-  img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
-  font-src 'self' https://use.fontawesome.com;\
-  frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com https://www.youtube.com;\
-  """
-
   pipeline :browser do
     plug Plug.RequestId
     plug :accepts, ["html"]
@@ -28,7 +17,19 @@ defmodule LogflareWeb.Router do
     plug :protect_from_forgery
 
     plug :put_secure_browser_headers, %{
-      "content-security-policy" => @csp,
+      "content-security-policy" =>
+        (fn ->
+           """
+           \
+           default-src 'self';\
+           connect-src 'self' #{if Application.compile_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
+           script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
+           style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
+           img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
+           font-src 'self' https://use.fontawesome.com;\
+           frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com https://www.youtube.com;\
+           """
+         end).(),
       "referrer-policy" => "same-origin"
     }
 
@@ -41,12 +42,16 @@ defmodule LogflareWeb.Router do
     plug LogflareWeb.Plugs.SetHeaders
   end
 
+  pipeline :logpush do
+    plug :handle_logpush_headers
+  end
+
   pipeline :api do
     plug Plug.RequestId
     plug LogflareWeb.Plugs.MaybeContentTypeToJson
 
     plug Plug.Parsers,
-      parsers: [:json, :bert, :syslog],
+      parsers: [:json, :bert, :syslog, :ndjson],
       json_decoder: Jason
 
     plug :accepts, ["json", "bert"]
@@ -346,7 +351,14 @@ defmodule LogflareWeb.Router do
   scope "/api", LogflareWeb do
     pipe_through [:api, :require_mgmt_api_auth]
     get "/account", UserController, :api_show
-    get "/sources", SourceController, :api_index
+
+    resources "/sources", Api.SourceController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
+
+    resources "/endpoints", Api.EndpointController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
   end
 
   # Old log ingest endpoint. Deprecate.
@@ -369,7 +381,6 @@ defmodule LogflareWeb.Router do
     options "/browser/reports", LogController, :browser_reports
     post "/json", LogController, :generic_json
     options "/json", LogController, :generic_json
-    post "/cloudflare", LogController, :cloudflare
     post "/zeit", LogController, :vercel_ingest
     post "/vercel", LogController, :vercel_ingest
     post "/netlify", LogController, :netlify
@@ -385,6 +396,21 @@ defmodule LogflareWeb.Router do
 
     # Deprecate after September 1, 2020
     post "/syslog", LogController, :syslog
+  end
+
+  scope "/logs/cloudflare", LogflareWeb do
+    pipe_through [:logpush, :api, :require_ingest_api_auth]
+    post "/", LogController, :cloudflare
+  end
+
+  def handle_logpush_headers(conn, _opts) do
+    case get_req_header(conn, "content-type") do
+      ["text/plain; charset=utf-8"] ->
+        put_req_header(conn, "content-type", "application/x-ndjson")
+
+      _type ->
+        conn
+    end
   end
 end
 

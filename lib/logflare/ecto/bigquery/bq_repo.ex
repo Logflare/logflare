@@ -60,8 +60,6 @@ defmodule Logflare.BqRepo do
       |> GenUtils.maybe_parse_google_api_result()
 
     with {:ok, response} <- result do
-      Logger.debug("Bigquery response, #{inspect(response, pretty: true)}")
-
       response =
         response
         |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
@@ -75,7 +73,6 @@ defmodule Logflare.BqRepo do
           }
         end)
         |> Map.new()
-        |> MapKeys.to_atoms_unsafe!()
 
       {:ok, response}
     else

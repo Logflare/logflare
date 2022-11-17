@@ -3,10 +3,10 @@ defmodule Logflare.TelemetryBackend.BQ do
   require Logger
   alias Logflare.Logs
   alias Logflare.Sources
-  @default_source_id Application.get_env(:logflare_telemetry, :source_id)
+  defp env_default_source_id, do: Application.get_env(:logflare_telemetry, :source_id)
 
   def ingest(payload) do
-    source = Sources.Cache.get_by_id(@default_source_id)
+    source = Sources.Cache.get_by_id(env_default_source_id())
 
     payload = prepare_for_bq(payload)
     Logs.ingest_logs(payload, source)

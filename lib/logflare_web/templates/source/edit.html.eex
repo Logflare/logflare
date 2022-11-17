@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/edit</h5>
     <div class="log-settings">
@@ -12,7 +12,7 @@
 
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <%= section_header("Source Name") %>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a
     good place to keep all bot logs. Route logs with LQL rules using

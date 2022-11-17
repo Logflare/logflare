@@ -3,7 +3,7 @@
     window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>"
   </script>
 <% end %>
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
 
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %></h5>
@@ -22,20 +22,20 @@
     </div>
   </div>
 </div>
-<div id="logs-list-stream-container" class="container mx-auto console-text">
+<div id="logs-list-stream-container" class="mt-4 container mx-auto console-text">
   <ul id="logs-list" class="list-unstyled console-text-list" hidden>
     <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>
-      <mark class="log-datestamp" data-timestamp="<%= log.body.timestamp %>">
-        <%= log.body.timestamp %>
+      <mark class="log-datestamp" data-timestamp="<%= log.body["timestamp"] %>">
+        <%= log.body["timestamp"] %>
       </mark>
-      <%= log.body.message %>
-      <%= if map_size(log.body.metadata) > 0 do %>
+      <%= log.body["message"] %>
+      <%= if not is_nil(log.body["metadata"]) and map_size(log.body["metadata"]) > 0 do %>
         <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
-          metadata
+          event body
         </a>
         <div class="collapse metadata" id="metadata-<%= inx %>">
-          <pre class="pre-metadata"><code><%= JSON.encode!(log.body.metadata, pretty: true) %></code></pre>
+          <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>
         </div>
       <% end %>
       <%= if log.via_rule do %>

@@ -1,61 +1,45 @@
-defmodule Logflare.Google.BigQuery.PipelineTest do
+defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
-  alias Logflare.Users
   alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.{Sources, LogEvent}
+  alias Logflare.{LogEvent}
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   use Logflare.DataCase
 
   setup do
-    u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-    s = insert(:source, user_id: u.id)
-    s = Sources.get_by(id: s.id)
-    {:ok, sources: [s], users: [u]}
+    user = insert(:user)
+    source = insert(:source, user_id: user.id)
+    {:ok, source: source}
   end
 
-  describe "Pipeline" do
-    @tag :failing
-    test "le_to_bq_row/1", %{sources: [source | _], users: [_user | _]} do
-      datetime = DateTime.utc_now()
+  test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
+    source: source
+  } do
+    datetime = DateTime.utc_now()
 
-      le =
-        LogEvent.make(
-          %{
-            "message" => "valid",
-            "timestamp" => datetime |> DateTime.to_unix(:microsecond)
-          },
-          %{source: source}
-        )
+    le =
+      LogEvent.make(
+        %{
+          "message" => "valid",
+          "top_level" => "top",
+          "project" => "my-project",
+          "metadata" => %{"a" => "nested"},
+          "timestamp" => datetime |> DateTime.to_unix(:microsecond)
+        },
+        %{source: source}
+      )
 
-      assert Pipeline.le_to_bq_row(le) ==
-               %TableDataInsertAllRequestRows{
-                 insertId: le.id,
-                 json: %{
-                   "event_message" => "valid",
-                   "timestamp" => datetime,
-                   "id" => le.id
-                 }
-               }
+    id = le.id
 
-      le =
-        LogEvent.make(
-          %{
-            "message" => "valid",
-            "metadata" => %{},
-            "timestamp" => datetime |> DateTime.to_unix(:microsecond)
-          },
-          %{source: source}
-        )
-
-      assert Pipeline.le_to_bq_row(le) ==
-               %TableDataInsertAllRequestRows{
-                 insertId: le.id,
-                 json: %{
-                   "event_message" => "valid",
-                   "timestamp" => datetime,
-                   "id" => le.id
-                 }
-               }
-    end
+    assert %TableDataInsertAllRequestRows{
+             insertId: ^id,
+             json: %{
+               "event_message" => "valid",
+               "top_level" => "top",
+               "timestamp" => ^datetime,
+               "metadata" => [%{"a" => "nested"}],
+               "id" => ^id,
+               "project" => "my-project"
+             }
+           } = Pipeline.le_to_bq_row(le)
   end
 end

@@ -137,7 +137,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def any_field do
-    ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
+    ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(:path)
     |> label("schema field")
@@ -160,7 +160,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       string(":>") |> replace(:>),
       string(":<") |> replace(:<),
       string(":~") |> replace(:"~"),
-      choice([string(":@>"), string(":_includes")]) |> replace(@list_includes_op),
+      string(":@>") |> replace(@list_includes_op),
       # string(":") should always be the last choice
       string(":") |> replace(:=)
     ])

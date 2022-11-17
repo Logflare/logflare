@@ -50,13 +50,13 @@ jobs:
         run: mix deps.get
       - name: Run compilation warnings check
         run: mix test.compile
-      - name: Run unit tests
-        run: mix test
+      - name: Run unit tests with code coverage check
+        run: mix test.coverage
     # - name: Test - security
     #   run: mix test.security
       - name: Code quality - formatting
         run: mix test.format
     # - name: Code quality - typings
     #   run: mix test.typings
-    # - name: Code quality - linting
-    #   run: mix lint.diff
+      - name: Code quality - linting
+        run: mix lint --only warnings

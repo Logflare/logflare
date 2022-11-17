@@ -1,4 +1,5 @@
 defmodule LogflareWeb.AlertComponent do
+  @moduledoc false
   use LogflareWeb, :live_component
 
   @impl true

@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/logs/new</h5>
     <div class="log-settings">
@@ -8,7 +8,7 @@
     </div>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <p>
     Sources are where logs go. You can name your source anything you want. We suggest
     you namespace your sources like <code>YourApp.all</code> which would take all logs.

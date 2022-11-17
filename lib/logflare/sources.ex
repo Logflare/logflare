@@ -21,11 +21,13 @@ defmodule Logflare.Sources do
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def create_source(source_params, user) do
-    user
-    |> Ecto.build_assoc(:sources)
-    |> Source.update_by_user_changeset(source_params)
-    |> Repo.insert()
-    |> case do
+    source =
+      user
+      |> Ecto.build_assoc(:sources)
+      |> Source.update_by_user_changeset(source_params)
+      |> Repo.insert()
+
+    case source do
       {:ok, source} ->
         init_schema = SchemaBuilder.initial_table_schema()
 
@@ -50,29 +52,22 @@ defmodule Logflare.Sources do
   end
 
   def get(source_id) when is_integer(source_id) do
-    Source
-    |> Repo.get(source_id)
+    Repo.get(Source, source_id)
   end
 
-  def get_sources_by_user(%User{id: id}) do
-    from(s in Source,
-      where: s.user_id == ^id,
-      select: s
-    )
-    |> Repo.all()
-  end
-
-  def update_source(changeset) do
-    Repo.update(changeset)
+  def update_source(source) do
+    Repo.update(source)
   end
 
   def update_source(source, attrs) do
-    Source.changeset(source, attrs)
+    source
+    |> Source.changeset(attrs)
     |> Repo.update()
   end
 
   def update_source_by_user(source, attrs) do
-    Source.update_by_user_changeset(source, attrs)
+    source
+    |> Source.update_by_user_changeset(attrs)
     |> Repo.update()
   end
 
@@ -89,9 +84,12 @@ defmodule Logflare.Sources do
         {:error, :upgrade}
 
       false ->
-        Source.update_by_user_changeset(source, attrs)
-        |> Repo.update()
-        |> case do
+        update =
+          source
+          |> Source.update_by_user_changeset(attrs)
+          |> Repo.update()
+
+        case update do
           {:ok, source} = response ->
             Source.Supervisor.reset_source(source.token)
 
@@ -105,21 +103,17 @@ defmodule Logflare.Sources do
 
   @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
-    Source
-    |> Repo.get_by(kw)
+    Repo.get_by(Source, kw)
   end
 
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
     Source
     |> Repo.get_by(kw)
-    |> case do
-      nil ->
-        nil
-
-      s ->
-        preload_defaults(s)
-    end
+    |> then(fn
+      nil -> nil
+      s -> preload_defaults(s)
+    end)
   end
 
   def get_rate_limiter_metrics(source, bucket: :default) do
@@ -134,13 +128,7 @@ defmodule Logflare.Sources do
   end
 
   def delete_source(source) do
-    case Repo.delete(source) do
-      {:ok, response} ->
-        {:ok, response}
-
-      {:error, response} ->
-        {:error, response}
-    end
+    Repo.delete(source)
   end
 
   def node_rate_limiter_failsafe(node_metrics, cluster_size) do
@@ -163,23 +151,19 @@ defmodule Logflare.Sources do
     with %{schema: schema} <- Schema.get_state(source.token) do
       schema = SchemaUtils.deep_sort_by_fields_name(schema)
       {:ok, schema}
-    else
-      errtup -> errtup
     end
   end
 
   def get_by_and_preload_rules(kv) do
-    source = get_by(kv)
-
-    if source,
-      do: Repo.preload(source, :rules),
-      else: nil
+    case get_by(kv) do
+      nil -> nil
+      source -> Repo.preload(source, :rules)
+    end
   end
 
   def preload_defaults(source) do
     source
-    |> Repo.preload(:user)
-    |> Repo.preload(:rules)
+    |> Repo.preload([:user, :rules])
     |> refresh_source_metrics()
     |> maybe_compile_rule_regexes()
     |> put_bq_table_id()
@@ -198,7 +182,7 @@ defmodule Logflare.Sources do
 
     Repo.preload(
       source,
-      saved_searches: from(SavedSearch) |> where([s], s.saved_by_user)
+      saved_searches: from(s in SavedSearch, where: s.saved_by_user)
     )
   end
 
@@ -354,5 +338,14 @@ defmodule Logflare.Sources do
       nil -> :pseudo
       x -> x
     end
+  end
+
+  @spec preload_for_dashboard(list(Source.t())) :: list(Source.t())
+  def preload_for_dashboard(sources) do
+    sources
+    |> Enum.map(&preload_defaults/1)
+    |> Enum.map(&preload_saved_searches/1)
+    |> Enum.map(&put_schema_field_count/1)
+    |> Enum.sort_by(&{!&1.favorite, &1.name})
   end
 end

@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/admin/accounts</h5>
     <div class="log-settings">
@@ -6,7 +6,7 @@
     </div>
   </div>
 </div>
-<div class="dashboard container mx-auto parent">
+<div class="content dashboard container mx-auto parent">
   <div class="side">
     <div class="dropdown">
       <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"

@@ -2,11 +2,16 @@ defmodule LogflareWeb.Auth.OauthController do
   use LogflareWeb, :controller
 
   plug Ueberauth
-
+  require Logger
   alias Logflare.JSON
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
+
+  def request(conn, params) do
+    Logger.warn("Received unrecognized Oauth provider request", error_string: inspect(params))
+    auth_error_redirect(conn)
+  end
 
   def callback(
         %{assigns: %{ueberauth_auth: _auth}} = conn,
@@ -77,7 +82,26 @@ defmodule LogflareWeb.Auth.OauthController do
     AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 
-  def callback(%{assigns: %{ueberauth_failure: _auth}} = conn, _params) do
+  def callback(
+        %{assigns: %{ueberauth_failure: failure}} = conn,
+        %{"provider" => provider} = params
+      ) do
+    Logger.warn("Oauth failure for #{provider}. #{inspect(failure)}",
+      error_string: inspect(params)
+    )
+
+    auth_error_redirect(conn)
+  end
+
+  def callback(conn, params) do
+    Logger.warn("Received unrecognized Oauth provider callback request",
+      error_string: inspect(params)
+    )
+
+    auth_error_redirect(conn)
+  end
+
+  defp auth_error_redirect(conn) do
     conn
     |> put_flash(:error, "Authentication error! Please contact support if this continues.")
     |> redirect(to: Routes.source_path(conn, :dashboard))

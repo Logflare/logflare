@@ -25,6 +25,10 @@ defmodule Logflare.DataCase do
       import Logflare.DataCase
       import Logflare.Factory
       use Mimic
+
+      setup context do
+        Mimic.verify_on_exit!(context)
+      end
     end
   end
 
@@ -33,6 +37,8 @@ defmodule Logflare.DataCase do
 
     unless tags[:async] do
       Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
+      # for global Mimic mocks
+      Mimic.set_mimic_global(tags)
     end
 
     :ok

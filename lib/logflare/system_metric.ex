@@ -1,4 +1,5 @@
 defmodule Logflare.SystemMetric do
+  @moduledoc false
   use TypedEctoSchema
   import Ecto.Changeset
 

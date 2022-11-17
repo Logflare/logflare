@@ -31,8 +31,7 @@ defmodule Logflare.User do
            ]}
 
   @default_user_api_quota 150
-  @project_id Application.get_env(:logflare, Logflare.Google)[:project_id]
-  @dataset_id_append Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
+
   @default_dataset_location "US"
   @valid_bq_dataset_locations [
     "US",
@@ -52,6 +51,10 @@ defmodule Logflare.User do
     "asia-southeast1",
     "australia-southeast1"
   ]
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+  defp env_dataset_id_append,
+    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   typed_schema "users" do
     field :email, :string
@@ -68,8 +71,8 @@ defmodule Logflare.User do
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
-    field :bigquery_udfs_hash, :string, null: false
-    field :bigquery_processed_bytes_limit, :integer, null: false
+    field :bigquery_udfs_hash, :string
+    field :bigquery_processed_bytes_limit, :integer
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -156,18 +159,16 @@ defmodule Logflare.User do
   end
 
   def hide_bigquery_defaults(user) do
-    case user do
-      %{bigquery_project_id: @project_id} = u ->
-        %{
-          u
-          | bigquery_project_id: nil,
-            bigquery_dataset_id: nil,
-            bigquery_dataset_location: nil,
-            bigquery_processed_bytes_limit: nil
-        }
-
-      u ->
-        u
+    if user.bigquery_project_id == env_project_id() do
+      %{
+        user
+        | bigquery_project_id: nil,
+          bigquery_dataset_id: nil,
+          bigquery_dataset_location: nil,
+          bigquery_processed_bytes_limit: nil
+      }
+    else
+      user
     end
   end
 
@@ -185,11 +186,12 @@ defmodule Logflare.User do
       user_id = Integer.to_string(options[:user_id])
 
       dataset_id =
-        changeset.changes[:bigquery_dataset_id] || "#{options[:user_id]}" <> @dataset_id_append
+        changeset.changes[:bigquery_dataset_id] ||
+          "#{options[:user_id]}" <> env_dataset_id_append()
 
       location = changeset.changes[:bigquery_dataset_location] || @default_dataset_location
 
-      project_id = bigquery_project_id || @project_id
+      project_id = bigquery_project_id || env_project_id()
 
       case BigQuery.create_dataset(
              user_id,
@@ -227,6 +229,6 @@ defmodule Logflare.User do
   end
 
   def generate_bq_dataset_id(%__MODULE__{id: id} = _user) do
-    "#{id}" <> @dataset_id_append
+    "#{id}" <> env_dataset_id_append()
   end
 end

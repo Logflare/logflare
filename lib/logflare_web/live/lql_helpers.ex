@@ -1,4 +1,5 @@
 defmodule LogflareWeb.LqlHelpers do
+  @moduledoc false
   use LogflareWeb, :view
   import LogflareWeb.ModalLiveHelpers
   alias LogflareWeb.SharedView

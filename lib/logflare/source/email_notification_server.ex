@@ -1,4 +1,5 @@
 defmodule Logflare.Source.EmailNotificationServer do
+  @moduledoc false
   use GenServer
 
   require Logger

@@ -12,6 +12,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Source
   alias Logflare.SavedSearches
   alias Logflare.Lql
+  alias Logflare.Utils.Tasks
   use TypedStruct
   require Logger
   @query_timeout 60_000
@@ -54,7 +55,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_execute_events_query(source_token, params) when is_atom(source_token) do
-    Task.start_link(fn ->
+    Tasks.start_child(fn ->
       update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
     end)
 
@@ -117,21 +118,17 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # Callbacks
 
   @impl true
-  def init(%{source_id: source_id} = args) do
+  def init(%{source_id: source_id}) do
     Logger.debug("SearchQueryExecutor #{name(source_id)} is being initialized...")
-    {:ok, args, {:continue, :after_init}}
-  end
 
-  @impl true
-  def handle_continue(:after_init, state) do
     state = %__MODULE__{
-      user: Users.get_by_source(state.source_id),
+      user: Users.get_by_source(source_id),
       agg_tasks: %{},
       event_tasks: %{},
-      source_id: state.source_id
+      source_id: source_id
     }
 
-    {:noreply, state}
+    {:ok, state}
   end
 
   @impl true
@@ -234,7 +231,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       |> Enum.reject(& &1.is_from_stale_query)
       |> Enum.concat(rows)
       |> Enum.uniq_by(&{&1.body, &1.id})
-      |> Enum.sort_by(& &1.body.timestamp, &>=/2)
+      |> Enum.sort_by(& &1.body["timestamp"], &>=/2)
       |> Enum.take(100)
 
     maybe_send(
@@ -303,7 +300,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       start_cache_streaming_buffer_task(so.source)
     end
 
-    Task.async(fn ->
+    Tasks.async(fn ->
       so
       |> Search.search()
       |> case do
@@ -319,7 +316,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   def start_aggs_task(lv_pid, params) do
     so = SO.new(params)
 
-    Task.async(fn ->
+    Tasks.async(fn ->
       so
       |> Search.aggs()
       |> case do
@@ -333,7 +330,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def start_cache_streaming_buffer_task(%Source{} = source) do
-    Task.start_link(fn ->
+    Tasks.start_child(fn ->
       source
       |> Search.query_source_streaming_buffer()
       |> case do

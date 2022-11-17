@@ -1,4 +1,5 @@
 defmodule Logflare.Generators do
+  @moduledoc false
   @predicates File.read!("priv/generators/predicates.txt")
   @objects File.read!("priv/generators/objects.txt")
   @teams File.read!("priv/generators/teams.txt")

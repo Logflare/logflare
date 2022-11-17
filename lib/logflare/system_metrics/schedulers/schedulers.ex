@@ -1,4 +1,5 @@
 defmodule Logflare.SystemMetrics.Schedulers do
+  @moduledoc false
   def scheduler_utilization(sample_a, sample_b) do
     formatter(:scheduler.utilization(sample_a, sample_b))
   end

@@ -1,4 +1,5 @@
 defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.AuthClient do
+  @moduledoc false
   require Logger
 
   use Tesla

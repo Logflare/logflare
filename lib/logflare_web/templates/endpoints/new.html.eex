@@ -1,4 +1,4 @@
-<div class="subhead subhead-fixed">
+<div class="subhead ">
   <div class="container mx-auto">
     <h5>~/endpoints/new</h5>
     <div class="log-settings">
@@ -8,7 +8,7 @@
     </div>
   </div>
 </div>
-<div class="container mx-auto">
+<div class="content container mx-auto">
   <p>
   </p>
   <%= form_for @changeset, Routes.endpoints_path(@conn, :create), fn f -> %>
