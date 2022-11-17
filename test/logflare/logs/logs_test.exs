@@ -17,15 +17,15 @@ defmodule Logflare.LogsTest do
     setup do
       [source: insert(:source, user: build(:user))]
     end
-    test "empty list", %{source: source} do
 
+    test "empty list", %{source: source} do
       Logs
       |> Mimic.reject(:broadcast, 1)
 
       assert :ok = Logs.ingest_logs([], source)
     end
 
-    test "top level keys" , %{source: source} do
+    test "top level keys", %{source: source} do
       Logs
       |> expect(:broadcast, 1, fn le ->
         # TODO: should be event_message
@@ -41,19 +41,19 @@ defmodule Logflare.LogsTest do
 
       assert :ok = Logs.ingest_logs(batch, source)
     end
-    test "non-map value for metadata key" , %{source: source} do
-        Logs
-        |> expect(:broadcast, 1, fn le ->
-          assert %{"metadata" => "some_value"} = le.body
-          le
-        end)
 
-        batch = [
-          %{"event_message" => "any", "metadata"=> "some_value"}
-        ]
+    test "non-map value for metadata key", %{source: source} do
+      Logs
+      |> expect(:broadcast, 1, fn le ->
+        assert %{"metadata" => "some_value"} = le.body
+        le
+      end)
 
-        assert :ok = Logs.ingest_logs(batch, source)
+      batch = [
+        %{"event_message" => "any", "metadata" => "some_value"}
+      ]
 
+      assert :ok = Logs.ingest_logs(batch, source)
     end
   end
 
