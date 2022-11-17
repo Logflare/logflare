@@ -32,7 +32,7 @@
       <%= log.body["message"] %>
       <%= if not is_nil(log.body["metadata"]) and map_size(log.body["metadata"]) > 0 do %>
         <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
-          event data
+          event body
         </a>
         <div class="collapse metadata" id="metadata-<%= inx %>">
           <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>

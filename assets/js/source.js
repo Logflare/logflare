@@ -123,7 +123,7 @@ async function logTemplate(e) {
   const metadataElement = !_.isEmpty(body.metadata) ?
     `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
-        event data
+        event body
     </a>
     <div class="collapse metadata" id="${metadataId}">
         <pre class="pre-metadata"><code>${_.escape(metadata)}</code></pre>
