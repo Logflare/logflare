@@ -35,9 +35,6 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp env_dataproc_sa, do: Application.get_env(:logflare, Logflare.Google)[:dataproc_sa]
 
-  defp env_container_registry_sa,
-    do: Application.get_env(:logflare, Logflare.Google)[:container_registry_sa]
-
   defp env_redis_sa, do: Application.get_env(:logflare, Logflare.Google)[:redis_sa]
 
   defp env_serverless_robot_sa,
@@ -128,7 +125,19 @@ defmodule Logflare.Google.CloudResourceManager do
       },
       %Model.Binding{
         members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/editor"
+        role: "roles/compute.instanceAdmin"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_compute_engine_sa()}"],
+        role: "roles/containerregistry.ServiceAgent"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_compute_engine_sa()}"],
+        role: "roles/logging.logWriter"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_compute_engine_sa()}"],
+        role: "roles/monitoring.metricWriter"
       },
       %Model.Binding{
         members: ["serviceAccount:#{env_api_sa()}"],
@@ -183,16 +192,13 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         condition: nil,
         members: [
-          "serviceAccount:#{env_compute_engine_sa()}",
-          "serviceAccount:#{env_api_sa()}",
-          "serviceAccount:#{env_container_registry_sa()}"
+          "serviceAccount:#{env_api_sa()}"
         ],
         role: "roles/editor"
       },
       %Model.Binding{
         condition: nil,
         members: [
-          "serviceAccount:#{env_compute_engine_sa()}",
           "serviceAccount:#{env_cloud_build_sa()}"
         ],
         role: "roles/iam.serviceAccountUser"

@@ -14,9 +14,7 @@ defmodule Logflare.Logs.IngestTransformers do
   end
 
   def transform(log_params, rules) when is_map(log_params) and is_list(rules) do
-    Map.update(log_params, "metadata", %{}, fn m ->
-      Enum.reduce(rules, m, &do_transform(&2, &1))
-    end)
+    Enum.reduce(rules, log_params, &do_transform(&2, &1))
   end
 
   @spec do_transform(map, atom) :: map
