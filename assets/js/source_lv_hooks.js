@@ -19,7 +19,34 @@ hooks.SourceSchemaModalTable = {
 
 hooks.SourceLogsSearchList = {
   updated() {
+    const hook = this
+
     window.scrollTo(0, document.body.scrollHeight)
+
+    window.addEventListener("scroll", _.throttle(resetScrollTracker, 250))
+
+    function resetScrollTracker() {
+      let window_inner_height = window.innerHeight
+      let window_offset = window.pageYOffset
+      let subhead = document.querySelector("div.subhead")
+      let header = document.querySelector("nav")
+      let nav_height = subhead.offsetHeight + header.offsetHeight
+      let client_height = document.body.clientHeight
+
+      // even if we're close to the bottom, we're at the bottom (for mobile browsers)
+      // should make this 40 dynamic
+      if (window_inner_height + window_offset - nav_height >= client_height - 175) {
+        if (window.playing != true) {
+          window.removeEventListener("scroll", _.throttle(resetScrollTracker, 250))
+          hook.pushEvent("soft_play", {})
+          window.playing = true
+        }
+      } else {
+        // We don't reset window.playing here because we don't want it to start playing again when you scroll back down
+        window.removeEventListener("scroll", _.throttle(resetScrollTracker, 250))
+        hook.pushEvent("soft_pause", {})
+      }
+    };
   },
   mounted() {
     $("html, body").animate({
@@ -218,30 +245,9 @@ hooks.SourceLogsSearch = {
     $("#search-uri-query").tooltip()
 
     // Auto plays and pauses search
-    function resetScrollTracker() {
-      let window_inner_height = window.innerHeight
-      let window_offset = window.pageYOffset
-      let client_height = document.body.clientHeight
-      let subhead = document.querySelector("div.subhead")
-      let header = document.querySelector("nav")
+   
 
-      let nav_height = subhead.offsetHeight + header.offsetHeight
-
-
-      // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-      // should make this 40 dynamic
-      if (window_inner_height + window_offset - nav_height >= client_height + 40) {
-        if (window.playing != true) {
-          hook.pushEvent("soft_play", {})
-          window.playing = true
-        }
-      } else {
-        // We don't reset window.playing here because we don't want it to start playing again when you scroll back down
-        hook.pushEvent("soft_pause", {})
-      }
-    };
-
-    window.addEventListener("scroll", _.throttle(resetScrollTracker, 250))
+    
 
     // Auto plays and pauses search, but need to figure out better layout css first.
     // Logs list area needs to auto fill height
