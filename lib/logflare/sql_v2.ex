@@ -66,16 +66,14 @@ defmodule Logflare.SqlV2 do
   defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
     new_name_list = for name_map <- names do
       name_value = Map.get(name_map, "value")
-        new_name_value = if name_value in data.source_names do
-          transform_name(name_value, data)
-        else
-          name_value
-        end
+      to_merge = if name_value in data.source_names do
+        %{"value"=> transform_name(name_value, data), "quote_style"=> "`"}
+      else
+        quote_style = Map.get(name_map, "quote_style")
+        %{"value"=> name_value, "quote_style"=> quote_style}
+      end
 
-      Map.merge(
-        name_map,
-        %{ "value"=> new_name_value, "quote_style"=> "`"}
-      )
+      Map.merge( name_map, to_merge )
 
     end
 
