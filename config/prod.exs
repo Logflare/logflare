@@ -69,7 +69,6 @@ config :logflare, Logflare.Google,
   container_engine_robot_sa:
     "service-1074203751359@container-engine-robot.iam.gserviceaccount.com",
   dataproc_sa: "service-1074203751359@dataproc-accounts.iam.gserviceaccount.com",
-  container_registry_sa: "service-1074203751359@containerregistry.iam.gserviceaccount.com",
   redis_sa: "service-1074203751359@cloud-redis.iam.gserviceaccount.com",
   serverless_robot_sa: "service-1074203751359@serverless-robot-prod.iam.gserviceaccount.com",
   service_networking_sa: "service-1074203751359@service-networking.iam.gserviceaccount.com",
