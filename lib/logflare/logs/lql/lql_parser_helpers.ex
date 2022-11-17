@@ -160,7 +160,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       string(":>") |> replace(:>),
       string(":<") |> replace(:<),
       string(":~") |> replace(:"~"),
-      choice([string(":@>"), string(":_includes")]) |> replace(@list_includes_op),
+      string(":@>") |> replace(@list_includes_op),
       # string(":") should always be the last choice
       string(":") |> replace(:=)
     ])
