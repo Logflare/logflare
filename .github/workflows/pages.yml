@@ -31,6 +31,7 @@ jobs:
           # Version Spec of the version to use. Examples: 12.x, 10.15.1, >=10.15.0.
           node-version: ">=16.14"
           cache: npm
+          key: ${{ runner.os }}-build-${{ hashFiles('**/package-lock.json') }}
           cache-dependency-path: docs/docs.logflare.com/package-lock.json
       - name: Setup Pages
         uses: actions/configure-pages@v2
