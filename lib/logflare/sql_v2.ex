@@ -6,7 +6,7 @@ defmodule Logflare.SqlV2 do
   """
   alias Logflare.Sources
   alias Logflare.User
-
+  alias __MODULE__.Parser
   @spec transform(String.t(), User.t()) :: {:ok, String.t()}
   def transform(
         query,
@@ -30,7 +30,6 @@ defmodule Logflare.SqlV2 do
         dataset_id
       end
 
-    {:ok, %{"stmts" => statements}} = EpgQuery.parse(query)
 
     sources = Sources.list_sources_by_user(user)
 
@@ -47,22 +46,15 @@ defmodule Logflare.SqlV2 do
       source_names: Map.keys(source_mapping)
     }
 
+
+    {:ok, statements} = Parser.parse(query)
+
     statements
     |> do_transform(data)
-    |> EpgQuery.to_string()
-    # BigQuery related hacks
-    |> case do
-      {:ok, str} ->
-        {:ok,
-         str
-         |> String.replace(~r/\"(`[^\s]+`)\"/, "\\g{1}")}
-
-      other ->
-        other
-    end
+    |> Parser.to_string()
   end
 
-  defp do_transform([%{"stmt" => _} | _] = statements, data) do
+  defp do_transform(statements, data) when is_list(statements) do
     statements
     |> Enum.map(fn statement ->
       statement
@@ -71,34 +63,40 @@ defmodule Logflare.SqlV2 do
     end)
   end
 
-  defp replace_names({"RangeVar" = k, %{"relname" => relname} = v}, data) do
-    transformed_name =
-      if relname in data.source_names do
-        transform_name(relname, data)
-      else
-        relname
-      end
+  defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
+    new_name_list = for name_map <- names do
+      name_value = Map.get(name_map, "value")
+        new_name_value = if name_value in data.source_names do
+          transform_name(name_value, data)
+        else
+          name_value
+        end
 
-    {k, %{v | "relname" => transformed_name}}
+      Map.merge(
+        name_map,
+        %{ "value"=> new_name_value, "quote_style"=> "`"}
+      )
+
+    end
+
+
+    {k, %{v | "name" => new_name_list}}
   end
 
-  defp replace_names({"ColumnRef" = k, %{"fields" => fields} = v}, data) do
-    transformed_fields =
-      for field <- fields, {type, value} <- field do
-        new_value =
-          cond do
-            Map.get(value, "str") in data.source_names ->
-              %{value | "str" => transform_name(Map.get(value, "str"), data)}
+  defp replace_names({"CompoundIdentifier" = k, [first | other ] }, data) do
+    value = Map.get(first, "value")
+    new_identifier = if value in data.source_names do
 
-            true ->
-              value
-          end
+      Map.merge(
+        first,
+        %{ "value"=> transform_name(value, data), "quote_style"=> "`"}
+      )
+    else
+      first
+    end
 
-        [{type, new_value}]
-        |> Map.new()
-      end
 
-    {k, %{v | "fields" => transformed_fields}}
+    {k, [new_identifier | other]}
   end
 
   defp replace_names({k, v}, data) when is_list(v) or is_map(v) do
@@ -123,6 +121,6 @@ defmodule Logflare.SqlV2 do
       |> Atom.to_string()
       |> String.replace("-", "_")
 
-    ~s(`#{data.project_id}.#{data.dataset_id}.#{token}`)
+    ~s(#{data.project_id}.#{data.dataset_id}.#{token})
   end
 end

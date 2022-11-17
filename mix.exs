@@ -108,7 +108,6 @@ defmodule Logflare.Mixfile do
       {:nimble_parsec, "~> 1.0"},
       {:warpath, "~> 0.5.0"},
       {:timber_logfmt, github: "Logflare/logfmt-elixir"},
-      {:epg_query, path: "../epg_query"},
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},

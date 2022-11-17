@@ -1,0 +1,17 @@
+[package]
+name = "sqlparser_ex"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "sqlparser_ex"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.25.0"
+sqlparser = {version = "0.27.0", features = ["serde"]} 
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
