@@ -41,7 +41,7 @@ defmodule Logflare.Application do
     env = Application.get_env(:logflare, :env)
     # Setup Goth for GCP connections
     credentials =
-      if env in [:dev, :test],
+      if env in [:dev, :test, :local],
         do: Application.get_env(:goth, :json) |> Jason.decode!(),
         else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
 

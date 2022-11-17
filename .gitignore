@@ -50,6 +50,7 @@ gcloud_prod.json
 /cover/
 /node_modules/
 .vscode/
+.google.secret.json
 
 # rustler nif binaries
 priv/native/

@@ -9,6 +9,13 @@ services:
       POSTGRES_USER: postgres
     ports:
       - "5432:5432"
+  logflare:
+    build:
+      dockerfile: ./docker/local.app.Dockerfile
+    ports:
+      - "4000:4000"
+    links:
+      - "db:db"
 
 volumes:
   pg-data:
