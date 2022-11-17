@@ -99,7 +99,16 @@ defmodule Logflare.TestUtils do
     end)
   end
 
-  # gzipped request body from the Cloudflare Log Push HTTP service.
+  @doc """
+  Fixture for Gzipped request body from the Cloudflare Log Push HTTP service.
+  Used for testing the NDJSON parser
+
+  Gzipped:
+    iex> cloduflare_log_push_body(decoded: false)
+
+  Decoded:
+    iex> cloduflare_log_push_body(decoded: true)
+  """
   def cloudflare_log_push_body(decoded: false) do
     <<31, 139, 8, 0, 0, 0, 0, 0, 0, 19, 229, 86, 91, 111, 226, 70, 20, 126, 239, 175, 168, 120,
       88, 181, 221, 197, 120, 124, 119, 164, 104, 69, 29, 178, 137, 148, 11, 2, 182, 91, 181, 170,
@@ -157,7 +166,6 @@ defmodule Logflare.TestUtils do
       191, 0, 29, 159, 90, 32, 167, 13, 0, 0>>
   end
 
-  # gunzipped and decode body from Plug.Parsers.LOGPUSH
   def cloudflare_log_push_body(decoded: true) do
     %{
       "batch" => [
