@@ -128,8 +128,8 @@
           <span class="fas fa-step-backward"></span>
         </a>
         <%= if @tailing? do %>
-        <span class="btn btn-primary live-pause mr-0" phx-click="soft_pause">
-          <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+        <span class="btn btn-primary live-pause mr-0 text-nowrap" phx-click="soft_pause">
+          <i class="spinner-border spinner-border-sm text-info" role="status"></i>
           <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
         </span>
         <% else %>
