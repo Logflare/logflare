@@ -88,7 +88,7 @@ defmodule Plug.Parsers.SYSLOG do
     metadata = Map.put(metadata, :level, metadata[:severity])
 
     %{
-      "message" => message,
+      "event_message" => message,
       "timestamp" => timestamp,
       "metadata" => MapKeys.to_strings(metadata)
     }

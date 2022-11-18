@@ -131,7 +131,7 @@
     -H 'Content-Type: application/json' \
     -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
     -d $'{
-      "message": "This is another log message.",
+      "event_message": "This is another log message.",
       "metadata": {
         "ip_address": "100.100.100.100",
         "request_method": "POST",

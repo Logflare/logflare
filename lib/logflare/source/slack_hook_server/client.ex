@@ -152,7 +152,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
 
   defp slack_event_message(event) do
     time = Kernel.floor(event.body["timestamp"] / 1_000_000)
-    "<!date^#{time}^{date_pretty} at {time_secs}|#{event.ingested_at}>\r>#{event.body["message"]}"
+    "<!date^#{time}^{date_pretty} at {time_secs}|#{event.ingested_at}>\r>#{event.body["event_message"]}"
   end
 
   defp slack_no_events_message() do

@@ -40,7 +40,7 @@ defmodule Plug.Parsers.NDJSON do
           {:ok, log_event} ->
             %{
               "timestamp" => log_event["EdgeStartTimestamp"],
-              "message" => line,
+              "event_message" => line,
               "metadata" => log_event
             }
 

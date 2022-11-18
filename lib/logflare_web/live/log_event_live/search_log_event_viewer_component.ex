@@ -89,7 +89,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       source: le.source,
       body: body,
       fmt_body: BqSchema.encode_metadata(body),
-      message: body["message"],
+      message: body["event_message"],
       id: le.id,
       timestamp: timestamp,
       local_timezone: tz,
