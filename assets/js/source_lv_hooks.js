@@ -23,30 +23,22 @@ hooks.SourceLogsSearchList = {
 
     window.scrollTo(0, document.body.scrollHeight)
 
-    window.addEventListener("scroll", _.throttle(resetScrollTracker, 250))
-
-    function resetScrollTracker() {
-      let window_inner_height = window.innerHeight
-      let window_offset = window.pageYOffset
-      let subhead = document.querySelector("div.subhead")
-      let header = document.querySelector("nav")
-      let nav_height = subhead.offsetHeight + header.offsetHeight
-      let client_height = document.body.clientHeight
-
-      // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-      // should make this 40 dynamic
-      if (window_inner_height + window_offset - nav_height >= client_height - 175) {
-        if (window.playing != true) {
-          window.removeEventListener("scroll", _.throttle(resetScrollTracker, 250))
-          hook.pushEvent("soft_play", {})
-          window.playing = true
-        }
-      } else {
-        // We don't reset window.playing here because we don't want it to start playing again when you scroll back down
-        window.removeEventListener("scroll", _.throttle(resetScrollTracker, 250))
-        hook.pushEvent("soft_pause", {})
-      }
-    };
+    const observer =
+      new IntersectionObserver((entries, observer) => {
+        entries.forEach((entry) => {
+          let searchInView = entry.isIntersecting
+          if (searchInView) {
+            // play when we scroll down
+            // hook.pushEvent("soft_play", {})
+          } else {
+            // pause when we scroll up
+            hook.pushEvent("soft_pause", {})
+          }
+        })
+      })
+    
+    const target = document.querySelector("#observer-target")
+    observer.observe(target)
   },
   mounted() {
     $("html, body").animate({
@@ -243,30 +235,6 @@ hooks.SourceLogsSearch = {
       text: () => location.href,
     })
     $("#search-uri-query").tooltip()
-
-    // Auto plays and pauses search
-   
-
-    
-
-    // Auto plays and pauses search, but need to figure out better layout css first.
-    // Logs list area needs to auto fill height
-
-    // const observer =
-    //   new IntersectionObserver((entries, observer) => {
-    //     entries.forEach((entry) => {
-    //       let searchInView = entry.isIntersecting
-    //       if (searchInView) {
-    //         hook.pushEvent("soft_play", {})
-    //       } else {
-    //         hook.pushEvent("soft_pause", {})
-    //       }
-    //     })
-    //   })
-    // 
-    // const target = document.querySelector("#last-query-completed-at")
-    // observer.observe(target)
-
 
     // Activate user idle tracking
     const idleInterval = $("#user-idle").data("user-idle-interval")

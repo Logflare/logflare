@@ -103,6 +103,7 @@ async function renderLog(event) {
 }
 
 export function scrollBottom() {
+
   const y = document.body.clientHeight
 
   window.scrollTo(0, y)
@@ -161,20 +162,23 @@ export async function switchDateFormat() {
 }
 
 function resetScrollTracker() {
-  let window_inner_height = window.innerHeight
-  let window_offset = window.pageYOffset
-  let client_height = document.body.clientHeight
-  let subhead = document.querySelector("div.subhead")
-  let header = document.querySelector("nav")
-  let nav_height = subhead.offsetHeight + header.offsetHeight
-
-  // even if we're close to the bottom, we're at the bottom (for mobile browsers)
-  // should make this dynamic
-  if (window_inner_height + window_offset - nav_height >= client_height - 129) {
-    window.scrollTracker = true
-  } else {
-    window.scrollTracker = false
-  }
+  const observer =
+      new IntersectionObserver((entries, observer) => {
+        entries.forEach((entry) => {
+          let searchInView = entry.isIntersecting
+          if (searchInView) {
+            // stick to bottom
+            
+            window.scrollTracker = true
+          } else {
+            // don't stick to bottom
+            window.scrollTracker = false
+          }
+        })
+      })
+    
+    const target = document.querySelector("#observer-target")
+    observer.observe(target)
 }
 
 export function scrollOverflowBottom() {

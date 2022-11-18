@@ -128,8 +128,8 @@
           <span class="fas fa-step-backward"></span>
         </a>
         <%= if @tailing? do %>
-        <span class="btn btn-primary live-pause mr-0" phx-click="soft_pause">
-          <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+        <span class="btn btn-primary live-pause mr-0 text-nowrap" phx-click="soft_pause">
+          <i class="spinner-border spinner-border-sm text-info" role="status"></i>
           <span class="fas-in-button hide-on-mobile" id="search-tailing-button">Pause</span>
         </span>
         <% else %>
@@ -202,14 +202,16 @@
         <% end %>
       </div>
     </div>
+    <div id="observer-target">
+    </div>
     </form>
     <%= if @last_query_completed_at do %>
     <small class="form-text text-muted" id="last-query-completed-at"
       data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
-      Elapsed since last query: <span id="last-query-elapsed" phx-update="ignore"> 0.0 </span> seconds
+      Elapsed since last query: <span phx-update="ignore"> 0.0 </span> seconds
     </small>
     <% else %>
-    <small class="form-text text-muted" id="last-query-completed-at">
+    <small class="form-text text-muted">
       Elapsed since last query: 0.0 seconds
     </small>
     <% end %>
