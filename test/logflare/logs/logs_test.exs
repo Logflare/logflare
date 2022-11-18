@@ -25,18 +25,33 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs([], source)
     end
 
-    test "top level keys", %{source: source} do
+    test "message key gets converted to event_message", %{source: source} do
       Logs
       |> expect(:broadcast, 1, fn le ->
-        # TODO: should be event_message
-        assert %{"message" => "testing 123"} = le.body
+        assert %{"event_message" => "testing 123"} = le.body
         assert Map.keys(le.body) |> length() == 3
 
         le
       end)
 
       batch = [
-        %{"event_message" => "testing 123"}
+        %{"message" => "testing 123"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+    end
+
+    test "top level keys", %{source: source} do
+      Logs
+      |> expect(:broadcast, 1, fn le ->
+        assert %{"event_message" => "testing 123", "other" => 123} = le.body
+        assert Map.keys(le.body) |> length() == 4
+
+        le
+      end)
+
+      batch = [
+        %{"event_message" => "testing 123", "other" => 123}
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
@@ -109,7 +124,7 @@ defmodule Logflare.LogsTest do
     end
 
     test "regex", %{source: source, target: target} do
-      insert(:rule, regex: "test.+", sink: target.token, source_id: source.id)
+      insert(:rule, regex: "routed123", sink: target.token, source_id: source.id)
       source = source |> Repo.preload(:rules, force: true)
 
       Logs
@@ -117,7 +132,7 @@ defmodule Logflare.LogsTest do
 
       batch = [
         %{"event_message" => "not routed"},
-        %{"event_message" => "testing 123"}
+        %{"event_message" => "routed123"}
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)

@@ -3,7 +3,7 @@ defmodule LogflareWeb.LogControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
-  @valid %{"some" => "valid log entry", "message" => "hi!"}
+  @valid %{"some" => "valid log entry", "event_message" => "hi!"}
 
   describe "v2 pipeline" do
     setup do
@@ -56,7 +56,7 @@ defmodule LogflareWeb.LogControllerTest do
       Logflare.Logs
       |> expect(:broadcast, 1, fn le ->
         assert match?(@valid, le.body)
-        assert le.body["message"] != nil
+        assert le.body["event_message"] != nil
         assert Map.keys(le.body) |> length() == 4, inspect(Map.keys(le.body))
 
         le

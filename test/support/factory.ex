@@ -68,6 +68,7 @@ defmodule Logflare.Factory do
     {:ok, lql_filters} = Lql.Parser.parse(lql, default_bq_schema())
 
     %Rule{
+      regex: attrs[:regex],
       lql_string: lql,
       lql_filters: lql_filters,
       sink: attrs[:sink],

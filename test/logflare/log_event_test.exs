@@ -9,7 +9,7 @@ defmodule Logflare.LogEventTest do
     [source: source, user: user]
   end
 
-  @valid_params %{"message" => "something", "metadata" => %{"my" => "key"}}
+  @valid_params %{"event_message" => "something", "metadata" => %{"my" => "key"}}
   test "make/2 from valid params", %{source: source} do
     params = @valid_params
 
@@ -63,16 +63,19 @@ defmodule Logflare.LogEventTest do
     source: source
   } do
     params = %{
-      "message" => "some message",
+      "event_message" => "some message",
       "metadata" => %{"a" => "value"}
     }
 
     le =
-      LogEvent.make(params, %{source: %{source | custom_event_message_keys: "id, message, m.a"}})
+      LogEvent.make(params, %{
+        source: %{source | custom_event_message_keys: "id, event_message, m.a"}
+      })
 
     le = LogEvent.apply_custom_event_message(le)
-    assert le.body["message"] =~ le.id
-    assert le.body["message"] =~ "value"
-    assert le.body["message"] =~ "some message"
+    assert le.body["event_message"] =~ le.id
+    assert le.body["event_message"] =~ "value"
+    assert le.body["event_message"] =~ "some message"
+    assert le.body["message"] == nil
   end
 end

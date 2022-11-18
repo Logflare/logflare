@@ -65,7 +65,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         end
       end
       |> Map.put("timestamp", bq_timestamp)
-      |> Map.put("event_message", body["message"])
+      |> Map.put("event_message", body["event_message"])
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,
