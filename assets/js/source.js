@@ -133,7 +133,7 @@ async function logTemplate(e) {
 
   return `<li>
     <mark class="log-datestamp" data-timestamp="${body.timestamp
-    }">${formattedDatetime}</mark> ${_.escape(body.message)}
+    }">${formattedDatetime}</mark> ${_.escape(body.event_message)}
     ${metadataElement}
     ${via_rule
       ? `<span
