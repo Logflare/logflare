@@ -10,10 +10,11 @@ defmodule Logflare.SqlV2.Parser do
   def parse(query) do
     with {:ok, json} <- Native.parse(query) do
       Jason.decode(json)
-      end
+    end
   end
 
   def to_string(ast) when is_map(ast), do: __MODULE__.to_string([ast])
+
   def to_string(asts) when is_list(asts) do
     asts
     |> Jason.encode!()
