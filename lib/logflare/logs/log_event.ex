@@ -76,7 +76,8 @@ defmodule Logflare.LogEvent do
 
   # Parses input parameters and performs casting.
   defp mapper(params, source) do
-    message = params["log_entry"] || params["message"] || params["event_message"]
+    # TODO: deprecate and remove `log_entry` and `message`
+    event_message = params["log_entry"] || params["message"] || params["event_message"]
     metadata = params["metadata"]
     id = id(params)
 
@@ -112,14 +113,14 @@ defmodule Logflare.LogEvent do
     body =
       params
       |> Map.merge(%{
-        "message" => message,
+        "event_message" => event_message,
         "metadata" => metadata,
         "timestamp" => timestamp,
         "id" => id
       })
       |> case do
-        %{"message" => _m, "event_message" => _} = map ->
-          Map.delete(map, "event_message")
+        %{"message" => m, "event_message" => em} = map when m == em ->
+          Map.delete(map, "message")
 
         other ->
           other
@@ -203,18 +204,18 @@ defmodule Logflare.LogEvent do
   @doc """
   Generates a custom event message from source settings.any()
 
-  The `:custom_event_message_keys` key on the source determines what values are extracted from the log event body and set into the `message` key.
+  The `:custom_event_message_keys` key on the source determines what values are extracted from the log event body and set into the `event_message` key.
 
   Configuration should be comma separated, and it accepts json query syntax.
   """
   def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
     message = make_message(le, source)
 
-    Kernel.put_in(le.body["message"], message)
+    Kernel.put_in(le.body["event_message"], message)
   end
 
   defp make_message(le, source) do
-    message = le.body["message"]
+    message = le.body["message"] || le.body["event_message"]
 
     if keys = source.custom_event_message_keys do
       keys
@@ -226,6 +227,9 @@ defmodule Logflare.LogEvent do
             le.id
 
           "message" ->
+            message
+
+          "event_message" ->
             message
 
           "metadata." <> rest ->

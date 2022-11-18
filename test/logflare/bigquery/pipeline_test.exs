@@ -19,7 +19,7 @@ defmodule Logflare.BigQuery.PipelineTest do
     le =
       LogEvent.make(
         %{
-          "message" => "valid",
+          "event_message" => "valid",
           "top_level" => "top",
           "project" => "my-project",
           "metadata" => %{"a" => "nested"},

@@ -20,24 +20,15 @@ defmodule Logflare.Logs.SourceRouting do
     %Source{rules: rules} = source
 
     for rule <- rules do
+      regex_struct =
+        rule.regex_struct || if(rule.regex != nil, do: Regex.compile!(rule.regex), else: nil)
+
       cond do
-        length(rule.lql_filters) >= 1 && route_with_lql_rules?(le, rule) ->
-          sink_source =
-            Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
+        length(rule.lql_filters) >= 1 and route_with_lql_rules?(le, rule) ->
+          do_route(le, rule)
 
-          routed_le =
-            le
-            |> Map.put(:source, sink_source)
-            |> Map.put(:via_rule, rule)
-            |> LE.apply_custom_event_message()
-
-          Logs.ingest(routed_le)
-          Logs.broadcast(routed_le)
-
-        rule.regex_struct && Regex.match?(rule.regex_struct, body["message"]) ->
-          le
-          |> LE.apply_custom_event_message()
-          |> route_with_regex(rule)
+        regex_struct != nil and Regex.match?(regex_struct, body["event_message"]) ->
+          do_route(le, rule)
 
         true ->
           :noop
@@ -47,16 +38,27 @@ defmodule Logflare.Logs.SourceRouting do
     :ok
   end
 
-  @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
-  def route_with_lql_rules?(%LE{} = le, %Rule{lql_filters: lql_filters})
-      when length(lql_filters) >= 1 do
-    le = Map.put(le.params, "event_message", le.body["message"])
+  # routes the log event
+  defp do_route(le, rule) do
+    sink_source =
+      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
+    le
+    |> Map.put(:source, sink_source)
+    |> Map.put(:via_rule, rule)
+    |> LE.apply_custom_event_message()
+    |> tap(&Logs.ingest/1)
+    |> tap(&Logs.broadcast/1)
+  end
+
+  @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
+  def route_with_lql_rules?(%LE{body: le_body}, %Rule{lql_filters: lql_filters})
+      when length(lql_filters) >= 1 do
     lql_rules_match? =
       Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->
         %Lql.FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter
 
-        le_values = collect_by_path(le, path)
+        le_values = collect_by_path(le_body, path)
 
         lql_filter_matches_any_of_nested_values? =
           Enum.reduce_while(le_values, false, fn le_value, _acc ->
@@ -144,18 +146,5 @@ defmodule Logflare.Logs.SourceRouting do
       end
 
     List.wrap(values)
-  end
-
-  def route_with_regex(%LE{} = le, %Rule{} = rule) do
-    sink_source =
-      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
-
-    if sink_source do
-      routed_le = %{le | source: sink_source, via_rule: rule}
-      Logs.ingest(routed_le)
-      Logs.broadcast(routed_le)
-    else
-      Logger.error("Sink source for UUID #{rule.sink} doesn't exist")
-    end
   end
 end
