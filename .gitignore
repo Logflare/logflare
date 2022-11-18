@@ -51,6 +51,7 @@ gcloud_prod.json
 /node_modules/
 .vscode/
 .google.secret.json
+.prod.env
 
 # rustler nif binaries
 priv/native/

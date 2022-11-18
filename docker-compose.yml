@@ -16,6 +16,8 @@ services:
       - "4000:4000"
     links:
       - "db:db"
-
+    env_file:
+      - .local.env
+    hostname: logflare
 volumes:
   pg-data:

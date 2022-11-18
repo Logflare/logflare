@@ -26,4 +26,6 @@ npm-debug.log
 /.elixir_ls/
 /.idea/
 
-Dockerfile
+# Docker
+/docker
+docker*

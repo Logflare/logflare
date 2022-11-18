@@ -1,19 +1,13 @@
-FROM elixir:1.12-slim
+FROM elixir:1.12-alpine as builder
 
 # erlexec requires SHELL to be set
 ENV SHELL /bin/bash
-ENV MIX_ENV local
+ENV MIX_ENV prod
 ENV JAVA_HOME /opt/java/jdk-16.0.1/
+ENV MAGIC_COOKIE $magic_cookie
 
-RUN apt-get update && \
-    apt-get install -y curl git build-essential
-
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash - && \
-    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
-    echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
-
-RUN apt-get update && \
-    apt-get install -y nodejs yarn
+RUN apk update && \
+    apk add -f curl git build-base nodejs yarn
 
 RUN curl https://download.java.net/java/GA/jdk16.0.1/7147401fd7354114ac51ef3e1328291f/9/GPL/openjdk-16.0.1_linux-x64_bin.tar.gz -o openjdk-16.0.1_linux-x64_bin.tar.gz && \
     mkdir -p /opt/java && \
@@ -25,12 +19,20 @@ COPY . /logflare
 WORKDIR /logflare
 RUN mix local.rebar --force
 RUN mix local.hex --force
-RUN mix deps.get && \
-    mix compile && \
-    mix phx.digest
+RUN mix do deps.get, deps.compile
 
-RUN cd /logflare/assets && \
-    yarn && \
-    yarn upgrade phoenix phoenix_html phoenix_live_view phoenix_live_react
+RUN mix phx.digest
+RUN mix release --force --overwrite
 
-CMD [ "elixir", "--sname", "local", "--cookie", "cookie" ,"-S" ,"mix" , "phx.server" ]
+FROM elixir:1.12-alpine as app
+WORKDIR /root/
+
+ENV MIX_ENV prod
+ENV MAGIC_COOKIE $magic_cookie
+
+COPY --from=builder ./logflare/_build/prod ./app
+COPY --from=builder ./logflare/priv/static ./app/priv/static
+
+ADD .google.secret.json app/.google.secret.json
+
+CMD ["./app/rel/logflare/bin/logflare", "start", "--name" , "logflare"]
