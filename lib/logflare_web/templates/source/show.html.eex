@@ -60,9 +60,11 @@
         <i class="fas fa-search"></i><span class="fas-in-button">Search</span>
       <% end %>
     <% end %>
-    <small class="form-text text-muted">
-          random(tips): <%= @search_tip %>
-    </small>
+    <div id="search-tip">
+      <small class="form-text text-muted">
+            random(tips): <%= @search_tip %>
+      </small>
+    </div>
   </div>
 
 </div>
