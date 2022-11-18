@@ -269,13 +269,13 @@ defmodule Logflare.Logs.SearchQueries do
 
   def source_table_streaming_buffer(bq_table_id) when is_binary(bq_table_id) do
     from(bq_table_id)
-    |> select([:id, :timestamp, :event_message])
+    |> select([t], fragment("*"))
     |> where(in_streaming_buffer())
   end
 
   def source_table_last_1_minutes(bq_table_id) when is_binary(bq_table_id) do
     from(bq_table_id)
-    |> select([:id, :timestamp, :event_message])
+    |> select([t], fragment("*"))
     |> where([t], t.timestamp >= ^Timex.shift(DateTime.utc_now(), seconds: -60))
   end
 
