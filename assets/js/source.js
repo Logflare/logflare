@@ -177,7 +177,7 @@ function resetScrollTracker() {
         })
       })
     
-    const target = document.querySelector("#search-tip")
+    const target = document.querySelector("#observer-target")
     observer.observe(target)
 }
 

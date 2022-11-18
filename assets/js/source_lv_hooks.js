@@ -37,7 +37,7 @@ hooks.SourceLogsSearchList = {
         })
       })
     
-    const target = document.querySelector("#last-query-completed-at")
+    const target = document.querySelector("#observer-target")
     observer.observe(target)
   },
   mounted() {
