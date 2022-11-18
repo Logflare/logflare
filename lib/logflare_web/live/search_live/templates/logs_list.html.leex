@@ -7,7 +7,7 @@
       <div id="logs-list" class="list-unstyled console-text-list">
         <%= for log <- @search_op_log_events.rows do %>
           <li id="log-event_<%= log.id || log.body["timestamp"] %>">
-            <% %{"timestamp"=> timestamp, "message"=> message} = log.body %>
+            <% %{"timestamp"=> timestamp, "event_message"=> message} = log.body %>
             <%= if @use_local_time do %>
               <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp, @user_local_timezone) %></mark>
             <% else %>
