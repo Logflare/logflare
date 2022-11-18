@@ -208,7 +208,7 @@
     <%= if @last_query_completed_at do %>
     <small class="form-text text-muted" id="last-query-completed-at"
       data-timestamp="<%= Timex.to_unix(@last_query_completed_at) %>">
-      Elapsed since last query: <span> 0.0 </span> seconds
+      Elapsed since last query: <span phx-update="ignore"> 0.0 </span> seconds
     </small>
     <% else %>
     <small class="form-text text-muted">
