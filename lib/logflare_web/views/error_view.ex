@@ -1,6 +1,10 @@
 defmodule LogflareWeb.ErrorView do
   use LogflareWeb, :view
 
+  def render_in(name, assigns \\ %{}, do: inner) do
+    render(name, Map.put(assigns, :inner_content, inner))
+  end
+
   def render("401.html", assigns) do
     render("401_page.html", assigns)
   end
