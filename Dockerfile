@@ -4,7 +4,7 @@ FROM elixir:1.12-alpine as builder
 ENV SHELL /bin/bash
 ENV MIX_ENV prod
 ENV JAVA_HOME /opt/java/jdk-16.0.1/
-ENV MAGIC_COOKIE $magic_cookie
+ENV MAGIC_COOKIE=$magic_cookie
 
 RUN apk update && \
     apk add -f curl git build-base nodejs yarn
@@ -17,22 +17,18 @@ RUN curl https://download.java.net/java/GA/jdk16.0.1/7147401fd7354114ac51ef3e132
 COPY . /logflare
 
 WORKDIR /logflare
-RUN mix local.rebar --force
-RUN mix local.hex --force
+RUN mix do local.rebar --force, local.hex --force
 RUN mix do deps.get, deps.compile
 
 RUN mix phx.digest
-RUN mix release --force --overwrite
+RUN mix release
 
-FROM elixir:1.12-alpine as app
+FROM alpine as app
 WORKDIR /root/
 
-ENV MIX_ENV prod
-ENV MAGIC_COOKIE $magic_cookie
+ENV MAGIC_COOKIE=$magic_cookie
 
-COPY --from=builder ./logflare/_build/prod ./app
-COPY --from=builder ./logflare/priv/static ./app/priv/static
+RUN apk update && apk add -f ncurses
+COPY --from=builder ./logflare/_build/prod /root/app
 
-ADD .google.secret.json app/.google.secret.json
-
-CMD ["./app/rel/logflare/bin/logflare", "start", "--name" , "logflare"]
+CMD ["./app/rel/logflare/bin/logflare", "start", "--sname", "logflare"]

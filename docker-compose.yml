@@ -11,7 +11,7 @@ services:
       - "5432:5432"
   logflare:
     build:
-      dockerfile: ./docker/local.app.Dockerfile
+      dockerfile: ./Dockerfile
     ports:
       - "4000:4000"
     links:

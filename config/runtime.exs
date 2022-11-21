@@ -94,5 +94,5 @@ if config_env() == :prod do
     api_key: System.get_env("STRIPE_API_KEY"),
     publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY")
 
-  config :goth, json: File.read!(System.get_env("GOTH_FILE_PATH"))
+  config :goth, json: System.get_env("GOTH_GOOGLE_SECRET_JSON") |> Jason.decode!()
 end
