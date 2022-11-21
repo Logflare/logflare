@@ -42,10 +42,10 @@ defmodule LogflareWeb.ConnCase do
         Mimic.verify_on_exit!(context)
       end
 
-      def login_user(conn, u) do
+      def login_user(conn, user) do
         conn
-        |> Plug.Test.init_test_session(%{user_id: u.id})
-        |> Plug.Conn.assign(:user, u)
+        |> Plug.Test.init_test_session(%{user_id: user.id})
+        |> Plug.Conn.assign(:user, user)
       end
     end
   end
