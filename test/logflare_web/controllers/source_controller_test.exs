@@ -14,13 +14,13 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
 
-
   describe "list" do
     setup %{conn: conn} do
       Logflare.Sources.Counters
       |> stub()
       |> stub(:get_inserts, fn _token -> {:ok, 123} end)
       |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
+
       user = insert(:user)
       insert(:plan, name: "Free")
       insert(:team, user: user)
@@ -34,6 +34,7 @@ defmodule LogflareWeb.SourceControllerTest do
         conn
         |> get(Routes.source_path(conn, :dashboard))
         |> html_response(200)
+
       # nav
       assert html =~ "~/logs"
       assert html =~ "Saved Searches"
@@ -46,6 +47,7 @@ defmodule LogflareWeb.SourceControllerTest do
         conn
         |> get(Routes.source_path(conn, :show, source))
         |> html_response(200)
+
       # main nav
       assert html =~ "Sign out"
       # subnav
@@ -60,6 +62,7 @@ defmodule LogflareWeb.SourceControllerTest do
         conn
         |> get(Routes.source_path(conn, :show, 12_345))
         |> html_response(404)
+
       # main nav
       assert html =~ "Sign out"
       refute html =~ "Sign in"
@@ -71,10 +74,12 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "forbidden source", %{conn: conn} do
       other_source = insert(:source, user: build(:user))
+
       html =
         conn
         |> get(Routes.source_path(conn, :show, other_source))
         |> html_response(403)
+
       # main nav
       assert html =~ "Sign out"
       refute html =~ "Sign in"
@@ -86,7 +91,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "dashboard - rejected" do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
-
 
     @tag :failing
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
