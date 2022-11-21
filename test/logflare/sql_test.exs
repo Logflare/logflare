@@ -86,6 +86,23 @@ defmodule Logflare.SqlTest do
         assert {:ok, v2} = SqlV2.transform(input, user)
         assert String.downcase(v2) == expected
       end
+
+      # invalid sandbox queries
+      for {input, expected} <- [
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select a from src into src"},
+              "end of statement"
+            },
+            {
+              {"with src as (select a from my_table) select c from src", "select * from src"},
+              "restricted wildcard"
+            }
+          ] do
+        assert {:error, _err1} = SQL.transform(input, user)
+        assert {:error, err2} = SqlV2.transform(input, user)
+        assert err2 =~ expected
+      end
     end)
   end
 

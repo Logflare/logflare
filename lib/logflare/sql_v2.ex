@@ -44,21 +44,65 @@ defmodule Logflare.SqlV2 do
         {source.name, source}
       end
 
-    data = %{
-      project_id: project_id,
-      dataset_id: dataset_id,
-      sources: sources,
-      source_mapping: source_mapping,
-      source_names: Map.keys(source_mapping),
-      sandboxed_query: sandboxed_query
-    }
+    with {:ok, statements} <- Parser.parse(query),
+         {:ok, sandboxed_query_ast} <-
+           (case sandboxed_query do
+              q when is_binary(q) -> Parser.parse(q)
+              _ -> {:ok, nil}
+            end),
+         :ok <- maybe_validate_sandboxed_query_ast(sandboxed_query_ast) do
+      data = %{
+        project_id: project_id,
+        dataset_id: dataset_id,
+        sources: sources,
+        source_mapping: source_mapping,
+        source_names: Map.keys(source_mapping),
+        sandboxed_query: sandboxed_query,
+        sandboxed_query_ast: sandboxed_query_ast
+      }
 
-    {:ok, statements} = Parser.parse(query)
-
-    statements
-    |> do_transform(data)
-    |> Parser.to_string()
+      statements
+      |> do_transform(data)
+      |> Parser.to_string()
+    end
   end
+
+  defp maybe_validate_sandboxed_query_ast(ast) when is_list(ast) do
+    Enum.reduce(ast, :ok, fn
+      statement, :ok ->
+        cond do
+          has_wildcard_in_select(statement) ->
+            {:error, "restricted wildcard (*) in a result column"}
+
+          true ->
+            :ok
+        end
+
+      _statement, err ->
+        err
+    end)
+  end
+
+  defp maybe_validate_sandboxed_query_ast(_), do: :ok
+
+  defp has_wildcard_in_select(statement), do: has_wildcard_in_select(statement, false)
+  defp has_wildcard_in_select(_kv, true), do: true
+
+  defp has_wildcard_in_select({"Select", %{"projection" => proj}}, _acc) do
+    if("Wildcard" in proj, do: true, else: false)
+  end
+
+  defp has_wildcard_in_select(kv, acc) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.map(fn kv -> has_wildcard_in_select(kv, acc) end)
+    |> Enum.any?()
+  end
+
+  defp has_wildcard_in_select({_k, v}, acc) when is_list(v) or is_map(v) do
+    has_wildcard_in_select(v, acc)
+  end
+
+  defp has_wildcard_in_select(_kv, acc), do: acc
 
   defp do_transform(statements, data) when is_list(statements) do
     statements
@@ -119,7 +163,6 @@ defmodule Logflare.SqlV2 do
 
   defp replace_names(kv, _data), do: kv
 
-
   # ignore the queries inside of the CTE
   defp replace_sandboxed_query({"query", %{"body" => _}} = kv, _data), do: kv
 
@@ -129,11 +172,10 @@ defmodule Logflare.SqlV2 do
            "body" = k,
            %{"Select" => _}
          },
-         %{sandboxed_query: sandboxed_query} = data
+         %{sandboxed_query: sandboxed_query, sandboxed_query_ast: ast} = data
        )
        when is_binary(sandboxed_query) do
-    {:ok, statements} = Parser.parse(sandboxed_query)
-    statements = do_transform(statements, %{data | sandboxed_query: nil})
+    statements = do_transform(ast, %{data | sandboxed_query: nil})
 
     replacement_body =
       statements
