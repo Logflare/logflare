@@ -69,12 +69,41 @@ defmodule Logflare.SqlV2 do
 
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
     with :ok <- has_wildcard_in_select(ast),
-         :ok <- has_restricted_sources(cte_ast, ast) do
+         :ok <- has_restricted_sources(cte_ast, ast),
+         :ok <- has_restricted_functions(ast) do
       :ok
     end
   end
 
   defp maybe_validate_sandboxed_query_ast(_), do: :ok
+
+  defp has_restricted_functions(ast) when is_list(ast), do: has_restricted_functions(ast, :ok)
+
+  defp has_restricted_functions({"Function", %{"name" => [%{"value" => _} | _] = names}}, :ok) do
+    restricted =
+      for name <- names,
+          normalized = String.downcase(name["value"]),
+          normalized in ["session_user", "external_query"] do
+        normalized
+      end
+
+    if length(restricted) > 0 do
+      {:error, "Restricted function #{Enum.join(restricted, ", ")}"}
+    else
+      :ok
+    end
+  end
+
+  defp has_restricted_functions(kv, :ok = acc) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.reduce(acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc) end)
+  end
+
+  defp has_restricted_functions({_k, v}, :ok = acc) when is_list(v) or is_map(v) do
+    has_restricted_functions(v, acc)
+  end
+
+  defp has_restricted_functions(_kv, acc), do: acc
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =

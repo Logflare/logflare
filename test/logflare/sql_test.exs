@@ -89,19 +89,32 @@ defmodule Logflare.SqlTest do
 
       # invalid sandbox queries
       for {input, expected} <- [
+            # no select into support
             {
               {"with src as (select a from my_table) select c from src",
                "select a from src into src"},
               "end of statement"
             },
+            # no wildcard allowed
             {
               {"with src as (select a from my_table) select c from src", "select * from src"},
               "restricted wildcard"
             },
+            # restricted table references not in CTE
             {
               {"with src as (select a from my_table) select c from src",
                "select a from my_table"},
               "Table not found in CTE: (my_table)"
+            },
+            # restricted functions
+            {
+              {"with src as (select a from my_table) select c from src", "select session_user()"},
+              "Restricted function session_user"
+            },
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select external_query('','')"},
+              "Restricted function external_query"
             }
           ] do
         assert {:error, _err1} = SQL.transform(input, user)
