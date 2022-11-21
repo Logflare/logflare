@@ -50,7 +50,7 @@ defmodule Logflare.SqlV2 do
               q when is_binary(q) -> Parser.parse(q)
               _ -> {:ok, nil}
             end),
-         :ok <- maybe_validate_sandboxed_query_ast(sandboxed_query_ast) do
+         :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}) do
       data = %{
         project_id: project_id,
         dataset_id: dataset_id,
@@ -67,35 +67,51 @@ defmodule Logflare.SqlV2 do
     end
   end
 
-  defp maybe_validate_sandboxed_query_ast(ast) when is_list(ast) do
-    Enum.reduce(ast, :ok, fn
-      statement, :ok ->
-        cond do
-          has_wildcard_in_select(statement) ->
-            {:error, "restricted wildcard (*) in a result column"}
-
-          true ->
-            :ok
-        end
-
-      _statement, err ->
-        err
-    end)
+  defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
+    with :ok <- has_wildcard_in_select(ast),
+         :ok <- has_restricted_sources(cte_ast, ast) do
+      :ok
+    end
   end
 
   defp maybe_validate_sandboxed_query_ast(_), do: :ok
 
-  defp has_wildcard_in_select(statement), do: has_wildcard_in_select(statement, false)
-  defp has_wildcard_in_select(_kv, true), do: true
+  defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
+    aliases =
+      for %{"Query" => %{"with" => %{"cte_tables" => tables}}} <- cte_ast,
+          %{"alias" => %{"name" => %{"value" => table_alias}}} <- tables do
+        table_alias
+      end
+
+    unknown_table_names =
+      for statement <- ast,
+          from <- get_in(statement, ["Query", "body", "Select", "from"]),
+          %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
+          table_name not in aliases do
+        table_name
+      end
+
+    if length(unknown_table_names) == 0 do
+      :ok
+    else
+      {:error, "Table not found in CTE: (#{Enum.join(unknown_table_names, ", ")})"}
+    end
+  end
+
+  defp has_wildcard_in_select(statement), do: has_wildcard_in_select(statement, :ok)
+  defp has_wildcard_in_select(_kv, {:error, _} = err), do: err
 
   defp has_wildcard_in_select({"Select", %{"projection" => proj}}, _acc) do
-    if("Wildcard" in proj, do: true, else: false)
+    if "Wildcard" in proj do
+      {:error, "restricted wildcard (*) in a result column"}
+    else
+      :ok
+    end
   end
 
   defp has_wildcard_in_select(kv, acc) when is_list(kv) or is_map(kv) do
     kv
-    |> Enum.map(fn kv -> has_wildcard_in_select(kv, acc) end)
-    |> Enum.any?()
+    |> Enum.reduce(acc, fn kv, nested_acc -> has_wildcard_in_select(kv, nested_acc) end)
   end
 
   defp has_wildcard_in_select({_k, v}, acc) when is_list(v) or is_map(v) do

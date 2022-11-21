@@ -97,6 +97,11 @@ defmodule Logflare.SqlTest do
             {
               {"with src as (select a from my_table) select c from src", "select * from src"},
               "restricted wildcard"
+            },
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select a from my_table"},
+              "Table not found in CTE: (my_table)"
             }
           ] do
         assert {:error, _err1} = SQL.transform(input, user)
