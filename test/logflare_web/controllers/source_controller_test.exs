@@ -1,9 +1,7 @@
 defmodule LogflareWeb.SourceControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  use Mimic
 
-  import Logflare.Factory
   import LogflareWeb.Router.Helpers
 
   alias Logflare.Teams
@@ -16,49 +14,83 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
 
-  setup_all do
-    Sources.Counters.start_link()
-    :ok
-  end
+  describe "list" do
+    setup %{conn: conn} do
+      Logflare.Sources.Counters
+      |> stub()
+      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
+      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
 
-  setup do
-    insert(:plan, name: "Free")
-    u1 = insert(:user)
-    u2 = insert(:user)
-    Teams.create_team(u1, %{name: "u1 team"})
-    Teams.create_team(u2, %{name: "u2 team"})
-
-    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
-    s2 = insert(:source, user_id: u1.id)
-    s3 = insert(:source, user_id: u2.id)
-
-    users = Repo.preload([u1, u2], :sources)
-
-    sources = [s1, s2, s3]
-
-    {:ok, users: users, sources: sources}
-  end
-
-  describe "dashboard" do
-    setup [:expect_user_plan, :assert_caches_not_called]
-
-    test "renders dashboard", %{conn: conn, users: [u1, _u2], sources: [s1, s2 | _]} do
-      conn =
-        conn
-        |> login_user(u1)
-        |> get("/dashboard")
-
-      dash_sources = Enum.map(conn.assigns.sources, & &1.metrics)
-      dash_source_1 = hd(dash_sources)
-
-      source_stat_fields = ~w[avg buffer inserts latest max rate id]a
-
-      sources = conn.assigns.sources
-      assert is_list(dash_sources)
-      assert source_stat_fields -- Map.keys(dash_source_1) === []
-      assert Enum.sort(Enum.map(sources, & &1.id)) == Enum.sort(Enum.map([s1, s2], & &1.id))
-      assert html_response(conn, 200) =~ "dashboard"
+      user = insert(:user)
+      insert(:plan, name: "Free")
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+      user = Repo.preload(user, :sources)
+      [source: source, conn: login_user(conn, user)]
     end
+
+    test "renders dashboard", %{conn: conn, source: source} do
+      html =
+        conn
+        |> get(Routes.source_path(conn, :dashboard))
+        |> html_response(200)
+
+      # nav
+      assert html =~ "~/logs"
+      assert html =~ "Saved Searches"
+      assert html =~ "Dashboard"
+      assert html =~ source.name
+    end
+
+    test "show source", %{conn: conn, source: source} do
+      html =
+        conn
+        |> get(Routes.source_path(conn, :show, source))
+        |> html_response(200)
+
+      # main nav
+      assert html =~ "Sign out"
+      # subnav
+      assert html =~ source.name
+      assert html =~ "scroll down"
+      # search
+      assert html =~ "Search"
+    end
+
+    test "invalid source", %{conn: conn, source: source} do
+      html =
+        conn
+        |> get(Routes.source_path(conn, :show, 12_345))
+        |> html_response(404)
+
+      # main nav
+      assert html =~ "Sign out"
+      refute html =~ "Sign in"
+      # subnav
+      refute html =~ source.name
+      refute html =~ "scroll down"
+      refute html =~ "Search"
+    end
+
+    test "forbidden source", %{conn: conn} do
+      other_source = insert(:source, user: build(:user))
+
+      html =
+        conn
+        |> get(Routes.source_path(conn, :show, other_source))
+        |> html_response(403)
+
+      # main nav
+      assert html =~ "Sign out"
+      refute html =~ "Sign in"
+      # error content
+      assert html =~ "403"
+      assert html =~ "Forbidden"
+    end
+  end
+
+  describe "dashboard - rejected" do
+    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     @tag :failing
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
@@ -89,7 +121,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "update" do
-    setup [:expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = Faker.String.base64()
@@ -210,20 +242,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "show" do
-    setup [:expect_user_plan, :assert_caches_not_called]
-
-    test "renders source for a logged in user", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
-      conn =
-        conn
-        |> login_user(u1)
-        |> get(source_path(conn, :show, s1.id), %{
-          "source" => %{
-            "name" => Faker.Person.name()
-          }
-        })
-
-      assert html_response(conn, 200) =~ s1.name
-    end
+    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 403 for a source not owned by the user", %{
       conn: conn,
@@ -238,24 +257,10 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 403) =~ "403"
       assert html_response(conn, 403) =~ "Forbidden"
     end
-
-    test "returns 404 for non-existing source", %{
-      conn: conn,
-      users: [_u1, u2 | _],
-      sources: [_s1 | _]
-    } do
-      conn =
-        conn
-        |> login_user(u2)
-        |> get(source_path(conn, :show, 10_000))
-
-      assert html_response(conn, 404) =~ "404"
-      assert html_response(conn, 404) =~ "not found"
-    end
   end
 
   describe "create" do
-    setup [:expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = Faker.Person.name()
@@ -311,7 +316,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    setup [:expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     @tag :failing
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
@@ -329,6 +334,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "public" do
+    setup [:old_setup]
     @tag :failing
     test "shows a source page", %{conn: conn, sources: [s1 | _]} do
       conn =
@@ -340,6 +346,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "delete" do
+    setup [:old_setup]
     @tag :failing
     test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
       {:ok, saved_search} =
@@ -370,6 +377,26 @@ defmodule LogflareWeb.SourceControllerTest do
       assert is_nil(Sources.get(s1.id))
       assert is_nil(SavedSearches.get(saved_search.id))
     end
+  end
+
+  defp old_setup(_) do
+    Sources.Counters.start_link()
+
+    insert(:plan, name: "Free")
+    u1 = insert(:user)
+    u2 = insert(:user)
+    Teams.create_team(u1, %{name: "u1 team"})
+    Teams.create_team(u2, %{name: "u2 team"})
+
+    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
+    s2 = insert(:source, user_id: u1.id)
+    s3 = insert(:source, user_id: u2.id)
+
+    users = Repo.preload([u1, u2], :sources)
+
+    sources = [s1, s2, s3]
+
+    {:ok, users: users, sources: sources}
   end
 
   defp expect_user_plan(_ctx) do

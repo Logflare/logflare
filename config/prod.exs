@@ -63,16 +63,7 @@ config :logflare, Logflare.Google,
   service_account: "logflare@logflare-232118.iam.gserviceaccount.com",
   compute_engine_sa: "compute-engine-2022@logflare-232118.iam.gserviceaccount.com",
   api_sa: "1074203751359@cloudservices.gserviceaccount.com",
-  cloud_build_sa: "1074203751359@cloudbuild.gserviceaccount.com",
-  gcp_cloud_build_sa: "service-1074203751359@gcp-sa-cloudbuild.iam.gserviceaccount.com",
-  compute_system_iam_sa: "service-1074203751359@compute-system.iam.gserviceaccount.com",
-  container_engine_robot_sa:
-    "service-1074203751359@container-engine-robot.iam.gserviceaccount.com",
-  dataproc_sa: "service-1074203751359@dataproc-accounts.iam.gserviceaccount.com",
-  redis_sa: "service-1074203751359@cloud-redis.iam.gserviceaccount.com",
-  serverless_robot_sa: "service-1074203751359@serverless-robot-prod.iam.gserviceaccount.com",
-  service_networking_sa: "service-1074203751359@service-networking.iam.gserviceaccount.com",
-  source_repo_sa: "service-1074203751359@sourcerepo-service-accounts.iam.gserviceaccount.com"
+  cloud_build_sa: "1074203751359@cloudbuild.gserviceaccount.com"
 
 config :logflare_agent,
   sources: [
