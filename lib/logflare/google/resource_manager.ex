@@ -21,30 +21,6 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
 
-  defp env_gcp_cloud_build_sa,
-    do: Application.get_env(:logflare, Logflare.Google)[:gcp_cloud_build_sa]
-
-  defp env_compute_system_iam_sa,
-    do: Application.get_env(:logflare, Logflare.Google)[:compute_system_iam_sa]
-
-  defp env_container_engine_robot_sa,
-    do:
-      Application.get_env(:logflare, Logflare.Google)[
-        :container_engine_robot_sa
-      ]
-
-  defp env_dataproc_sa, do: Application.get_env(:logflare, Logflare.Google)[:dataproc_sa]
-
-  defp env_redis_sa, do: Application.get_env(:logflare, Logflare.Google)[:redis_sa]
-
-  defp env_serverless_robot_sa,
-    do: Application.get_env(:logflare, Logflare.Google)[:serverless_robot_sa]
-
-  defp env_service_networking_sa,
-    do: Application.get_env(:logflare, Logflare.Google)[:service_networking_sa]
-
-  defp env_source_repo_sa, do: Application.get_env(:logflare, Logflare.Google)[:source_repo_sa]
-
   def get_iam_policy() do
     conn = GenUtils.get_conn()
 
@@ -154,18 +130,8 @@ defmodule Logflare.Google.CloudResourceManager do
       },
       %Model.Binding{
         condition: nil,
-        members: ["serviceAccount:#{env_gcp_cloud_build_sa()}"],
-        role: "roles/cloudbuild.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
         members: ["serviceAccount:#{env_cloud_build_sa()}"],
         role: "roles/compute.admin"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_compute_system_iam_sa()}"],
-        role: "roles/compute.serviceAgent"
       },
       %Model.Binding{
         condition: nil,
@@ -180,18 +146,6 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         condition: nil,
         members: [
-          "serviceAccount:#{env_container_engine_robot_sa()}"
-        ],
-        role: "roles/container.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_dataproc_sa()}"],
-        role: "roles/dataproc.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: [
           "serviceAccount:#{env_api_sa()}"
         ],
         role: "roles/editor"
@@ -202,30 +156,6 @@ defmodule Logflare.Google.CloudResourceManager do
           "serviceAccount:#{env_cloud_build_sa()}"
         ],
         role: "roles/iam.serviceAccountUser"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_redis_sa()}"],
-        role: "roles/redis.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: [
-          "serviceAccount:#{env_serverless_robot_sa()}"
-        ],
-        role: "roles/run.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_service_networking_sa()}"],
-        role: "roles/servicenetworking.serviceAgent"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: [
-          "serviceAccount:#{env_source_repo_sa()}"
-        ],
-        role: "roles/sourcerepo.serviceAgent"
       }
     ]
   end
