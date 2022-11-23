@@ -2,8 +2,6 @@ version: "3.9"
 services:
   db:
     image: postgres:13.4
-    volumes:
-      - pg-data:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
@@ -14,10 +12,7 @@ services:
       dockerfile: ./Dockerfile
     ports:
       - "4000:4000"
-    links:
-      - "db:db"
     env_file:
       - .local.env
-    hostname: logflare
 volumes:
   pg-data:

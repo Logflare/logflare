@@ -61,16 +61,7 @@ if config_env() == :prod do
     project_id: System.get_env("GOOGLE_PROJECT_ID"),
     service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
     compute_engine_sa: System.get_env("GOOGLE_COMPUTE_ENGINE_SA"),
-    api_sa: System.get_env("GOOGLE_API_SA"),
-    cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
-    gcp_cloud_build_sa: System.get_env("GOOGLE_GCP_CLOUD_BUILD_SA"),
-    compute_system_iam_sa: System.get_env("GOOGLE_COMPUTE_SYSTEM_IAM_SA"),
-    container_engine_robot_sa: System.get_env("GOOGLE_CONTAINER_ENGINE_ROBOT_SA"),
-    dataproc_sa: System.get_env("GOOGLE_DATAPROC_SA"),
-    redis_sa: System.get_env("GOOGLE_REDIS_SA"),
-    serverless_robot_sa: System.get_env("GOOGLE_SERVERLESS_ROBOT_SA"),
-    service_networking_sa: System.get_env("GOOGLE_SERVICE_NETWORKING_SA"),
-    source_repo_sa: System.get_env("GOOGLE_SOURCE_REPO_SA")
+    api_sa: System.get_env("GOOGLE_API_SA")
 
   config :ueberauth, Ueberauth.Strategy.Github.OAuth,
     client_id: System.get_env("UEBERAUTH_GITHUB_CLIENT_ID"),
@@ -94,5 +85,5 @@ if config_env() == :prod do
     api_key: System.get_env("STRIPE_API_KEY"),
     publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY")
 
-  config :goth, json: System.get_env("GOTH_GOOGLE_SECRET_JSON") |> Jason.decode!()
+  config :goth, json: System.get_env("GOOGLE_APPLICATION_JSON_CREDENTIALS")
 end
