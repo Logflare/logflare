@@ -3,8 +3,6 @@ FROM elixir:1.12-alpine as builder
 ENV MIX_ENV prod
 ENV JAVA_HOME /opt/java/jdk-16.0.1/
 ENV MAGIC_COOKIE=$magic_cookie
-ENV HEX_HTTP_CONCURRENCY=1
-ENV HEX_HTTP_TIMEOUT=120
 
 RUN apk update && \
     apk add -f curl git build-base nodejs yarn
@@ -27,10 +25,9 @@ FROM alpine:3.16.0 as app
 WORKDIR /root/
 # erlexec requires SHELL to be set
 ENV SHELL /bin/sh
-
 ENV MAGIC_COOKIE=$magic_cookie
 
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs
 COPY --from=builder ./logflare/_build/prod /root/app
 
-CMD ["./app/rel/logflare/bin/logflare", "start", "--sname", "logflare"]
+CMD ["/root/app/rel/logflare/bin/logflare", "eval", "Logflare.Release.migrate", "--sname", "logflare"]
