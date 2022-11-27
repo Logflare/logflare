@@ -3,6 +3,8 @@ FROM elixir:1.12-alpine as builder
 ENV MIX_ENV prod
 ENV JAVA_HOME /opt/java/jdk-16.0.1/
 ENV MAGIC_COOKIE=$magic_cookie
+ENV HEX_HTTP_CONCURRENCY=1d
+ENV HEX_HTTP_TIMEOUT=120
 
 RUN apk update && \
     apk add -f curl git build-base nodejs yarn
@@ -30,4 +32,6 @@ ENV MAGIC_COOKIE=$magic_cookie
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs
 COPY --from=builder ./logflare/_build/prod /root/app
 
-CMD ["/root/app/rel/logflare/bin/logflare", "eval", "Logflare.Release.migrate", "--sname", "logflare"]
+WORKDIR /root/app/rel/logflare/bin
+COPY run.sh ./run.sh
+CMD ["sh", "run.sh"]
