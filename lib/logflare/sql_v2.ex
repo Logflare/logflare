@@ -75,13 +75,15 @@ defmodule Logflare.SqlV2 do
     end
   end
 
-  # applies to both ctes, sandvoxed queries, and non-ctes
+  # applies to both ctes, sandboxed queries, and non-ctes
   defp validate_query(ast) when is_list(ast) do
-    with :ok <- check_select_statement_only(ast) do
+    with :ok <- check_select_statement_only(ast),
+         :ok <- check_single_query_only(ast) do
       :ok
     end
   end
 
+  # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
     with :ok <- validate_query(ast),
          :ok <- has_wildcard_in_select(ast),
@@ -92,6 +94,10 @@ defmodule Logflare.SqlV2 do
   end
 
   defp maybe_validate_sandboxed_query_ast(_), do: :ok
+
+  defp check_single_query_only([_stmt]), do: :ok
+
+  defp check_single_query_only(_ast), do: {:error, "Only singular query allowed"}
 
   defp check_select_statement_only(ast) do
     check = fn input ->

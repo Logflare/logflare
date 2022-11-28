@@ -149,7 +149,14 @@ defmodule Logflare.SqlTest do
             {{"with src as (select a from my_table) select c from src", "update a set x=2"},
              "Only SELECT queries allowed"},
             {{"with src as (select a from my_table) select c from src", "drop table a"},
-             "Only SELECT queries allowed"}
+             "Only SELECT queries allowed"},
+            #  Block multiple queries
+            {
+              "select a from b; select c from d;",
+              "Only singular query allowed"
+            },
+            {{"with src as (select a from my_table) select c from src",
+              "select a from b; select c from d;"}, "Only singular query allowed"}
           ] do
         assert {:error, _err1} = SQL.transform(input, user)
         assert {:error, err2} = SqlV2.transform(input, user)
