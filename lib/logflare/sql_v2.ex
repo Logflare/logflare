@@ -7,6 +7,13 @@ defmodule Logflare.SqlV2 do
   alias Logflare.Sources
   alias Logflare.User
   alias __MODULE__.Parser
+
+  @doc """
+
+  DML is blocked
+  - https://cloud.google.com/bigquery/docs/reference/standard-sql/dml-syntax
+
+  """
   @typep input :: String.t() | {String.t(), String.t()}
   @spec transform(input(), User.t()) :: {:ok, String.t()}
   def transform(
@@ -45,6 +52,7 @@ defmodule Logflare.SqlV2 do
       end
 
     with {:ok, statements} <- Parser.parse(query),
+         :ok <- validate_query(statements),
          {:ok, sandboxed_query_ast} <-
            (case sandboxed_query do
               q when is_binary(q) -> Parser.parse(q)
@@ -67,8 +75,16 @@ defmodule Logflare.SqlV2 do
     end
   end
 
+  # applies to both ctes, sandvoxed queries, and non-ctes
+  defp validate_query(ast) when is_list(ast) do
+    with :ok <- check_select_statement_only(ast) do
+      :ok
+    end
+  end
+
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
-    with :ok <- has_wildcard_in_select(ast),
+    with :ok <- validate_query(ast),
+         :ok <- has_wildcard_in_select(ast),
          :ok <- has_restricted_sources(cte_ast, ast),
          :ok <- has_restricted_functions(ast) do
       :ok
@@ -76,6 +92,41 @@ defmodule Logflare.SqlV2 do
   end
 
   defp maybe_validate_sandboxed_query_ast(_), do: :ok
+
+  defp check_select_statement_only(ast) do
+    check = fn input ->
+      case input do
+        %{"Insert" => _} ->
+          true
+
+        %{"Update" => _} ->
+          true
+
+        %{"Delete" => _} ->
+          true
+
+        %{"Truncate" => _} ->
+          true
+
+        %{"Merge" => _} ->
+          true
+
+        %{"Drop" => _} ->
+          true
+
+        _ ->
+          false
+      end
+    end
+
+    restricted = for statement <- ast, res = check.(statement), res, do: res
+
+    if length(restricted) > 0 do
+      {:error, "Only SELECT queries allowed"}
+    else
+      :ok
+    end
+  end
 
   defp has_restricted_functions(ast) when is_list(ast), do: has_restricted_functions(ast, :ok)
 

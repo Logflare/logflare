@@ -87,26 +87,26 @@ defmodule Logflare.SqlTest do
         assert String.downcase(v2) == expected
       end
 
-      # invalid sandbox queries
+      # invalid queries
       for {input, expected} <- [
-            # no select into support
+            # sandbox: no select into support
             {
               {"with src as (select a from my_table) select c from src",
                "select a from src into src"},
               "end of statement"
             },
-            # no wildcard allowed
+            # sandbox: no wildcard allowed
             {
               {"with src as (select a from my_table) select c from src", "select * from src"},
               "restricted wildcard"
             },
-            # restricted table references not in CTE
+            # sandbox: restricted table references not in CTE
             {
               {"with src as (select a from my_table) select c from src",
                "select a from my_table"},
               "Table not found in CTE: (my_table)"
             },
-            # restricted functions
+            # sandbox: restricted functions
             {
               {"with src as (select a from my_table) select c from src", "select session_user()"},
               "Restricted function session_user"
@@ -115,7 +115,41 @@ defmodule Logflare.SqlTest do
               {"with src as (select a from my_table) select c from src",
                "select external_query('','')"},
               "Restricted function external_query"
-            }
+            },
+            # block DML
+            # https://cloud.google.com/bigquery/docs/reference/standard-sql/dml-syntax
+            {
+              "insert a (x,y) values ('test', 5)",
+              "Only SELECT queries allowed"
+            },
+            {
+              "update a set x = 1",
+              "Only SELECT queries allowed"
+            },
+            {
+              "delete from a where x = 1",
+              "Only SELECT queries allowed"
+            },
+            {
+              "truncate table a",
+              "Only SELECT queries allowed"
+            },
+            {
+              "MERGE t USING s ON t.product = s.product
+              WHEN MATCHED THEN
+                UPDATE SET quantity = t.quantity + s.quantity
+              WHEN NOT MATCHED THEN
+                INSERT (product, quantity) VALUES(product, quantity) ",
+              "Only SELECT queries allowed"
+            },
+            {
+              "drop table a",
+              "Only SELECT queries allowed"
+            },
+            {{"with src as (select a from my_table) select c from src", "update a set x=2"},
+             "Only SELECT queries allowed"},
+            {{"with src as (select a from my_table) select c from src", "drop table a"},
+             "Only SELECT queries allowed"}
           ] do
         assert {:error, _err1} = SQL.transform(input, user)
         assert {:error, err2} = SqlV2.transform(input, user)
