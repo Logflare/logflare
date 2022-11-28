@@ -7,9 +7,11 @@ defmodule Logflare.SqlTest do
   @project_id "logflare-dev-238720"
   @env "test"
   setup do
+    # TODO: remove once 1-1 functionality reached
     start_supervised!(SQL)
 
     on_exit(fn ->
+      # TODO: remove unboxing once 1-1 functionality reached
       Sandbox.unboxed_run(Logflare.Repo, fn ->
         Logflare.Repo.delete_all(Logflare.User)
         Logflare.Repo.delete_all(Logflare.Source)
@@ -20,6 +22,7 @@ defmodule Logflare.SqlTest do
   end
 
   test "transforms table names correctly" do
+    # TODO: remove unboxing once 1-1 functionality reached
     Sandbox.unboxed_run(Logflare.Repo, fn ->
       user = insert(:user)
       source = insert(:source, user: user, name: "my_table")
@@ -161,7 +164,7 @@ defmodule Logflare.SqlTest do
             {{"with src as (select a from my_table) select c from src",
               "select a from b; select c from d;"}, "Only singular query allowed"}
           ] do
-        assert {:error, _err1} = SQL.transform(input, user) |> IO.inspect()
+        assert {:error, _err1} = SQL.transform(input, user)
         assert {:error, err2} = SqlV2.transform(input, user)
         assert err2 =~ expected
       end
