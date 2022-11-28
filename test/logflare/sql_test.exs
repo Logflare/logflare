@@ -107,6 +107,8 @@ defmodule Logflare.SqlTest do
               "Table not found in CTE: (my_table)"
             },
             # sandbox: restricted functions
+            {"SELECT SESSION_USER()", "Restricted function session_user"},
+            {"SELECT EXTERNAL_QUERY('','')", "Restricted function external_query"},
             {
               {"with src as (select a from my_table) select c from src", "select session_user()"},
               "Restricted function session_user"

@@ -78,7 +78,8 @@ defmodule Logflare.SqlV2 do
   # applies to both ctes, sandboxed queries, and non-ctes
   defp validate_query(ast) when is_list(ast) do
     with :ok <- check_select_statement_only(ast),
-         :ok <- check_single_query_only(ast) do
+         :ok <- check_single_query_only(ast),
+         :ok <- has_restricted_functions(ast) do
       :ok
     end
   end
@@ -87,8 +88,7 @@ defmodule Logflare.SqlV2 do
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
     with :ok <- validate_query(ast),
          :ok <- has_wildcard_in_select(ast),
-         :ok <- has_restricted_sources(cte_ast, ast),
-         :ok <- has_restricted_functions(ast) do
+         :ok <- has_restricted_sources(cte_ast, ast) do
       :ok
     end
   end
