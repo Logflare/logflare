@@ -89,7 +89,8 @@ defmodule Logflare.SqlTest do
 
       # invalid queries
       for {input, expected} <- [
-            # sandbox: no select into support
+            # select-into queries are not parsed.
+            {"SELECT a FROM a INTO b", "end of statement"},
             {
               {"with src as (select a from my_table) select c from src",
                "select a from src into src"},
@@ -160,7 +161,7 @@ defmodule Logflare.SqlTest do
             {{"with src as (select a from my_table) select c from src",
               "select a from b; select c from d;"}, "Only singular query allowed"}
           ] do
-        assert {:error, _err1} = SQL.transform(input, user)
+        assert {:error, _err1} = SQL.transform(input, user) |> IO.inspect()
         assert {:error, err2} = SqlV2.transform(input, user)
         assert err2 =~ expected
       end
