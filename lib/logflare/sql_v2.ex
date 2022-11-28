@@ -79,7 +79,8 @@ defmodule Logflare.SqlV2 do
   defp validate_query(ast) when is_list(ast) do
     with :ok <- check_select_statement_only(ast),
          :ok <- check_single_query_only(ast),
-         :ok <- has_restricted_functions(ast) do
+         :ok <- has_restricted_functions(ast),
+         :ok <- has_wildcard_in_select(ast) do
       :ok
     end
   end
@@ -87,7 +88,6 @@ defmodule Logflare.SqlV2 do
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
     with :ok <- validate_query(ast),
-         :ok <- has_wildcard_in_select(ast),
          :ok <- has_restricted_sources(cte_ast, ast) do
       :ok
     end
@@ -184,14 +184,21 @@ defmodule Logflare.SqlV2 do
     end
   end
 
-  defp has_wildcard_in_select(statement), do: has_wildcard_in_select(statement, :ok)
+  defp has_wildcard_in_select(statement),
+    do: has_wildcard_in_select(statement, :ok)
+
   defp has_wildcard_in_select(_kv, {:error, _} = err), do: err
 
-  defp has_wildcard_in_select({"Select", %{"projection" => proj}}, _acc) do
-    if "Wildcard" in proj do
-      {:error, "restricted wildcard (*) in a result column"}
-    else
-      :ok
+  defp has_wildcard_in_select({"projection", proj}, _acc) when is_list(proj) do
+    proj
+    |> Enum.any?(fn
+      "Wildcard" -> true
+      %{"QualifiedWildcard" => _} -> true
+      _ -> false
+    end)
+    |> case do
+      true -> {:error, "restricted wildcard (*) in a result column"}
+      false -> :ok
     end
   end
 

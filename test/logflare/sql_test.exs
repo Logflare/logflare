@@ -99,7 +99,13 @@ defmodule Logflare.SqlTest do
                "select a from src into src"},
               "end of statement"
             },
-            # sandbox: no wildcard allowed
+            # block no wildcard select
+            {"select * from a", "restricted wildcard"},
+            {"SELECT a.* FROM a", "restricted wildcard"},
+            {"SELECT q, a.* FROM a", "restricted wildcard"},
+            {"SELECT a FROM (SELECT * FROM a)", "restricted wildcard"},
+            {"WITH q AS (SELECT a FROM a) SELECT * FROM q", "restricted wildcard"},
+            {"SELECT a FROM a UNION ALL SELECT * FROM b", "restricted wildcard"},
             {
               {"with src as (select a from my_table) select c from src", "select * from src"},
               "restricted wildcard"
