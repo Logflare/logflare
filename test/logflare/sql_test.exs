@@ -26,14 +26,19 @@ defmodule Logflare.SqlTest do
     Sandbox.unboxed_run(Logflare.Repo, fn ->
       user = insert(:user)
       source = insert(:source, user: user, name: "my_table")
+      source_dots = insert(:source, user: user, name: "my.table.name")
       source_other = insert(:source, user: user, name: "other_table")
       table = bq_table_name(source)
       table_other = bq_table_name(source_other)
+      table_dots = bq_table_name(source_dots)
 
       for {input, expected} <- [
             # quoted
             {"select val from `my_table` where `my_table`.val > 5",
              "select val from #{table} where #{table}.val > 5"},
+            #  source names with dots
+             {"select val from `my.table.name` where `my.table.name`.val > 5",
+              "select val from #{table_dots} where #{table_dots}.val > 5"},
             # where
             {"select val from my_table where my_table.val > 5",
              "select val from #{table} where #{table}.val > 5"},
