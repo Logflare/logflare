@@ -89,7 +89,7 @@ defmodule Logflare.SqlTest do
               "with src as (select a from #{table}), src2 as (select a from src where a > 5) select a, b, c from src2"
             }
           ] do
-        assert {:ok, v1} = SQL.transform(input |> IO.inspect(), user) |> IO.inspect()
+        assert {:ok, v1} = SQL.transform(input, user)
         assert {:ok, v2} = SqlV2.transform(input, user)
         assert String.downcase(v1) == String.downcase(v2)
         assert String.downcase(v2) == expected
