@@ -37,8 +37,17 @@ defmodule Logflare.SqlTest do
             {"select val from `my_table` where `my_table`.val > 5",
              "select val from #{table} where #{table}.val > 5"},
             #  source names with dots
-             {"select val from `my.table.name` where `my.table.name`.val > 5",
-              "select val from #{table_dots} where #{table_dots}.val > 5"},
+            {"select val from `my.table.name` where `my.table.name`.val > 5",
+             "select val from #{table_dots} where #{table_dots}.val > 5"},
+            # joins
+            {"select a from my_table join other_table as f on a = 123",
+             "select a from #{table} join #{table_other} as f on a = 123"},
+            # cross join + unnest with no join condition
+            {"select a from my_table cross join unnest(my_table.col) as f",
+             "select a from #{table} cross join unnest(#{table}.col) as f"},
+            #  inner join  + unnest with join condition
+            {"select a from my_table join unnest(my_table.col) on true",
+             "select a from #{table} join unnest(#{table}.col) on true"},
             # where
             {"select val from my_table where my_table.val > 5",
              "select val from #{table} where #{table}.val > 5"},
@@ -80,7 +89,7 @@ defmodule Logflare.SqlTest do
               "with src as (select a from #{table}), src2 as (select a from src where a > 5) select a, b, c from src2"
             }
           ] do
-        assert {:ok, v1} = SQL.transform(input, user)
+        assert {:ok, v1} = SQL.transform(input |> IO.inspect(), user) |> IO.inspect()
         assert {:ok, v2} = SqlV2.transform(input, user)
         assert String.downcase(v1) == String.downcase(v2)
         assert String.downcase(v2) == expected
