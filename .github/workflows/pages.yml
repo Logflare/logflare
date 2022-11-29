@@ -3,8 +3,6 @@ name: Deploy to Pages
 on:
   push:
     branches: ["staging"]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -26,20 +24,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Node.js environment
-        uses: actions/setup-node@v3.5.1
+        uses: actions/setup-node@v3
         with:
-          # Version Spec of the version to use. Examples: 12.x, 10.15.1, >=10.15.0.
           node-version: ">=16.14"
-          cache: npm
-          key: ${{ runner.os }}-pages-${{ hashFiles('**/package-lock.json') }}
+          cache: 'npm'
           cache-dependency-path: docs/docs.logflare.com/package-lock.json
       - name: Setup Pages
         uses: actions/configure-pages@v2
-      - name: Restore cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            docs/docs.logflare.com/node_modules
       - name: Install dependencies
         working-directory: ./docs/docs.logflare.com
         run: npm ci
