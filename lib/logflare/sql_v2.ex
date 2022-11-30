@@ -51,17 +51,17 @@ defmodule Logflare.SqlV2 do
         {source.name, source}
       end
 
-    data = %{
-      project_id: project_id,
-      dataset_id: dataset_id,
-      sources: sources,
-      source_mapping: source_mapping,
-      source_names: Map.keys(source_mapping),
-      sandboxed_query: sandboxed_query,
-      sandboxed_query_ast: nil
-    }
-
     with {:ok, statements} <- Parser.parse(query),
+         data = %{
+           project_id: project_id,
+           dataset_id: dataset_id,
+           sources: sources,
+           source_mapping: source_mapping,
+           source_names: Map.keys(source_mapping),
+           sandboxed_query: sandboxed_query,
+           sandboxed_query_ast: nil,
+           ast: statements
+         },
          :ok <- validate_query(statements, data),
          {:ok, sandboxed_query_ast} <-
            (case sandboxed_query do
@@ -83,7 +83,7 @@ defmodule Logflare.SqlV2 do
          :ok <- check_single_query_only(ast),
          :ok <- has_restricted_functions(ast),
          :ok <- has_wildcard_in_select(ast),
-         :ok <- check_all_quoted_sources_known(ast, data) do
+         :ok <- check_all_sources_known(ast, data) do
       :ok
     end
   end
@@ -98,18 +98,25 @@ defmodule Logflare.SqlV2 do
 
   defp maybe_validate_sandboxed_query_ast(_, _data), do: :ok
 
-  defp check_all_quoted_sources_known(statement, data),
-    do: check_all_quoted_sources_known(statement, :ok, data)
+  defp check_all_sources_known(statement, data),
+    do: check_all_sources_known(statement, :ok, data)
 
-  defp check_all_quoted_sources_known(_kv, {:error, _} = err, _data), do: err
+  defp check_all_sources_known(_kv, {:error, _} = err, _data), do: err
 
-  defp check_all_quoted_sources_known({"Table", %{"name" => name}}, _acc, %{
-         source_names: source_names
+  defp check_all_sources_known({"Table", %{"name" => name}}, _acc, %{
+         source_names: source_names,
+         ast: ast
        })
        when is_list(name) do
+    cte_names =
+      for statement <- ast,
+          %{"alias" => %{"name" => %{"value" => cte_name}}} <-
+            get_in(statement, ["Query", "with", "cte_tables"]) || [],
+          do: cte_name
+
     unknown_table_names =
-      for %{"quote_style" => "`", "value" => table_name} <- name,
-          table_name not in source_names do
+      for %{"value" => table_name} <- name,
+          table_name not in source_names and table_name not in cte_names do
         table_name
       end
 
@@ -120,18 +127,18 @@ defmodule Logflare.SqlV2 do
     end
   end
 
-  defp check_all_quoted_sources_known(kv, acc, data) when is_list(kv) or is_map(kv) do
+  defp check_all_sources_known(kv, acc, data) when is_list(kv) or is_map(kv) do
     kv
     |> Enum.reduce(acc, fn kv, nested_acc ->
-      check_all_quoted_sources_known(kv, nested_acc, data)
+      check_all_sources_known(kv, nested_acc, data)
     end)
   end
 
-  defp check_all_quoted_sources_known({_k, v}, acc, data) when is_list(v) or is_map(v) do
-    check_all_quoted_sources_known(v, acc, data)
+  defp check_all_sources_known({_k, v}, acc, data) when is_list(v) or is_map(v) do
+    check_all_sources_known(v, acc, data)
   end
 
-  defp check_all_quoted_sources_known(_kv, acc, _data), do: acc
+  defp check_all_sources_known(_kv, acc, _data), do: acc
 
   defp check_single_query_only([_stmt]), do: :ok
 
