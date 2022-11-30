@@ -51,23 +51,25 @@ defmodule Logflare.SqlV2 do
         {source.name, source}
       end
 
+    data = %{
+      project_id: project_id,
+      dataset_id: dataset_id,
+      sources: sources,
+      source_mapping: source_mapping,
+      source_names: Map.keys(source_mapping),
+      sandboxed_query: sandboxed_query,
+      sandboxed_query_ast: nil
+    }
+
     with {:ok, statements} <- Parser.parse(query),
-         :ok <- validate_query(statements),
+         :ok <- validate_query(statements, data),
          {:ok, sandboxed_query_ast} <-
            (case sandboxed_query do
               q when is_binary(q) -> Parser.parse(q)
               _ -> {:ok, nil}
             end),
-         :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}) do
-      data = %{
-        project_id: project_id,
-        dataset_id: dataset_id,
-        sources: sources,
-        source_mapping: source_mapping,
-        source_names: Map.keys(source_mapping),
-        sandboxed_query: sandboxed_query,
-        sandboxed_query_ast: sandboxed_query_ast
-      }
+         :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
+      data = %{data | sandboxed_query_ast: sandboxed_query_ast}
 
       statements
       |> do_transform(data)
@@ -76,24 +78,60 @@ defmodule Logflare.SqlV2 do
   end
 
   # applies to both ctes, sandboxed queries, and non-ctes
-  defp validate_query(ast) when is_list(ast) do
+  defp validate_query(ast, data) when is_list(ast) do
     with :ok <- check_select_statement_only(ast),
          :ok <- check_single_query_only(ast),
          :ok <- has_restricted_functions(ast),
-         :ok <- has_wildcard_in_select(ast) do
+         :ok <- has_wildcard_in_select(ast),
+         :ok <- check_all_quoted_sources_known(ast, data) do
       :ok
     end
   end
 
   # applies only to the sandboed query
-  defp maybe_validate_sandboxed_query_ast({cte_ast, ast}) when is_list(ast) do
-    with :ok <- validate_query(ast),
+  defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do
+    with :ok <- validate_query(ast, data),
          :ok <- has_restricted_sources(cte_ast, ast) do
       :ok
     end
   end
 
-  defp maybe_validate_sandboxed_query_ast(_), do: :ok
+  defp maybe_validate_sandboxed_query_ast(_, _data), do: :ok
+
+  defp check_all_quoted_sources_known(statement, data),
+    do: check_all_quoted_sources_known(statement, :ok, data)
+
+  defp check_all_quoted_sources_known(_kv, {:error, _} = err, _data), do: err
+
+  defp check_all_quoted_sources_known({"Table", %{"name" => name}}, _acc, %{
+         source_names: source_names
+       })
+       when is_list(name) do
+    unknown_table_names =
+      for %{"quote_style" => "`", "value" => table_name} <- name,
+          table_name not in source_names do
+        table_name
+      end
+
+    if length(unknown_table_names) == 0 do
+      :ok
+    else
+      {:error, "can't find source #{Enum.join(unknown_table_names, ", ")}"}
+    end
+  end
+
+  defp check_all_quoted_sources_known(kv, acc, data) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.reduce(acc, fn kv, nested_acc ->
+      check_all_quoted_sources_known(kv, nested_acc, data)
+    end)
+  end
+
+  defp check_all_quoted_sources_known({_k, v}, acc, data) when is_list(v) or is_map(v) do
+    check_all_quoted_sources_known(v, acc, data)
+  end
+
+  defp check_all_quoted_sources_known(_kv, acc, _data), do: acc
 
   defp check_single_query_only([_stmt]), do: :ok
 

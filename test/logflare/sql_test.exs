@@ -182,7 +182,10 @@ defmodule Logflare.SqlTest do
               "Only singular query allowed"
             },
             {{"with src as (select a from my_table) select c from src",
-              "select a from b; select c from d;"}, "Only singular query allowed"}
+              "select a from b; select c from d;"}, "Only singular query allowed"},
+            # no source name in query
+            {"select datetime() from `light-two-os-directions-test`",
+             "can't find source light-two-os-directions-test"}
           ] do
         assert {:error, _err1} = SQL.transform(input, user)
         assert {:error, err2} = SqlV2.transform(input, user)
