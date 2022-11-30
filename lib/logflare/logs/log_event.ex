@@ -166,6 +166,8 @@ defmodule Logflare.LogEvent do
 
   # hack for adding top level keys to payload
   defp put_clustering_keys(params, source) do
+    top_level_project = Map.get(params, "project")
+
     case source.token do
       # dev
       :"83e59828-b6ee-408c-92a8-c17bc523e6e0" ->
@@ -174,7 +176,7 @@ defmodule Logflare.LogEvent do
         params |> Map.put("level", key)
 
       # prod Postgres logs
-      :"74c7911a-4671-46b7-9c7f-440a18bc6bad" ->
+      :"74c7911a-4671-46b7-9c7f-440a18bc6bad" when is_nil(top_level_project) ->
         key = Kernel.get_in(params, ["metadata", "project"])
 
         if is_nil(key),
@@ -183,7 +185,7 @@ defmodule Logflare.LogEvent do
         params |> Map.put("project", key)
 
       # prod Cloudflare
-      :"7b5df630-a551-4c79-ae17-042650b37a3e" ->
+      :"7b5df630-a551-4c79-ae17-042650b37a3e" when is_nil(top_level_project) ->
         host = Kernel.get_in(params, ["metadata", "request", "host"])
 
         unless is_nil(host) do
