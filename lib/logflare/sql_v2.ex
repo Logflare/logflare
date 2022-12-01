@@ -9,10 +9,22 @@ defmodule Logflare.SqlV2 do
   alias __MODULE__.Parser
 
   @doc """
+  Transforms and validates an SQL query for querying with bigquery.any()
+  The resultant SQL is BigQuery compatible.
+
 
   DML is blocked
   - https://cloud.google.com/bigquery/docs/reference/standard-sql/dml-syntax
 
+  ### Example
+
+    iex> transform("select a from my_table", %User{...})
+    {:ok, "select a from `my_project.my_dataset.source_token`"}
+
+  With a sandboxed query
+    iex> cte = "..."
+    iex> transform({cte, "select a from my_alias"}, %User{...})
+    {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
   @spec transform(input(), User.t()) :: {:ok, String.t()}
@@ -108,11 +120,7 @@ defmodule Logflare.SqlV2 do
          ast: ast
        })
        when is_list(name) do
-    cte_names =
-      for statement <- ast,
-          %{"alias" => %{"name" => %{"value" => cte_name}}} <-
-            get_in(statement, ["Query", "with", "cte_tables"]) || [],
-          do: cte_name
+    cte_names = extract_cte_alises(ast)
 
     unknown_table_names =
       for %{"value" => table_name} <- name,
@@ -362,5 +370,86 @@ defmodule Logflare.SqlV2 do
       |> String.replace("-", "_")
 
     ~s(#{data.project_id}.#{data.dataset_id}.#{token})
+  end
+
+  @doc """
+  Returns a name-uuid mapping of all sources detected from inside of the query
+
+  ### Example
+
+    iex> sources("select a from my_table", %User{...})
+    {:ok, %{"my_table" => "abced-weqqwe-..."}}
+  """
+  @spec sources(String.t(), User.t()) :: {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+  def sources(query, user) do
+    sources = Sources.list_sources_by_user(user)
+
+    source_mapping =
+      for source <- sources, into: %{} do
+        {source.name, source}
+      end
+
+    sources =
+      with {:ok, ast} <- Parser.parse(query),
+           names <- find_all_source_names(ast) do
+        names
+        |> Enum.map(fn name ->
+          token =
+            source_mapping
+            |> Map.get(name)
+            |> Map.get(:token)
+            |> case do
+              v when is_atom(v) ->
+                Atom.to_string(v)
+
+              v ->
+                v
+            end
+
+          {name, token}
+        end)
+        |> Map.new()
+      end
+
+    {:ok, sources}
+  end
+
+  defp find_all_source_names(ast),
+    do: find_all_source_names(ast, [], %{ast: ast})
+
+  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{
+         ast: ast
+       })
+       when is_list(name) do
+    cte_names = extract_cte_alises(ast)
+
+    new_names =
+      for %{"value" => table_name} <- name,
+          table_name not in prev and table_name not in cte_names do
+        table_name
+      end
+
+    new_names ++ prev
+  end
+
+  defp find_all_source_names(kv, acc, data) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.reduce(acc, fn kv, nested_acc ->
+      find_all_source_names(kv, nested_acc, data)
+    end)
+  end
+
+  defp find_all_source_names({_k, v}, acc, data) when is_list(v) or is_map(v) do
+    find_all_source_names(v, acc, data)
+  end
+
+  defp find_all_source_names(_kv, acc, _data), do: acc
+
+  defp extract_cte_alises(ast) do
+    for statement <- ast,
+        %{"alias" => %{"name" => %{"value" => cte_name}}} <-
+          get_in(statement, ["Query", "with", "cte_tables"]) || [] do
+      cte_name
+    end
   end
 end

@@ -198,6 +198,15 @@ defmodule Logflare.SqlTest do
     end)
   end
 
+  test "sources/2" do
+    Sandbox.unboxed_run(Logflare.Repo, fn ->
+      source = insert(:source, user: build(:user), name: "my_table")
+      input = "select a from my_table"
+      expected = %{"my_table" => Atom.to_string(source.token)}
+      assert {:ok, ^expected} = SQL.sources(input, source.user)
+      assert {:ok, ^expected} = SqlV2.sources(input, source.user)
+    end)
+  end
   defp bq_table_name(%{user: user} = source) do
     token =
       source.token
