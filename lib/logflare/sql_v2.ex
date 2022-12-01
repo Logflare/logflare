@@ -452,4 +452,82 @@ defmodule Logflare.SqlV2 do
       cte_name
     end
   end
+
+  @doc """
+  Transforms and a stale query string with renamed sources to
+
+  ### Example
+
+  iex> source_mapping("select a from old_table_name", %{"old_table_name"=> "abcde-fg123-..."}, %User{})
+  {:ok, "select a from new_table_name"}
+  """
+  def source_mapping(query, %Logflare.User{id: user_id}, mapping) do
+    source_mapping(query, user_id, mapping)
+  end
+
+  def source_mapping(query, user_id, mapping) do
+    sources = Sources.list_sources_by_user(user_id)
+
+    with {:ok, ast} <- Parser.parse(query) do
+      ast
+      |> replace_old_source_names(%{
+        sources: sources,
+        mapping: mapping
+      })
+      |> Parser.to_string()
+    end
+  end
+
+  defp replace_old_source_names({"Table" = k, %{"name" => names} = v}, %{
+         sources: sources,
+         mapping: mapping
+       }) do
+    new_name_list =
+      for %{"value" => name_value} = name_map <- names do
+        if name_value in Map.keys(mapping) do
+          new_name = get_updated_source_name(name_value, mapping, sources)
+          %{name_map | "value" => new_name}
+        else
+          name_map
+        end
+      end
+
+    {k, %{v | "name" => new_name_list}}
+  end
+
+  defp replace_old_source_names({"CompoundIdentifier" = k, [first | other]}, %{
+         sources: sources,
+         mapping: mapping
+       }) do
+    value = Map.get(first, "value")
+
+    new_first =
+      if value in Map.keys(mapping) do
+        new_name = get_updated_source_name(value, mapping, sources)
+        %{first | "value" => new_name}
+      else
+        first
+      end
+
+    {k, [new_first | other]}
+  end
+
+  defp replace_old_source_names({k, v}, data) when is_list(v) or is_map(v) do
+    {k, replace_old_source_names(v, data)}
+  end
+
+  defp replace_old_source_names(kv, data) when is_list(kv) do
+    Enum.map(kv, fn kv -> replace_old_source_names(kv, data) end)
+  end
+
+  defp replace_old_source_names(kv, data) when is_map(kv) do
+    Enum.map(kv, fn kv -> replace_old_source_names(kv, data) end) |> Map.new()
+  end
+
+  defp replace_old_source_names(kv, _data), do: kv
+
+  defp get_updated_source_name(old_name, mapping, sources) do
+    source = Enum.find(sources, fn s -> "#{s.token}" == mapping[old_name] end)
+    source.name
+  end
 end

@@ -207,6 +207,32 @@ defmodule Logflare.SqlTest do
       assert {:ok, ^expected} = SqlV2.sources(input, source.user)
     end)
   end
+
+  test "source_mapping/3" do
+    Sandbox.unboxed_run(Logflare.Repo, fn ->
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_table")
+
+      mapping = %{
+        "old" => Atom.to_string(source.token)
+      }
+
+      input = "select old.a from old"
+      expected = "select new.a from new"
+
+      Ecto.Changeset.change(source, name: "new")
+      |> Logflare.Repo.update()
+
+      # {:ok, _updated} = Logflare.Sources.update_source(source, )
+      assert {:ok, output} = SQL.source_mapping(input, user, mapping)
+      assert String.downcase(output) == expected
+      assert {:ok, output} = SqlV2.source_mapping(input, user.id, mapping)
+      assert String.downcase(output) == expected
+      assert {:ok, output} = SqlV2.source_mapping(input, user, mapping)
+      assert String.downcase(output) == expected
+    end)
+  end
+
   defp bq_table_name(%{user: user} = source) do
     token =
       source.token

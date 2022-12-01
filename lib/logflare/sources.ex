@@ -20,7 +20,9 @@ defmodule Logflare.Sources do
   @default_bucket_width 60
 
   @spec list_sources_by_user(User.t()) :: [Source.t()]
-  def list_sources_by_user(%User{id: user_id}) do
+  def list_sources_by_user(%User{id: user_id}), do: list_sources_by_user(user_id)
+
+  def list_sources_by_user(user_id) do
     from(s in Source, where: s.user_id == ^user_id)
     |> Repo.all()
   end
