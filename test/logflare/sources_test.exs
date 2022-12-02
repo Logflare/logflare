@@ -14,7 +14,7 @@ defmodule Logflare.SourcesTest do
 
   test "list_sources_by_user/1" do
     user = insert(:user)
-    source = insert(:source, user: user)
+    insert(:source, user: user)
     assert [%Source{}] = Sources.list_sources_by_user(user)
     assert [] == insert(:user) |> Sources.list_sources_by_user()
   end

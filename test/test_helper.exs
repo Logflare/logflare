@@ -1,5 +1,5 @@
-# setup node names for SQL testing
-Node.start(:orange_test, :shortnames)
+:ok = LocalCluster.start()
+Mix.Task.run("app.start")
 
 ExUnit.start()
 Faker.start()
