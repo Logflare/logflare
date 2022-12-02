@@ -4,7 +4,7 @@ defmodule LogflareWeb.EndpointsController do
   require Logger
   alias Logflare.Endpoints
   alias Logflare.Repo
-  alias Logflare.SQL
+  alias Logflare.SqlV2
 
   plug CORSPlug,
     origin: "*",
@@ -49,7 +49,7 @@ defmodule LogflareWeb.EndpointsController do
       |> Endpoints.Query.map_query()
 
     parameters =
-      case SQL.parameters(endpoint_query.query) do
+      case SqlV2.parameters(endpoint_query.query) do
         {:ok, params} -> params
         _ -> []
       end

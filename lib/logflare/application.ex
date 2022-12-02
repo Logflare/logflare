@@ -15,7 +15,7 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
 
-    # Start distribution early so that both Cachex and Logflare.SQL
+    # Start distribution early for Cachex
     # can work with it.
     unless Node.alive?() or env in [:test] do
       {:ok, _} = Node.start(:logflare)
@@ -149,7 +149,6 @@ defmodule Logflare.Application do
       Logflare.SystemMetricsSup,
 
       # For Logflare Endpoints
-      Logflare.SQL,
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
     ]
   end

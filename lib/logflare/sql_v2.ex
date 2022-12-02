@@ -28,9 +28,13 @@ defmodule Logflare.SqlV2 do
   """
   @typep input :: String.t() | {String.t(), String.t()}
   @spec transform(input(), User.t()) :: {:ok, String.t()}
+  def transform(input, user_id) when is_integer(user_id) do
+    user = Logflare.Users.get(user_id)
+    transform(input, user)
+  end
   def transform(
         input,
-        %{
+        %_{
           bigquery_project_id: project_id,
           bigquery_dataset_id: dataset_id
         } = user
