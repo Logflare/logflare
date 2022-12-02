@@ -6,7 +6,6 @@ config :logflare, LogflareWeb.Endpoint,
   http: [port: 4001],
   server: false
 
-
 config :logflare, env: :test
 
 config :logflare, Logflare.Google,
