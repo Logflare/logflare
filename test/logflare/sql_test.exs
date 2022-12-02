@@ -200,11 +200,23 @@ defmodule Logflare.SqlTest do
 
   test "sources/2 creates a source mapping present for sources present in the query" do
     Sandbox.unboxed_run(Logflare.Repo, fn ->
-      source = insert(:source, user: build(:user), name: "my_table")
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_table")
+      other_source = insert(:source, user: user, name: "other.table")
       input = "select a from my_table"
       expected = %{"my_table" => Atom.to_string(source.token)}
-      assert {:ok, ^expected} = SQL.sources(input, source.user)
-      assert {:ok, ^expected} = SqlV2.sources(input, source.user)
+      assert {:ok, ^expected} = SQL.sources(input, user)
+      assert {:ok, ^expected} = SqlV2.sources(input, user)
+
+      input = "select a from my_table, `other.table`"
+
+      expected = %{
+        "my_table" => Atom.to_string(source.token),
+        "other.table" => Atom.to_string(other_source.token)
+      }
+
+      assert {:ok, ^expected} = SQL.sources(input, user)
+      assert {:ok, ^expected} = SqlV2.sources(input, user)
     end)
   end
 
@@ -234,11 +246,17 @@ defmodule Logflare.SqlTest do
   end
 
   test "parameters/1 extracts out parameter names in the SQL string" do
-    input = "select old.a from old where @test = 123"
-    output = ["test"]
-    assert {:ok, ^output} = SQL.parameters(input)
-    assert {:ok, ^output} = SqlV2.parameters(input)
-    assert {:ok, ^output} = SqlV2.parameters(input)
+    for {input, output} <- [
+          {"select old.a from old where @test = 123", ["test"]},
+          {"select @a from old", ["a"]},
+          {"select old.a from old where char_length(@c)", ["c"]},
+          {"with q as (select old.a from old where char_length(@c)) select 1", ["c"]},
+          {"with q as (select @c from old) select 1", ["c"]}
+        ] do
+      assert {:ok, ^output} = SQL.parameters(input)
+      assert {:ok, ^output} = SqlV2.parameters(input)
+      assert {:ok, ^output} = SqlV2.parameters(input)
+    end
   end
 
   defp bq_table_name(%{user: user} = source) do
