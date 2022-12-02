@@ -83,7 +83,6 @@ config :logflare, Logflare.Vercel.Client,
   redirect_uri: "https://logflarestaging.com/install/vercel-v2",
   install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
 
-config :erlexec, root: true, user: "root"
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 

@@ -50,7 +50,6 @@ defmodule Logflare.Mixfile do
         :ssl,
         :phoenix_html,
         :phoenix,
-        :erlexec
       ],
       included_applications: [:mnesia]
     ]
@@ -191,9 +190,6 @@ defmodule Logflare.Mixfile do
 
       # Charting
       {:contex, "~> 0.3.0"},
-
-      # SQL
-      {:erlexec, "~>1.18.11"},
 
       # Postgres Subscribe
       {:cainophile, "~> 0.1.0"}

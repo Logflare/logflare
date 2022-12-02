@@ -15,8 +15,6 @@ WORKDIR /logflare
 RUN mix phx.digest
 RUN mix release --overwrite
 
-# erlexec requires SHELL to be set
-ENV SHELL /bin/bash
 
 ENTRYPOINT ["tini", "--"]
 
