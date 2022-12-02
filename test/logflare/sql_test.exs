@@ -198,7 +198,7 @@ defmodule Logflare.SqlTest do
     end)
   end
 
-  test "sources/2" do
+  test "sources/2 creates a source mapping present for sources present in the query" do
     Sandbox.unboxed_run(Logflare.Repo, fn ->
       source = insert(:source, user: build(:user), name: "my_table")
       input = "select a from my_table"
@@ -208,7 +208,7 @@ defmodule Logflare.SqlTest do
     end)
   end
 
-  test "source_mapping/3" do
+  test "source_mapping/3 updates an SQL string with renamed sources" do
     Sandbox.unboxed_run(Logflare.Repo, fn ->
       user = insert(:user)
       source = insert(:source, user: user, name: "my_table")
@@ -231,6 +231,14 @@ defmodule Logflare.SqlTest do
       assert {:ok, output} = SqlV2.source_mapping(input, user, mapping)
       assert String.downcase(output) == expected
     end)
+  end
+
+  test "parameters/1 extracts out parameter names in the SQL string" do
+    input = "select old.a from old where @test = 123"
+    output = ["test"]
+    assert {:ok, ^output} = SQL.parameters(input)
+    assert {:ok, ^output} = SqlV2.parameters(input)
+    assert {:ok, ^output} = SqlV2.parameters(input)
   end
 
   defp bq_table_name(%{user: user} = source) do

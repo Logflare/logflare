@@ -530,4 +530,39 @@ defmodule Logflare.SqlV2 do
     source = Enum.find(sources, fn s -> "#{s.token}" == mapping[old_name] end)
     source.name
   end
+
+  @doc """
+  Extract out parameters from the SQL string.
+
+  ### Example
+
+    iex> query = "select f.to from my_table f where f.to = @something"
+    iex> parameters(query)
+    {:ok, ["something"]}
+  """
+  def parameters(query) do
+    with {:ok, ast} <- Parser.parse(query) do
+      {:ok, extract_all_parameters(ast)}
+    end
+  end
+
+  defp extract_all_parameters(ast),
+    do: extract_all_parameters(ast, [])
+
+  defp extract_all_parameters({"Placeholder", "@" <> value}, acc) do
+    if value not in acc, do: [value | acc], else: acc
+  end
+
+  defp extract_all_parameters(kv, acc) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.reduce(acc, fn kv, nested_acc ->
+      extract_all_parameters(kv, nested_acc)
+    end)
+  end
+
+  defp extract_all_parameters({_k, v}, acc) when is_list(v) or is_map(v) do
+    extract_all_parameters(v, acc)
+  end
+
+  defp extract_all_parameters(_kv, acc), do: acc
 end
