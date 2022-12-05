@@ -49,7 +49,7 @@ defmodule Logflare.Mixfile do
         :ueberauth_google,
         :ssl,
         :phoenix_html,
-        :phoenix,
+        :phoenix
       ],
       included_applications: [:mnesia]
     ]

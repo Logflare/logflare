@@ -135,7 +135,6 @@ config :logflare, Logflare.Vercel.Client,
   redirect_uri: "https://logflare.app/install/vercel-v2",
   install_vercel_uri: "https://vercel.com/integrations/logflare/new"
 
-
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 2
 
 import_config "telemetry.exs"

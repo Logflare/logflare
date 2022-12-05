@@ -178,21 +178,21 @@ defmodule Logflare.SqlTest do
   end
 
   test "sources/2 creates a source mapping present for sources present in the query" do
-      user = insert(:user)
-      source = insert(:source, user: user, name: "my_table")
-      other_source = insert(:source, user: user, name: "other.table")
-      input = "select a from my_table"
-      expected = %{"my_table" => Atom.to_string(source.token)}
-      assert {:ok, ^expected} = SqlV2.sources(input, user)
+    user = insert(:user)
+    source = insert(:source, user: user, name: "my_table")
+    other_source = insert(:source, user: user, name: "other.table")
+    input = "select a from my_table"
+    expected = %{"my_table" => Atom.to_string(source.token)}
+    assert {:ok, ^expected} = SqlV2.sources(input, user)
 
-      input = "select a from my_table, `other.table`"
+    input = "select a from my_table, `other.table`"
 
-      expected = %{
-        "my_table" => Atom.to_string(source.token),
-        "other.table" => Atom.to_string(other_source.token)
-      }
+    expected = %{
+      "my_table" => Atom.to_string(source.token),
+      "other.table" => Atom.to_string(other_source.token)
+    }
 
-      assert {:ok, ^expected} = SqlV2.sources(input, user)
+    assert {:ok, ^expected} = SqlV2.sources(input, user)
   end
 
   test "source_mapping/3 updates an SQL string with renamed sources" do

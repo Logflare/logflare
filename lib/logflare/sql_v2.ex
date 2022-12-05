@@ -32,6 +32,7 @@ defmodule Logflare.SqlV2 do
     user = Logflare.Users.get(user_id)
     transform(input, user)
   end
+
   def transform(
         input,
         %_{
