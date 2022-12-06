@@ -75,7 +75,7 @@ defmodule Logflare.Endpoints.Query do
 
   def validate_query(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn field, value ->
-      case Logflare.SQL.transform(value, get_field(changeset, :user)) do
+      case Logflare.SqlV2.transform(value, get_field(changeset, :user)) do
         {:ok, _} ->
           []
 
@@ -88,7 +88,7 @@ defmodule Logflare.Endpoints.Query do
   # Only update source mapping if there are no errors
   def update_source_mapping(%{errors: [], changes: %{query: query}} = changeset)
       when is_binary(query) do
-    case Logflare.SQL.sources(query, get_field(changeset, :user)) do
+    case Logflare.SqlV2.sources(query, get_field(changeset, :user)) do
       {:ok, source_mapping} ->
         Logger.debug("Source mapping: #{inspect(source_mapping, pretty: true)}")
         put_change(changeset, :source_mapping, source_mapping)
@@ -101,7 +101,7 @@ defmodule Logflare.Endpoints.Query do
   def update_source_mapping(changeset), do: changeset
 
   def map_query(%__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q) do
-    case Logflare.SQL.source_mapping(query, user_id, source_mapping) do
+    case Logflare.SqlV2.source_mapping(query, user_id, source_mapping) do
       {:ok, query} ->
         Map.put(q, :query, query)
 

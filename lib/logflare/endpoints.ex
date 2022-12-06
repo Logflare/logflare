@@ -1,16 +1,20 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
-  import Ecto.Query
   alias Logflare.Endpoints.Query
   alias Logflare.Repo
   alias Logflare.User
   @spec get_query_by_token(binary()) :: Query.t() | nil
   def get_query_by_token(token) when is_binary(token) do
-    query =
-      from q in Query,
-        where: q.token == ^token
+    get_by(token: token)
+  end
 
-    Repo.one(query) |> Query.map_query()
+  def get_mapped_query_by_token(token) when is_binary(token) do
+    token
+    |> get_query_by_token()
+    |> case do
+      nil -> nil
+      query -> Query.map_query(query)
+    end
   end
 
   @spec get_by(Keyword.t()) :: Query.t() | nil

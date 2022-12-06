@@ -4,7 +4,7 @@ defmodule Logflare.Endpoints.Cache do
   """
 
   require Logger
-
+  alias Logflare.Endpoints
   use GenServer, restart: :temporary
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -194,7 +194,7 @@ defmodule Logflare.Endpoints.Cache do
     params = state.params
 
     # determine the parameters used in this query
-    case Logflare.SQL.parameters(state.query.query) do
+    case Logflare.SqlV2.parameters(state.query.query) do
       {:ok, parameters} ->
         Logger.debug("[#{__MODULE__}] Parameters: #{inspect(parameters)} ")
         # if it is sandboxable, then retrieve the sandboxed sql and add it as a query.
@@ -208,7 +208,7 @@ defmodule Logflare.Endpoints.Cache do
         Logger.debug("[#{__MODULE__}] query: #{inspect(query)} ")
 
         # insert the bigquery source-table references
-        case Logflare.SQL.transform(query, state.query.user_id) do
+        case Logflare.SqlV2.transform(query, state.query.user_id) do
           {:ok, query} ->
             Logger.debug("[#{__MODULE__}] transformed query: #{inspect(query)} ")
 
@@ -271,9 +271,8 @@ defmodule Logflare.Endpoints.Cache do
     %{
       state
       | query:
-          Logflare.Repo.reload(state.query)
+          Endpoints.get_mapped_query_by_token(state.query.token)
           |> Logflare.Repo.preload(:user)
-          |> Logflare.Endpoints.Query.map_query()
     }
   end
 

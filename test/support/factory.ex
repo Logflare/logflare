@@ -5,6 +5,7 @@ defmodule Logflare.Factory do
   use ExMachina.Ecto, repo: Logflare.Repo
 
   import Logflare.TestUtils
+  alias Logflare.TestUtils
 
   alias Logflare.Backends.SourceBackend
   alias Logflare.Billing.BillingAccount
@@ -154,7 +155,8 @@ defmodule Logflare.Factory do
     %Query{
       user: build(:user),
       token: Ecto.UUID.generate(),
-      query: "select current_date() as date"
+      query: "select current_date() as date",
+      name: TestUtils.random_string()
     }
   end
 

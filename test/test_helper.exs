@@ -1,3 +1,6 @@
+:ok = LocalCluster.start()
+Mix.Task.run("app.start")
+
 ExUnit.start()
 Faker.start()
 alias Logflare.{Lql, Billing, Logs, Sources, SystemMetrics}
@@ -12,7 +15,6 @@ Mimic.copy(Sources.Counters)
 Mimic.copy(SystemMetrics.AllLogsLogged)
 Mimic.copy(Sources.Cache)
 Mimic.copy(Stripe.PaymentMethod)
-Mimic.copy(Logflare.SQL)
 Mimic.copy(Stripe.SubscriptionItem.Usage)
 Mimic.copy(Logflare.Backends.Adaptor.WebhookAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.WebhookAdaptor.Client)

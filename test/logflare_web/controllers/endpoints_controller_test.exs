@@ -1,17 +1,6 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
 
-  setup do
-    # mock sql behaviour
-    Logflare.SQL
-    |> stub(:source_mapping, fn query, _, _ -> {:ok, query} end)
-    |> stub(:parameters, fn _query -> {:ok, %{}} end)
-    |> stub(:transform, fn query, _user_id -> {:ok, query} end)
-    |> stub(:sources, fn _query, _user_id -> {:ok, %{}} end)
-
-    :ok
-  end
-
   describe "query" do
     setup :set_mimic_global
 
@@ -54,7 +43,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   describe "ui" do
     @valid_params %{
       name: "current date",
-      query: "select current_date() as date"
+      query: "/*some comment*/\nselect current_date() as date"
     }
     setup %{conn: conn} do
       plan = insert(:plan, name: "Free", type: "standard")
@@ -82,7 +71,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> get(Routes.endpoints_path(conn, :edit, id))
 
-      assert html_response(conn, 200) =~ "Query Sandboxing"
+      html = html_response(conn, 200)
+      assert html =~ "Query Sandboxing"
+      assert html =~ @valid_params.query
     end
 
     test "Endpoint for User", %{conn: conn} do
@@ -97,7 +88,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert html = html_response(conn, 200)
       assert html =~ "/endpoints/"
       assert html =~ "current date"
-      assert html =~ @valid_params.query
     end
   end
 end

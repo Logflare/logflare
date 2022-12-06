@@ -5,10 +5,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
   setup do
     endpoints = insert_list(2, :endpoint)
     user = insert(:user, endpoint_queries: endpoints)
-
-    Logflare.SQL
-    |> stub(:transform, fn _, _ -> {:ok, nil} end)
-    |> stub(:sources, fn _, _ -> {:ok, nil} end)
+    insert(:source, name: "logs", user: user)
 
     {:ok, user: user, endpoints: endpoints}
   end
@@ -70,7 +67,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       response =
         conn
         |> login_user(user)
-        |> post("/api/endpoints", %{name: name, query: "select * from logs"})
+        |> post("/api/endpoints", %{name: name, query: "select a from logs"})
         |> json_response(201)
 
       assert response["name"] == name

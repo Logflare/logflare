@@ -49,8 +49,7 @@ defmodule Logflare.Mixfile do
         :ueberauth_google,
         :ssl,
         :phoenix_html,
-        :phoenix,
-        :erlexec
+        :phoenix
       ],
       included_applications: [:mnesia]
     ]
@@ -102,6 +101,7 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
+      {:local_cluster, "~> 1.2", only: [:test]},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -164,7 +164,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.29.0"},
 
       # Rust NIFs
-      {:rustler, "~> 0.21.0", override: true},
+      {:rustler, "~> 0.25.0"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
@@ -191,9 +191,6 @@ defmodule Logflare.Mixfile do
       # Charting
       {:contex, "~> 0.3.0"},
 
-      # SQL
-      {:erlexec, "~>1.18.11"},
-
       # Postgres Subscribe
       {:cainophile, "~> 0.1.0"}
       # {:honeydew, "~> 1.5.0"}
@@ -208,7 +205,8 @@ defmodule Logflare.Mixfile do
         "cmd PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server",
       "start.pink": "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server",
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate", "test"],
+      test: ["cmd epmd -daemon", "ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      "test.watch": ["cmd epmd -daemon", "test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high"],
