@@ -32,4 +32,16 @@ defmodule Logflare.EndpointsTest do
     assert %Query{query: mapped_query} = Endpoints.get_mapped_query_by_token(endpoint.token)
     assert String.downcase(mapped_query) == "select a from new"
   end
+
+  test "update_query/2 " do
+    user = insert(:user)
+    insert(:source, user: user, name: "my_table")
+    endpoint = insert(:endpoint, user: user, query: "select current_datetime() as date")
+    sql = "select a from my_table"
+    assert {:ok, %{query: ^sql}} = Endpoints.update_query(endpoint, %{query: sql})
+
+    # does not allow updating of query with unknown sources
+    assert {:error, %Ecto.Changeset{}} =
+             Endpoints.update_query(endpoint, %{query: "select b from unknown"})
+  end
 end
