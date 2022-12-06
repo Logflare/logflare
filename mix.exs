@@ -206,6 +206,7 @@ defmodule Logflare.Mixfile do
       "start.pink": "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server",
       # coveralls will trigger unit tests as well
       test: ["cmd epmd -daemon", "ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      "test.watch": ["cmd epmd -daemon", "test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high"],

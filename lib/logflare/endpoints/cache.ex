@@ -4,7 +4,7 @@ defmodule Logflare.Endpoints.Cache do
   """
 
   require Logger
-
+  alias Logflare.Endpoints
   use GenServer, restart: :temporary
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -271,9 +271,8 @@ defmodule Logflare.Endpoints.Cache do
     %{
       state
       | query:
-          Logflare.Repo.reload(state.query)
+          Endpoints.get_mapped_query_by_token(state.query.token)
           |> Logflare.Repo.preload(:user)
-          |> Logflare.Endpoints.Query.map_query()
     }
   end
 

@@ -43,7 +43,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   describe "ui" do
     @valid_params %{
       name: "current date",
-      query: "select current_date() as date"
+      query: "/*some comment*/\nselect current_date() as date"
     }
     setup %{conn: conn} do
       plan = insert(:plan, name: "Free", type: "standard")
@@ -71,7 +71,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> get(Routes.endpoints_path(conn, :edit, id))
 
-      assert html_response(conn, 200) =~ "Query Sandboxing"
+      html = html_response(conn, 200)
+      assert html =~ "Query Sandboxing"
+      assert html =~ @valid_params.query
     end
 
     test "Endpoint for User", %{conn: conn} do

@@ -20,7 +20,7 @@ defmodule LogflareWeb.EndpointsController do
     send_preflight_response?: true
 
   def query(conn, %{"token" => token}) do
-    endpoint_query = Endpoints.get_query_by_token(token)
+    endpoint_query = Endpoints.get_mapped_query_by_token(token)
 
     case Endpoints.Resolver.resolve(endpoint_query, conn.query_params)
          |> Endpoints.Cache.query() do
@@ -46,7 +46,6 @@ defmodule LogflareWeb.EndpointsController do
         where: q.user_id == ^user.id and q.id == ^id
       )
       |> Repo.one()
-      |> Endpoints.Query.map_query()
 
     parameters =
       case SqlV2.parameters(endpoint_query.query) do
@@ -68,7 +67,6 @@ defmodule LogflareWeb.EndpointsController do
       )
       |> Repo.one()
       |> Repo.preload(:user)
-      |> Endpoints.Query.map_query()
 
     changeset = Endpoints.Query.update_by_user_changeset(endpoint_query, %{})
 
