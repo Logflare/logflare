@@ -1,20 +1,16 @@
 FROM elixir:1.12-alpine as builder
 
 ENV MIX_ENV prod
-ENV JAVA_HOME /opt/java/jdk-16.0.1/
 ENV MAGIC_COOKIE=$magic_cookie
-ENV HEX_HTTP_CONCURRENCY=1d
-ENV HEX_HTTP_TIMEOUT=120
 
 RUN apk update && \
-    apk add -f curl git build-base nodejs yarn
-
-RUN curl https://download.java.net/java/GA/jdk16.0.1/7147401fd7354114ac51ef3e1328291f/9/GPL/openjdk-16.0.1_linux-x64_bin.tar.gz -o openjdk-16.0.1_linux-x64_bin.tar.gz && \
-    mkdir -p /opt/java && \
-    tar xzvfp openjdk-16.0.1_linux-x64_bin.tar.gz -C /opt/java && \
-    rm -f openjdk-16.0.1_linux-x64_bin.tar.gz
+    apk add -f curl git build-base nodejs yarn rust cargo
 
 COPY . /logflare
+
+WORKDIR /logflare/native/sqlparser_ex
+# Compile Rust
+RUN cargo build
 
 WORKDIR /logflare
 RUN mix do local.rebar --force, local.hex --force
