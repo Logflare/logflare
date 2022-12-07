@@ -63,6 +63,26 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       assert response["name"] == name
     end
+
+    test "returns 422 on missing arguments", %{conn: conn, user: user} do
+      resp =
+        conn
+        |> login_user(user)
+        |> post("/api/sources")
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
+    end
+
+    test "returns 422 on bad arguments", %{conn: conn, user: user} do
+      resp =
+        conn
+        |> login_user(user)
+        |> post("/api/sources", %{name: 123})
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["is invalid"]}}
+    end
   end
 
   describe "update/2" do
@@ -90,6 +110,16 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       |> patch("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
       |> response(404)
     end
+
+    test "returns 422 on bar arguments", %{conn: conn, user: user, sources: [source | _]} do
+      resp =
+        conn
+        |> login_user(user)
+        |> patch("/api/sources/#{source.token}", %{name: 123})
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["is invalid"]}}
+    end
   end
 
   describe "delete/2" do
@@ -100,15 +130,15 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     } do
       name = TestUtils.random_string()
 
-      conn
-      |> login_user(user)
-      |> delete("/api/sources/#{source.token}", %{name: name})
-      |> response(204)
+      assert conn
+             |> login_user(user)
+             |> delete("/api/sources/#{source.token}", %{name: name})
+             |> response(204)
 
-      conn
-      |> login_user(user)
-      |> get("/api/sources/#{source.token}")
-      |> response(404)
+      assert conn
+             |> login_user(user)
+             |> get("/api/sources/#{source.token}")
+             |> response(404)
     end
 
     test "returns not found if doesn't own the source", %{
@@ -117,28 +147,10 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     } do
       invalid_user = insert(:user)
 
-      conn
-      |> login_user(invalid_user)
-      |> delete("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
-      |> response(404)
+      assert conn
+             |> login_user(invalid_user)
+             |> delete("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
+             |> response(404)
     end
-  end
-
-  test "changeset errors handled gracefully", %{conn: conn, user: user, sources: [source | _]} do
-    resp =
-      conn
-      |> login_user(user)
-      |> post("/api/sources")
-      |> json_response(422)
-
-    assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
-
-    resp =
-      conn
-      |> login_user(user)
-      |> patch("/api/sources/#{source.token}", %{name: 123})
-      |> json_response(422)
-
-    assert resp == %{"errors" => %{"name" => ["is invalid"]}}
   end
 end
