@@ -147,9 +147,6 @@ defmodule Logflare.Source.Supervisor do
   def start_source(source_id) when is_atom(source_id) do
     # Calling this server doing boot times out due to dealing with bigquery in init_table()
 
-    # Double check source is in the database before starting
-    # Can be removed when manager fns move into their own genserver
-
     GenServer.abcast(__MODULE__, {:create, source_id})
 
     {:ok, source_id}
@@ -179,6 +176,9 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp create_source(source_id) do
+    # Double check source is in the database before starting
+    # Can be removed when manager fns move into their own genserver
+
     source = Sources.get_by(token: source_id)
 
     if source do
