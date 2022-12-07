@@ -4,6 +4,7 @@ defmodule Logflare.TeamUsers.TeamUser do
   alias Logflare.Users.UserPreferences
   alias Logflare.Teams.Team
   use TypedEctoSchema
+  @derive {Jason.Encoder, only: [:email, :name]}
 
   typed_schema "team_users" do
     field :email, :string
@@ -14,7 +15,8 @@ defmodule Logflare.TeamUsers.TeamUser do
     field :phone, :string
     field :provider, :string
     field :provider_uid, :string
-    field :token, :string
+    field :token, :string, autogenerate: {Ecto.UUID, :generate, []}
+
     field :valid_google_account, :boolean
 
     embeds_one :preferences, UserPreferences
@@ -39,7 +41,7 @@ defmodule Logflare.TeamUsers.TeamUser do
       :valid_google_account,
       :provider_uid
     ])
-    |> validate_required([:email, :provider, :token, :provider_uid])
+    |> validate_required([:email, :provider, :provider_uid])
     |> downcase_emails()
     |> downcase_email_provider_uid(team_user)
   end

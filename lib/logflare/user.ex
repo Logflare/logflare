@@ -27,7 +27,8 @@ defmodule Logflare.User do
              :bigquery_dataset_location,
              :bigquery_dataset_id,
              :api_quota,
-             :company
+             :company,
+             :token
            ]}
 
   @default_user_api_quota 150

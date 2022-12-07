@@ -72,6 +72,26 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       assert response["name"] == name
     end
+
+    test "returns 422 on missing arguments", %{conn: conn, user: user} do
+      resp =
+        conn
+        |> login_user(user)
+        |> post("/api/endpoints")
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["can't be blank"], "query" => ["can't be blank"]}}
+    end
+
+    test "returns 422 on bad arguments", %{conn: conn, user: user} do
+      resp =
+        conn
+        |> login_user(user)
+        |> post("/api/endpoints", %{name: 123})
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["is invalid"], "query" => ["can't be blank"]}}
+    end
   end
 
   describe "update/2" do
@@ -102,6 +122,20 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> patch("/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
       |> response(404)
     end
+
+    test "returns 422 on bad arguments", %{
+      conn: conn,
+      user: user,
+      endpoints: [endpoint | _]
+    } do
+      resp =
+        conn
+        |> login_user(user)
+        |> patch("/api/endpoints/#{endpoint.token}", %{name: 123})
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["is invalid"]}}
+    end
   end
 
   describe "delete/2" do
@@ -112,15 +146,15 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
     } do
       name = TestUtils.random_string()
 
-      conn
-      |> login_user(user)
-      |> delete("/api/endpoints/#{endpoint.token}", %{name: name})
-      |> response(204)
+      assert conn
+             |> login_user(user)
+             |> delete("/api/endpoints/#{endpoint.token}", %{name: name})
+             |> response(204)
 
-      conn
-      |> login_user(user)
-      |> get("/api/endpoints/#{endpoint.token}")
-      |> response(404)
+      assert conn
+             |> login_user(user)
+             |> get("/api/endpoints/#{endpoint.token}")
+             |> response(404)
     end
 
     test "returns not found if doesn't own the enpoint query", %{
@@ -129,32 +163,10 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
     } do
       invalid_user = insert(:user)
 
-      conn
-      |> login_user(invalid_user)
-      |> delete("/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
-      |> response(404)
+      assert conn
+             |> login_user(invalid_user)
+             |> delete("/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
+             |> response(404)
     end
-  end
-
-  test "changeset errors handled gracefully", %{
-    conn: conn,
-    user: user,
-    endpoints: [endpoint | _]
-  } do
-    resp =
-      conn
-      |> login_user(user)
-      |> post("/api/endpoints")
-      |> json_response(422)
-
-    assert resp == %{"errors" => %{"name" => ["can't be blank"], "query" => ["can't be blank"]}}
-
-    resp =
-      conn
-      |> login_user(user)
-      |> patch("/api/endpoints/#{endpoint.token}", %{name: 123})
-      |> json_response(422)
-
-    assert resp == %{"errors" => %{"name" => ["is invalid"]}}
   end
 end
