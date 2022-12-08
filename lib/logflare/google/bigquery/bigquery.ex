@@ -13,6 +13,8 @@ defmodule Logflare.Google.BigQuery do
   defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
 
   alias GoogleApi.BigQuery.V2.Api
+  alias GoogleApi.BigQuery.V2.Api.Tabledata
+  alias GoogleApi.BigQuery.V2.Api.Tables
   alias GoogleApi.BigQuery.V2.Model
 
   alias Logflare.Google.BigQuery.GenUtils
@@ -152,7 +154,7 @@ defmodule Logflare.Google.BigQuery do
     dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
 
     conn
-    |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
+    |> Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
       body: %Model.Table{schema: schema}
     )
     |> GenUtils.maybe_parse_google_api_result()
@@ -197,7 +199,7 @@ defmodule Logflare.Google.BigQuery do
     }
 
     conn
-    |> Api.Tabledata.bigquery_tabledata_insert_all(
+    |> Tabledata.bigquery_tabledata_insert_all(
       project_id,
       dataset_id,
       table_name,

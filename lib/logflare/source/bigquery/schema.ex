@@ -20,7 +20,6 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Google.BigQuery.SchemaUtils
 
   @timeout 60_000
-  @updates_per_minute 6
 
   def start_link(%RLS{} = rls) do
     GenServer.start_link(
@@ -128,7 +127,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     schema = try_schema_update(body, state.schema)
 
     if not same_schemas?(state.schema, schema) and
-         state.next_update < System.system_time(:second) do
+         state.next_update < System.system_time(:millisecond) do
       case BigQuery.patch_table(
              state.source_token,
              schema,
@@ -272,8 +271,14 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp next_update() do
-    seconds = 60 / @updates_per_minute
-    System.system_time(:second) + seconds
+    updates_per_minute =
+      case Application.get_env(:logflare, :env) do
+        :test -> 600
+        _ -> 6
+      end
+
+    ms = 60 * 1000 / updates_per_minute
+    System.system_time(:millisecond) + ms
   end
 
   defp name(source_token) do
