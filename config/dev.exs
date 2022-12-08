@@ -5,6 +5,7 @@ config :logflare,
   env: :dev
 
 config :logflare, LogflareWeb.Endpoint,
+  server: true,
   http: [
     port: System.get_env("PORT") || 4000,
     transport_options: [

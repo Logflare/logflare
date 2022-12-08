@@ -115,6 +115,50 @@ defmodule LogflareWeb.Source.SearchLVTest do
     refute html =~ "some event message"
   end
 
+  test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
+    # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
+    schema =
+      TestUtils.build_bq_schema(%{"metadata" => %{"nested" => "something"}, "top" => "level"})
+
+    Schema.update(source.token, schema)
+    # wait for schema to update
+    # TODO: find a better way to test a source schema structure
+    :timer.sleep(600)
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      query = opts[:body].query |> String.downcase()
+
+      if query =~ "select" and query =~ "inner join unnest" do
+        assert query =~ "0.top = ?"
+        assert query =~ "1.nested = ?"
+        {:ok, TestUtils.gen_bq_response(%{"event_message" => "some correct message"})}
+      else
+        {:ok, TestUtils.gen_bq_response()}
+      end
+    end)
+
+    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+    # post-init fetching
+    :timer.sleep(800)
+
+    view
+    |> render_change(:start_search, %{
+      "search" => %{
+        @default_search_params
+        | "querystring" => "m.nested:test top:test"
+      }
+    })
+
+    # wait for async search task to complete
+    # TODO: find better way to test searching
+    :timer.sleep(800)
+
+    html = view |> element("#logs-list-container") |> render()
+
+    assert html =~ "some correct message"
+  end
+
   test "chart display interval", %{conn: conn, source: source} do
     GoogleApi.BigQuery.V2.Api.Jobs
     |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
