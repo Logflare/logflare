@@ -7,15 +7,13 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   alias Logflare.Source.BigQuery.Buffer
   alias Logflare.LogEvent, as: LE
 
-  @default_receive_interval 5_000
-
   @impl true
   def init(%{source_id: source_id}) when is_atom(source_id) do
     {:producer,
      %{
        demand: 0,
        receive_timer: nil,
-       receive_interval: @default_receive_interval,
+       receive_interval: default_receive_interval(),
        source_id: source_id
      }}
   end
@@ -85,5 +83,12 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   defp schedule_receive_messages(interval) do
     Process.send_after(self(), :receive_messages, interval)
+  end
+
+  defp default_receive_interval() do
+    case Application.get_env(:logflare, :env) do
+      :test -> 50
+      _ -> 5_000
+    end
   end
 end
