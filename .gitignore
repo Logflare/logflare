@@ -53,6 +53,9 @@ gcloud_prod.json
 .google.secret.json
 .prod.env
 .local.env
+.staging.env
 
 # rustler nif binaries
-priv/native/
+/priv/native
+/native/sqlparser_ex/target
+/native/sqlparser_ex/.config

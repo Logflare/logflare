@@ -39,14 +39,23 @@ jobs:
         with:
           elixir-version: "1.12.3" # Define the elixir version [required]
           otp-version: "24" # Define the OTP version [required]
+      - name: Set up Rust
+        uses: ATiltedTree/setup-rust@v1
+        with:
+          rust-version: stable
       - name: Restore dependencies cache
         uses: actions/cache@v3
         with:
           path: |
             deps
             _build
+            native/sqlparser_ex/.cargo
+            native/sqlparser_ex/target
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
+      - name: Compile native
+        working-directory: ./native/sqlparser_ex
+        run: cargo build
       - name: Install dependencies
         run: mix deps.get
       - name: Run compilation warnings check
@@ -61,3 +70,26 @@ jobs:
     #   run: mix test.typings
       - name: Code quality - linting
         run: mix lint --only warnings
+      - name: Get version
+        run: echo "LOGFLARE_VERSION=$(mix run --no-start --eval 'IO.puts(Keyword.get(Mix.Project.config, :version))')" >> $GITHUB_ENV
+      - name: Get commit SHA
+        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+    # - name: Login to Docker Hub
+    #   uses: docker/login-action@v2
+    #   with:
+    #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+    #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build
+        uses: docker/build-push-action@v3
+        with: 
+          push: false
+          tags: logflare/app:${{ env.LOGFLARE_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: | 
+            MAGIC_COOKIE=${{ env.GITHUB_SHA }}  
+
