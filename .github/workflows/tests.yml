@@ -81,8 +81,8 @@ jobs:
       - name: Build
         uses: docker/build-push-action@v3
         with:
-          push: false
-          tags: logflare/app:${{ env.LOGFLARE_VERSION }}
+          push: true
+          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
