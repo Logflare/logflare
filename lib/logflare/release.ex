@@ -1,13 +1,16 @@
 defmodule Logflare.Release do
+  require Logger
   @app :logflare
 
   def migrate do
     load_app()
+    Logger.info("Starting migration")
 
     for repo <- repos() do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
 
+    Logger.info("Migration finished")
     Application.ensure_all_started(@app)
   end
 

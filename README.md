@@ -70,7 +70,7 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 iex> LogflareLogger.info("testing log message")
 ```
 ### Using Docker
-1. Build images with `docker compose build --build-arg=magic_cookie=$(cat /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | fold -w 50 | head -n 1)`
+1. Build images with `docker compose build`
 2. Run with `docker compose up -d`
 ### Logging
 
