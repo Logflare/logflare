@@ -32,6 +32,7 @@ jobs:
     env:
       MIX_ENV: test
       SHELL: /bin/bash
+      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Elixir
@@ -39,6 +40,10 @@ jobs:
         with:
           elixir-version: "1.12.3" # Define the elixir version [required]
           otp-version: "24" # Define the OTP version [required]
+      - name: Set up Rust
+        uses: ATiltedTree/setup-rust@v1
+        with:
+          rust-version: stable
       - name: Restore dependencies cache
         uses: actions/cache@v3
         with:
@@ -61,3 +66,25 @@ jobs:
     #   run: mix test.typings
       - name: Code quality - linting
         run: mix lint --only warnings
+      - name: Get version
+        run: echo "LOGFLARE_VERSION=$(mix run --no-start --eval 'IO.puts(Keyword.get(Mix.Project.config, :version))')" >> $GITHUB_ENV
+      - name: Get commit SHA
+        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build
+        uses: docker/build-push-action@v3
+        with:
+          push: ${{env.PUSH_TO_DOCKER}}
+          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+

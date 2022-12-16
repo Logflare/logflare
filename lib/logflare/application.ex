@@ -38,13 +38,9 @@ defmodule Logflare.Application do
   end
 
   defp get_goth_child_spec() do
-    env = Application.get_env(:logflare, :env)
     # Setup Goth for GCP connections
-    credentials =
-      if env in [:dev, :test],
-        do: Application.get_env(:goth, :json) |> Jason.decode!(),
-        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
-
+    require Logger
+    credentials = Jason.decode!(Application.get_env(:goth, :json))
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
     source = {:service_account, credentials, scopes: scopes}
     {Goth, name: Logflare.Goth, source: source}

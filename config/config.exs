@@ -92,8 +92,3 @@ config :logflare, Logflare.CacheBuster,
   publications: ["logflare_pub"]
 
 import_config "#{Mix.env()}.exs"
-
-# Any local configs a developer would like to set for themselves
-if Mix.env() == :dev do
-  import_config "local.secret.exs"
-end

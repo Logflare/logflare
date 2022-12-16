@@ -16,7 +16,6 @@ config :logflare, LogflareWeb.Endpoint,
     protocol_options: [max_keepalive: 1_000],
     compress: true
   ],
-  # url: [host: "dev.chasegranberry.net", scheme: "https", port: 443],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,

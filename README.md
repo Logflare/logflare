@@ -69,7 +69,9 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 ```elixir
 iex> LogflareLogger.info("testing log message")
 ```
-
+### Using Docker
+1. Build images with `docker compose build`
+2. Run with `docker compose up -d`
 ### Logging
 
 Use the `:error_string` metadata key when logging, which is for additional information that we want to log but don't necessarily want searchable or parsed for schema updating.
