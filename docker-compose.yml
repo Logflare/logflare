@@ -1,13 +1,15 @@
 version: "3.9"
 services:
   db:
-    build:
-      dockerfile: ./docker/db.Dockerfile
+    image: postgres:13.4-alpine
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
     ports:
       - "5432:5432"
+    volumes:
+      - ./priv/wal.sql:/docker-entrypoint-initdb.d/wal.sql
+      - pg-data:/var/lib/postgresql/data
 
   logflare:
     build:

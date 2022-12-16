@@ -55,5 +55,3 @@ gcloud_prod.json
 
 # rustler nif binaries
 /priv/native
-/native/sqlparser_ex/target
-/native/sqlparser_ex/.config
