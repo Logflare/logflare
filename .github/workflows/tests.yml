@@ -32,6 +32,7 @@ jobs:
     env:
       MIX_ENV: test
       SHELL: /bin/bash
+      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Elixir
@@ -78,10 +79,11 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build
         uses: docker/build-push-action@v3
         with:
-          push: true
+          push: ${{env.PUSH_TO_DOCKER}}
           tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
