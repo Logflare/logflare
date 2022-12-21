@@ -19,7 +19,7 @@
       <h1>How do I sign up for an Enterprise plan?</h1>
       <p><%= link "Contact us", to: Routes.marketing_path(@conn, :contact) %> to learn more about our Enterprise
           plans and support options. We can handle any event volume required. Need to ingest directly to the
-          EU? Curious about our AWS support? Need us to impliment a custom storage pipeline? We can help you
+          EU? Curious about our AWS support? Need us to implement a custom storage pipeline? We can help you
           do just about anything you need with your data pipeline so please reach out.</p>
       <h1>How does the trial work?</h1>
       <p>Start your trial with Logflare and you get 14 days to try it out. After 14 days your credit card will
