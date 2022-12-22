@@ -3,10 +3,9 @@ defmodule Logflare.Release do
   @app :logflare
 
   def migrate do
-    Application.ensure_all_started(@app)
-
-    load_app()
     Logger.info("Starting migration")
+    Application.ensure_all_started(@app)
+    Application.ensure_started(:ssl)
 
     for repo <- repos() do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
@@ -16,15 +15,10 @@ defmodule Logflare.Release do
   end
 
   def rollback(repo, version) do
-    load_app()
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
   defp repos do
     Application.fetch_env!(@app, :ecto_repos)
-  end
-
-  defp load_app do
-    Application.load(@app)
   end
 end
