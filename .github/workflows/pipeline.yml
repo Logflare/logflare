@@ -32,7 +32,6 @@ jobs:
     env:
       MIX_ENV: test
       SHELL: /bin/bash
-      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Elixir
@@ -66,6 +65,14 @@ jobs:
     #   run: mix test.typings
       - name: Code quality - linting
         run: mix lint --only warnings
+  publish_version:
+    needs: build
+    name: Publish versioned tagged image
+    runs-on: ubuntu-latest
+    env:
+      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
+    steps:
+      - uses: actions/checkout@v3
       - name: Get version
         run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
       - name: Get commit SHA
@@ -86,7 +93,28 @@ jobs:
           tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Build Latest
+  publish_latest:
+    needs: build
+    name: Publish latest tagged image
+    runs-on: ubuntu-latest
+    env:
+      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Get version
+        run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
+      - name: Get commit SHA
+        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build Version
         uses: docker/build-push-action@v3
         with:
           push: ${{env.PUSH_TO_DOCKER}}

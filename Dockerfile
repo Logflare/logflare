@@ -18,8 +18,9 @@ FROM alpine:3.16.0 as app
 WORKDIR /root/
 
 # Required for the BeamVM to run
-RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs jq
+RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs
 COPY --from=builder ./logflare/_build/prod /root/app
+COPY --from=builder ./logflare/VERSION /root/app/rel/logflare/bin/VERSION
 
 WORKDIR /root/app/rel/logflare/bin
 COPY run.sh ./run.sh
