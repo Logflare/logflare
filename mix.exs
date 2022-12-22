@@ -1,12 +1,11 @@
 defmodule Logflare.Mixfile do
   @moduledoc false
   use Mix.Project
-  @version "1.0.0"
 
   def project do
     [
       app: :logflare,
-      version: @version,
+      version: version(),
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -28,7 +27,7 @@ defmodule Logflare.Mixfile do
       test_coverage: [tool: ExCoveralls],
       releases: [
         logflare: [
-          version: @version,
+          version: version(),
           include_executables_for: [:unix],
           applications: [runtime_tools: :permanent, ssl: :permanent]
         ]
@@ -219,4 +218,6 @@ defmodule Logflare.Mixfile do
       "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
   end
+
+  defp version, do: File.read!("./VERSION")
 end

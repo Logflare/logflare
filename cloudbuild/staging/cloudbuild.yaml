@@ -12,8 +12,8 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./config/staging.secret.exs.enc
-      - --plaintext-file=./config/staging.secret.exs
+      - --ciphertext-file=./.staging.env.enc
+      - --plaintext-file=./.secrets.env
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
