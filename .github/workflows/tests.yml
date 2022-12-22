@@ -67,7 +67,7 @@ jobs:
       - name: Code quality - linting
         run: mix lint --only warnings
       - name: Get version
-        run: echo "LOGFLARE_VERSION=$(mix run --no-start --eval 'IO.puts(Keyword.get(Mix.Project.config, :version))')" >> $GITHUB_ENV
+        run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
       - name: Get commit SHA
         run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
       - name: Set up QEMU
@@ -79,12 +79,18 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build
+      - name: Build Version
         uses: docker/build-push-action@v3
         with:
           push: ${{env.PUSH_TO_DOCKER}}
           tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build Latest
+        uses: docker/build-push-action@v3
+        with:
+          push: ${{env.PUSH_TO_DOCKER}}
+          tags: supabase/logflare:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
