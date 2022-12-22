@@ -1,8 +1,9 @@
 #! /bin/sh
 
-if [ -f .secrets.env ]; then
-    export $(xargs < .secrets.env)
+if [ -f .staging.env ]; then
+    while read -r line; do
+        export $line
+    done < .staging.env
 fi
-
 ./logflare eval Logflare.Release.migrate
 ./logflare start --sname logflare
