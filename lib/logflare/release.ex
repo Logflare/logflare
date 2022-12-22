@@ -3,6 +3,8 @@ defmodule Logflare.Release do
   @app :logflare
 
   def migrate do
+    Application.ensure_all_started(@app)
+
     load_app()
     Logger.info("Starting migration")
 
@@ -11,7 +13,6 @@ defmodule Logflare.Release do
     end
 
     Logger.info("Migration finished")
-    Application.ensure_all_started(@app)
   end
 
   def rollback(repo, version) do
