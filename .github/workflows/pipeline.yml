@@ -121,4 +121,15 @@ jobs:
           tags: supabase/logflare:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
+  cloud_staging_build:
+    needs:
+      - publish_version
+      - publish_latest
+    name: Trigger cloud build for staging
+    if: ${{github.ref == 'refs/heads/staging'}}
+    steps:
+      - name: Deploy Stage
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER }}
+          method: 'POST'
