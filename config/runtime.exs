@@ -101,6 +101,4 @@ if config_env() != :test do
   config :stripity_stripe,
     api_key: System.get_env("STRIPE_API_KEY"),
     publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY")
-
-  config :goth, json: System.get_env("GOOGLE_APPLICATION_JSON_CREDENTIALS")
 end
