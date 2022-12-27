@@ -8,17 +8,15 @@ RUN apk update && \
 COPY . /logflare
 
 WORKDIR /logflare
-RUN mix do local.rebar --force, local.hex --force
-RUN mix do deps.get, deps.compile
 
-RUN mix phx.digest
-RUN mix release
+RUN mix do local.rebar --force, local.hex --force, deps.get, phx.digest, release
 
 FROM alpine:3.16.0 as app
 WORKDIR /root/
 
 # Required for the BeamVM to run
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs
+
 COPY --from=builder ./logflare/_build/prod /root/app
 COPY --from=builder ./logflare/VERSION /root/app/rel/logflare/bin/VERSION
 
