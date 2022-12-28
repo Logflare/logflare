@@ -17,8 +17,9 @@ WORKDIR /root/
 # Required for the BeamVM to run
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs
 
-COPY --from=builder ./logflare/_build/prod /root/app
-COPY --from=builder ./logflare/VERSION /root/app/rel/logflare/bin/VERSION
+COPY --from=builder logflare/_build/prod /root/app
+COPY --from=builder logflare/VERSION /root/app/rel/logflare/bin/VERSION
+COPY --from=builder logflare/priv /root/app/rel/logflare/bin/priv
 
 WORKDIR /root/app/rel/logflare/bin
 COPY run.sh ./run.sh
