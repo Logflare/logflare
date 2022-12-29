@@ -29,15 +29,6 @@ config :logflare, LogflareWeb.Endpoint,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)
 
-config :logger,
-  level: :info,
-  sync_threshold: 10_001,
-  discard_threshold: 10_000,
-  backends: [LogflareLogger.HttpBackend],
-  compile_time_purge_matching: [
-    [level_lower_than: :info]
-  ]
-
 config :phoenix, :serve_endpoints, true
 
 config :logflare, Logflare.Repo,
