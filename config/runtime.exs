@@ -1,7 +1,7 @@
 import Config
 
 logger_config =
-  case System.get_env("LOGGER_CONFIG", Mix.env() |> Atom.to_string()) do
+  case System.get_env("LOGGER_CONFIG", config_env() |> Atom.to_string()) do
     "prod" ->
       [
         level: :info,
