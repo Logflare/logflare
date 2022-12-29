@@ -40,10 +40,7 @@ if config_env() != :test do
       port: String.to_integer(System.get_env("PHX_URL_PORT", "4000"))
     ],
     secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
-    check_origin:
-      System.get_env("PHX_CHECK_ORIGIN", "")
-      |> String.split(",")
-      |> Enum.reject(&(&1 == "")),
+    check_origin: String.split(System.get_env("PHX_CHECK_ORIGIN", ""), ","),
     live_view: [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
 
   config :logflare, Logflare.Repo,
