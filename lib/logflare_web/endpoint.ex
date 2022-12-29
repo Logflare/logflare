@@ -16,7 +16,7 @@ defmodule LogflareWeb.Endpoint do
   plug Plug.Static,
     at: "/",
     from: :logflare,
-    gzip: false,
+    gzip: !code_reloading?,
     only: ~w(css fonts images js favicon.ico robots.txt worker.js manifest.json),
     only_matching: ~w(manifest)
 

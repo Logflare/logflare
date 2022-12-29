@@ -79,9 +79,9 @@ config :logflare, Logflare.Tracker, pool_size: 5
 
 import_config "telemetry.exs"
 
-if File.exists?("config/prod.secret.exs") do
-  Logger.info("prod.secret.exs found, importing..")
-  import_config("prod.secret.exs")
-else
-  Logger.warn("prod.secret.exs doesn't exist")
-end
+# if File.exists?("config/prod.secret.exs") do
+#   Logger.info("prod.secret.exs found, importing..")
+#   import_config("prod.secret.exs")
+# else
+#   Logger.warn("prod.secret.exs doesn't exist")
+# end

@@ -47,6 +47,6 @@ config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 import_config "telemetry.exs"
 
-if File.exists?("config/staging.secret.exs") do
-  import_config "staging.secret.exs"
-end
+# if File.exists?("config/staging.secret.exs") do
+#   import_config "staging.secret.exs"
+# end
