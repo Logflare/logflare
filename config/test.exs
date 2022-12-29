@@ -23,7 +23,3 @@ config :logflare, Logflare.Repo,
   hostname: "localhost",
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
-
-config :logger,
-  level: :error,
-  backends: [:console]

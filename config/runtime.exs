@@ -1,6 +1,34 @@
 import Config
 
+logger_config =
+  case System.get_env("LOGGER_CONFIG", Mix.env() |> Atom.to_string()) do
+    "prod" ->
+      [
+        level: :info,
+        backends: [LogflareLogger.HttpBackend],
+        sync_threshold: 10_001,
+        discard_threshold: 10_000,
+        compile_time_purge_matching: [
+          [level_lower_than: :info]
+        ]
+      ]
+
+    "test" ->
+      [level: :error, backends: [:console]]
+
+    _ ->
+      [level: :info, backends: [:console], metadata: :all]
+  end
+
+config :logger, logger_config
+
 if config_env() != :test do
+  if config_env() == :prod do
+    config :logflare_agent,
+      api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
+      url: System.get_env("LOGFLARE_AGENT_URL")
+  end
+
   config :logflare,
     node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
     recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET")
@@ -12,7 +40,10 @@ if config_env() != :test do
       port: String.to_integer(System.get_env("PHX_URL_PORT", "4000"))
     ],
     secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
-    check_origin: String.split(System.get_env("PHX_CHECK_ORIGIN", ""), ","),
+    check_origin:
+      System.get_env("PHX_CHECK_ORIGIN", "")
+      |> String.split(",")
+      |> Enum.reject(&(&1 == "")),
     live_view: [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
 
   config :logflare, Logflare.Repo,
@@ -26,12 +57,6 @@ if config_env() != :test do
 
   config :logflare, Logflare.Cluster.Utils,
     min_cluster_size: String.to_integer(System.get_env("LOGFLARE_CLUSTER_SIZE", "10"))
-
-  if config_env() == :prod do
-    config :logflare_agent,
-      api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
-      url: System.get_env("LOGFLARE_AGENT_URL")
-  end
 
   config :logflare_logger_backend,
     source_id: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"),

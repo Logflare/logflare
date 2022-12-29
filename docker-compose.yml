@@ -10,15 +10,23 @@ services:
     volumes:
       - ./priv/wal.sql:/docker-entrypoint-initdb.d/wal.sql
       - pg-data:/var/lib/postgresql/data
-
   logflare:
     build:
       dockerfile: ./Dockerfile
     ports:
       - "4000:4000"
-    env_file:
-      - .local.env
+    hostname: 127.0.0.1
+    volumes:
+      - type: bind
+        source: ${PWD}/.local.env
+        target: /tmp/.secrets.env
+        read_only: true
+      - type: bind
+        source: ${PWD}/gcloud.json
+        target: /root/app/rel/logflare/bin/gcloud.json
+        read_only: true
     depends_on:
       - db
+
 volumes:
   pg-data:
