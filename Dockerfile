@@ -13,7 +13,10 @@ RUN mix do local.rebar --force, local.hex --force, deps.get, release
 
 WORKDIR /logflare/assets
 RUN yarn install
-RUN yarn run deploy
+RUN yarn deploy
+
+WORKDIR /logflare
+RUN mix phx.digest
 
 FROM alpine:3.16.0 as app
 
