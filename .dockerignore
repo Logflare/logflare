@@ -29,3 +29,5 @@ npm-debug.log
 # Docker
 /docker
 docker*
+
+/priv/static/
