@@ -23,9 +23,16 @@ FROM alpine:3.16.0 as app
 # Required for the BeamVM to run
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs
 
+# Copy required files from builder step
 COPY --from=builder logflare/_build/prod /opt/app
-COPY --from=builder logflare/VERSION /opt/app/rel/logflare/bin/VERSION
-COPY --from=builder logflare/priv /opt/app/rel/logflare/bin/priv
+COPY --from=builder logflare/VERSION /opt/app/VERSION
+COPY --from=builder logflare/priv/static /opt/app/rel/logflare/bin/priv/static
+
+# Move files to the correct folder taking into consideration the VERSION
+RUN cp -r /opt/app/rel/logflare/bin/priv/static /opt/app/rel/logflare/lib/logflare-$(cat /opt/app/VERSION)/priv/static
+
+# Cleanup static assets not in use
+RUN rm -r /opt/app/rel/logflare/bin/priv
 
 WORKDIR /opt/app/rel/logflare/bin
 COPY run.sh ./run.sh
