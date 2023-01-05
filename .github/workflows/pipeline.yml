@@ -133,6 +133,7 @@ jobs:
         uses: distributhor/workflow-webhook@v2
         env:
           webhook_url: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER }}
+          webhook_secret: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER_SECRET }}
 
 
 
