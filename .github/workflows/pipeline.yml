@@ -66,8 +66,8 @@ jobs:
       - name: Code quality - linting
         run: mix lint --only warnings
   publish_version:
-    needs: build
     name: Publish versioned tagged image
+    needs: build
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
@@ -94,8 +94,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
   publish_latest:
-    needs: build
     name: Publish latest tagged image
+    needs: build
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
@@ -121,4 +121,18 @@ jobs:
           tags: supabase/logflare:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+  trigger_cloud_build:
+    name: Trigger Cloud Build
+    if: github.ref == 'refs/heads/staging'
+    needs:
+      - publish_latest
+      - publish_version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Webhook
+        uses: distributhor/workflow-webhook@v2
+        env:
+          webhook_url: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER }}
+
+
 
