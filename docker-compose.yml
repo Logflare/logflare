@@ -23,7 +23,7 @@ services:
         read_only: true
       - type: bind
         source: ${PWD}/gcloud.json
-        target: /root/app/rel/logflare/bin/gcloud.json
+        target: /opt/app/rel/logflare/bin/gcloud.json
         read_only: true
     depends_on:
       - db
