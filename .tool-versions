@@ -1,4 +1,4 @@
 elixir 1.12.3-otp-24
-erlang 24.1.6
+erlang 24.3.4
 nodejs 16.4.2
 rust 1.64.0
