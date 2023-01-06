@@ -130,9 +130,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call Webhook
-        uses: distributhor/workflow-webhook@v2
+        run: |
+              curl -X POST https://cloudbuild.googleapis.com/v1/projects/logflare-staging/triggers/logflare-app-staging-trigger:webhook \
+              -d key=${{ secrets.STAGING_CLOUD_BUILD_KEY }} \
+              -d secret=${{ secrets.STAGING_CLOUD_BUILD_SECRET}}
+
         env:
-          webhook_url: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER }}
+          webhook_url: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER_KEY }}
           webhook_secret: ${{ secrets.STAGING_CLOUD_BUILD_TRIGGER_SECRET }}
 
 
