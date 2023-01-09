@@ -55,9 +55,7 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
                TestUtils.get_bq_field_schema(schema, "a")
 
       schema =
-        SchemaBuilder.build_table_schema(%{"a" => %{"b" => "something"}}, @default_schema,
-          top_level: true
-        )
+        SchemaBuilder.build_table_schema(%{"a" => %{"b" => "something"}}, @default_schema)
 
       assert %TFS{name: "b", type: "STRING", mode: "NULLABLE"} =
                TestUtils.get_bq_field_schema(schema, "a.b")

@@ -16,16 +16,26 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
 
   Accepts both metadata map and metadata map wrapped in a list.
 
-  By default, will generate 4 top-level fields:
+  By default, will generate 3 top-level fields:
   - id
   - timestamp
   - event_message
+
 
     iex> %TS{fields: fields} = SchemaBuilder.build_table_schema(%{}, @default_schema)
     iex> length(fields)
     3
     iex> fields |> Enum.map( &(&1.name)) |> Enum.sort()
     ["event_message", "id", "timestamp"]
+
+  However, all other top-level fields are recognized as well.
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> "something"}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "metadata")
+    nil
+    iex> TestUtils.get_bq_field_schema(schema, "a")
+    %TFS{name: "a", mode: "NULLABLE", type: "STRING"}
+
 
   The nested object fields will ways be of `RECORD` type and `REPEATED` mode.
     iex> %TS{fields: fields} = SchemaBuilder.build_table_schema(%{"a"=> %{}}, @default_schema)
@@ -111,59 +121,32 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     %ArgumentError{message: "errors were found at the given arguments:\\n\\n  * 1st argument: not a nonempty list\\n"}
 
 
-  ### Top level fields
-  To enable top-level fields, the `:top_level` option needs to be passed.
-
-    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> "something"}, @default_schema, top_level: true)
-    iex> TestUtils.get_bq_field_schema(schema, "metadata")
-    nil
-    iex> TestUtils.get_bq_field_schema(schema, "a")
-    %TFS{name: "a", mode: "NULLABLE", type: "STRING"}
-
   """
-  @type opts :: {:top_level, boolean()}
-  @spec build_table_schema([map()] | map(), TFS.t(), [opts()]) :: TFS.t()
-  def build_table_schema(params, old_schema, opts \\ [])
+  @spec build_table_schema([map()] | map(), TFS.t()) :: TFS.t()
 
-  def build_table_schema([metadata], old_schema, opts) do
-    build_table_schema(metadata, old_schema, opts)
-  end
+  def build_table_schema(params, %{fields: old_fields}) do
+    protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
 
-  def build_table_schema(params, %{fields: old_fields}, opts) do
-    opts = Enum.into(opts, %{top_level: true})
+    new_fields =
+      for param_key <- Map.keys(params),
+          param_key not in protected_keys do
+        prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
+        param_value = Map.get(params, param_key)
+        new_field_schema = build_fields_schemas({param_key, param_value})
 
-    if opts.top_level do
-      protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
+        prev_field_schema
+        |> DeepMerge.deep_merge(new_field_schema)
+      end
 
-      new_fields =
-        for param_key <- Map.keys(params),
-            param_key not in protected_keys do
-          prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
-          param_value = Map.get(params, param_key)
-          new_field_schema = build_fields_schemas({param_key, param_value})
+    # reject old fields that are now included in the params
+    unrejected_fields = old_fields |> Enum.reject(&(&1.name in Map.keys(params)))
 
-          prev_field_schema
-          |> DeepMerge.deep_merge(new_field_schema)
-        end
+    updated_fields =
+      (unrejected_fields ++ new_fields ++ initial_table_schema().fields)
+      |> Enum.uniq_by(fn f -> f.name end)
 
-      # reject old fields that are now included in the params
-      unrejected_fields = old_fields |> Enum.reject(&(&1.name in Map.keys(params)))
-
-      updated_fields =
-        (unrejected_fields ++ new_fields ++ initial_table_schema().fields)
-        |> Enum.uniq_by(fn f -> f.name end)
-
-      initial_table_schema()
-      |> Map.put(:fields, updated_fields)
-    else
-      # only update the metadata field
-      old_metadata_schema = Enum.find(old_fields, &(&1.name == "metadata")) || %{}
-
-      metadata_field = build_metadata_fields_schemas(params, old_metadata_schema)
-
-      initial_table_schema()
-      |> Map.update!(:fields, &Enum.concat(&1, [metadata_field]))
-    end
+    initial_table_schema()
+    |> Map.put(:fields, updated_fields)
     |> deep_sort_by_fields_name()
   end
 
