@@ -145,16 +145,20 @@
         </div>
         <div class="m-1">
           <h5>Logflare</h5>
-          <p>Pro</p>
+          <p>Metered</p>
           <hr>
           <p>Unlimited<sup>1</sup></p>
           <p>Unlimited<sup>1</sup></p>
-          <p>30 days</p>
+          <p>30 days or BYOB</p>
           <p>Google Data Studio</p>
           <p>Logflare QL</p>
           <p>4 additional</p>
           <hr>
-          <p><strong>$8 </strong><small>per month</small></p>
+          <p>
+            <strong>$15 </strong><small>per million</small>
+            <br />
+            <strong>$10 </strong><small>per million for BYOB</small>
+          </p>
         </div>
         <div class="m-1">
           <h5>Sentry</h5>
@@ -167,7 +171,11 @@
           <p>None</p>
           <p>Unlimited</p>
           <hr>
-          <p><strong>$520 </strong><small>per month</small></p>
+          <p><strong>$520 </strong><small>per month</small>
+          <br />
+            <strong>≈$52</strong> <small>per million</small>
+          </p>
+
         </div>
 
     </div>
