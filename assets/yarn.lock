@@ -3370,10 +3370,10 @@ lru-cache@^7.7.1:
   resolved "https://registry.yarnpkg.com/lru-cache/-/lru-cache-7.14.1.tgz#8da8d2f5f59827edb388e63e459ac23d6d408fea"
   integrity sha512-ysxwsnTKdAx96aTRdhDOCQfDgbHnt8SK0KY8SEjO0wHinhWOFTESbjVCMPbU1uGXg/ch4lifqx0wfjOawU2+WA==
 
-luxon@^1.17.1:
-  version "1.25.0"
-  resolved "https://registry.npmjs.org/luxon/-/luxon-1.25.0.tgz"
-  integrity sha512-hEgLurSH8kQRjY6i4YLey+mcKVAWXbDNlZRmM6AgWDJ1cY3atl8Ztf5wEY7VBReFbmGnwQPz7KYJblL8B2k0jQ==
+luxon@^1.28.1:
+  version "1.28.1"
+  resolved "https://registry.yarnpkg.com/luxon/-/luxon-1.28.1.tgz#528cdf3624a54506d710290a2341aa8e6e6c61b0"
+  integrity sha512-gYHAa180mKrNIUJCbwpmD0aTu9kV0dREDrwNnuyFAsO1Wt0EVYSZelPnJlbj9HplzXX/YWXHFTL45kvZ53M0pw==
 
 make-dir@^2.0.0:
   version "2.1.0"
