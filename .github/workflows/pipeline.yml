@@ -132,5 +132,5 @@ jobs:
       - name: Call Webhook
         run: |
               curl --fail-with-body -s -X POST https://cloudbuild.googleapis.com/v1/projects/logflare-staging/triggers/logflare-app-staging-trigger:webhook \
-              -d key=::add-mask::${{ secrets.STAGING_CLOUD_BUILD_KEY }} \
-              -d secret=::add-mask::${{ secrets.STAGING_CLOUD_BUILD_SECRET}}
+              -d key=${{ secrets.STAGING_CLOUD_BUILD_KEY }} \
+              -d secret=${{ secrets.STAGING_CLOUD_BUILD_SECRET}}
