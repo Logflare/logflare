@@ -178,15 +178,6 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     }
   end
 
-  @spec build_metadata_fields_schemas(map, TFS.t()) :: TFS.t()
-  defp build_metadata_fields_schemas(metadata, old_metadata_schema) do
-    new_metadata_schema = build_fields_schemas({"metadata", metadata})
-
-    old_metadata_schema
-    # DeepMerge resolver is implemented for Model.TableFieldSchema structs
-    |> DeepMerge.deep_merge(new_metadata_schema)
-  end
-
   defp build_fields_schemas({params_key, params_val}) when is_map(params_val) do
     %TFS{
       description: nil,
