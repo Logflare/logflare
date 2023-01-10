@@ -1,7 +1,7 @@
 #! /bin/sh
 if [ -f /tmp/.secrets.env ]; then
     while read -r line; do
-        export $line > /dev/null
+        $line > /dev/null
     done < /tmp/.secrets.env
 fi
 

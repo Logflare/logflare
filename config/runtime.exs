@@ -35,21 +35,31 @@ if config_env() != :test do
 
   config :logflare, LogflareWeb.Endpoint,
     url: [
-      host: System.get_env("PHX_URL_HOST"),
-      scheme: System.get_env("PHX_URL_SCHEME"),
+      host: System.get_env("PHX_URL_HOST", "127.0.0.1"),
+      scheme: System.get_env("PHX_URL_SCHEME", "http"),
       port: String.to_integer(System.get_env("PHX_URL_PORT", "4000"))
     ],
-    secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
+    secret_key_base:
+      System.get_env(
+        "PHX_SECRET_KEY_BASE",
+        "xyP317ErRnpx3khZqnj3kUMMFdC1dMD+G292U1HfhM9y01gE1R64TO3A/ur6mBg3"
+      ),
     check_origin: String.split(System.get_env("PHX_CHECK_ORIGIN", ""), ","),
-    live_view: [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
+    live_view: [
+      signing_salt:
+        System.get_env(
+          "PHX_LIVE_VIEW_SIGNING_SALT",
+          "oVsImHxKuwhVI93xygKts96zKOjkNhb7vIcrsxT/4BTyIrNp3duNZ/Nj7SGv0GzX"
+        )
+    ]
 
   config :logflare, Logflare.Repo,
     pool_size: String.to_integer(System.get_env("DB_POOL_SIZE", "10")),
     ssl: System.get_env("DB_SSL") == "true",
-    database: System.get_env("DB_DATABASE"),
-    hostname: System.get_env("DB_HOSTNAME"),
-    password: System.get_env("DB_PASSWORD"),
-    username: System.get_env("DB_USERNAME"),
+    database: System.get_env("DB_DATABASE", "logflare"),
+    hostname: System.get_env("DB_HOSTNAME", "localhost"),
+    password: System.get_env("DB_PASSWORD", "postgres"),
+    username: System.get_env("DB_USERNAME", "postgres"),
     port: String.to_integer(System.get_env("DB_PORT", "5432"))
 
   config :logflare, Logflare.Cluster.Utils,
@@ -57,7 +67,7 @@ if config_env() != :test do
 
   config :logflare_logger_backend,
     source_id: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"),
-    url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL"),
+    url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL", "http://127.0.0.1:4000"),
     api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
 
   gce_topoloty = [
@@ -68,8 +78,7 @@ if config_env() != :test do
   ]
 
   config :libcluster,
-    topologies:
-      if(System.get_env("LIBCLUSTER_TOPOLOGY", "gce") == "gce", do: gce_topoloty, else: [])
+    topologies: if(System.get_env("LIBCLUSTER_TOPOLOGY") == "gce", do: gce_topoloty, else: [])
 
   config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
     regions:

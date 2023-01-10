@@ -50,8 +50,10 @@ gcloud_prod.json
 /cover/
 /node_modules/
 .vscode/
+
 .google.secret.json
 .*.env
-
+!.template.env
+!.docker.env
 # rustler nif binaries
 /priv/native

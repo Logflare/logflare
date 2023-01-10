@@ -18,7 +18,7 @@ services:
     hostname: 127.0.0.1
     volumes:
       - type: bind
-        source: ${PWD}/.local.env
+        source: ${PWD}/.docker.env
         target: /tmp/.secrets.env
         read_only: true
       - type: bind
