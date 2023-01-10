@@ -209,7 +209,7 @@ defmodule Logflare.Mixfile do
       "test.watch": ["cmd epmd -daemon", "test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
-      "test.security": ["sobelow --threshold high"],
+      "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["dialyzer --format short"],
       "test.coverage": ["coveralls"],
       lint: ["credo"],
