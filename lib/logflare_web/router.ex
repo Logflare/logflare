@@ -330,7 +330,7 @@ defmodule LogflareWeb.Router do
     get "/login/email/verify", Auth.EmailController, :verify_token
     get "/logout", AuthController, :logout
     get "/:provider", Auth.OauthController, :request
-    post "/login/email/verify", Auth.EmailController, :callback
+    post "/login/email/verify", Auth.EmailController, :verify_token_form
     get "/email/callback/:token", Auth.EmailController, :callback
     get "/:provider/callback", Auth.OauthController, :callback
   end
