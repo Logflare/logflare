@@ -89,7 +89,7 @@ defmodule LogflareWeb.AdminController do
 
   defp do_authorized_code_shutdown(conn, %{"node" => node}) do
     node_names = [Node.self() | Node.list()]
-    nodes = node_names |> Enum.map(Atom.to_string() / 1)
+    nodes = node_names |> Enum.map(&Atom.to_string/1)
 
     if Enum.member?(nodes, node) do
       node_name =
