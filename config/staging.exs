@@ -77,12 +77,6 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
 
 config :logflare, Logflare.Tracker, pool_size: 1
 
-config :logflare, Logflare.Vercel.Client,
-  client_id: "oac_9AFs6dPQPFhy5xS1IOvc2xrf",
-  client_secret: "mmDrqcJYuJeIxNX9AXbNqrhm",
-  redirect_uri: "https://logflarestaging.com/install/vercel-v2",
-  install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
-
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 import_config "telemetry.exs"
