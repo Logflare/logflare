@@ -38,7 +38,7 @@ defmodule Logflare.LogEvent do
         [] -> %{}
         [metadata] -> metadata
       end)
-      |> mapper(source)
+      |> mapper()
 
     %__MODULE__{}
     |> cast(params, [:valid, :validation_error, :id, :body])
@@ -54,7 +54,7 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params, source), [:body, :valid, :validation_error])
+      |> cast(mapper(params), [:body, :valid, :validation_error])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> validate_required([:body])
 
@@ -75,7 +75,7 @@ defmodule Logflare.LogEvent do
   end
 
   # Parses input parameters and performs casting.
-  defp mapper(params, source) do
+  defp mapper(params) do
     # TODO: deprecate and remove `log_entry` and `message`
     event_message = params["log_entry"] || params["message"] || params["event_message"]
     metadata = params["metadata"]
