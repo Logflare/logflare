@@ -55,7 +55,6 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
    1. Dev secrets - `.dev.env`
    2. Google JWT key - `.gcloud.json`
 1. Start database `docker-compose up -d db`
-1  Run `source .dev.env` to load up environment variables into you session
 1. Run `mix setup` for deps, migrations, and seed data.
 1. Run `(cd assets; yarn)` from project root, to install js dependencies
 1. Install `sqlparser` by following the steps in **Closed Source Usage** section.
