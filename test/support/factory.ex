@@ -19,6 +19,7 @@ defmodule Logflare.Factory do
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users.UserPreferences
+  alias Logflare.SourceSchemas.SourceSchema
 
   def user_factory do
     email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
@@ -58,8 +59,15 @@ defmodule Logflare.Factory do
       favorite: false,
       metrics: %{
         avg: 0
+      },
+      notifications: %{
+        user_schema_update_notifications: true
       }
     }
+  end
+
+  def source_schema_factory do
+    %SourceSchema{}
   end
 
   def source_backend_factory do

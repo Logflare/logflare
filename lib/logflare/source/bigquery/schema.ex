@@ -36,7 +36,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         },
         field_count: 3,
         field_count_limit: rls.plan.limit_source_fields_limit,
-        next_update: System.system_time(:second)
+        next_update: System.system_time(:millisecond)
       },
       name: name(rls.source_id)
     )
@@ -146,7 +146,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           notify_maybe(state.source_token, schema, state.schema)
 
-          {:reply, :ok,
+          {:reply, {:ok, :updated},
            %{
              state
              | schema: schema,
@@ -178,7 +178,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       persist()
 
-                      {:reply, :ok,
+                      {:reply, {:ok, :updated},
                        %{
                          state
                          | schema: schema,
@@ -212,7 +212,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           end
       end
     else
-      {:reply, :ok, state}
+      {:reply, {:ok, :noop}, state}
     end
   end
 
@@ -270,6 +270,11 @@ defmodule Logflare.Source.BigQuery.Schema do
     |> Enum.count()
   end
 
+  def next_update_ts(max_updates_per_min) do
+    ms = 60 * 1000 / max_updates_per_min
+    System.system_time(:millisecond) + ms
+  end
+
   defp next_update() do
     updates_per_minute =
       case Application.get_env(:logflare, :env) do
@@ -277,8 +282,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         _ -> 6
       end
 
-    ms = 60 * 1000 / updates_per_minute
-    System.system_time(:millisecond) + ms
+    next_update_ts(updates_per_minute)
   end
 
   defp name(source_token) do
