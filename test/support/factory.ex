@@ -173,6 +173,15 @@ defmodule Logflare.Factory do
     }
   end
 
+  def child_endpoint_factory do
+    %Query{
+      user: build(:user),
+      token: Ecto.UUID.generate(),
+      query: "select current_date() as date",
+      name: TestUtils.random_string()
+    }
+  end
+
   def access_token_factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),

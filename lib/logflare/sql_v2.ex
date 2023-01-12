@@ -94,6 +94,18 @@ defmodule Logflare.SqlV2 do
     end
   end
 
+  @doc """
+  Performs a check if a query contains a CTE. returns true if it is, returns false if not
+  """
+  def contains_cte?(query) do
+    with {:ok, ast} <- Parser.parse(query),
+         [_ | _] <- extract_cte_alises(ast) do
+      true
+    else
+      _ -> false
+    end
+  end
+
   # applies to both ctes, sandboxed queries, and non-ctes
   defp validate_query(ast, data) when is_list(ast) do
     with :ok <- check_select_statement_only(ast),

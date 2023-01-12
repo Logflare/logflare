@@ -13,16 +13,16 @@ defmodule LogflareWeb.EndpointsControllerTest do
       Goth
       |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
       {:ok, user: user, source: source}
     end
 
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
-
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response()}
-      end)
 
       conn =
         init_conn

@@ -44,4 +44,29 @@ defmodule Logflare.EndpointsTest do
     assert {:error, %Ecto.Changeset{}} =
              Endpoints.update_query(endpoint, %{query: "select b from unknown"})
   end
+
+  test "sandboxed endpoints" do
+    user = insert(:user)
+    insert(:source, user: user, name: "c")
+    # sandbox query does not need to have sandboxable=true, just needs to be a CTE
+    sandbox_query =
+      insert(:endpoint, user: user, query: "with u as (select b from c) select d from u")
+
+    assert {:ok, sandboxed} =
+             Endpoints.create_sandboxed_query(user, sandbox_query, %{
+               name: "abc",
+               query: "select r from u"
+             })
+
+    assert %{name: "abc", query: "select r from u", sandboxable: false} = sandboxed
+
+    # non-cte
+    invalid_sandbox = insert(:endpoint, user: user)
+
+    assert {:error, :no_cte} =
+             Endpoints.create_sandboxed_query(user, invalid_sandbox, %{
+               name: "abcd",
+               query: "select r from u"
+             })
+  end
 end
