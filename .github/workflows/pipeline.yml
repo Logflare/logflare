@@ -131,5 +131,6 @@ jobs:
     steps:
       - name: Call Webhook
         run: |
-              curl --fail-with-body -s -X POST -H "application/json"\
-              "https://cloudbuild.googleapis.com/v1/projects/logflare-staging/triggers/logflare-staging-webhook:webhook?key=${{ secrets.STAGING_CLOUD_BUILD_KEY }}&secret=${{ secrets.STAGING_CLOUD_BUILD_SECRET}}&name=projects/logflare-staging/triggers/logflare-staging-webhook" -d '{}'
+              curl -s --fail-with-body -X POST -H "Authorization: Bearer ${{ secrets.CLOUDBUILD_BEARER_TOKEN }}"\
+              https://cloudbuild.googleapis.com/v1/projects/logflare-staging/triggers/${{ secrets.CLOUDBUILD_TRIGGER_ID }}:run > /dev
+/null
