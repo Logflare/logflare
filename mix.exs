@@ -198,7 +198,7 @@ defmodule Logflare.Mixfile do
 
   defp aliases do
     [
-      setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
+      setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup", "run priv/repo/seeds.exs"],
       start: [
         "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
       ],
@@ -219,9 +219,8 @@ defmodule Logflare.Mixfile do
       lint: ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
-      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": [
-        "deps.get",
         "cmd elixir --sname orange --cookie monster -S mix do ecto.drop, ecto.setup"
       ],
       "decrypt.dev":
