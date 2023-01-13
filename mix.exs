@@ -200,16 +200,13 @@ defmodule Logflare.Mixfile do
     [
       setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
       start: [
-        "cmd source .dev.env",
-        "cmd PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
+        "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
       ],
       "start.orange": [
-        "cmd source .dev.env",
-        "cmd PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server"
+        "cmd env $(cat .dev.env | xargs) PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server"
       ],
       "start.pink": [
-        "cmd source .dev.env",
-        "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
+        "cmd env $(cat .dev.env|xargs) PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
       ],
       # coveralls will trigger unit tests as well
       test: ["cmd epmd -daemon", "ecto.create --quiet", "ecto.migrate", "test --no-start"],
@@ -223,7 +220,10 @@ defmodule Logflare.Mixfile do
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.reset": [
+        "deps.get",
+        "cmd elixir --sname orange --cookie monster -S mix do ecto.drop, ecto.setup"
+      ],
       "decrypt.dev":
         "cmd gcloud kms decrypt --ciphertext-file='./.dev.env.enc' --plaintext-file=./.dev.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
       "encrypt.dev":
