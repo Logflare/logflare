@@ -26,12 +26,14 @@ logger_config =
 
 config :logger, logger_config
 
-config :logflare_agent,
-       [
-         api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
-         url: System.get_env("LOGFLARE_AGENT_URL")
-       ]
-       |> filter_nil_kv_pairs.()
+if config_env() == :prod do
+  config :logflare_agent,
+         [
+           api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
+           url: System.get_env("LOGFLARE_AGENT_URL")
+         ]
+         |> filter_nil_kv_pairs.()
+end
 
 config :logflare,
        [

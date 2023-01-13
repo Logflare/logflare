@@ -10,7 +10,6 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-
 Ecto.Adapters.SQL.query!(Logflare.Repo, """
 INSERT INTO "public"."plans"("id","name","stripe_id","inserted_at","updated_at","period","price","limit_sources","limit_rate_limit","limit_alert_freq","limit_source_rate_limit","limit_saved_search_limit","limit_team_users_limit","limit_source_fields_limit","limit_source_ttl","type")
 VALUES
