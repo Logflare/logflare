@@ -85,7 +85,7 @@ defmodule LogflareWeb.Router do
 
   pipeline :oauth_public do
     plug :accepts, ["json"]
-    plug :put_secure_browser_headers
+    plug :put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"}
   end
 
   pipeline :check_admin do
@@ -328,9 +328,9 @@ defmodule LogflareWeb.Router do
     get "/login/email", Auth.EmailController, :login
     post "/login/email", Auth.EmailController, :send_link
     get "/login/email/verify", Auth.EmailController, :verify_token
-    post "/login/email/verify", Auth.EmailController, :callback
     get "/logout", AuthController, :logout
     get "/:provider", Auth.OauthController, :request
+    post "/login/email/verify", Auth.EmailController, :verify_token_form
     get "/email/callback/:token", Auth.EmailController, :callback
     get "/:provider/callback", Auth.OauthController, :callback
   end

@@ -8,6 +8,21 @@ defmodule LogflareWeb.AdminController do
   require Logger
 
   @page_size 50
+  @accounts_sort_options [
+    :inserted_at,
+    :updated_at
+  ]
+  @sources_sort_options [
+    :fields,
+    :latest,
+    :rejected,
+    :rate,
+    :avg,
+    :max,
+    :buffer,
+    :inserts,
+    :recent
+  ]
   defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
 
   def dashboard(conn, _params) do
@@ -16,16 +31,11 @@ defmodule LogflareWeb.AdminController do
   end
 
   def accounts(conn, params) do
-    sort_options = [
-      :inserted_at,
-      :updated_at
-    ]
-
     accounts = paginate_accounts(params)
 
     conn
     |> assign(:accounts, accounts)
-    |> assign(:sort_options, sort_options)
+    |> assign(:sort_options, @accounts_sort_options)
     |> render("accounts.html")
   end
 
@@ -78,11 +88,16 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp do_authorized_code_shutdown(conn, %{"node" => node}) do
-    node = String.to_atom(node)
-    nodes = Node.list()
+    node_names = [Node.self() | Node.list()]
+    nodes = node_names |> Enum.map(&Atom.to_string/1)
 
-    if Enum.member?([Node.self() | nodes], node) do
-      Admin.shutdown(node)
+    if Enum.member?(nodes, node) do
+      node_name =
+        Enum.find(node_names, fn nn ->
+          Atom.to_string(nn) == node
+        end)
+
+      Admin.shutdown(node_name)
 
       conn
       |> put_status(:ok)
@@ -117,21 +132,8 @@ defmodule LogflareWeb.AdminController do
   end
 
   def sources(conn, params) do
-    sort_options = [
-      :fields,
-      :latest,
-      :rejected,
-      :rate,
-      :avg,
-      :max,
-      :buffer,
-      :inserts,
-      :recent
-    ]
-
     sorted_sources = sorted_sources(params)
-
-    render(conn, "sources.html", sources: sorted_sources, sort_options: sort_options)
+    render(conn, "sources.html", sources: sorted_sources, sort_options: @sources_sort_options)
   end
 
   defp paginate_accounts(%{"page" => page, "sort_by" => ""}) do
@@ -175,7 +177,7 @@ defmodule LogflareWeb.AdminController do
     |> Repo.all()
     |> Stream.map(&Sources.refresh_source_metrics/1)
     |> Stream.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(&Map.fetch(&1.metrics, String.to_atom(sort_by)), &>=/2)
+    |> Enum.sort_by(&Map.fetch(&1.metrics, sort_option_to_atom(sort_by)), &>=/2)
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end
 
@@ -184,7 +186,7 @@ defmodule LogflareWeb.AdminController do
     |> Repo.all()
     |> Stream.map(&Sources.refresh_source_metrics/1)
     |> Stream.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(&Map.fetch(&1.metrics, String.to_atom(sort_by)), &>=/2)
+    |> Enum.sort_by(&Map.fetch(&1.metrics, sort_option_to_atom(sort_by)), &>=/2)
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
@@ -212,7 +214,7 @@ defmodule LogflareWeb.AdminController do
 
   defp query_accounts(sort_by) when is_binary(sort_by) do
     from u in User,
-      order_by: [desc: ^String.to_atom(sort_by)],
+      order_by: [desc: ^sort_option_to_atom(sort_by)],
       select: u,
       preload: :billing_account
   end
@@ -221,9 +223,14 @@ defmodule LogflareWeb.AdminController do
     e = "%#{email}%"
 
     from u in User,
-      order_by: [desc: ^String.to_atom(sort_by)],
+      order_by: [desc: ^sort_option_to_atom(sort_by)],
       where: ilike(u.email, ^e),
       select: u,
       preload: :billing_account
+  end
+
+  defp sort_option_to_atom(option) when is_binary(option) do
+    options = @accounts_sort_options ++ @sources_sort_options
+    Enum.find(options, &(Atom.to_string(&1) == option))
   end
 end
