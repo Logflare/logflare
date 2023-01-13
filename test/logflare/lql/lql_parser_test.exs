@@ -539,7 +539,7 @@ defmodule Logflare.LqlParserTest do
     |> String.replace("(metadata.", "(m.")
   end
 
-  defp build_schema(input, opts \\ []) do
-    SchemaBuilder.build_table_schema(input, @default_schema, opts)
+  defp build_schema(input) do
+    SchemaBuilder.build_table_schema(input, @default_schema)
   end
 end
