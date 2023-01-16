@@ -25,7 +25,8 @@ config :logflare, LogflareWeb.Endpoint,
 # Configures Elixir's Logger
 config :logger,
   handle_otp_reports: true,
-  handle_sasl_reports: false
+  handle_sasl_reports: false,
+  level: :info
 
 config :ueberauth, Ueberauth,
   providers: [
