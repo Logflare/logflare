@@ -20,6 +20,9 @@ config :logflare, LogflareWeb.Endpoint,
     ],
     compress: true
   ],
+  live_view: [
+    signing_salt: "2hJsy/zhChcvp8NEvaJyH3nokAbI+UrEQQhxLXmEcTKnNUxbMvVP7BOgrog00V7G"
+  ],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
   code_reloader: false,

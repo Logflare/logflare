@@ -4,28 +4,6 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-logger_config =
-  case System.get_env("LOGGER_CONFIG", config_env() |> Atom.to_string()) do
-    "prod" ->
-      [
-        level: :info,
-        backends: [LogflareLogger.HttpBackend],
-        sync_threshold: 10_001,
-        discard_threshold: 10_000,
-        compile_time_purge_matching: [
-          [level_lower_than: :info]
-        ]
-      ]
-
-    "test" ->
-      [level: :error, backends: [:console]]
-
-    _ ->
-      [level: :info, backends: [:console], metadata: :all]
-  end
-
-config :logger, logger_config
-
 if config_env() == :prod do
   config :logflare_agent,
          [
@@ -47,21 +25,20 @@ config :logflare,
        [
          url:
            [
-             host: System.get_env("PHX_URL_HOST", "127.0.0.1"),
-             scheme: System.get_env("PHX_URL_SCHEME", "http"),
-             port:
-               if(System.get_env("PHX_URL_PORT") != nil,
-                 do: String.to_integer(System.get_env("PHX_URL_PORT")),
-                 else: nil
-               )
+             host: System.get_env("PHX_URL_HOST"),
+             scheme: System.get_env("PHX_URL_SCHEME"),
+             port: System.get_env("PHX_URL_PORT")
            ]
            |> filter_nil_kv_pairs.(),
-         secret_key_base:
-           System.get_env(
-             "PHX_SECRET_KEY_BASE",
-             "xyP317ErRnpx3khZqnj3kUMMFdC1dMD+G292U1HfhM9y01gE1R64TO3A/ur6mBg3"
-           ),
-         check_origin: String.split(System.get_env("PHX_CHECK_ORIGIN", ""), ","),
+         secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
+         check_origin:
+           case System.get_env("PHX_CHECK_ORIGIN") do
+             nil ->
+               nil
+
+             value when is_binary(value) ->
+               String.split(value, ",")
+           end,
          live_view:
            [
              signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")
@@ -95,8 +72,8 @@ config :logflare,
        Logflare.Cluster.Utils,
        [
          min_cluster_size:
-           if(System.get_env("LOGFLARE_CLUSTER_SIZE") != nil,
-             do: String.to_integer(System.get_env("LOGFLARE_CLUSTER_SIZE")),
+           if(System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") != nil,
+             do: String.to_integer(System.get_env("LOGFLARE_MIN_CLUSTER_SIZE")),
              else: nil
            )
        ]
@@ -109,6 +86,11 @@ config :logflare_logger_backend,
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        ]
        |> filter_nil_kv_pairs.()
+
+if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
+  config :logger,
+    backends: [:console, LogflareLogger.HttpBackend]
+end
 
 # Set libcluster topologies
 gce_topoloty = [

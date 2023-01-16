@@ -61,6 +61,13 @@ config :logflare_agent,
     }
   ]
 
+config :logger,
+  sync_threshold: 10_001,
+  discard_threshold: 10_000,
+  compile_time_purge_matching: [
+    [level_lower_than: :info]
+  ]
+
 config :logflare_logger_backend,
   flush_interval: 2_000,
   max_batch_size: 250
