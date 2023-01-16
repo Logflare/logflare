@@ -32,7 +32,7 @@ config :logflare,
            |> filter_nil_kv_pairs.(),
          secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
          check_origin:
-           case System.get_env("PHX_CHECK_ORIGIN", "") do
+           case System.get_env("PHX_CHECK_ORIGIN") do
              nil ->
                nil
 
