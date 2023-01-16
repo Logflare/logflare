@@ -45,7 +45,7 @@ config :logflare,
            end,
          live_view:
            [
-             signing_salt: System.get_env("PHX_LV_SIGNING_SALT")
+             signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")
            ]
            |> filter_nil_kv_pairs.()
        ]
