@@ -49,7 +49,7 @@ config :phoenix, :stacktrace_depth, 20
 config :logflare, Logflare.Repo,
   username: "postgres",
   password: "postgres",
-  database: "logflare",
+  database: "logflare_dev",
   hostname: "localhost",
   port: 5432,
   pool_size: 10,
