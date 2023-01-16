@@ -73,8 +73,8 @@ config :logflare,
        Logflare.Cluster.Utils,
        [
          min_cluster_size:
-           if(System.get_env("LOGFLARE_CLUSTER_SIZE") != nil,
-             do: String.to_integer(System.get_env("LOGFLARE_CLUSTER_SIZE")),
+           if(System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") != nil,
+             do: String.to_integer(System.get_env("LOGFLARE_MIN_CLUSTER_SIZE")),
              else: nil
            )
        ]
