@@ -92,8 +92,6 @@ if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
     backends: [:console, LogflareLogger.HttpBackend]
 end
 
-
-
 # Set libcluster topologies
 gce_topoloty = [
   gce: [
