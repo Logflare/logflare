@@ -11,14 +11,39 @@ defmodule LogflareWeb.SourceBackendsLive do
         <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
       <% end %>
       <%= if @show_create_form do %>
-      <%= f = form_for :source_backend, "#", [phx_submit: :save_source_backend, class: "mt-4"] %>
-        Add <%= select f, :type, [:webhook], phx_change: :change_create_form_type %> backend
+      <%= f = form_for :source_backend, "#", [ phx_change: :change_create_source_backend, phx_submit: :save_source_backend, class: "mt-4"] %>
+        Add <%= select f, :type, [:webhook, :google_analytics] %> backend
         <div class="form-group mt-2">
           <%= for f_config <- inputs_for(f, :config) do %>
             <%= case @create_form_type do %>
               <% "webhook" -> %>
                 <%= label f_config, :url %>
                 <%= text_input f_config, :url %>
+              <% "google_analytics" -> %>
+                <%= label f_config, :event_name_paths %>
+                <%= text_input f_config, :event_name_paths %>
+                <small class="form-text text-muted">
+                  LQL paths for the event name. Comma separate the paths to send multiple GA events with different names. E.g. <code>metadata.my.nested.key</code>
+                </small>
+
+                <%= label f_config, :client_id_path, "Client ID path" %>
+                <%= text_input f_config, :client_id_path %>
+                <small class="form-text text-muted">
+                  LQL path to a client id. Only one path allowed.
+                </small>
+
+                <%= label f_config, :api_secret, "API secret"  %>
+                <%= text_input f_config, :api_secret%>
+                <small class="form-text text-muted">
+                  For authenticating with the GA4 API
+                </small>
+
+                <%= label f_config, :measurement_id, "Measurement ID" %>
+                <%= text_input f_config, :measurement_id %>
+                <small class="form-text text-muted">
+                  For your GA4 project. E.g. G-13E2DF
+                </small>
+
             <% end %>
           <% end %>
         </div>
@@ -27,6 +52,7 @@ defmodule LogflareWeb.SourceBackendsLive do
       </form>
       <% end %>
 
+      <%= if length(@source_backends) > 0 do %>
       <div>
         Backends:
         <ul>
@@ -43,6 +69,9 @@ defmodule LogflareWeb.SourceBackendsLive do
           <% end %>
         </ul>
       </div>
+      <% else %>
+        <p>No source backends yet.</p>
+      <% end %>
 
     </div>
     """
@@ -113,8 +142,15 @@ defmodule LogflareWeb.SourceBackendsLive do
     {:noreply, socket}
   end
 
-  def handle_event("change_create_form_type", %{"type" => type}, socket) do
-    {:noreply, assign(socket, create_form_type: type)}
+  def handle_event(
+        "change_create_source_backend",
+        %{
+          "_target" => ["source_backend", "type"],
+          "source_backend" => %{"type" => type}
+        },
+        socket
+      ) do
+    {:noreply, assign(socket, :create_form_type, type)}
   end
 
   def handle_event("remove_source_backend", %{"id" => id}, %{assigns: %{source: source}} = socket) do
