@@ -49,7 +49,11 @@ config :logflare,
            [
              host: System.get_env("PHX_URL_HOST", "127.0.0.1"),
              scheme: System.get_env("PHX_URL_SCHEME", "http"),
-             port: String.to_integer(System.get_env("PHX_URL_PORT", "4000"))
+             port:
+               if(System.get_env("PHX_URL_PORT") != nil,
+                 do: String.to_integer(System.get_env("PHX_URL_PORT")),
+                 else: nil
+               )
            ]
            |> filter_nil_kv_pairs.(),
          secret_key_base:
@@ -60,11 +64,7 @@ config :logflare,
          check_origin: String.split(System.get_env("PHX_CHECK_ORIGIN", ""), ","),
          live_view:
            [
-             signing_salt:
-               System.get_env(
-                 "PHX_LIVE_VIEW_SIGNING_SALT",
-                 "oVsImHxKuwhVI93xygKts96zKOjkNhb7vIcrsxT/4BTyIrNp3duNZ/Nj7SGv0GzX"
-               )
+             signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")
            ]
            |> filter_nil_kv_pairs.()
        ]
@@ -73,25 +73,39 @@ config :logflare,
 config :logflare,
        Logflare.Repo,
        [
-         pool_size: String.to_integer(System.get_env("DB_POOL_SIZE", "10")),
+         pool_size:
+           if(System.get_env("DB_POOL_SIZE") != nil,
+             do: String.to_integer(System.get_env("DB_POOL_SIZE")),
+             else: nil
+           ),
          ssl: System.get_env("DB_SSL") == "true",
-         database: System.get_env("DB_DATABASE", "logflare"),
-         hostname: System.get_env("DB_HOSTNAME", "localhost"),
-         password: System.get_env("DB_PASSWORD", "postgres"),
-         username: System.get_env("DB_USERNAME", "postgres"),
-         port: String.to_integer(System.get_env("DB_PORT", "5432"))
+         database: System.get_env("DB_DATABASE"),
+         hostname: System.get_env("DB_HOSTNAME"),
+         password: System.get_env("DB_PASSWORD"),
+         username: System.get_env("DB_USERNAME"),
+         port:
+           if(System.get_env("DB_PORT") != nil,
+             do: String.to_integer(System.get_env("DB_PORT")),
+             else: nil
+           )
        ]
        |> filter_nil_kv_pairs.()
 
 config :logflare,
        Logflare.Cluster.Utils,
-       [min_cluster_size: String.to_integer(System.get_env("LOGFLARE_CLUSTER_SIZE", "10"))]
+       [
+         min_cluster_size:
+           if(System.get_env("LOGFLARE_CLUSTER_SIZE") != nil,
+             do: String.to_integer(System.get_env("LOGFLARE_CLUSTER_SIZE")),
+             else: nil
+           )
+       ]
        |> filter_nil_kv_pairs.()
 
 config :logflare_logger_backend,
        [
          source_id: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"),
-         url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL", "http://127.0.0.1:4000"),
+         url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL"),
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        ]
        |> filter_nil_kv_pairs.()
