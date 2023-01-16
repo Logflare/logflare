@@ -198,7 +198,11 @@ defmodule Logflare.Mixfile do
 
   defp aliases do
     [
-      setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup", "run priv/repo/seeds.exs"],
+      setup: [
+        "deps.get",
+        "cmd elixir --sname orange --cookie monster -S mix ecto.setup",
+        "run priv/repo/seeds.exs"
+      ],
       start: [
         "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
       ],
