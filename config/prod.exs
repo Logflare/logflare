@@ -62,7 +62,6 @@ config :logflare_agent,
   ]
 
 config :logger,
-  backends: [:console, LogflareLogger.HttpBackend],
   sync_threshold: 10_001,
   discard_threshold: 10_000,
   compile_time_purge_matching: [
