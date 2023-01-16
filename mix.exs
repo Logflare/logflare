@@ -199,7 +199,7 @@ defmodule Logflare.Mixfile do
   defp aliases do
     [
       setup: [
-        "cmd elixir --sname orange --cookie monster -S mix do deps.get, ecto.setup, ecto.seed",
+        "cmd elixir --sname orange --cookie monster -S mix do deps.get, ecto.setup, ecto.seed"
       ],
       start: [
         "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
