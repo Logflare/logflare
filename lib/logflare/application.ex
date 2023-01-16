@@ -61,13 +61,8 @@ defmodule Logflare.Application do
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
-      # v2 ingestion pipelines
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
-    ]
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
+    ] ++ get_v2_pipeline_children()
   end
 
   defp get_children(_) do
@@ -146,11 +141,22 @@ defmodule Logflare.Application do
 
       # For Logflare Endpoints
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
-    ]
+    ] ++ get_v2_pipeline_children()
   end
 
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
   end
+
+  defp get_v2_pipeline_children() do
+    [
+      # v2 ingestion pipelines
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+    ]
+  end
+
 end

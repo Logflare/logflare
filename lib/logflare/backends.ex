@@ -8,14 +8,16 @@ defmodule Logflare.Backends do
     SourcesSup,
     RecentLogs,
     RecentLogsSup,
-    Adaptor.WebhookAdaptor
+    Adaptor.WebhookAdaptor,
+    Adaptor.GoogleAnalyticsAdaptor
   }
 
   alias Logflare.{Buffers.MemoryBuffer, Source, LogEvent, Repo}
   import Ecto.Query
 
   @adaptor_mapping %{
-    webhook: WebhookAdaptor
+    webhook: WebhookAdaptor,
+    google_analytics: GoogleAnalyticsAdaptor
   }
 
   @doc """

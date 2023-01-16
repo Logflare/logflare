@@ -64,6 +64,13 @@ defmodule LogflareWeb.SourceBackendsLive do
                   <ul>
                     <li>url: <%= sb.config.url %></li>
                   </ul>
+                <% :google_analytics -> %>
+                  <ul>
+                    <li>Measurement ID: <%= sb.config.measurement_id %></li>
+                    <li>API Secret: <%= sb.config.api_secret |> String.slice(0, 3) %>******</li>
+                    <li>Client ID Path: <%= sb.config.client_id_path %></li>
+                    <li>Event Name Paths: <%= sb.config.event_name_paths %></li>
+                  </ul>
               <% end %>
             </li>
           <% end %>
@@ -89,11 +96,7 @@ defmodule LogflareWeb.SourceBackendsLive do
       |> assign(:create_form_type, "webhook")
       |> assign(
         :create_changeset,
-        Logflare.Backends.SourceBackend.changeset(%Logflare.Backends.SourceBackend{}, %{
-          source_id: source_id,
-          type: "webhook",
-          config: %{}
-        })
+        gen_create_changeset(source_id, "webhook")
       )
 
     {:ok, socket, layout: {LogflareWeb.LayoutView, "inline_live.html"}}
@@ -113,7 +116,7 @@ defmodule LogflareWeb.SourceBackendsLive do
         %{assigns: %{source: source}} = socket
       ) do
     socket =
-      case Logflare.Backends.create_source_backend(source, params["type"], params["config"]) do
+      case Logflare.Backends.create_source_backend(source, params["type"] |> IO.inspect(), params["config"]) do
         {:ok, _} ->
           socket
           |> assign(:show_create_form, false)
@@ -150,8 +153,20 @@ defmodule LogflareWeb.SourceBackendsLive do
         },
         socket
       ) do
-    {:noreply, assign(socket, :create_form_type, type)}
+    socket = socket
+    |> assign(
+      :create_form_type,
+      type
+    )
+    |> assign(
+      :create_changeset,
+      gen_create_changeset(socket.assigns.source.id, type)
+    )
+
+    {:noreply, socket}
   end
+
+  def handle_event("change_create_source_backend", _params, socket), do: {:noreply, socket}
 
   def handle_event("remove_source_backend", %{"id" => id}, %{assigns: %{source: source}} = socket) do
     Logger.debug("Removing source backend id: #{id}")
@@ -171,4 +186,12 @@ defmodule LogflareWeb.SourceBackendsLive do
   end
 
   defp _to_string(val), do: to_string(val)
+
+  defp gen_create_changeset(source_id, type) do
+    Logflare.Backends.SourceBackend.changeset(%Logflare.Backends.SourceBackend{}, %{
+      source_id: source_id,
+      type: type,
+      config: %{}
+    })
+  end
 end
