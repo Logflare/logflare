@@ -4,28 +4,6 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-logger_config =
-  case System.get_env("LOGGER_CONFIG", config_env() |> Atom.to_string()) do
-    "prod" ->
-      [
-        level: :info,
-        backends: [LogflareLogger.HttpBackend],
-        sync_threshold: 10_001,
-        discard_threshold: 10_000,
-        compile_time_purge_matching: [
-          [level_lower_than: :info]
-        ]
-      ]
-
-    "test" ->
-      [level: :error, backends: [:console]]
-
-    _ ->
-      [level: :info, backends: [:console], metadata: :all]
-  end
-
-config :logger, logger_config
-
 if config_env() == :prod do
   config :logflare_agent,
          [
