@@ -116,7 +116,11 @@ defmodule LogflareWeb.SourceBackendsLive do
         %{assigns: %{source: source}} = socket
       ) do
     socket =
-      case Logflare.Backends.create_source_backend(source, params["type"] |> IO.inspect(), params["config"]) do
+      case Logflare.Backends.create_source_backend(
+             source,
+             params["type"] |> IO.inspect(),
+             params["config"]
+           ) do
         {:ok, _} ->
           socket
           |> assign(:show_create_form, false)
@@ -153,15 +157,16 @@ defmodule LogflareWeb.SourceBackendsLive do
         },
         socket
       ) do
-    socket = socket
-    |> assign(
-      :create_form_type,
-      type
-    )
-    |> assign(
-      :create_changeset,
-      gen_create_changeset(socket.assigns.source.id, type)
-    )
+    socket =
+      socket
+      |> assign(
+        :create_form_type,
+        type
+      )
+      |> assign(
+        :create_changeset,
+        gen_create_changeset(socket.assigns.source.id, type)
+      )
 
     {:noreply, socket}
   end

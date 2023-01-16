@@ -158,5 +158,4 @@ defmodule Logflare.Application do
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ]
   end
-
 end
