@@ -12,8 +12,8 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./config/prod.secret.exs.enc
-      - --plaintext-file=./config/prod.secret.exs
+      - --ciphertext-file=./.prod.env.enc
+      - --plaintext-file=./.secrets.env
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
@@ -36,7 +36,7 @@ steps:
         "-t",
         "gcr.io/$PROJECT_ID/logflare_app:latest",
         "-f",
-        "docker/prod.app.Dockerfile",
+        "docker/secret_setup.Dockerfile",
         ".",
       ]
     secretEnv: ["MAGIC_COOKIE"]

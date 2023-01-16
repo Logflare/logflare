@@ -30,7 +30,7 @@ steps:
       [
         "build",
         "-f",
-        "docker/staging.Dockerfile",
+        "docker/secret_setup.Dockerfile",
         "--build-arg",
         "SHORT_COMMIT_SHA",
         "--build-arg",
