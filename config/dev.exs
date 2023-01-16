@@ -91,5 +91,4 @@ config :logflare, Logflare.Vercel.Client,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-import_config "dev.secret.exs"
 import_config "telemetry.exs"
