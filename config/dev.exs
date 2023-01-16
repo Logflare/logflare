@@ -16,6 +16,9 @@ config :logflare, LogflareWeb.Endpoint,
     protocol_options: [max_keepalive: 1_000],
     compress: true
   ],
+  live_view: [
+    signing_salt: "eVpFFmpN+OHPrilThexLilWnF+a8zBLbCtdH/OzAayShcm1B3OHOyGiadM6qOezp"
+  ],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
@@ -27,9 +30,7 @@ config :logflare, LogflareWeb.Endpoint,
       "--watch",
       cd: Path.expand("../assets", __DIR__)
     ]
-  ]
-
-config :logflare, LogflareWeb.Endpoint,
+  ],
   live_reload: [
     patterns: [
       ~r{priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$},

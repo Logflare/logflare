@@ -16,10 +16,11 @@ config :logflare,
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
-  url: [host: "localhost"],
+  url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: Logflare.PubSub
+  pubsub_server: Logflare.PubSub,
+  live_view: [signing_salt: "Fvo_-oQi4bjPfQLh"]
 
 # Configures Elixir's Logger
 config :logger,
@@ -73,13 +74,6 @@ config :number,
     precision: 0,
     delimiter: ",",
     separator: "."
-  ]
-
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-config :logflare, LogflareWeb.Endpoint,
-  live_view: [
-    signing_salt: System.get_env("PHOENIX_LIVE_VIEW_SECRET_SALT", "Fvo_-oQi4bjPfQLh")
   ]
 
 config :scrivener_html,
