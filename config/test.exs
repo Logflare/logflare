@@ -14,7 +14,7 @@ config :logflare, Logflare.Google,
   project_id: "logflare-dev-238720",
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
 
-config :logflare, Logflare.Tracker, pool_size: 5, level: :warn
+config :logflare, Logflare.Tracker, pool_size: 5, level: :error
 
 config :logflare, Logflare.Repo,
   username: "postgres",
