@@ -38,7 +38,11 @@ config :logflare,
 
              value when is_binary(value) ->
                String.split(value, ",")
-           end
+           end,
+           live_view: [
+             signing_salt: System.get_env("PHX_LV_SIGNING_SALT")
+           ]
+          |> filter_nil_kv_pairs.()
        ]
        |> filter_nil_kv_pairs.()
 
