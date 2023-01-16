@@ -4,17 +4,13 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-if config_env() == :prod and System.get_env("LOGFLARE_AGENT_API_KEY") != nil and
-     System.get_env("LOGFLARE_AGENT_URL") != nil do
+if config_env() == :prod do
   config :logflare_agent,
          [
            api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
            url: System.get_env("LOGFLARE_AGENT_URL")
          ]
          |> filter_nil_kv_pairs.()
-
-  config :logger,
-    backends: [:console, LogflareLogger.HttpBackend]
 end
 
 config :logflare,
@@ -90,6 +86,13 @@ config :logflare_logger_backend,
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        ]
        |> filter_nil_kv_pairs.()
+
+if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
+  config :logger,
+    backends: [:console, LogflareLogger.HttpBackend]
+end
+
+
 
 # Set libcluster topologies
 gce_topoloty = [
