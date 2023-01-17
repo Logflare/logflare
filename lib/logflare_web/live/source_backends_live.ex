@@ -118,7 +118,7 @@ defmodule LogflareWeb.SourceBackendsLive do
     socket =
       case Logflare.Backends.create_source_backend(
              source,
-             params["type"] |> IO.inspect(),
+             params["type"],
              params["config"]
            ) do
         {:ok, _} ->
