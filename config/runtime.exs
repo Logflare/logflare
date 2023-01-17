@@ -4,7 +4,7 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-if config_env() == :prod do
+if System.get_env("LOGFLARE_AGENT_URL") != nil do
   config :logflare_agent,
          [
            api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
