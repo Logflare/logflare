@@ -4,7 +4,7 @@
 # load the secrets
 export $(grep -v '^#' /tmp/.secrets.env | xargs)
 
-if [ "$LIBCLUSTER_TOPOLOGY" == "gce" ] then
+if [[ "$LIBCLUSTER_TOPOLOGY" == "gce" ]] then
     # run gce specific stuff
 
     sysctl -w net.ipv4.tcp_keepalive_time=60 net.ipv4.tcp_keepalive_intvl=60 net.ipv4.tcp_keepalive_probes=5
