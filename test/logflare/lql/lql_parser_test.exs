@@ -171,9 +171,12 @@ defmodule Logflare.LqlParserTest do
                   operator: :=,
                   path: "timestamp",
                   shorthand: "now",
-                  value: now_ndt()
+                  value: now_out
                 }
-              ]} == Parser.parse("timestamp:now", @default_schema)
+              ]} = Parser.parse("timestamp:now", @default_schema)
+
+      # use diff to reduce test flakiness
+      assert DateTime.diff(now_ndt(), now_out, :millisecond) |> abs() <= 1500
 
       for {qs, shorthand, start_value, end_value} <- [
             {"t:today", "today", today_dt(),
