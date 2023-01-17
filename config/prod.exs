@@ -37,30 +37,6 @@ config :logflare, Logflare.Repo,
   queue_target: 5_000,
   port: 5432
 
-config :logflare_agent,
-  sources: [
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.1",
-      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.2",
-      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.3",
-      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.4",
-      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
-    },
-    %{
-      path: "/home/logflare/app_release/logflare/var/log/erlang.log.5",
-      source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
-    }
-  ]
-
 config :logger,
   sync_threshold: 10_001,
   discard_threshold: 10_000,
@@ -76,9 +52,7 @@ config :libcluster,
   topologies: [
     gce: [
       strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
-      config: [
-        release_name: :logflare
-      ]
+      config: [release_name: :logflare]
     ]
   ]
 

@@ -8,7 +8,29 @@ if System.get_env("LOGFLARE_AGENT_URL") != nil do
   config :logflare_agent,
          [
            api_key: System.get_env("LOGFLARE_AGENT_API_KEY"),
-           url: System.get_env("LOGFLARE_AGENT_URL")
+           url: System.get_env("LOGFLARE_AGENT_URL"),
+           sources: [
+             %{
+               path: "/home/logflare/app_release/logflare/var/log/erlang.log.1",
+               source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+             },
+             %{
+               path: "/home/logflare/app_release/logflare/var/log/erlang.log.2",
+               source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+             },
+             %{
+               path: "/home/logflare/app_release/logflare/var/log/erlang.log.3",
+               source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+             },
+             %{
+               path: "/home/logflare/app_release/logflare/var/log/erlang.log.4",
+               source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+             },
+             %{
+               path: "/home/logflare/app_release/logflare/var/log/erlang.log.5",
+               source: "4ec9216e-a8e9-46eb-92cb-1576092c9e4b"
+             }
+           ]
          ]
          |> filter_nil_kv_pairs.()
 end
