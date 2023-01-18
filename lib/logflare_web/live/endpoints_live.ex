@@ -32,16 +32,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_action(:edit, assigns) do
     ~L"""
-    <h3><%= @show_endpoint.name %></h3>
-
-    <%= f = form_for :endpoint, "#", [phx_submit: :save_endpoint] %>
-        <div class="form-group">
-          <%= label f, :query %>
-          <%= textarea f, :query %>
-        </div>
-        <button type="button" class="btn btn-secondary" phx-click="cancel-edit-query">Cancel</button>
-        <%= submit "Save", class: "btn btn-primary" %>
-      </form>
+    <%= live_react_component("Interfaces.EndpointEditor", %{endpoint: @show_endpoint}, [id: "edit-endpoint"]) %>
     """
   end
 
@@ -73,8 +64,20 @@ defmodule LogflareWeb.EndpointsLive do
 
     {:noreply, socket}
   end
+
+  def handle_event("save-endpoint", %{"endpoint" => params}, socket) do
+    {:ok, endpoint} = Endpoints.update_query(socket.assigns.show_endpoint, params)
+
+    {:noreply,
+     socket
+     |> push_patch(to: Routes.endpoints_path(socket, :show, endpoint))
+     |> assign(:show_endpoint, endpoint)}
+  end
+
   def handle_event("edit-query", _unsigned_params, socket) do
-    socket = socket |> push_patch(to: Routes.endpoints_path(socket, :edit, socket.assigns.show_endpoint))
+    socket =
+      socket |> push_patch(to: Routes.endpoints_path(socket, :edit, socket.assigns.show_endpoint))
+
     {:noreply, socket}
   end
 

@@ -58,12 +58,19 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     assert_patched(view, "/endpoints/#{endpoint.id}/edit")
 
-    assert view |> has_element?("textarea")
-    assert view |> has_element?("label", "Query")
-    assert view |> has_element?("button", "Save")
-    assert view |> has_element?("button", "Cancel")
+    assert view |> has_element?("#edit-endpoint")
+    assert view |> element("#edit-endpoint") |> render() =~ endpoint.name
 
+    # edit the endpoint
+    new_query = "select current_timestamp() as my_time"
 
+    render_hook(view, "save-endpoint", %{
+      endpoint: %{
+        query: new_query
+      }
+    })
+
+    assert view |> render() =~ new_query
   end
 
   @tag skip: true

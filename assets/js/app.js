@@ -9,22 +9,26 @@ import * as Logs from "./logs"
 import * as User from "./user"
 import BillingHooks from "./billing"
 import LiveModalHooks from "./live_modal"
-import { LogEventsChart } from "./source_log_chart.jsx"
+import {LogEventsChart} from "./source_log_chart.jsx"
 import Chart from "./admin_dashboard_charts.jsx"
 import Loader from "./loader.jsx"
 import LiveSocket from "phoenix_live_view"
-import LiveReact, { initLiveReact } from "phoenix_live_react"
+import LiveReact, {initLiveReact} from "phoenix_live_react"
 
 import sourceLiveViewHooks from "./source_lv_hooks"
 import logsLiveViewHooks from "./log_event_live_hooks"
+
+// interfaces
+import * as Interfaces from "./interfaces"
 
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content")
 
-const liveReactHooks = { LiveReact }
+const liveReactHooks = {LiveReact}
 
-window.Components = { LogEventsChart, Loader, AdminChart: Chart }
+window.Components = {LogEventsChart, Loader, AdminChart: Chart}
+window.Interfaces = Interfaces
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
