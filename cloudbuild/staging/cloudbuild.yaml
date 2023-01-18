@@ -12,8 +12,8 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./config/staging.secret.exs.enc
-      - --plaintext-file=./config/staging.secret.exs
+      - --ciphertext-file=./.staging.env.enc
+      - --plaintext-file=./.secrets.env
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
@@ -25,20 +25,12 @@ steps:
         "gs://logflare-build-support/gudusoft.gsqlparser-2.5.2.5.jar",
         "sql/gsp/gudusoft.gsqlparser-2.5.2.5.jar",
       ]
-  - name: "gcr.io/kaniko-project/executor:latest"
-    args:
-      [
-        "--dockerfile=./docker/staging.base.Dockerfile",
-        "--destination=gcr.io/$PROJECT_ID/logflare_base:latest",
-        "--cache=true",
-        "--cache-ttl=336h",
-      ]
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
         "-f",
-        "docker/staging.app.Dockerfile",
+        "docker/secret_setup.Dockerfile",
         "--build-arg",
         "SHORT_COMMIT_SHA",
         "--build-arg",

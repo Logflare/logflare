@@ -1,12 +1,11 @@
 defmodule Logflare.Mixfile do
   @moduledoc false
   use Mix.Project
-  @version "1.0.0"
 
   def project do
     [
       app: :logflare,
-      version: @version,
+      version: version(),
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
@@ -28,7 +27,7 @@ defmodule Logflare.Mixfile do
       test_coverage: [tool: ExCoveralls],
       releases: [
         logflare: [
-          version: @version,
+          version: version(),
           include_executables_for: [:unix],
           applications: [runtime_tools: :permanent, ssl: :permanent]
         ]
@@ -49,8 +48,7 @@ defmodule Logflare.Mixfile do
         :ueberauth_google,
         :ssl,
         :phoenix_html,
-        :phoenix,
-        :erlexec
+        :phoenix
       ],
       included_applications: [:mnesia]
     ]
@@ -102,6 +100,7 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
+      {:local_cluster, "~> 1.2", only: [:test]},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -150,7 +149,7 @@ defmodule Logflare.Mixfile do
       {:telemetry_poller, "0.5.0"},
       {:telemetry_metrics, "~> 0.6.0", override: true},
       {:logflare_logger_backend, "~> 0.11.1-rc.2"},
-      {:logflare_agent, "~> 0.6.2", only: [:prod]},
+      {:logflare_agent, "~> 0.6.2"},
 
       # ETS
       {:ets, "~> 0.8.0"},
@@ -164,7 +163,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.29.0"},
 
       # Rust NIFs
-      {:rustler, "~> 0.21.0", override: true},
+      {:rustler, "~> 0.25.0"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
@@ -191,9 +190,6 @@ defmodule Logflare.Mixfile do
       # Charting
       {:contex, "~> 0.3.0"},
 
-      # SQL
-      {:erlexec, "~>1.18.11"},
-
       # Postgres Subscribe
       {:cainophile, "~> 0.1.0"}
       # {:honeydew, "~> 1.5.0"}
@@ -202,23 +198,56 @@ defmodule Logflare.Mixfile do
 
   defp aliases do
     [
-      setup: ["deps.get", "cmd elixir --sname orange --cookie monster -S mix ecto.setup"],
-      start: "cmd PORT=4000 iex --sname orange --cookie monster -S mix phx.server",
-      "start.orange":
-        "cmd PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server",
-      "start.pink": "cmd PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server",
+      setup: [
+        "cmd elixir --sname orange --cookie monster -S mix do deps.get, ecto.setup, ecto.seed"
+      ],
+      start: [
+        "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
+      ],
+      "start.orange": [
+        "cmd env $(cat .dev.env | xargs) PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server"
+      ],
+      "start.pink": [
+        "cmd env $(cat .dev.env|xargs) PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
+      ],
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate", "test"],
+      test: ["cmd epmd -daemon", "ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      "test.watch": ["cmd epmd -daemon", "test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
-      "test.security": ["sobelow --threshold high"],
+      "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["dialyzer --format short"],
       "test.coverage": ["coveralls"],
       lint: ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
-      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"]
+      "ecto.seed": ["run priv/repo/seeds.exs"],
+      "ecto.setup": ["ecto.create", "ecto.migrate"],
+      "ecto.reset": [
+        "cmd elixir --sname orange --cookie monster -S mix do ecto.drop, ecto.setup"
+      ],
+      "decrypt.dev":
+        "cmd gcloud kms decrypt --ciphertext-file='./.dev.env.enc' --plaintext-file=./.dev.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+      "encrypt.dev":
+        "cmd gcloud kms encrypt --ciphertext-file='./.dev.env.enc' --plaintext-file=./.dev.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+      "decrypt.staging": [
+        "cmd gcloud kms decrypt --ciphertext-file='./.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
+      ],
+      "encrypt.staging": [
+        "cmd gcloud kms encrypt --ciphertext-file='./.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
+      ],
+      "decrypt.prod": [
+        "cmd gcloud kms decrypt --ciphertext-file='./.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
+      ],
+      "encrypt.prod": [
+        "cmd gcloud kms encrypt --ciphertext-file='./.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
+      ]
     ]
   end
+
+  defp version, do: File.read!("./VERSION")
 end

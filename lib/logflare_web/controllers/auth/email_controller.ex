@@ -31,6 +31,10 @@ defmodule LogflareWeb.Auth.EmailController do
     |> redirect(to: Routes.email_path(conn, :verify_token))
   end
 
+  def verify_token_form(conn, %{"token" => _token} = params) do
+    callback(conn, params)
+  end
+
   def callback(conn, %{"token" => token}) do
     token = String.trim(token)
 

@@ -81,7 +81,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
-
     case BigQuery.stream_batch!(context, rows) do
       {:ok,
        %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{
@@ -150,7 +149,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
-
     Schema.update(source_id, log_event)
 
     log_event

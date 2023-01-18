@@ -7,6 +7,10 @@ defmodule Logflare.TestUtils do
 
   def default_bq_schema, do: SchemaBuilder.initial_table_schema()
 
+  def build_bq_schema(params) do
+    SchemaBuilder.build_table_schema(params, default_bq_schema())
+  end
+
   @spec random_string(non_neg_integer()) :: String.t()
   def random_string(length \\ 6) do
     :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)

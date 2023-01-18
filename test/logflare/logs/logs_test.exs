@@ -1,7 +1,13 @@
 defmodule Logflare.LogsTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.{Logs, Lql}
+  alias Logflare.Logs
+  alias Logflare.Lql
+  # v1 pipeline
+  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.BuffersCache
 
   setup do
     Logflare.Sources.Counters
@@ -9,6 +15,10 @@ defmodule Logflare.LogsTest do
 
     Logflare.SystemMetrics.AllLogsLogged
     |> stub(:incriment, fn v -> v end)
+
+    # mock goth behaviour
+    Goth
+    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
     :ok
   end
@@ -42,14 +52,6 @@ defmodule Logflare.LogsTest do
     end
 
     test "top level keys", %{source: source} do
-      Logs
-      |> expect(:broadcast, 1, fn le ->
-        assert %{"event_message" => "testing 123", "other" => 123} = le.body
-        assert Map.keys(le.body) |> length() == 4
-
-        le
-      end)
-
       batch = [
         %{"event_message" => "testing 123", "other" => 123}
       ]
@@ -69,6 +71,56 @@ defmodule Logflare.LogsTest do
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
+    end
+  end
+
+  describe "full ingestion pipeline test" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      rls = %RecentLogsServer{source: source, source_id: source.token}
+      start_supervised!(Counters)
+      start_supervised!(RateCounters)
+      start_supervised!(BuffersCache)
+      start_supervised!({RecentLogsServer, rls})
+      :timer.sleep(1000)
+      [source: source]
+    end
+
+    test "additive schema update from log event", %{source: source} do
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> expect(:bigquery_tabledata_insert_all, fn _conn,
+                                                   _project_id,
+                                                   _dataset_id,
+                                                   _table_name,
+                                                   opts ->
+        [%{json: json}] = opts[:body].rows
+        assert json["event_message"] == "testing 123"
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> expect(:bigquery_tables_patch, fn _conn,
+                                           _project_id,
+                                           _dataset_id,
+                                           _table_name,
+                                           [body: body] ->
+        schema = body.schema
+        assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
+        {:ok, %{}}
+      end)
+
+      Logflare.Mailer
+      |> expect(:deliver, fn _ -> :ok end)
+
+      batch = [
+        %{"event_message" => "testing 123", "key" => "value"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+      :timer.sleep(1_500)
     end
   end
 

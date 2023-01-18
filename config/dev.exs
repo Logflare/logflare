@@ -5,6 +5,7 @@ config :logflare,
   env: :dev
 
 config :logflare, LogflareWeb.Endpoint,
+  server: true,
   http: [
     port: System.get_env("PORT") || 4000,
     transport_options: [
@@ -15,7 +16,9 @@ config :logflare, LogflareWeb.Endpoint,
     protocol_options: [max_keepalive: 1_000],
     compress: true
   ],
-  # url: [host: "dev.chasegranberry.net", scheme: "https", port: 443],
+  live_view: [
+    signing_salt: "eVpFFmpN+OHPrilThexLilWnF+a8zBLbCtdH/OzAayShcm1B3OHOyGiadM6qOezp"
+  ],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
@@ -27,9 +30,7 @@ config :logflare, LogflareWeb.Endpoint,
       "--watch",
       cd: Path.expand("../assets", __DIR__)
     ]
-  ]
-
-config :logflare, LogflareWeb.Endpoint,
+  ],
   live_reload: [
     patterns: [
       ~r{priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$},
@@ -40,20 +41,17 @@ config :logflare, LogflareWeb.Endpoint,
     ]
   ]
 
-config :logger,
-  level: :debug,
-  backends: [:console, LogflareLogger.HttpBackend]
-
 config :logger, :console,
   format: "\n[$level] [$metadata] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id],
+  level: :debug
 
 config :phoenix, :stacktrace_depth, 20
 
 config :logflare, Logflare.Repo,
   username: "postgres",
   password: "postgres",
-  database: "logflare",
+  database: "logflare_dev",
   hostname: "localhost",
   port: 5432,
   pool_size: 10,
@@ -95,5 +93,4 @@ config :logflare, Logflare.Vercel.Client,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-import_config "dev.secret.exs"
 import_config "telemetry.exs"

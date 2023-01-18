@@ -16,15 +16,17 @@ config :logflare,
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
-  url: [host: "localhost"],
+  url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: Logflare.PubSub
+  pubsub_server: Logflare.PubSub,
+  live_view: [signing_salt: "Fvo_-oQi4bjPfQLh"]
 
 # Configures Elixir's Logger
 config :logger,
   handle_otp_reports: true,
-  handle_sasl_reports: false
+  handle_sasl_reports: false,
+  level: :info
 
 config :ueberauth, Ueberauth,
   providers: [
@@ -75,13 +77,6 @@ config :number,
     separator: "."
   ]
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-config :logflare, LogflareWeb.Endpoint,
-  live_view: [
-    signing_salt: System.get_env("PHOENIX_LIVE_VIEW_SECRET_SALT", "Fvo_-oQi4bjPfQLh")
-  ]
-
 config :scrivener_html,
   routes_helper: LogflareWeb.Router.Helpers,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
@@ -91,9 +86,7 @@ config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
 
-import_config "#{Mix.env()}.exs"
+# TODO We need to add defaults to https://github.com/Logflare/logflare_agent/blob/master/lib/application.ex#L11
+config :logflare_agent, sources: []
 
-# Any local configs a developer would like to set for themselves
-if Mix.env() == :dev do
-  import_config "local.secret.exs"
-end
+import_config "#{Mix.env()}.exs"

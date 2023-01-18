@@ -6,8 +6,6 @@ config :logflare, LogflareWeb.Endpoint,
   http: [port: 4001],
   server: false
 
-config :logger, level: :warn
-
 config :logflare, env: :test
 
 config :logflare, Logflare.Google,
@@ -16,7 +14,7 @@ config :logflare, Logflare.Google,
   project_id: "logflare-dev-238720",
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
 
-config :logflare, Logflare.Tracker, pool_size: 5
+config :logflare, Logflare.Tracker, pool_size: 5, level: :error
 
 config :logflare, Logflare.Repo,
   username: "postgres",
@@ -25,7 +23,3 @@ config :logflare, Logflare.Repo,
   hostname: "localhost",
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
-
-config :logger,
-  level: :error,
-  backends: [:console]

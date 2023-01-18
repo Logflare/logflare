@@ -84,6 +84,30 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       end
     end
 
+    test "top level and nested" do
+      filter_rules = [
+        %FilterRule{
+          path: "metadata.nested",
+          operator: :=,
+          value: "value"
+        },
+        %FilterRule{
+          path: "top",
+          operator: :=,
+          value: "level"
+        }
+      ]
+
+      query =
+        from(@bq_table_id)
+        |> select([:timestamp, :metadata])
+        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+
+      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      assert sql =~ "0.top = ?"
+      assert sql =~ "1.nested = ?"
+    end
+
     test "deeply nested" do
       filter_rules = [
         %FilterRule{

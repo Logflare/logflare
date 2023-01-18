@@ -51,31 +51,28 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 ### Env Setup
 
 1. Install dependencies with `asdf` using `asdf install`
-   1. **IMPORTANT**: [Set `JAVA_HOME`](https://github.com/halcyon/asdf-java#java_home)
-2. Install SQL Parser
-   1. Download the Java parser from [sqlparser.com](https://www.sqlparser.com/download.php) by clicking on `General SQL Parser v{version} for Java`. 
-   2. Extract the files and copy the `{folder}/lib/gudusoft.gsqlparser-{version}.jar` into `./sql/gsp`
-   3. Run `mix sql`
-3. Copy over secrets to two locations
-   1. Dev secrets - `configs/dev.secret.exs`
-   2. Google JWT key - `config/secrets/logflare-dev-238720-63d50e3c9cc8.json`
-4. Start database `docker-compose up -d`
-5. Run `mix setup` for deps, migrations, and seed data.
-6. Restart your postgres server for replication settings to take effect `docker-compose restart`
-7. Run `(cd assets; yarn)` from project root, to install js dependencies
-8. Install `sqlparser` by following the steps in **Closed Source Usage** section.
-9. Start server`mix start`
-10. Sign in as a user
-11. Create a source
-12. Update `dev.secrets.exs`, search for the `:logflare_logger_backend` config and update the user api key and source id
-13. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
-14. In `iex` console, test that everything works:
+1. Copy over secrets to two locations
+   1. Dev secrets - `.dev.env`
+   2. Google JWT key - `.gcloud.json`
+1. Start database `docker-compose up -d db`
+1. Run `mix setup` for deps, migrations, and seed data.
+1. Run `(cd assets; yarn)` from project root, to install js dependencies
+1. Install `sqlparser` by following the steps in **Closed Source Usage** section.
+1. Start server`mix setup`
+1. Sign in as a user
+1. Create a source
+1. Update `.dev.env`, search for the `LOGFLARE_LOGGER_BACKEND_API_KEY` and `LOGFLARE_LOGGER_BACKEND_SOURCE_ID` and update them accordingly
+1. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
+1. In `iex` console, test that everything works:
 
 
 ```elixir
 iex> LogflareLogger.info("testing log message")
 ```
 
+### Using Docker
+1. Build images with `docker compose build`
+2. Run with `docker compose up -d`
 ### Logging
 
 Use the `:error_string` metadata key when logging, which is for additional information that we want to log but don't necessarily want searchable or parsed for schema updating.

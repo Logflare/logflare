@@ -2,7 +2,7 @@ defmodule Logflare.Lql.EctoHelpers do
   @moduledoc false
   import Ecto.Query
   alias Logflare.Lql.FilterRule
-  @top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
+  @special_top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
 
   @spec apply_filter_rules_to_query(Ecto.Query.t(), [FilterRule.t()], keyword) :: Ecto.Query.t()
   def apply_filter_rules_to_query(query, filter_rules, opts \\ [adapter: :bigquery])
@@ -12,7 +12,11 @@ defmodule Logflare.Lql.EctoHelpers do
   end
 
   def apply_filter_rules_to_query(query, rules, _opts) do
-    {top_level_filters, other_filters} = Enum.split_with(rules, &(&1.path in @top_level))
+    {top_level_filters, other_filters} =
+      Enum.split_with(
+        rules,
+        &(&1.path in @special_top_level or not String.contains?(&1.path, "."))
+      )
 
     query =
       top_level_filters
