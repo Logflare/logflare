@@ -65,6 +65,7 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 1. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
 1. In `iex` console, test that everything works:
 
+
 ```elixir
 iex> LogflareLogger.info("testing log message")
 ```
