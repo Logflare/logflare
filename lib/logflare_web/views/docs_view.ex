@@ -117,7 +117,7 @@ defmodule LogflareWeb.DocsView do
               {{"drop", [], [], %{}}, :halt}
             end
 
-          {_tag, _attrs, _children, _meta} = node, :halt ->
+          {_tag, _attrs, _children, _meta}, :halt ->
             {{"drop", [], [], %{}}, :halt}
 
           node, acc ->
