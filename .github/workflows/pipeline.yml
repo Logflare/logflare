@@ -126,7 +126,6 @@ jobs:
     if: github.ref == 'refs/heads/staging'
     needs:
       - publish_latest
-      - publish_version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -152,7 +151,6 @@ jobs:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
     needs:
-      - publish_latest
       - publish_version
     runs-on: ubuntu-latest
     steps:
