@@ -3,6 +3,22 @@ defmodule Logflare.Endpoints do
   alias Logflare.Endpoints.Query
   alias Logflare.Repo
   alias Logflare.User
+  import Ecto.Query
+
+  @spec list_endpoints_by(keyword()) :: [Query.t()] | []
+  def list_endpoints_by(kw) do
+    q = from(e in Query)
+
+    Enum.reduce(kw, q, fn {k, v}, q ->
+      case k do
+        :name -> where(q, [e], e.name == ^v)
+        :id -> where(q, [e], e.id == ^v)
+        :user_id -> where(q, [e], e.user_id == ^v)
+      end
+    end)
+    |> Repo.all()
+  end
+
   @spec get_query_by_token(binary()) :: Query.t() | nil
   def get_query_by_token(token) when is_binary(token) do
     get_by(token: token)

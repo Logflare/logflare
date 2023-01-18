@@ -51,6 +51,7 @@ defmodule LogflareWeb.ConnCase do
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
         |> Plug.Conn.assign(:user, user)
+        |> Plug.Conn.fetch_session()
       end
     end
   end
@@ -64,10 +65,6 @@ defmodule LogflareWeb.ConnCase do
       Mimic.set_mimic_global(tags)
     end
 
-    {:ok,
-     conn:
-       Phoenix.ConnTest.build_conn()
-       |> Plug.Session.call(@session)
-       |> Plug.Conn.fetch_session()}
+    {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

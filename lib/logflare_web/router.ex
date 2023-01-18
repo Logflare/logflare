@@ -163,16 +163,10 @@ defmodule LogflareWeb.Router do
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    get("/", EndpointsController, :index)
-    post("/", EndpointsController, :create)
-
-    get("/new", EndpointsController, :new)
-    get("/apply", EndpointsController, :apply)
-    get("/:id", EndpointsController, :show)
-    get("/:id/edit", EndpointsController, :edit)
-    put("/:id", EndpointsController, :update)
-    put("/:id/reset_url", EndpointsController, :reset_url)
-    delete("/:id", EndpointsController, :delete)
+    live "/", EndpointsLive, :index
+    live "/new", EndpointsLive, :new
+    live "/:id", EndpointsLive, :show
+    live "/:id/edit", EndpointsLive, :edit
   end
 
   scope "/sources", LogflareWeb do

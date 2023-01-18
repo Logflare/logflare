@@ -4,6 +4,11 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
 
+  test "list_endpoints_by" do
+    %{id: id, name: name} = insert(:endpoint)
+    assert [%{id: ^id}] = Endpoints.list_endpoints_by(name: name)
+  end
+
   test "get_by/1" do
     endpoint = insert(:endpoint, name: "some endpoint")
     assert endpoint.id == Endpoints.get_by(name: "some endpoint").id
