@@ -65,34 +65,6 @@ jobs:
     #   run: mix test.typings
       - name: Code quality - linting
         run: mix lint --only warnings
-  publish_version:
-    name: Publish versioned tagged image
-    needs: build
-    runs-on: ubuntu-latest
-    env:
-      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
-    steps:
-      - uses: actions/checkout@v3
-      - name: Get version
-        run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
-      - name: Get commit SHA
-        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build Version
-        uses: docker/build-push-action@v3
-        with:
-          push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
   publish_latest:
     name: Publish latest tagged image
     needs: build
@@ -121,12 +93,39 @@ jobs:
           tags: supabase/logflare:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-  trigger_cloud_build:
+  publish_version:
+    name: Publish versioned tagged image
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/master'}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Get version
+        run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
+      - name: Get commit SHA
+        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build Version
+        uses: docker/build-push-action@v3
+        with:
+          push: ${{env.PUSH_TO_DOCKER}}
+          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  trigger_cloud_build_staging:
     name: Trigger Cloud Build in Staging
     if: github.ref == 'refs/heads/staging'
     needs:
       - publish_latest
-      - publish_version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -148,3 +147,29 @@ jobs:
           project_id: 'logflare-staging'
       - name: 'Trigger Cloud Build'
         run: 'gcloud beta builds triggers run logflare-app-staging-trigger --branch=staging --format "value(name)"'
+  trigger_cloud_build_production:
+    name: Trigger Cloud Build in Production
+    if: github.ref == 'refs/heads/master'
+    needs:
+      - publish_version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_PROD_CREDENTIALS }}'
+          create_credentials_file: true
+          export_environment_variables: true
+          cleanup_credentials: false
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v1'
+        with:
+          version: '413.0.0'
+          install_components: 'beta'
+          project_id: 'logflare-232118'
+      - name: 'Trigger Cloud Build'
+        run: 'gcloud beta builds triggers run logflare-master --branch=master --format "value(name)"'

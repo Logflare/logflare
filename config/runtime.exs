@@ -129,11 +129,13 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions:
     System.get_env("LIBCLUSTER_TOPOLOGY_GCE_REGIONS", "")
     |> String.split(",")
+    |> Enum.reject(&(&1 == ""))
     |> Enum.map(&String.split(&1, "|"))
     |> Enum.map(&List.to_tuple/1),
   zones:
     System.get_env("LIBCLUSTER_TOPOLOGY_GCE_ZONES", "")
     |> String.split(",")
+    |> Enum.reject(&(&1 == ""))
     |> Enum.map(&String.split(&1, "|"))
     |> Enum.map(&List.to_tuple/1)
 

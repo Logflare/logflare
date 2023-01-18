@@ -237,6 +237,14 @@ defmodule Logflare.Mixfile do
       "encrypt.staging": [
         "cmd gcloud kms encrypt --ciphertext-file='./.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
         "cmd gcloud kms encrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
+      ],
+      "decrypt.prod": [
+        "cmd gcloud kms decrypt --ciphertext-file='./.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
+      ],
+      "encrypt.prod": [
+        "cmd gcloud kms encrypt --ciphertext-file='./.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
       ]
     ]
   end
