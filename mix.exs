@@ -178,6 +178,7 @@ defmodule Logflare.Mixfile do
       # Utils
       {:recase, "~> 0.7.0"},
       {:ex_unicode, "~> 1.0"},
+      {:configcat, "~> 2.0.0"},
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
@@ -199,7 +200,7 @@ defmodule Logflare.Mixfile do
   defp aliases do
     [
       setup: [
-        "cmd elixir --sname orange --cookie monster -S mix do deps.get, ecto.setup, ecto.seed"
+        "cmd env $(cat .dev.env|xargs) elixir --sname orange --cookie monster -S mix do deps.get, ecto.setup, ecto.seed"
       ],
       start: [
         "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"

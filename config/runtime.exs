@@ -38,7 +38,8 @@ end
 config :logflare,
        [
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
-         recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET")
+         recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
+         config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY")
        ]
        |> filter_nil_kv_pairs.()
 

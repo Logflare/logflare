@@ -244,8 +244,8 @@
   <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
   <% end %>
 
-  <%= if @conn.assigns.user.admin do %>
-    <%= section_header("V2 Pipeline (Admin only)") %>
+  <%= if LogflareWeb.Utils.flag("multibackend") |> IO.inspect() == true do %>
+    <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
     <div class="form-group">
       <%= label f, :v2_pipeline do %>
