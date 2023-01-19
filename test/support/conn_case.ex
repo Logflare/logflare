@@ -40,6 +40,11 @@ defmodule LogflareWeb.ConnCase do
 
       setup context do
         Mimic.verify_on_exit!(context)
+
+        ConfigCat
+        |> stub(:get_value, fn _, _ -> true end)
+
+        :ok
       end
 
       def login_user(conn, user) do

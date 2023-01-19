@@ -146,7 +146,22 @@ defmodule Logflare.Application do
 
       # For Logflare Endpoints
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
-    ]
+
+      # feature flagging
+    ] ++ conditional_children()
+  end
+
+  def conditional_children do
+    config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
+
+    # only add in config cat to multi-tenant prod
+    if config_cat_key do
+      [
+        {ConfigCat, [sdk_key: config_cat_key]}
+      ]
+    else
+      []
+    end
   end
 
   def config_change(changed, _new, removed) do

@@ -23,6 +23,7 @@ Mimic.copy(GoogleApi.BigQuery.V2.Api.Jobs)
 Mimic.copy(GoogleApi.BigQuery.V2.Api.Tabledata)
 Mimic.copy(GoogleApi.BigQuery.V2.Api.Tables)
 Mimic.copy(Goth)
+Mimic.copy(ConfigCat)
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
 
