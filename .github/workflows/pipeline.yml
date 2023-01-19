@@ -3,7 +3,7 @@ name: Elixir CI
 on:
   workflow_dispatch:
   push:
-    branches: [staging]
+    branches: [staging, master]
   pull_request:
     branches: [staging]
 
@@ -48,7 +48,6 @@ jobs:
         with:
           path: |
             deps
-            _build
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
       - name: Install dependencies

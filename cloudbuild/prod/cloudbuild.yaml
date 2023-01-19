@@ -17,14 +17,6 @@ steps:
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
-  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
-    args:
-      [
-        "gsutil",
-        "cp",
-        "gs://logflare-build-support-prod/gudusoft.gsqlparser-2.5.2.5.jar",
-        "sql/gsp/gudusoft.gsqlparser-2.5.2.5.jar",
-      ]
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
@@ -32,7 +24,7 @@ steps:
         "--build-arg",
         "MAGIC_COOKIE",
         "--build-arg",
-        "TAG_VERSION=$(cat VERSION)",
+        "TAG_VERSION=1.0.0",
         "-t",
         "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA",
         "-t",

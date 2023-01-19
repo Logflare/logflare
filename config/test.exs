@@ -8,6 +8,8 @@ config :logflare, LogflareWeb.Endpoint,
 
 config :logflare, env: :test
 
+config :logger, :console, metadata: :all, level: :error
+
 config :logflare, Logflare.Google,
   dataset_id_append: "_test",
   project_number: "1023172132421",
