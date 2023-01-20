@@ -250,7 +250,7 @@ defmodule Logflare.SqlV2 do
   defp has_wildcard_in_select({"projection", proj}, _acc) when is_list(proj) do
     proj
     |> Enum.any?(fn
-      "Wildcard" -> true
+      %{"Wildcard" => _} -> true
       %{"QualifiedWildcard" => _} -> true
       _ -> false
     end)

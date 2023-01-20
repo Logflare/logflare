@@ -5,6 +5,17 @@ defmodule Logflare.SqlTest do
   @project_id "logflare-dev-238720"
   @env "test"
 
+  test "parser can handle complex sql" do
+    user = insert(:user)
+
+    for input <- [
+          "select d[0]",
+          "select d[offset(0)]"
+        ] do
+      assert {:ok, _v2} = SqlV2.transform(input, user)
+    end
+  end
+
   test "transforms table names correctly" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
@@ -173,7 +184,7 @@ defmodule Logflare.SqlTest do
            "can't find source unknown_table"}
         ] do
       assert {:error, err2} = SqlV2.transform(input, user)
-      assert err2 =~ expected
+      assert err2 =~ expected, "input: #{inspect(input)}"
     end
   end
 
@@ -220,6 +231,15 @@ defmodule Logflare.SqlTest do
           {"select old.a from old where @test = 123", ["test"]},
           {"select @a from old", ["a"]},
           {"select old.a from old where char_length(@c)", ["c"]},
+          # backticked function
+          {"select `some.function`(@c)", ["c"]},
+          # case statement in function arg
+          {"select `some.function`(CASE WHEN @c = 'hourly' THEN 1 ELSE 1 END)", ["c"]},
+          {"select `some.function`((CASE WHEN @c = 'hourly' THEN 1 ELSE 1 END))", ["c"]},
+          # double function arg case statements with select alias
+          {"select `some.function`((CASE WHEN @c = 'hourly' THEN 1 ELSE 1 END), (CASE WHEN @c = 'hourly' THEN 1 ELSE 1 END)) as d",
+           ["c"]},
+          # CTEs
           {"with q as (select old.a from old where char_length(@c)) select 1", ["c"]},
           {"with q as (select @c from old) select 1", ["c"]}
         ] do
