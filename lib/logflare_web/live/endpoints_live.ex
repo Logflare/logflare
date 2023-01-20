@@ -4,35 +4,37 @@ defmodule LogflareWeb.EndpointsLive do
   require Logger
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias Logflare.Users
 
   def render(assigns) do
     ~L"""
     <div>
-      <section>
-      <%= for endpoint <- @endpoints do %>
-        <%= live_patch endpoint.name, to: Routes.endpoints_path(@socket, :show, endpoint)  %>
-      <% end %>
-      </section>
+      <%= live_react_component("Interfaces.EndpointsBrowserList", %{
+      endpoints: @endpoints,
+        selectedEndpoint: @show_endpoint}, [id: "endpoints-browser-list"]) %>
 
-      <%= render_action(assigns.live_action, assigns) %>
+      <section>
+        <%= render_action(assigns.live_action, assigns) %>
+      </section>
     </div>
     """
   end
 
   defp render_action(:show, assigns) do
     ~L"""
-    <h3><%= @show_endpoint.name %></h3>
-
-    <button phx-click="edit-query">Edit Query</button>
-    <pre>
-      <%= @show_endpoint.query %>
-    </pre>
+    <%= live_react_component("Interfaces.ShowEndpoint", %{endpoint: @show_endpoint}, [id: "show-endpoint"]) %>
     """
   end
 
   defp render_action(:edit, assigns) do
     ~L"""
-    <%= live_react_component("Interfaces.EndpointEditor", %{endpoint: @show_endpoint}, [id: "edit-endpoint"]) %>
+    <%= live_react_component("Interfaces.EndpointEditor", %{endpoint: @show_endpoint, queryResult: @query_result}, [id: "edit-endpoint"]) %>
+    """
+  end
+
+  defp render_action(:new, assigns) do
+    ~L"""
+    <%= live_react_component("Interfaces.EndpointEditor", %{}, [id: "new-endpoint"]) %>
     """
   end
 
@@ -40,11 +42,14 @@ defmodule LogflareWeb.EndpointsLive do
 
   def mount(%{}, %{"user_id" => user_id}, socket) do
     endpoints = Endpoints.list_endpoints_by(user_id: user_id)
+    user = Users.get(user_id)
 
     {:ok,
      socket
      |> assign(:endpoints, endpoints)
      |> assign(:user_id, user_id)
+     |> assign(:user, user)
+     |> assign(:query_result, nil)
      |> assign(:show_endpoint, nil)}
   end
 
@@ -65,28 +70,64 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
-  def handle_event("save-endpoint", %{"endpoint" => params}, socket) do
-    {:ok, endpoint} = Endpoints.update_query(socket.assigns.show_endpoint, params)
+  def handle_event(
+        "save-endpoint",
+        %{"endpoint" => params},
+        %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
+      ) do
+    {action, endpoint} =
+      case show_endpoint do
+        nil ->
+          {:ok, endpoint} = Endpoints.create_query(user, params)
+          {:created, endpoint}
+
+        %_{} ->
+          {:ok, endpoint} = Endpoints.update_query(show_endpoint, params)
+          {:updated, endpoint}
+      end
 
     {:noreply,
      socket
+     |> put_flash(:info, "Successfully #{Atom.to_string(action)} endpoint #{endpoint.name}")
      |> push_patch(to: Routes.endpoints_path(socket, :show, endpoint))
      |> assign(:show_endpoint, endpoint)}
   end
 
-  def handle_event("edit-query", _unsigned_params, socket) do
-    socket =
-      socket |> push_patch(to: Routes.endpoints_path(socket, :edit, socket.assigns.show_endpoint))
 
-    {:noreply, socket}
+  def handle_event("edit-endpoint", %{"endpoint_id" => id}, socket) do
+    {:noreply, socket |> push_patch(to: Routes.endpoints_path(socket, :edit, id))}
   end
 
   def handle_event(
-        "toggle-create-form",
-        _,
-        %{assigns: %{show_create_form: show_create_form}} = socket
+        "show-endpoint",
+        %{"endpoint_id" => id},
+        %{assigns: %{endpoints: endpoints}} = socket
       ) do
-    {:noreply, assign(socket, show_create_form: !show_create_form)}
+    endpoint = Enum.find(endpoints, fn e -> e.id == id end)
+
+    {:noreply,
+     assign(socket, show_endpoint: endpoint) |> push_patch(to: "/endpoints/#{endpoint.id}")}
+  end
+
+
+  def handle_event(
+        "run-query",
+        %{"query" => query},
+        socket
+      ) do
+    result=[]
+    {:noreply,
+     socket
+     |> put_flash(:info, "Ran query in Xs")
+     |> assign(:query_result, result)}
+  end
+
+  def handle_event(
+        "new-endpoint",
+        _,
+        socket
+      ) do
+    {:noreply, socket |> push_patch(to: "/endpoints/new")}
   end
 
   def handle_event(

@@ -7,6 +7,7 @@ defmodule Logflare.Endpoints.Query do
 
   @derive {Jason.Encoder,
            only: [
+             :id,
              :token,
              :name,
              :query,
