@@ -45,7 +45,7 @@
     <% end %>
 
     <div class="mt-4">
-      <button class="btn btn-primary" onclick="Endpoints.Query('<%= @endpoint_query.token %>', collectParameters())">Run</button>
+      <button class="btn btn-primary" onclick="Endpoint.Query('<%= @endpoint_query.token %>', collectParameters())">Run</button>
     </div>
 
     <div id="queryResult" class="mt-4">
