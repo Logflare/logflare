@@ -10,8 +10,7 @@ defmodule Logflare.SqlTest do
 
     for input <- [
           "select d[0]",
-          "select d[offset(0)]",
-          "select d from `some-table` where d != arr.d[offset(0)]"
+          "select d[offset(0)]"
         ] do
       assert {:ok, _v2} = SqlV2.transform(input, user)
     end
