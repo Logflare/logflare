@@ -29,9 +29,7 @@ defmodule Logflare.Logs.Vector do
     }
   end
 
-  @doc """
-  If a log event from vector contains a `message` let's use it.
-  """
+  # If a log event from vector contains a `message` let's use it.
   def handle_event(%{"timestamp" => timestamp, "message" => message} = params) do
     metadata = Map.drop(params, ["message", "timestamp"])
 
@@ -42,9 +40,7 @@ defmodule Logflare.Logs.Vector do
     }
   end
 
-  @doc """
-  If no `message` is present on the payload Jason encode the params and use that as the message in the log event feed.
-  """
+  # If no `message` is present on the payload Jason encode the params and use that as the message in the log event feed.
   def handle_event(%{"timestamp" => timestamp} = params) do
     metadata = Map.drop(params, ["timestamp"])
     message = Jason.encode!(metadata)
