@@ -94,11 +94,7 @@ config :logflare,
 config :logflare,
        Logflare.Cluster.Utils,
        [
-         min_cluster_size:
-           if(System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") != nil,
-             do: String.to_integer(System.get_env("LOGFLARE_MIN_CLUSTER_SIZE")),
-             else: nil
-           )
+         min_cluster_size: System.get_env("LOGFLARE_MIN_CLUSTER_SIZE", "3") |> String.to_integer()
        ]
        |> filter_nil_kv_pairs.()
 
