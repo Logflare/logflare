@@ -18,22 +18,11 @@ steps:
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
   - name: "gcr.io/cloud-builders/docker"
+    entrypoint: 'sh'
     args:
       [
-        "build",
-        "--build-arg",
-        "MAGIC_COOKIE",
-        "--build-arg",
-        "TAG_VERSION=1.0.0",
-        "-t",
-        "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA",
-        "-t",
-        "gcr.io/$PROJECT_ID/logflare_app:latest",
-        "-f",
-        "docker/secret_setup.Dockerfile",
-        ".",
+        "-c", "docker build --build-arg TAG_VERSION=$(cat ./VERSION) -t gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t gcr.io/$PROJECT_ID/logflare_app:latest -f docker/secret_setup.Dockerfile .",
       ]
-    secretEnv: ["MAGIC_COOKIE"]
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA"]
   - name: "gcr.io/cloud-builders/docker"
