@@ -8,6 +8,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Google.BigQuery
   alias Logflare.Vercel
+  require Logger
 
   @max_age 86_400
 
@@ -189,9 +190,14 @@ defmodule LogflareWeb.AuthController do
                 |> maybe_redirect_team_user()
             end
 
-          {:error, _reason} ->
+          {:error, reason} ->
+            Logger.error("Unhandled sign in error", error_string: inspect(reason))
+
             conn
-            |> put_flash(:error, "Error signing in.")
+            |> put_flash(
+              :error,
+              "Error signing in. Please contact support to resolve this issue."
+            )
             |> redirect(to: Routes.auth_path(conn, :login))
         end
     end
