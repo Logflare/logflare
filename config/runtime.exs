@@ -116,7 +116,7 @@ config :logflare,
 config :logflare,
        Logflare.Vercel.Client,
        [
-         client_id: System.get_env("VERCEL_CLIENT_CLIENT_ID"),
+         client_id: System.get_env("VERCEL_CLIENT_ID"),
          client_secret: System.get_env("VERCEL_CLIENT_SECRET"),
          redirect_uri: System.get_env("VERCEL_CLIENT_REDIRECT_URI"),
          install_vercel_uri: System.get_env("VERCEL_CLIENT_INSTALL_URI")
