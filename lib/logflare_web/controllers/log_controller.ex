@@ -26,6 +26,11 @@ defmodule LogflareWeb.LogController do
     ingest_and_render(conn, batch, source)
   end
 
+  def create(%{assigns: %{source: source}} = conn, %{"_json" => batch})
+      when is_list(batch) do
+    ingest_and_render(conn, batch, source)
+  end
+
   def create(%{assigns: %{source: source}} = conn, log_params) do
     log_params = Map.drop(log_params, ["source", "timestamp", "id"])
     ingest_and_render(conn, [log_params], source)
