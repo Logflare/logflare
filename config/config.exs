@@ -86,7 +86,5 @@ config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
 
-# TODO We need to add defaults to https://github.com/Logflare/logflare_agent/blob/master/lib/application.ex#L11
-config :logflare_agent, sources: []
 
 import_config "#{Mix.env()}.exs"
