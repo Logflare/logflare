@@ -192,8 +192,12 @@ defmodule LogflareWeb.AuthController do
 
           {:error, reason} ->
             Logger.error("Unhandled sign in error", error_string: inspect(reason))
+
             conn
-            |> put_flash(:error, "Error signing in. Please contact support to resolve this issue.")
+            |> put_flash(
+              :error,
+              "Error signing in. Please contact support to resolve this issue."
+            )
             |> redirect(to: Routes.auth_path(conn, :login))
         end
     end
