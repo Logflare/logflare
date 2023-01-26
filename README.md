@@ -48,11 +48,10 @@ We are leaving this repo public as an example of a larger Elixir project. We hop
 
 1. Install dependencies with `asdf` using `asdf install`
 1. Copy over secrets to two locations
-   1. Dev secrets - `.dev.env`
+   1. Dev secrets - `.dev.env` (core team: run `mix decrypt.dev` to setup local environment variables.)
    2. Google JWT key - `.gcloud.json`
 1. Start database `docker-compose up -d db`
 1. Run `mix setup` for deps, migrations, and seed data.
-1. Core team: run `mix decrypt.dev` to setup local environment variables.
 1. Run `(cd assets; yarn)` from project root, to install js dependencies
 1. Start server`mix start`
 1. Sign in as a user
