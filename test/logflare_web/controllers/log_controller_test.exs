@@ -4,6 +4,10 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
+  @valid_batch [
+    %{"some" => "valid log entry", "event_message" => "hi!"},
+    %{"some" => "valid log entry 2", "event_message" => "hi again!"}
+  ]
 
   describe "v2 pipeline" do
     setup do
@@ -73,6 +77,23 @@ defmodule LogflareWeb.LogControllerTest do
       conn =
         conn
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
+
+    test ":create ingestion batch with `batch` key", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create, source: source.token), %{"batch" => @valid_batch})
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+    end
+
+    @tag :failing
+    test ":create ingestion batch with array body", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid_batch)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
