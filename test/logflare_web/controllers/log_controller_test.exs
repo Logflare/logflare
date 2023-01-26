@@ -89,11 +89,11 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
 
-    @tag :failing
     test ":create ingestion batch with array body", %{conn: conn, source: source} do
       conn =
         conn
-        |> post(Routes.log_path(conn, :create, source: source.token), @valid_batch)
+        |> put_req_header("content-type", "application/json")
+        |> post(Routes.log_path(conn, :create, source: source.token), Jason.encode!(@valid_batch))
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
     end
