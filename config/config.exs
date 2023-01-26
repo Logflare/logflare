@@ -61,10 +61,10 @@ config :logflare, PhoenixOauth2Provider,
   force_ssl_in_redirect_uri: true
 
 config :logflare, Logflare.Mailer,
-  adapter: Swoosh.Adapters.Mailgun,
+  adapter: Swoosh.Adapters.Local,
   domain: "logflare.app"
 
-config :swoosh, local: false
+config :swoosh, local: true
 
 config :tesla,
   adapter:
