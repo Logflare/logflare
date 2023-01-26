@@ -403,6 +403,14 @@ defmodule LogflareWeb.Router do
     post "/", LogController, :cloudflare
   end
 
+  if Mix.env() == :dev do
+    scope "/dev" do
+      pipe_through [:browser]
+
+      forward "/mailbox", Plug.Swoosh.MailboxPreview, base_path: "/dev/mailbox"
+    end
+  end
+
   def handle_logpush_headers(conn, _opts) do
     case get_req_header(conn, "content-type") do
       ["text/plain; charset=utf-8"] ->
