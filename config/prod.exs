@@ -56,6 +56,10 @@ config :libcluster,
     ]
   ]
 
+config :logflare, Logflare.Mailer, adapter: Swoosh.Adapters.Mailgun
+
+config :swoosh, local: false
+
 config :logflare, Logflare.Tracker, pool_size: 5
 
 import_config "telemetry.exs"
