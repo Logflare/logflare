@@ -42,10 +42,6 @@ Use [our Logger backend](https://github.com/Logflare/logflare_logger_backend) to
 
 We are leaving this repo public as an example of a larger Elixir project. We hope to have an open source edition of Logflare at some point in the future.
 
-## Closed Source Usage
-
-Logflare is using a SQL parser from sqlparser.com. To set this up on your dev machine:
-
 ## Developer
 
 ### Env Setup
@@ -57,22 +53,22 @@ Logflare is using a SQL parser from sqlparser.com. To set this up on your dev ma
 1. Start database `docker-compose up -d db`
 1. Run `mix setup` for deps, migrations, and seed data.
 1. Run `(cd assets; yarn)` from project root, to install js dependencies
-1. Install `sqlparser` by following the steps in **Closed Source Usage** section.
-1. Start server`mix setup`
+1. Start server`mix start`
 1. Sign in as a user
 1. Create a source
 1. Update `.dev.env`, search for the `LOGFLARE_LOGGER_BACKEND_API_KEY` and `LOGFLARE_LOGGER_BACKEND_SOURCE_ID` and update them accordingly
 1. Set user api key can be retrieved from dashboard or from database `users` table, source id is from the source page
 1. In `iex` console, test that everything works:
 
-
 ```elixir
 iex> LogflareLogger.info("testing log message")
 ```
 
 ### Using Docker
+
 1. Build images with `docker compose build`
 2. Run with `docker compose up -d`
+
 ### Logging
 
 Use the `:error_string` metadata key when logging, which is for additional information that we want to log but don't necessarily want searchable or parsed for schema updating.
