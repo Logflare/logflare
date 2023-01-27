@@ -1,5 +1,6 @@
 import "../css/app.scss"
 import { Socket } from "phoenix"
+import "../css/tailwind.css"
 import "bootstrap"
 import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"

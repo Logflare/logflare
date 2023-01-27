@@ -1,33 +1,35 @@
+import Button from "react-bootstrap/Button"
+import ListGroup from "react-bootstrap/ListGroup"
+import Card from "react-bootstrap/Card"
 const EndpointsBrowserList = ({pushEvent, selectedEndpoint, endpoints}) => {
   const handleNewEndpoint = () => {
     pushEvent("new-endpoint", {})
   }
-  console.log(endpoints)
   const handleSelect = (id) => {
     pushEvent("show-endpoint", {endpoint_id: id})
   }
   return (
-    <div>
-      <button onClick={handleNewEndpoint}>New Endpoint</button>
-      <ul>
+    <Card>
+      <Card.Header>
+        <Button variant="secondary" onClick={handleNewEndpoint}>
+          New Endpoint
+        </Button>
+      </Card.Header>
+
+      <ListGroup variant="flush">
         {endpoints.map((endpoint) => (
-          <li
-            style={{
-              fontWeight:
-                endpoint.id === selectedEndpoint?.id ? "bold" : undefined,
-            }}
-          >
-            <button
-              onClick={(e) => {
-                handleSelect(endpoint.id)
-              }}
+          <ListGroup.Item key={endpoint.id}>
+            <Button
+              size="sm"
+              variant="link"
+              onClick={() => handleSelect(endpoint.id)}
             >
               {endpoint.name}
-            </button>
-          </li>
+            </Button>
+          </ListGroup.Item>
         ))}
-      </ul>
-    </div>
+      </ListGroup>
+    </Card>
   )
 }
 

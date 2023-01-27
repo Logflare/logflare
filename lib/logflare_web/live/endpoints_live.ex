@@ -8,18 +8,28 @@ defmodule LogflareWeb.EndpointsLive do
 
   def render(assigns) do
     ~L"""
-    <div>
+    <div class="tw-flex tw-flex-row tw-py-10 tw-px-4 h-full">
+    <section class="tw-w-64">
       <%= live_react_component("Interfaces.EndpointsBrowserList", %{
-      endpoints: @endpoints,
-        selectedEndpoint: @show_endpoint}, [id: "endpoints-browser-list"]) %>
+          endpoints: @endpoints,
+          selectedEndpoint: @show_endpoint
+          }, [id: "endpoints-browser-list"])
+      %>
+    </section>
 
-      <section>
-        <%= render_action(assigns.live_action, assigns) %>
+      <section class="tw-flex-grow">
+          <%= render_action(assigns.live_action, assigns) %>
       </section>
     </div>
     """
   end
 
+  defp render_action(:index, assigns) do
+    ~L"""
+    <%= live_react_component("Interfaces.EndpointsIntro", %{}, [id: "endpoints-intro"]) %>
+
+    """
+  end
   defp render_action(:show, assigns) do
     ~L"""
     <%= live_react_component("Interfaces.ShowEndpoint", %{endpoint: @show_endpoint}, [id: "show-endpoint"]) %>

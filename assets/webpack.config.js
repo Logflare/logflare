@@ -1,4 +1,3 @@
-const Webpack = require("webpack")
 const path = require("path")
 const glob = require("glob")
 const MiniCssExtractPlugin = require("mini-css-extract-plugin")
@@ -6,9 +5,7 @@ const CopyWebpackPlugin = require("copy-webpack-plugin")
 
 module.exports = {
   entry: {
-    "./js/app.js": ["./js/app.js"].concat(
-      glob.sync("./vendor/**/*.js"),
-    ),
+    "./js/app.js": ["./js/app.js"].concat(glob.sync("./vendor/**/*.js")),
   },
   output: {
     filename: "app.js",
@@ -22,10 +19,8 @@ module.exports = {
         use: {
           loader: "babel-loader",
           options: {
-            presets: [["@babel/preset-env", { modules: false }]],
-            plugins: [
-              "@babel/plugin-proposal-class-properties",
-            ],
+            presets: [["@babel/preset-env"]],
+            plugins: ["@babel/plugin-proposal-class-properties"],
           },
         },
       },
@@ -34,11 +29,11 @@ module.exports = {
         test: /\.js$/,
         include: /node_modules\/@nivo\/bar/,
         use: {
-          loader: 'string-replace-loader',
+          loader: "string-replace-loader",
           options: {
-            search: 'scaleBand().rangeRound(',
-            replace: 'scaleBand().range(',
-          }
+            search: "scaleBand().rangeRound(",
+            replace: "scaleBand().range(",
+          },
         },
       },
       {
@@ -48,6 +43,7 @@ module.exports = {
           {
             loader: "css-loader",
             options: {
+              url: false,
               importLoaders: 2,
               sourceMap: true,
             },
@@ -55,8 +51,10 @@ module.exports = {
           {
             loader: "postcss-loader",
             options: {
-              plugins: () => [require("autoprefixer")],
               sourceMap: true,
+              postcssOptions: {
+                plugins: [require("tailwindcss"), require("autoprefixer")],
+              },
             },
           },
           {
@@ -82,9 +80,11 @@ module.exports = {
     ],
   },
   plugins: [
-    new MiniCssExtractPlugin({ filename: "../css/app.css" }),
-    new CopyWebpackPlugin([{ from: "static/", to: "../" }]),
-    new Webpack.ProvidePlugin({}),
+    new MiniCssExtractPlugin({filename: "../css/app.css"}),
+
+    new CopyWebpackPlugin({
+      patterns: [{from: "static/", to: "../"}],
+    }),
   ],
   externals: {
     jquery: "jQuery",
@@ -92,7 +92,7 @@ module.exports = {
     luxon: "luxon",
     react: "React",
     "react-dom": "ReactDOM",
-    "clipboard": "ClipboardJS",
-    "bootstrap": "bootstrap",
+    clipboard: "ClipboardJS",
+    bootstrap: "bootstrap",
   },
 }
