@@ -120,7 +120,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.4.0"},
 
       # Concurrency and pipelines
-      {:broadway, "~> 1.0.3"},
+      {:broadway, "~> 1.0.6"},
       {:flow, "~> 1.0"},
       {:nimble_options, "~>0.4.0"},
 
