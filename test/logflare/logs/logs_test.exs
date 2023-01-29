@@ -33,9 +33,9 @@ defmodule Logflare.LogsTest do
     :ok
   end
 
-  describe "ingest input" do
-    setup :source_and_user
+  setup :source_and_user
 
+  describe "ingest input" do
     test "empty list", %{source: source} do
       Logs
       |> Mimic.reject(:broadcast, 1)
@@ -83,8 +83,6 @@ defmodule Logflare.LogsTest do
   end
 
   describe "full ingestion pipeline test" do
-    setup :source_and_user
-
     test "additive schema update from log event", %{source: source} do
       GoogleApi.BigQuery.V2.Api.Tabledata
       |> expect(:bigquery_tabledata_insert_all, fn _conn,
@@ -121,8 +119,6 @@ defmodule Logflare.LogsTest do
   end
 
   describe "ingest rules/filters" do
-    setup :source_and_user
-
     setup(%{user: user}) do
       target = insert(:source, user: user)
       target_rls = %RecentLogsServer{source: target, source_id: target.token}
