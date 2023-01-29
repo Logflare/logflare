@@ -4,7 +4,6 @@ defmodule Logflare.Source.BigQuery.Buffer do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
-  alias Logflare.Sources
   alias Logflare.PubSubRates
 
   require Logger
@@ -16,7 +15,9 @@ defmodule Logflare.Source.BigQuery.Buffer do
       __MODULE__,
       %{
         source_id: source_id,
-        buffer: :queue.new(),
+        popped: 0,
+        pushed: 0,
+        acknowledged: 0,
         len: 0
       },
       name: name(source_id)
@@ -25,109 +26,66 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   def init(state) do
     Process.flag(:trap_exit, true)
-    {:ok, state, {:continue, :boot}}
-  end
-
-  def handle_continue(:boot, state) do
     check_buffer()
-
-    {:noreply, state}
+    {:ok, state}
   end
 
   @spec push(LE.t()) :: :ok
   def push(%LE{source: %Source{token: source_id}} = le) do
-    GenServer.cast(name(source_id), {:push, le})
+    name = Source.BigQuery.Pipeline.name(source_id)
+
+    messages = [
+      %Broadway.Message{
+        data: le,
+        acknowledger: {Source.BigQuery.BufferProducer, source_id, nil}
+      }
+    ]
+
+    GenServer.cast(name(source_id), {:push, 1})
+    Broadway.push_messages(name, messages)
+
+    :ok
   end
 
-  @spec pop(atom | binary) :: any
-  def pop(source_id) do
-    GenServer.call(name(source_id), :pop, 60_000)
+  @spec pop(String.t(), integer()) :: :ok
+  def pop(source_id, count) do
+    GenServer.cast(name(source_id), {:pop, count})
   end
 
-  def pop_many(source_id, count) do
-    GenServer.call(name(source_id), {:pop, count}, 60_000)
-  end
-
-  @spec ack(atom(), String.t()) :: {:ok, LE.t()}
-  def ack(_source_id, log_event_id) do
-    case Sources.BuffersCache.take_read_receipt(log_event_id) do
-      {:ok, nil} ->
-        # Seeing a lot of these need to figure it out
-        #
-        # Logger.warn("Log event not found when acknowledged.",
-        #  source_id: source_id,
-        #  log_event_id: log_event_id
-        # )
-
-        {:error, :not_found}
-
-      {:ok, %LE{} = log_event} ->
-        {:ok, log_event}
-    end
+  @spec ack(String.t(), UUID) :: :ok
+  def ack(source_id, _log_event_id) do
+    GenServer.cast(name(source_id), {:ack, 1})
   end
 
   @spec get_count(atom | binary | Source.t()) :: integer
   def get_count(%Source{token: source_id}), do: get_count(source_id)
+
   def get_count(source_id), do: GenServer.call(name(source_id), :get_count)
 
-  @spec get_log_events(atom | binary | Source.t()) :: [LE.t()]
-  def get_log_events(%Source{token: source_id}), do: get_count(source_id)
-  def get_log_events(source_id), do: GenServer.call(name(source_id), :get_log_events)
-
-  def handle_cast({:push, %LE{} = event}, state) do
-    new_buffer = :queue.in(event, state.buffer)
-    len = state.len + 1
-    {:noreply, %{state | len: len, buffer: new_buffer}}
+  @spec name(atom | String.t()) :: atom
+  def name(source_id) when is_atom(source_id) when is_binary(source_id) do
+    String.to_atom("#{source_id}" <> "-buffer")
   end
 
-  def handle_call({:pop, count}, _from, %{len: len} = state) do
-    cond do
-      len == 0 ->
-        {:reply, [], state}
-
-      len > count ->
-        {log_events, new_buffer} = :queue.split(count, state.buffer)
-
-        log_events = :queue.to_list(log_events)
-
-        for le <- log_events do
-          Sources.BuffersCache.put_read_receipt(le)
-        end
-
-        len = state.len - count
-        {:reply, log_events, %{state | len: len, buffer: new_buffer}}
-
-      len <= count ->
-        log_events = :queue.to_list(state.buffer)
-
-        for le <- log_events do
-          Sources.BuffersCache.put_read_receipt(le)
-        end
-
-        {:reply, log_events, %{state | len: 0, buffer: :queue.new()}}
-    end
+  def handle_cast({:push, by}, state) do
+    pushed = state.pushed + by
+    len = state.len + by
+    {:noreply, %{state | len: len, pushed: pushed}}
   end
 
-  def handle_call(:pop, _from, state) do
-    if :queue.is_empty(state.buffer) do
-      {:reply, :empty, %{state | len: 0}}
-    else
-      {{:value, %LE{} = log_event}, new_buffer} = :queue.out(state.buffer)
-      Sources.BuffersCache.put_read_receipt(log_event)
-      len = state.len - 1
-      {:reply, log_event, %{state | len: len, buffer: new_buffer}}
-    end
+  def handle_cast({:pop, by}, state) do
+    popped = state.popped + by
+    {:noreply, %{state | popped: popped}}
+  end
+
+  def handle_cast({:ack, by}, state) do
+    ackd = state.acknowledged + by
+    len = state.len - by
+    {:noreply, %{state | len: len, acknowledged: ackd}}
   end
 
   def handle_call(:get_count, _from, state) do
-    count = :queue.len(state.buffer)
-    {:reply, count, state}
-  end
-
-  def handle_call(:get_log_events, _from, state) do
-    {les, le} = state.buffer
-
-    {:reply, les ++ le, state}
+    {:reply, state.len, state}
   end
 
   def handle_info(:check_buffer, state) do
@@ -167,10 +125,5 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   defp check_buffer() do
     Process.send_after(self(), :check_buffer, @broadcast_every)
-  end
-
-  @spec name(atom | String.t()) :: atom
-  def name(source_id) when is_atom(source_id) when is_binary(source_id) do
-    String.to_atom("#{source_id}" <> "-buffer")
   end
 end

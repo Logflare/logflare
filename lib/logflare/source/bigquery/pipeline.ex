@@ -154,7 +154,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     log_event
   end
 
-  defp name(source_id) when is_atom(source_id) do
+  def name(source_id) when is_atom(source_id) do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
