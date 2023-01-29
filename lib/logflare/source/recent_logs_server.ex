@@ -152,14 +152,14 @@ defmodule Logflare.Source.RecentLogsServer do
 
     children = [
       {RCS, rls},
-      {EmailNotificationServer, rls},
-      {TextNotificationServer, rls},
-      {WebhookNotificationServer, rls},
-      {SlackHookServer, rls},
       {Buffer, rls},
       {Schema, rls},
       {Pipeline, rls},
       {SearchQueryExecutor, rls},
+      {EmailNotificationServer, rls},
+      {TextNotificationServer, rls},
+      {WebhookNotificationServer, rls},
+      {SlackHookServer, rls},
       {BillingWriter, rls}
     ]
 
