@@ -7,14 +7,25 @@ defmodule Logflare.LogsTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
+
+  def source_and_user(_context) do
+    insert(:plan)
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    rls = %RecentLogsServer{source: source, source_id: source.token}
+
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+    start_supervised!({RecentLogsServer, rls}, id: :source)
+
+    :timer.sleep(1000)
+    [source: source, user: user]
+  end
 
   setup do
-    Logflare.Sources.Counters
-    |> stub(:incriment, fn v -> v end)
-
-    Logflare.SystemMetrics.AllLogsLogged
-    |> stub(:incriment, fn v -> v end)
-
     # mock goth behaviour
     Goth
     |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
@@ -23,9 +34,7 @@ defmodule Logflare.LogsTest do
   end
 
   describe "ingest input" do
-    setup do
-      [source: insert(:source, user: build(:user))]
-    end
+    setup :source_and_user
 
     test "empty list", %{source: source} do
       Logs
@@ -74,18 +83,7 @@ defmodule Logflare.LogsTest do
   end
 
   describe "full ingestion pipeline test" do
-    setup do
-      insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      rls = %RecentLogsServer{source: source, source_id: source.token}
-      start_supervised!(Counters)
-      start_supervised!(RateCounters)
-      start_supervised!({RecentLogsServer, rls})
-      :timer.sleep(1000)
-      [source: source]
-    end
+    setup :source_and_user
 
     test "additive schema update from log event", %{source: source} do
       GoogleApi.BigQuery.V2.Api.Tabledata
@@ -123,19 +121,25 @@ defmodule Logflare.LogsTest do
   end
 
   describe "ingest rules/filters" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      target = insert(:source, user: user)
-      [source: source, target: target, user: user]
-    end
+    setup :source_and_user
 
-    test "drop filter", %{user: user} do
+    setup(%{user: user}) do
+      target = insert(:source, user: user)
+      target_rls = %RecentLogsServer{source: target, source_id: target.token}
+      start_supervised!({RecentLogsServer, target_rls}, id: target.token)
+
       {:ok, lql_filters} = Lql.Parser.parse("testing", TestUtils.default_bq_schema())
 
-      source =
+      drop_test =
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
+      drop_test_rls = %RecentLogsServer{source: drop_test, source_id: drop_test.token}
+      start_supervised!({RecentLogsServer, drop_test_rls}, id: drop_test.token)
+
+      [target: target, drop_test: drop_test]
+    end
+
+    test "drop filter", %{user: user, drop_test: drop_test} do
       Logs
       |> Mimic.reject(:broadcast, 1)
 
@@ -143,7 +147,7 @@ defmodule Logflare.LogsTest do
         %{"event_message" => "testing 123"}
       ]
 
-      assert :ok = Logs.ingest_logs(batch, source)
+      assert :ok = Logs.ingest_logs(batch, drop_test)
     end
 
     test "no rules", %{source: source} do
