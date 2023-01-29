@@ -21,7 +21,7 @@ defmodule Logflare.LogsTest do
     start_supervised!(RateCounters)
     start_supervised!({RecentLogsServer, rls}, id: :source)
 
-    :timer.sleep(1000)
+    :timer.sleep(250)
     [source: source, user: user]
   end
 
@@ -135,7 +135,7 @@ defmodule Logflare.LogsTest do
       [target: target, drop_test: drop_test]
     end
 
-    test "drop filter", %{user: user, drop_test: drop_test} do
+    test "drop filter", %{drop_test: drop_test} do
       Logs
       |> Mimic.reject(:broadcast, 1)
 
