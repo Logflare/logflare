@@ -7,7 +7,6 @@ defmodule Logflare.LogsTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
-  alias Logflare.Sources.BuffersCache
 
   setup do
     Logflare.Sources.Counters
@@ -83,7 +82,6 @@ defmodule Logflare.LogsTest do
       rls = %RecentLogsServer{source: source, source_id: source.token}
       start_supervised!(Counters)
       start_supervised!(RateCounters)
-      start_supervised!(BuffersCache)
       start_supervised!({RecentLogsServer, rls})
       :timer.sleep(1000)
       [source: source]
