@@ -31,17 +31,8 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     {:noreply, [], state}
   end
 
-  def handle_receive_messages(%{source_id: source_id, receive_timer: nil, demand: demand} = state)
-      when demand > 0 do
-    Buffer.pop(source_id, demand)
-    {:noreply, [], %{state | demand: 0}}
-  end
-
-  def handle_receive_messages(state) do
-    {:noreply, [], state}
-  end
-
-  def ack(source_id, successful, unsuccessful) do
+  @spec ack(atom(), [%Broadway.Message{}], [%Broadway.Message{}]) :: :ok
+  def ack(source_id, successful, unsuccessful) when is_atom(source_id) do
     Enum.each(successful, fn %{data: %LE{}} = message ->
       Buffer.ack(source_id, message.data.id)
     end)
@@ -49,6 +40,20 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     Enum.each(unsuccessful, fn %{data: %LE{}} = message ->
       Buffer.ack(source_id, message.data.id)
     end)
+
+    :ok
+  end
+
+  defp handle_receive_messages(
+         %{source_id: source_id, receive_timer: nil, demand: demand} = state
+       )
+       when demand > 0 do
+    Buffer.pop(source_id, demand)
+    {:noreply, [], %{state | demand: 0}}
+  end
+
+  defp handle_receive_messages(state) do
+    {:noreply, [], state}
   end
 
   @impl true

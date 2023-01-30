@@ -1,5 +1,8 @@
 defmodule Logflare.Source.BigQuery.Buffer do
-  @moduledoc false
+  @moduledoc """
+  Maintains a count of log events inside the Source.BigQuery.Pipeline Broadway pipeline.
+  """
+
   use GenServer
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source.RecentLogsServer, as: RLS
@@ -30,6 +33,10 @@ defmodule Logflare.Source.BigQuery.Buffer do
     {:ok, state}
   end
 
+  @doc """
+  Pushes log events into the Broadway pipeline while incrementing the count.
+  """
+
   @spec push(LE.t()) :: :ok
   def push(%LE{source: %Source{token: source_id}} = le) do
     name = Source.BigQuery.Pipeline.name(source_id)
@@ -47,23 +54,46 @@ defmodule Logflare.Source.BigQuery.Buffer do
     :ok
   end
 
-  @spec pop(String.t(), integer()) :: :ok
+  @doc """
+  Incriments the count of `pop`s of the buffer.
+  """
+
+  @spec pop(atom(), integer()) :: :ok
   def pop(source_id, count) do
     GenServer.cast(name(source_id), {:pop, count})
   end
 
-  @spec ack(String.t(), UUID) :: :ok
+  @doc """
+  Decriments the actual buffer count. If we've got a successfull `ack` from Broadway it means
+  we don't have the log event anymore.
+  """
+
+  @spec ack(atom(), UUID) :: :ok
   def ack(source_id, _log_event_id) do
     GenServer.cast(name(source_id), {:ack, 1})
   end
 
-  @spec get_count(atom | binary | Source.t()) :: integer
+  @doc """
+  Gets the current count of the buffer.
+  """
+
+  @spec get_count(atom | Source.t()) :: integer
   def get_count(%Source{token: source_id}), do: get_count(source_id)
 
   def get_count(source_id), do: GenServer.call(name(source_id), :get_count)
 
-  @spec name(atom | String.t()) :: atom
-  def name(source_id) when is_atom(source_id) when is_binary(source_id) do
+  @doc """
+  Name of our buffer.
+
+  ## Examples
+
+      iex> Logflare.Source.BigQuery.Buffer.name(:"36a9d6a3-f569-4f0b-b7a8-8289b4270e11")
+      :"36a9d6a3-f569-4f0b-b7a8-8289b4270e11-buffer"
+
+  """
+
+  @spec name(atom()) :: atom
+  def name(source_id) when is_atom(source_id) do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 

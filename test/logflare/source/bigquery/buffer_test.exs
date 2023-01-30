@@ -1,33 +1,42 @@
 defmodule Logflare.Source.BigQuery.BufferTest do
   @moduledoc false
-  use LogflareWeb.ChannelCase
-  alias Logflare.LogEvent, as: LE
   alias Logflare.Source.BigQuery.Buffer
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.Factory
+  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Logs
+
+  use Logflare.DataCase, async: false
+
+  doctest Buffer
 
   setup do
-    u1 = insert(:user)
-    s1 = insert(:source, user_id: u1.id)
-    rls = %RLS{source_id: s1.token}
+    Goth
+    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
-    {:ok, sources: [s1], args: rls}
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+
+    insert(:plan)
+    user = insert(:user)
+
+    source = insert(:source, user: user)
+    rls = %RecentLogsServer{source: source, source_id: source.token}
+    start_supervised!({RecentLogsServer, rls}, id: :source)
+
+    :timer.sleep(250)
+    [source: source]
   end
 
-  describe "GenServer" do
-    @tag :failing
-    test "start_link, push, pop, ack, broadcast", %{sources: [s1 | _], args: rls} do
-      sid = s1.token
-      {:ok, _pid} = Buffer.start_link(rls)
-      le = LE.make(%{"message" => "test"}, %{source: s1})
-      le2 = LE.make(%{"message" => "test2"}, %{source: s1})
-      Buffer.push(le)
-      Buffer.push(le2)
-      assert Buffer.get_count(sid) == 2
-      assert le == Buffer.pop(sid)
-      assert Buffer.get_count(sid) == 1
-      assert {:ok, le} == Buffer.ack(sid, le.id)
-      assert Buffer.get_count(sid) == 1
-    end
+  test "increment buffer", %{source: source} do
+    batch = [
+      %{"event_message" => "any", "metadata" => "some_value"}
+    ]
+
+    Logs.ingest_logs(batch, source)
+
+    assert 1 = Buffer.get_count(source)
   end
 end
