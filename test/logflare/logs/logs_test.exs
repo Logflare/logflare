@@ -10,19 +10,24 @@ defmodule Logflare.LogsTest do
   alias Logflare.SystemMetrics.AllLogsLogged
 
   def source_and_user(_context) do
-    insert(:plan)
-    user = insert(:user)
-    source = insert(:source, user: user)
-
-    rls = %RecentLogsServer{source: source, source_id: source.token}
-
     start_supervised!(AllLogsLogged)
     start_supervised!(Counters)
     start_supervised!(RateCounters)
+
+    insert(:plan)
+    user = insert(:user)
+
+    source = insert(:source, user: user)
+    source_b = insert(:source, user: user)
+
+    rls = %RecentLogsServer{source: source, source_id: source.token}
+    rls_b = %RecentLogsServer{source: source_b, source_id: source_b.token}
+
     start_supervised!({RecentLogsServer, rls}, id: :source)
+    start_supervised!({RecentLogsServer, rls_b}, id: :source_b)
 
     :timer.sleep(250)
-    [source: source, user: user]
+    [source: source, source_b: source_b, user: user]
   end
 
   setup do
@@ -119,18 +124,12 @@ defmodule Logflare.LogsTest do
   end
 
   describe "ingest rules/filters" do
-    setup(%{user: user}) do
-      target = insert(:source, user: user)
-
+    test "drop filter", %{user: user} do
       {:ok, lql_filters} = Lql.Parser.parse("testing", TestUtils.default_bq_schema())
 
       drop_test =
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
-      [target: target, drop_test: drop_test]
-    end
-
-    test "drop filter", %{drop_test: drop_test} do
       Logs
       |> Mimic.reject(:broadcast, 1)
 
@@ -153,8 +152,7 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
     end
 
-    @tag :failing
-    test "lql", %{source: source, target: target} do
+    test "lql", %{source: source, source_b: target} do
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       source = source |> Repo.preload(:rules, force: true)
 
@@ -169,8 +167,7 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
     end
 
-    @tag :failing
-    test "regex", %{source: source, target: target} do
+    test "regex", %{source: source, source_b: target} do
       insert(:rule, regex: "routed123", sink: target.token, source_id: source.id)
       source = source |> Repo.preload(:rules, force: true)
 
@@ -185,8 +182,7 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
     end
 
-    @tag :failing
-    test "routing depth is max 1 level", %{user: user, source: source, target: target} do
+    test "routing depth is max 1 level", %{user: user, source: source, source_b: target} do
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
