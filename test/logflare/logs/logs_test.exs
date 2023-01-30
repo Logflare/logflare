@@ -119,22 +119,6 @@ defmodule Logflare.LogsTest do
   end
 
   describe "ingest rules/filters" do
-    # setup(%{user: user}) do
-    #  target = insert(:source, user: user)
-    #  target_rls = %RecentLogsServer{source: target, source_id: target.token}
-    #  pid1 = start_supervised!({RecentLogsServer, target_rls}, id: target.token)
-    #
-    #  {:ok, lql_filters} = Lql.Parser.parse("testing", TestUtils.default_bq_schema())
-    #
-    #  drop_test =
-    #    insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
-    #
-    #  drop_test_rls = %RecentLogsServer{source: drop_test, source_id: drop_test.token}
-    #  pid2 = start_supervised!({RecentLogsServer, drop_test_rls}, id: drop_test.token)
-    #
-    #  [target: target, drop_test: drop_test, shutdown_pids: [pid1, pid2]]
-    # end
-
     setup(%{user: user}) do
       target = insert(:source, user: user)
 
