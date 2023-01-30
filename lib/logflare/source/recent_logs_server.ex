@@ -152,18 +152,18 @@ defmodule Logflare.Source.RecentLogsServer do
 
     children = [
       {RCS, rls},
-      {Buffer, rls},
-      {Schema, rls},
-      {Pipeline, rls},
-      {SearchQueryExecutor, rls},
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {WebhookNotificationServer, rls},
       {SlackHookServer, rls},
+      {Buffer, rls},
+      {Schema, rls},
+      {Pipeline, rls},
+      {SearchQueryExecutor, rls},
       {BillingWriter, rls}
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_all)
+    Supervisor.start_link(children, strategy: :one_for_one)
 
     load_init_log_message(source_id)
 
