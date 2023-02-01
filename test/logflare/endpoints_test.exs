@@ -74,4 +74,42 @@ defmodule Logflare.EndpointsTest do
                query: "select r from u"
              })
   end
+
+  describe "running queries" do
+    setup do
+      # mock goth behaviour
+      Goth
+      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+      :ok
+    end
+
+    test "run an endpoint query without caching" do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+    end
+
+    test "run_cached_query/1" do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+      _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      # 2nd query should hit local cache
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+    end
+  end
 end

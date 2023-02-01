@@ -20,6 +20,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     html = view |> element("#endpoints-browser-list") |> render()
     assert html =~ endpoint.name
+    assert has_element?(view, "#endpoints-intro")
 
     render_hook(view, "show-endpoint", %{
       endpoint_id: endpoint.id
@@ -82,5 +83,10 @@ defmodule LogflareWeb.EndpointsLiveTest do
     })
 
     assert view |> element("#show-endpoint") |> render() =~ new_query
+  end
+
+  describe "run queries" do
+    test "new endpoint"
+    test "edit endpoint"
   end
 end

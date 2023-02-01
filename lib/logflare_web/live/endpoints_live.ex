@@ -30,6 +30,7 @@ defmodule LogflareWeb.EndpointsLive do
 
     """
   end
+
   defp render_action(:show, assigns) do
     ~L"""
     <%= live_react_component("Interfaces.ShowEndpoint", %{endpoint: @show_endpoint}, [id: "show-endpoint"]) %>
@@ -103,7 +104,6 @@ defmodule LogflareWeb.EndpointsLive do
      |> assign(:show_endpoint, endpoint)}
   end
 
-
   def handle_event("edit-endpoint", %{"endpoint_id" => id}, socket) do
     {:noreply, socket |> push_patch(to: Routes.endpoints_path(socket, :edit, id))}
   end
@@ -119,13 +119,13 @@ defmodule LogflareWeb.EndpointsLive do
      assign(socket, show_endpoint: endpoint) |> push_patch(to: "/endpoints/#{endpoint.id}")}
   end
 
-
   def handle_event(
         "run-query",
         %{"query" => query},
         socket
       ) do
-    result=[]
+    result = []
+
     {:noreply,
      socket
      |> put_flash(:info, "Ran query in Xs")

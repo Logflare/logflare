@@ -1,6 +1,8 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
   alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.Resolver
+  alias Logflare.Endpoints.Cache
   alias Logflare.Repo
   alias Logflare.User
   import Ecto.Query
@@ -78,5 +80,124 @@ defmodule Logflare.Endpoints do
   @spec delete_query(Query.t()) :: {:ok, Query.t()} | {:error, any()}
   def delete_query(query) do
     Repo.delete(query)
+  end
+
+  @spec run_query(Query.t(), params :: map()) :: {:ok, [map()]} | {:error, String.t()}
+  def run_query(
+        %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query,
+        params \\ %{}
+      ) do
+    with {:ok, declared_params} <- Logflare.SqlV2.parameters(query_string),
+         sql_param <- Map.get(params, "sql"),
+         transform_input =
+           if(sandboxable && sql_param,
+             do: {query_string, sql_param},
+             else: query_string
+           ),
+         {:ok, transformed_query} <- Logflare.SqlV2.transform(transform_input, user_id),
+         {:ok, result} <-
+           exec_sql_on_bq(endpoint_query, transformed_query, declared_params, params) do
+      {:ok, result}
+    end
+  end
+
+  @doc """
+  Runs a cached query.
+  """
+  @spec run_cached_query(Query.t(), map()) :: {:ok, [map()]} | {:error, String.t()}
+  def run_cached_query(query, params \\ %{}) do
+    Resolver.resolve(query, params)
+    |> Cache.query()
+  end
+
+  defp exec_sql_on_bq(%Query{} = endpoint_query, transformed_query, declared_params, input_params)
+       when is_binary(transformed_query) and
+              is_list(declared_params) and
+              is_map(input_params) do
+    bq_params =
+      Enum.map(declared_params, fn x ->
+        %{
+          name: x,
+          parameterValue: %{
+            value: input_params[x]
+          },
+          parameterType: %{
+            type: "STRING"
+          }
+        }
+      end)
+
+    # execute the query on bigquery
+    case Logflare.BqRepo.query_with_sql_and_params(
+           endpoint_query.user,
+           endpoint_query.user.bigquery_project_id || env_project_id(),
+           transformed_query,
+           bq_params,
+           parameterMode: "NAMED",
+           maxResults: endpoint_query.max_limit,
+           location: endpoint_query.user.bigquery_dataset_location
+         ) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, %{body: body}} ->
+        error = Jason.decode!(body)["error"] |> process_bq_error(endpoint_query.user_id)
+        {:error, error}
+
+      {:error, err} when is_atom(err) ->
+        {:error, process_bq_error(err, endpoint_query.user_id)}
+    end
+  end
+
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+  defp env, do: Application.get_env(:logflare, :env)
+
+  defp process_bq_error(error, user_id) when is_atom(error) do
+    %{"message" => process_bq_message(error, user_id)}
+  end
+
+  defp process_bq_error(error, user_id) when is_map(error) do
+    error = %{error | "message" => process_bq_message(error["message"], user_id)}
+
+    if is_list(error["errors"]) do
+      %{
+        error
+        | "errors" => Enum.map(error["errors"], fn err -> process_bq_error(err, user_id) end)
+      }
+    else
+      error
+    end
+  end
+
+  defp process_bq_message(message, _user_id) when is_atom(message) do
+    message
+  end
+
+  defp process_bq_message(message, user_id) when is_binary(message) do
+    regex =
+      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
+
+    names = Regex.named_captures(regex, message)
+
+    case names do
+      %{"uuid" => uuid} ->
+        uuid = String.replace(uuid, "_", "-")
+
+        query =
+          from s in Logflare.Source,
+            where: s.token == ^uuid and s.user_id == ^user_id,
+            select: s.name
+
+        case Logflare.Repo.one(query) do
+          nil ->
+            message
+
+          name ->
+            Regex.replace(regex, message, name)
+        end
+
+      _ ->
+        message
+    end
   end
 end
