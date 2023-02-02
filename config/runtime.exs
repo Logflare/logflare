@@ -180,4 +180,7 @@ config :stripity_stripe,
 
 if config_env() != :test do
   config :goth, json: File.read!("gcloud.json")
+
+  config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
+    token: System.get_env("SUPER_USER_AUTHENTICATION_TOKEN")
 end

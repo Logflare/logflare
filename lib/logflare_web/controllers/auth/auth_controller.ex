@@ -32,14 +32,12 @@ defmodule LogflareWeb.AuthController do
   def check_invite_token_and_signin(conn, auth_params) do
     case get_session(conn, :invite_token) do
       nil ->
-        conn
-        |> signin(auth_params)
+        signin(conn, auth_params)
 
       invite_token ->
         case Auth.verify_email_token(invite_token, @max_age) do
           {:ok, invited_by_team_id} ->
-            conn
-            |> invited_signin(auth_params, invited_by_team_id)
+            invited_signin(conn, auth_params, invited_by_team_id)
 
           {:error, :expired} ->
             conn
@@ -122,84 +120,84 @@ defmodule LogflareWeb.AuthController do
   def signin(conn, auth_params) do
     team_users = TeamUsers.list_team_users_by_and_preload(email: auth_params.email)
     user = Users.get_by(email: auth_params.email)
+    handle_sign_in(team_users, user, conn, auth_params)
+  end
 
-    cond do
-      !Enum.empty?(team_users) and is_nil(user) ->
-        team_user = hd(team_users)
-        user = Users.get(team_user.team.user_id)
+  # Handles team user sign in
+  defp handle_sign_in([team_user | _], nil, conn, auth_params) do
+    user = Users.get(team_user.team.user_id)
 
-        case TeamUsers.insert_or_update_team_user(team_user.team, auth_params) do
-          {:ok, team_user} ->
-            CloudResourceManager.set_iam_policy()
-            BigQuery.patch_dataset_access(user)
+    case TeamUsers.insert_or_update_team_user(team_user.team, auth_params) do
+      {:ok, team_user} ->
+        CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(user)
 
+        conn
+        |> put_flash(:info, "Welcome back!")
+        |> put_session(:user_id, user.id)
+        |> put_session(:team_user_id, team_user.id)
+        |> redirect(to: Routes.source_path(conn, :dashboard))
+
+      {:error, _} ->
+        conn
+        |> put_flash(
+          :error,
+          "There was an error signing in. Please contact support if this continues."
+        )
+        |> redirect(to: Routes.auth_path(conn, :login))
+    end
+  end
+
+  # Handles individual sign in
+  defp handle_sign_in(_, _, conn, auth_params) do
+    case Users.insert_or_update_user(auth_params) do
+      {:ok, user} ->
+        user
+        |> AccountEmail.welcome()
+        |> Mailer.deliver()
+
+        CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(user)
+
+        conn
+        |> put_flash(:info, "Thanks for signing up! Now create a source!")
+        |> put_session(:user_id, user.id)
+        |> redirect(to: Routes.source_path(conn, :new, signup: true))
+
+      {:ok_found_user, user} ->
+        CloudResourceManager.set_iam_policy()
+        BigQuery.patch_dataset_access(user)
+
+        oauth_params = get_session(conn, :oauth_params)
+        vercel_setup_params = get_session(conn, :vercel_setup)
+
+        cond do
+          oauth_params ->
+            redirect_for_oauth(conn, user)
+
+          %{"auth_params" => %{"installation_id" => installation_id} = auth_params} ->
+            {:ok, _auth} =
+              Vercel.find_by_or_create_auth([installation_id: installation_id], user, auth_params)
+
+            conn
+            |> put_session(:vercel_setup, nil)
+            |> redirect(external: vercel_setup_params["next"])
+
+          true ->
             conn
             |> put_flash(:info, "Welcome back!")
             |> put_session(:user_id, user.id)
-            |> put_session(:team_user_id, team_user.id)
-            |> redirect(to: Routes.source_path(conn, :dashboard))
-
-          {:error, _} ->
-            conn
-            |> put_flash(
-              :error,
-              "There was an error signing in. Please contact support if this continues."
-            )
-            |> redirect(to: Routes.auth_path(conn, :login))
+            |> maybe_redirect_team_user()
         end
 
-      true ->
-        case Users.insert_or_update_user(auth_params) do
-          {:ok, user} ->
-            AccountEmail.welcome(user) |> Mailer.deliver()
-            CloudResourceManager.set_iam_policy()
-            BigQuery.patch_dataset_access(user)
+      {:error, reason} ->
+        Logger.error("Unhandled sign in error", error_string: inspect(reason))
 
-            conn
-            |> put_flash(:info, "Thanks for signing up! Now create a source!")
-            |> put_session(:user_id, user.id)
-            |> redirect(to: Routes.source_path(conn, :new, signup: true))
+        message = "Error signing in. Please contact support to resolve this issue."
 
-          {:ok_found_user, user} ->
-            CloudResourceManager.set_iam_policy()
-            BigQuery.patch_dataset_access(user)
-
-            oauth_params = get_session(conn, :oauth_params)
-            vercel_setup_params = get_session(conn, :vercel_setup)
-
-            cond do
-              oauth_params ->
-                conn
-                |> redirect_for_oauth(user)
-
-              vercel_setup_params ->
-                auth_params = vercel_setup_params["auth_params"]
-                install_id = auth_params["installation_id"]
-
-                {:ok, _auth} =
-                  Vercel.find_by_or_create_auth([installation_id: install_id], user, auth_params)
-
-                conn
-                |> put_session(:vercel_setup, nil)
-                |> redirect(external: vercel_setup_params["next"])
-
-              true ->
-                conn
-                |> put_flash(:info, "Welcome back!")
-                |> put_session(:user_id, user.id)
-                |> maybe_redirect_team_user()
-            end
-
-          {:error, reason} ->
-            Logger.error("Unhandled sign in error", error_string: inspect(reason))
-
-            conn
-            |> put_flash(
-              :error,
-              "Error signing in. Please contact support to resolve this issue."
-            )
-            |> redirect(to: Routes.auth_path(conn, :login))
-        end
+        conn
+        |> put_flash(:error, message)
+        |> redirect(to: Routes.auth_path(conn, :login))
     end
   end
 
