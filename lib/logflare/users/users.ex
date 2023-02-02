@@ -14,6 +14,9 @@ defmodule Logflare.Users do
   alias Logflare.Users.UserPreferences
 
   @moduledoc false
+  def user_changeset(user, attrs) do
+    User.changeset(user, attrs)
+  end
 
   def list() do
     Repo.all(User)
@@ -82,7 +85,7 @@ defmodule Logflare.Users do
 
   def update_user_all_fields(user, params) do
     user
-    |> User.changeset(params)
+    |> user_changeset(params)
     |> Repo.update()
   end
 
@@ -93,12 +96,14 @@ defmodule Logflare.Users do
   end
 
   def insert_user(params) do
-    api_key = :crypto.strong_rand_bytes(12) |> Base.url_encode64() |> binary_part(0, 12)
-    params = Map.put(params, :api_key, api_key)
-
     %User{}
-    |> User.changeset(params)
+    |> user_changeset(params)
     |> Repo.insert()
+  end
+
+  def insert_or_update_user(auth_params)
+      when not is_map_key(auth_params, :email) or not is_map_key(auth_params, :provider_uid) do
+    {:error, "Missing email or provider_uid"}
   end
 
   def insert_or_update_user(auth_params) do
@@ -129,7 +134,7 @@ defmodule Logflare.Users do
   end
 
   defp update_user_by_email(user, auth_params) do
-    updated_changeset = User.changeset(user, auth_params)
+    updated_changeset = user_changeset(user, auth_params)
 
     case Repo.update(updated_changeset) do
       {:ok, user} ->
@@ -141,7 +146,7 @@ defmodule Logflare.Users do
   end
 
   defp update_user_by_provider_id(user, auth_params) do
-    updated_changeset = User.changeset(user, auth_params)
+    updated_changeset = user_changeset(user, auth_params)
 
     case Repo.update(updated_changeset) do
       {:ok, user} ->

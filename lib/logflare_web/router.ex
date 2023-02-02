@@ -369,6 +369,12 @@ defmodule LogflareWeb.Router do
     )
   end
 
+  scope "/api", LogflareWeb do
+    pipe_through [:api, LogflareWeb.Plugs.EnsureSuperUserAuthentication]
+
+    resources "/accounts", Api.AccountController, param: "token", only: [:create]
+  end
+
   # Old log ingest endpoint. Deprecate.
   scope "/api/logs", LogflareWeb do
     pipe_through([:api, :require_ingest_api_auth])
