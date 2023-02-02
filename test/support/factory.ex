@@ -179,4 +179,71 @@ defmodule Logflare.Factory do
       resource_owner: build(:user)
     }
   end
+
+  def user_without_billing_account_factory() do
+    build(:user,
+      valid_google_account: true,
+      billing_account: nil,
+      provider: "google",
+      team: insert(:team)
+    )
+  end
+
+  def user_without_stripe_subscription_factory() do
+    build(:user,
+      provider: "google",
+      valid_google_account: true,
+      billing_account: insert(:billing_account, stripe_subscriptions: nil),
+      team: insert(:team)
+    )
+  end
+
+  def user_with_wrong_stripe_sub_content_factory() do
+    build(:user,
+      provider: "google",
+      valid_google_account: true,
+      billing_account: insert(:billing_account, stripe_subscriptions: %{"invalid" => ""}),
+      team: insert(:team)
+    )
+  end
+
+  def user_with_lifetime_account_non_google_factory() do
+    build(:user,
+      provider: "potato",
+      billing_account: insert(:billing_account, lifetime_plan: true),
+      team: insert(:team)
+    )
+  end
+
+  def user_with_lifetime_account_factory() do
+    build(:user,
+      provider: "google",
+      valid_google_account: true,
+      billing_account: insert(:billing_account, lifetime_plan: true),
+      team: insert(:team)
+    )
+  end
+
+  def user_with_legacy_account_factory() do
+    build(:user,
+      provider: "google",
+      valid_google_account: true,
+      billing_enabled: false,
+      team: insert(:team)
+    )
+  end
+
+  def user_with_stripe_subscription_factory(
+        %{stripe_id: stripe_id} \\ %{stripe_id: Faker.Internet.slug()}
+      ) do
+    build(:user,
+      provider: "google",
+      valid_google_account: true,
+      billing_account:
+        insert(:billing_account,
+          stripe_subscriptions: %{"data" => [%{"plan" => %{"id" => stripe_id}}]}
+        ),
+      team: insert(:team)
+    )
+  end
 end

@@ -12,85 +12,75 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.TeamUsers
   alias Logflare.Billing
 
-  defp env_project_number, do: Application.get_env(:logflare, Logflare.Google)[:project_number]
-  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
-  defp env_api_sa, do: Application.get_env(:logflare, Logflare.Google)[:api_sa]
-
-  defp env_compute_engine_sa,
-    do: Application.get_env(:logflare, Logflare.Google)[:compute_engine_sa]
-
-  defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
+  def list_projects() do
+    conn = GenUtils.get_conn()
+    Api.Projects.cloudresourcemanager_projects_list(conn)
+  end
 
   def get_iam_policy() do
     conn = GenUtils.get_conn()
 
     body = %Model.GetIamPolicyRequest{}
 
-    Api.Projects.cloudresourcemanager_projects_get_iam_policy(conn, env_project_number(),
+    Api.Projects.cloudresourcemanager_projects_get_iam_policy(
+      conn,
+      env_project_number(),
       body: body
     )
   end
 
-  def set_iam_policy() do
-    conn = GenUtils.get_conn()
+  def set_iam_policy(opts \\ [async: true])
 
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-      members = build_members()
-
-      bindings =
-        [
-          %Model.Binding{
-            members: members,
-            role: "roles/bigquery.jobUser"
-          }
-        ] ++ get_service_accounts()
-
-      policy = %Model.Policy{
-        bindings: bindings
-      }
-
-      body = %Model.SetIamPolicyRequest{
-        policy: policy
-      }
-
-      {f, a} = __ENV__.function
-      fun = "#{f}" <> "_" <> "#{a}"
-
-      case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, env_project_number(),
-             body: body
-           ) do
-        {:ok, _response} ->
-          Logger.info("Set IAM policy: #{Enum.count(members)} accounts",
-            logflare: %{
-              google: %{
-                cloudresourcemanager: %{
-                  "#{fun}": %{accounts: Enum.count(members), response: :ok}
-                }
-              }
-            }
-          )
-
-        {:error, response} ->
-          Logger.error("Set IAM policy error: #{GenUtils.get_tesla_error_message(response)}",
-            logflare: %{
-              google: %{
-                cloudresourcemanager: %{
-                  "#{fun}": %{
-                    accounts: Enum.count(members),
-                    response: :error,
-                    response_message: "#{GenUtils.get_tesla_error_message(response)}"
-                  }
-                }
-              }
-            }
-          )
-      end
-    end)
+  def set_iam_policy(async: true) do
+    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn -> set_iam_policy(async: false) end)
   end
 
-  def list_projects() do
+  def set_iam_policy(async: false) do
     conn = GenUtils.get_conn()
-    Api.Projects.cloudresourcemanager_projects_list(conn)
+    members = build_members()
+
+    bindings =
+      [%Model.Binding{members: members, role: "roles/bigquery.jobUser"}] ++
+        get_service_accounts()
+
+    policy = %Model.Policy{bindings: bindings}
+    body = %Model.SetIamPolicyRequest{policy: policy}
+
+    {function, arity} = __ENV__.function
+    caller = "#{function}" <> "_" <> "#{arity}"
+
+    case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, env_project_number(),
+           body: body
+         ) do
+      {:ok, _response} ->
+        Logger.info("Set IAM policy: #{Enum.count(members)} accounts",
+          logflare: %{
+            google: %{
+              cloudresourcemanager: %{
+                "#{caller}": %{
+                  accounts: Enum.count(members),
+                  response: :ok
+                }
+              }
+            }
+          }
+        )
+
+      {:error, response} ->
+        Logger.error("Set IAM policy error: #{GenUtils.get_tesla_error_message(response)}",
+          logflare: %{
+            google: %{
+              cloudresourcemanager: %{
+                "#{caller}": %{
+                  accounts: Enum.count(members),
+                  response: :error,
+                  response_message: "#{GenUtils.get_tesla_error_message(response)}"
+                }
+              }
+            }
+          }
+        )
+    end
   end
 
   defp get_service_accounts() do
@@ -98,6 +88,10 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         members: ["serviceAccount:#{env_service_account()}"],
         role: "roles/bigquery.admin"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_service_account()}"],
+        role: "roles/resourcemanager.projectIamAdmin"
       },
       %Model.Binding{
         members: ["serviceAccount:#{env_compute_engine_sa()}"],
@@ -116,12 +110,9 @@ defmodule Logflare.Google.CloudResourceManager do
         role: "roles/monitoring.metricWriter"
       },
       %Model.Binding{
-        members: ["serviceAccount:#{env_api_sa()}"],
-        role: "roles/editor"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_service_account()}"],
-        role: "roles/resourcemanager.projectIamAdmin"
+        condition: nil,
+        members: ["serviceAccount:#{env_cloud_build_sa()}"],
+        role: "roles/cloudbuild.builds.editor"
       },
       %Model.Binding{
         condition: nil,
@@ -146,21 +137,18 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         condition: nil,
         members: [
-          "serviceAccount:#{env_api_sa()}"
-        ],
-        role: "roles/editor"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: [
           "serviceAccount:#{env_cloud_build_sa()}"
         ],
         role: "roles/iam.serviceAccountUser"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_api_sa()}"],
+        role: "roles/editor"
       }
     ]
   end
 
-  def build_members() do
+  defp build_members() do
     query =
       from(u in User,
         join: t in assoc(u, :team),
@@ -169,39 +157,25 @@ defmodule Logflare.Google.CloudResourceManager do
       )
 
     all_paid_users =
-      Repo.all(query)
-      |> Enum.filter(fn x ->
-        case Billing.get_plan_by_user(x) do
-          %Billing.Plan{name: "Free"} ->
-            false
-
-          %Billing.Plan{name: "Legacy"} ->
-            true
-
-          %Billing.Plan{name: "Lifetime"} ->
-            true
-
-          _plan ->
-            true
+      query
+      |> Repo.all()
+      |> Enum.filter(fn user ->
+        case Billing.get_plan_by_user(user) do
+          %Billing.Plan{name: "Free"} -> false
+          _plan -> true
         end
       end)
 
-    paid_users_team_members =
-      Enum.map(all_paid_users, fn x ->
-        TeamUsers.list_team_users_by(team_id: x.team.id)
-        |> Enum.filter(
-          &(&1.provider == "google" and
-              (&1.valid_google_account == true or
-                 is_nil(&1.valid_google_account)))
-        )
-      end)
+    valid_paid_users =
+      all_paid_users
+      |> Enum.filter(&is_valid_member?/1)
       |> List.flatten()
 
-    valid_paid_users =
-      Enum.filter(all_paid_users, fn x ->
-        x.provider == "google" and
-          (x.valid_google_account == true or
-             is_nil(x.valid_google_account))
+    paid_users_team_members =
+      all_paid_users
+      |> Enum.map(fn paid_user ->
+        team_users = TeamUsers.list_team_users_by(team_id: paid_user.team.id)
+        Enum.filter(team_users, &is_valid_member?/1)
       end)
       |> List.flatten()
 
@@ -210,4 +184,16 @@ defmodule Logflare.Google.CloudResourceManager do
     |> Enum.take(1450)
     |> Enum.map(&("user:" <> &1.email))
   end
+
+  defp is_valid_member?(%{provider: "google", valid_google_account: true}), do: true
+  defp is_valid_member?(%{provider: "google", valid_google_account: nil}), do: true
+  defp is_valid_member?(_), do: false
+
+  defp env_project_number, do: Application.get_env(:logflare, Logflare.Google)[:project_number]
+  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
+  defp env_api_sa, do: Application.get_env(:logflare, Logflare.Google)[:api_sa]
+  defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
+
+  defp env_compute_engine_sa,
+    do: Application.get_env(:logflare, Logflare.Google)[:compute_engine_sa]
 end

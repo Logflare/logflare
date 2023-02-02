@@ -28,10 +28,7 @@ defmodule Logflare.DataCase do
 
       setup context do
         Mimic.verify_on_exit!(context)
-
-        Logflare.Mailer
-        |> stub()
-
+        stub(Logflare.Mailer)
         :ok
       end
     end
