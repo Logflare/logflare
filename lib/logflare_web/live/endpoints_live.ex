@@ -30,6 +30,9 @@ defmodule LogflareWeb.EndpointsLive do
     ~L"""
     <%= live_react_component("Comp.SubHeader", %{
       paths: [%{to: "/endpoints", label: "endpoints"}],
+      actions: [
+        %{to: Routes.access_tokens_path(@socket, :index), html: ~E(<i class="fas fa-key"></i> Manage access tokens</span>) |> safe_to_string() }
+      ]
       }, [id: "subheader"])
     %>
     <div class="tw-flex tw-flex-row tw-py-10 tw-px-4 h-full">
