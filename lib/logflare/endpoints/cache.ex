@@ -6,7 +6,6 @@ defmodule Logflare.Endpoints.Cache do
   require Logger
   alias Logflare.Endpoints
   use GenServer, restart: :temporary
-  import Ecto.Query, only: [from: 2]
 
   defstruct query: nil,
             query_tasks: [],

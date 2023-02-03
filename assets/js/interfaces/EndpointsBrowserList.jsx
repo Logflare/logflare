@@ -12,7 +12,7 @@ const EndpointsBrowserList = ({pushEvent, selectedEndpoint, endpoints}) => {
     <div className="tw-p-4">
       <Card>
         <Card.Header>
-          <Button varian  t="secondary" onClick={handleNewEndpoint}>
+          <Button variant="secondary" onClick={handleNewEndpoint}>
             New Endpoint
           </Button>
         </Card.Header>
@@ -21,8 +21,12 @@ const EndpointsBrowserList = ({pushEvent, selectedEndpoint, endpoints}) => {
           {endpoints.map((endpoint) => (
             <ListGroup.Item key={endpoint.id}>
               <Button
+                disabled={
+                  selectedEndpoint && selectedEndpoint.id === endpoint.id
+                }
                 size="sm"
                 variant="link"
+                className="tw-w-full tw-text-left tw-text-white tw-no-underline"
                 onClick={() => handleSelect(endpoint.id)}
               >
                 {endpoint.name}

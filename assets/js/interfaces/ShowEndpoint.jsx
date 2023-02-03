@@ -3,14 +3,33 @@ import Alert from "react-bootstrap/Alert"
 import Card from "react-bootstrap/Card"
 import Tab from "react-bootstrap/Tab"
 import Tabs from "react-bootstrap/Tabs"
-import JsonResults from "./endpoints/JsonResults.jsx"
+import QueryTester from "./endpoints/QueryTester.jsx"
+import SettingsManager from "./endpoints/SettingsManager.jsx"
+import ApiCallExamples from "./endpoints/ApiCallExamples.jsx"
+import {useState} from "react"
 
-const ShowEndpoint = ({pushEvent, endpoint, queryResult}) => {
+const ShowEndpoint = ({
+  pushEvent,
+  endpoint,
+  queryResultRows,
+  declaredParams,
+  baseUrl,
+}) => {
+  const [testParams, setTestParams] = useState({})
   const handleEditQuery = () => {
     pushEvent("edit-endpoint", {endpoint_id: endpoint.id})
   }
-  const handleRunQuery = () => {
-    pushEvent("run-query", {query: endpoint.query})
+  const handleRunQuery = (params) => {
+    pushEvent("run-query", {query_string: endpoint.query, query_params: params})
+  }
+  const handleSettingsUpdate = (key, value) => {
+    pushEvent("save-endpoint", {endpoint: {[key]: value}})
+  }
+  const handleDeleteEndpoint = () => {
+    const check = confirm("Are you sure that you want to delete this endpoint?")
+    if (check) {
+      pushEvent("delete-endpoint", {endpoint_id: endpoint.id})
+    }
   }
   return (
     <div className="tw-px-4 tw-flex tw-flex-col tw-gap-4">
@@ -34,22 +53,48 @@ const ShowEndpoint = ({pushEvent, endpoint, queryResult}) => {
             </Card.Footer>
           </Card>
 
-          <div className="mt-4">
-            <h4>Test Your Endpoint</h4>
-            <Button onClick={handleRunQuery}>Run Query</Button>
-            {queryResult && <JsonResults className="mt-4" data={queryResult} />}
-          </div>
+          <div className="tw-mt-4 tw-flex tw-flex-col tw-gap-4">
+            <h4>Call Your Endpoint</h4>
+            <QueryTester
+              variant="horizontal"
+              onRunQuery={handleRunQuery}
+              declaredParams={declaredParams}
+              queryResultRows={queryResultRows}
+              onParametersChange={setTestParams}
+              parameters={testParams}
+            />
 
-          
+            <ApiCallExamples
+              className="tw-mt-4"
+              baseUrl={baseUrl}
+              declaredParams={declaredParams}
+              endpoint={endpoint}
+              parameters={testParams}
+            />
+          </div>
         </Tab>
         {/* settings tab */}
         <Tab eventKey="settings" title="Settings">
-          UUID: {endpoint.token}
-          Max limit: {endpoint.max_limit} rows Authentication:{" "}
-          {endpoint.enable_auth}
-          cache duration: {endpoint.cache_duration_seconds}s Proactive
-          Requerying Seconds: {endpoint.proactive_requerying_seconds}s Sandbox
-          Mode: {endpoint.sandboxable}
+          <SettingsManager
+            endpoint={endpoint}
+            onUpdate={handleSettingsUpdate}
+          />
+          <div>
+            <Card bg="warning">
+              <Card.Body>
+                <Card.Title className="tw-text-black">
+                  Delete this endpoint
+                </Card.Title>
+                <Card.Text className="tw-text-black">
+                  Deleting the endpoint is <strong>irreversible</strong>. All
+                  subsequent API calls will be rejected.
+                </Card.Text>
+                <Button variant="danger" onClick={handleDeleteEndpoint}>
+                  Delete
+                </Button>
+              </Card.Body>
+            </Card>
+          </div>
         </Tab>
       </Tabs>
     </div>

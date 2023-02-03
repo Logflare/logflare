@@ -9,6 +9,11 @@ defmodule Logflare.EndpointsTest do
     assert [%{id: ^id}] = Endpoints.list_endpoints_by(name: name)
   end
 
+  test "get_endpoint_query/1 retrieves endpoint" do
+    %{id: id} = insert(:endpoint)
+    assert %Query{id: ^id} = Endpoints.get_endpoint_query(id)
+  end
+
   test "get_by/1" do
     endpoint = insert(:endpoint, name: "some endpoint")
     assert endpoint.id == Endpoints.get_by(name: "some endpoint").id
@@ -48,6 +53,11 @@ defmodule Logflare.EndpointsTest do
     # does not allow updating of query with unknown sources
     assert {:error, %Ecto.Changeset{}} =
              Endpoints.update_query(endpoint, %{query: "select b from unknown"})
+  end
+
+  test "parse_query_string/1" do
+    assert {:ok, %{parameters: ["testing"]}} =
+             Endpoints.parse_query_string("select @testing as date")
   end
 
   test "sandboxed endpoints" do
@@ -95,6 +105,19 @@ defmodule Logflare.EndpointsTest do
       insert(:source, user: user, name: "c")
       endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+    end
+
+    test "run_query_string/3" do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      query_string = "select current_datetime() as testing"
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query_string(user, query_string)
     end
 
     test "run_cached_query/1" do

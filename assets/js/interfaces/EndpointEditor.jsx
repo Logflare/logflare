@@ -1,29 +1,41 @@
-import {useState} from "react"
+import {useEffect, useState} from "react"
 import Form from "react-bootstrap/Form"
 import Button from "react-bootstrap/Button"
-import JsonResults from "./endpoints/JsonResults.jsx"
+import QueryTester from "./endpoints/QueryTester.jsx"
+import Alert from "react-bootstrap/Alert"
 
 const EndpointEditor = ({
   pushEvent,
-  endpoint = {},
+  endpoint,
   defaultValues = {},
-  queryResult = null,
+  queryResultRows,
+  declaredParams,
+  parseErrorMessage,
 }) => {
   const [queryParams, setQueryParams] = useState({
-    name: endpoint.name || defaultValues.name || "",
-    query: endpoint.query || "",
+    name: endpoint?.name || defaultValues?.name || "",
+    query: endpoint?.query || "",
   })
+  const [testParams, setTestParams] = useState({})
   const handleSubmit = (e) => {
     e.preventDefault()
     pushEvent("save-endpoint", {
       endpoint: queryParams,
     })
   }
-  const handleCancel = () =>
-    pushEvent("show-endpoint", {endpoint_id: endpoint.id})
+  const handleCancel = () => {
+    if (endpoint) {
+      pushEvent("show-endpoint", {endpoint_id: endpoint.id})
+    } else {
+      pushEvent("list-endpoints", {})
+    }
+  }
 
   const handleRunQuery = () => {
-    pushEvent("run-query", {query: queryParams.query})
+    pushEvent("run-query", {
+      query_string: queryParams.query,
+      query_params: testParams,
+    })
   }
 
   const handleChange = async (e) => {
@@ -31,11 +43,26 @@ const EndpointEditor = ({
     const value = e.target.value
     setQueryParams((prev) => ({...prev, [name]: value}))
   }
-  
+
+  const handleQuickRun = (e) => {
+    if (e.ctrlKey && e.key == "Enter") {
+      handleRunQuery(testParams)
+    }
+  }
+  useEffect(() => {
+    if (pushEvent) pushEvent("parse-query", {query_string: queryParams.query})
+  }, [queryParams.query])
+
   return (
-    <section>
+    <section className="tw-h-full" onKeyDown={handleQuickRun}>
       <h3>
-        Editing <code>{endpoint.name}</code>
+        {endpoint ? (
+          <>
+            Editing <code>{endpoint?.name}</code>
+          </>
+        ) : (
+          <>New Endpoint</>
+        )}
       </h3>
 
       <section className="tw-flex tw-flex-row tw-gap-4 tw-mt-4">
@@ -59,27 +86,29 @@ const EndpointEditor = ({
               onChange={handleChange}
             />
           </Form.Group>
+
+          {parseErrorMessage && (
+            <Alert variant="warning" className="mb-4">
+              {parseErrorMessage}
+            </Alert>
+          )}
           <Button variant="light" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button variant="secondary" onClick={handleRunQuery}>
-            Run Query
-          </Button>
           <Button variant="primary" type="submit">
-            Submit
+            Save
           </Button>
         </Form>
-        <div className="tw-w-2/5">
-          <h5>Query Results</h5>
 
-          {queryResult && <JsonResults className="mt-4" data={queryResult} />}
-          {!queryResult && (
-            <div>
-              <p>No results yet.</p>
-              <p>Run the query to get test results.</p>
-            </div>
-          )}
-        </div>
+        <QueryTester
+          className=""
+          onRunQuery={handleRunQuery}
+          declaredParams={declaredParams}
+          onParametersChange={setTestParams}
+          queryResultRows={queryResultRows}
+          parameters={testParams}
+          showQuickRunPrompt
+        />
       </section>
     </section>
   )

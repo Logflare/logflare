@@ -21,6 +21,12 @@ defmodule Logflare.Endpoints do
     |> Repo.all()
   end
 
+  @doc """
+  Retrieves an endpoint `Query`
+  """
+  @spec get_endpoint_query(integer()) :: Query.t() | nil
+  def get_endpoint_query(id), do: Repo.get(Query, id)
+
   @spec get_query_by_token(binary()) :: Query.t() | nil
   def get_query_by_token(token) when is_binary(token) do
     get_by(token: token)
@@ -82,7 +88,25 @@ defmodule Logflare.Endpoints do
     Repo.delete(query)
   end
 
-  @spec run_query(Query.t(), params :: map()) :: {:ok, [map()]} | {:error, String.t()}
+  @doc """
+  Parses a query string (but does not run it)
+
+  ### Example
+    iex> parse_query_string("select @testing from date")
+    {:ok, %{parameters: ["testing"]}}
+  """
+  @spec parse_query_string(String.t()) :: {:ok, %{parameters: [String.t()]}} | {:error, any()}
+  def parse_query_string(query_string) do
+    with {:ok, declared_params} <- Logflare.SqlV2.parameters(query_string) do
+      {:ok, %{parameters: declared_params}}
+    end
+  end
+
+  @doc """
+  Runs a an endpoint query
+  """
+  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
+  @spec run_query(Query.t(), params :: map()) :: run_query_return()
   def run_query(
         %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query,
         params \\ %{}
@@ -102,9 +126,31 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
+  Runs a query string
+
+  ### Example
+    iex> run_query_string(%User{...}, "select current_time() where @value > 4", params: %{"value" => "123"})
+    {:ok, %{rows:  [...]} }
+  """
+  @typep run_query_string_opts :: [sandboxable: boolean(), params: map()]
+  @spec run_query_string(User.t(), String.t(), run_query_string_opts()) :: run_query_return()
+  def run_query_string(user, query_string, opts \\ %{}) do
+    opts = Enum.into(opts, %{sandboxable: false, params: %{}})
+
+    query = %Query{
+      query: query_string,
+      sandboxable: opts.sandboxable,
+      user: user,
+      user_id: user.id
+    }
+
+    run_query(query, opts.params)
+  end
+
+  @doc """
   Runs a cached query.
   """
-  @spec run_cached_query(Query.t(), map()) :: {:ok, [map()]} | {:error, String.t()}
+  @spec run_cached_query(Query.t(), map()) :: run_query_return()
   def run_cached_query(query, params \\ %{}) do
     Resolver.resolve(query, params)
     |> Cache.query()
