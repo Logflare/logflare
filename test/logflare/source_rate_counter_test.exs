@@ -20,7 +20,7 @@ defmodule Logflare.Source.RateCounterServerTest do
   describe "RateCounterServer GenServer" do
     @tag :failing
     test "handle_info(:put_rate, state)/2", %{sources: [s1 | _]} do
-      Sources.Counters.incriment_ets_count(s1.token, 10)
+      Sources.Counters.increment_ets_count(s1.token, 10)
       s1_id = s1.token
       assert {:noreply, ^s1_id} = RCS.handle_info(:put_rate, s1.token)
 
@@ -48,7 +48,7 @@ defmodule Logflare.Source.RateCounterServerTest do
     @tag :failing
     test "get_* functions", %{sources: [s1 | _]} do
       source_id = s1.token
-      Sources.Counters.incriment_ets_count(source_id, 5)
+      Sources.Counters.increment_ets_count(source_id, 5)
       _ = RCS.handle_info(:put_rate, source_id)
       assert RCS.get_rate(source_id) == 5
       assert RCS.get_avg_rate(source_id) == 5

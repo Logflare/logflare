@@ -43,8 +43,8 @@ defmodule Logflare.Logs do
     BufferCounter.push(le)
 
     # all sources genservers
-    Sources.Counters.incriment(source.token)
-    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+    Sources.Counters.increment(source.token)
+    SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
 
     :ok
   end

@@ -14,10 +14,10 @@ defmodule LogflareWeb.LogControllerTest do
 
   setup do
     Logflare.Sources.Counters
-    |> stub(:incriment, fn v -> v end)
+    |> stub(:increment, fn v -> v end)
 
     Logflare.SystemMetrics.AllLogsLogged
-    |> stub(:incriment, fn v -> v end)
+    |> stub(:increment, fn v -> v end)
 
     # mock goth behaviour
     Goth

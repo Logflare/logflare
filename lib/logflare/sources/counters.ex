@@ -27,20 +27,20 @@ defmodule Logflare.Sources.Counters do
     {:ok, table}
   end
 
-  @spec incriment(atom) :: success_tuple
-  def incriment(table) do
+  @spec increment(atom) :: success_tuple
+  def increment(table) do
     :ets.update_counter(@ets_table_name, table, {2, 1}, {table, 0, 0, 0})
     {:ok, table}
   end
 
-  @spec incriment_ets_count(atom, non_neg_integer) :: success_tuple
-  def incriment_ets_count(table, count) do
+  @spec increment_ets_count(atom, non_neg_integer) :: success_tuple
+  def increment_ets_count(table, count) do
     :ets.update_counter(@ets_table_name, table, {2, count}, {table, 0, 0, 0})
     {:ok, table}
   end
 
-  @spec incriment_bq_count(atom, non_neg_integer) :: success_tuple
-  def incriment_bq_count(table, count) do
+  @spec increment_bq_count(atom, non_neg_integer) :: success_tuple
+  def increment_bq_count(table, count) do
     :ets.update_counter(@ets_table_name, table, {4, count}, {table, 0, 0, 0})
     {:ok, table}
   end

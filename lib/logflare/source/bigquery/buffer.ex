@@ -55,7 +55,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   end
 
   @doc """
-  Incriments the count of `pop`s of the buffer.
+  increments the count of `pop`s of the buffer.
   """
 
   @spec pop(atom(), integer()) :: :ok
