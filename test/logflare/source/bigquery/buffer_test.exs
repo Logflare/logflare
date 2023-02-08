@@ -1,15 +1,15 @@
 defmodule Logflare.Source.BigQuery.BufferTest do
   @moduledoc false
-  alias Logflare.Source.BigQuery.BufferCounter
+  alias Logflare.Source.BigQuery
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Logs
+  alias Logflare.LogEvent
 
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase
 
-  doctest BufferCounter
+  doctest(BigQuery.BufferCounter)
 
   setup do
     Goth
@@ -30,13 +30,40 @@ defmodule Logflare.Source.BigQuery.BufferTest do
     [source: source]
   end
 
-  test "increment buffer counter", %{source: source} do
+  test "push a log event", %{source: source} do
+    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+
+    BigQuery.BufferCounter.push(le)
+
+    assert 1 = BigQuery.BufferCounter.get_count(source)
+  end
+
+  test "ack a log event", %{source: source} do
+    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+
+    BigQuery.BufferCounter.push(le)
+
+    BigQuery.BufferCounter.ack(source.token, :"some-uuid")
+
+    assert 0 = BigQuery.BufferCounter.get_count(source)
+  end
+
+  test "push a batch of log events", %{source: source} do
+    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+
     batch = [
-      %{"event_message" => "any", "metadata" => "some_value"}
+      %Broadway.Message{
+        data: le,
+        acknowledger: {BigQuery.BufferProducer, source.token, nil}
+      },
+      %Broadway.Message{
+        data: le,
+        acknowledger: {BigQuery.BufferProducer, source.token, nil}
+      }
     ]
 
-    Logs.ingest_logs(batch, source)
+    BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
 
-    assert 1 = BufferCounter.get_count(source)
+    assert 2 = BigQuery.BufferCounter.get_count(source)
   end
 end
