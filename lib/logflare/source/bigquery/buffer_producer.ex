@@ -45,10 +45,11 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   end
 
   defp handle_receive_messages(
-         %{source_id: source_id, receive_timer: nil, demand: demand} = state
+         %{source_id: _source_id, receive_timer: nil, demand: demand} = state
        )
        when demand > 0 do
-    BufferCounter.pop(source_id, demand)
+    # would normall pop log events from a buffer here
+
     {:noreply, [], %{state | demand: 0}}
   end
 

@@ -18,7 +18,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       __MODULE__,
       %{
         source_id: source_id,
-        popped: 0,
         pushed: 0,
         acknowledged: 0,
         len: 0
@@ -68,15 +67,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     Broadway.push_messages(name, messages)
 
     :ok
-  end
-
-  @doc """
-  increments the count of `pop`s of the buffer.
-  """
-
-  @spec pop(atom(), integer()) :: :ok
-  def pop(source_id, count) do
-    GenServer.cast(name(source_id), {:pop, count})
   end
 
   @doc """
@@ -130,11 +120,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     pushed = state.pushed + by
     len = state.len + by
     {:noreply, %{state | len: len, pushed: pushed}}
-  end
-
-  def handle_cast({:pop, by}, state) do
-    popped = state.popped + by
-    {:noreply, %{state | popped: popped}}
   end
 
   def handle_cast({:ack, by}, state) do
