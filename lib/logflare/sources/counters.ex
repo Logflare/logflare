@@ -45,8 +45,8 @@ defmodule Logflare.Sources.Counters do
     {:ok, table}
   end
 
-  @spec decriment(atom) :: success_tuple
-  def decriment(table) when is_atom(table) do
+  @spec decrement(atom) :: success_tuple
+  def decrement(table) when is_atom(table) do
     :ets.update_counter(@ets_table_name, table, {3, 1}, {table, 0, 0, 0})
     {:ok, table}
   end
@@ -79,7 +79,7 @@ defmodule Logflare.Sources.Counters do
     end
   end
 
-  # Deprecated: should be the count of things in the RecentLogsServer ets table but never could get things incrimenting / decrimenting correctly.
+  # Deprecated: should be the count of things in the RecentLogsServer ets table but never could get things inrementing / decrementing correctly.
   @spec log_count(Source.t() | atom) :: non_neg_integer
   def log_count(%Source{token: token}) do
     log_count(token)

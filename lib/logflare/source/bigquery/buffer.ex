@@ -64,7 +64,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   end
 
   @doc """
-  Decriments the actual buffer count. If we've got a successfull `ack` from Broadway it means
+  Decrements the actual buffer count. If we've got a successfull `ack` from Broadway it means
   we don't have the log event anymore.
   """
 
