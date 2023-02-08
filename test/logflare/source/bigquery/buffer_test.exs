@@ -1,6 +1,6 @@
 defmodule Logflare.Source.BigQuery.BufferTest do
   @moduledoc false
-  alias Logflare.Source.BigQuery.Buffer
+  alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
@@ -9,7 +9,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
   use Logflare.DataCase, async: false
 
-  doctest Buffer
+  doctest BufferCounter
 
   setup do
     Goth
@@ -37,6 +37,6 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     Logs.ingest_logs(batch, source)
 
-    assert 1 = Buffer.get_count(source)
+    assert 1 = BufferCounter.get_count(source)
   end
 end

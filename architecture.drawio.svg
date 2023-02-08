@@ -592,13 +592,13 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 188px; height: 1px; padding-top: 1020px; margin-left: 571px;">
                         <div data-drawio-colors="color: rgb(0, 0, 0); " style="box-sizing: border-box; font-size: 0px; text-align: center;">
                             <div style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: none; white-space: normal; overflow-wrap: normal;">
-                                Source.BigQuery.Buffer
+                                Source.BigQuery.BufferCounter
                             </div>
                         </div>
                     </div>
                 </foreignObject>
                 <text x="665" y="1024" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="12px" text-anchor="middle">
-                    Source.BigQuery.Buffer
+                    Source.BigQuery.BufferCounter
                 </text>
             </switch>
         </g>
@@ -721,13 +721,13 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 1px; height: 1px; padding-top: 1090px; margin-left: 637px;">
                         <div data-drawio-colors="color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); " style="box-sizing: border-box; font-size: 0px; text-align: center;">
                             <div style="display: inline-block; font-size: 11px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: none; background-color: rgb(255, 255, 255); white-space: nowrap;">
-                                Buffer.pop_many
+                                BufferCounter.pop_many
                             </div>
                         </div>
                     </div>
                 </foreignObject>
                 <text x="637" y="1094" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="11px" text-anchor="middle">
-                    Buffer.pop_many
+                    BufferCounter.pop_many
                 </text>
             </switch>
         </g>
@@ -757,7 +757,7 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 1px; height: 1px; padding-top: 1100px; margin-left: 760px;">
                         <div data-drawio-colors="color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); " style="box-sizing: border-box; font-size: 0px; text-align: center;">
                             <div style="display: inline-block; font-size: 11px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: none; font-weight: bold; background-color: rgb(255, 255, 255); white-space: nowrap;">
-                                Buffer.ack,
+                                BufferCounter.ack,
                                 <br/>
                                 requeue unsuccessful
                                 <br/>
@@ -767,7 +767,7 @@
                     </div>
                 </foreignObject>
                 <text x="760" y="1104" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="11px" text-anchor="middle" font-weight="bold">
-                    Buffer.ack,...
+                    BufferCounter.ack,...
                 </text>
             </switch>
         </g>

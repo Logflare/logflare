@@ -1,4 +1,4 @@
-defmodule Logflare.Source.BigQuery.Buffer do
+defmodule Logflare.Source.BigQuery.BufferCounter do
   @moduledoc """
   Maintains a count of log events inside the Source.BigQuery.Pipeline Broadway pipeline.
   """
@@ -87,7 +87,7 @@ defmodule Logflare.Source.BigQuery.Buffer do
 
   ## Examples
 
-      iex> Logflare.Source.BigQuery.Buffer.name(:"36a9d6a3-f569-4f0b-b7a8-8289b4270e11")
+      iex> Logflare.Source.BigQuery.BufferCounter.name(:"36a9d6a3-f569-4f0b-b7a8-8289b4270e11")
       :"36a9d6a3-f569-4f0b-b7a8-8289b4270e11-buffer"
 
   """

@@ -4,7 +4,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   require Logger
 
-  alias Logflare.Source.BigQuery.Buffer
+  alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.LogEvent, as: LE
 
   @impl true
@@ -34,11 +34,11 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   @spec ack(atom(), [%Broadway.Message{}], [%Broadway.Message{}]) :: :ok
   def ack(source_id, successful, unsuccessful) when is_atom(source_id) do
     Enum.each(successful, fn %{data: %LE{}} = message ->
-      Buffer.ack(source_id, message.data.id)
+      BufferCounter.ack(source_id, message.data.id)
     end)
 
     Enum.each(unsuccessful, fn %{data: %LE{}} = message ->
-      Buffer.ack(source_id, message.data.id)
+      BufferCounter.ack(source_id, message.data.id)
     end)
 
     :ok
