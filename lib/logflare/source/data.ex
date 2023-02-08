@@ -87,7 +87,7 @@ defmodule Logflare.Source.Data do
         fallback
 
       _ ->
-        Buffer.get_count(source_id)
+        BufferCounter.get_count(source_id)
     end
   end
 

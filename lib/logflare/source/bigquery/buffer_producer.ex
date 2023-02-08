@@ -48,7 +48,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
          %{source_id: source_id, receive_timer: nil, demand: demand} = state
        )
        when demand > 0 do
-    Buffer.pop(source_id, demand)
+    BufferCounter.pop(source_id, demand)
     {:noreply, [], %{state | demand: 0}}
   end
 
