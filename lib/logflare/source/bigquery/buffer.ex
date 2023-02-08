@@ -34,7 +34,23 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   end
 
   @doc """
-  Pushes log events into the Broadway pipeline while incrementing the count.
+  Takes a `batch` of `Broadway.Message`s, pushes them into a Broadway pipeline and increments the `BufferCounter` count.
+  """
+
+  @spec push_batch(%{source: %Source{}, batch: [%Broadway.Message{}, ...], count: integer()}) ::
+          :ok
+  def push_batch(%{source: %Source{token: source_uuid}, batch: batch, count: count})
+      when is_list(batch) do
+    name = Source.BigQuery.Pipeline.name(source_uuid)
+
+    GenServer.cast(name(source_uuid), {:push, count})
+    Broadway.push_messages(name, batch)
+
+    :ok
+  end
+
+  @doc """
+  Wraps `LogEvent`s in a `Broadway.Message`, pushes log events into the Broadway pipeline and increments the `BufferCounter` count.
   """
 
   @spec push(LE.t()) :: :ok
