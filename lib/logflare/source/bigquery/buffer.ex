@@ -77,10 +77,16 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   Gets the current count of the buffer.
   """
 
-  @spec get_count(atom | Source.t()) :: integer
-  def get_count(%Source{token: source_id}), do: get_count(source_id)
+  @spec get_count(atom() | integer() | Source.t()) :: integer
+  def get_count(%Source{id: source_id, token: source_uuid}, opts \\ [key: :token])
+      when is_atom(source_uuid) and is_integer(source_id) do
+    key = Keyword.get(opts, :key)
 
-  def get_count(source_id), do: GenServer.call(name(source_id), :get_count)
+    case key do
+      :token -> GenServer.call(name(source_uuid), :get_count)
+      :id -> GenServer.call(name(source_id), :get_count)
+    end
+  end
 
   @doc """
   Name of our buffer.
@@ -90,10 +96,17 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       iex> Logflare.Source.BigQuery.BufferCounter.name(:"36a9d6a3-f569-4f0b-b7a8-8289b4270e11")
       :"36a9d6a3-f569-4f0b-b7a8-8289b4270e11-buffer"
 
+      iex> Logflare.Source.BigQuery.BufferCounter.name(2345)
+      :"2345-buffer"
+
   """
 
-  @spec name(atom()) :: atom
-  def name(source_id) when is_atom(source_id) do
+  @spec name(atom() | integer()) :: atom
+  def name(source_uuid) when is_atom(source_uuid) do
+    String.to_atom("#{source_uuid}" <> "-buffer")
+  end
+
+  def name(source_id) when is_integer(source_id) do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 

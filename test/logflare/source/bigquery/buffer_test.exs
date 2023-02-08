@@ -30,7 +30,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
     [source: source]
   end
 
-  test "increment buffer", %{source: source} do
+  test "increment buffer counter", %{source: source} do
     batch = [
       %{"event_message" => "any", "metadata" => "some_value"}
     ]
