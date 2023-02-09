@@ -9,6 +9,7 @@
     :plug,
     :typed_struct,
     :nimble_parsec,
-    :typed_ecto_schema
+    :typed_ecto_schema,
+    :open_api_spex
   ]
 ]
