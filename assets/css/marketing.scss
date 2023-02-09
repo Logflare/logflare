@@ -1,4 +1,6 @@
-.banner{
+@import "mixins";
+
+.banner {
   padding: 10px;
   display: flex;
   flex-direction: row;
@@ -65,7 +67,7 @@
   margin-left: 0.75em;
   color: #f58220;
 }
-@media screen and (max-width: 992px) {
+@include tablet(max) {
   #pwa {
     flex-direction: column;
   }

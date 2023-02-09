@@ -1,4 +1,6 @@
-@media(max-width: 1135px) {
+@import "mixins";
+
+@include desktop {
   .fordesktopmap {
     display: none !important;
   }
@@ -46,7 +48,7 @@
     }
   }
 }
-@media(max-width: 992px) {
+@include tablet(max) {
   .contactcon .gidepr h1 {
     height: 87px;
     color: #FFFFFF;
@@ -62,15 +64,6 @@
 
   .contactcon .gidepr h2 {
     font-size: 21px;
-  }
-
-  .concontenet .maxwidth .btns {
-    margin-bottom: 0 !important;
-    height: auto !important;
-  }
-
-  .concontenet .leftside {
-    padding-top: 0;
   }
 
   .readmorecon .heropr .sign-up {
@@ -255,52 +248,6 @@
     padding-right: 6px;
   }
 
-  .hero .forifream {
-    width: 140px;
-    height: 247px;
-    position: absolute;
-    z-index: 1;
-    right: 62px;
-    top: 44px;
-    overflow: hidden;
-    transform: rotate3d(5, -5, 5, 5deg);
-  }
-
-  .hero .ifreamfordiagram {
-    width: 140px;
-    height: 270px;
-  }
-
-  .hero .phonimg {
-    position: absolute;
-    right: -20px;
-    top: -104px;
-    max-width: 300px;
-  }
-
-  .hero .imghero {
-    margin-top: 30px;
-  }
-
-  .ctav2 .btns p iframe {
-    display: inline-block;
-    margin-bottom: 0;
-    height: 30px;
-    width: 130px;
-    margin-top: -1px;
-  }
-
-  .hero .btns .signup,
-  .hero .btns p img {
-    width: 150px;
-  }
-
-  .hero .btns .signup {
-    display: block;
-    width: 150px;
-    padding: 6px 15px;
-  }
-
   .navbar-expand-lg {
     min-height: auto;
   }
@@ -311,10 +258,6 @@
 
   .hero {
     text-align: left !important;
-  }
-
-  .hero .h3div {
-    margin-top: 0;
   }
 
   .hero h3 {
@@ -342,10 +285,6 @@
 
   .hero {
     min-height: auto;
-  }
-
-  .catchimgtop {
-    display: none;
   }
 
   .footer .rightside {
@@ -379,71 +318,12 @@
     margin-left: 0;
   }
 
-  .btns {
-    text-align: left;
-  }
-
-  .hero .btns .signup {
-    text-align: center;
-  }
-
-  .hero .btns {
-    display: block;
-  }
-
-  .hero .btns {
-    height: 90px;
-  }
-
-  .hero .btns p {
-    float: left;
-  }
-
-  .hero .btns .signup {
-    text-align: center;
-    margin-top: -3px;
-  }
-
   .catch p,
   .hero .paragraph p,
   .scale p {
     margin-top: 30px;
   }
 
-  .ctav2 h1,
-  .ctav2 p {
-    text-align: left;
-  }
-
-  .btns .signup {
-    text-align: center;
-  }
-
-  .btns {
-    display: block;
-  }
-
-  .btns {
-    height: 90px;
-  }
-
-  .btns p {
-    float: left;
-  }
-
-  .ctav2 .btns .signup {
-    display: block;
-    margin-top: -2px;
-    padding: 7px 20px;
-    width: 130px;
-    padding: 2px 15px;
-    margin-top: -2px;
-    color: #fff;
-  }
-
-  .ctav2 .btns p img {
-    width: 130px;
-  }
 
   .hero h2 {
     margin-bottom: 40px;
@@ -451,16 +331,6 @@
 
   .scale .bgoftable {
     display: none;
-  }
-
-  .hero .btns p img {
-    margin-left: 5px;
-    margin-right: 5px;
-  }
-
-  .hero .h3div {
-    margin-top: 50px;
-    margin-bottom: 40px;
   }
 }
 
@@ -592,10 +462,7 @@
   }
 }
 
-.forifream2 {
-  display: none;
-}
-@media(max-width: 772px) {
+@include tablet(max) {
   .heropricing .heropr h1 {
     color: #FFFFFF;
     // font-family: 'Rubik', sans-serif;
@@ -677,40 +544,6 @@
     text-align: center;
   }
 
-  .hero .forifream {
-    display: none;
-  }
-
-  .ifreamfordiagram2 {
-    display: block;
-    width: 100%;
-    height: 1500px;
-    max-width: 350px;
-    position: relative;
-    margin: auto;
-  }
-
-  .forifream2 {
-    height: 600px;
-    overflow: hidden;
-    display: block;
-  }
-
-  .hero .phonimg {
-    display: none;
-  }
-
-  .hero .btns p iframe {
-    display: inline-block;
-    margin-bottom: -14px;
-    height: 38px;
-    width: 160px;
-    margin-top: -3px;
-  }
-
-  .hero .btns {
-    margin-bottom: 10px;
-  }
 
   .forphone {
     display: block;
@@ -718,9 +551,6 @@
     margin-top: 40px;
   }
 
-  .hero .imghero {
-    display: none;
-  }
 
   .container-fluid {
     padding-left: 0;
@@ -733,10 +563,6 @@
 
   .footer {
     margin-top: 40px;
-  }
-
-  .ctav2 .btns p img {
-    width: 120px;
   }
 
   .hero h3 {
@@ -822,14 +648,6 @@
     font-size: 21px;
   }
 
-  .hero .btns {
-    height: 80px;
-  }
-
-  .hero .h3div {
-    margin-bottom: 50px;
-  }
-
   .hero h3 {
     line-height: 39px;
     font-size: 26px;
@@ -851,10 +669,6 @@
     line-height: 26px;
     margin-bottom: 40px;
     margin-top: 40px;
-  }
-
-  .catchimgbtn {
-    display: none;
   }
 
   .scale .tablescale .col1 h2,
@@ -886,10 +700,6 @@
 
   .scale .spanp {
     padding: 0;
-  }
-
-  .stepsimgtop {
-    display: none;
   }
 
   .scale {
@@ -939,21 +749,7 @@
     }
   }
 }
-@media(max-width: 500px) {
-  .ctav2 {
-    .fordesk {
-      display: none;
-    }
-
-    .forphone3 {
-      display: block;
-
-      img {
-        width: 100%;
-      }
-    }
-  }
-
+@include mobile(max) {
   .formobilepricingplan .maxwidthplan .tablecol .btn a {
     min-width: 100%;
     max-width: 171px;
@@ -975,32 +771,7 @@
     margin-top: -70px;
   }
 }
-@media(max-width: 480px) {
-  // .scale .tablescale .col1 h2, .scale .tablescale .col2 h2, .scale .tablescale .col3 h2{
-  // 	font-size: 12px;
-  // 	padding-bottom: 10px;
-  // 	padding-left: 10px;
-  // 	padding-right: 10px;
-  // }
-  // .scale .tablescale .col1 h3, .scale .tablescale .col2 h3, .scale .tablescale .col3 h3{
-  // 	font-size: 12px;
-  // 	padding-left: 10px;
-  // 	padding-right: 10px;
-  // 	margin-bottom: 7px;
-  // }
-  .hero .btns p iframe {
-    display: inline-block;
-    /* margin-bottom: -4px; */
-    height: 38px;
-    width: 160px;
-    margin-top: -3px;
-  }
-
-  .hero .btns {
-    margin-bottom: 10px;
-  }
-}
-@media(max-width: 430px) {
+@include mobile(max) {
   .scale .tablescale .col1 h3 i,
   .scale .tablescale .col2 h3 i,
   .scale .tablescale .col3 h3 i {
@@ -1013,54 +784,8 @@
     height: 29px;
   }
 
-  .ctav2 .btns .signup {
-    width: 130px;
-    padding: 2px 14px;
-  }
-
   .forphone .firstline p {
     font-size: 12px;
-  }
-
-  .hero .btns p {
-    width: 130px;
-    padding: 0;
-
-    img {
-      width: 130px;
-    }
-  }
-
-  .hero .btns .signup {
-    display: block;
-    width: 130px;
-    padding: 3px 15px;
-  }
-
-  .forphone2 .btns .signup {
-    // font-family: 'Rubik', sans-serif;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    font-size: 13px;
-    text-transform: uppercase;
-    background: #474747;
-    border-radius: 3px;
-    padding: 7px 15px;
-    margin-top: 7.5px;
-    margin-left: 5px;
-    color: #fff;
-    width: 150px;
-    width: 130px;
-    display: block;
-    float: left;
-  }
-
-  .hero .btns p iframe {
-    display: inline-block;
-    margin-bottom: -4px;
-    height: 31px;
-    width: 130px;
-    margin-top: -2px;
   }
 
   .heropricing .tablescalerowpricing .tablescale .col1 h2,
@@ -1085,7 +810,7 @@
     font-size: 12px;
   }
 }
-@media(max-width: 400px) {
+@include mobile(max) {
   .contactcon .mapdown .maxboxd .leftside {
     top: 235px;
   }
@@ -1094,7 +819,7 @@
     height: auto;
   }
 }
-@media(max-width: 385px) {
+@include mobile(max) {
   .scale .tablescale .col1 h2,
   .scale .tablescale .col2 h2,
   .scale .tablescale .col3 h2 {
@@ -1105,7 +830,7 @@
     height: 190px;
   }
 }
-@media(max-width: 357px) {
+@include mobile(max) {
   .scale .tablescale .col1 h2,
   .scale .tablescale .col2 h2,
   .scale .tablescale .col3 h2 {
