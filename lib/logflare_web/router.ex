@@ -57,6 +57,7 @@ defmodule LogflareWeb.Router do
 
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
   pipeline :require_ingest_api_auth do
@@ -351,6 +352,7 @@ defmodule LogflareWeb.Router do
   # Account management API.
   scope "/api", LogflareWeb do
     pipe_through([:api, :require_mgmt_api_auth])
+
     get("/account", UserController, :api_show)
 
     resources("/sources", Api.SourceController,
@@ -373,6 +375,17 @@ defmodule LogflareWeb.Router do
     pipe_through [:api, LogflareWeb.Plugs.EnsureSuperUserAuthentication]
 
     resources "/accounts", Api.AccountController, param: "token", only: [:create]
+  end
+
+  scope "/api" do
+    pipe_through(:api)
+
+    get("/openapi", OpenApiSpex.Plug.RenderSpec, [])
+  end
+
+  scope "/swaggerui" do
+    pipe_through(:browser)
+    get("/", OpenApiSpex.Plug.SwaggerUI, path: "/api/openapi")
   end
 
   # Old log ingest endpoint. Deprecate.
