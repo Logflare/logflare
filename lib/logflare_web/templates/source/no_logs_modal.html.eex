@@ -35,8 +35,8 @@
         <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
 
         <%= link to: "https://www.cloudflare.com/apps/logflare/install" do %>
-            <button class="btn btn-primary" title="Install the Cloudflare integration">
-            <img src="<%= Routes.static_path(@conn, "/images/logos/cloudflare-white.svg")%>" class="cloudflare" />
+            <button class="btn btn-primary" title="Install the Cloudflare integration" style="height: 40px;">
+            <img src="<%= Routes.static_path(@socket, "/images/logos/cloudflare-white.svg")%>" style="width: 120px;height: 30px;" />
             </button>
         <% end %>
 
