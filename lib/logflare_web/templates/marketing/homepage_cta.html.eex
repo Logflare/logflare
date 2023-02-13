@@ -1,0 +1,34 @@
+<div class="cta">
+    <p>Use one of our integrations</p>
+    <div class="btns">
+    <%= link to: "https://www.cloudflare.com/apps/logflare/install" do %>
+        <button class="btn btn-primary" title="Install the Cloudflare integration">
+        <img src="<%= Routes.static_path(@conn, "/images/logos/cloudflare-white.svg")%>" class="cloudflare" />
+        </button>
+    <% end %>
+
+    <%= link to: "https://vercel.co/integrations/logflare" do %>
+        <button class="btn btn-primary" title="Install the Vercel integration">
+        <img src="<%= Routes.static_path(@conn, "/images/logos/vercel-white.svg")%>" class="vercel" />
+        </button>
+    <% end  %>
+
+        <%= link to: Routes.auth_path(@conn, :login), role: "button"  do %>
+        <button class="btn btn-secondary">Sign Up</button>
+        <% end %>
+    </div>
+
+    <div class="cta-links">
+        <p>Install the
+        <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare/install", target: "_blank" %></p>
+        <p>Setup our
+        <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %>
+        </p>
+        <p>Check out the
+        <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
+        <p>Javascript? Use our
+        <%= link "Pino transport", to: "https://github.com/Logflare/pino-logflare", target: "_blank" %></p>
+    </div>
+
+    </div>
+</div>

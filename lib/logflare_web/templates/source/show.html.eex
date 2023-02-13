@@ -69,7 +69,7 @@
 
 </div>
 <!-- Modal -->
-<%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source) %>
+<%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source, conn: @conn) %>
 <div
 id="__phx-assigns__"
 data-source-token="<%= @source.token %>"
