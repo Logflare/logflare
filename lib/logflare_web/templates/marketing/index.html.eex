@@ -16,7 +16,7 @@
       <div class="col-md-12">
         <img src="images/marketing/homepage/heroimg11.png" class="imghero" alt="">
         <img src="images/marketing/homepage/iphoneDesktop.png" class="phonimg" alt="">
-        <div class="forifream">
+        <div class="ds-embed-iframe">
           <iframe class="ifreamfordiagram"
             src="https://datastudio.google.com/embed/reporting/1JuRjywr8r-IeNOg30on8t21Lns4hSJnx/page/FLer"
             frameborder="0" style="border:0" allowfullscreen loading="lazy"></iframe>
