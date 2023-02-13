@@ -280,7 +280,7 @@ defmodule Logflare.Source.RateCounterServer do
     log_count = Data.get_log_count(source_id, bigquery_project_id)
     Counters.delete(source_id)
     Counters.create(source_id)
-    Counters.incriment_ets_count(source_id, 0)
-    Counters.incriment_bq_count(source_id, log_count)
+    Counters.increment_ets_count(source_id, 0)
+    Counters.increment_bq_count(source_id, log_count)
   end
 end

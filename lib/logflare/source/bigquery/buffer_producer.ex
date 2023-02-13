@@ -4,7 +4,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   require Logger
 
-  alias Logflare.Source.BigQuery.Buffer
+  alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.LogEvent, as: LE
 
   @impl true
@@ -12,8 +12,6 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     {:producer,
      %{
        demand: 0,
-       receive_timer: nil,
-       receive_interval: default_receive_interval(),
        source_id: source_id
      }}
   end
@@ -33,62 +31,35 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
     {:noreply, [], state}
   end
 
-  def handle_receive_messages(%{receive_timer: nil, demand: demand} = state) when demand > 0 do
-    messages = receive_messages_from_buffer(state, demand)
-    new_demand = demand - length(messages)
-
-    receive_timer =
-      case {messages, new_demand} do
-        {[], _} -> schedule_receive_messages(state.receive_interval)
-        {_, 0} -> nil
-        _ -> schedule_receive_messages(0)
-      end
-
-    {:noreply, messages, %{state | demand: new_demand, receive_timer: receive_timer}}
-  end
-
-  def handle_receive_messages(state) do
-    {:noreply, [], state}
-  end
-
-  def ack(table, successful, unsuccessful) do
+  @spec ack(atom(), [%Broadway.Message{}], [%Broadway.Message{}]) :: :ok
+  def ack(source_id, successful, unsuccessful) when is_atom(source_id) do
     Enum.each(successful, fn %{data: %LE{}} = message ->
-      Buffer.ack(table, message.data.id)
+      BufferCounter.ack(source_id, message.data.id)
     end)
 
     Enum.each(unsuccessful, fn %{data: %LE{}} = message ->
-      {:ok, le} = Buffer.ack(table, message.data.id)
-      Buffer.push(le)
+      BufferCounter.ack(source_id, message.data.id)
     end)
+
+    :ok
+  end
+
+  defp handle_receive_messages(
+         %{source_id: _source_id, receive_timer: nil, demand: demand} = state
+       )
+       when demand > 0 do
+    # would normall pop log events from a buffer here
+
+    {:noreply, [], %{state | demand: 0}}
+  end
+
+  defp handle_receive_messages(state) do
+    {:noreply, [], state}
   end
 
   @impl true
   def terminate(reason, _state) do
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}")
     reason
-  end
-
-  defp receive_messages_from_buffer(%{source_id: source_id}, total_demand) do
-    events =
-      source_id
-      |> Buffer.pop_many(total_demand)
-
-    for e <- events do
-      %Broadway.Message{
-        data: e,
-        acknowledger: {__MODULE__, source_id, "no idea what this does"}
-      }
-    end
-  end
-
-  defp schedule_receive_messages(interval) do
-    Process.send_after(self(), :receive_messages, interval)
-  end
-
-  defp default_receive_interval() do
-    case Application.get_env(:logflare, :env) do
-      :test -> 50
-      _ -> 5_000
-    end
   end
 end

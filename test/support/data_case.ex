@@ -35,10 +35,10 @@ defmodule Logflare.DataCase do
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Logflare.Repo, shared: not tags[:async])
+    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, {:shared, self()})
       # for global Mimic mocks
       Mimic.set_mimic_global(tags)
     end
