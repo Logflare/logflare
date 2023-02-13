@@ -84,15 +84,15 @@
       overflow-y: hidden;
     }
 
-    .forifream {
+    .ds-embed-iframe {
       display: none;
       @include tablet() {
         display: block;
         width: 269px;
-        height: 472px;
+        height: 500px;
         position: absolute;
         z-index: 1;
-        right: 86px;
+        right: 56px;
         top: 200px;
         overflow: hidden;
         -webkit-transform: rotate3d(5, -5, 5, 5deg);
@@ -166,14 +166,11 @@
       @include tablet {
         display: block;
         position: absolute;
-        right: -70px;
-        top: 10px;
+        right: -94px;
+        top: -37px;
         -webkit-transform: rotate3d(5, -5, 5, 5deg);
         transform: rotate3d(5, -5, 5, 5deg);
-        max-width: 300px;
-      }
-      @include desktop {
-        max-width: 450px;
+        max-width: 565px;
       }
     }
     .h3div {
