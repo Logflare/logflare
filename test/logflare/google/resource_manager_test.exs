@@ -113,7 +113,7 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       },
       %Binding{
         members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
-        role: "roles/cloudbuild.builds.editor"
+        role: "roles/cloudbuild.builds.create"
       },
       %Binding{
         members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
