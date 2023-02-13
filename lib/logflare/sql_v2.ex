@@ -336,20 +336,21 @@ defmodule Logflare.SqlV2 do
   # only replace the top level query
   defp replace_sandboxed_query(
          {
-           "body" = k,
-           %{"Select" => _}
+           "Query" = k,
+           %{"with" => %{"cte_tables" => _}} = sandbox_query
          },
          %{sandboxed_query: sandboxed_query, sandboxed_query_ast: ast} = data
        )
        when is_binary(sandboxed_query) do
-    statements = do_transform(ast, %{data | sandboxed_query: nil})
+    sandboxed_statements = do_transform(ast, %{data | sandboxed_query: nil})
 
-    replacement_body =
-      statements
+    replacement_query =
+      sandboxed_statements
       |> List.first()
-      |> get_in(["Query", "body"])
+      |> get_in(["Query"])
+      |> Map.drop(["with"])
 
-    {k, replacement_body}
+    {k, Map.merge(sandbox_query, replacement_query)}
   end
 
   defp replace_sandboxed_query({k, v}, data) when is_list(v) or is_map(v) do

@@ -80,6 +80,12 @@ defmodule Logflare.SqlTest do
             {"with src as (select a from my_table), src2 as (select a from src where a > 5) select c from src",
              "select a, b, c from src2"},
             "with src as (select a from #{table}), src2 as (select a from src where a > 5) select a, b, c from src2"
+          },
+          # sandboxed queries with order by
+          {
+            {"with src as (select a from my_table) select c from src",
+             "select c from src order by c asc"},
+            "with src as (select a from #{table}) select c from src order by c asc"
           }
         ] do
       assert {:ok, v2} = SqlV2.transform(input, user)
