@@ -84,11 +84,10 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v1'
         with:
-          version: '413.0.0'
-          install_components: 'beta'
+          version: '418.0.0'
           project_id: 'logflare-staging'
       - name: 'Trigger Cloud Build'
-        run: 'gcloud beta builds triggers run logflare-app-staging-trigger --branch=staging --format "value(name)"'
+        run: 'gcloud builds triggers run logflare-app-staging-trigger --branch=staging --format "value(name)"'
   trigger_cloud_build_production:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
@@ -110,8 +109,7 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v1'
         with:
-          version: '413.0.0'
-          install_components: 'beta'
+          version: '418.0.0'
           project_id: 'logflare-232118'
       - name: 'Trigger Cloud Build'
-        run: 'gcloud beta builds triggers run logflare-master --branch=master --format "value(name)"'
+        run: 'gcloud builds triggers run logflare-master --branch=master --format "value(name)"'
