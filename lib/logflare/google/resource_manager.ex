@@ -112,11 +112,6 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         condition: nil,
         members: ["serviceAccount:#{env_cloud_build_sa()}"],
-        role: "roles/cloudbuild.builds.create"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_cloud_build_sa()}"],
         role: "roles/cloudbuild.builds.builder"
       },
       %Model.Binding{
@@ -144,6 +139,11 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         members: ["serviceAccount:#{env_api_sa()}"],
         role: "roles/editor"
+      },
+      %Model.Binding{
+        condition: nil,
+        members: ["serviceAccount:#{env_api_sa()}"],
+        role: "roles/cloudbuild.builds.editor"
       }
     ]
   end
