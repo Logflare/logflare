@@ -23,7 +23,7 @@ defmodule Logflare.Source.BillingWriterTest do
 
     # increase log count
     start_supervised(Logflare.Sources.Counters)
-    Logflare.Sources.Counters.incriment(source.token)
+    Logflare.Sources.Counters.increment(source.token)
 
     # Stripe mocks
     Stripe.SubscriptionItem.Usage

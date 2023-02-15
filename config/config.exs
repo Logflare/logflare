@@ -86,4 +86,6 @@ config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
 
+config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
+
 import_config "#{Mix.env()}.exs"

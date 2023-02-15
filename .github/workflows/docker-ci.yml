@@ -1,72 +1,16 @@
-name: Elixir CI
+name: Docker CI
 
 on:
   workflow_dispatch:
   push:
     branches: [staging, master]
-  pull_request:
-    branches: [staging]
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:13
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: logflare_test
-        # Set health checks to wait until postgres has started
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      MIX_ENV: test
-      SHELL: /bin/bash
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: "1.12.3" # Define the elixir version [required]
-          otp-version: "24" # Define the OTP version [required]
-      - name: Set up Rust
-        uses: ATiltedTree/setup-rust@v1
-        with:
-          rust-version: stable
-      - name: Restore dependencies cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            deps
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
-      - name: Install dependencies
-        run: mix deps.get
-      - name: Run compilation warnings check
-        run: mix test.compile
-      - name: Run unit tests with code coverage check
-        run: mix test.coverage
-    # - name: Test - security
-    #   run: mix test.security
-      - name: Code quality - formatting
-        run: mix test.format
-    # - name: Code quality - typings
-    #   run: mix test.typings
-      - name: Code quality - linting
-        run: mix lint --only warnings
   publish_latest:
     name: Publish latest tagged image
-    needs: build
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
@@ -94,7 +38,6 @@ jobs:
           cache-to: type=gha,mode=max
   publish_version:
     name: Publish versioned tagged image
-    needs: build
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/master'}}
@@ -141,11 +84,10 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v1'
         with:
-          version: '413.0.0'
-          install_components: 'beta'
+          version: '418.0.0'
           project_id: 'logflare-staging'
       - name: 'Trigger Cloud Build'
-        run: 'gcloud beta builds triggers run logflare-app-staging-trigger --branch=staging --format "value(name)"'
+        run: 'gcloud builds triggers run logflare-app-staging-trigger --branch=staging --format "value(name)"'
   trigger_cloud_build_production:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
@@ -167,8 +109,7 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v1'
         with:
-          version: '413.0.0'
-          install_components: 'beta'
+          version: '418.0.0'
           project_id: 'logflare-232118'
       - name: 'Trigger Cloud Build'
-        run: 'gcloud beta builds triggers run logflare-master --branch=master --format "value(name)"'
+        run: 'gcloud builds triggers run logflare-master --branch=master --format "value(name)"'

@@ -1,51 +1,30 @@
-<div class="container-fluid hero no-subhead">
-  <div class="container">
-    <div class="row cta">
-      <div class="col-lg-10 order-lg-1">
-        <div class="row">
-          <div class="col-lg-7">
-            <h1>Never get surprised by a logging bill again</h1>
-            <!--
-						<h1>Affordable log management & event analytics</h1>
-						-->
-            <h2>Collect for years, query in seconds</h2>
-          </div>
-          <div class="col-lg-5">
-            <p>For Cloudflare, Vercel & Elixir apps</p>
-            <div class="btns">
-              <p>
-                <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no"
-                  frameBorder="0" loading="lazy">
-                </iframe>
-              </p>
-              <p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
-            </div>
-            <p>Install the
-              <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></p>
-            <p>Setup our
-              <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %>
-            </p>
-            <p>Check out the
-              <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
-            <p>Javascript? Use our
-              <%= link "Pino transport", to: "https://github.com/Logflare/pino-logflare", target: "_blank" %></p>
-          </div>
-        </div>
+<div class="homepage">
+
+  <%# hero %>
+  <div class="container-fluid hero">
+    <div class="row hero-banner">
+      <div class="col-lg-6 col-12 taglines">
+        <h1>Never get surprised by a logging bill again</h1>
+        <h2>Collect for years, query in seconds</h2>
       </div>
-      <div class="col-lg-1">
+      <div class="col-lg-6 ">
+        <%= render("homepage_cta.html", assigns) %>
       </div>
-    </div>
+
+    <%# example source %>
     <div class="row">
       <div class="col-md-12">
-        <img src="images/marketing/homepage/heroimg11.png" class=" imghero" alt="">
+        <img src="images/marketing/homepage/heroimg11.png" class="imghero" alt="">
         <img src="images/marketing/homepage/iphoneDesktop.png" class="phonimg" alt="">
-        <div class="forifream">
+        <div class="ds-embed-iframe">
           <iframe class="ifreamfordiagram"
             src="https://datastudio.google.com/embed/reporting/1JuRjywr8r-IeNOg30on8t21Lns4hSJnx/page/FLer"
             frameborder="0" style="border:0" allowfullscreen loading="lazy"></iframe>
         </div>
       </div>
     </div>
+
+    <%# metrics %>
     <div class="row">
       <div class="col-lg-10 order-lg-1">
         <div class="row">
@@ -58,6 +37,8 @@
       </div>
       <div class="col-lg-1"></div>
     </div>
+
+    <%# dashboard example %>
     <div class="row paragraph">
       <div class="col-lg-10 order-lg-1">
         <div class="row">
@@ -74,234 +55,232 @@
               events and maintain pipelines to power our dashboards. Check out our status dashboard which is a good
               example of what you can do with
               the Elixir library.</p>
-            <center>
-              <%= link "Backend status (Elixir) »", to: "https://datastudio.google.com/s/gIAFsUMbDS4", class: "btn btn-secondary", role: "button", target: "_blank" %>
-              <%= link "CDN status (Cloudflare) »", to: "https://datastudio.google.com/s/pKMWyqEWiTA", class: "btn btn-secondary", role: "button", target: "_blank" %>
-            </center>
+          <div class="dashboard-cta">
+            <%= link "Backend status (Elixir) »", to: "https://datastudio.google.com/s/gIAFsUMbDS4", class: "btn btn-secondary", role: "button", target: "_blank" %>
+            <%= link "CDN status (Cloudflare) »", to: "https://datastudio.google.com/s/pKMWyqEWiTA", class: "btn btn-secondary", role: "button", target: "_blank" %>
+          </div>
           </div>
         </div>
       </div>
-      <div class="col-lg-1">
-      </div>
     </div>
   </div>
-</div>
 
-<div class="container">
-  <div class="my-5">
-    <h2 class="text-white text-center mb-4">Ingest</h2>
-    <div class="d-flex justify-content-around align-items-center flex-wrap">
-      <div class="m-4"><img src="images/logos/cloudflare-white.svg" height="50" alt="Cloudflare"></div>
-      <div class="m-4"><img src="images/logos/vercel-white.svg" height="50" alt="Vercel"></div>
-      <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/elixir-dark.png" height="50" alt="Elixir">
-      </div>
-      <div class="m-4"><img src="images/logos/javascript-logo.png" height="50" alt="Javascript"></div>
-      <div class="m-4"><img src="images/logos/heroku-logotype-horizontal-white.svg" height="50" alt="Heroku"></div>
-      <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/gigalixir_logo.svg" height="50"
-          alt="Gigalixir"></div>
-      <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/fluent-bit-logo.png" height="50"
-          alt="FluentBit"></div>
-      <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
-    </div>
-  </div>
-  <div class="my-5">
-    <h2 class="text-white text-center mb-4">Stream, Query & Dashboard</h2>
-    <div class="d-flex justify-content-around">
-      <div class="text-white m-4" style="font-size: 1.25em;"><%= render LogflareWeb.SharedView, "logo.html", assigns %>
-      </div>
-      <div class="m-4"><img src="images/logos/google-bigquery-logo.svg" height="50" alt="Google BigQuery"></div>
-      <div class="m-4"><img src="images/logos/google-data-studio.svg" height="50" alt="Google BigQuery"></div>
-    </div>
-  </div>
-  <div class="my-5">
-    <h2 class="text-white text-center mb-4">Alert</h2>
-    <div class="d-flex justify-content-around flex-wrap">
-      <div class="m-4"><img src="images/logos/slack-new-logo.svg" height="50" alt="Slack"></div>
-      <div class="m-4"><img src="images/logos/discord-logo-1.svg" height="50" alt="Discord"></div>
-      <div class="m-4"><img src="images/logos/sms-solid.svg" height="50" alt="SMS"></div>
-      <div class="m-4"><img src="images/logos/gmail-icon.svg" height="50" alt="Email"></div>
-      <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
-    </div>
-  </div>
-</div>
-</div>
 
-<div class="container-fluid pt-5">
-<div class="container-fluid">
-  <div class="container d-flex flex-wrap">
-      <div class="d-flex" style="background-image: url(images/marketing/homepage/bgoftable.png)">
-        <div class="m-1">
-          <h5>Compare</h5>
-          <p>Plan</p>
-          <hr>
-          <p>Exceptions</p>
-          <p>Transactions (events)</p>
-          <p>Data retention</p>
-          <p>Dashboards</p>
-          <p>Simple Query Lang</p>
-          <p>Team members</p>
-          <hr>
-          <p><strong>Price</strong></p>
+
+  <%# ingest logos %>
+  <div class="container ingest-logs">
+    <div class="my-5">
+      <h2 class="text-white text-center mb-4">Ingest</h2>
+      <div class="d-flex justify-content-around align-items-center flex-wrap">
+        <div class="m-4"><img src="images/logos/cloudflare-white.svg" height="50" alt="Cloudflare"></div>
+        <div class="m-4"><img src="images/logos/vercel-white.svg" height="50" alt="Vercel"></div>
+        <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/elixir-dark.png" height="50" alt="Elixir">
         </div>
-        <div class="m-1">
-          <h5>Logflare</h5>
-          <p>Metered</p>
-          <hr>
-          <p>Unlimited<sup>1</sup></p>
-          <p>Unlimited<sup>1</sup></p>
-          <p>30 days or BYOB</p>
-          <p>Google Data Studio</p>
-          <p>Logflare QL</p>
-          <p>4 additional</p>
-          <hr>
-          <p>
-            <strong>$15 </strong><small>per million</small>
+        <div class="m-4"><img src="images/logos/javascript-logo.png" height="50" alt="Javascript"></div>
+        <div class="m-4"><img src="images/logos/heroku-logotype-horizontal-white.svg" height="50" alt="Heroku"></div>
+        <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/gigalixir_logo.svg" height="50"
+            alt="Gigalixir"></div>
+        <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/fluent-bit-logo.png" height="50"
+            alt="FluentBit"></div>
+        <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
+      </div>
+    </div>
+    <div class="my-5">
+      <h2 class="text-white text-center mb-4">Stream, Query & Dashboard</h2>
+      <div class="d-flex justify-content-around">
+        <div class="text-white m-4" style="font-size: 1.25em;"><%= render LogflareWeb.SharedView, "logo.html", assigns %>
+        </div>
+        <div class="m-4"><img src="images/logos/google-bigquery-logo.svg" height="50" alt="Google BigQuery"></div>
+        <div class="m-4"><img src="images/logos/google-data-studio.svg" height="50" alt="Google BigQuery"></div>
+      </div>
+    </div>
+    <div class="my-5">
+      <h2 class="text-white text-center mb-4">Alert</h2>
+      <div class="d-flex justify-content-around flex-wrap">
+        <div class="m-4"><img src="images/logos/slack-new-logo.svg" height="50" alt="Slack"></div>
+        <div class="m-4"><img src="images/logos/discord-logo-1.svg" height="50" alt="Discord"></div>
+        <div class="m-4"><img src="images/logos/sms-solid.svg" height="50" alt="SMS"></div>
+        <div class="m-4"><img src="images/logos/gmail-icon.svg" height="50" alt="Email"></div>
+        <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
+      </div>
+    </div>
+  </div>
+
+  <%# pricing comparison %>
+  <div class="container-fluid pricing">
+    <div class="container d-flex flex-wrap">
+        <div class="d-flex" style="background-image: url(images/marketing/homepage/bgoftable.png)">
+          <div class="m-1">
+            <h5>Compare</h5>
+            <p>Plan</p>
+            <hr>
+            <p>Exceptions</p>
+            <p>Transactions (events)</p>
+            <p>Data retention</p>
+            <p>Dashboards</p>
+            <p>Simple Query Lang</p>
+            <p>Team members</p>
+            <hr>
+            <p><strong>Price</strong></p>
+          </div>
+          <div class="m-1">
+            <h5>Logflare</h5>
+            <p>Metered</p>
+            <hr>
+            <p>Unlimited<sup>1</sup></p>
+            <p>Unlimited<sup>1</sup></p>
+            <p>30 days or BYOB</p>
+            <p>Google Data Studio</p>
+            <p>Logflare QL</p>
+            <p>4 additional</p>
+            <hr>
+            <p>
+              <strong>$15 </strong><small>per million</small>
+              <br />
+              <strong>$10 </strong><small>per million for BYOB</small>
+            </p>
+          </div>
+          <div class="m-1">
+            <h5>Sentry</h5>
+            <p>Team</p>
+            <hr>
+            <p>50,000</p>
+            <p>10,000,000</p>
+            <p>90 days</p>
+            <p>None</p>
+            <p>None</p>
+            <p>Unlimited</p>
+            <hr>
+            <p><strong>$520 </strong><small>per month</small>
             <br />
-            <strong>$10 </strong><small>per million for BYOB</small>
-          </p>
-        </div>
-        <div class="m-1">
-          <h5>Sentry</h5>
-          <p>Team</p>
-          <hr>
-          <p>50,000</p>
-          <p>10,000,000</p>
-          <p>90 days</p>
-          <p>None</p>
-          <p>None</p>
-          <p>Unlimited</p>
-          <hr>
-          <p><strong>$520 </strong><small>per month</small>
-          <br />
-            <strong>≈$52</strong> <small>per million</small>
-          </p>
+              <strong>≈$52</strong> <small>per million</small>
+            </p>
 
-        </div>
+          </div>
 
-    </div>
-    <div class="col-lg m-4">
-      <h3 class="text-white mb-4">Typically Expensive</h3>
-      <p>Costs escalates quickly with typical log management solutions. To setup long term analytics on
-        events you need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored
-        data warehouse.</p>
-      <p>With Logflare and BigQuery there is no setup for long term analytics. You can ingest immediately, query in
-        seconds and store data for years.</p>
-      <%= link "See plans & pricing", to: Routes.marketing_path(@conn, :pricing), class: "btn btn-pink mt-4", role: "button" %>
-      <p class="mt-3"><small><sup>1</sup> Unlimited is subject to our fair use policy.</small></p>
+      </div>
+      <div class="col-lg m-4">
+        <h3 class="text-white mb-4">Typically Expensive</h3>
+        <p>Costs escalates quickly with typical log management solutions. To setup long term analytics on
+          events you need to archive to a CSV and setup another data pipeline to ingest events into a custom tailored
+          data warehouse.</p>
+        <p>With Logflare and BigQuery there is no setup for long term analytics. You can ingest immediately, query in
+          seconds and store data for years.</p>
+        <%= link "See plans & pricing", to: Routes.marketing_path(@conn, :pricing), class: "btn btn-pink mt-4", role: "button" %>
+        <p class="mt-3"><small><sup>1</sup> Unlimited is subject to our fair use policy.</small></p>
+      </div>
     </div>
   </div>
-  </div>
-</div>
-</div>
 
-<div class="catchimgtop"><img src="images/marketing/homepage/bgtop.png" alt=""></div>
-<div class="container-fluid catch">
-  <div class="container-fluid">
+  <%# catch %>
+  <div class="container-fluid catch">
+    <div class="container-fluid">
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-10 order-lg-1">
+            <div class="row">
+              <div class="col-md-6">
+                <h4>Structured logging without limits (no added latency)</h4>
+              </div>
+              <div class="col-md-6">
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6 order-md-6">
+                <img src="images/marketing/homepage/catchImgDesktop-4x.png" class="img-responsive" alt="">
+              </div>
+              <div class="col-md-6 pull-md-6">
+                <p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App
+                  worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare
+                  asynchronously after passing
+                  your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead.
+                  We
+                  batch logs and use
+                  <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %>
+                  to keep payload size and
+                  serialization load low.</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%# steps %>
+  <div class="container-fluid steps">
     <div class="container">
       <div class="row">
-        <div class="col-lg-10 order-lg-1">
-          <div class="row">
-            <div class="col-md-6">
-              <h4>Structured logging without limits (no added latency)</h4>
+        <div class="col-md-4">
+          <div class="stepscont">
+            <div class="circle">
+              <i class="fas fa-history"></i>
             </div>
-            <div class="col-md-6">
+            <h2>Unlimited event history</h2>
+            <p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those
+              there
+              for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="stepscont">
+            <div class="circle">
+              <i class="fab fa-google"></i>
             </div>
+            <h2>BigQuery & DataStudio</h2>
+            <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make
+              dashboards with Google Data Studio using your new BigQuery table.</p>
+            <%= link "Show me more »", to: Routes.marketing_path(@conn, :overview), class: "btn btn-secondary", role: "button" %>
           </div>
-          <div class="row">
-            <div class="col-md-6 order-md-6">
-              <img src="images/marketing/homepage/catchImgDesktop-4x.png" class="img-responsive" alt="">
+        </div>
+        <div class="col-md-4">
+          <div class="stepscont">
+            <div class="circle">
+              <i class="fas fa-code-branch"></i>
             </div>
-            <div class="col-md-6 pull-md-6">
-              <p>Use our Cloudflare app and catch every request to your web service no matter what. Our Cloudflare App
-                worker doesn't modify your request, it simply pulls the request/response data and logs to Logflare
-                asynchronously after passing
-                your request through. </br> </br> Want to monitor your Elixir app? Our library adds minimal overhead.
-                We
-                batch logs and use
-                <%= link "BERT binary serialization", to: "http://bert-rpc.org/", target: "_blank" %>
-                to keep payload size and
-                serialization load low.</p>
+            <h2>Log routing</h2>
+            <p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="stepscont">
+            <div class="circle">
+              <i class="far fa-bell"></i>
             </div>
+            <h2>Email & SMS alerts</h2>
+            <p>Never miss an important event with realtime alerts via email or text message. Add multiple email
+              addresses
+              to alert everyone.</p>
           </div>
         </div>
-        <div class="col-lg-1"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="container-fluid steps">
-  <div class="container">
-    <div class="row">
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-history"></i>
+        <div class="col-md-4">
+          <div class="stepscont">
+            <div class="circle">
+              <i class="fas fa-users"></i>
+            </div>
+            <h2>Sharing via public URL</h2>
+            <p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a
+              login.
+              Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
           </div>
-          <h2>Unlimited event history</h2>
-          <p>Logflare is backed by Google BigQuery. We immediately insert your logs into BigQuery and store those
-            there
-            for 7 days. Need more than 7 days? Bring your own BigQuery table and keep as much as you like!</p>
         </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fab fa-google"></i>
+        <div class="col-md-4">
+          <div class="stepscont">
+            <div class="circle">
+              <i class="fas fa-code"></i>
+            </div>
+            <h2>Add metadata and query it</h2>
+            <p>Include metadata with your event for logging structured data. Query this structured data with standard
+              SQL
+              in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
           </div>
-          <h2>BigQuery & DataStudio</h2>
-          <p>When you sign in with your Google account, we give you access to your underlying BigQuery table. Make
-            dashboards with Google Data Studio using your new BigQuery table.</p>
-          <%= link "Show me more »", to: Routes.marketing_path(@conn, :overview), class: "btn btn-secondary", role: "button" %>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-code-branch"></i>
-          </div>
-          <h2>Log routing</h2>
-          <p>Route logs to difference sources with Regex. Consolidate important events with log routing.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="far fa-bell"></i>
-          </div>
-          <h2>Email & SMS alerts</h2>
-          <p>Never miss an important event with realtime alerts via email or text message. Add multiple email
-            addresses
-            to alert everyone.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-users"></i>
-          </div>
-          <h2>Sharing via public URL</h2>
-          <p>Easily generate a public URL for a source. Useful for sharing realtime events with anyone without a
-            login.
-            Here we've routed all Googlebot traffic to this source and created a public path for it.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="stepscont">
-          <div class="circle">
-            <i class="fas fa-code"></i>
-          </div>
-          <h2>Add metadata and query it</h2>
-          <p>Include metadata with your event for logging structured data. Query this structured data with standard
-            SQL
-            in BigQuery. Schema is managed for you, adapting to new metadata on the fly.</p>
         </div>
       </div>
     </div>
   </div>
-</div>
-<div class="features container-fluid">
-  <div class="container">
+  <%# features %>
+  <div class="container features">
     <div class="row">
       <div class="col-md-4">
         <h3>Other features</h3>
@@ -342,180 +321,139 @@
       </div>
     </div>
   </div>
-</div>
-<div class="container-fluid ctav2">
-  <div class="container">
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-lang="en">
-          <p lang="en" dir="ltr">Big shoutout and 🙏 to <a
-              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> for his super cool <a
-              href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a
-              href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug
-            in
-            our latest app release that my team couldn&#39;t figure out. They introduced a small change that created
-            recursive (infinite) API
-            calls</p>
-          &mdash; Hamlet 🇩🇴 (@hamletbatista) <a
-            href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a>
-        </blockquote>
+
+  <div class="container-fluid twitter-reviews">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet" data-lang="en">
+            <p lang="en" dir="ltr">Big shoutout and 🙏 to <a
+                href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> for his super cool <a
+                href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> workers app <a
+                href="https://t.co/Nr0VzXskc9">https://t.co/Nr0VzXskc9</a> I was able to quickly identify a painful bug
+              in
+              our latest app release that my team couldn&#39;t figure out. They introduced a small change that created
+              recursive (infinite) API
+              calls</p>
+            &mdash; Hamlet 🇩🇴 (@hamletbatista) <a
+              href="https://twitter.com/hamletbatista/status/1121766630244143104?ref_src=twsrc%5Etfw">April 26, 2019</a>
+          </blockquote>
+        </div>
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en">
+            <p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses
+              CloudFlare
+              to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a
+                href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>
+            &mdash; 🍌 John 🍌 (@JohnMu) <a
+              href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a>
+          </blockquote>
+        </div>
       </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en">
-          <p lang="en" dir="ltr">If you can&#39;t get enough log files, someone posted a cool hack that uses
-            CloudFlare
-            to collect Googlebot requests. <a href="https://t.co/LlAr5ir6M3">https://t.co/LlAr5ir6M3</a> <a
-              href="https://t.co/q2pWdzKv0i">pic.twitter.com/q2pWdzKv0i</a></p>
-          &mdash; 🍌 John 🍌 (@JohnMu) <a
-            href="https://twitter.com/JohnMu/status/1092712358319927297?ref_src=twsrc%5Etfw">February 5, 2019</a>
-        </blockquote>
+      <div class="row">
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet" data-lang="en">
+            <p lang="en" dir="ltr">Been using the great (and free!) <a
+                href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a
+                href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your
+              requests
+              and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a>
+              Apps! Great job!</p>
+            &mdash; Matteo Manfredi (@itsmatteomanf) <a
+              href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a>
+          </blockquote>
+        </div>
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet" data-lang="en">
+            <p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack
+              of
+              logs on the free tier is annoying when debugging a specific problem. Enter Logflare! <a
+                href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>
+            &mdash; Bryan Ross (@bryanrossUK) <a
+              href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18,
+              2019</a>
+          </blockquote>
+        </div>
       </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-lang="en">
-          <p lang="en" dir="ltr">Been using the great (and free!) <a
-              href="https://t.co/rtmu5GdIcu">https://t.co/rtmu5GdIcu</a> service by <a
-              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a>! Great insight into all your
-            requests
-            and logs, easy to install with <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a>
-            Apps! Great job!</p>
-          &mdash; Matteo Manfredi (@itsmatteomanf) <a
-            href="https://twitter.com/itsmatteomanf/status/1126871444632346628?ref_src=twsrc%5Etfw">May 10, 2019</a>
-        </blockquote>
+      <div class="row">
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet">
+            <p lang="en" dir="ltr">Logflare by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> is
+              the missing link that every <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a>
+              customer should be using! Logflare has provided us with unprecedented visibility in monitoring and
+              debugging
+              our service. Check it out: <a href="https://t.co/jweR1rFFwq">https://t.co/jweR1rFFwq</a></p>
+            &mdash; TicketSource (@TicketSource) <a
+              href="https://twitter.com/TicketSource/status/1174614196803330049?ref_src=twsrc%5Etfw">September 19,
+              2019</a>
+          </blockquote>
+        </div>
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet">
+            <p lang="en" dir="ltr">Hoorah. I finally managed to get Logflare going with Cloudflare and Data Studio to
+              pipe
+              server log files to Logflare. 🎉🎉🎉🎉🎉</p>
+            &mdash; Dawn Anderson (@dawnieando) <a
+              href="https://twitter.com/dawnieando/status/1167551594549977089?ref_src=twsrc%5Etfw">August 30, 2019</a>
+          </blockquote>
+        </div>
       </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet" data-lang="en">
-          <p lang="en" dir="ltr">You&#39;re using CloudFlare, right? If not, you should! However, sometimes the lack
-            of
-            logs on the free tier is annoying when debugging a specific problem. Enter Logflare! <a
-              href="https://t.co/lbODVip69c">https://t.co/lbODVip69c</a></p>
-          &mdash; Bryan Ross (@bryanrossUK) <a
-            href="https://twitter.com/bryanrossUK/status/1097417950800330752?ref_src=twsrc%5Etfw">February 18,
-            2019</a>
-        </blockquote>
+      <div class="row">
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet">
+            <p lang="en" dir="ltr">I&#39;m so much in love with <a
+                href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a> right now. What a
+              fantastic way to do log analysis for SEO. What a tremendous tool and <a
+                href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> you must be proud of this. Thanks
+              for
+              helping me set up and remind me to add a billing info 😄</p>&mdash; Suganthan Mohanadasan (@Suganthanmn)
+            <a href="https://twitter.com/Suganthanmn/status/1262421056360505345?ref_src=twsrc%5Etfw">May 18, 2020</a>
+          </blockquote>
+        </div>
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet">
+            <p lang="en" dir="ltr">I&#39;ve got a setup with a custom <a
+                href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Worker + <a
+                href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@Logflare_logs</a> + Google Data Studio and
+              it works damn well if you want customised non-tracking website metrics.</p>&mdash; Ingvar Stepanyan
+            (@RReverser) <a href="https://twitter.com/RReverser/status/1261313259317202947?ref_src=twsrc%5Etfw">May 15,
+              2020</a>
+          </blockquote>
+        </div>
       </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr">Logflare by <a href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> is
-            the missing link that every <a href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a>
-            customer should be using! Logflare has provided us with unprecedented visibility in monitoring and
-            debugging
-            our service. Check it out: <a href="https://t.co/jweR1rFFwq">https://t.co/jweR1rFFwq</a></p>
-          &mdash; TicketSource (@TicketSource) <a
-            href="https://twitter.com/TicketSource/status/1174614196803330049?ref_src=twsrc%5Etfw">September 19,
-            2019</a>
-        </blockquote>
-      </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr">Hoorah. I finally managed to get Logflare going with Cloudflare and Data Studio to
-            pipe
-            server log files to Logflare. 🎉🎉🎉🎉🎉</p>
-          &mdash; Dawn Anderson (@dawnieando) <a
-            href="https://twitter.com/dawnieando/status/1167551594549977089?ref_src=twsrc%5Etfw">August 30, 2019</a>
-        </blockquote>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr">I&#39;m so much in love with <a
-              href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a> right now. What a
-            fantastic way to do log analysis for SEO. What a tremendous tool and <a
-              href="https://twitter.com/chasers?ref_src=twsrc%5Etfw">@chasers</a> you must be proud of this. Thanks
-            for
-            helping me set up and remind me to add a billing info 😄</p>&mdash; Suganthan Mohanadasan (@Suganthanmn)
-          <a href="https://twitter.com/Suganthanmn/status/1262421056360505345?ref_src=twsrc%5Etfw">May 18, 2020</a>
-        </blockquote>
-      </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr">I&#39;ve got a setup with a custom <a
-              href="https://twitter.com/Cloudflare?ref_src=twsrc%5Etfw">@Cloudflare</a> Worker + <a
-              href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@Logflare_logs</a> + Google Data Studio and
-            it works damn well if you want customised non-tracking website metrics.</p>&mdash; Ingvar Stepanyan
-          (@RReverser) <a href="https://twitter.com/RReverser/status/1261313259317202947?ref_src=twsrc%5Etfw">May 15,
-            2020</a>
-        </blockquote>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr"><a href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a> is
-            fantastic! It really does a great job of providing a complete (and very flexible) analytics solution that
-            CloudFlare itself is missing!</p>&mdash; CheapShark (@CheapSharkDeals) <a
-            href="https://twitter.com/CheapSharkDeals/status/1292998684515471373?ref_src=twsrc%5Etfw">August 11,
-            2020</a>
-        </blockquote>
-      </div>
-      <div class="col-md-6">
-        <blockquote class="twitter-tweet">
-          <p lang="en" dir="ltr">Really impressed with <a
-              href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a>. We&#39;ve been on the
-            front page of <a
-              href="https://twitter.com/hashtag/hackernews?src=hash&amp;ref_src=twsrc%5Etfw">#hackernews</a> for 24
-            hours anticipating the HN hug of death. Looks like we made it through OK and Logflare has been ingesting
-            everything without breaking a sweat <a href="https://t.co/RWKHIgmWh6">https://t.co/RWKHIgmWh6</a> <a
-              href="https://t.co/dQ2xqFTdco">pic.twitter.com/dQ2xqFTdco</a></p>&mdash; Supabase (@supabase_io) <a
-            href="https://twitter.com/supabase_io/status/1265922290237071361?ref_src=twsrc%5Etfw">May 28, 2020</a>
-        </blockquote>
+      <div class="row">
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet">
+            <p lang="en" dir="ltr"><a href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a> is
+              fantastic! It really does a great job of providing a complete (and very flexible) analytics solution that
+              CloudFlare itself is missing!</p>&mdash; CheapShark (@CheapSharkDeals) <a
+              href="https://twitter.com/CheapSharkDeals/status/1292998684515471373?ref_src=twsrc%5Etfw">August 11,
+              2020</a>
+          </blockquote>
+        </div>
+        <div class="col-md-6">
+          <blockquote class="twitter-tweet">
+            <p lang="en" dir="ltr">Really impressed with <a
+                href="https://twitter.com/logflare_logs?ref_src=twsrc%5Etfw">@logflare_logs</a>. We&#39;ve been on the
+              front page of <a
+                href="https://twitter.com/hashtag/hackernews?src=hash&amp;ref_src=twsrc%5Etfw">#hackernews</a> for 24
+              hours anticipating the HN hug of death. Looks like we made it through OK and Logflare has been ingesting
+              everything without breaking a sweat <a href="https://t.co/RWKHIgmWh6">https://t.co/RWKHIgmWh6</a> <a
+                href="https://t.co/dQ2xqFTdco">pic.twitter.com/dQ2xqFTdco</a></p>&mdash; Supabase (@supabase_io) <a
+              href="https://twitter.com/supabase_io/status/1265922290237071361?ref_src=twsrc%5Etfw">May 28, 2020</a>
+          </blockquote>
+        </div>
       </div>
     </div>
   </div>
-</div>
-<div class="container-fluid ctav2">
-  <div class="container">
-    <div class="row fordesk">
-      <div class="col-lg-10 order-lg-1">
-        <div class="row">
-          <div class="col-md-12">
-            <h1>Zero risk. Satisfaction guaranteed. Install now!</h1>
-            <div class="btns">
-              <p>
-                <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no"
-                  frameBorder="0" loading="lazy">
-                </iframe>
-              </p>
-              <p><%= link "Sign up", to: Routes.auth_path(@conn, :login), class: "signup", role: "button" %></p>
-            </div>
-            <p>Install the
-              <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %></p>
-            <p>Setup our
-              <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %>
-            </p>
-            <p>Check out the
-              <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
-          </div>
-        </div>
-      </div>
-      <div class="col-lg-1"></div>
-    </div>
-    <div class="row forphone3">
-      <div class="col-md-12">
-        <h1>Zero risk. Satisfaction guaranteed. Install now!</h1>
-        <div class="btns">
-          <p>
-            <iframe src="https://install.cloudflareapps.com?appId=K4MXdgCp7956" allowTransparency="true" scroll="no"
-              frameBorder="0" loading="lazy">
-            </iframe>
-          </p>
-          <p><a href="" class="signup">SIGN UP</a></p>
-        </div>
-        <p>Install the <%= link "Cloudflare app", to: "https://www.cloudflare.com/apps/logflare", target: "_blank" %>
-        </p>
-        <p>Setup our
-          <%= link "Elixir Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", target: "_blank" %>
-        </p>
-        <p>Check out the
-          <%= link "Logflare Vercel app", to: "https://vercel.co/integrations/logflare", target: "_blank" %></p>
-      </div>
-    </div>
+
+  <div class="container-fluid banner-footer">
+    <h1>Zero risk. Satisfaction guaranteed. Install now!</h1>
+    <%= render("homepage_cta.html", assigns) %>
   </div>
+  <%= render LogflareWeb.SharedView, "footer.html", assigns %>
+
+<%# end of .homepage wrapper %>
 </div>
-<%= render LogflareWeb.SharedView, "footer.html", assigns %>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 <script async defer src="https://buttons.github.io/buttons.js"></script>

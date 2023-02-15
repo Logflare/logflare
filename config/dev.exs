@@ -93,4 +93,9 @@ config :logflare, Logflare.Vercel.Client,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
+config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
+  token: "ydqr8TatrwEq/x/LMbhX1iUgl50MrdJ7cgXtzT+5s7KWG0bGt9d2DWio7dqqHtys"
+
+config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
+
 import_config "telemetry.exs"

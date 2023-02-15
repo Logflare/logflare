@@ -120,7 +120,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.4.0"},
 
       # Concurrency and pipelines
-      {:broadway, "~> 1.0.3"},
+      {:broadway, "~> 1.0.6"},
       {:flow, "~> 1.0"},
       {:nimble_options, "~>0.4.0"},
 
@@ -191,7 +191,9 @@ defmodule Logflare.Mixfile do
       {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
-      {:cainophile, "~> 0.1.0"}
+      {:cainophile, "~> 0.1.0"},
+      {:open_api_spex, "~> 3.16"}
+
       # {:honeydew, "~> 1.5.0"}
     ]
   end

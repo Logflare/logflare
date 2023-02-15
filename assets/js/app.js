@@ -1,6 +1,5 @@
 import "../css/app.scss"
 import { Socket } from "phoenix"
-import "@babel/polyfill"
 import "bootstrap"
 import ClipboardJS from "clipboard"
 import * as Dashboard from "./dashboard"

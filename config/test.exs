@@ -14,7 +14,10 @@ config :logflare, Logflare.Google,
   dataset_id_append: "_test",
   project_number: "1023172132421",
   project_id: "logflare-dev-238720",
-  service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com"
+  service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
+  compute_engine_sa: "GOOGLE_COMPUTE_ENGINE_SA",
+  api_sa: "GOOGLE_API_SA",
+  cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA"
 
 config :logflare, Logflare.Tracker, pool_size: 5, level: :error
 
@@ -25,3 +28,6 @@ config :logflare, Logflare.Repo,
   hostname: "localhost",
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
+
+config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
+  token: "UpWhFVVnxCZRuTKlg2Iw5lt/h1tCNo3P+jVpsgIsPxCboGUv2GF0f4fpAT3FQIoU"
