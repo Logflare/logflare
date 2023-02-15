@@ -5,12 +5,11 @@ defmodule LogflareWeb.Api.EndpointController do
   alias Logflare.Users
   alias Logflare.Endpoints
 
+  alias LogflareWeb.OpenApiSchemas.Accepted
+  alias LogflareWeb.OpenApiSchemas.Created
   alias LogflareWeb.OpenApiSchemas.Endpoint
   alias LogflareWeb.OpenApiSchemas.EndpointList
-  alias LogflareWeb.OpenApiSchemas.EndpointCreate
   alias LogflareWeb.OpenApiSchemas.NotFound
-  alias LogflareWeb.OpenApiSchemas.Created
-  alias LogflareWeb.OpenApiSchemas.Accepted
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -18,9 +17,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:index,
     summary: "List endpoints",
-    responses: %{
-      200 => EndpointList.response()
-    }
+    responses: %{200 => EndpointList.response()}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
@@ -47,7 +44,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:create,
     summary: "Create endpoint",
-    request_body: EndpointCreate.params(),
+    request_body: Endpoint.params(),
     responses: %{
       201 => Created.response(Endpoint),
       404 => NotFound.response()
@@ -65,7 +62,7 @@ defmodule LogflareWeb.Api.EndpointController do
   operation(:update,
     summary: "Update endpoint",
     parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
-    request_body: EndpointCreate.params(),
+    request_body: Endpoint.params(),
     responses: %{
       201 => Created.response(Endpoint),
       404 => NotFound.response()
@@ -84,7 +81,7 @@ defmodule LogflareWeb.Api.EndpointController do
   tags(["management"])
 
   operation(:delete,
-    summary: "Fetch endpoint",
+    summary: "Delete endpoint",
     parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
     responses: %{
       204 => Accepted.response(),
