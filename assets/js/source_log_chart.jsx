@@ -1,5 +1,5 @@
 import React from "react"
-import DateTime from "luxon"
+import { DateTime } from "luxon"
 import { ResponsiveBarCanvas } from "@nivo/bar"
 
 import { BarLoader } from "react-spinners"
