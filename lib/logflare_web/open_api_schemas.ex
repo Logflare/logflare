@@ -76,11 +76,63 @@ defmodule LogflareWeb.OpenApiSchemas do
     def params(), do: {"Source Params", "application/json", __MODULE__}
   end
 
-  defmodule SourceList do
+  defmodule User do
     require OpenApiSpex
 
-    OpenApiSpex.schema(%{type: :array, items: Source})
-    def response(), do: {"Source List Response", "application/json", __MODULE__}
+    OpenApiSpex.schema(%{
+      type: :object,
+      properties: %{
+        email: %Schema{type: :string},
+        provider: %Schema{type: :string},
+        api_key: %Schema{type: :string},
+        email_preferred: %Schema{type: :string},
+        name: %Schema{type: :string},
+        image: %Schema{type: :string},
+        email_me_product: %Schema{type: :boolean},
+        phone: %Schema{type: :string},
+        bigquery_project_id: %Schema{type: :string},
+        bigquery_dataset_location: %Schema{type: :string},
+        bigquery_dataset_id: %Schema{type: :string},
+        api_quota: %Schema{type: :integer},
+        company: %Schema{type: :string},
+        token: %Schema{type: :string}
+      },
+      required: [:name]
+    })
+
+    def response(), do: {"User Response", "application/json", __MODULE__}
+  end
+
+  defmodule TeamUser do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      type: :object,
+      properties: %{
+        email: %Schema{type: :string},
+        name: %Schema{type: :string}
+      }
+    })
+
+    def response(), do: {"Team Response", "application/json", __MODULE__}
+  end
+
+  defmodule Team do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      type: :object,
+      properties: %{
+        name: %Schema{type: :string},
+        token: %Schema{type: :string},
+        user: User,
+        team_users: %Schema{type: :array, items: TeamUser}
+      },
+      required: [:name]
+    })
+
+    def response(), do: {"Team Response", "application/json", __MODULE__}
+    def params(), do: {"Team Params", "application/json", __MODULE__}
   end
 
   defmodule EndpointList do
@@ -88,6 +140,20 @@ defmodule LogflareWeb.OpenApiSchemas do
 
     OpenApiSpex.schema(%{type: :array, items: Endpoint})
     def response(), do: {"Endpoint List Response", "application/json", __MODULE__}
+  end
+
+  defmodule SourceList do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{type: :array, items: Source})
+    def response(), do: {"Source List Response", "application/json", __MODULE__}
+  end
+
+  defmodule TeamList do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{type: :array, items: Team})
+    def response(), do: {"Team List Response", "application/json", __MODULE__}
   end
 
   defmodule Created do

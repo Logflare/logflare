@@ -25,8 +25,6 @@ defmodule LogflareWeb.Api.EndpointController do
     json(conn, user.endpoint_queries)
   end
 
-  tags(["management"])
-
   operation(:show,
     summary: "Fetch endpoint",
     parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
