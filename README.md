@@ -38,7 +38,7 @@ Sign up at https://logflare.app.
 1. Copy over secrets to two locations
    1. Dev secrets - `.dev.env`
    2. Google JWT key - `.gcloud.json`
-1. Start database `docker-compose up -d db`
+1. Start database and stripe mock `docker compose up -d db stripe-mock`
 1. Run `mix setup` for deps, migrations, and seed data.
 1. Run `(cd assets; yarn)` from project root, to install js dependencies
 1. Install `sqlparser` by following the steps in **Closed Source Usage** section.

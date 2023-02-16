@@ -10,6 +10,10 @@ services:
     volumes:
       - ./priv/wal.sql:/docker-entrypoint-initdb.d/wal.sql
       - pg-data:/var/lib/postgresql/data
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - "12111:12111"
   logflare:
     build:
       dockerfile: ./Dockerfile
