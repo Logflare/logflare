@@ -71,7 +71,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   test "static elements", %{conn: conn, source: source} do
     {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-    html = render(view)
+    _html = render(view)
 
     assert view
            |> element("a", "LQL")

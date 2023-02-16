@@ -4,21 +4,22 @@ defmodule Logflare.Billing.BillingCounts do
   """
   require Logger
   import Ecto.Query, warn: false
-  alias Logflare.{User, Repo, Billing.BillingCount}
 
-  @spec timeseries(Logflare.User.t(), any, any) :: any
+  alias Timex.Parse.DateTime
+  alias Logflare.Billing.BillingCount
+  alias Logflare.Repo
+  alias Logflare.User
+
+  @spec timeseries(Logflare.User.t(), DateTime.t(), DateTime.t()) :: [BillingCount.t()]
   def timeseries(%User{id: user_id}, start_date, end_date) do
     q =
-      from(c in BillingCount,
-        where: c.user_id == ^user_id,
-        where: c.inserted_at >= ^start_date and c.inserted_at <= ^end_date,
-        group_by: fragment("date(?)", c.inserted_at),
-        order_by: [asc: fragment("date(?)", c.inserted_at)],
-        select: %{
-          date: fragment("date(?)", c.inserted_at),
-          sum: sum(c.count)
-        }
-      )
+      billing_counts_for_period(user_id, start_date, end_date)
+      |> group_by([c], fragment("date(?)", c.inserted_at))
+      |> order_by([c], asc: fragment("date(?)", c.inserted_at))
+      |> select([c], %{
+        date: fragment("date(?)", c.inserted_at),
+        sum: sum(c.count)
+      })
 
     q_wrapped =
       wrap_in_generated_timeseries_subquery(
@@ -41,9 +42,23 @@ defmodule Logflare.Billing.BillingCounts do
     Enum.map(timeseries, fn [x, y, z] -> [Calendar.strftime(x, "%b %d"), y, z] end)
   end
 
+  @spec cumulative_usage(Logflare.User.t(), DateTime.t(), DateTime.t()) :: pos_integer()
+  def cumulative_usage(%User{id: user_id}, start_date, end_date) do
+    billing_counts_for_period(user_id, start_date, end_date)
+    |> select([c], coalesce(sum(c.count), 0))
+    |> Repo.one()
+  end
+
   def insert(user, source, params) do
     assoc = params |> assoc(user) |> assoc(source)
     Repo.insert(assoc)
+  end
+
+  defp billing_counts_for_period(user_id, start_date, end_date) do
+    from(c in BillingCount,
+      where: c.user_id == ^user_id,
+      where: c.inserted_at >= ^start_date and c.inserted_at <= ^end_date
+    )
   end
 
   defp assoc(params, user_or_source) do

@@ -383,4 +383,7 @@ defmodule Logflare.Billing do
       limit_source_fields_limit: 500
     }
   end
+
+  @spec cost_estimate(Plan.t(), pos_integer()) :: pos_integer()
+  def cost_estimate(%Plan{price: price}, usage), do: price * usage
 end

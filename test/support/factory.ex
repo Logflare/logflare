@@ -4,9 +4,9 @@ defmodule Logflare.Factory do
   """
   use ExMachina.Ecto, repo: Logflare.Repo
 
-  alias Logflare.TestUtils
   alias Logflare.Backends.SourceBackend
   alias Logflare.Billing.BillingAccount
+  alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.Query
@@ -15,11 +15,12 @@ defmodule Logflare.Factory do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Rule
   alias Logflare.Source
+  alias Logflare.SourceSchemas.SourceSchema
   alias Logflare.Teams.Team
   alias Logflare.TeamUsers.TeamUser
+  alias Logflare.TestUtils
   alias Logflare.User
   alias Logflare.Users.UserPreferences
-  alias Logflare.SourceSchemas.SourceSchema
 
   def user_factory do
     email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
@@ -245,5 +246,17 @@ defmodule Logflare.Factory do
         ),
       team: insert(:team)
     )
+  end
+
+  def billing_counts_factory() do
+    user = insert(:user)
+    source = build(:source, user: user)
+
+    %BillingCount{
+      count: TestUtils.random_pos_integer(),
+      node: TestUtils.random_string(8),
+      user: user,
+      source: source
+    }
   end
 end

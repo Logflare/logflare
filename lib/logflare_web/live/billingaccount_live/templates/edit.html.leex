@@ -45,6 +45,7 @@
     <%= select f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}], class: "btn btn-secondary dropdown-toggle", type: "button", id: "dropdownMenuButton"%>
   </form>
   <%= live_component @socket, LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, user: @user, days: 30 %>
+  <%= live_component @socket, LogflareWeb.BillingAccountLive.EstimateUsageComponent, id: :table, user: @user, plan: @plan%>
 </div>
 <div class="sub-form">
   <%= section_header("Pricing") %>
