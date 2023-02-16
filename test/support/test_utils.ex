@@ -315,4 +315,6 @@ defmodule Logflare.TestUtils do
       ]
     }
   end
+
+  def random_pos_integer(limit \\ 1000), do: :rand.uniform(limit)
 end

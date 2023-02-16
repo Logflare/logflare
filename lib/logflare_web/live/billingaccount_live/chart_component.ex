@@ -11,30 +11,22 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
 
   require Logger
 
-  def preload(assigns) when is_list(assigns) do
-    assigns
-  end
+  def preload(assigns) when is_list(assigns), do: assigns
 
-  def mount(socket) do
-    {:ok, socket}
-  end
+  def mount(socket), do: {:ok, socket}
 
   def update(%{user: user, days: days} = _assigns, socket) do
     days = :timer.hours(24 * days)
     end_date = DateTime.utc_now()
     start_date = DateTime.add(end_date, -days, :millisecond)
-
     Task.async(__MODULE__, :timeseries, [user, start_date, end_date])
 
-    socket = socket |> assign(loading: true)
+    socket = assign(socket, loading: true)
 
     socket =
       case connected?(socket) do
-        true ->
-          assign(socket, connecting: false)
-
-        false ->
-          assign(socket, connecting: true)
+        true -> assign(socket, connecting: false)
+        false -> assign(socket, connecting: true)
       end
 
     {:ok, socket}
@@ -74,7 +66,8 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
 
   def timeseries(user, start_date, end_date) do
     data =
-      BillingCounts.timeseries(user, start_date, end_date)
+      user
+      |> BillingCounts.timeseries(start_date, end_date)
       |> BillingCounts.timeseries_to_ext()
 
     {:ok, data}

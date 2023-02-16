@@ -225,4 +225,10 @@ defmodule Logflare.BillingTest do
       assert %Plan{name: "Legacy"} = Billing.legacy_plan()
     end
   end
+
+  describe "cost_estimate/2" do
+    test "calculates an estimate based on the price and the total usage by multiplying the values" do
+      assert Billing.cost_estimate(%Plan{price: 10}, 10) == 100
+    end
+  end
 end
