@@ -101,8 +101,14 @@ main.app {
   border-top-right-radius: 0.1rem;
 }
 
-.modal-content {
-  border: 3px solid rgba(0, 0, 0, 0.2);
+.modal-body {
+  table {
+    @extend .table;
+    @extend .table-dark;
+  }
+  h1, h2, h3, h4, h5 {
+    @extend .header-margin
+  }
 }
 
 #login {

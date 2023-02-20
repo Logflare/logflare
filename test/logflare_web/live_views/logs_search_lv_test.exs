@@ -69,6 +69,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
     assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
   end
 
+  test "static elements", %{conn: conn, source: source} do
+    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+    html = render(view)
+
+    assert view
+           |> element("a", "LQL")
+           |> render_click() =~ "Event Message Filtering"
+  end
+
   test "lql filters", %{conn: conn, source: source} do
     {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
