@@ -1,4 +1,4 @@
-defmodule Mix.Tasks.Docs do
+defmodule Logflare.MixTasks.Docs do
   @moduledoc "Copies Logflare docs to /priv, used for in-app documentation"
   @shortdoc "Copies docs to /priv"
 
