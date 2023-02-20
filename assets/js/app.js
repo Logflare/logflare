@@ -36,7 +36,6 @@ window.Comp = Components
 window.Dashboard = Dashboard
 window.Logs = Logs
 window.Source = Source
-window.Endpoint = Endpoint
 window.User = User
 window.ClipboardJS = ClipboardJS
 
