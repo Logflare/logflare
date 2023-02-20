@@ -26,8 +26,6 @@ defmodule LogflareWeb.Api.SourceController do
     json(conn, sources)
   end
 
-  tags(["management"])
-
   operation(:show,
     summary: "Fetch source",
     parameters: [token: [in: :path, description: "Source Token", type: :string]],
