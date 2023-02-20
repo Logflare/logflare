@@ -23,6 +23,7 @@ config :logflare, LogflareWeb.Endpoint,
   code_reloader: true,
   check_origin: false,
   watchers: [
+    # build js files
     npm: ["run", "watch", cd: Path.expand("../assets", __DIR__)]
   ],
   live_reload: [

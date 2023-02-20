@@ -18,6 +18,14 @@ import LiveReact, {initLiveReact} from "phoenix_live_react"
 import sourceLiveViewHooks from "./source_lv_hooks"
 import logsLiveViewHooks from "./log_event_live_hooks"
 
+import moment from "moment"
+// set moment globally before daterangepicker
+window.moment = moment
+
+// import vendor files
+import "./vendor/daterangepicker.min.js"
+import "./vendor/daterangepicker.css"
+
 // interfaces
 import * as Interfaces from "./interfaces"
 import * as Components from "./components"

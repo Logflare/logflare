@@ -1,3 +1,4 @@
+import $ from "jquery"
 export default {
   LiveModal: {
     updated() {},
