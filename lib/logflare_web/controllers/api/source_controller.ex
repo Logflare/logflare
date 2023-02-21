@@ -5,11 +5,12 @@ defmodule LogflareWeb.Api.SourceController do
   alias Logflare.Sources
   alias Logflare.Users
 
-  alias LogflareWeb.OpenApiSchemas.Accepted
-  alias LogflareWeb.OpenApiSchemas.Created
-  alias LogflareWeb.OpenApiSchemas.NotFound
+  alias LogflareWeb.OpenApi.Accepted
+  alias LogflareWeb.OpenApi.Created
+  alias LogflareWeb.OpenApi.List
+  alias LogflareWeb.OpenApi.NotFound
+
   alias LogflareWeb.OpenApiSchemas.Source
-  alias LogflareWeb.OpenApiSchemas.SourceList
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -17,7 +18,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   operation(:index,
     summary: "List sources",
-    responses: %{200 => SourceList.response()}
+    responses: %{200 => List.response(Source)}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do

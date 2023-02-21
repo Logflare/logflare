@@ -5,11 +5,12 @@ defmodule LogflareWeb.Api.EndpointController do
   alias Logflare.Users
   alias Logflare.Endpoints
 
-  alias LogflareWeb.OpenApiSchemas.Accepted
-  alias LogflareWeb.OpenApiSchemas.Created
+  alias LogflareWeb.OpenApi.Accepted
+  alias LogflareWeb.OpenApi.Created
+  alias LogflareWeb.OpenApi.List
+  alias LogflareWeb.OpenApi.NotFound
+
   alias LogflareWeb.OpenApiSchemas.Endpoint
-  alias LogflareWeb.OpenApiSchemas.EndpointList
-  alias LogflareWeb.OpenApiSchemas.NotFound
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -17,7 +18,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:index,
     summary: "List endpoints",
-    responses: %{200 => EndpointList.response()}
+    responses: %{200 => List.response(Endpoint)}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do

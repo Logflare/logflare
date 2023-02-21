@@ -4,11 +4,12 @@ defmodule LogflareWeb.Api.TeamController do
 
   alias Logflare.Teams
 
-  alias LogflareWeb.OpenApiSchemas.Accepted
-  alias LogflareWeb.OpenApiSchemas.Created
-  alias LogflareWeb.OpenApiSchemas.NotFound
+  alias LogflareWeb.OpenApi.Accepted
+  alias LogflareWeb.OpenApi.Created
+  alias LogflareWeb.OpenApi.List
+  alias LogflareWeb.OpenApi.NotFound
+
   alias LogflareWeb.OpenApiSchemas.Team
-  alias LogflareWeb.OpenApiSchemas.TeamList
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -16,7 +17,7 @@ defmodule LogflareWeb.Api.TeamController do
 
   operation(:index,
     summary: "List teams",
-    responses: %{200 => TeamList.response()}
+    responses: %{200 => List.response(Team)}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
