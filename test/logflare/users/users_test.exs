@@ -17,10 +17,10 @@ defmodule Logflare.UsersTest do
   describe "user_changeset" do
     test "adds api_key to changeset changes if data does not have it" do
       params = %{
-        "email" => Faker.Internet.email(),
-        "provider_uid" => Ecto.UUID.generate(),
+        "email" => TestUtils.gen_email(),
+        "provider_uid" => TestUtils.gen_uuid(),
         "provider" => "email",
-        "token" => Ecto.UUID.generate()
+        "token" => TestUtils.gen_uuid()
       }
 
       result = Users.user_changeset(%User{}, params)
@@ -29,7 +29,7 @@ defmodule Logflare.UsersTest do
 
     test "does not add api_key to changeset changes if data has it" do
       user = insert(:user)
-      result = Users.user_changeset(user, %{name: Faker.Person.name()})
+      result = Users.user_changeset(user, %{name: TestUtils.random_string()})
       refute Map.has_key?(result.changes, :api_key)
     end
   end

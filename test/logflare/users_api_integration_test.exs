@@ -12,7 +12,7 @@ defmodule Logflare.Users.APIIntegrationTest do
 
   setup do
     user = insert(:user)
-    source_id = Faker.UUID.v4()
+    source_id = TestUtils.gen_uuid()
     source = insert(:source, token: source_id, user: user)
     source_id_atom = source.token
     # SRC.setup_ets_table(source_id_atom)

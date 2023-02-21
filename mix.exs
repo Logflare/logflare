@@ -129,7 +129,6 @@ defmodule Logflare.Mixfile do
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:faker, "~> 0.12", only: :test},
       {:mimic, "~> 1.0", only: :test},
 
       # Pagination

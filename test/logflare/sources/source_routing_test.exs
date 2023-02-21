@@ -16,7 +16,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
   describe "Source Routing LQL operator rules" do
     test "list_includes operator" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn value ->
         %Rule{
@@ -56,7 +56,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "string_contains operator" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn value ->
         %Rule{
@@ -96,7 +96,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "string_contains operator 1" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn _value ->
         %Rule{
@@ -124,7 +124,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "regex match operator" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn value ->
         %Rule{
@@ -159,7 +159,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "gt,lt,gte,lte operators" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn value, operator ->
         %Rule{
@@ -200,7 +200,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "multiple filters" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       rule = %Rule{
         lql_string: "",
@@ -238,7 +238,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "multiple filters with negation" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       rule = %Rule{
         lql_string: "",
@@ -276,7 +276,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "multiple negated filter" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       rule = %Rule{
         lql_string: "",
@@ -353,7 +353,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         ]
       }
 
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       rule = %Rule{
         lql_string: "",
@@ -377,7 +377,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "nested lists with maps lvl1" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       metadata = %{
         "lines" => [
@@ -408,7 +408,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "range operator" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn lvalue, rvalue, modifiers ->
         %Rule{
@@ -450,7 +450,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
   describe "Source Routing LQL with nested lists" do
     test "list_includes operator" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       build_filter = fn value ->
         %Rule{
@@ -536,7 +536,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         ]
       }
 
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       rule = %Rule{
         lql_string: "",
@@ -560,7 +560,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
 
     test "eq operator with nested maps lvl1" do
-      source = build(:source, token: Faker.UUID.v4(), rules: [])
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
       metadata = %{
         "lines" => [
@@ -598,7 +598,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       u = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
 
       {:ok, s1} =
-        params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+        params_for(:source, token: TestUtils.gen_uuid(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
 
       Schema.start_link(%RLS{
@@ -607,7 +607,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       })
 
       {:ok, sink} =
-        params_for(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+        params_for(:source, token: TestUtils.gen_uuid(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
 
       Process.sleep(1_000)

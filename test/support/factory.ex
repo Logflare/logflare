@@ -234,7 +234,7 @@ defmodule Logflare.Factory do
   end
 
   def user_with_stripe_subscription_factory(
-        %{stripe_id: stripe_id} \\ %{stripe_id: Faker.Internet.slug()}
+        %{stripe_id: stripe_id} \\ %{stripe_id: TestUtils.random_string()}
       ) do
     build(:user,
       provider: "google",
