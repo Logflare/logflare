@@ -34,6 +34,7 @@ jobs:
         with:
           push: ${{env.PUSH_TO_DOCKER}}
           tags: supabase/logflare:latest
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
   publish_version:
@@ -61,6 +62,7 @@ jobs:
         with:
           push: ${{env.PUSH_TO_DOCKER}}
           tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
   trigger_cloud_build_staging:
