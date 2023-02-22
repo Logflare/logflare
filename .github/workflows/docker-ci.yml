@@ -90,7 +90,7 @@ jobs:
         with:
           push: ${{env.PUSH_TO_DOCKER}}
           tags: supabase/logflare:latest-arm
-          platforms: linux/arm64
+          platforms: darwin
           cache-from: type=gha
           cache-to: type=gha,mode=max
   publish_version_arm:
@@ -118,7 +118,7 @@ jobs:
         with:
           push: ${{env.PUSH_TO_DOCKER}}
           tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}-arm
-          platforms: linux/arm64
+          platforms: darwin
           cache-from: type=gha
           cache-to: type=gha,mode=max
   trigger_cloud_build_staging:
