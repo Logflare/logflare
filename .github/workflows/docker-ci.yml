@@ -88,8 +88,8 @@ jobs:
       - name: Build Version
         uses: docker/build-push-action@v3
         with:
-          push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:latest-arm
+          push: false
+          tags: supabase/logflare:latest_darwin
           platforms: darwin
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -116,8 +116,8 @@ jobs:
       - name: Build Version
         uses: docker/build-push-action@v3
         with:
-          push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}-arm
+          push: false
+          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}_arm
           platforms: darwin
           cache-from: type=gha
           cache-to: type=gha,mode=max
