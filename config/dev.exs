@@ -89,7 +89,7 @@ config :logflare, Logflare.Vercel.Client,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
+config :logflare, LogflareWeb.Plugs.PartnerAuthentication,
   token: "ydqr8TatrwEq/x/LMbhX1iUgl50MrdJ7cgXtzT+5s7KWG0bGt9d2DWio7dqqHtys"
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
@@ -97,5 +97,12 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 config :stripity_stripe,
   api_key: "sk_test_thisisaboguskey",
   api_base_url: "http://localhost:12111/v1/"
+
+config :logflare, Logflare.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: "Sy1NN20+lvHCnE6t6JV5MSp+q1SCrOH82dCOdfwszIo=" |> Base.decode64!()}
+  ]
 
 import_config("telemetry.exs")

@@ -290,6 +290,7 @@ defmodule LogflareWeb.Router do
     get("/accounts", AdminController, :accounts)
     live("/search", AdminSearchDashboardLive, layout: {LayoutView, :root})
     live("/cluster", Admin.ClusterLive, :index)
+    live("/partner", Admin.PartnerLive, :index)
 
     get("/plans", AdminPlanController, :index)
     get("/plans/new", AdminPlanController, :new)
@@ -362,10 +363,14 @@ defmodule LogflareWeb.Router do
     )
   end
 
-  scope "/api", LogflareWeb do
-    pipe_through [:api, LogflareWeb.Plugs.EnsureSuperUserAuthentication]
+  scope "/api/partner", LogflareWeb do
+    pipe_through [:api, LogflareWeb.Plugs.PartnerAuthentication]
 
-    resources "/accounts", Api.AccountController, param: "token", only: [:create]
+    get "/:token/accounts", Api.Partner.AccountController, :index
+    post "/:token/accounts", Api.Partner.AccountController, :create
+
+    get "/:token/accounts/:user_token", Api.Partner.AccountController, :get_user
+    get "/:token/accounts/:user_token/usage", Api.Partner.AccountController, :get_user_usage
   end
 
   scope "/api" do

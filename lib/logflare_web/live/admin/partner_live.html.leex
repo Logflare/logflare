@@ -1,0 +1,43 @@
+<div class="subhead ">
+  <div class="container mx-auto">
+    <h5>~/admin/cluster</h5>
+    <div class="log-settings">
+    <%= render LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket %>
+    </div>
+  </div>
+</div>
+
+
+<div class="content dashboard container mx-auto">
+  <h1>Partners</h1>
+  <%= f = form_for @changeset, "#", [phx_submit: :save] %>
+  <%= text_input f, :name, placeholder: "Partner Name", class: "form-control form-control-margin" %>
+  <%= error_tag f, :name %>
+  <%= submit "Save", class: "btn btn-sm btn-secondary form-button" %>
+  </form>
+
+  <%= if Enum.any?(@partners) do %>
+   <table>
+    <thead>
+      <tr>
+        <th class="pr-2">Name</th>
+        <th class="pr-2">Token</th>
+        <th class="pr-2">Authentication Token</th>
+        <th class="pr-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= for %{name: name, token: token, auth_token: auth_token} <- @partners do %>
+      <tr>
+        <td class="pr-2"><%=name%></td>
+        <td class="pr-2"><%=token%></td>
+        <td class="pr-2"><%=auth_token%></td>
+        <td><button id=<%= "delete-#{token}" %> phx-click="delete" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Delete </button></td>
+        </tr>
+      <% end %>
+    </tbody>
+   </table>
+  <% else %>
+    <h2>No partners created yet</h2>
+  <% end %>
+</div>

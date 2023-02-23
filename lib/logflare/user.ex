@@ -58,37 +58,37 @@ defmodule Logflare.User do
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   typed_schema "users" do
-    field(:email, :string)
-    field(:provider, :string)
-    field(:token, :string)
-    field(:api_key, :string)
-    field(:old_api_key, :string)
-    field(:email_preferred, :string)
-    field(:name, :string)
-    field(:image, :string)
-    field(:email_me_product, :boolean, default: false)
-    field(:admin, :boolean, default: false)
-    field(:phone, :string)
-    field(:bigquery_project_id, :string)
-    field(:bigquery_dataset_location, :string)
-    field(:bigquery_dataset_id, :string)
-    field(:bigquery_udfs_hash, :string)
-    field(:bigquery_processed_bytes_limit, :integer)
-    field(:api_quota, :integer, default: @default_user_api_quota)
-    field(:valid_google_account, :boolean)
-    field(:provider_uid, :string)
-    field(:company, :string)
-    field(:billing_enabled, :boolean, default: true)
-    field(:endpoints_beta, :boolean, default: false)
-    embeds_one(:preferences, UserPreferences)
+    field :email, :string
+    field :provider, :string
+    field :token, :string
+    field :api_key, :string
+    field :old_api_key, :string
+    field :email_preferred, :string
+    field :name, :string
+    field :image, :string
+    field :email_me_product, :boolean, default: false
+    field :admin, :boolean, default: false
+    field :phone, :string
+    field :bigquery_project_id, :string
+    field :bigquery_dataset_location, :string
+    field :bigquery_dataset_id, :string
+    field :bigquery_udfs_hash, :string
+    field :bigquery_processed_bytes_limit, :integer
+    field :api_quota, :integer, default: @default_user_api_quota
+    field :valid_google_account, :boolean
+    field :provider_uid, :string
+    field :company, :string
+    field :billing_enabled, :boolean, default: true
+    field :endpoints_beta, :boolean, default: false
+    embeds_one :preferences, UserPreferences
 
-    has_many(:billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all)
-    has_many(:sources, Source)
-    has_many(:endpoint_queries, Logflare.Endpoints.Query)
-    has_many(:vercel_auths, Vercel.Auth)
+    has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
+    has_many :sources, Source
+    has_many :endpoint_queries, Logflare.Endpoints.Query
+    has_many :vercel_auths, Vercel.Auth
 
-    has_one(:team, Team)
-    has_one(:billing_account, BillingAccount)
+    has_one :team, Team
+    has_one :billing_account, BillingAccount
 
     timestamps()
   end

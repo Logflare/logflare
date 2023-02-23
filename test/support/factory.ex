@@ -13,6 +13,7 @@ defmodule Logflare.Factory do
   alias Logflare.LogEvent
   alias Logflare.Lql
   alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.Partners.Partner
   alias Logflare.Rule
   alias Logflare.Source
   alias Logflare.SourceSchemas.SourceSchema
@@ -266,6 +267,12 @@ defmodule Logflare.Factory do
       node: TestUtils.random_string(8),
       user: user,
       source: source
+    }
+  end
+
+  def partner_factory() do
+    %Partner{
+      name: TestUtils.random_string()
     }
   end
 end
