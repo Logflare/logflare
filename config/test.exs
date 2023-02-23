@@ -30,5 +30,12 @@ config :logflare, Logflare.Repo,
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
 
-config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
+config :logflare, LogflareWeb.Plugs.PartnerAuthentication,
   token: "UpWhFVVnxCZRuTKlg2Iw5lt/h1tCNo3P+jVpsgIsPxCboGUv2GF0f4fpAT3FQIoU"
+
+config :logflare, Logflare.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: "Sy1NN20+lvHCnE6t6JV5MSp+q1SCrOH82dCOdfwszIo=" |> Base.decode64!()}
+  ]

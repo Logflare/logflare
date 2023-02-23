@@ -3,17 +3,15 @@ defmodule Logflare.Application do
   use Application
   require Logger
 
-  alias Logflare.{
-    Users,
-    Sources,
-    Logs,
-    Billing,
-    PubSubRates,
-    ContextCache,
-    SourceSchemas
-  }
-
+  alias Logflare.Billing
+  alias Logflare.ContextCache
+  alias Logflare.Logs
+  alias Logflare.PubSubRates
   alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.SourceSchemas
+  alias Logflare.Users
+  alias Logflare.Vault
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -69,7 +67,8 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
+      Vault
     ]
   end
 
@@ -148,6 +147,9 @@ defmodule Logflare.Application do
 
       # For Logflare Endpoints
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+
+      # Cloak - Encryption at rest for Ecto
+      Vault,
 
       # Startup tasks
       {Task, fn -> startup_tasks() end}

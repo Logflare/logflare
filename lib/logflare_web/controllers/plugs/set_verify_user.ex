@@ -42,56 +42,37 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
         other ->
           other
       end
-      |> case do
-        id when is_integer(id) ->
-          Users.get_by_and_preload(id: id)
-          |> Users.preload_team()
-          |> Users.preload_billing_account()
-          |> Users.preload_sources()
-
-        _ ->
-          nil
-      end
+      |> fetch_preloaded_user_by_id()
 
     assign(conn, :user, user)
   end
 
   defp set_user_for_mgmt_api(conn, _opts) do
-    auth_header =
-      conn.req_headers
-      |> Enum.into(%{})
-      |> Map.get("authorization")
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> bearer] ->
+        case is_expired?(bearer) do
+          true ->
+            message = "Error: token expired"
+            put_401(conn, message)
 
-    bearer =
-      if auth_header && String.contains?(auth_header, "Bearer ") do
-        String.split(auth_header, " ")
-        |> Enum.at(1)
-      end
+          false ->
+            oauth_access_token = AccessTokens.get_by_token(bearer, env_oauth_config())
+            user = Users.Cache.get_by_and_preload(id: oauth_access_token.resource_owner_id)
 
-    cond do
-      is_nil(bearer) ->
-        message = "Error: please authenticate"
-        put_401(conn, message)
+            assign(conn, :user, user)
+        end
 
-      is_expired?(bearer) ->
-        # Old tokens expire. Tokens are now set to never expire.
-        # Revisit when mgmt api is made public.
-        message = "Error: token expired"
-        put_401(conn, message)
-
-      true ->
-        oauth_access_token = AccessTokens.get_by_token(bearer, env_oauth_config())
-        user = Users.Cache.get_by_and_preload(id: oauth_access_token.resource_owner_id)
-
-        assign(conn, :user, user)
+      _ ->
+        put_401(conn, "Error: please authenticate")
     end
   end
 
   defp set_user_for_ingest_api(conn, _opts) do
     api_key =
-      conn.req_headers
-      |> Enum.into(%{})
-      |> Map.get("x-api-key", conn.params["api_key"])
+      case get_req_header(conn, "x-api-key") do
+        [] -> conn.params["api_key"]
+        [api_key] -> api_key
+      end
 
     case api_key && Users.Cache.get_by_and_preload(api_key: api_key) do
       %User{} = user ->
@@ -115,6 +96,15 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
     int
   end
 
+  defp fetch_preloaded_user_by_id(id) when is_integer(id) do
+    Users.get_by_and_preload(id: id)
+    |> Users.preload_team()
+    |> Users.preload_billing_account()
+    |> Users.preload_sources()
+  end
+
+  defp fetch_preloaded_user_by_id(_id), do: nil
+
   defp put_401(conn, message) do
     conn
     |> put_status(401)
@@ -124,7 +114,8 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
   end
 
   defp is_expired?(bearer) do
-    AccessTokens.get_by_token(bearer, env_oauth_config())
+    bearer
+    |> AccessTokens.get_by_token(env_oauth_config())
     |> AccessTokens.is_expired?()
   end
 end

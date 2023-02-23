@@ -6,4 +6,5 @@
     <li><%= link to: Routes.cluster_path(@conn, :index) do %><i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span><% end %></li>
     <li><%= link to: Routes.live_path(@conn, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><span class="hide-on-mobile"> search</span><% end %></li>
     <li><%= link to: Routes.admin_plan_path(@conn, :index) do %><i class="fas fa-dollar-sign"></i><span class="hide-on-mobile"> plans</span><% end %></li>
+    <li><%= link to: Routes.partner_path(@conn, :index) do %><i class="fas fa-handshake"></i><span class="hide-on-mobile"> partner</span><% end %></li>
   </ul>
