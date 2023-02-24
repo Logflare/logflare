@@ -45,6 +45,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
     setup :set_mimic_global
 
     TestUtils.setup_single_tenant(seed: true)
+
     setup do
       user = SingleTenant.get_default_user()
       # mock goth behaviour

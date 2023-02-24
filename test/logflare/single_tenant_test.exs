@@ -5,6 +5,7 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Billing
   alias Logflare.Users
   alias Logflare.User
+  alias Logflare.Billing.Plan
 
   describe "single tenant mode" do
     TestUtils.setup_single_tenant()
@@ -19,6 +20,11 @@ defmodule Logflare.SingleTenantTest do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
       assert {:ok, _user} = SingleTenant.create_default_user()
       assert %User{name: "default"} = SingleTenant.get_default_user()
+    end
+
+    test "get_default_plan/0" do
+      assert {:ok, _plan} = SingleTenant.create_default_plan()
+      assert %Plan{name: "default"} = SingleTenant.get_default_plan()
     end
 
     test "create_default_user/0, get_default_user/0 :inserts a default enterprise user if not present" do

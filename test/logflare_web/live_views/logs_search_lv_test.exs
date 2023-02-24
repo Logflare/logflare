@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Logs.SearchQueryExecutor
   alias LogflareWeb.Source.SearchLV
+  alias Logflare.SingleTenant
 
   @default_search_params %{
     "querystring" => "c:count(*) c:group_by(t::minute)",
@@ -16,19 +17,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     "tailing?" => "false"
   }
 
-  setup %{conn: conn} do
-    start_supervised!(Counters)
-
-    plan = insert(:plan, name: "Free", type: "standard")
-    user = insert(:user)
-    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
-    user = user |> Logflare.Repo.preload(:billing_account)
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
-    source = insert(:source, user_id: user.id)
-    rls = %RLS{source_id: source.token, plan: plan}
-    start_supervised!({Schema, rls})
-    start_supervised!({SearchQueryExecutor, rls})
-
+  defp setup_mocks(ctx) do
     # mocks
     Goth
     |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
@@ -38,242 +27,320 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, TestUtils.gen_bq_response()}
     end)
 
-    # let genserver post-init finish
-    :timer.sleep(500)
+    :ok
+  end
 
+  defp on_exit_kill_tasks(ctx) do
     on_exit(fn ->
       Logflare.Utils.Tasks.kill_all_tasks()
     end)
 
-    [conn: conn, user: user, source: source]
+    :ok
   end
 
-  test "load page", %{conn: conn, source: source} do
-    {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-
-    assert html =~ "~/logs/"
-    assert html =~ source.name
-    assert html =~ "/search"
-
-    # wait for async search task to complete
-    :timer.sleep(1000)
-    html = view |> element("#logs-list-container") |> render()
-    assert html =~ "some event message"
-
-    html = view |> render()
-    assert html =~ "Elapsed since last query"
-
-    # default input values
-    assert find_selected_chart_period(html) == "minute"
-    assert find_chart_aggregate(html) == "count"
-    assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
+  # requires a user, source, and plan set
+  defp setup_source_processes(%{user: user, source: source, plan: plan}) do
+    start_supervised!(Counters)
+    rls = %RLS{source_id: source.token, plan: plan}
+    start_supervised!({Schema, rls})
+    start_supervised!({SearchQueryExecutor, rls})
+    :ok
   end
 
-  test "static elements", %{conn: conn, source: source} do
-    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-    _html = render(view)
-
-    assert view
-           |> element("a", "LQL")
-           |> render_click() =~ "Event Message Filtering"
+  # to simulate signed in user.
+  defp setup_user_session(%{conn: conn, user: user, plan: plan}) do
+    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
+    user = user |> Logflare.Repo.preload(:billing_account)
+    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+    [conn: conn]
   end
 
-  test "lql filters", %{conn: conn, source: source} do
-    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+  # do this for all tests
+  setup [:setup_mocks, :on_exit_kill_tasks]
 
-    :timer.sleep(1000)
+  describe "search tasks" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan]
+    end
 
-    html = view |> element("#logs-list-container") |> render()
-    assert html =~ "some event message"
+    setup [:setup_user_session, :setup_source_processes]
 
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
-      params = opts[:body].queryParameters
+    test "load page", %{conn: conn, source: source} do
+      {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      if length(params) > 2 do
-        assert Enum.any?(params, fn param -> param.parameterValue.value == "crasher" end)
-        assert Enum.any?(params, fn param -> param.parameterValue.value == "error" end)
-      end
+      assert html =~ "~/logs/"
+      assert html =~ source.name
+      assert html =~ "/search"
 
-      {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
-    end)
+      # wait for async search task to complete
+      :timer.sleep(1000)
+      html = view |> element("#logs-list-container") |> render()
+      assert html =~ "some event message"
 
-    view
-    |> render_change(:form_update, %{
-      "search" => %{
-        @default_search_params
-        | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
-      }
-    })
+      html = view |> render()
+      assert html =~ "Elapsed since last query"
 
-    :timer.sleep(1000)
+      # default input values
+      assert find_selected_chart_period(html) == "minute"
+      assert find_chart_aggregate(html) == "count"
+      assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
+    end
 
-    view
-    |> render_change(:start_search, %{
-      "search" => %{
-        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
-      }
-    })
+    test "static elements", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      html = render(view)
 
-    # wait for async search task to complete
-    :timer.sleep(1000)
+      assert view
+             |> element("a", "LQL")
+             |> render_click() =~ "Event Message Filtering"
+    end
 
-    html = view |> element("#logs-list-container") |> render()
+    test "lql filters", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-    assert html =~ "some error message"
-    refute html =~ "some event message"
-  end
+      :timer.sleep(1000)
 
-  test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
-    # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
-    schema =
-      TestUtils.build_bq_schema(%{"metadata" => %{"nested" => "something"}, "top" => "level"})
+      html = view |> element("#logs-list-container") |> render()
+      assert html =~ "some event message"
 
-    Schema.update(source.token, schema)
-    # wait for schema to update
-    # TODO: find a better way to test a source schema structure
-    :timer.sleep(600)
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        params = opts[:body].queryParameters
 
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
-      query = opts[:body].query |> String.downcase()
+        if length(params) > 2 do
+          assert Enum.any?(params, fn param -> param.parameterValue.value == "crasher" end)
+          assert Enum.any?(params, fn param -> param.parameterValue.value == "error" end)
+        end
 
-      if query =~ "select" and query =~ "inner join unnest" do
-        assert query =~ "0.top = ?"
-        assert query =~ "1.nested = ?"
-        {:ok, TestUtils.gen_bq_response(%{"event_message" => "some correct message"})}
-      else
+        {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
+      end)
+
+      view
+      |> render_change(:form_update, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
+        }
+      })
+
+      :timer.sleep(1000)
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
+        }
+      })
+
+      # wait for async search task to complete
+      :timer.sleep(1000)
+
+      html = view |> element("#logs-list-container") |> render()
+
+      assert html =~ "some error message"
+      refute html =~ "some event message"
+    end
+
+    test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
+      # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
+      schema =
+        TestUtils.build_bq_schema(%{"metadata" => %{"nested" => "something"}, "top" => "level"})
+
+      Schema.update(source.token, schema)
+      # wait for schema to update
+      # TODO: find a better way to test a source schema structure
+      :timer.sleep(600)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        query = opts[:body].query |> String.downcase()
+
+        if query =~ "select" and query =~ "inner join unnest" do
+          assert query =~ "0.top = ?"
+          assert query =~ "1.nested = ?"
+          {:ok, TestUtils.gen_bq_response(%{"event_message" => "some correct message"})}
+        else
+          {:ok, TestUtils.gen_bq_response()}
+        end
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      # post-init fetching
+      :timer.sleep(800)
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "m.nested:test top:test"
+        }
+      })
+
+      # wait for async search task to complete
+      # TODO: find better way to test searching
+      :timer.sleep(800)
+
+      html = view |> element("#logs-list-container") |> render()
+
+      assert html =~ "some correct message"
+    end
+
+    test "chart display interval", %{conn: conn, source: source} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        params = opts[:body].queryParameters
+
+        if length(params) > 2 do
+          assert Enum.any?(params, fn param -> param.parameterValue.value == "MINUTE" end)
+          # truncate by 120 minutes
+          assert Enum.any?(params, fn param -> param.parameterValue.value == 120 end)
+        end
+
         {:ok, TestUtils.gen_bq_response()}
-      end
-    end)
+      end)
 
-    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-    # post-init fetching
-    :timer.sleep(800)
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      # post-init fetching
+      :timer.sleep(500)
 
-    view
-    |> render_change(:start_search, %{
-      "search" => %{
-        @default_search_params
-        | "querystring" => "m.nested:test top:test"
-      }
-    })
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "chart_period" => "day"
+        }
+      })
 
-    # wait for async search task to complete
-    # TODO: find better way to test searching
-    :timer.sleep(800)
+      # wait for async search task to complete
+      :timer.sleep(500)
 
-    html = view |> element("#logs-list-container") |> render()
+      html = view |> element("#logs-list-container") |> render()
 
-    assert html =~ "some correct message"
+      assert html =~ "some event message"
+    end
+
+    test "shows flash error for malformed query", %{conn: conn, source: source} do
+      assert {:ok, view, _html} =
+               live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
+
+      assert view |> render() =~ "Error while parsing timestamp filter"
+    end
+
+    test "redirected for non-owner user", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> assign(:user, insert(:user))
+        |> get(Routes.live_path(conn, SearchLV, source))
+
+      assert html_response(conn, 403) =~ "Forbidden"
+    end
+
+    test "redirected for anonymous user", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> Map.update!(:private, &Map.drop(&1, [:plug_session]))
+        |> Plug.Test.init_test_session(%{})
+        |> assign(:user, nil)
+        |> get(Routes.live_path(conn, SearchLV, source))
+
+      assert get_flash(conn, "error") =~ "must be logged in"
+      assert html_response(conn, 302)
+      assert redirected_to(conn) == "/auth/login"
+    end
+
+    test "stop/start live search", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
+      # post-init fetching
+      :timer.sleep(500)
+
+      assert get_view_assigns(view).tailing?
+      render_click(view, "soft_pause", %{})
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "soft_play", %{})
+      assert get_view_assigns(view).tailing?
+    end
+
+    test "set_local_time", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
+      # post-init fetching
+      :timer.sleep(500)
+
+      assert render_click(view, "set_local_time", %{"use_local_time" => "true"}) =~
+               ~S|id="user-local-timezone"|
+    end
+
+    test "datetime_update", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
+
+      # post-init fetching
+      :timer.sleep(500)
+
+      view
+      |> render_change("datetime_update", %{"querystring" => "t:last@2h"})
+
+      assert get_view_assigns(view).querystring =~ "t:last@2hour"
+      assert get_view_assigns(view).querystring =~ "error"
+
+      view
+      |> render_change("datetime_update", %{
+        "querystring" => "t:2020-04-20T00:{01..02}:00",
+        "period" => "second"
+      })
+
+      assert get_view_assigns(view).querystring =~ "error"
+      assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
+    end
   end
 
-  test "chart display interval", %{conn: conn, source: source} do
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
-      params = opts[:body].queryParameters
+  describe "single tenant searching" do
+    TestUtils.setup_single_tenant(seed: true)
 
-      if length(params) > 2 do
-        assert Enum.any?(params, fn param -> param.parameterValue.value == "MINUTE" end)
-        # truncate by 120 minutes
-        assert Enum.any?(params, fn param -> param.parameterValue.value == 120 end)
-      end
+    setup do
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+      [user: user, source: source, plan: plan]
+    end
 
-      {:ok, TestUtils.gen_bq_response()}
-    end)
+    setup [:setup_user_session, :setup_source_processes]
 
-    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-    # post-init fetching
-    :timer.sleep(500)
+    test "run a query", %{conn: conn, source: source} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        query = opts[:body].query |> String.downcase()
 
-    view
-    |> render_change(:start_search, %{
-      "search" => %{
-        @default_search_params
-        | "chart_period" => "day"
-      }
-    })
+        if query =~ "strpos(t0.event_message, ?" do
+          {:ok, TestUtils.gen_bq_response(%{"event_message" => "some correct message"})}
+        else
+          {:ok, TestUtils.gen_bq_response()}
+        end
+      end)
 
-    # wait for async search task to complete
-    :timer.sleep(500)
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      # post-init fetching
+      :timer.sleep(800)
 
-    html = view |> element("#logs-list-container") |> render()
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "somestring"
+        }
+      })
 
-    assert html =~ "some event message"
-  end
+      # wait for async search task to complete
+      # TODO: find better way to test searching
+      :timer.sleep(800)
 
-  test "shows flash error for malformed query", %{conn: conn, source: source} do
-    assert {:ok, view, _html} =
-             live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
+      html = view |> element("#logs-list-container") |> render()
 
-    assert view |> render() =~ "Error while parsing timestamp filter"
-  end
-
-  test "redirected for non-owner user", %{conn: conn, source: source} do
-    conn =
-      conn
-      |> assign(:user, insert(:user))
-      |> get(Routes.live_path(conn, SearchLV, source))
-
-    assert html_response(conn, 403) =~ "Forbidden"
-  end
-
-  test "redirected for anonymous user", %{conn: conn, source: source} do
-    conn =
-      conn
-      |> Map.update!(:private, &Map.drop(&1, [:plug_session]))
-      |> Plug.Test.init_test_session(%{})
-      |> assign(:user, nil)
-      |> get(Routes.live_path(conn, SearchLV, source))
-
-    assert get_flash(conn, "error") =~ "must be logged in"
-    assert html_response(conn, 302)
-    assert redirected_to(conn) == "/auth/login"
-  end
-
-  test "stop/start live search", %{conn: conn, source: source} do
-    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
-    # post-init fetching
-    :timer.sleep(500)
-
-    assert get_view_assigns(view).tailing?
-    render_click(view, "soft_pause", %{})
-    refute get_view_assigns(view).tailing?
-
-    render_click(view, "soft_play", %{})
-    assert get_view_assigns(view).tailing?
-  end
-
-  test "set_local_time", %{conn: conn, source: source} do
-    {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
-    # post-init fetching
-    :timer.sleep(500)
-
-    assert render_click(view, "set_local_time", %{"use_local_time" => "true"}) =~
-             ~S|id="user-local-timezone"|
-  end
-
-  test "datetime_update", %{conn: conn, source: source} do
-    {:ok, view, _html} =
-      live(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
-
-    # post-init fetching
-    :timer.sleep(500)
-
-    view
-    |> render_change("datetime_update", %{"querystring" => "t:last@2h"})
-
-    assert get_view_assigns(view).querystring =~ "t:last@2hour"
-    assert get_view_assigns(view).querystring =~ "error"
-
-    view
-    |> render_change("datetime_update", %{
-      "querystring" => "t:2020-04-20T00:{01..02}:00",
-      "period" => "second"
-    })
-
-    assert get_view_assigns(view).querystring =~ "error"
-    assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
+      assert html =~ "some correct message"
+    end
   end
 
   defp get_view_assigns(view) do

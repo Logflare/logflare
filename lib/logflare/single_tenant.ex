@@ -13,12 +13,35 @@ defmodule Logflare.SingleTenant do
     token: Ecto.UUID.generate(),
     provider_uid: "default"
   }
+  @plan_attrs %{
+    name: "Enterprise",
+    period: "year",
+    price: 20_000,
+    limit_sources: 100,
+    limit_rate_limit: 5_000,
+    limit_alert_freq: 1_000,
+    limit_source_rate_limit: 100,
+    limit_saved_search_limit: 1,
+    limit_team_users_limit: 2,
+    limit_source_fields_limit: 500,
+    limit_source_ttl: 5_184_000_000,
+    type: "standard"
+  }
 
   @doc """
   Retrieves the default user
   """
   def get_default_user do
     Users.get_by(name: @user_attrs.name, email: @user_attrs.email)
+  end
+
+  @doc """
+  Retrieves the default plan
+  """
+  def get_default_plan do
+    @plan_attrs
+    |> Map.to_list()
+    |> Billing.get_plan_by()
   end
 
   @doc """
@@ -44,20 +67,7 @@ defmodule Logflare.SingleTenant do
       |> Enum.find(fn plan -> plan.name == "Enterprise" end)
 
     if plan == nil do
-      Billing.create_plan(%{
-        name: "Enterprise",
-        period: "year",
-        price: 20_000,
-        limit_sources: 100,
-        limit_rate_limit: 5_000,
-        limit_alert_freq: 1_000,
-        limit_source_rate_limit: 100,
-        limit_saved_search_limit: 1,
-        limit_team_users_limit: 2,
-        limit_source_fields_limit: 500,
-        limit_source_ttl: 5_184_000_000,
-        type: "standard"
-      })
+      Billing.create_plan(@plan_attrs)
     else
       {:error, :already_created}
     end
