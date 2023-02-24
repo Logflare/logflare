@@ -9,7 +9,7 @@ defmodule Logflare.SingleTenant do
   @user_attrs %{
     name: "default",
     email: "default@logflare.app",
-    provider: "email",
+    provider: "default",
     token: Ecto.UUID.generate(),
     provider_uid: "default"
   }
@@ -32,7 +32,7 @@ defmodule Logflare.SingleTenant do
   Retrieves the default user
   """
   def get_default_user do
-    Users.get_by(name: @user_attrs.name, email: @user_attrs.email)
+    Users.get_by(provider_uid: "default", provider: "default")
   end
 
   @doc """
