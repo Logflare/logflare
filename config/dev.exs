@@ -60,7 +60,8 @@ config :logflare, Logflare.Google,
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
   compute_engine_sa: "compute-engine-2022@logflare-dev-238720.iam.gserviceaccount.com",
   api_sa: "1023172132421@cloudservices.gserviceaccount.com",
-  cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com"
+  cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com",
+  cloud_build_trigger_sa: "cloud-build@logflare-dev-238720.iam.gserviceaccount.com"
 
 config :libcluster,
   topologies: [

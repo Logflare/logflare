@@ -17,7 +17,8 @@ config :logflare, Logflare.Google,
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
   compute_engine_sa: "GOOGLE_COMPUTE_ENGINE_SA",
   api_sa: "GOOGLE_API_SA",
-  cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA"
+  cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA",
+  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA"
 
 config :logflare, Logflare.Tracker, pool_size: 5, level: :error
 

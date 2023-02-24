@@ -132,7 +132,8 @@ config :logflare,
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
          compute_engine_sa: System.get_env("GOOGLE_COMPUTE_ENGINE_SA"),
          api_sa: System.get_env("GOOGLE_API_SA"),
-         cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA")
+         cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
+         cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA")
        ]
        |> filter_nil_kv_pairs.()
 
