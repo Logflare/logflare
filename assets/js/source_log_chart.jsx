@@ -1,7 +1,6 @@
 import React from "react"
 import { DateTime } from "luxon"
 import { ResponsiveBarCanvas } from "@nivo/bar"
-import { ThemeProvider } from '@nivo/core'
 
 import { BarLoader } from "react-spinners"
 
@@ -268,27 +267,25 @@ const LogEventsChart = ({
           />
         </div>
       ) : (
-        <ThemeProvider theme={theme} >
-          <ResponsiveBarCanvas
-            data={data}
-            margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
-            padding={0.3}
-            enableGridY={true}
-            indexBy={"timestamp"}
-            tooltip={renderTooltip}
-            axisTop={null}
-            axisRight={null}
-            axisBottom={null}
-            axisLeft={null}
-            enableLabel={false}
-            animate={true}
-            onClick={onClick}
-            motionStiffness={90}
-            motionDamping={15}
-            theme={theme}
-            {...chartSettings(chartDataShapeId)}
-          />
-        </ThemeProvider>
+        <ResponsiveBarCanvas
+          data={data}
+          margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
+          padding={0.3}
+          enableGridY={true}
+          indexBy={"timestamp"}
+          tooltip={renderTooltip}
+          axisTop={null}
+          axisRight={null}
+          axisBottom={null}
+          axisLeft={null}
+          enableLabel={false}
+          animate={true}
+          onClick={onClick}
+          motionStiffness={90}
+          motionDamping={15}
+          theme={theme}
+          {...chartSettings(chartDataShapeId)}
+        />
       )}
     </div>
   )

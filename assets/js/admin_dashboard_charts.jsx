@@ -1,6 +1,5 @@
 import React from "react"
 import { ResponsiveBarCanvas } from "@nivo/bar"
-import { ThemeProvider } from "@nivo/core"
 
 const brandLightBlack = "#1d1d1d"
 const brandGreen = "#5eeb8f"
@@ -34,25 +33,23 @@ const Chart = ({ data, keys }) => {
         height: 200,
       }}
     >
-      <ThemeProvider theme={theme}>
-        <ResponsiveBarCanvas
-          data={data}
-          margin={{ top: 30, right: 30, bottom: 30, left: 30 }}
-          padding={0.3}
-          enableGridY={true}
-          keys={keys}
-          indexBy={"timestamp"}
-          tooltip={renderDefaultTooltip}
-          axisTop={null}
-          axisRight={null}
-          axisBottom={null}
-          enableLabel={false}
-          motionStiffness={90}
-          motionDamping={15}
-          theme={theme}
-          colors={(_) => brandGreen}
-        />
-      </ThemeProvider>
+      <ResponsiveBarCanvas
+        data={data}
+        margin={{ top: 30, right: 30, bottom: 30, left: 30 }}
+        padding={0.3}
+        enableGridY={true}
+        keys={keys}
+        indexBy={"timestamp"}
+        tooltip={renderDefaultTooltip}
+        axisTop={null}
+        axisRight={null}
+        axisBottom={null}
+        enableLabel={false}
+        motionStiffness={90}
+        motionDamping={15}
+        theme={theme}
+        colors={(_) => brandGreen}
+      />
     </div>
   )
 }

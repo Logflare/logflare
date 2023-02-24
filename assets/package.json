@@ -6,8 +6,8 @@
     "watch": "webpack --mode development --watch"
   },
   "dependencies": {
-    "@nivo/bar": "^0.79.0",
-    "@nivo/core": "^0.79.0",
+    "@nivo/bar": "^0.62.0",
+    "@nivo/core": "^0.62.0",
     "bootstrap": "^4.3.1",
     "bootstrap-select": "^1.13.12",
     "clipboard": "^2.0.4",
