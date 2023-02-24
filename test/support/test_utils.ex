@@ -26,6 +26,9 @@ defmodule Logflare.TestUtils do
     Ecto.UUID.generate()
   end
 
+  @spec gen_email() :: String.t()
+  def gen_email, do: "#{random_string()}@#{random_string()}.com"
+
   @doc """
   Generates a mock BigQuery response.
   This is a successful bq response retrieved manually

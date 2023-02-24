@@ -80,7 +80,7 @@ defmodule LogflareWeb.LogControllerTestOld do
           log_path(conn, :create),
           %{
             "log_entry" => "valid log entry",
-            "source" => Faker.UUID.v4()
+            "source" => TestUtils.gen_uuid()
           }
         )
 

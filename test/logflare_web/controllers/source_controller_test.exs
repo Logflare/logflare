@@ -124,7 +124,7 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      new_name = Faker.String.base64()
+      new_name = TestUtils.random_string()
 
       params = %{
         "id" => s1.id,
@@ -188,7 +188,7 @@ defmodule LogflareWeb.SourceControllerTest do
       users: [u1, _u2],
       sources: [s1, _s2 | _]
     } do
-      nope_token = Faker.UUID.v4()
+      nope_token = TestUtils.gen_uuid()
       nope_api_quota = 1337
       nope_user_id = 1
 
@@ -263,7 +263,7 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
-      name = Faker.Person.name()
+      name = TestUtils.random_string()
 
       conn =
         conn
@@ -388,7 +388,7 @@ defmodule LogflareWeb.SourceControllerTest do
     Teams.create_team(u1, %{name: "u1 team"})
     Teams.create_team(u2, %{name: "u2 team"})
 
-    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
+    s1 = insert(:source, public_token: TestUtils.random_string(), user_id: u1.id)
     s2 = insert(:source, user_id: u1.id)
     s3 = insert(:source, user_id: u2.id)
 

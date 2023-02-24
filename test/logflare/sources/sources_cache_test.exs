@@ -10,8 +10,8 @@ defmodule Logflare.SourcesCacheTest do
     s02 = insert(:source, user_id: u1.id)
     r1 = build(:rule, sink: s01.token)
     r2 = build(:rule, sink: s02.token)
-    source = insert(:source, token: Faker.UUID.v4(), rules: [r1, r2], user_id: u1.id)
-    _s2 = insert(:source, token: Faker.UUID.v4(), user_id: u1.id)
+    source = insert(:source, token: TestUtils.gen_uuid(), rules: [r1, r2], user_id: u1.id)
+    _s2 = insert(:source, token: TestUtils.gen_uuid(), user_id: u1.id)
     {:ok, source: source}
   end
 
