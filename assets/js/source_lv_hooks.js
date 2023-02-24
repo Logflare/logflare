@@ -5,6 +5,8 @@ import sqlFormatter from "sql-formatter"
 import $ from "jquery"
 import _ from "lodash"
 import idle from "./vendor/idle"
+import hljs from "highlight.js"
+import "highlight.js/styles/tomorrow-night-blue.css"
 
 let hooks = {}
 
