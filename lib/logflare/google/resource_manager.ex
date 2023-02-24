@@ -144,6 +144,14 @@ defmodule Logflare.Google.CloudResourceManager do
         condition: nil,
         members: ["serviceAccount:#{env_api_sa()}"],
         role: "roles/cloudbuild.builds.editor"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
+        role: "roles/cloudbuild.builds.editor"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
+        role: "roles/iam.serviceAccountUser"
       }
     ]
   end
@@ -193,6 +201,9 @@ defmodule Logflare.Google.CloudResourceManager do
   defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
   defp env_api_sa, do: Application.get_env(:logflare, Logflare.Google)[:api_sa]
   defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
+
+  defp env_cloud_build_trigger_sa,
+    do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_trigger_sa]
 
   defp env_compute_engine_sa,
     do: Application.get_env(:logflare, Logflare.Google)[:compute_engine_sa]
