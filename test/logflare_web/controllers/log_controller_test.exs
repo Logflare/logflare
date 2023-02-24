@@ -5,6 +5,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.SingleTenant
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_batch [
@@ -96,6 +97,8 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(1500)
     end
 
     test ":create ingestion batch with `batch` key", %{conn: conn, source: source} do
@@ -104,6 +107,8 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :create, source: source.token), %{"batch" => @valid_batch})
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(1500)
     end
 
     test ":create ingestion batch with array body", %{conn: conn, source: source} do
@@ -113,6 +118,8 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :create, source: source.token), Jason.encode!(@valid_batch))
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(1500)
     end
 
     test ":cloudflare ingestion", %{conn: new_conn, source: source} do
@@ -125,6 +132,55 @@ defmodule LogflareWeb.LogControllerTest do
              |> json_response(200) == %{
                "message" => "Logged!"
              }
+
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(1500)
+    end
+  end
+
+  describe "single tenant" do
+    TestUtils.setup_single_tenant(seed: true)
+
+    setup %{conn: conn} do
+      # get single tenant user
+      user = SingleTenant.get_default_user()
+
+      # insert the source
+      source = insert(:source, user: user)
+
+      # ingestion setup
+      rls = %RecentLogsServer{source: source, source_id: source.token}
+      start_supervised!(Counters)
+      start_supervised!(RateCounters)
+      start_supervised!({RecentLogsServer, rls})
+      :timer.sleep(1000)
+
+      # stub out rate limiting logic for now
+      # TODO: remove once rate limiting logic is refactored
+      LogflareWeb.Plugs.RateLimiter
+      |> stub(:call, fn x, _ -> x end)
+
+      Logflare.Logs
+      |> expect(:broadcast, 1, fn le ->
+        le
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+
+      [source: source, conn: conn]
+    end
+
+    test ":create ingestion", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(1500)
     end
   end
 end

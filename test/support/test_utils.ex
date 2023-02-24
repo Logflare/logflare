@@ -4,6 +4,34 @@ defmodule Logflare.TestUtils do
   """
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
+  alias Logflare.SingleTenant
+
+  # setup a test context for single tenant
+  defmacro setup_single_tenant(opts \\ []) do
+    opts =
+      Enum.into(opts, %{
+        seed: false
+      })
+
+    quote do
+      setup do
+        # perform application env adjustments at runtime
+        initial = Application.get_env(:logflare, :single_tenant)
+        Application.put_env(:logflare, :single_tenant, true)
+
+        on_exit(fn ->
+          Application.put_env(:logflare, :single_tenant, initial)
+        end)
+
+        if unquote(opts.seed) do
+          {:ok, _} = SingleTenant.create_default_plan()
+          {:ok, _user} = SingleTenant.create_default_user()
+        end
+
+        :ok
+      end
+    end
+  end
 
   def default_bq_schema, do: SchemaBuilder.initial_table_schema()
 

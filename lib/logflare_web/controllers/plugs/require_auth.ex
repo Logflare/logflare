@@ -2,6 +2,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
   @moduledoc false
   import Plug.Conn
   import Phoenix.Controller
+  alias Logflare.SingleTenant
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
@@ -10,8 +11,13 @@ defmodule LogflareWeb.Plugs.RequireAuth do
   def call(conn, _opts) do
     assigns = conn.assigns
     user = assigns[:user]
+    is_single_tenant = SingleTenant.single_tenant?()
 
     cond do
+      user != nil and is_single_tenant ->
+        conn
+        |> put_session(:user_id, user.id)
+
       user ->
         user_id = get_session(conn, :user_id)
 

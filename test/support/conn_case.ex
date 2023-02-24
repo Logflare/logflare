@@ -33,6 +33,7 @@ defmodule LogflareWeb.ConnCase do
       import Phoenix.LiveViewTest
 
       alias Logflare.TestUtils
+      require Logflare.TestUtils
       alias LogflareWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing

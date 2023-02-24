@@ -39,4 +39,18 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
   end
+
+  describe "single tenant ui" do
+    TestUtils.setup_single_tenant(seed: true)
+
+    test "can view endpoints page", %{conn: conn} do
+      conn = get(conn, "/endpoints")
+      assert html_response(conn, 200) =~ "/endpoints"
+    end
+
+    test "can make new endpoint", %{conn: conn} do
+      conn = get(conn, "/endpoints/new")
+      assert html_response(conn, 200) =~ "/endpoints"
+    end
+  end
 end
