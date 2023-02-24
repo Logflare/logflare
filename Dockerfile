@@ -3,7 +3,7 @@ FROM elixir:1.12-alpine as builder
 ENV MIX_ENV prod
 
 RUN apk update && \
-    apk add -f curl git build-base nodejs yarn rust cargo python3
+    apk add -f curl git build-base nodejs rust cargo python3
 
 COPY . /logflare
 
@@ -12,8 +12,8 @@ WORKDIR /logflare
 RUN mix do local.rebar --force, local.hex --force, deps.get, release
 
 WORKDIR /logflare/assets
-RUN yarn install
-RUN yarn deploy
+RUN npm install
+RUN npm run deploy
 
 WORKDIR /logflare
 RUN mix phx.digest
