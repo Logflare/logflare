@@ -13,6 +13,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.Validators
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
+  alias Logflare.SingleTenant
 
   describe "list" do
     setup %{conn: conn} do
@@ -86,6 +87,41 @@ defmodule LogflareWeb.SourceControllerTest do
       # error content
       assert html =~ "403"
       assert html =~ "Forbidden"
+    end
+  end
+
+  describe "dashboard single tenant" do
+    TestUtils.setup_single_tenant(seed: true)
+
+    setup do
+      Logflare.Sources.Counters
+      |> stub()
+      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
+      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
+
+      [user: SingleTenant.get_default_user()]
+    end
+
+    test "renders source in dashboard", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      html =
+        conn
+        |> get(Routes.source_path(conn, :dashboard))
+        |> html_response(200)
+
+      assert html =~ source.name
+    end
+
+    test "renders source page", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      html =
+        conn
+        |> get(Routes.source_path(conn, :show, source))
+        |> html_response(200)
+
+      assert html =~ source.name
     end
   end
 
