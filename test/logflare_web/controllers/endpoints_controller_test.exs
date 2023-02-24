@@ -1,5 +1,6 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
+  alias Logflare.SingleTenant
 
   describe "query" do
     setup :set_mimic_global
@@ -34,6 +35,36 @@ defmodule LogflareWeb.EndpointsControllerTest do
       conn =
         init_conn
         |> get("/api/endpoints/query/#{endpoint.token}")
+
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+    end
+  end
+
+  describe "single tenant endpoint query" do
+    setup :set_mimic_global
+
+    TestUtils.setup_single_tenant(seed: true)
+    setup do
+      user = SingleTenant.get_default_user()
+      # mock goth behaviour
+      Goth
+      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+      {:ok, user: user}
+    end
+
+    test "single tenant endpoint GET", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, enable_auth: false)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      conn =
+        conn
+        |> get("/endpoints/query/#{endpoint.token}")
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
