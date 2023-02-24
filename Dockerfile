@@ -3,7 +3,7 @@ FROM elixir:1.12-alpine as builder
 ENV MIX_ENV prod
 
 RUN apk update && \
-    apk add -f curl git build-base nodejs rust cargo python3
+    apk add -f curl git build-base nodejs npm rust cargo python3
 
 COPY . /logflare
 
