@@ -1,3 +1,4 @@
+import $ from "jquery"
 import React from "react"
 import { DateTime } from "luxon"
 import { ResponsiveBarCanvas } from "@nivo/bar"
