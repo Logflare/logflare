@@ -6,12 +6,11 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponent do
   use Phoenix.HTML
   require Logger
 
-  alias Logflare.Billing
   alias Logflare.Billing.BillingCounts
 
   def mount(socket), do: {:ok, socket}
 
-  def render(%{user: user, plan: plan} = assigns) do
+  def render(%{user: user} = assigns) do
     end_date = DateTime.utc_now()
 
     start_date =
@@ -21,16 +20,14 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponent do
       |> DateTime.new!(~T[00:00:00])
 
     usage = BillingCounts.cumulative_usage(user, start_date, end_date)
-    estimate = Billing.cost_estimate(plan, usage)
     presentation_start_date = Calendar.strftime(start_date, "%b %d")
     presentation_end_date = Calendar.strftime(end_date, "%b %d")
 
     ~L"""
     <div class="my-3 w-auto">
      <div class="flex flex-col">
-       <div>Estimate usage and cost between <%= presentation_start_date %> and <%= presentation_end_date %>:</div>
+       <div>Estimate usage between <%= presentation_start_date %> and <%= presentation_end_date %>:</div>
        <div>Usage: <%= usage %> inserts</div>
-       <div>Estimated Cost: <%= estimate %> USD</div>
      </div>
     </div>
     """

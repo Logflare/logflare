@@ -36,10 +36,9 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponentTest do
       result = render_component(EstimateUsageComponent, %{user: user, plan: plan})
 
       assert result =~
-               "Estimate usage and cost between #{expected_presentation_start_date} and #{expected_presentation_end_date}:"
+               "Estimate usage between #{expected_presentation_start_date} and #{expected_presentation_end_date}:"
 
       assert Regex.match?(~r/Usage: [\d]+ inserts/, result)
-      assert Regex.match?(~r/Estimated Cost: [\d]+ USD/, result)
     end
   end
 end
