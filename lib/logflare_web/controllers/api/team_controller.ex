@@ -1,12 +1,38 @@
 defmodule LogflareWeb.Api.TeamController do
   use LogflareWeb, :controller
+  use OpenApiSpex.ControllerSpecs
+
   alias Logflare.Teams
-  action_fallback LogflareWeb.Api.FallbackController
+
+  alias LogflareWeb.OpenApi.Accepted
+  alias LogflareWeb.OpenApi.Created
+  alias LogflareWeb.OpenApi.List
+  alias LogflareWeb.OpenApi.NotFound
+
+  alias LogflareWeb.OpenApiSchemas.Team
+
+  action_fallback(LogflareWeb.Api.FallbackController)
+
+  tags(["management"])
+
+  operation(:index,
+    summary: "List teams",
+    responses: %{200 => List.response(Team)}
+  )
 
   def index(%{assigns: %{user: user}} = conn, _) do
     teams = Teams.list_teams_by_user_access(user)
     json(conn, teams)
   end
+
+  operation(:show,
+    summary: "Fetch team",
+    parameters: [token: [in: :path, description: "Team Token", type: :string]],
+    responses: %{
+      200 => Team.response(),
+      404 => NotFound.response()
+    }
+  )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with team when not is_nil(team) <- Teams.get_team_by_user_access(user, token),
@@ -14,6 +40,15 @@ defmodule LogflareWeb.Api.TeamController do
       json(conn, team)
     end
   end
+
+  operation(:create,
+    summary: "Create Team",
+    request_body: Team.params(),
+    responses: %{
+      201 => Created.response(Team),
+      404 => NotFound.response()
+    }
+  )
 
   def create(%{assigns: %{user: user}} = conn, params) do
     with {:ok, team} <- Teams.create_team(user, params),
@@ -24,6 +59,16 @@ defmodule LogflareWeb.Api.TeamController do
     end
   end
 
+  operation(:update,
+    summary: "Update team",
+    parameters: [token: [in: :path, description: "Team Token", type: :string]],
+    request_body: Team.params(),
+    responses: %{
+      201 => Created.response(Team),
+      404 => NotFound.response()
+    }
+  )
+
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
          {:ok, team} <- Teams.update_team(team, params),
@@ -33,6 +78,15 @@ defmodule LogflareWeb.Api.TeamController do
       |> json(team)
     end
   end
+
+  operation(:delete,
+    summary: "Delete Team",
+    parameters: [token: [in: :path, description: "Team Token", type: :string]],
+    responses: %{
+      204 => Accepted.response(),
+      404 => NotFound.response()
+    }
+  )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),

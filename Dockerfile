@@ -1,9 +1,9 @@
-FROM elixir:1.12-alpine as builder
+FROM elixir:1.12.3-alpine as builder
 
 ENV MIX_ENV prod
 
 RUN apk update && \
-    apk add -f curl git build-base nodejs yarn rust cargo python3
+    apk add -f curl git build-base nodejs npm rust cargo python3
 
 COPY . /logflare
 
@@ -12,13 +12,16 @@ WORKDIR /logflare
 RUN mix do local.rebar --force, local.hex --force, deps.get, release
 
 WORKDIR /logflare/assets
-RUN yarn install
-RUN yarn deploy
+RUN npm install
+RUN npm run deploy
 
 WORKDIR /logflare
 RUN mix phx.digest
 
-FROM alpine:3.16.0 as app
+# alpine version must match the base erlang image version used
+# https://github.com/erlef/docker-elixir/blob/master/1.12/alpine/Dockerfile
+# https://github.com/erlang/docker-erlang-otp/blob/master/24/alpine/Dockerfile
+FROM alpine:3.17.0 as app
 
 # Required for the BeamVM to run
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs curl

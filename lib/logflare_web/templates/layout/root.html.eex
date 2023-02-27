@@ -46,7 +46,6 @@
     <% end %>
 
     <%= @inner_content %>
-    <%= render("js_libs.html") %>
     <script src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
     <%= if Application.get_env(:logflare, :env) == :prod do %>
       <script>

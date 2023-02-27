@@ -3,9 +3,11 @@ defmodule Logflare.Endpoints.Query do
   use Ecto.Schema
   import Ecto.Changeset
   require Logger
+  alias Logflare.Endpoints.Query
 
   @derive {Jason.Encoder,
            only: [
+             :id,
              :token,
              :name,
              :query,
@@ -28,6 +30,8 @@ defmodule Logflare.Endpoints.Query do
     field :enable_auth, :boolean, default: false
 
     belongs_to :user, Logflare.User
+    has_many :sandboxed_queries, Query, foreign_key: :sandbox_query_id
+    belongs_to :sandbox_query, Query
 
     timestamps()
   end
@@ -60,14 +64,30 @@ defmodule Logflare.Endpoints.Query do
       :max_limit,
       :enable_auth
     ])
+    |> validate_query(:query)
     |> default_validations()
     |> update_source_mapping()
+  end
+
+  def sandboxed_endpoint_changeset(query, attrs) do
+    query
+    |> cast(attrs, [
+      :name,
+      :token,
+      :query,
+      :cache_duration_seconds,
+      :proactive_requerying_seconds,
+      :max_limit,
+      :enable_auth
+    ])
+    |> put_change(:sandboxable, false)
+    |> validate_required([:sandbox_query])
+    |> default_validations()
   end
 
   def default_validations(changeset) do
     changeset
     |> validate_required([:name, :query, :user])
-    |> validate_query(:query)
     |> unique_constraint(:name, name: :endpoint_queries_name_index)
     |> unique_constraint(:token)
     |> validate_number(:max_limit, greater_than: 0, less_than: 10_001)

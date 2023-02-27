@@ -23,13 +23,8 @@ config :logflare, LogflareWeb.Endpoint,
   code_reloader: true,
   check_origin: false,
   watchers: [
-    node: [
-      "node_modules/webpack/bin/webpack.js",
-      "--mode",
-      "development",
-      "--watch",
-      cd: Path.expand("../assets", __DIR__)
-    ]
+    # build js files
+    npm: ["run", "watch", cd: Path.expand("../assets", __DIR__)]
   ],
   live_reload: [
     patterns: [
@@ -65,7 +60,8 @@ config :logflare, Logflare.Google,
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
   compute_engine_sa: "compute-engine-2022@logflare-dev-238720.iam.gserviceaccount.com",
   api_sa: "1023172132421@cloudservices.gserviceaccount.com",
-  cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com"
+  cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com",
+  cloud_build_trigger_sa: "cloud-build@logflare-dev-238720.iam.gserviceaccount.com"
 
 config :libcluster,
   topologies: [
@@ -98,4 +94,8 @@ config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 
-import_config "telemetry.exs"
+config :stripity_stripe,
+  api_key: "sk_test_thisisaboguskey",
+  api_base_url: "http://localhost:12111/v1/"
+
+import_config("telemetry.exs")

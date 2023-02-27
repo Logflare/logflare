@@ -13,7 +13,7 @@ defmodule LogflareWeb.Api.AccountControllerTest do
       conn: conn,
       token: token
     } do
-      email = Faker.Internet.email()
+      email = TestUtils.gen_email() |> String.downcase()
 
       response =
         conn

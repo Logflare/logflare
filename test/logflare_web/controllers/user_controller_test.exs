@@ -22,7 +22,7 @@ defmodule LogflareWeb.UserControllerTest do
       conn: conn,
       users: [u1 | _]
     } do
-      nope_token = Faker.String.base64()
+      nope_token = TestUtils.random_string()
       nope_api_quota = 1337
       nope_user_id = 1
 
@@ -55,16 +55,16 @@ defmodule LogflareWeb.UserControllerTest do
       conn: conn,
       users: [u1 | _]
     } do
-      new_email = Faker.Internet.free_email()
+      new_email = TestUtils.gen_email()
 
       new = %{
         email: new_email,
-        provider: Faker.String.base64(),
-        email_preferred: Faker.Internet.free_email(),
-        name: Faker.String.base64(),
-        image: Faker.Internet.image_url(),
+        provider: TestUtils.random_string(),
+        email_preferred: TestUtils.gen_email(),
+        name: TestUtils.random_string(),
+        image: "https://#{TestUtils.random_string()}.com",
         email_me_product: true,
-        phone: Faker.Phone.EnUs.phone()
+        phone: 12345
       }
 
       conn =

@@ -1,3 +1,4 @@
+import $ from "jquery"
 import React from "react"
 import { DateTime } from "luxon"
 import { ResponsiveBarCanvas } from "@nivo/bar"
@@ -26,20 +27,16 @@ const theme = {
       strokeDasharray: "4 4",
     },
   },
-  tooltip: {
-    container: {
-      background: brandLightBlack,
-    },
-  },
+  tooltip: { container: { background: brandLightBlack } },
 }
 
 const renderDefaultTooltip = ({ value, color, indexValue }) => {
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack }}>
       <strong style={{ color }}>Timestamp: {indexValue}</strong>
       <br />
       <strong style={{ color }}>Value: {value}</strong>
-    </div>
+    </div >
   )
 }
 

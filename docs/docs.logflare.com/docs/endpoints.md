@@ -51,21 +51,41 @@ with errors (
     where regexp_contains(event_message, "ERROR") and timestamp >= "2020-01-01"
     group by event_message
     order by count desc
-) select * from errors
+) select err from errors
 
 ```
 
-If no `sql=` query parameter is provided, the default SQL query `select * from errors` is executed.
+If no `sql=` query parameter is provided, the default SQL query `select err from errors` is executed.
 
 The Endpoint consumer can pass in the following query parameter to query across the sandboxed result.
 
 ```text
-?sql=select * from errors where count > 50
+?sql=select err from errors where regexp_contains(err, "my_error")
 ```
 
 ## HTTP Response
 
 The result of the query will be returned on the `result` key of the response payload.
+
+```
+{
+    "result": [{err: "my erorr message"}]
+}
+```
+
+## Cache
+
+All endpoint queries by default are set to cache results for 3,600 seconds. The first API request that hits Logflare will create and set the results of the cache for the configured cache duration. Caching is recommended to keep querying costs down while ensuring the fastest possible return of results to the end user.
+
+To disable the cache, set the cached duration to `0`. However, it is not recommended to do so unless you absolutely need up-to-date results. To prevent stale data while keeping the cache warm, use the cache proactive requerying feature.
+
+Caching is performed on a query parameter basis. As such, if there are three API requests sent to an endpoint, `?path=123`, `?path=223`, and `?other=value`, this will result in 3 difference caches being created.
+
+### Proactive Requerying
+
+Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.
+
+When configured, the cache will be automatically updated at the set interval, performing only one query to update the cached data.
 
 ## Security
 

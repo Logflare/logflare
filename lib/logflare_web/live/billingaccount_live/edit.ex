@@ -24,10 +24,7 @@ defmodule LogflareWeb.BillingAccountLive do
       nil ->
         socket =
           socket
-          |> put_flash(
-            :error,
-            "Create a billing account first!"
-          )
+          |> put_flash(:error, "Create a billing account first!")
           |> redirect(to: Routes.user_path(socket, :edit) <> "#create-a-billing-account")
 
         {:ok, socket}

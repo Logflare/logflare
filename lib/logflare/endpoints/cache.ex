@@ -7,11 +7,6 @@ defmodule Logflare.Endpoints.Cache do
   alias Logflare.Endpoints
   use GenServer, restart: :temporary
 
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-  defp env, do: Application.get_env(:logflare, :env)
-
-  import Ecto.Query, only: [from: 2]
-
   defstruct query: nil,
             query_tasks: [],
             params: %{},
@@ -57,29 +52,25 @@ defmodule Logflare.Endpoints.Cache do
       If you continue to see this error please contact support.
       """
 
-      err =
-        %{
-          "code" => 504,
-          "errors" => [],
-          "message" => message,
-          "status" => "TIMEOUT"
-        }
-        |> process_error()
+      err = %{
+        "code" => 504,
+        "errors" => [],
+        "message" => message,
+        "status" => "TIMEOUT"
+      }
 
       {:error, err}
 
     :exit, reason ->
       Logger.error("Endpoint query exited for an unknown reason", error_string: inspect(reason))
 
-      err =
-        %{
-          "code" => 502,
-          "errors" => [],
-          "message" =>
-            "Something went wrong! Unknown error. If this continues please contact support.",
-          "status" => "UNKNOWN"
-        }
-        |> process_error()
+      err = %{
+        "code" => 502,
+        "errors" => [],
+        "message" =>
+          "Something went wrong! Unknown error. If this continues please contact support.",
+        "status" => "UNKNOWN"
+      }
 
       {:error, err}
   end
@@ -191,68 +182,7 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def do_query(state) do
-    params = state.params
-
-    # determine the parameters used in this query
-    case Logflare.SqlV2.parameters(state.query.query) do
-      {:ok, parameters} ->
-        Logger.debug("[#{__MODULE__}] Parameters: #{inspect(parameters)} ")
-        # if it is sandboxable, then retrieve the sandboxed sql and add it as a query.
-        query =
-          if state.query.sandboxable && Map.get(params, "sql") do
-            {state.query.query, Map.get(params, "sql")}
-          else
-            state.query.query
-          end
-
-        Logger.debug("[#{__MODULE__}] query: #{inspect(query)} ")
-
-        # insert the bigquery source-table references
-        case Logflare.SqlV2.transform(query, state.query.user_id) do
-          {:ok, query} ->
-            Logger.debug("[#{__MODULE__}] transformed query: #{inspect(query)} ")
-
-            params =
-              Enum.map(parameters, fn x ->
-                %{
-                  name: x,
-                  parameterValue: %{
-                    value: params[x]
-                  },
-                  parameterType: %{
-                    type: "STRING"
-                  }
-                }
-              end)
-
-            # execute the queryon bigquery
-            case Logflare.BqRepo.query_with_sql_and_params(
-                   state.query.user,
-                   state.query.user.bigquery_project_id || env_project_id(),
-                   query,
-                   params,
-                   parameterMode: "NAMED",
-                   maxResults: state.query.max_limit,
-                   location: state.query.user.bigquery_dataset_location
-                 ) do
-              {:ok, result} ->
-                {:ok, result}
-
-              {:error, %{body: body}} ->
-                error = Jason.decode!(body)["error"] |> process_error(state.query.user_id)
-                {:error, error}
-
-              {:error, err} when is_atom(err) ->
-                {:error, process_error(err, state.query.user_id)}
-            end
-
-          {:error, err} ->
-            {:error, err}
-        end
-
-      {:error, err} ->
-        {:error, err}
-    end
+    Logflare.Endpoints.run_query(state.query, state.params)
   end
 
   defp refresh(every) do
@@ -280,63 +210,5 @@ defmodule Logflare.Endpoints.Cache do
     if state.query.cache_duration_seconds == 0,
       do: %{state | disable_cache: true},
       else: %{state | disable_cache: false}
-  end
-
-  defp process_error(error) when is_map(error) do
-    %{error | "message" => process_message(error["message"])}
-  end
-
-  defp process_error(error, user_id) when is_atom(error) do
-    %{"message" => process_message(error, user_id)}
-  end
-
-  defp process_error(error, user_id) when is_map(error) do
-    error = %{error | "message" => process_message(error["message"], user_id)}
-
-    if is_list(error["errors"]) do
-      %{error | "errors" => Enum.map(error["errors"], fn err -> process_error(err, user_id) end)}
-    else
-      error
-    end
-  end
-
-  defp process_message(message) when is_binary(message) do
-    message
-  end
-
-  defp process_message(%{"message" => message}) when is_map(message) do
-    message
-  end
-
-  defp process_message(message, _user_id) when is_atom(message) do
-    message
-  end
-
-  defp process_message(message, user_id) when is_binary(message) do
-    regex =
-      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
-
-    names = Regex.named_captures(regex, message)
-
-    case names do
-      %{"uuid" => uuid} ->
-        uuid = String.replace(uuid, "_", "-")
-
-        query =
-          from s in Logflare.Source,
-            where: s.token == ^uuid and s.user_id == ^user_id,
-            select: s.name
-
-        case Logflare.Repo.one(query) do
-          nil ->
-            message
-
-          name ->
-            Regex.replace(regex, message, name)
-        end
-
-      _ ->
-        message
-    end
   end
 end

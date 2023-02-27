@@ -101,8 +101,14 @@ main.app {
   border-top-right-radius: 0.1rem;
 }
 
-.modal-content {
-  border: 3px solid rgba(0, 0, 0, 0.2);
+.modal-body {
+  table {
+    @extend .table;
+    @extend .table-dark;
+  }
+  h1, h2, h3, h4, h5 {
+    @extend .header-margin
+  }
 }
 
 #login {
@@ -215,7 +221,7 @@ pre {
   text-shadow: 1px 1px 1px #ffffff75;
 }
 
-a {
+a, button.btn-link {
   color: #e35b8d;
 }
 
@@ -236,9 +242,10 @@ a:hover {
   color: white;
 }
 
-a:focus {
+a:focus, button.btn-link:focus {
   outline: 3px dashed $brand-fuscia;
   outline-offset: 3px;
+  box-shadow: none;
 }
 
 .text-primary {

@@ -2,7 +2,6 @@
 Mix.Task.run("app.start")
 
 ExUnit.start()
-Faker.start()
 
 # Mimick mocks setup
 Mimic.copy(Logflare.Mailer)
