@@ -9,9 +9,11 @@ defmodule Logflare.SingleTenant do
   @user_attrs %{
     name: "default",
     email: "default@logflare.app",
+    email_preferred: "default@logflare.app",
     provider: "default",
     token: Ecto.UUID.generate(),
-    provider_uid: "default"
+    provider_uid: "default",
+    endpoints_beta: true
   }
   @plan_attrs %{
     name: "Enterprise",
