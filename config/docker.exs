@@ -19,7 +19,25 @@ config :logflare, LogflareWeb.Endpoint,
   ],
   debug_errors: true,
   code_reloader: false,
-  check_origin: false
+  check_origin: false,
+  watchers: [
+    node: [
+      "node_modules/webpack/bin/webpack.js",
+      "--mode",
+      "development",
+      "--watch",
+      cd: Path.expand("../assets", __DIR__)
+    ]
+  ],
+  live_reload: [
+    patterns: [
+      ~r{priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$},
+      ~r{priv/gettext/.*(po)$},
+      ~r{lib/logflare_web/views/.*(ex)$},
+      ~r{lib/logflare_web/templates/.*(eex)$},
+      ~r{lib/logflare_web/live/.*(ex)$}
+    ]
+  ]
 
 config :logger,
   level: :debug
