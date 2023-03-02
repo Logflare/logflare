@@ -17,7 +17,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     "tailing?" => "false"
   }
 
-  defp setup_mocks(ctx) do
+  defp setup_mocks(_ctx) do
     # mocks
     Goth
     |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
@@ -30,7 +30,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     :ok
   end
 
-  defp on_exit_kill_tasks(ctx) do
+  defp on_exit_kill_tasks(_ctx) do
     on_exit(fn ->
       Logflare.Utils.Tasks.kill_all_tasks()
     end)
@@ -39,7 +39,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   # requires a user, source, and plan set
-  defp setup_source_processes(%{user: user, source: source, plan: plan}) do
+  defp setup_source_processes(%{source: source, plan: plan}) do
     start_supervised!(Counters)
     rls = %RLS{source_id: source.token, plan: plan}
     start_supervised!({Schema, rls})
@@ -91,7 +91,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "static elements", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-      html = render(view)
 
       assert view
              |> element("a", "LQL")
