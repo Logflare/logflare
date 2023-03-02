@@ -24,7 +24,7 @@ defmodule Logflare.SingleTenantTest do
 
     test "get_default_plan/0" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
-      assert %Plan{name: "default"} = SingleTenant.get_default_plan()
+      assert %Plan{name: "Enterprise"} = SingleTenant.get_default_plan()
     end
 
     test "create_default_user/0, get_default_user/0 :inserts a default enterprise user if not present" do
