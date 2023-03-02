@@ -2,6 +2,7 @@ defmodule Logflare.Application do
   @moduledoc false
   use Application
   require Logger
+
   alias Logflare.{
     Users,
     Sources,
@@ -174,6 +175,7 @@ defmodule Logflare.Application do
   def startup_tasks do
     # if single tenant, insert enterprise user
     Logger.info("Executing startup tasks")
+
     if SingleTenant.single_tenant?() do
       Logger.info("Ensuring single tenant user is seeded...")
       SingleTenant.create_default_plan()
