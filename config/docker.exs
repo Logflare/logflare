@@ -21,6 +21,11 @@ config :logflare, LogflareWeb.Endpoint,
   code_reloader: false,
   check_origin: false
 
+
+config :logger,
+  level: :debug
+
+
 config :logger, :console,
   format: "\n[$level] [$metadata] $message\n",
   metadata: [:request_id],
