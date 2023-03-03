@@ -7,6 +7,13 @@ defmodule Logflare.Endpoints do
   alias Logflare.User
   import Ecto.Query
 
+  @spec count_endpoints_by_user(User.t() | integer()) :: integer()
+  def count_endpoints_by_user(%User{id: user_id}), do: count_endpoints_by_user(user_id)
+  def count_endpoints_by_user(user_id) do
+    from(s in Query, where: s.user_id == ^user_id)
+    |> Repo.aggregate(:count)
+  end
+
   @spec list_endpoints_by(keyword()) :: [Query.t()] | []
   def list_endpoints_by(kw) do
     q = from(e in Query)

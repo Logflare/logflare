@@ -297,7 +297,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   describe "single tenant searching" do
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
       user = SingleTenant.get_default_user()

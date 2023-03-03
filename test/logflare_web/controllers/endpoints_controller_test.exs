@@ -44,7 +44,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   describe "single tenant endpoint query" do
     setup :set_mimic_global
 
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
       user = SingleTenant.get_default_user()
@@ -73,7 +73,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   end
 
   describe "single tenant ui" do
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     test "can view endpoints page", %{conn: conn} do
       conn = get(conn, "/endpoints")

@@ -1,6 +1,6 @@
 use Mix.Config
 
-config :logflare, env: :dev
+config :logflare, env: :dev, supabase_mode: true
 
 config :logflare, LogflareWeb.Endpoint,
   server: true,

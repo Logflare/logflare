@@ -40,7 +40,7 @@ defmodule LogflareWeb.MarketingControllerTest do
   end
 
   describe "single tenant ui" do
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     test "redirect to dashboard", %{conn: conn} do
       path = Routes.marketing_path(conn, :index)

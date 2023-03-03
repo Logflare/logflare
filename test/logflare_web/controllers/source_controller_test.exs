@@ -91,7 +91,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard single tenant" do
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
       Logflare.Sources.Counters

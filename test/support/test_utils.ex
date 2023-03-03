@@ -10,22 +10,30 @@ defmodule Logflare.TestUtils do
   defmacro setup_single_tenant(opts \\ []) do
     opts =
       Enum.into(opts, %{
-        seed: false
+        seed_user: false,
+        supabase_mode: false
       })
 
     quote do
       setup do
         # perform application env adjustments at runtime
-        initial = Application.get_env(:logflare, :single_tenant)
+        initial_single_tenant = Application.get_env(:logflare, :single_tenant)
         Application.put_env(:logflare, :single_tenant, true)
-
         on_exit(fn ->
-          Application.put_env(:logflare, :single_tenant, initial)
+          Application.put_env(:logflare, :single_tenant, initial_single_tenant)
         end)
 
-        if unquote(opts.seed) do
+        if unquote(opts.seed_user) do
           {:ok, _} = SingleTenant.create_default_plan()
           {:ok, _user} = SingleTenant.create_default_user()
+        end
+
+        if unquote(opts.supabase_mode) do
+          initial_supabase_mode = Application.get_env(:logflare, :supabase_mode)
+          Application.put_env(:logflare, :supabase_mode, true)
+          on_exit(fn ->
+            Application.put_env(:logflare, :supabase_mode, initial_supabase_mode)
+          end)
         end
 
         :ok
