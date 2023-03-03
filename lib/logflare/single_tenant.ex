@@ -46,7 +46,9 @@ defmodule Logflare.SingleTenant do
     "pgbouncer.logs.prod"
   ]
   @endpoint_params [
-    %{name: "logs.all", query: Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false}
+    %{name: "logs.all", query: Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false},
+    %{name: "charts.usage", query: Application.app_dir(:logflare, "priv/supabase/endpoints/charts.usage.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false},
+    %{name: "functions.invocation-stats", query: Application.app_dir(:logflare, "priv/supabase/endpoints/functions.invocation-stats.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false},
   ]
 
 
