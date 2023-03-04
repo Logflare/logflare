@@ -9,6 +9,7 @@ COPY . /logflare
 
 
 WORKDIR /logflare
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN mix do local.rebar --force, local.hex --force, deps.get, release
 
 WORKDIR /logflare/assets
