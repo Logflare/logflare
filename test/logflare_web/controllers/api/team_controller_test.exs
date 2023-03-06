@@ -29,7 +29,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     } do
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> get("/api/teams")
         |> json_response(200)
 
@@ -46,7 +46,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     } do
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> get("/api/teams/#{token}")
         |> json_response(200)
 
@@ -60,7 +60,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     } do
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> get("/api/teams/#{non_owner_team.token}")
         |> json_response(200)
 
@@ -75,12 +75,12 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> login_user(invalid_user)
+      |> add_access_token(invalid_user)
       |> get("/api/teams/#{main_team.token}")
       |> response(404)
 
       conn
-      |> login_user(invalid_user)
+      |> add_access_token(invalid_user)
       |> get("/api/teams/#{non_owner_team.token}")
       |> response(404)
     end
@@ -93,7 +93,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
 
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> post("/api/teams", %{name: name})
         |> json_response(201)
 
@@ -103,7 +103,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
       resp =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> post("/api/teams", %{name: 123})
         |> json_response(422)
 
@@ -113,7 +113,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
       resp =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> post("/api/teams")
         |> json_response(422)
 
@@ -131,7 +131,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
 
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> patch("/api/teams/#{main_team.token}", %{name: name})
         |> json_response(204)
 
@@ -142,7 +142,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> login_user(invalid_user)
+      |> add_access_token(invalid_user)
       |> patch("/api/teams/#{main_team.token}", %{name: TestUtils.random_string()})
       |> response(404)
     end
@@ -150,7 +150,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     test "returns 422 on bad arguments", %{conn: conn, user: user, main_team: main_team} do
       resp =
         conn
-        |> login_user(user)
+        |> add_access_token(user)
         |> patch("/api/teams/#{main_team.token}", %{name: 123})
         |> json_response(422)
 
@@ -165,7 +165,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       main_team: main_team
     } do
       assert conn
-             |> login_user(user)
+             |> add_access_token(user)
              |> delete("/api/teams/#{main_team.token}")
              |> response(204)
     end
@@ -174,7 +174,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       invalid_user = insert(:user)
 
       assert conn
-             |> login_user(invalid_user)
+             |> add_access_token(invalid_user)
              |> delete("/api/teams/#{main_team.token}")
              |> response(404)
     end
