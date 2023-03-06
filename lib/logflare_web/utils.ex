@@ -9,6 +9,12 @@ defmodule LogflareWeb.Utils do
     true
   """
   def flag(feature) when is_binary(feature) do
-    ConfigCat.get_value(feature, false)
+    config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
+
+    if config_cat_key do
+      ConfigCat.get_value(feature, false)
+    else
+      false
+    end
   end
 end
