@@ -10,6 +10,12 @@ defmodule LogflareWeb.Api.FallbackController do
     |> json(%{errors: errors})
   end
 
+  def call(conn, {:error, :unauthorized}) do
+    conn
+    |> put_status(401)
+    |> halt()
+  end
+
   def call(conn, nil) do
     conn
     |> put_status(:not_found)

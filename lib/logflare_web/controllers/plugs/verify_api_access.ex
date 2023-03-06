@@ -12,7 +12,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   import Phoenix.Controller
   alias Logflare.Auth
   alias Logflare.Endpoints
-  alias Logflare.Sources
   alias Logflare.Users
 
   def init(args), do: args |> Enum.into(%{})
@@ -21,10 +20,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     conn.request_path
     |> case do
       "/api/endpoints/" <> _ -> :endpoints
-      "/api/sources" <> _ -> :sources
-      # legacy/deprecated routes
-      "/api/logs" <> _ -> :sources
-      "/logs" <> _ -> :sources
       "/endpoints" <> _ -> :endpoints
       _ -> :generic
     end
@@ -34,36 +29,13 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   defp do_auth(:endpoints, %{params: params} = conn) when is_map_key(params, "token") do
     conn = fetch_query_params(conn)
     # fetch endpoint info
-    with endpoint_token <- conn.params["token"],
-         %Endpoints.Query{enable_auth: true, user_id: user_id} = endpoint_query <-
-           Endpoints.get_query_by_token(endpoint_token),
-         {:ok, user} <- identify_requestor(conn),
-         true <- user_id == user.id do
+    endpoint = Endpoints.get_query_by_token(conn.params["token"])
+    enable_auth = Map.get(endpoint || %{}, :enable_auth)
+
+    if conn.request_path =~ "/endpoints/query/" and enable_auth == false do
       conn
-      |> assign(:user, user)
-      |> assign(:endpoint_query, endpoint_query)
     else
-      %Endpoints.Query{enable_auth: false} ->
-        conn
-
-      _ ->
-        send_error_response(conn, 401, "Error: Unauthorized")
-    end
-  end
-
-  defp do_auth(:sources, %{params: params} = conn) when is_map_key(params, "source") do
-    conn = fetch_query_params(conn)
-
-    with {:ok, user} <- identify_requestor(conn),
-         source_token when is_binary(source_token) <- conn.params["source"],
-         source <- Sources.get_source_by_token(source_token),
-         true <- source.user_id == user.id do
-      conn
-      |> assign(:user, user)
-      |> assign(:source, source)
-    else
-      _ ->
-        send_error_response(conn, 401, "Error: Unauthorized")
+      do_auth(:generic, conn)
     end
   end
 

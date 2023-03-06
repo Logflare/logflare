@@ -51,6 +51,19 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
     end
+
+    test "GET query with other user's api key", %{conn: init_conn, user: user} do
+      user2 = insert(:user)
+      endpoint = insert(:endpoint, user: user, enable_auth: true)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user2.api_key)
+        |> get("/endpoints/query/#{endpoint.token}")
+
+      assert conn.status == 401
+      assert conn.halted == true
+    end
   end
 
   describe "single tenant endpoint query" do

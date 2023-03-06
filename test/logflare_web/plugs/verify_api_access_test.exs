@@ -72,26 +72,11 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> VerifyApiAccess.call(%{})
       |> assert_unauthorized()
     end
-
-    test "halts request with token from different user", %{conn: conn} do
-      user2 = insert(:user)
-      {:ok, token2} = Logflare.Auth.create_access_token(user2)
-
-      conn
-      |> put_req_header("x-api-key", token2.token)
-      |> VerifyApiAccess.call(%{})
-      |> assert_unauthorized()
-
-      conn
-      |> put_req_header("x-api-key", user2.api_key)
-      |> VerifyApiAccess.call(%{})
-      |> assert_unauthorized()
-    end
   end
 
   describe "endpoint.enable_auth=true" do
     setup %{endpoint_auth: endpoint} do
-      conn = build_conn(:post, "/endpoints/query/:token", %{"token" => endpoint.token})
+      conn = build_conn(:post, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
       {:ok, conn: conn}
     end
 
@@ -141,26 +126,11 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> VerifyApiAccess.call(%{})
       |> assert_unauthorized()
     end
-
-    test "halts endpoint request with token from different user", %{conn: conn} do
-      user2 = insert(:user)
-      {:ok, token2} = Logflare.Auth.create_access_token(user2)
-
-      conn
-      |> put_req_header("x-api-key", token2.token)
-      |> VerifyApiAccess.call(%{})
-      |> assert_unauthorized()
-
-      conn
-      |> put_req_header("x-api-key", user2.api_key)
-      |> VerifyApiAccess.call(%{})
-      |> assert_unauthorized()
-    end
   end
 
   describe "endpoint.enable_auth=false" do
     setup %{endpoint_open: endpoint} do
-      conn = build_conn(:get, "/endpoints/query/:token", %{"token" => endpoint.token})
+      conn = build_conn(:get, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
       {:ok, conn: conn}
     end
 
