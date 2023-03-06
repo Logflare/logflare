@@ -46,11 +46,32 @@ defmodule Logflare.SingleTenant do
     "pgbouncer.logs.prod"
   ]
   @endpoint_params [
-    %{name: "logs.all", query: Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false},
-    %{name: "charts.usage", query: Application.app_dir(:logflare, "priv/supabase/endpoints/charts.usage.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false},
-    %{name: "functions.invocation-stats", query: Application.app_dir(:logflare, "priv/supabase/endpoints/functions.invocation-stats.sql") |> File.read!(), sandboxable: true, max_limit: 1000, enable_auth: false},
+    %{
+      name: "logs.all",
+      query:
+        Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(),
+      sandboxable: true,
+      max_limit: 1000,
+      enable_auth: false
+    },
+    %{
+      name: "charts.usage",
+      query:
+        Application.app_dir(:logflare, "priv/supabase/endpoints/charts.usage.sql") |> File.read!(),
+      sandboxable: true,
+      max_limit: 1000,
+      enable_auth: false
+    },
+    %{
+      name: "functions.invocation-stats",
+      query:
+        Application.app_dir(:logflare, "priv/supabase/endpoints/functions.invocation-stats.sql")
+        |> File.read!(),
+      sandboxable: true,
+      max_limit: 1000,
+      enable_auth: false
+    }
   ]
-
 
   @doc """
   Retrieves the default user
@@ -105,30 +126,36 @@ defmodule Logflare.SingleTenant do
   def create_supabase_sources do
     user = get_default_user()
     count = Sources.count_sources_by_user(user)
+
     if count == 0 do
-      sources = for name <- @source_names do
-        {:ok, source} = Sources.create_source(%{name: name}, user)
-      end
+      sources =
+        for name <- @source_names do
+          {:ok, source} = Sources.create_source(%{name: name}, user)
+          source
+        end
+
       {:ok, sources}
     else
       {:error, :already_created}
     end
-
   end
+
   @spec create_supabase_endpoints() :: {:ok, [Query.t()]}
   def create_supabase_endpoints do
     user = get_default_user()
     count = Endpoints.count_endpoints_by_user(user)
-    if count == 0 do
-  endpoints = for params <- @endpoint_params do
-      {:ok, endpoint} =  Endpoints.create_query(user, params)
-      endpoint
-    end
-    {:ok, endpoints}
-  else
-    {:error, :already_created}
-  end
 
+    if count == 0 do
+      endpoints =
+        for params <- @endpoint_params do
+          {:ok, endpoint} = Endpoints.create_query(user, params)
+          endpoint
+        end
+
+      {:ok, endpoints}
+    else
+      {:error, :already_created}
+    end
   end
 
   def single_tenant? do

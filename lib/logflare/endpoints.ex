@@ -9,6 +9,7 @@ defmodule Logflare.Endpoints do
 
   @spec count_endpoints_by_user(User.t() | integer()) :: integer()
   def count_endpoints_by_user(%User{id: user_id}), do: count_endpoints_by_user(user_id)
+
   def count_endpoints_by_user(user_id) do
     from(s in Query, where: s.user_id == ^user_id)
     |> Repo.aggregate(:count)
