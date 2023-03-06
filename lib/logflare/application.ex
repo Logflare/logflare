@@ -1,6 +1,7 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
+  require Logger
 
   alias Logflare.{
     Users,
@@ -11,6 +12,8 @@ defmodule Logflare.Application do
     ContextCache,
     SourceSchemas
   }
+
+  alias Logflare.SingleTenant
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -144,9 +147,10 @@ defmodule Logflare.Application do
       Logflare.SystemMetricsSup,
 
       # For Logflare Endpoints
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-      # feature flagging
+      # Startup tasks
+      {Task, fn -> startup_tasks() end}
     ] ++ conditional_children()
   end
 
@@ -166,5 +170,16 @@ defmodule Logflare.Application do
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  def startup_tasks do
+    # if single tenant, insert enterprise user
+    Logger.info("Executing startup tasks")
+
+    if SingleTenant.single_tenant?() do
+      Logger.info("Ensuring single tenant user is seeded...")
+      SingleTenant.create_default_plan()
+      SingleTenant.create_default_user()
+    end
   end
 end

@@ -208,6 +208,9 @@ defmodule Logflare.Mixfile do
       start: [
         "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
       ],
+      "start.docker": [
+        "cmd env $(cat .docker.env|xargs) PORT=4000 iex --sname blue --cookie monster -S mix phx.server"
+      ],
       "start.orange": [
         "cmd env $(cat .dev.env | xargs) PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server"
       ],

@@ -6,6 +6,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
   import Phoenix.Controller
   alias Logflare.{Users, User}
   alias ExOauth2Provider.AccessTokens
+  alias Logflare.SingleTenant
 
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
 
@@ -27,10 +28,20 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
     do: set_user_for_browser(conn, opts)
 
   defp set_user_for_browser(conn, _opts) do
+    is_single_tenant = SingleTenant.single_tenant?()
+
     user =
       conn
       |> get_session(:user_id)
       |> maybe_parse_binary_to_int()
+      # handle single tenant browser usage, should have no auth required
+      |> case do
+        nil when is_single_tenant == true ->
+          SingleTenant.get_default_user().id
+
+        other ->
+          other
+      end
       |> case do
         id when is_integer(id) ->
           Users.get_by_and_preload(id: id)
