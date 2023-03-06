@@ -72,7 +72,11 @@ defmodule Logflare.SingleTenant do
   Creates an enterprise user
   """
   def create_default_user do
-    case Users.insert_user(@user_attrs) do
+    attrs =
+      @user_attrs
+      |> Map.put(:api_key, Application.get_env(:logflare, :api_key))
+
+    case Users.insert_user(attrs) do
       {:ok, _} = result ->
         result
 

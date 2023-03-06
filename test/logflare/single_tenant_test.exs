@@ -34,6 +34,8 @@ defmodule Logflare.SingleTenantTest do
       assert {:ok, user} = SingleTenant.create_default_user()
       assert user.email_preferred
       assert user.endpoints_beta
+      # api key should be based on env var
+      assert user.api_key == Application.get_env(:logflare, :api_key)
       plan = Billing.get_plan_by_user(user)
       assert plan.name == "Enterprise"
       assert {:error, :already_created} = SingleTenant.create_default_user()
@@ -59,11 +61,11 @@ defmodule Logflare.SingleTenantTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     test "create_supabase_sources/0, create_supabase_endpoints/0" do
-      assert {:ok, [_|_]} = SingleTenant.create_supabase_sources()
+      assert {:ok, [_ | _]} = SingleTenant.create_supabase_sources()
       assert {:error, :already_created} = SingleTenant.create_supabase_sources()
 
       # must have sources created first
-      assert {:ok, [_|_]} = SingleTenant.create_supabase_endpoints()
+      assert {:ok, [_ | _]} = SingleTenant.create_supabase_endpoints()
       assert {:error, :already_created} = SingleTenant.create_supabase_endpoints()
     end
 

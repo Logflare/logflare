@@ -60,6 +60,10 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
+  pipeline :require_api_auth do
+    plug(LogflareWeb.Plugs.VerifyApiAccess)
+  end
+
   pipeline :require_ingest_api_auth do
     plug(LogflareWeb.Plugs.SetVerifyUser)
     plug(LogflareWeb.Plugs.SetVerifySource)
@@ -100,10 +104,6 @@ defmodule LogflareWeb.Router do
 
   pipeline :check_team_user do
     plug(LogflareWeb.Plugs.CheckTeamUser)
-  end
-
-  pipeline :api_auth_endpoints do
-    plug(LogflareWeb.Plugs.VerifyApiAccess, resource: :endpoints)
   end
 
   pipeline :auth_switch do
@@ -156,7 +156,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/endpoints/query", LogflareWeb do
-    pipe_through([:api, :api_auth_endpoints])
+    pipe_through([:api, :require_api_auth])
     get("/:token", EndpointsController, :query)
   end
 
@@ -389,7 +389,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/api/endpoints", LogflareWeb do
-    pipe_through([:api, :api_auth_endpoints])
+    pipe_through([:api, :require_api_auth])
     get("/query/:token", EndpointsController, :query)
   end
 

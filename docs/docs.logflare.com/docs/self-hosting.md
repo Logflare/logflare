@@ -57,6 +57,7 @@ DB_PORT=5432
 DB_PASSWORD=postgres
 DB_USERNAME=postgres
 LOGFLARE_SINGLE_TENANT=true
+LOGFLARE_API_KEY=my-cool-api-key
 GOOGLE_DATASET_ID_APPEND=_dev
 GOOGLE_PROJECT_ID=logflare-docker-example
 GOOGLE_PROJECT_NUMBER=123123123213
@@ -71,5 +72,22 @@ MY_POD_IP=127.0.0.1
 
 4. Run `docker-compose up -d` and visit http://localhost:4000
 
+## Configuration
 
-## Caveats
+### `LOGFLARE_SINGLE_TENANT`
+
+> Boolean, required, defaults to false
+
+This is will seed a singular user into the database, and will disable browser authentication. All browser usage will default to this user. Inviting team users and other team-related functionality is currently not supported for self-hosted. Logflare self-hosted is currently intended for single-user experience only.
+
+### `LOGFLARE_API_KEY`
+
+> String, optional, defaults to `nil`
+
+Allows you to pass in an API key that will used for authentication. This is intended for programmatic usage where an external program sets the API key. It is advised to use the UI to configure the access tokens instead. If this value is not provided, the default API key will be automatically generated.
+
+### `LOGFLARE_SUPABASE_MODE`
+
+> Boolean, defaults to false
+
+This is a special mode for Logflare which will seed additional resources for usage with Supabase self-hosted.

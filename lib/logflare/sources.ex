@@ -62,9 +62,20 @@ defmodule Logflare.Sources do
     end
   end
 
+  @doc """
+  Retrieves a source by its uuid token
+  """
+  @spec get(atom | Stringt.t()) :: Source.t() | nil
+  def get_source_by_token(source_token) when is_atom(source_token) or is_binary(source_token) do
+    get_by(token: source_token)
+  end
+
+  @doc """
+  deprecated, use get_source_by_token/1 instead
+  """
   @spec get(atom | integer) :: Source.t() | nil
-  def get(source_id) when is_atom(source_id) do
-    get_by(token: source_id)
+  def get(source_token) when is_atom(source_token) do
+    get_source_by_token(source_token)
   end
 
   def get(source_id) when is_integer(source_id) do

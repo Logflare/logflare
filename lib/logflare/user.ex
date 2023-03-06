@@ -141,7 +141,8 @@ defmodule Logflare.User do
     |> default_validations(user)
   end
 
-  defp add_api_key(%{data: %{api_key: nil}} = changeset) do
+  defp add_api_key(%{data: %{api_key: nil}, changes: changes} = changeset)
+       when not is_map_key(changes, :api_key) do
     api_key =
       :crypto.strong_rand_bytes(12)
       |> Base.url_encode64()

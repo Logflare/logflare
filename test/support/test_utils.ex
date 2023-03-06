@@ -6,7 +6,16 @@ defmodule Logflare.TestUtils do
   alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
   alias Logflare.SingleTenant
 
-  # setup a test context for single tenant
+  @doc """
+  Configures the following `:logflare` env keys:
+  - :single_tenant gets set to true
+  - :api_key is randomly set, simulating user setting api key through env var
+  - :supabase_mode is set based on flag
+
+  Options:
+  - :seed_user - boolean - enable to seed default plan and user
+  - :supabase_mode - enable to seed supabase data
+  """
   defmacro setup_single_tenant(opts \\ []) do
     opts =
       Enum.into(opts, %{
@@ -19,8 +28,16 @@ defmodule Logflare.TestUtils do
         # perform application env adjustments at runtime
         initial_single_tenant = Application.get_env(:logflare, :single_tenant)
         Application.put_env(:logflare, :single_tenant, true)
+
         on_exit(fn ->
           Application.put_env(:logflare, :single_tenant, initial_single_tenant)
+        end)
+
+        initial_api_key = Application.get_env(:logflare, :api_key)
+        Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
+
+        on_exit(fn ->
+          Application.put_env(:logflare, :api_key, initial_api_key)
         end)
 
         if unquote(opts.seed_user) do
@@ -31,6 +48,7 @@ defmodule Logflare.TestUtils do
         if unquote(opts.supabase_mode) do
           initial_supabase_mode = Application.get_env(:logflare, :supabase_mode)
           Application.put_env(:logflare, :supabase_mode, true)
+
           on_exit(fn ->
             Application.put_env(:logflare, :supabase_mode, initial_supabase_mode)
           end)
