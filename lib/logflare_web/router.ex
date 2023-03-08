@@ -63,6 +63,7 @@ defmodule LogflareWeb.Router do
   pipeline :require_api_auth do
     plug(LogflareWeb.Plugs.FetchResource)
     plug(LogflareWeb.Plugs.VerifyApiAccess)
+    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
   end
 
   pipeline :require_ingest_api_auth do
