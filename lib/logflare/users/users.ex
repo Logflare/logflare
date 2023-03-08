@@ -18,6 +18,11 @@ defmodule Logflare.Users do
     User.changeset(user, attrs)
   end
 
+  @spec count_users() :: integer()
+  def count_users do
+    Repo.aggregate(User, :count)
+  end
+
   def list() do
     Repo.all(User)
   end

@@ -117,7 +117,8 @@ defmodule Logflare.User do
               :old_api_key,
               :api_quota,
               :bigquery_udfs_hash,
-              :billing_enabled
+              :billing_enabled,
+              :endpoints_beta
             ]
 
   @doc """

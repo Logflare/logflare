@@ -14,6 +14,12 @@ defmodule Logflare.UsersTest do
     {:ok, user: user, source: source}
   end
 
+  test "users_count/0 returns user count" do
+    assert Users.count_users() == 1
+    insert(:user)
+    assert Users.count_users() == 2
+  end
+
   describe "user_changeset" do
     test "adds api_key to changeset changes if data does not have it" do
       params = %{

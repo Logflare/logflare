@@ -38,4 +38,14 @@ defmodule LogflareWeb.MarketingControllerTest do
       assert html_response(conn, 200) =~ "now part of Supabase"
     end
   end
+
+  describe "single tenant ui" do
+    TestUtils.setup_single_tenant(seed: true)
+
+    test "redirect to dashboard", %{conn: conn} do
+      path = Routes.marketing_path(conn, :index)
+      conn = get(conn, path)
+      assert redirected_to(conn, 302) =~ "/dashboard"
+    end
+  end
 end
