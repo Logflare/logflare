@@ -60,9 +60,9 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
-  pipeline :require_api_auth do
+  pipeline :require_endpoint_auth do
     plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyApiAccess)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
     plug(LogflareWeb.Plugs.VerifyResourceOwnership)
   end
 
@@ -386,13 +386,13 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
-    pipe_through([:api, :require_api_auth])
+    pipe_through([:api, :require_endpoint_auth])
     get("/query/:token", EndpointsController, :query)
   end
 
   # legacy route
   scope "/endpoints/query", LogflareWeb, assigns: %{resource_type: :endpoint} do
-    pipe_through([:api, :require_api_auth])
+    pipe_through([:api, :require_endpoint_auth])
     get("/:token", EndpointsController, :query)
   end
 

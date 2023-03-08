@@ -18,9 +18,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
   def call(%{assigns: %{endpoint: %Query{enable_auth: false}}} = conn, _opts), do: conn
 
-  def call(conn, _opts) do
+  def call(conn, opts) do
+    opts = Enum.into(opts, %{scopes: []})
     # generic access
-    with {:ok, user} <- identify_requestor(conn) do
+    with {:ok, user} <- identify_requestor(conn, opts.scopes) do
       conn
       |> assign(:user, user)
     else
@@ -29,11 +30,12 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     end
   end
 
-  defp identify_requestor(conn) do
+  defp identify_requestor(conn, scopes) do
     extracted = extract_token(conn)
+    is_private_route? = "private" in scopes
 
     with {:ok, access_token_or_api_key} <- extracted,
-         {:ok, user} <- Auth.verify_access_token(access_token_or_api_key) do
+         {:ok, user} <- Auth.verify_access_token(access_token_or_api_key, scopes) do
       {:ok, user}
     else
       {:error, :no_token} = err ->
@@ -42,7 +44,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       {:error, _} = err ->
         # try to use legacy api_key
         case Users.get_by(api_key: elem(extracted, 1)) do
-          %_{} = user -> {:ok, user}
+          %_{} = user when is_private_route? == false -> {:ok, user}
+          _ when is_private_route? == true -> {:error, :unauthorized}
           _ -> err
         end
     end

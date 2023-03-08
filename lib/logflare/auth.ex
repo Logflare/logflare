@@ -50,25 +50,52 @@ defmodule Logflare.Auth do
   def create_access_token(%User{} = user, attrs) do
     with {:ok, token} = ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
       token
-      |> Ecto.Changeset.cast(attrs, [:description])
+      |> Ecto.Changeset.cast(attrs, [:scopes, :description])
       |> Repo.update()
     end
   end
 
-  @doc "Verifies a  `%OauthAccessToken{}` or string access token. If valid, returns the token's associated user."
-  @spec verify_access_token(OauthAccessToken.t() | binary()) :: {:ok, User.t()} | {:error, term()}
-  def verify_access_token(%OauthAccessToken{token: str_token}) do
-    verify_access_token(str_token)
+  @doc """
+  Verifies a  `%OauthAccessToken{}` or string access token.
+  If valid, returns the token's associated user.
+
+  Optionally validates if the access token needs to have any required scope.
+  """
+  @spec verify_access_token(OauthAccessToken.t() | String.t(), String.t() | [String.t()]) ::
+          {:ok, User.t()} | {:error, term()}
+  def verify_access_token(token, scopes \\ [])
+
+  def verify_access_token(token, scope) when is_binary(scope) do
+    verify_access_token(token, [scope])
   end
 
-  def verify_access_token(str_token) when is_binary(str_token) do
-    case ExOauth2Provider.authenticate_token(str_token, env_oauth_config()) do
-      {:ok, %{resource_owner_id: user_id}} ->
-        user = Logflare.Users.get(user_id)
-        {:ok, user}
+  def verify_access_token(%OauthAccessToken{token: str_token}, scopes) do
+    verify_access_token(str_token, scopes)
+  end
 
-      {:error, _reason} = err ->
+  def verify_access_token(str_token, required_scopes)
+      when is_binary(str_token) and is_list(required_scopes) do
+    with {:ok, %{scopes: scopes, resource_owner_id: user_id}} <-
+           ExOauth2Provider.authenticate_token(str_token, env_oauth_config()),
+         token_scopes <- String.split(scopes || ""),
+         {:scope, true} <- {:scope, check_scopes(token_scopes, required_scopes)} do
+      user = Logflare.Users.get(user_id)
+      {:ok, user}
+    else
+      {:scope, false} ->
+        {:error, :unauthorized}
+
+      err ->
         err
+    end
+  end
+
+  defp check_scopes(token_scopes, required) do
+    cond do
+      "private" in token_scopes -> true
+      required == [] -> true
+      Enum.any?(token_scopes, fn scope -> scope in required end) -> true
+      true -> false
     end
   end
 

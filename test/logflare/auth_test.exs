@@ -35,6 +35,35 @@ defmodule Logflare.AuthTest do
     end
   end
 
+  test "verify_access_token/2 public scope", %{user: user} do
+    # no scope set
+    {:ok, key} = Auth.create_access_token(user)
+    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(public))
+    assert {:ok, _} = Auth.verify_access_token(key.token, "public")
+    assert {:ok, _} = Auth.verify_access_token(key.token)
+
+    # scope is set
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
+    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(public))
+    assert {:ok, _} = Auth.verify_access_token(key.token, "public")
+    assert {:ok, _} = Auth.verify_access_token(key.token)
+  end
+
+  test "verify_access_token/2 private scope", %{user: user} do
+    # no scope set
+    {:ok, key} = Auth.create_access_token(user)
+    assert {:error, _} = Auth.verify_access_token(key.token, ~w(private))
+
+    # public scope set
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
+    assert {:error, _} = Auth.verify_access_token(key.token, ~w(private))
+
+    # scope is set
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
+    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(public))
+    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(private))
+  end
+
   defp access_token_fixture(user_or_team) do
     {:ok, key} = Auth.create_access_token(user_or_team)
     key
