@@ -45,8 +45,17 @@ defmodule Logflare.Endpoints do
     |> get_query_by_token()
     |> case do
       nil -> nil
-      query -> Query.map_query(query)
+      query -> Query.map_query_sources(query)
     end
+  end
+
+  @doc """
+  Puts the `:query` key of the `Query` with the latest source mappings.
+  This ensure that the query will have the latest source names (assuming a name change)
+  """
+  @spec map_query_sources(Query.t()) :: Query.t()
+  def map_query_sources(endpoint) do
+    Query.map_query_sources(endpoint)
   end
 
   @spec get_by(Keyword.t()) :: Query.t() | nil

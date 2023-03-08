@@ -19,9 +19,9 @@ defmodule LogflareWeb.EndpointsController do
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
 
-  def query(%{assigns: assigns} = conn, %{"token" => token}) do
-    endpoint_query = Endpoints.get_mapped_query_by_token(token)
-    user = Map.get(assigns, :user)
+  def query(%{assigns: %{endpoint: endpoint}} = conn, %{"token" => token}) do
+    endpoint_query = Endpoints.map_query_sources(endpoint)
+    user = Map.get(conn.assigns, :user)
 
     with :ok <- check_auth(endpoint_query, user),
          {:ok, result} <- Endpoints.run_cached_query(endpoint_query, conn.query_params) do

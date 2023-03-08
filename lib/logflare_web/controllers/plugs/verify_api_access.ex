@@ -11,36 +11,14 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   import Plug.Conn
   import Phoenix.Controller
   alias Logflare.Auth
-  alias Logflare.Endpoints
+  alias Logflare.Endpoints.Query
   alias Logflare.Users
 
   def init(args), do: args |> Enum.into(%{})
 
+  def call(%{assigns: %{endpoint: %Query{enable_auth: false}}} = conn, _opts), do: conn
+
   def call(conn, _opts) do
-    conn.request_path
-    |> case do
-      "/api/endpoints/" <> _ -> :endpoints
-      "/endpoints" <> _ -> :endpoints
-      _ -> :generic
-    end
-    |> do_auth(conn)
-  end
-
-  defp do_auth(:endpoints, %{params: params} = conn) when is_map_key(params, "token") do
-    conn = fetch_query_params(conn)
-    # fetch endpoint info
-    endpoint = Endpoints.get_query_by_token(conn.params["token"])
-    enable_auth = Map.get(endpoint || %{}, :enable_auth)
-
-    if conn.request_path =~ "/endpoints/query/" and enable_auth == false do
-      conn
-    else
-      do_auth(:generic, conn)
-    end
-  end
-
-  # no resource checking needed
-  defp do_auth(_, conn) do
     # generic access
     with {:ok, user} <- identify_requestor(conn) do
       conn

@@ -22,7 +22,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
   describe "source ingestion auth" do
     setup %{source: source} do
-      conn = build_conn(:post, "/logs", %{"source" => Atom.to_string(source.token)})
+      conn =
+        build_conn(:post, "/logs", %{"source" => Atom.to_string(source.token)})
+        |> assign(:source, source)
+
       {:ok, conn: conn}
     end
 
@@ -76,7 +79,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
   describe "endpoint.enable_auth=true" do
     setup %{endpoint_auth: endpoint} do
-      conn = build_conn(:post, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
+      conn =
+        build_conn(:post, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
+        |> assign(:endpoint, endpoint)
+
       {:ok, conn: conn}
     end
 
@@ -130,7 +136,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
   describe "endpoint.enable_auth=false" do
     setup %{endpoint_open: endpoint} do
-      conn = build_conn(:get, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
+      conn =
+        build_conn(:get, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
+        |> assign(:endpoint, endpoint)
+
       {:ok, conn: conn}
     end
 
