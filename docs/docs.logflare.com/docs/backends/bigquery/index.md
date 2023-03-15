@@ -65,3 +65,21 @@ WHERE DATE(timestamp) = "2019-05-09"
 ORDER BY timestamp DESC
 LIMIT 10
 ```
+
+## Troubleshooting
+
+### Ingestion
+
+Ingestion errors may occur due to many factors in the pipeline. Here is a list of common ingestion errors that you may be facing as well as their resolution steps.
+
+#### BigQuery Streaming Insert Error
+
+Logflare uses BigQuery's streaming insert API to provide ingestion functionality. The documenetation for this API can be viewed [here](https://cloud.google.com/bigquery/docs/streaming-data-into-bigquery).
+
+If you are on the BYOB plan and have configured Logflare to ingest into BigQuery, you may receive this error:
+
+```
+Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier
+```
+
+To resolve this error, you will need to upgrade your BigQuery tier through the GCP console.
