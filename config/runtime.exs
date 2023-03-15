@@ -18,10 +18,11 @@ config :logflare,
 config :logflare,
        LogflareWeb.Endpoint,
        [
-         http: [
-          port: System.get_env("PHX_URL_PORT"),
-         ]
-         |> filter_nil_kv_pairs.(),
+         http:
+           [
+             port: System.get_env("PHX_URL_PORT")
+           ]
+           |> filter_nil_kv_pairs.(),
          url:
            [
              host: System.get_env("PHX_URL_HOST"),
