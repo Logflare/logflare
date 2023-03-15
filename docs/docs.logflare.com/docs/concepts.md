@@ -45,9 +45,15 @@ Logflare will now detect the schema changes in the event, and add in the new col
 ```ts
 message: string;
 metadata: {
-    my: string;
-    counter: number;
+  my: string;
+  counter: number;
 }
 ```
 
+### Schema Changes
+
 The schema changes is done automatically. If this is not the desired behaviour, you can disable this by locking the schema in the source's settings.
+
+#### Additive Changes Only
+
+Schema updates are additive and new columns cannot be removed through the UI. We recommend creating a new source if a new schema is desired, and migrating any existing data manually.
