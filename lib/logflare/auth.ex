@@ -73,13 +73,12 @@ defmodule Logflare.Auth do
     verify_access_token(str_token, scopes)
   end
 
-  def verify_access_token(str_token, required_scopes)
-      when is_binary(str_token) and is_list(required_scopes) do
-    with {:ok, %{scopes: scopes, resource_owner_id: user_id}} <-
+  def verify_access_token("" <> str_token, required_scopes) when is_list(required_scopes) do
+    with {:ok, access_token} <-
            ExOauth2Provider.authenticate_token(str_token, env_oauth_config()),
-         token_scopes <- String.split(scopes || ""),
-         {:scope, true} <- {:scope, check_scopes(token_scopes, required_scopes)} do
-      user = Logflare.Users.get(user_id)
+         token_scopes <- String.split(access_token.scopes || ""),
+         :ok <- check_scopes(token_scopes, required_scopes),
+         user <- Logflare.Users.get(access_token.resource_owner_id) do
       {:ok, user}
     else
       {:scope, false} ->
@@ -93,9 +92,9 @@ defmodule Logflare.Auth do
   defp check_scopes(token_scopes, required) do
     cond do
       "private" in token_scopes -> true
-      required == [] -> true
-      Enum.any?(token_scopes, fn scope -> scope in required end) -> true
-      true -> false
+      required == [] -> :ok
+      Enum.any?(token_scopes, fn scope -> scope in required end) -> :ok
+      true -> {:error, :unauthorized}
     end
   end
 

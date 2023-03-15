@@ -13,12 +13,13 @@ defmodule LogflareWeb.Api.FallbackController do
   def call(conn, {:error, :unauthorized}) do
     conn
     |> put_status(401)
+    |> text("Error: Unauthorized")
     |> halt()
   end
 
   def call(conn, nil) do
     conn
     |> put_status(:not_found)
-    |> text("")
+    |> text("Error: Not Found")
   end
 end
