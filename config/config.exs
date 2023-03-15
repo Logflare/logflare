@@ -11,8 +11,9 @@ config :logflare,
   # https://cloud.google.com/compute/docs/instances/deleting-instance#delete_timeout
   # preemtible is 30 seconds from shutdown to sigterm
   # normal instances can be more than 90 seconds
-
   sigterm_shutdown_grace_period_ms: 15_000
+config :logflare, Logflare.Google,
+  dataset_id_append: "_default"
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
