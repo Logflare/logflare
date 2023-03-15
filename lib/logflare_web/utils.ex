@@ -18,11 +18,11 @@ defmodule LogflareWeb.Utils do
       env == :test ->
         true
 
-      is_binary(config_cat_key) ->
-        false
-
-      config_cat_key ->
+      config_cat_key != nil ->
         ConfigCat.get_value(feature, false)
+
+      true ->
+        false
     end
   end
 end
