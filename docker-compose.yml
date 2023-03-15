@@ -5,6 +5,7 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
+      POSTGRES_DB: logflare_docker
     ports:
       - "5432:5432"
     volumes:
