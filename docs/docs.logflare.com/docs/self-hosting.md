@@ -50,22 +50,17 @@ services:
 2. Create a `.logflare.env` environment file. You can also base the file contents on this [reference file](https://github.com/Logflare/logflare/blob/master/.docker.env).
 
 ```text
-PHX_STATIC_PATH=/opt/app/rel/logflare/bin/priv/static
 DB_DATABASE=logflare_docker
 DB_HOSTNAME=localhost
 DB_PORT=5432
 DB_PASSWORD=postgres
 DB_USERNAME=postgres
+
 LOGFLARE_SINGLE_TENANT=true
 LOGFLARE_API_KEY=my-cool-api-key
 GOOGLE_DATASET_ID_APPEND=_dev
 GOOGLE_PROJECT_ID=logflare-docker-example
 GOOGLE_PROJECT_NUMBER=123123123213
-GOOGLE_SERVICE_ACCOUNT=example@example-project.iam.gserviceaccount.com
-GOOGLE_API_SA=example@cloudservices.gserviceaccount.com
-GOOGLE_COMPUTE_ENGINE_SA=example@logflare-dev-238720.iam.gserviceaccount.com
-GOOGLE_CLOUD_BUILD_SA=example@cloudbuild.gserviceaccount.com
-MY_POD_IP=127.0.0.1
 ```
 
 3. Download your Google Cloud API JWT and store it under `gcloud.json` in your working directory.
