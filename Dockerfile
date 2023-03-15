@@ -9,6 +9,8 @@ COPY . /logflare
 
 
 WORKDIR /logflare
+# Due to some Rust caveats with SSL on Alpine images, we need to use GIT to fecth cargo registry index
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN mix do local.rebar --force, local.hex --force, deps.get, release
 
 WORKDIR /logflare/assets
