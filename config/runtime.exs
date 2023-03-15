@@ -11,7 +11,8 @@ config :logflare,
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT"),
          supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE"),
-         api_key: System.get_env("LOGFLARE_API_KEY")
+         api_key: System.get_env("LOGFLARE_API_KEY"),
+         schema_name: System.get_env("DB_SCHEMA")
        ]
        |> filter_nil_kv_pairs.()
 
