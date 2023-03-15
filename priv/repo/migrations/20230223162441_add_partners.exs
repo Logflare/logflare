@@ -5,7 +5,6 @@ defmodule Logflare.Repo.Migrations.AddPartners do
     create table :partners do
       add :name, :binary
       add :token, :binary
-      add :auth_token, :binary
     end
 
     unique_index(:partners, [:token])

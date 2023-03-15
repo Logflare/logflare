@@ -3,12 +3,18 @@ defmodule Logflare.PartnerTest do
   alias Logflare.Partners
   alias Logflare.Repo
 
+  describe "get/1" do
+    test "returns the partner with given id" do
+      partner = insert(:partner)
+      assert partner == Partners.get(partner.id)
+    end
+  end
+
   describe "new_partner/2" do
     test "inserts a new partner" do
       {:ok, partner} = Partners.new_partner(TestUtils.random_string())
       assert partner
       assert partner.token
-      assert partner.auth_token
     end
   end
 
@@ -63,13 +69,13 @@ defmodule Logflare.PartnerTest do
     end
   end
 
-  describe "get_user_by_token_for_partner" do
+  describe "get_user_by_token" do
     test "fetches user if user was created by given partner" do
       partner = insert(:partner)
       email = TestUtils.gen_email()
       {:ok, %{token: token}} = Partners.create_user(partner, %{"email" => email})
 
-      result = Partners.get_user_by_token_for_partner(partner, token)
+      result = Partners.get_user_by_token(partner, token)
       assert token == result.token
     end
 
@@ -79,7 +85,7 @@ defmodule Logflare.PartnerTest do
 
       {:ok, %{token: token}} = Partners.create_user(insert(:partner), %{"email" => email})
 
-      assert is_nil(Partners.get_user_by_token_for_partner(partner, token))
+      assert is_nil(Partners.get_user_by_token(partner, token))
     end
   end
 end

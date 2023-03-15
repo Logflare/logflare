@@ -208,12 +208,3 @@ config :stripity_stripe,
 if config_env() != :test do
   config :goth, json: File.read!("gcloud.json")
 end
-
-vault_key = System.get_env("LOGFLARE_CLOAK_VAULT_KEY")
-
-if vault_key do
-  config :logflare, Logflare.Vault,
-    ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key)}
-    ]
-end

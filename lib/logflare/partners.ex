@@ -8,6 +8,12 @@ defmodule Logflare.Partners do
   alias Logflare.Repo
   alias Logflare.Users
 
+  @spec get(integer()) :: Partner.t() | nil
+  @doc """
+  Fetch single partner by given id
+  """
+  def get(id), do: Repo.get(Partner, id)
+
   @spec new_partner(binary()) :: {:ok, Partner.t()} | {:error, any()}
   @doc """
   Creates a new partner with given name and token to be encrypted
@@ -88,12 +94,12 @@ defmodule Logflare.Partners do
     |> Repo.delete()
   end
 
-  @spec get_user_by_token_for_partner(Partner.t(), binary()) :: User.t() | nil
+  @spec get_user_by_token(Partner.t(), binary()) :: User.t() | nil
 
   @doc """
   Fetches user by token for a given Partner
   """
-  def get_user_by_token_for_partner(%Partner{token: token}, user_token) do
+  def get_user_by_token(%Partner{token: token}, user_token) do
     query =
       from(p in Partner,
         join: u in assoc(p, :users),
