@@ -4,6 +4,7 @@ defmodule LogflareWeb.Admin.PartnerLive do
 
   alias Logflare.Partners
   alias Logflare.Partners.Partner
+  alias Logflare.Auth
   require Logger
 
   def mount(_params, _session, socket) do
@@ -13,6 +14,7 @@ defmodule LogflareWeb.Admin.PartnerLive do
       socket
       |> assign(:partners, partners)
       |> assign(:changeset, Partner.changeset(%Partner{}, %{}))
+      |> assign(:created_token, nil)
 
     {:ok, socket}
   end
@@ -25,5 +27,23 @@ defmodule LogflareWeb.Admin.PartnerLive do
   def handle_event("delete", %{"token" => token}, socket) do
     {:ok, _} = Partners.delete_partner_by_token(token)
     {:noreply, assign(socket, :partners, Partners.list_partners())}
+  end
+
+  def handle_event("create", %{"token" => token}, socket) do
+    partner = Partners.get_partner_by_token(token)
+    {:ok, %{token: token}} = Auth.create_access_token(partner)
+
+    Logger.debug("Creating access token for partner, partner_id=#{inspect(partner.id)}")
+
+    socket =
+      socket
+      |> assign(:partners, Partners.list_partners())
+      |> assign(:created_token, token)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("dismiss-created-token", _, socket) do
+    {:noreply, assign(socket, :created_token, nil)}
   end
 end

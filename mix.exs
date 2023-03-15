@@ -145,7 +145,6 @@ defmodule Logflare.Mixfile do
       {:ecto, "~> 3.9", override: true},
       {:ecto_sql, "~> 3.9"},
       {:typed_ecto_schema, "~> 0.1.0"},
-      {:cloak_ecto, "~> 1.2.0"},
 
       # Telemetry & logging
       {:telemetry, "~> 0.4.0"},

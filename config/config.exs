@@ -45,9 +45,8 @@ config :ueberauth, Ueberauth,
 config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
 
-config :logflare, ExOauth2Provider,
+oauth_common = [
   repo: Logflare.Repo,
-  resource_owner: Logflare.User,
   grant_flows: ~w(authorization_code),
   use_refresh_token: true,
   default_scopes: ~w(public),
@@ -55,6 +54,17 @@ config :logflare, ExOauth2Provider,
   revoke_refresh_token_on_use: true,
   otp_app: :logflare,
   access_token_expires_in: nil
+]
+
+config :logflare, ExOauth2Provider, [resource_owner: Logflare.User] ++ oauth_common
+
+config :logflare,
+       ExOauth2ProviderPartner,
+       [
+         resource_owner: Logflare.Partners.Partner,
+         application: Logflare.OauthApplications.PartnerOauthApplication,
+         access_token: Logflare.OauthAccessTokens.PartnerOauthAccessToken
+       ] ++ oauth_common
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,

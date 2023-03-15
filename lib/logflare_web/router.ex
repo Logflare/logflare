@@ -112,6 +112,13 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.AuthSwitch)
   end
 
+  pipeline :partner_api do
+    plug(LogflareWeb.Plugs.VerifyApiAccess,
+      scopes: ~w(private),
+      resource_owner: Logflare.Partners.Partner
+    )
+  end
+
   # Oauth2 Provider Routes
   scope "/" do
     pipe_through([:api, :oauth_public])
@@ -364,7 +371,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/api/partner", LogflareWeb do
-    pipe_through [:api, LogflareWeb.Plugs.PartnerAuthentication]
+    pipe_through [:api, :partner_api]
 
     get "/:token/accounts", Api.Partner.AccountController, :index
     post "/:token/accounts", Api.Partner.AccountController, :create

@@ -98,11 +98,4 @@ config :stripity_stripe,
   api_key: "sk_test_thisisaboguskey",
   api_base_url: "http://localhost:12111/v1/"
 
-config :logflare, Logflare.Vault,
-  ciphers: [
-    default:
-      {Cloak.Ciphers.AES.GCM,
-       tag: "AES.GCM.V1", key: "Sy1NN20+lvHCnE6t6JV5MSp+q1SCrOH82dCOdfwszIo=" |> Base.decode64!()}
-  ]
-
 import_config("telemetry.exs")

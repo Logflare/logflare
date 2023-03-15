@@ -15,24 +15,30 @@
   <%= error_tag f, :name %>
   <%= submit "Save", class: "btn btn-sm btn-secondary form-button" %>
   </form>
-
+  <%= if @created_token do %>
+    <div class="mt-4">
+      <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.<p>
+      <pre class="p-2" id="created_token"><%= @created_token %></pre>
+      <button id="dismiss-created-token" phx-click="dismiss-created-token" class="btn btn-sm btn-secondary form-button"> Dismiss </button>
+    </div>
+  <% end %>
   <%= if Enum.any?(@partners) do %>
    <table>
     <thead>
       <tr>
         <th class="pr-2">Name</th>
         <th class="pr-2">Token</th>
-        <th class="pr-2">Authentication Token</th>
+        <th class="pr-2"></th>
         <th class="pr-2"></th>
       </tr>
     </thead>
     <tbody>
-      <%= for %{name: name, token: token, auth_token: auth_token} <- @partners do %>
-      <tr>
-        <td class="pr-2"><%=name%></td>
-        <td class="pr-2"><%=token%></td>
-        <td class="pr-2"><%=auth_token%></td>
-        <td><button id=<%= "delete-#{token}" %> phx-click="delete" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Delete </button></td>
+      <%= for %{name: name, token: token} <- @partners do %>
+        <tr>
+          <td class="pr-2"><%=name%></td>
+          <td class="pr-2"><%=token%></td>
+          <td><button id=<%= "generate-#{token}" %> phx-click="create" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Create Token </button></td>
+          <td><button id=<%= "delete-#{token}" %> phx-click="delete" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Delete </button></td>
         </tr>
       <% end %>
     </tbody>

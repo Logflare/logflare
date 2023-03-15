@@ -22,14 +22,14 @@ defmodule LogflareWeb.Api.Partner.AccountController do
   end
 
   def get_user(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_token_for_partner(partner, user_token) do
+    with user when not is_nil(user) <- Partners.get_user_by_token(partner, user_token) do
       allowed_response = sanitize_response(user)
       json(conn, allowed_response)
     end
   end
 
   def get_user_usage(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_token_for_partner(partner, user_token) do
+    with user when not is_nil(user) <- Partners.get_user_by_token(partner, user_token) do
       end_date = DateTime.utc_now()
 
       start_date =

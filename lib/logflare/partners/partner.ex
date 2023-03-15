@@ -6,7 +6,6 @@ defmodule Logflare.Partners.Partner do
   schema "partners" do
     field :name, :string
     field :token, Ecto.UUID, autogenerate: {Ecto.UUID, :generate, []}
-    field :auth_token, Logflare.Encryption.Binary, autogenerate: {Ecto.UUID, :generate, []}
 
     many_to_many :users, User, join_through: "partner_users"
   end
