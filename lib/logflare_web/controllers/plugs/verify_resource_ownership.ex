@@ -5,10 +5,10 @@ defmodule LogflareWeb.Plugs.VerifyResourceOwnership do
   If the `:user` assign is not set, verification is assumed to have passed and as passthroguh is performed.
   If no resource is set, performs a passthrough.
   """
-  import Plug.Conn
   alias Logflare.Source
   alias Logflare.Endpoints.Query
   alias Logflare.User
+  alias LogflareWeb.Api.FallbackController
   def init(_opts), do: nil
 
   # no user set. (handles endpoints with no auth)
@@ -28,9 +28,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceOwnership do
   def call(%{assigns: assigns} = conn, _)
       when is_map_key(assigns, :source) or is_map_key(assigns, :endpoint) do
     # halt all unmatching
-    conn
-    |> put_status(401)
-    |> halt()
+    FallbackController.call(conn, {:error, :unauthorized})
   end
 
   # no resource is set, passthrough

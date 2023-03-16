@@ -213,8 +213,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
   defp assert_unauthorized(conn) do
     assert conn.halted == true
-    assert conn.assigns.message |> String.downcase() =~ "error"
-    assert conn.assigns.message |> String.downcase() =~ "unauthorized"
+    assert conn.resp_body |> inspect() |> String.downcase() =~ "error"
+    assert conn.resp_body |> inspect() |> String.downcase() =~ "unauthorized"
     assert conn.status == 401
   end
 end

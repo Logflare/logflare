@@ -9,10 +9,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   Access token usage is preferred and `user.api_key` is only used as a fallback.
   """
   import Plug.Conn
-  import Phoenix.Controller
   alias Logflare.Auth
   alias Logflare.Endpoints.Query
   alias Logflare.Users
+  alias LogflareWeb.Api.FallbackController
 
   def init(args), do: args |> Enum.into(%{})
 
@@ -22,11 +22,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     opts = Enum.into(opts, %{scopes: []})
     # generic access
     with {:ok, user} <- identify_requestor(conn, opts.scopes) do
-      conn
-      |> assign(:user, user)
+      assign(conn, :user, user)
     else
       _ ->
-        send_error_response(conn, 401, "Error: Unauthorized")
+        FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 
@@ -42,12 +41,15 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
         err
 
       {:error, _} = err ->
-        # try to use legacy api_key
-        case Users.get_by(api_key: elem(extracted, 1)) do
-          %_{} = user when is_private_route? == false -> {:ok, user}
-          _ when is_private_route? == true -> {:error, :unauthorized}
-          _ -> err
-        end
+        handle_legacy_api_key(extracted, err, is_private_route?)
+    end
+  end
+
+  defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
+    case Users.get_by(api_key: api_key) do
+      %_{} = user when is_private_route? == false -> {:ok, user}
+      _ when is_private_route? == true -> {:error, :unauthorized}
+      _ -> err
     end
   end
 
@@ -73,13 +75,5 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       api_key != nil -> {:ok, api_key}
       true -> {:error, :no_token}
     end
-  end
-
-  defp send_error_response(conn, code, message) do
-    conn
-    |> put_status(code)
-    |> put_view(LogflareWeb.LogView)
-    |> render("index.json", message: message)
-    |> halt()
   end
 end
