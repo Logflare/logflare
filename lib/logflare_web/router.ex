@@ -60,6 +60,12 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
+  pipeline :require_endpoint_auth do
+    plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
+  end
+
   pipeline :require_ingest_api_auth do
     plug(LogflareWeb.Plugs.SetVerifyUser)
     plug(LogflareWeb.Plugs.SetVerifySource)
@@ -100,10 +106,6 @@ defmodule LogflareWeb.Router do
 
   pipeline :check_team_user do
     plug(LogflareWeb.Plugs.CheckTeamUser)
-  end
-
-  pipeline :api_auth_endpoints do
-    plug(LogflareWeb.Plugs.VerifyApiAccess, resource: :endpoints)
   end
 
   pipeline :auth_switch do
@@ -153,11 +155,6 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
     get("/dashboard", SourceController, :dashboard)
-  end
-
-  scope "/endpoints/query", LogflareWeb do
-    pipe_through([:api, :api_auth_endpoints])
-    get("/:token", EndpointsController, :query)
   end
 
   scope "/endpoints", LogflareWeb do
@@ -388,9 +385,15 @@ defmodule LogflareWeb.Router do
     post("/", LogController, :create)
   end
 
-  scope "/api/endpoints", LogflareWeb do
-    pipe_through([:api, :api_auth_endpoints])
+  scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
+    pipe_through([:api, :require_endpoint_auth])
     get("/query/:token", EndpointsController, :query)
+  end
+
+  # legacy route
+  scope "/endpoints/query", LogflareWeb, assigns: %{resource_type: :endpoint} do
+    pipe_through([:api, :require_endpoint_auth])
+    get("/:token", EndpointsController, :query)
   end
 
   # Log ingest goes through https://api.logflare.app/logs
