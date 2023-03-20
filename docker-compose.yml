@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./priv/wal.sql:/docker-entrypoint-initdb.d/wal.sql
+      - ./priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
       - pg-data:/var/lib/postgresql/data
   stripe-mock:
     image: stripe/stripe-mock:latest
