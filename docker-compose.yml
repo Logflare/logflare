@@ -18,6 +18,9 @@ services:
   logflare:
     build:
       dockerfile: ./Dockerfile
+      tags:
+        - "supabase/logflare:latest"
+        - "supabase/logflare:1.0.0"
     ports:
       - "4000:4000"
     hostname: 127.0.0.1
