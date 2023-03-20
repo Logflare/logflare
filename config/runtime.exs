@@ -11,8 +11,7 @@ config :logflare,
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT"),
          supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE"),
-         api_key: System.get_env("LOGFLARE_API_KEY"),
-         schema_name: System.get_env("DB_SCHEMA")
+         api_key: System.get_env("LOGFLARE_API_KEY")
        ]
        |> filter_nil_kv_pairs.()
 
@@ -61,6 +60,11 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
+         after_connect:
+           if(System.get_env("DB_SCHEMA"),
+             do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+             else: nil
+           ),
          port:
            if(System.get_env("DB_PORT") != nil,
              do: String.to_integer(System.get_env("DB_PORT")),

@@ -93,3 +93,9 @@ This is a special mode for Logflare which will seed additional resources for usa
 > Defaults to 4000
 
 Allows configuration of the HTTP port that Logflare will run on.
+
+### `DB_SCHEMA`
+
+> String, defaults to nil
+
+This ENV variable sets the search path to a custom database schema. THis allows you to customize the schema used on the database.
