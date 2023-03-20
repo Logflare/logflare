@@ -1,11 +1,10 @@
 #! /bin/sh
 
 # load secrets conditionally
-if [ -f /tmp/.secrets.env ] then
+if [ -f /tmp/.secrets.env ]
+    then
     echo '/tmp/.secrets.env file present, loading secrets...'; 
-    export $(grep -v '^#' /tmp/.secrets.env | xargs)
-    else 
-    echo 'No secrets file found. Ensure env vars are set!'; 
+    export $(grep -v '^#' /tmp/.secrets.env | xargs);
 fi
 
 
