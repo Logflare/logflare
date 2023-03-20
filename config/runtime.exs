@@ -89,7 +89,7 @@ if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
 end
 
 # Set libcluster topologies
-gce_topoloty = [
+gce_topology = [
   gce: [
     strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
     config: [release_name: :logflare]
@@ -97,7 +97,7 @@ gce_topoloty = [
 ]
 
 config :libcluster,
-  topologies: if(System.get_env("LIBCLUSTER_TOPOLOGY") == "gce", do: gce_topoloty, else: [])
+  topologies: if(System.get_env("LIBCLUSTER_TOPOLOGY") == "gce", do: gce_topology, else: [])
 
 config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions:
