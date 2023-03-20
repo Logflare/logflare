@@ -48,14 +48,6 @@ config :logflare_logger_backend,
   flush_interval: 2_000,
   max_batch_size: 250
 
-config :libcluster,
-  topologies: [
-    gce: [
-      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
-      config: [release_name: :logflare]
-    ]
-  ]
-
 config :logflare, Logflare.Mailer, adapter: Swoosh.Adapters.Mailgun
 
 config :swoosh, local: false

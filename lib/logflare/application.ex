@@ -84,7 +84,7 @@ defmodule Logflare.Application do
     publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
-    topologies = Application.get_env(:libcluster, :topologies)
+    topologies = Application.get_env(:libcluster, :topologies, [])
 
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
