@@ -5,6 +5,7 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
+      POSTGRES_DB: logflare_docker
     ports:
       - "5432:5432"
     volumes:
@@ -17,6 +18,9 @@ services:
   logflare:
     build:
       dockerfile: ./Dockerfile
+      tags:
+        - "supabase/logflare:latest"
+        - "supabase/logflare:1.0.0"
     ports:
       - "4000:4000"
     hostname: 127.0.0.1

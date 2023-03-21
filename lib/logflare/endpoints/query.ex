@@ -1,6 +1,6 @@
 defmodule Logflare.Endpoints.Query do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
   require Logger
   alias Logflare.Endpoints.Query
@@ -18,7 +18,7 @@ defmodule Logflare.Endpoints.Query do
              :max_limit,
              :enable_auth
            ]}
-  schema "endpoint_queries" do
+  typed_schema "endpoint_queries" do
     field :token, Ecto.UUID, autogenerate: true
     field :name, :string
     field :query, :string
@@ -120,12 +120,19 @@ defmodule Logflare.Endpoints.Query do
 
   def update_source_mapping(changeset), do: changeset
 
-  def map_query(%__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q) do
+  @doc """
+  Replaces a query with latest source names.
+  """
+  @spec map_query_sources(Query.t()) :: Query.t()
+  def map_query_sources(
+        %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
+      ) do
     case Logflare.SqlV2.source_mapping(query, user_id, source_mapping) do
       {:ok, query} ->
         Map.put(q, :query, query)
 
-      {:error, _} ->
+      {:error, _} = err ->
+        Logger.error("Could not map source query, #{inspect(err)}", error_string: inspect(q))
         q
     end
   end

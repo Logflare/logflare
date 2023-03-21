@@ -3,6 +3,8 @@ defmodule LogflareWeb.EndpointsController do
   require Logger
   alias Logflare.Endpoints
 
+  action_fallback(LogflareWeb.Api.FallbackController)
+
   plug CORSPlug,
     origin: "*",
     max_age: 1_728_000,
@@ -16,14 +18,13 @@ defmodule LogflareWeb.EndpointsController do
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
 
-  def query(conn, %{"token" => token}) do
-    endpoint_query = Endpoints.get_mapped_query_by_token(token)
+  def query(%{assigns: %{endpoint: endpoint}} = conn, _params) do
+    endpoint_query = Endpoints.map_query_sources(endpoint)
 
-    case Endpoints.run_cached_query(endpoint_query, conn.query_params) do
-      {:ok, result} ->
-        Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
-        render(conn, "query.json", result: result.rows)
-
+    with {:ok, result} <- Endpoints.run_cached_query(endpoint_query, conn.query_params) do
+      Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
+      render(conn, "query.json", result: result.rows)
+    else
       {:error, err} ->
         render(conn, "query.json", error: err)
     end

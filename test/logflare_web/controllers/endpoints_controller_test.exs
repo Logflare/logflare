@@ -39,12 +39,37 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
     end
+
+    test "GET query with user.api_key", %{conn: init_conn, user: user} do
+      endpoint = insert(:endpoint, user: user, enable_auth: true)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get("/endpoints/query/#{endpoint.token}")
+
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+    end
+
+    test "GET query with other user's api key", %{conn: init_conn, user: user} do
+      user2 = insert(:user)
+      endpoint = insert(:endpoint, user: user, enable_auth: true)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user2.api_key)
+        |> get("/endpoints/query/#{endpoint.token}")
+
+      assert conn.status == 401
+      assert conn.halted == true
+    end
   end
 
   describe "single tenant endpoint query" do
     setup :set_mimic_global
 
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
       user = SingleTenant.get_default_user()
@@ -56,7 +81,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
     end
 
     test "single tenant endpoint GET", %{conn: conn, user: user} do
-      endpoint = insert(:endpoint, user: user, enable_auth: false)
+      endpoint = insert(:endpoint, user: user, enable_auth: true)
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
@@ -65,6 +90,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       conn =
         conn
+        |> put_req_header("x-api-key", user.api_key)
         |> get("/endpoints/query/#{endpoint.token}")
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
@@ -73,7 +99,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   end
 
   describe "single tenant ui" do
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     test "can view endpoints page", %{conn: conn} do
       conn = get(conn, "/endpoints")

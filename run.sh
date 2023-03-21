@@ -1,8 +1,12 @@
 #! /bin/sh
 
-# there should always be a secret file
-# load the secrets
-export $(grep -v '^#' /tmp/.secrets.env | xargs)
+# load secrets conditionally
+if [ -f /tmp/.secrets.env ]
+    then
+    echo '/tmp/.secrets.env file present, loading secrets...'; 
+    export $(grep -v '^#' /tmp/.secrets.env | xargs);
+fi
+
 
 if [[ "$LIBCLUSTER_TOPOLOGY" == "gce" ]]
 then

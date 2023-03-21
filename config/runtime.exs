@@ -9,13 +9,20 @@ config :logflare,
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
-         single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT")
+         single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT"),
+         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE"),
+         api_key: System.get_env("LOGFLARE_API_KEY")
        ]
        |> filter_nil_kv_pairs.()
 
 config :logflare,
        LogflareWeb.Endpoint,
        [
+         http:
+           [
+             port: System.get_env("PHX_URL_PORT")
+           ]
+           |> filter_nil_kv_pairs.(),
          url:
            [
              host: System.get_env("PHX_URL_HOST"),
@@ -82,7 +89,7 @@ if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
 end
 
 # Set libcluster topologies
-gce_topoloty = [
+gce_topology = [
   gce: [
     strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
     config: [release_name: :logflare]
@@ -90,7 +97,7 @@ gce_topoloty = [
 ]
 
 config :libcluster,
-  topologies: if(System.get_env("LIBCLUSTER_TOPOLOGY") == "gce", do: gce_topoloty, else: [])
+  topologies: if(System.get_env("LIBCLUSTER_TOPOLOGY") == "gce", do: gce_topology, else: [])
 
 config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
   regions:

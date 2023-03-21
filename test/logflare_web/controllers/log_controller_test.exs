@@ -139,7 +139,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "single tenant" do
-    TestUtils.setup_single_tenant(seed: true)
+    TestUtils.setup_single_tenant(seed_user: true)
 
     setup %{conn: conn} do
       # get single tenant user

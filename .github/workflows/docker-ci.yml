@@ -36,6 +36,7 @@ jobs:
           tags: supabase/logflare:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64
   publish_version:
     name: Publish versioned tagged image
     runs-on: ubuntu-latest
@@ -63,6 +64,7 @@ jobs:
           tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64
   trigger_cloud_build_staging:
     name: Trigger Cloud Build in Staging
     if: github.ref == 'refs/heads/staging'
