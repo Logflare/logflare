@@ -138,12 +138,12 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
     setup %{endpoint_open: endpoint} do
       conn =
         build_conn(:get, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
-        |> assign(:endpoint, endpoint)
+        |> assign(:resource_type, :endpoint)
 
       {:ok, conn: conn}
     end
 
-    test "does not halt request", %{conn: conn} do
+    test "does not halt request if resource type is specified", %{conn: conn} do
       conn = VerifyApiAccess.call(conn, %{})
       assert conn.halted == false
       assert Map.get(conn.assigns, :user) == nil

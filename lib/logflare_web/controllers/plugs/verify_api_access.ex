@@ -10,20 +10,21 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   """
   import Plug.Conn
   alias Logflare.Auth
-  alias Logflare.Endpoints.Query
   alias Logflare.Users
   alias LogflareWeb.Api.FallbackController
 
   def init(args), do: args |> Enum.into(%{})
 
-  def call(%{assigns: %{endpoint: %Query{enable_auth: false}}} = conn, _opts), do: conn
-
   def call(conn, opts) do
     opts = Enum.into(opts, %{scopes: []})
+    resource_type = Map.get(conn.assigns, :resource_type)
     # generic access
     with {:ok, user} <- identify_requestor(conn, opts.scopes) do
       assign(conn, :user, user)
     else
+      {:error, :no_token} when resource_type != nil ->
+        conn
+
       _ ->
         FallbackController.call(conn, {:error, :unauthorized})
     end
@@ -48,6 +49,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
     case Users.get_by(api_key: api_key) do
       %_{} = user when is_private_route? == false -> {:ok, user}
+      _ when is_private_route? == false -> {:error, :no_token}
       _ when is_private_route? == true -> {:error, :unauthorized}
       _ -> err
     end
