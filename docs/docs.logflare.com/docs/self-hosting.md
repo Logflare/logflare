@@ -50,6 +50,7 @@ services:
 2. Create a `.logflare.env` environment file. You can also base the file contents on this [reference file](https://github.com/Logflare/logflare/blob/master/.docker.env).
 
 ```text
+PHX_HTTP_PORT=4000
 DB_DATABASE=logflare_docker
 DB_HOSTNAME=localhost
 DB_PORT=5432
@@ -86,3 +87,9 @@ Allows you to pass in an API key that will used for authentication. This is inte
 > Boolean, defaults to false
 
 This is a special mode for Logflare which will seed additional resources for usage with Supabase self-hosted.
+
+### `PHX_HTTP_PORT`
+
+> Defaults to 4000
+
+Allows configuration of the HTTP port that Logflare will run on.
