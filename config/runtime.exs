@@ -20,7 +20,7 @@ config :logflare,
        [
          http:
            [
-             port: System.get_env("PHX_URL_PORT")
+             port: System.get_env("PHX_HTTP_PORT")
            ]
            |> filter_nil_kv_pairs.(),
          url:
