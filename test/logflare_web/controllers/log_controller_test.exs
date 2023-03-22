@@ -91,6 +91,16 @@ defmodule LogflareWeb.LogControllerTest do
       {:ok, source: source, user: user, conn: conn}
     end
 
+    test ":create ingestion by source_name", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create, source_name: source.name), @valid)
+
+        assert json_response(conn, 200) == %{"message" => "Logged!"}
+        # wait for all logs to be ingested before removing all stubs
+        :timer.sleep(1500)
+    end
+
     test ":create ingestion", %{conn: conn, source: source} do
       conn =
         conn
