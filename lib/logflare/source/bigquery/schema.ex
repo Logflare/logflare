@@ -317,16 +317,20 @@ defmodule Logflare.Source.BigQuery.Schema do
   defp notify_maybe(source_token, new_schema, old_schema) do
     %Source{user: user} = source = Sources.Cache.get_by_and_preload(token: source_token)
 
-    if source.notifications.user_schema_update_notifications do
-      AccountEmail.schema_updated(user, source, new_schema, old_schema)
-      |> Mailer.deliver()
-    end
+    mailer_api_key = Application.get_env(:logflare, Logflare.Mailer)[:api_key]
 
-    for id <- source.notifications.team_user_ids_for_schema_updates do
-      team_user = Logflare.TeamUsers.get_team_user(id)
+    if mailer_api_key != nil do
+      if source.notifications.user_schema_update_notifications do
+        AccountEmail.schema_updated(user, source, new_schema, old_schema)
+        |> Mailer.deliver()
+      end
 
-      AccountEmail.schema_updated(team_user, source, new_schema, old_schema)
-      |> Mailer.deliver()
+      for id <- source.notifications.team_user_ids_for_schema_updates do
+        team_user = Logflare.TeamUsers.get_team_user(id)
+
+        AccountEmail.schema_updated(team_user, source, new_schema, old_schema)
+        |> Mailer.deliver()
+      end
     end
   end
 end
