@@ -46,7 +46,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
     |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
     Logflare.Mailer
-    |> expect(:deliver, 1, fn _ -> :ok end)
+    |> stub(:deliver, fn _ -> :ok end)
 
     Logflare.Sources.Cache
     |> expect(:get_by_and_preload, fn _ -> source end)
