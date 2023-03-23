@@ -9,6 +9,10 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Logs
+  alias Logflare.Repo
+  alias Logflare.Source.Supervisor
+  require Logger
 
   @user_attrs %{
     name: "default",
@@ -129,6 +133,8 @@ defmodule Logflare.SingleTenant do
       sources =
         for name <- @source_names do
           {:ok, source} = Sources.create_source(%{name: name}, user)
+
+          Supervisor.ensure_started(source.token)
           source
         end
 
@@ -162,5 +168,38 @@ defmodule Logflare.SingleTenant do
     else
       false
     end
+  end
+
+  def supabase_mode? do
+    if Application.get_env(:logflare, :supabase_mode) do
+      true
+    else
+      false
+    end
+  end
+
+  def ingest_supabase_log_samples do
+    if supabase_mode?() do
+      user = get_default_user()
+
+      sources =
+        Sources.list_sources_by_user(user)
+        |> Repo.preload(:rules)
+        |> Enum.map(fn source ->
+          Sources.refresh_source_metrics_for_ingest(source)
+        end)
+
+      for source <- sources do
+        Logger.debug("Ingesting sample logs for #{source.name}")
+        event = read_ingest_sample_json(source.name)
+        Logs.ingest_logs([event], source)
+      end
+    end
+  end
+
+  defp read_ingest_sample_json(source_name) do
+    Application.app_dir(:logflare, "priv/supabase/ingest_samples/#{source_name}.json")
+    |> File.read!()
+    |> Jason.decode!()
   end
 end
