@@ -98,4 +98,4 @@ Allows configuration of the HTTP port that Logflare will run on.
 
 > String, defaults to nil
 
-This ENV variable sets the search path to a custom database schema. THis allows you to customize the schema used on the database.
+This ENV variable sets the search path to a custom database schema. This allows you to customize the schema used on the database.
