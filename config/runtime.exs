@@ -60,6 +60,11 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
+         after_connect:
+           if(System.get_env("DB_SCHEMA"),
+             do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+             else: nil
+           ),
          port:
            if(System.get_env("DB_PORT") != nil,
              do: String.to_integer(System.get_env("DB_PORT")),
