@@ -1,0 +1,35 @@
+{
+  "event_message": "OPTIONS | 200 | https://default.functions.supabase.co/connect-heartbeat?time=1679582115608",
+  "metadata": {
+    "deployment_id": "default_e9d2bba5-d81f-421e-a790-73f7d7d2f0c0_11",
+    "execution_time_ms": 9,
+    "function_id": "53bba5-d81f-421e-a790-73f7d7d2f0c0",
+    "project_ref": "default",
+    "request": {
+      "headers": {
+        "accept": "*/*",
+        "accept_encoding": "gzip, deflate, br",
+        "content_length": "0",
+        "host": "default.functions.supabase.co",
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_5_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"
+      },
+      "host": "subhosting-v1.deno-aws.net",
+      "method": "OPTIONS",
+      "pathname": "/connect-heartbeat",
+      "protocol": "https:",
+      "search": "?time=1679582115608",
+      "url": "https://subhosting-v1.deno-aws.net/connect-heartbeat?time=1679582115608"
+    },
+    "response": {
+      "headers": {
+        "content_length": "2",
+        "content_type": "text/plain;charset=UTF-8",
+        "date": "Thu, 23 Mar 2023 14:35:14 GMT",
+        "server": "deno/aws-us-east-1",
+        "vary": "Accept-Encoding"
+      },
+      "status_code": 200
+    },
+    "version": "11"
+  }
+}

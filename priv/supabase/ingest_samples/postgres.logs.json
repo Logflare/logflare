@@ -1,0 +1,26 @@
+{
+  "event_message": "PgBouncer auth request: postgres",
+  "metadata": {
+    "host": "db-default",
+    "parsed": {
+      "backend_type": "client backend",
+      "command_tag": "SELECT",
+      "connection_from": "127.0.0.1:53482",
+      "context": "PL/pgSQL function pgbouncer.get_auth(text) line 3 at RAISE",
+      "database_name": "postgres",
+      "error_severity": "WARNING",
+      "leader_pid": 0,
+      "process_id": 19302,
+      "query_id": 0,
+      "session_id": "641c59c7.4b66",
+      "session_line_num": 5215,
+      "session_start_time": "2023-03-23 13:53:11 UTC",
+      "sql_state_code": "01000",
+      "timestamp": "2023-03-23 14:40:18.149 UTC",
+      "transaction_id": 0,
+      "user_name": "pgbouncer",
+      "virtual_transaction_id": "10/9839543"
+    }
+  },
+  "project": "default"
+}
