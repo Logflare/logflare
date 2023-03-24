@@ -174,9 +174,11 @@ config :ueberauth,
        ]
        |> filter_nil_kv_pairs.()
 
-config :logflare,
-       Logflare.Mailer,
-       [api_key: System.get_env("LOGFLARE_MAILER_API_KEY")] |> filter_nil_kv_pairs.()
+if System.get_env("LOGFLARE_MAILER_API_KEY") do
+  api_key = System.get_env("LOGFLARE_MAILER_API_KEY")
+  config :logflare, Logflare.Mailer, adapter: Swoosh.Adapters.Mailgun, api_key: api_key
+  config :swoosh, local: false
+end
 
 config :ex_twilio,
        [
