@@ -112,7 +112,7 @@ defmodule Logflare.LogsTest do
       end)
 
       Logflare.Mailer
-      |> stub(:deliver, fn _ -> :ok end)
+      |> expect(:deliver, fn _ -> :ok end)
 
       batch = [
         %{"event_message" => "testing 123", "key" => "value"}
