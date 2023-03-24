@@ -4,6 +4,43 @@ sidebar_position: 3
 
 # Main Concepts
 
+## Ingestion
+
+There are two ways in which you can ingest data into Logflare, via specifying the source UUID, or via the source's name.
+
+```
+http://api.logflare.app/api/logs?source=9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
+
+http://api.logflare.app/api/logs?source_name=my.logs.source
+```
+
+### Batching Your Events
+
+You can ingest events individually, or via a batch.
+
+To ingest individually (not recommended, as it is slower), send your request with the following JSON body:
+
+```json
+{
+  "message": "your log event message",
+  "metadata": {...}
+}
+```
+
+To ingest by batch, send your request with the following JSON body:
+
+```json
+{
+  "batch": [
+    {"message": "your event message 1", "metadata": {...}},
+    {"message": "your event message 2", "metadata": {...}},
+    ...
+  ]
+}
+```
+
+Note that if you have mutliple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
+
 ## Adaptive Schema
 
 As your logging needs changes, Logflare is capable of detecting and adjusting the database schema accordingly. This allows you to focus on analyzing your logs instead of having to manage your logging pipeline manually.
