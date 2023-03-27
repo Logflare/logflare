@@ -40,11 +40,5 @@ RUN cp -r /opt/app/rel/logflare/bin/priv/static /opt/app/rel/logflare/lib/logfla
 RUN rm -r /opt/app/rel/logflare/bin/priv
 
 WORKDIR /opt/app/rel/logflare/bin
-
-# expose specific ports, because for some reason
-# when using docker api with supabase-cli, port bindings don't work without exposing them first
-EXPOSE 4000
-EXPOSE 4002
-
 COPY run.sh ./run.sh
 CMD ["sh", "run.sh"]
