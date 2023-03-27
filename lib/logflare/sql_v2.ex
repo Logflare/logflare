@@ -55,8 +55,7 @@ defmodule Logflare.SqlV2 do
 
     dataset_id =
       if is_nil(dataset_id) do
-        env = Application.get_env(:logflare, :env)
-        "#{user.id}_#{env}"
+        User.generate_bq_dataset_id(user)
       else
         dataset_id
       end
