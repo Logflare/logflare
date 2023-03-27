@@ -42,10 +42,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/master'}}
+    outputs:
+      logflare_version: ${{ steps.version.outputs.LOGFLARE_VERSION }}
     steps:
       - uses: actions/checkout@v3
-      - name: Get version
-        run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
+      - id: version
+        name: Get version
+        run: |
+          echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
+          echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
       - name: Get commit SHA
         run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
       - name: Set up QEMU
@@ -65,6 +70,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+  mirror_image:
+    needs:
+      - publish_version
+    # Mirror image only if new version is published
+    if: ${{ github.ref == 'refs/heads/master' }}
+    # Call workflow explicitly because events from actions cannot trigger more actions
+    uses: ./.github/workflows/mirror.yml
+    with:
+      version: ${{ needs.publish_version.outputs.logflare_version }}
+    secrets: inherit
   trigger_cloud_build_staging:
     name: Trigger Cloud Build in Staging
     if: github.ref == 'refs/heads/staging'
