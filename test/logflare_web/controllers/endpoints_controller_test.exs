@@ -50,6 +50,15 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
+
+      # should be able to query with endpoint name
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get("/api/endpoints/query/name/#{endpoint.name}")
+
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
     end
 
     test "GET query with other user's api key", %{conn: init_conn, user: user} do

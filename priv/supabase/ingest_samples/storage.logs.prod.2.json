@@ -1,0 +1,13 @@
+{
+  "event_message": "content-type is text/plain;charset=UTF-8",
+  "metadata": {
+    "context": {
+      "host": "ip-10-105-2-212.eu-central-1.compute.internal",
+      "pid": 1
+    },
+    "level": "info",
+    "project": "default",
+    "reqId": "7ac76cc396049558-DUB",
+    "tenantId": "default"
+  }
+}

@@ -9,6 +9,10 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Logs
+  alias Logflare.Repo
+  alias Logflare.Source.Supervisor
+  require Logger
 
   @user_attrs %{
     name: "default",
@@ -120,6 +124,9 @@ defmodule Logflare.SingleTenant do
     end
   end
 
+  @doc """
+  Inserts a preset number of supabase sources, and ensures that the supervision trees are started and ready for ingestion.
+  """
   @spec create_supabase_sources() :: {:ok, [Source.t()]}
   def create_supabase_sources do
     user = get_default_user()
@@ -129,6 +136,8 @@ defmodule Logflare.SingleTenant do
       sources =
         for name <- @source_names do
           {:ok, source} = Sources.create_source(%{name: name}, user)
+
+          Supervisor.ensure_started(source.token)
           source
         end
 
@@ -138,6 +147,10 @@ defmodule Logflare.SingleTenant do
     end
   end
 
+  @doc """
+  Inserts supabase endpoints via SQL files under priv/supabase.any()
+  These SQL scripts are directly exported from logflare prod.
+  """
   @spec create_supabase_endpoints() :: {:ok, [Query.t()]}
   def create_supabase_endpoints do
     user = get_default_user()
@@ -156,11 +169,43 @@ defmodule Logflare.SingleTenant do
     end
   end
 
-  def single_tenant? do
-    if Application.get_env(:logflare, :single_tenant) do
-      true
-    else
-      false
+  @doc "Returns true if single tenant flag is set via config"
+  @spec single_tenant? :: boolean()
+  def single_tenant?, do: !!Application.get_env(:logflare, :single_tenant)
+
+  @doc "Returns true if supabase mode flag is set via config"
+  @spec supabase_mode? :: boolean()
+  def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode)
+
+  @doc """
+  Adds ingestion samples for supabase sources, so that schema is built and stored correctly.
+
+  TODO: directly insert schemas instead of using ingestion, which is async and slow.
+  """
+  @spec ingest_supabase_log_samples :: nil
+  def ingest_supabase_log_samples do
+    if supabase_mode?() do
+      user = get_default_user()
+
+      sources =
+        Sources.list_sources_by_user(user)
+        |> Repo.preload(:rules)
+        |> Enum.map(fn source ->
+          Sources.refresh_source_metrics_for_ingest(source)
+        end)
+
+      for source <- sources do
+        Logger.debug("Ingesting sample logs for #{source.name}")
+        event = read_ingest_sample_json(source.name)
+        Logs.ingest_logs([event], source)
+      end
     end
+  end
+
+  # Read a source ingest sample json file
+  defp read_ingest_sample_json(source_name) do
+    Application.app_dir(:logflare, "priv/supabase/ingest_samples/#{source_name}.json")
+    |> File.read!()
+    |> Jason.decode!()
   end
 end

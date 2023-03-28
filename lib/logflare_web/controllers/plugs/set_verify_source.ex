@@ -34,7 +34,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
           |> Sources.refresh_source_metrics_for_ingest()
 
         name && is_api_path ->
-          Sources.Cache.get_by_and_preload_rules(name: name)
+          Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
           |> Sources.refresh_source_metrics_for_ingest()
 
         id && is_browser_path ->

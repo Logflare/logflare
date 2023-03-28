@@ -14,22 +14,23 @@ defmodule LogflareWeb.Plugs.FetchResource do
   alias Logflare.Endpoints
   def init(_opts), do: nil
 
-  def call(%{assigns: %{resource_type: type}} = conn, _opts) when is_atom(type) do
-    conn = fetch_query_params(conn)
+  def call(%{assigns: %{resource_type: :source}, params: %{"source" => token}} = conn, _opts) do
+    source = Sources.get_source_by_token(token)
+    assign(conn, :source, source)
+  end
 
-    resource =
-      case type do
-        :source ->
-          token = Map.get(conn.params, "source")
-          Sources.get_source_by_token(token)
+  def call(%{assigns: %{resource_type: :endpoint}, params: %{"token" => token}} = conn, _opts) do
+    endpoint = Endpoints.get_query_by_token(token)
+    assign(conn, :endpoint, endpoint)
+  end
 
-        :endpoint ->
-          token = Map.get(conn.params, "token")
-          Endpoints.get_query_by_token(token)
-      end
-
-    conn
-    |> assign(type, resource)
+  def call(
+        %{assigns: %{resource_type: :endpoint, user: %{id: user_id}}, params: %{"name" => name}} =
+          conn,
+        _opts
+      ) do
+    endpoint = Endpoints.get_by(name: name, user_id: user_id)
+    assign(conn, :endpoint, endpoint)
   end
 
   def call(conn, _), do: conn

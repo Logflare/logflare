@@ -60,6 +60,11 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
+         after_connect:
+           if(System.get_env("DB_SCHEMA"),
+             do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+             else: nil
+           ),
          port:
            if(System.get_env("DB_PORT") != nil,
              do: String.to_integer(System.get_env("DB_PORT")),
@@ -169,9 +174,11 @@ config :ueberauth,
        ]
        |> filter_nil_kv_pairs.()
 
-config :logflare,
-       Logflare.Mailer,
-       [api_key: System.get_env("LOGFLARE_MAILER_API_KEY")] |> filter_nil_kv_pairs.()
+if System.get_env("LOGFLARE_MAILER_API_KEY") do
+  api_key = System.get_env("LOGFLARE_MAILER_API_KEY")
+  config :logflare, Logflare.Mailer, adapter: Swoosh.Adapters.Mailgun, api_key: api_key
+  config :swoosh, local: false
+end
 
 config :ex_twilio,
        [

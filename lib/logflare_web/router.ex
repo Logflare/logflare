@@ -61,8 +61,8 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :require_endpoint_auth do
-    plug(LogflareWeb.Plugs.FetchResource)
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.FetchResource)
     plug(LogflareWeb.Plugs.VerifyResourceOwnership)
   end
 
@@ -388,6 +388,7 @@ defmodule LogflareWeb.Router do
   scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
     get("/query/:token", EndpointsController, :query)
+    get("/query/name/:name", EndpointsController, :query)
   end
 
   # legacy route

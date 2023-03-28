@@ -11,23 +11,24 @@ defmodule LogflareWeb.Plugs.VerifyResourceOwnership do
   alias LogflareWeb.Api.FallbackController
   def init(_opts), do: nil
 
-  # no user set. (handles endpoints with no auth)
-  def call(%{assigns: assigns} = conn, _opts) when is_map_key(assigns, :user) == false, do: conn
+  def call(%{assigns: %{endpoint: %Query{enable_auth: false}}} = conn, _opts) do
+    conn
+  end
 
   # check source
   def call(%{assigns: %{user: %User{id: id}, source: %Source{user_id: user_id}}} = conn, _opts)
-      when id == user_id,
-      do: conn
+      when id == user_id do
+    conn
+  end
 
   # check endpoint
   def call(%{assigns: %{user: %User{id: id}, endpoint: %Query{user_id: user_id}}} = conn, _opts)
-      when id == user_id,
-      do: conn
+      when id == user_id do
+    conn
+  end
 
   # halts all others
-  def call(%{assigns: assigns} = conn, _)
-      when is_map_key(assigns, :source) or is_map_key(assigns, :endpoint) do
-    # halt all unmatching
+  def call(%{assigns: assigns} = conn, _) when is_map_key(assigns, :resource_type) do
     FallbackController.call(conn, {:error, :unauthorized})
   end
 

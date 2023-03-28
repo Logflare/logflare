@@ -5,7 +5,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceOwnershipTest do
 
   setup do
     user = insert(:user)
-    endpoint = insert(:endpoint, user: user)
+    endpoint = insert(:endpoint, user: user, enable_auth: true)
     source = insert(:source, user: user)
     {:ok, user: user, source: source, endpoint: endpoint}
   end
@@ -16,15 +16,13 @@ defmodule LogflareWeb.Plugs.VerifyResourceOwnershipTest do
         build_conn(:post, "/logs", %{"source" => Atom.to_string(source.token)})
         |> assign(:user, user)
         |> assign(:source, source)
+        |> assign(:resource_type, :source)
 
       [conn: conn]
     end
 
     test "valid", %{conn: conn} do
-      conn =
-        conn
-        |> assign(:resource_type, :source)
-        |> VerifyResourceOwnership.call(%{})
+      conn = VerifyResourceOwnership.call(conn, %{})
 
       refute conn.halted
     end
@@ -45,6 +43,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceOwnershipTest do
       conn =
         build_conn(:get, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})
         |> assign(:user, user)
+        |> assign(:resource_type, :endpoint)
         |> assign(:endpoint, endpoint)
 
       [conn: conn]

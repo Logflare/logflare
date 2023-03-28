@@ -8,6 +8,7 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Billing.Plan
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Logs
 
   describe "single tenant mode" do
     TestUtils.setup_single_tenant()
@@ -60,6 +61,11 @@ defmodule Logflare.SingleTenantTest do
   describe "supabase_mode=true" do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
+    setup do
+      stub(Logs, :ingest_logs, fn _batch, _source -> :ok end)
+      :ok
+    end
+
     test "create_supabase_sources/0, create_supabase_endpoints/0" do
       assert {:ok, [_ | _]} = SingleTenant.create_supabase_sources()
       assert {:error, :already_created} = SingleTenant.create_supabase_sources()
@@ -70,9 +76,15 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "startup tasks inserts log sources/endpoints" do
-      Logflare.Application.startup_tasks()
+      expect(Logs, :ingest_logs, 9, fn _batch, _source -> :ok end)
+
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+      SingleTenant.ingest_supabase_log_samples()
+
       user = SingleTenant.get_default_user()
-      assert Sources.list_sources_by_user(user) |> length() > 0
+      sources = Sources.list_sources_by_user(user)
+      assert length(sources) > 0
       assert Endpoints.list_endpoints_by(user_id: user.id) |> length() > 0
     end
   end
