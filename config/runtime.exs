@@ -88,6 +88,17 @@ config :logflare_logger_backend,
        ]
        |> filter_nil_kv_pairs.()
 
+log_level =
+  case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
+    "warn" -> :warn
+    "info" -> :info
+    "error" -> :error
+    "debug" -> :debug
+    _ -> nil
+  end
+
+config :logger, [level: log_level] |> filter_nil_kv_pairs.()
+
 if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
   config :logger,
     backends: [:console, LogflareLogger.HttpBackend]
