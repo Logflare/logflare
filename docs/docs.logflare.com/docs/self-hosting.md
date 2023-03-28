@@ -99,3 +99,9 @@ Allows configuration of the HTTP port that Logflare will run on.
 > String, defaults to nil
 
 This ENV variable sets the search path to a custom database schema. This allows you to customize the schema used on the database.
+
+### `LOGFLARE_LOG_LEVEL`
+
+> string, defualts to `info`. Options: `error|warn|info|debug`
+
+Allows the setting of the log level at runtime. For production settings, we advise `warn`.
