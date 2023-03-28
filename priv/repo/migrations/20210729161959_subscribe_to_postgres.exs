@@ -24,9 +24,8 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   def up do
     if @env in [:dev, :test] do
       execute("ALTER SYSTEM SET wal_level = 'logical';")
+      execute("ALTER USER #{@username} WITH REPLICATION;")
     end
-
-    execute("ALTER USER #{@username} WITH REPLICATION;")
 
     for p <- @publications, do: execute("CREATE PUBLICATION #{p} FOR ALL TABLES;")
 
@@ -41,12 +40,11 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
       execute("SELECT pg_drop_replication_slot('#{@slot}');")
     end
 
-    execute("ALTER USER #{@username} WITH NOREPLICATION;")
-
     # This is happening in `20210810182003_set_rules_to_replica_identity_full.exs`
     # execute("alter table rules replica identity default")
 
     if @env in [:dev, :test] do
+      execute("ALTER USER #{@username} WITH NOREPLICATION;")
       execute("ALTER SYSTEM RESET wal_level;")
     end
   end
