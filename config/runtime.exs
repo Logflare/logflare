@@ -204,7 +204,7 @@ end
 log_level_str = Systen.get_env("LOGFLARE_LOG_LEVEL") || ""
 
 log_level =
-  case String.downcase(log_level) do
+  case String.downcase(log_level_str) do
     "warn" -> :warn
     "info" -> :info
     "error" -> :error
