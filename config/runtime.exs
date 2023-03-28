@@ -89,7 +89,7 @@ config :logflare_logger_backend,
        |> filter_nil_kv_pairs.()
 
 log_level =
-  case String.downcase(Systen.get_env("LOGFLARE_LOG_LEVEL") || "") do
+  case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
     "warn" -> :warn
     "info" -> :info
     "error" -> :error
