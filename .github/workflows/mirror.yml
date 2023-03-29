@@ -12,7 +12,9 @@ on:
         description: "Image tag"
         required: true
         type: string
-
+permissions:
+  packages: write
+  id-token: write
 jobs:
   mirror:
     runs-on: ubuntu-latest
