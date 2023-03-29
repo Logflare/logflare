@@ -71,6 +71,10 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
   mirror_image:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     needs:
       - publish_version
     # Mirror image only if new version is published
