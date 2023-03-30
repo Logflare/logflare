@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish_latest:
-    name: Publish latest tagged image
+    name: Publish staging tagged image
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
@@ -36,7 +36,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:latest
+          tags: supabase/logflare:staging
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/arm64,linux/amd64
