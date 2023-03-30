@@ -29,6 +29,8 @@ steps:
     args:
       [
         "build",
+         "--build-arg",
+        "TAG_VERSION=staging" 
         "-f",
         "docker/secret_setup.Dockerfile",
         "--build-arg",
