@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish_version:
-    name: Publish versioned tagged image
+    name: Publish versioned, latest tag image
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/master'}}
@@ -36,7 +36,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
+          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}, supabase/logflare:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/arm64,linux/amd64

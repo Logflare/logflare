@@ -9,41 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  publish_latest:
-    name: Publish latest tagged image
+  publish:
+    name: Build and publish amd64 image
     runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
-    steps:
-      - uses: actions/checkout@v3
-      - name: Get version
-        run: echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
-      - name: Get commit SHA
-        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build Version
-        uses: docker/build-push-action@v3
-        with:
-          push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64
-  publish_version:
-    name: Publish versioned tagged image
-    runs-on: ubuntu-latest
-    env:
-      PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/master'}}
-    outputs:
-      logflare_version: ${{ steps.version.outputs.LOGFLARE_VERSION }}
     steps:
       - uses: actions/checkout@v3
       - id: version
@@ -51,8 +21,6 @@ jobs:
         run: |
           echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
           echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
-      - name: Get commit SHA
-        run: echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
@@ -62,11 +30,23 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build Version
+      # build for master
+      - name: Build and push latest, versioned
+        if: ${{github.ref == 'refs/heads/master'}}
         uses: docker/build-push-action@v3
         with:
-          push: ${{env.PUSH_TO_DOCKER}}
-          tags: supabase/logflare:${{ env.LOGFLARE_VERSION }}
+          push: true
+          tags: supabase/logflare:latest, supabase/${{ env.LOGFLARE_VERSION}}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+      # build for staging
+      - name: Build and push staging build
+        if: ${{github.ref == 'refs/heads/staging'}}
+        uses: docker/build-push-action@v3
+        with:
+          push: true
+          tags: supabase/logflare:staging
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -84,32 +64,7 @@ jobs:
     with:
       version: ${{ needs.publish_version.outputs.logflare_version }}
     secrets: inherit
-  trigger_cloud_build_staging:
-    name: Trigger Cloud Build in Staging
-    if: github.ref == 'refs/heads/staging'
-    needs:
-      - publish_latest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      - id: 'auth'
-        uses: 'google-github-actions/auth@v1'
-        with:
-          credentials_json: '${{ secrets.GCP_STAGING_CREDENTIALS }}'
-          create_credentials_file: true
-          export_environment_variables: true
-          cleanup_credentials: false
-      - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v1'
-        with:
-          version: '418.0.0'
-          project_id: 'logflare-staging'
-      - name: 'Trigger Cloud Build'
-        run: 'gcloud builds triggers run logflare-app-staging-trigger --branch=staging --format "value(name)"'
-  trigger_cloud_build_production:
+  trigger_cloudbuild:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
     needs:
@@ -117,20 +72,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Set prod envs
+        if: github.ref == 'refs/heads/master'
+        run: |
+          echo "LF_BRANCH=master" >> $GITHUB_ENV
+          echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> $GITHUB_ENV
+          echo "LF_PROJECT_ID=logflare-232118" >> $GITHUB_ENV
+          echo "LF_GCP_SECRETS=${{ secrets.GCP_PROD_CREDENTIALS }}" >> $GITHUB_ENV
+      - name: Set staging envs
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          echo "LF_BRANCH=staging" >> $GITHUB_ENV
+          echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> $GITHUB_ENV
+          echo "LF_PROJECT_ID=logflare-staging" >> $GITHUB_ENV
+          echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> $GITHUB_ENV
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-      - id: 'auth'
-        uses: 'google-github-actions/auth@v1'
+          python-version: "3.10"
+      - id: "auth"
+        uses: "google-github-actions/auth@v1"
         with:
-          credentials_json: '${{ secrets.GCP_PROD_CREDENTIALS }}'
+          credentials_json: ${{ env.LF_GCP_SECRETS }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: false
-      - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v1'
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v1"
         with:
-          version: '418.0.0'
-          project_id: 'logflare-232118'
-      - name: 'Trigger Cloud Build'
-        run: 'gcloud builds triggers run logflare-master --branch=master --format "value(name)"'
+          version: "418.0.0"
+          project_id: ${{ env.LF_PROJECT_ID}}
+      - name: "Trigger Cloud Build"
+        run: 'gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH}} --format "value(name)"'
