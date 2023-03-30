@@ -13,7 +13,7 @@ You can also Bring Your Own Backend by allowing Logflare to manage a GCP project
 ### Setting Up Your Own BigQuery Backend
 
 :::warn Enable Billing for Project
-Enable a Google Cloud Platform billing account with payment information or we won't be able to insert into your BigQuery table!
+Enable a Google Cloud Platform billing account with payment information or [we won't be able to insert into your BigQuery table!](#ingestion-bigquery-streaming-insert-error)
 :::
 
 #### Step 1: Navigate to IAM and Add a Member
