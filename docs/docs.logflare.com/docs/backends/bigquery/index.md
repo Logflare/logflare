@@ -1,6 +1,6 @@
 # BigQuery
 
-Logflare natively supports the storage of log events to BigQuery. Ingested logs are **streamed** into BigQuery, and each source is mapped to a BigQuery dataset.
+Logflare natively supports the storage of log events to BigQuery. Ingested logs are **streamed** into BigQuery, and each source is mapped to a BigQuery table.
 
 ## Logflare-Managed BigQuery
 
