@@ -1,6 +1,6 @@
 # BigQuery
 
-Logflare natively supports the storage of log events to BigQuery. Ingested logs are streamed into BigQuery, and each source maps to a BigQuery dataset.
+Logflare natively supports the storage of log events to BigQuery. Ingested logs are **streamed** into BigQuery, and each source is mapped to a BigQuery dataset.
 
 ## Logflare-Managed BigQuery
 
@@ -78,11 +78,7 @@ LIMIT 10
 
 ## Troubleshooting
 
-### Ingestion
-
-Ingestion errors may occur due to many factors in the pipeline. Here is a list of common ingestion errors that you may be facing as well as their resolution steps.
-
-#### BigQuery Streaming Insert Error
+### Ingestion: BigQuery Streaming Insert Error
 
 Logflare uses BigQuery's streaming insert API to provide ingestion functionality. The documenetation for this API can be viewed [here](https://cloud.google.com/bigquery/docs/streaming-data-into-bigquery).
 
