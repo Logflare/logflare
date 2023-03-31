@@ -1,10 +1,20 @@
 # BigQuery
 
-Logflare natively supports the storage of log events to BigQuery. You can also Bring Your Own Backend by allowing Logflare to manage a GCP project's BigQuery.
+Logflare natively supports the storage of log events to BigQuery. Ingested logs are **streamed** into BigQuery, and each source is mapped to a BigQuery table.
 
-## Setting Up Your Own BigQuery Backend
+## Logflare-Managed BigQuery
 
-> Enable a Google Cloud Platform billing account with payment information or we won't be able to insert into your BigQuery table!
+Logflare free and metered users will not need to manage BigQuery settings and permissions, and will have access to their data via their registered e-mail address.
+
+## Bring Your Own Backend
+
+You can also Bring Your Own Backend by allowing Logflare to manage a GCP project's BigQuery.
+
+### Setting Up Your Own BigQuery Backend
+
+:::warn Enable Billing for Project
+Enable a Google Cloud Platform billing account with payment information or [we won't be able to insert into your BigQuery table!](#ingestion-bigquery-streaming-insert-error)
+:::
 
 #### Step 1: Navigate to IAM and Add a Member
 
@@ -68,11 +78,7 @@ LIMIT 10
 
 ## Troubleshooting
 
-### Ingestion
-
-Ingestion errors may occur due to many factors in the pipeline. Here is a list of common ingestion errors that you may be facing as well as their resolution steps.
-
-#### BigQuery Streaming Insert Error
+### Ingestion: BigQuery Streaming Insert Error
 
 Logflare uses BigQuery's streaming insert API to provide ingestion functionality. The documenetation for this API can be viewed [here](https://cloud.google.com/bigquery/docs/streaming-data-into-bigquery).
 
