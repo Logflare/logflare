@@ -5,10 +5,11 @@ defmodule Logflare.Backends.SourceBackend do
   import Ecto.Changeset
   alias Logflare.Source
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   typed_schema "source_backends" do
     belongs_to :source, Source
-    field :type, Ecto.Enum, values: [:bigquery, :webhook]
+    field :type, Ecto.Enum, values: [:bigquery, :webhook, :postgres]
     field :config, :map
     timestamps()
   end
@@ -24,6 +25,7 @@ defmodule Logflare.Backends.SourceBackend do
     adaptor_module =
       case type do
         :webhook -> WebhookAdaptor
+        :postgres -> PostgresAdaptor
       end
 
     %{
