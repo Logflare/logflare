@@ -1,80 +1,11 @@
 {
-  "event_message": "GET | 200 | 37.5.240.181 | 7ac6d98c6d4558de | https://default.supabase.co/rest/v1/some_table/ | Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36",
-  "project": "default",
+  "event_message": "2023/03/31 20:17:40 [notice] 8#0: using the \"epoll\" event method",
+  "id": "dba687e2-995f-45a0-ab91-00adc8d4127b",
   "metadata": {
-    "logflare_worker": {
-      "worker_id": "0749QS"
-    },
-    "request": {
-      "cf": {
-        "asOrganization": "Vodafone Germany",
-        "asn": 3209,
-        "botManagement": {
-          "corporateProxy": false,
-          "ja3Hash": "1338b1a480d0ca1fa3df004e7de6c6df",
-          "score": 98,
-          "staticResource": true,
-          "verifiedBot": false
-        },
-        "city": "Berlin",
-        "clientAcceptEncoding": "gzip, deflate, br",
-        "clientTrustScore": 98,
-        "colo": "TXL",
-        "continent": "EU",
-        "country": "DE",
-        "edgeRequestKeepAliveStatus": 1,
-        "httpProtocol": "HTTP/3",
-        "isEUCountry": "1",
-        "latitude": "53.75670",
-        "longitude": "9.64260",
-        "postalCode": "25335",
-        "region": "Holstein",
-        "regionCode": "SH",
-        "timezone": "Europe/Berlin",
-        "tlsCipher": "AEAD-AES128-GCM-SHA256",
-        "tlsClientAuth": {
-          "certPresented": "0",
-          "certRevoked": "0",
-          "certVerified": "NONE"
-        },
-        "tlsExportedAuthenticator": {
-          "clientFinished": "08a0814eaaaf225146f9508bd4a0d5a65daba925f8d2f03ffeed74ba4e2f8c38",
-          "clientHandshake": "5db0807dbae8ad8b6636da8ddb635bccc9a415704e002e58c82acc1bee289305",
-          "serverFinished": "38f35a7aa3018fd8d56b5f6e07dfd8742e044002f7b1fe7c03b2cc40b8f8ffed",
-          "serverHandshake": "9faa2466de25285db3b4fadf4cf3eac5f4dafba871263a1b2cc74086650dc715"
-        },
-        "tlsVersion": "TLSv1.3"
-      },
-      "headers": {
-        "accept": "application/json",
-        "cf_connecting_ip": "37.5.240.181",
-        "cf_ipcountry": "DE",
-        "cf_ray": "7ac6d98c123558de",
-        "host": "default.supabase.co",
-        "referer": "https://default-web.com/",
-        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36",
-        "x_forwarded_proto": "https",
-        "x_real_ip": "37.5.240.181"
-      },
-      "host": "default.supabase.co",
-      "method": "GET",
-      "path": "/rest/v1/some_table",
-      "protocol": "https:",
-      "search": "?width=1920&height=0&quality=85&resize=contain",
-      "url": "https://default.supabase.co/rest/v1/some_table"
-    },
-    "response": {
-      "headers": {
-        "cf_cache_status": "HIT",
-        "cf_ray": "7ac6d98d06be58de-TXL",
-        "content_length": "40766",
-        "content_type": "application/json",
-        "date": "Thu, 23 Mar 2023 12:59:07 GMT",
-        "sb_gateway_mode": "direct",
-        "sb_gateway_version": "1"
-      },
-      "origin_time": 102,
-      "status_code": 200
-    }
-  }
+    "app": "supabase_kong_cli",
+    "level": "err",
+    "project": "default"
+  },
+  "project": "default",
+  "timestamp": 1680293861765718
 }
