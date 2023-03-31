@@ -185,7 +185,7 @@ defmodule Logflare.Application do
       SingleTenant.create_supabase_endpoints()
       # wait for all sources to init and create tables, takes really long
       :timer.sleep(15_000)
-      SingleTenant.ingest_supabase_log_samples()
+      SingleTenant.update_supabase_source_schemas()
     end
   end
 end
