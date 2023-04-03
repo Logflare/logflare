@@ -190,15 +190,17 @@ defmodule Logflare.SingleTenant do
         Sources.list_sources_by_user(user)
         |> Repo.preload(:rules)
 
-      tasks = for source <- sources do
-        Task.async(fn ->
-          source = Sources.refresh_source_metrics_for_ingest(source)
-          Logger.debug("Ingesting sample logs for #{source.name}")
-          event = read_ingest_sample_json(source.name)
-          log_event = LogEvent.make(event, %{source: source})
-          Schema.update(source.token, log_event)
-        end)
-      end
+      tasks =
+        for source <- sources do
+          Task.async(fn ->
+            source = Sources.refresh_source_metrics_for_ingest(source)
+            Logger.debug("Ingesting sample logs for #{source.name}")
+            event = read_ingest_sample_json(source.name)
+            log_event = LogEvent.make(event, %{source: source})
+            Schema.update(source.token, log_event)
+          end)
+        end
+
       Task.await_many(tasks)
     end
   end
