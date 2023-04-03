@@ -12,6 +12,7 @@ defmodule Logflare.Application do
     ContextCache,
     SourceSchemas
   }
+
   alias Logflare.Utils.Tasks
 
   alias Logflare.SingleTenant
