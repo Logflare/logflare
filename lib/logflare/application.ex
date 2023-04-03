@@ -12,6 +12,7 @@ defmodule Logflare.Application do
     ContextCache,
     SourceSchemas
   }
+  alias Logflare.Utils.Tasks
 
   alias Logflare.SingleTenant
 
@@ -184,8 +185,9 @@ defmodule Logflare.Application do
       if SingleTenant.supabase_mode?() do
         SingleTenant.create_supabase_sources()
         SingleTenant.create_supabase_endpoints()
-        # wait for all sources to init and create tables, takes really long
-        :timer.sleep(15_000)
+        # buffer time for all sources to init and create tables
+        # in case of latency.
+        :timer.sleep(3_000)
         SingleTenant.update_supabase_source_schemas()
       end
     end

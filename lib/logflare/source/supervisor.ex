@@ -14,6 +14,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Utils.Tasks
 
   import Ecto.Query, only: [from: 2]
 
@@ -188,7 +189,10 @@ defmodule Logflare.Source.Supervisor do
         Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
       ]
 
-      init_table(source_id)
+      # fire off async init in async task, so that bq call does not block.
+      Tasks.start_child(fn ->
+        init_table(source_id)
+      end)
 
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     else
