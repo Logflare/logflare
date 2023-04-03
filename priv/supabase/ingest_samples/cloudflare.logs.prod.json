@@ -1,5 +1,5 @@
 {
-  "event_message": "GET | 200 | 37.5.240.181 | 7ac6d98c6d4558de | https://default.supabase.co/rest/v1/some_table/ | Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36",
+  "event_message": "GET | 200 | 37.5.20.481 | 7ac6d98c6d4558de | https://default.supabase.co/rest/v1/some_table/ | Mozilla/5.0 (Macintosh; Intel Mac OS X 1_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/437.36",
   "project": "default",
   "metadata": {
     "logflare_worker": {
@@ -7,11 +7,11 @@
     },
     "request": {
       "cf": {
-        "asOrganization": "Vodafone Germany",
+        "asOrganization": "ACME Germany",
         "asn": 3209,
         "botManagement": {
           "corporateProxy": false,
-          "ja3Hash": "1338b1a480d0ca1fa3df004e7de6c6df",
+          "ja3Hash": "1338b1a480d0ca1f3df004e7de6c6df",
           "score": 98,
           "staticResource": true,
           "verifiedBot": false
@@ -25,7 +25,7 @@
         "edgeRequestKeepAliveStatus": 1,
         "httpProtocol": "HTTP/3",
         "isEUCountry": "1",
-        "latitude": "53.75670",
+        "latitude": "51.75670",
         "longitude": "9.64260",
         "postalCode": "25335",
         "region": "Holstein",
@@ -47,14 +47,14 @@
       },
       "headers": {
         "accept": "application/json",
-        "cf_connecting_ip": "37.5.240.181",
+        "cf_connecting_ip": "37.50.20.482",
         "cf_ipcountry": "DE",
         "cf_ray": "7ac6d98c123558de",
         "host": "default.supabase.co",
         "referer": "https://default-web.com/",
-        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36",
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/2373.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/531.36",
         "x_forwarded_proto": "https",
-        "x_real_ip": "37.5.240.181"
+        "x_real_ip": "31.4.240.481"
       },
       "host": "default.supabase.co",
       "method": "GET",
