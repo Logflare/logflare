@@ -8,7 +8,7 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Billing.Plan
   alias Logflare.Sources
   alias Logflare.Endpoints
-  alias Logflare.Logs
+  alias Logflare.Source.BigQuery.Schema
 
   describe "single tenant mode" do
     TestUtils.setup_single_tenant()
@@ -62,7 +62,7 @@ defmodule Logflare.SingleTenantTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     setup do
-      stub(Logs, :ingest_logs, fn _batch, _source -> :ok end)
+      # stub(Logs, :ingest_logs, fn _batch, _source -> :ok end)
       :ok
     end
 
@@ -76,11 +76,11 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "startup tasks inserts log sources/endpoints" do
-      expect(Logs, :ingest_logs, 9, fn _batch, _source -> :ok end)
+      expect(Schema, :update, 9, fn _source_token, _log_event -> :ok end)
 
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
-      SingleTenant.ingest_supabase_log_samples()
+      SingleTenant.update_supabase_source_schemas()
 
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)

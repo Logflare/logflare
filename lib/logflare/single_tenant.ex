@@ -9,9 +9,10 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
-  alias Logflare.Logs
   alias Logflare.Repo
   alias Logflare.Source.Supervisor
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.LogEvent
   require Logger
 
   @user_attrs %{
@@ -179,26 +180,28 @@ defmodule Logflare.SingleTenant do
 
   @doc """
   Adds ingestion samples for supabase sources, so that schema is built and stored correctly.
-
-  TODO: directly insert schemas instead of using ingestion, which is async and slow.
   """
-  @spec ingest_supabase_log_samples :: nil
-  def ingest_supabase_log_samples do
+  @spec update_supabase_source_schemas :: nil
+  def update_supabase_source_schemas do
     if supabase_mode?() do
       user = get_default_user()
 
       sources =
         Sources.list_sources_by_user(user)
         |> Repo.preload(:rules)
-        |> Enum.map(fn source ->
-          Sources.refresh_source_metrics_for_ingest(source)
-        end)
 
-      for source <- sources do
-        Logger.debug("Ingesting sample logs for #{source.name}")
-        event = read_ingest_sample_json(source.name)
-        Logs.ingest_logs([event], source)
-      end
+      tasks =
+        for source <- sources do
+          Task.async(fn ->
+            source = Sources.refresh_source_metrics_for_ingest(source)
+            Logger.debug("Ingesting sample logs for #{source.name}")
+            event = read_ingest_sample_json(source.name)
+            log_event = LogEvent.make(event, %{source: source})
+            Schema.update(source.token, log_event)
+          end)
+        end
+
+      Task.await_many(tasks)
     end
   end
 
