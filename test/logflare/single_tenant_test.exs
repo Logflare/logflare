@@ -62,7 +62,7 @@ defmodule Logflare.SingleTenantTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     setup do
-      # stub(Logs, :ingest_logs, fn _batch, _source -> :ok end)
+      stub(Schema, :update, fn _token, _le -> :ok end)
       :ok
     end
 
@@ -86,6 +86,25 @@ defmodule Logflare.SingleTenantTest do
       sources = Sources.list_sources_by_user(user)
       assert length(sources) > 0
       assert Endpoints.list_endpoints_by(user_id: user.id) |> length() > 0
+    end
+
+    test "supabase_mode_status/0" do
+      stub(Schema, :get_state, fn _ -> %{field_count: 3} end)
+      SingleTenant.create_supabase_sources()
+
+      assert %{
+               seed_user: :ok,
+               seed_plan: :ok,
+               seed_sources: :ok,
+               seed_endpoints: nil,
+               source_schemas_updated: nil
+             } = SingleTenant.supabase_mode_status()
+
+      stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
+
+      assert %{
+               source_schemas_updated: :ok
+             } = SingleTenant.supabase_mode_status()
     end
   end
 end
