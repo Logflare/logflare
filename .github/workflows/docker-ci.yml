@@ -56,19 +56,19 @@ jobs:
       packages: write
       id-token: write
     needs:
-      - publish_version
+      - publish
     # Mirror image only if new version is published
     if: ${{ github.ref == 'refs/heads/master' }}
     # Call workflow explicitly because events from actions cannot trigger more actions
     uses: ./.github/workflows/mirror.yml
     with:
-      version: ${{ needs.publish_version.outputs.logflare_version }}
+      version: ${{ needs.publish.outputs.logflare_version }}
     secrets: inherit
   trigger_cloudbuild:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
     needs:
-      - publish_version
+      - publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -88,18 +88,18 @@ jobs:
           echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> $GITHUB_ENV
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
-      - id: "auth"
-        uses: "google-github-actions/auth@v1"
+          python-version: '3.10'
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
         with:
           credentials_json: ${{ env.LF_GCP_SECRETS }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: false
-      - name: "Set up Cloud SDK"
-        uses: "google-github-actions/setup-gcloud@v1"
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v1'
         with:
-          version: "418.0.0"
+          version: '418.0.0'
           project_id: ${{ env.LF_PROJECT_ID}}
-      - name: "Trigger Cloud Build"
+      - name: 'Trigger Cloud Build'
         run: 'gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH}} --format "value(name)"'
