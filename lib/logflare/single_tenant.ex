@@ -57,7 +57,8 @@ defmodule Logflare.SingleTenant do
         Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(),
       sandboxable: true,
       max_limit: 1000,
-      enable_auth: false
+      enable_auth: false,
+      cache_duration_seconds: 0
     },
     %{
       name: "charts.usage",
@@ -65,7 +66,9 @@ defmodule Logflare.SingleTenant do
         Application.app_dir(:logflare, "priv/supabase/endpoints/charts.usage.sql") |> File.read!(),
       sandboxable: true,
       max_limit: 1000,
-      enable_auth: false
+      enable_auth: false,
+      cache_duration_seconds: 900,
+      proactive_requerying_seconds: 300
     },
     %{
       name: "functions.invocation-stats",
@@ -74,7 +77,9 @@ defmodule Logflare.SingleTenant do
         |> File.read!(),
       sandboxable: true,
       max_limit: 1000,
-      enable_auth: false
+      enable_auth: false,
+      cache_duration_seconds: 900,
+      proactive_requerying_seconds: 300
     }
   ]
 
