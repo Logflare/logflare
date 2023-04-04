@@ -180,15 +180,15 @@ defmodule Logflare.Application do
       Logger.info("Ensuring single tenant user is seeded...")
       SingleTenant.create_default_plan()
       SingleTenant.create_default_user()
+    end
 
-      if SingleTenant.supabase_mode?() do
-        SingleTenant.create_supabase_sources()
-        SingleTenant.create_supabase_endpoints()
-        # buffer time for all sources to init and create tables
-        # in case of latency.
-        :timer.sleep(3_000)
-        SingleTenant.update_supabase_source_schemas()
-      end
+    if SingleTenant.supabase_mode?() do
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+      # buffer time for all sources to init and create tables
+      # in case of latency.
+      :timer.sleep(3_000)
+      SingleTenant.update_supabase_source_schemas()
     end
   end
 end

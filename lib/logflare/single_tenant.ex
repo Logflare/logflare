@@ -94,9 +94,10 @@ defmodule Logflare.SingleTenant do
   Retrieves the default plan
   """
   def get_default_plan do
-    @plan_attrs
-    |> Map.to_list()
-    |> Billing.get_plan_by()
+    Billing.list_plans()
+    |> Enum.find(fn plan ->
+      @plan_attrs = plan
+    end)
   end
 
   @doc """
@@ -179,9 +180,9 @@ defmodule Logflare.SingleTenant do
   @spec single_tenant? :: boolean()
   def single_tenant?, do: !!Application.get_env(:logflare, :single_tenant)
 
-  @doc "Returns true if supabase mode flag is set via config"
+  @doc "Returns true if supabase mode flag is set via config and if is single tenant"
   @spec supabase_mode? :: boolean()
-  def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode)
+  def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode) and single_tenant?()
 
   @doc """
   Adds ingestion samples for supabase sources, so that schema is built and stored correctly.
@@ -207,6 +208,57 @@ defmodule Logflare.SingleTenant do
         end
 
       Task.await_many(tasks)
+    end
+  end
+
+  @doc """
+  Returns the status of supabase mode setup process.
+  Possible statuses: :ok, nil
+  """
+  @spec supabase_mode_status :: %{atom() => :ok | nil}
+  def supabase_mode_status do
+    default_plan = get_default_plan()
+    default_user = if default_plan, do: get_default_user()
+    seed_user = if default_user, do: :ok
+    seed_plan = if default_plan, do: :ok
+
+    seed_sources =
+      if default_user do
+        if Sources.list_sources_by_user(default_user) |> length() > 0, do: :ok
+      end
+
+    seed_endpoints =
+      if default_user do
+        if Endpoints.list_endpoints_by(user_id: default_user.id) |> length() > 0, do: :ok
+      end
+
+    source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
+
+    %{
+      seed_user: seed_user,
+      seed_plan: seed_plan,
+      seed_sources: seed_sources,
+      seed_endpoints: seed_endpoints,
+      source_schemas_updated: source_schemas_updated
+    }
+  end
+
+  def supabase_mode_source_schemas_updated? do
+    user = get_default_user()
+
+    if user do
+      sources = Sources.list_sources_by_user(user)
+
+      checks =
+        for source <- sources,
+            source.name in @source_names,
+            state = Schema.get_state(source.token) do
+          state.field_count > 3
+        end
+
+      Enum.all?(checks) and length(sources) > 0
+    else
+      false
     end
   end
 
