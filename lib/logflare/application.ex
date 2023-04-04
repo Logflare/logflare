@@ -13,8 +13,6 @@ defmodule Logflare.Application do
     SourceSchemas
   }
 
-  alias Logflare.Utils.Tasks
-
   alias Logflare.SingleTenant
 
   def start(_type, _args) do
