@@ -199,7 +199,7 @@ defmodule Logflare.SingleTenant do
         for source <- sources do
           Task.async(fn ->
             source = Sources.refresh_source_metrics_for_ingest(source)
-            Logger.debug("Ingesting sample logs for #{source.name}")
+            Logger.debug("Updating schemas for for #{source.name}")
             event = read_ingest_sample_json(source.name)
             log_event = LogEvent.make(event, %{source: source})
             Schema.update(source.token, log_event)
