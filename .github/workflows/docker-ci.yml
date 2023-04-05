@@ -1,4 +1,5 @@
 name: Docker CI
+runs-on: [self-hosted]
 
 on:
   workflow_dispatch:

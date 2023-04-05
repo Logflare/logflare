@@ -2,6 +2,7 @@
 # The platforms tag in the steps using docker/build-push-action@v3 will be moved to .github/workflows/docker-ci.yml
 
 name: Build Versioned ARM Docker Image
+runs-on: [self-hosted]
 
 on:
   workflow_dispatch:
