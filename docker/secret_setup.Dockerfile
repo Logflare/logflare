@@ -1,3 +1,4 @@
+ARG TAG_VERSION
 FROM supabase/logflare:${TAG_VERSION}
 
 RUN apk add tini
