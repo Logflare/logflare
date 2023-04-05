@@ -50,20 +50,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
-  mirror_image:
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    needs:
-      - publish
-    # Mirror image only if new version is published
-    if: ${{ github.ref == 'refs/heads/master' }}
-    # Call workflow explicitly because events from actions cannot trigger more actions
-    uses: ./.github/workflows/mirror.yml
-    with:
-      version: ${{ needs.publish.outputs.logflare_version }}
-    secrets: inherit
   trigger_cloudbuild:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
