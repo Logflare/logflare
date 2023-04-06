@@ -55,6 +55,20 @@ In order to test all changes locally, perform the following steps:
 3. Update the test supabase project's config under `supabase/config.toml`
    - logflare uses the `analytics` namespace.
 
+## Release Management
+
+Logflare's `VERSION` file is bumped on each release.
+
+The `master` branch reflects what is on production on https://logflare.app
+
+The `staging` branch reflects what is on the staging environment.
+
+Version bumping policy is as follows:
+
+- **Patch**: For any changes that do not affect external api. ui changes, refactoring, docs, etc. Is the default.
+- **Minor**: Non-breaking external api changes, changes in config, major changes to core features.
+- **Major**: External api breaking changes, major code changes.
+
 ## Development Code Style
 
 ### Logging
