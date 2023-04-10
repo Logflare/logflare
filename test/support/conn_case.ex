@@ -56,11 +56,11 @@ defmodule LogflareWeb.ConnCase do
       end
 
       # for api use
-      def add_access_token(conn, user) do
-        {:ok, access_token} = Logflare.Auth.create_access_token(user)
+      def add_access_token(conn, user, scopes \\ ~w(public)) do
+        scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
+        {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: scopes})
 
-        conn
-        |> put_req_header("authorization", "Bearer #{access_token.token}")
+        put_req_header(conn, "authorization", "Bearer #{access_token.token}")
       end
     end
   end

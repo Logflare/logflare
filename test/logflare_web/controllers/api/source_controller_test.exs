@@ -19,7 +19,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns list of sources for given user", %{conn: conn, user: user, sources: sources} do
       response =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> get("/api/sources")
         |> json_response(200)
 
@@ -34,7 +34,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns single sources for given user", %{conn: conn, user: user, sources: [source | _]} do
       response =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> get("/api/sources/#{source.token}")
         |> json_response(200)
 
@@ -45,7 +45,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> add_access_token(invalid_user)
+      |> add_access_token(invalid_user, "private")
       |> get("/api/sources/#{source.token}")
       |> response(404)
     end
@@ -57,7 +57,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       response =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> post("/api/sources", %{name: name})
         |> json_response(201)
 
@@ -67,7 +67,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
       resp =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> post("/api/sources")
         |> json_response(422)
 
@@ -77,7 +77,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
       resp =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> post("/api/sources", %{name: 123})
         |> json_response(422)
 
@@ -95,7 +95,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       response =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> patch("/api/sources/#{source.token}", %{name: name})
         |> json_response(204)
 
@@ -106,7 +106,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> add_access_token(invalid_user)
+      |> add_access_token(invalid_user, "private")
       |> patch("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
       |> response(404)
     end
@@ -114,7 +114,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns 422 on bar arguments", %{conn: conn, user: user, sources: [source | _]} do
       resp =
         conn
-        |> add_access_token(user)
+        |> add_access_token(user, "private")
         |> patch("/api/sources/#{source.token}", %{name: 123})
         |> json_response(422)
 
@@ -131,12 +131,12 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       name = TestUtils.random_string()
 
       assert conn
-             |> add_access_token(user)
+             |> add_access_token(user, "private")
              |> delete("/api/sources/#{source.token}", %{name: name})
              |> response(204)
 
       assert conn
-             |> add_access_token(user)
+             |> add_access_token(user, "private")
              |> get("/api/sources/#{source.token}")
              |> response(404)
     end
@@ -148,7 +148,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       invalid_user = insert(:user)
 
       assert conn
-             |> add_access_token(invalid_user)
+             |> add_access_token(invalid_user, "private")
              |> delete("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
              |> response(404)
     end

@@ -76,7 +76,7 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :require_mgmt_api_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
   pipeline :require_auth do
