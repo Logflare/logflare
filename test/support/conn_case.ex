@@ -48,10 +48,19 @@ defmodule LogflareWeb.ConnCase do
         :ok
       end
 
+      # for browser use
       def login_user(conn, user) do
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
         |> Plug.Conn.assign(:user, user)
+      end
+
+      # for api use
+      def add_access_token(conn, user, scopes \\ ~w(public)) do
+        scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
+        {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: scopes})
+
+        put_req_header(conn, "authorization", "Bearer #{access_token.token}")
       end
     end
   end
