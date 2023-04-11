@@ -40,7 +40,7 @@ jobs:
           tags: supabase/logflare:latest, supabase/${{ env.LOGFLARE_VERSION}}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          platforms: linux/arm64,linux/amd64
       # build for staging
       - name: Build and push staging build
         if: ${{github.ref == 'refs/heads/staging'}}
@@ -50,7 +50,7 @@ jobs:
           tags: supabase/logflare:staging
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          platforms: linux/arm64,linux/amd64
   trigger_cloudbuild:
     name: Trigger Cloud Build in Production
     if: github.ref == 'refs/heads/master'
