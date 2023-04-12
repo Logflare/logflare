@@ -64,9 +64,9 @@ defmodule LogflareWeb.Admin.PartnerLiveTest do
       html =
         view
         |> element("#generate-#{token}")
-        |> render_click()
+        |> render_submit()
 
-      [%{token: token}] = Logflare.Auth.list_valid_partner_access_tokens(partner)
+      [%{token: token}] = Logflare.Auth.list_valid_access_tokens(partner)
       assert html =~ "Access token created successfully"
       assert html =~ token
     end

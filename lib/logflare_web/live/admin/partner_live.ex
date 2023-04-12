@@ -20,7 +20,7 @@ defmodule LogflareWeb.Admin.PartnerLive do
   end
 
   def handle_event("save", %{"partner" => %{"name" => name}}, socket) do
-    {:ok, partner} = Partners.new_partner(name)
+    {:ok, partner} = Partners.create_partner(name)
     {:noreply, update(socket, :partners, fn partners -> partners ++ [partner] end)}
   end
 
@@ -29,9 +29,9 @@ defmodule LogflareWeb.Admin.PartnerLive do
     {:noreply, assign(socket, :partners, Partners.list_partners())}
   end
 
-  def handle_event("create", %{"token" => token}, socket) do
+  def handle_event("create-token", %{"token" => token, "description" => description}, socket) do
     partner = Partners.get_partner_by_token(token)
-    {:ok, %{token: token}} = Auth.create_access_token(partner)
+    {:ok, token} = Auth.create_access_token(partner, %{description: description})
 
     Logger.debug("Creating access token for partner, partner_id=#{inspect(partner.id)}")
 

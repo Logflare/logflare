@@ -30,7 +30,7 @@ defmodule Logflare.Google.CloudResourceManagerTest do
                      role == "roles/bigquery.jobUser"
                    end)
 
-          assert members == expected_members
+          assert Enum.sort(members) == Enum.sort(expected_members)
           assert role == "roles/bigquery.jobUser"
           assert service_accounts == expected_service_accounts(google_configs)
           {:ok, ""}

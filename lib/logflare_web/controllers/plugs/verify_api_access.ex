@@ -18,41 +18,29 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   def call(conn, opts) do
     opts = Enum.into(opts, %{scopes: []})
     resource_type = Map.get(conn.assigns, :resource_type)
-    resource_owner = Map.get(opts, :resource_owner, Logflare.User)
     # generic access
-    with {:ok, owner} <- identify_requestor(conn, opts.scopes, resource_owner) do
-      case resource_owner do
-        Logflare.User -> assign(conn, :user, owner)
-        Logflare.Partners.Partner -> assign(conn, :partner, owner)
+    with {:ok, owner} <- identify_requestor(conn, opts.scopes) do
+      case "partner" in opts.scopes do
+        true -> assign(conn, :partner, owner)
+        false -> assign(conn, :user, owner)
       end
     else
-      {:error, :no_token} when resource_type != nil ->
-        conn
-
-      _ ->
-        FallbackController.call(conn, {:error, :unauthorized})
+      {:error, :no_token} when resource_type != nil -> conn
+      _ -> FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 
-  defp identify_requestor(conn, scopes, resource_owner) do
+  defp identify_requestor(conn, scopes) do
     extracted = extract_token(conn)
     is_private_route? = "private" in scopes
 
     with {:ok, access_token_or_api_key} <- extracted,
-         {:ok, owner} <- fetch_resource_owner(resource_owner, access_token_or_api_key, scopes) do
+         {:ok, owner} <- Auth.verify_access_token(access_token_or_api_key, scopes) do
       {:ok, owner}
     else
       {:error, :no_token} = err -> err
       {:error, _} = err -> handle_legacy_api_key(extracted, err, is_private_route?)
     end
-  end
-
-  defp fetch_resource_owner(Logflare.User, access_token_or_api_key, scopes) do
-    Auth.verify_access_token(access_token_or_api_key, scopes)
-  end
-
-  defp fetch_resource_owner(Logflare.Partners.Partner, access_token_or_api_key, scopes) do
-    Auth.verify_partner_access_token(access_token_or_api_key, scopes)
   end
 
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do

@@ -137,9 +137,25 @@ defmodule Logflare.User do
     user
     |> cast(attrs, @fields)
     |> add_api_key()
+    |> add_token()
+    |> add_provider_uid()
     |> cast_assoc(:team)
     |> default_validations(user)
   end
+
+  defp add_token(%{data: %{token: nil}, changes: changes} = changeset)
+       when not is_map_key(changes, :token) do
+    put_change(changeset, :token, Ecto.UUID.generate())
+  end
+
+  defp add_token(changeset), do: changeset
+
+  defp add_provider_uid(%{data: %{provider_uid: nil}, changes: changes} = changeset)
+       when not is_map_key(changes, :provider_uid) do
+    put_change(changeset, :provider_uid, Ecto.UUID.generate())
+  end
+
+  defp add_provider_uid(changeset), do: changeset
 
   defp add_api_key(%{data: %{api_key: nil}, changes: changes} = changeset)
        when not is_map_key(changes, :api_key) do
