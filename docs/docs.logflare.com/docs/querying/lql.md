@@ -53,4 +53,4 @@ Timestamps will be automatically converted to UTC if Logflare is set to display 
 
 Certain backends provide querying functionality. Documentation on each can be found in specific backend guide.
 
-- [Querying in BigQuery](./backends/bigquery#querying)
+- [Querying in BigQuery](/backends/bigquery#querying-in-bigquery)
