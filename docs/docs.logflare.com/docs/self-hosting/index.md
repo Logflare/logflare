@@ -172,3 +172,9 @@ This ENV variable sets the search path to a custom database schema. This allows 
 > string, defualts to `info`. Options: `error|warn|info|debug`
 
 Allows the setting of the log level at runtime. For production settings, we advise `warn`.
+
+### `LOGFLARE_NODE_HOST`
+
+> string, defaults to `127.0.0.1`
+
+Sets the node's host on startup. The nodes name will be set as `logflare@<host>` where `host` is determined by this environment variable.
