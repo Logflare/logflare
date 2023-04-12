@@ -236,7 +236,6 @@ defmodule LogflareWeb.Router do
     get("/", TeamUserController, :change_team)
   end
 
-
   scope "/account", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
