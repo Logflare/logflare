@@ -89,14 +89,14 @@ You can also optionally update your sources' TTL to tweak how long you want to r
 ![Set Source TTL](./add-a-member.png)
 
 :::note
-The steps for setting up self-hosted Logflare requires different BigQuery configurations, please refer to the [self-hosted](/docs/self-hosted) documentation for more details.
+The steps for setting up self-hosted Logflare requires different BigQuery configurations, please refer to the [self-hosting](/self-hosting) documentation for more details.
 :::
 
 ## Querying in BigQuery
 
 You can directly execute SQL queries in BigQuery instead of through the Logflare UI. This would be helpful for generating reports that require aggregations, or to perform queries across multiple BigQuery tables.
 
-When referencing Logflare-managed BigQuery tables, you will need to reference the table by the source's UUID. If you are crafting the query within [Logflare Endpoints](/docs/endpoints), the table name resolution is handled automatically for you.
+When referencing Logflare-managed BigQuery tables, you will need to reference the table by the source's UUID. If you are crafting the query within [Logflare Endpoints](/endpoints), the table name resolution is handled automatically for you.
 
 ### Unnesting Repeated Records
 

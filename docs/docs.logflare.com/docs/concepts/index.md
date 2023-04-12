@@ -105,6 +105,6 @@ It is not advisable to manage the backend's retention settings directly without 
 
 You can configure the Backend TTL via source settings under Source > Edit > Backend TTL.
 
-![Backend TTL Setting](./backend-ttl)
+![Backend TTL Setting](./backend-ttl.png)
 
 Please refer to backend-specific documentation for in-depth explanation for how retention is handled.
