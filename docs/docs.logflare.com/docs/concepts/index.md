@@ -94,3 +94,17 @@ The schema changes is done automatically. If this is not the desired behaviour, 
 #### Additive Changes Only
 
 Schema updates are additive and new columns cannot be removed through the UI. We recommend creating a new source if a new schema is desired, and migrating any existing data manually.
+
+### Backend Time-To-Live (TTL)
+
+Backend TTL refers to how long data is retained wtihin a given backend. Logflare will manage the retention settings for each backend where available.
+
+:::warn
+It is not advisable to manage the backend's retention settings directly without going through Logflare, as conflicts may arise.
+:::
+
+You can configure the Backend TTL via source settings under Source > Edit > Backend TTL.
+
+![Backend TTL Setting](./backend-ttl)
+
+Please refer to backend-specific documentation for in-depth explanation for how retention is handled.
