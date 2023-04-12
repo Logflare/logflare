@@ -16,7 +16,8 @@ defmodule Logflare.AuthTest do
     test "can create api key", %{user: user, team: team, partner: partner} do
       assert {:ok, %OauthAccessToken{}} = Auth.create_access_token(user)
       assert {:ok, %OauthAccessToken{}} = Auth.create_access_token(team)
-      assert {:ok, %PartnerOauthAccessToken{}} = Auth.create_access_token(partner)
+      assert {:ok, %PartnerOauthAccessToken{scopes: scopes}} = Auth.create_access_token(partner)
+      assert scopes =~ "partner"
 
       {:ok, %OauthAccessToken{description: "some test"}} =
         Auth.create_access_token(user, %{description: "some test"})
@@ -25,7 +26,7 @@ defmodule Logflare.AuthTest do
                Auth.create_access_token(partner, %{description: "some test"})
 
       assert Auth.list_valid_access_tokens(user) |> length() == 3
-      assert Auth.list_valid_partner_access_tokens(partner) |> length() == 2
+      assert Auth.list_valid_access_tokens(partner) |> length() == 2
     end
 
     test "can revoke access tokens", %{user: user} do
@@ -33,13 +34,9 @@ defmodule Logflare.AuthTest do
       :ok = Auth.revoke_access_token(key)
     end
 
-    test "verify access tokens", %{user: user, partner: partner} do
+    test "verify access tokens", %{user: user} do
       key = access_token_fixture(user)
       assert {:ok, %User{}} = Auth.verify_access_token(key)
-      assert {:ok, _} = Auth.verify_access_token(key.token)
-
-      key = access_token_fixture(partner)
-      assert {:ok, %Partner{}} = Auth.verify_partner_access_token(key)
       assert {:ok, _} = Auth.verify_access_token(key.token)
     end
   end
@@ -71,6 +68,15 @@ defmodule Logflare.AuthTest do
     {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
     assert {:ok, _} = Auth.verify_access_token(key.token, ~w(public))
     assert {:ok, _} = Auth.verify_access_token(key.token, ~w(private))
+  end
+
+  test "verify_access_token/2 partner scope", %{partner: partner} do
+    key = access_token_fixture(partner)
+    assert {:ok, %Partner{}} = Auth.verify_access_token(key, ~w(partner))
+    assert {:ok, %Partner{}} = Auth.verify_access_token(key.token, ~w(partner))
+
+    # If scope is missing, should be unauthorized
+    assert {:error, :unauthorized} = Auth.verify_access_token(key)
   end
 
   defp access_token_fixture(user_or_team_or_partner) do

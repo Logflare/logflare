@@ -63,7 +63,8 @@ config :logflare,
        [
          resource_owner: Logflare.Partners.Partner,
          application: Logflare.OauthApplications.PartnerOauthApplication,
-         access_token: Logflare.OauthAccessTokens.PartnerOauthAccessToken
+         access_token: Logflare.OauthAccessTokens.PartnerOauthAccessToken,
+         default_scopes: ~w(partner)
        ] ++ oauth_common
 
 config :logflare, PhoenixOauth2Provider,

@@ -29,6 +29,3 @@ config :logflare, Logflare.Repo,
   hostname: "localhost",
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
-
-config :logflare, LogflareWeb.Plugs.PartnerAuthentication,
-  token: "UpWhFVVnxCZRuTKlg2Iw5lt/h1tCNo3P+jVpsgIsPxCboGUv2GF0f4fpAT3FQIoU"

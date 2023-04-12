@@ -1,18 +1,20 @@
 defmodule Logflare.PartnerTest do
   use Logflare.DataCase
+
   alias Logflare.Partners
   alias Logflare.Repo
+  alias Logflare.User
 
   describe "get/1" do
     test "returns the partner with given id" do
       partner = insert(:partner)
-      assert partner == Partners.get(partner.id)
+      assert partner == Partners.get_partner(partner.id)
     end
   end
 
   describe "new_partner/2" do
     test "inserts a new partner" do
-      {:ok, partner} = Partners.new_partner(TestUtils.random_string())
+      {:ok, partner} = Partners.create_partner(TestUtils.random_string())
       assert partner
       assert partner.token
     end
@@ -28,12 +30,14 @@ defmodule Logflare.PartnerTest do
   describe "list_users/1" do
     test "lists all users created by a partner" do
       partner = insert(:partner)
-
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.random_string()})
+
+      {:ok, _user_from_another_partner} =
+        Partners.create_user(insert(:partner), %{"email" => TestUtils.random_string()})
 
       _other_users = insert_list(3, :user)
 
-      assert [user_result] = Partners.list_users(partner)
+      assert [user_result] = Partners.list_users_by_partner(partner)
       assert user_result.id == user.id
     end
   end
@@ -69,7 +73,7 @@ defmodule Logflare.PartnerTest do
     end
   end
 
-  describe "get_user_by_token" do
+  describe "get_user_by_token/2" do
     test "fetches user if user was created by given partner" do
       partner = insert(:partner)
       email = TestUtils.gen_email()
@@ -86,6 +90,28 @@ defmodule Logflare.PartnerTest do
       {:ok, %{token: token}} = Partners.create_user(insert(:partner), %{"email" => email})
 
       assert is_nil(Partners.get_user_by_token(partner, token))
+    end
+  end
+
+  describe "delete_user/2" do
+    test "deletes user and removes association with partner" do
+      partner = insert(:partner)
+
+      {:ok, %{id: id} = user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
+
+      {:ok, %{id: not_deleted_id}} =
+        Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
+
+      assert {:ok, %User{id: ^id}} = Partners.delete_user(partner, user)
+
+      partner = Repo.preload(partner, :users)
+      assert [%User{id: ^not_deleted_id}] = partner.users
+    end
+
+    test "does not delete user if user was created by another partner" do
+      partner = insert(:partner)
+      {:ok, user} = Partners.create_user(insert(:partner), %{"email" => TestUtils.gen_email()})
+      assert {:error, :not_found} = Partners.delete_user(partner, user)
     end
   end
 end

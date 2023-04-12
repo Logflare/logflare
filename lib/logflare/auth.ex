@@ -2,12 +2,15 @@ defmodule Logflare.Auth do
   @moduledoc "Authorization context"
   import Ecto.Query
 
+  alias Ecto.Changeset
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
+  alias Logflare.Partners
   alias Logflare.Partners.Partner
   alias Logflare.Repo
   alias Logflare.Teams.Team
   alias Logflare.User
+  alias Logflare.Users
   alias Phoenix.Token
 
   @max_age_default 86_400
@@ -35,20 +38,22 @@ defmodule Logflare.Auth do
     "https://www.gravatar.com/avatar/" <> hash
   end
 
-  @doc "List Oauth access tokens by user"
-  @spec list_valid_access_tokens(User.t()) :: [OauthAccessToken.t()]
+  @doc "List Oauth access tokens by user or partner"
+  @spec list_valid_access_tokens(User.t() | Partner.t()) :: [OauthAccessToken.t()]
   def list_valid_access_tokens(%User{id: user_id}) do
     Repo.all(
-      from(t in OauthAccessToken, where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at))
+      from(t in OauthAccessToken,
+        where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at),
+        where: not ilike(t.scopes, "%partner%")
+      )
     )
   end
 
-  @doc "List Oauth access tokens by partner"
-  @spec list_valid_partner_access_tokens(Partner.t()) :: [OauthAccessToken.t()]
-  def list_valid_partner_access_tokens(%Partner{id: user_id}) do
+  def list_valid_access_tokens(%Partner{id: partner_id}) do
     Repo.all(
       from(t in PartnerOauthAccessToken,
-        where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at)
+        where: t.resource_owner_id == ^partner_id and is_nil(t.revoked_at),
+        where: ilike(t.scopes, "%partner%")
       )
     )
   end
@@ -68,7 +73,7 @@ defmodule Logflare.Auth do
   def create_access_token(%User{} = user, attrs) do
     with {:ok, token} = ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
       token
-      |> Ecto.Changeset.cast(attrs, [:scopes, :description])
+      |> Changeset.cast(attrs, [:scopes, :description])
       |> Repo.update()
     end
   end
@@ -77,13 +82,14 @@ defmodule Logflare.Auth do
     with {:ok, token} =
            ExOauth2Provider.AccessTokens.create_token(partner, %{}, env_partner_oauth_config()) do
       token
-      |> Ecto.Changeset.cast(attrs, [:scopes, :description])
+      |> Changeset.cast(attrs, [:scopes, :description])
+      |> Changeset.update_change(:scopes, fn scopes -> scopes <> " partner" end)
       |> Repo.update()
     end
   end
 
   @doc """
-  Verifies a  `%OauthAccessToken{}` or string access token.
+  Verifies a `%OauthAccessToken{}` or string access token.
   If valid, returns the token's associated user.
 
   Optionally validates if the access token needs to have any required scope.
@@ -93,45 +99,31 @@ defmodule Logflare.Auth do
   def verify_access_token(token, scopes \\ [])
 
   def verify_access_token(token, scope) when is_binary(scope) do
-    verify_access_token(token, [scope], env_oauth_config())
+    verify_access_token_and_fetch_owner(token, [scope])
   end
 
   def verify_access_token(%OauthAccessToken{token: str_token}, scopes) do
-    verify_access_token(str_token, scopes, env_oauth_config())
+    verify_access_token_and_fetch_owner(str_token, scopes)
   end
 
-  def verify_access_token("" <> str_token, required_scopes)
-      when is_list(required_scopes) do
-    verify_access_token(str_token, required_scopes, env_oauth_config())
+  def verify_access_token(%PartnerOauthAccessToken{token: str_token}, scopes) do
+    case "partner" in scopes do
+      true -> verify_access_token_and_fetch_owner(str_token, scopes)
+      false -> {:error, :unauthorized}
+    end
   end
 
-  @doc """
-  Verifies a  `%PartnerOauthAccessToken{}` or string access token.
-  If valid, returns the token's associated partner.
-
-  Optionally validates if the access token needs to have any required scope.
-  """
-  @spec verify_partner_access_token(
-          PartnerOauthAccessToken.t() | String.t(),
-          String.t() | [String.t()]
-        ) ::
-          {:ok, Partner.t()} | {:error, term()}
-  def verify_partner_access_token(token, scopes \\ [])
-
-  def verify_partner_access_token(token, scope) when is_binary(scope) do
-    verify_access_token(token, [scope], env_partner_oauth_config())
+  def verify_access_token("" <> str_token, required_scopes) when is_list(required_scopes) do
+    verify_access_token_and_fetch_owner(str_token, required_scopes)
   end
 
-  def verify_partner_access_token(%PartnerOauthAccessToken{token: str_token}, scopes) do
-    verify_access_token(str_token, scopes, env_partner_oauth_config())
-  end
+  defp verify_access_token_and_fetch_owner(str_token, required_scopes) do
+    config =
+      case "partner" in required_scopes do
+        true -> env_partner_oauth_config()
+        false -> env_oauth_config()
+      end
 
-  def verify_partner_access_token("" <> str_token, required_scopes)
-      when is_list(required_scopes) do
-    verify_access_token(str_token, required_scopes, env_partner_oauth_config())
-  end
-
-  defp verify_access_token(str_token, required_scopes, config) do
     resource_owner = Keyword.get(config, :resource_owner)
 
     with {:ok, access_token} <- ExOauth2Provider.authenticate_token(str_token, config),
@@ -145,8 +137,8 @@ defmodule Logflare.Auth do
     end
   end
 
-  defp get_resource_owner_by_id(User, id), do: Logflare.Users.get(id)
-  defp get_resource_owner_by_id(Partner, id), do: Logflare.Partners.get(id)
+  defp get_resource_owner_by_id(User, id), do: Users.get(id)
+  defp get_resource_owner_by_id(Partner, id), do: Partners.get_partner(id)
 
   defp check_scopes(token_scopes, required) do
     cond do

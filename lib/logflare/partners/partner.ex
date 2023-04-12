@@ -17,10 +17,4 @@ defmodule Logflare.Partners.Partner do
     |> unique_constraint([:name])
     |> unique_constraint([:token])
   end
-
-  def associate_user_changeset(partner, %User{} = user) do
-    partner
-    |> change()
-    |> put_assoc(:users, [user])
-  end
 end

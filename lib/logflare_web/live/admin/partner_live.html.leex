@@ -9,7 +9,7 @@
 
 
 <div class="content dashboard container mx-auto">
-  <h1>Partners</h1>
+  <h1>Create Partner</h1>
   <%= f = form_for @changeset, "#", [phx_submit: :save] %>
   <%= text_input f, :name, placeholder: "Partner Name", class: "form-control form-control-margin" %>
   <%= error_tag f, :name %>
@@ -18,31 +18,29 @@
   <%= if @created_token do %>
     <div class="mt-4">
       <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.<p>
-      <pre class="p-2" id="created_token"><%= @created_token %></pre>
+      <pre class="p-2" id="created_token"><%= @created_token.token %></pre>
+      <pre class="p-2" id="description"><%= @created_token.description %></pre>
       <button id="dismiss-created-token" phx-click="dismiss-created-token" class="btn btn-sm btn-secondary form-button"> Dismiss </button>
     </div>
   <% end %>
   <%= if Enum.any?(@partners) do %>
-   <table>
-    <thead>
-      <tr>
-        <th class="pr-2">Name</th>
-        <th class="pr-2">Token</th>
-        <th class="pr-2"></th>
-        <th class="pr-2"></th>
-      </tr>
-    </thead>
-    <tbody>
+    <h2>Partners</h2>
+    <div>
       <%= for %{name: name, token: token} <- @partners do %>
-        <tr>
-          <td class="pr-2"><%=name%></td>
-          <td class="pr-2"><%=token%></td>
-          <td><button id=<%= "generate-#{token}" %> phx-click="create" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Create Token </button></td>
-          <td><button id=<%= "delete-#{token}" %> phx-click="delete" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Delete </button></td>
-        </tr>
+        <hr>
+        <div>
+          <div class="pr-2">Name: <%=name%></div>
+          <div class="pr-2">Token: <%=token%></div>
+          <button id=<%= "delete-#{token}" %> phx-click="delete" phx-value-token=<%= token %> class="btn btn-sm btn-secondary form-button"> Delete </button>
+          <form phx-submit="create-token" class="py-4 flex items-center" id=<%= "generate-#{token}" %>>
+              <label>Description</label>
+              <input name="description" autofocus/>
+              <input name="token" value=<%= token %> type="hidden"/>
+              <button  class="btn btn-sm btn-secondary form-button m-0"> Create Token </button>
+          </form>
+        </div>
       <% end %>
-    </tbody>
-   </table>
+   </div>
   <% else %>
     <h2>No partners created yet</h2>
   <% end %>
