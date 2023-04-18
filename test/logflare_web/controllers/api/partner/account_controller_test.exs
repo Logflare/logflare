@@ -42,10 +42,11 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
   end
 
   describe "create/2" do
-    test "returns 201 and the user information and a token to access the API", %{
-      conn: conn,
-      partner: partner
-    } do
+    test "returns 201 and the user information and a token to access the API",
+         %{
+           conn: conn,
+           partner: partner
+         } do
       email = TestUtils.gen_email()
 
       assert response =
@@ -109,8 +110,14 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
 
-    test "return 404 when accessing a user from another partner", %{conn: conn, partner: partner} do
-      {:ok, user} = Partners.create_user(insert(:partner), %{"email" => TestUtils.gen_email()})
+    test "return 404 when accessing a user from another partner", %{
+      conn: conn,
+      partner: partner
+    } do
+      {:ok, user} =
+        Partners.create_user(insert(:partner), %{
+          "email" => TestUtils.gen_email()
+        })
 
       assert conn
              |> add_access_token(partner, ~w(partner))
@@ -120,8 +127,12 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
   end
 
   describe "get_account_usage/2" do
-    test "returns 200 and the usage for a given user", %{conn: conn, partner: partner} do
+    test "returns 200 and the usage for a given user", %{
+      conn: conn,
+      partner: partner
+    } do
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
+
       %{count: count} = insert(:billing_counts, user: user)
 
       assert conn
@@ -140,7 +151,10 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
 
-    test "return 404 when accessing a user from another partner", %{conn: conn, partner: partner} do
+    test "return 404 when accessing a user from another partner", %{
+      conn: conn,
+      partner: partner
+    } do
       params = %{"email" => TestUtils.gen_email()}
       {:ok, user} = Partners.create_user(insert(:partner), params)
 
@@ -153,6 +167,8 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
   describe "delete_user/2" do
     test "returns 204 and deletes the user", %{conn: conn, partner: partner} do
+      stub(Goth, :fetch, fn _ -> {:error, ""} end)
+
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
 
       assert response =
@@ -171,7 +187,10 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
       assert Partners.get_user_by_token(partner, user.token) == nil
     end
 
-    test "returns 401 with the wrong auth token", %{conn: conn, partner: partner} do
+    test "returns 401 with the wrong auth token", %{
+      conn: conn,
+      partner: partner
+    } do
       params = %{"email" => TestUtils.gen_email()}
       {:ok, user} = Partners.create_user(partner, params)
 
@@ -181,7 +200,10 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
 
-    test "return 404 when accessing a user from another partner", %{conn: conn, partner: partner} do
+    test "return 404 when accessing a user from another partner", %{
+      conn: conn,
+      partner: partner
+    } do
       params = %{"email" => TestUtils.gen_email()}
       {:ok, user} = Partners.create_user(insert(:partner), params)
 

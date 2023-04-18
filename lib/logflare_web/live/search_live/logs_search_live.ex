@@ -314,7 +314,7 @@ defmodule LogflareWeb.Source.SearchLV do
                   lql_rule,
                   :values,
                   for value <- lql_rule.values do
-                    Timex.shift(value, seconds: Timex.Timezone.diff(value, tz))
+                    Timex.shift(value, seconds: Timex.diff(value, tz))
                   end
                 )
               else

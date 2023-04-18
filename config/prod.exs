@@ -1,5 +1,5 @@
 require Logger
-use Mix.Config
+import Config
 
 config :logflare, env: :prod
 

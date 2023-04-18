@@ -52,9 +52,9 @@ defmodule Logflare.Lql.EctoHelpers do
           column = String.to_atom(column)
 
           if level === 1 do
-            join(q, join_type, [top], n in fragment("UNNEST(?)", field(top, ^column)))
+            join(q, join_type, [top], n in fragment("UNNEST(?)", field(top, ^column)), on: true)
           else
-            join(q, join_type, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)))
+            join(q, join_type, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)), on: true)
           end
         end)
     end

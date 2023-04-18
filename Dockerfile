@@ -1,4 +1,4 @@
-FROM elixir:1.12.3-alpine as builder
+FROM elixir:1.14.4-alpine as builder
 
 ENV MIX_ENV prod
 
@@ -6,7 +6,6 @@ RUN apk update && \
     apk add -f curl git build-base nodejs npm rust cargo python3
 
 COPY . /logflare
-
 
 WORKDIR /logflare
 # Due to some Rust caveats with SSL on Alpine images, we need to use GIT to fecth cargo registry index
@@ -21,8 +20,8 @@ WORKDIR /logflare
 RUN mix phx.digest
 
 # alpine version must match the base erlang image version used
-# https://github.com/erlef/docker-elixir/blob/master/1.12/alpine/Dockerfile
-# https://github.com/erlang/docker-erlang-otp/blob/master/24/alpine/Dockerfile
+# https://github.com/erlef/docker-elixir/blob/master/1.14/alpine/Dockerfile
+# https://github.com/erlang/docker-erlang-otp/blob/master/25/alpine/Dockerfile
 FROM alpine:3.17.0 as app
 
 # Required for the BeamVM to run
