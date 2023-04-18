@@ -8,7 +8,7 @@ defmodule Logflare.Mixfile do
       version: version(),
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [:phoenix, :gettext] ++ Mix.compilers(),
+      compilers: [:phoenix] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -48,7 +48,8 @@ defmodule Logflare.Mixfile do
         :ueberauth_google,
         :ssl,
         :phoenix_html,
-        :phoenix
+        :phoenix,
+        :crypto
       ],
       included_applications: [:mnesia]
     ]
@@ -67,7 +68,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       # {:plug, "~> 1.8"},
-      {:plug_cowboy, "~> 2.0"},
+      {:plug_cowboy, "~> 2.6"},
       {:plug_crypto, "~> 1.2.2"},
       {:phoenix_live_view, "~> 0.15.3", override: true},
       {:phoenix_live_dashboard, "~> 0.3.0"},
@@ -113,15 +114,14 @@ defmodule Logflare.Mixfile do
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
-      {:finch, "~> 0.11.0"},
+      {:finch, "~> 0.13.0"},
       {:mint, "~> 1.0"},
       # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.4.0"},
-
+      {:tesla, "~> 1.6"},
       # Concurrency and pipelines
       {:broadway, "~> 1.0.6"},
       {:flow, "~> 1.0"},
@@ -139,7 +139,7 @@ defmodule Logflare.Mixfile do
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.52.0"},
-      {:goth, "~> 1.3-rc"},
+      {:goth, "~> 1.4.0"},
 
       # Ecto
       {:ecto, "~> 3.9", override: true},
@@ -150,7 +150,7 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 0.4.0"},
       {:telemetry_poller, "0.5.0"},
       {:telemetry_metrics, "~> 0.6.0", override: true},
-      {:logflare_logger_backend, "~> 0.11.1-rc.2"},
+      {:logflare_logger_backend, "~> 0.11.1"},
 
       # ETS
       {:ets, "~> 0.8.0"},
@@ -194,9 +194,13 @@ defmodule Logflare.Mixfile do
 
       # Postgres Subscribe
       {:cainophile, "~> 0.1.0"},
-      {:open_api_spex, "~> 3.16"}
+      {:open_api_spex, "~> 3.16"},
 
       # {:honeydew, "~> 1.5.0"}
+      {:grpc, "~> 0.5.0"},
+      {:protobuf, "~> 0.10"},
+      {:gun, "~> 2.0", override: true},
+      {:cowlib, ">=2.12.0", override: true}
     ]
   end
 

@@ -1,5 +1,5 @@
 <%= if @show_modal do %>
-<%= live_modal @socket, @modal.body.module_or_template,
+<%= live_modal @modal.body.module_or_template,
     id: @modal.body.id,
     title: @modal.body.title,
     user: @user,

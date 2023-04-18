@@ -12,7 +12,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
 
   def version(c \\ empty()) do
     c
-    |> integer(min: 0, max: 2)
+    |> integer(min: 1, max: 2)
     |> unwrap_and_tag(:version)
     |> label("version")
   end
