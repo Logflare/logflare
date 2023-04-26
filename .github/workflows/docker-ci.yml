@@ -1,5 +1,4 @@
 name: Docker CI
-runs-on: [self-hosted]
 
 on:
   workflow_dispatch:
@@ -12,7 +11,7 @@ permissions:
 jobs:
   publish:
     name: Build and publish amd64 image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
