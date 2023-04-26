@@ -11,7 +11,7 @@ permissions:
 jobs:
   publish:
     name: Build and publish amd64 image
-    runs-on: [self-hosted]
+    runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
