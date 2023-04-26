@@ -207,4 +207,5 @@ config :stripity_stripe,
 
 if config_env() != :test do
   config :goth, json: File.read!("gcloud.json")
+  config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT") |> String.to_integer()
 end
