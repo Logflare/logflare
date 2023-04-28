@@ -49,8 +49,23 @@ Timestamps will be automatically converted to UTC if Logflare is set to display 
 | Timestamp | datetime range                 | `t:2022-04-{07..09}T00:{00..40}:00`                             |
 | Timestamp | datetime range with subseconds | `t:2022-04-{07..09}T00:{00..40}:00.{001..314}`                  |
 
-## Querying Outside of Logflare
+#### Chart Aggregations
 
-Certain backends provide querying functionality. Documentation on each can be found in specific backend guide.
+Chart aggregations rules will display the aggregated trends in the chart. Chart rules use the special prefix `c`
+
+| Field | Aggregation | Example            |
+| ----- | ----------- | ------------------ |
+| c     | `count`     | `c:count(*)`       |
+| c     | `avg`       | `c:avg(m.latency)` |
+| c     | `sum`       | `c:sum(m.latency)` |
+| c     | `max`       | `c:max(m.latency)` |
+| c     | `p50`       | `c:p50(m.latency)` |
+| c     | `p95`       | `c:p95(m.latency)` |
+| c     | `p99`       | `c:p99(m.latency)` |
+
+
+## Beyond LQL
+
+Should you need to more powerful operators and aggregation capabilities, you can drop down to your backend querying engine.
 
 - [Querying in BigQuery](/backends/bigquery#querying-in-bigquery)

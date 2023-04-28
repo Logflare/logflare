@@ -3,17 +3,14 @@ defmodule Logflare.Application do
   use Application
   require Logger
 
-  alias Logflare.{
-    Users,
-    Sources,
-    Logs,
-    Billing,
-    PubSubRates,
-    ContextCache,
-    SourceSchemas
-  }
-
+  alias Logflare.Billing
+  alias Logflare.ContextCache
+  alias Logflare.Logs
+  alias Logflare.PubSubRates
   alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.SourceSchemas
+  alias Logflare.Users
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)

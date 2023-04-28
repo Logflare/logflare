@@ -19,6 +19,8 @@ defmodule Logflare.Google.CloudResourceManagerTest do
            google_configs: google_configs,
            expected_members: expected_members
          } do
+      stub(Goth, :fetch, fn _ -> {:error, ""} end)
+
       stub(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
@@ -30,7 +32,7 @@ defmodule Logflare.Google.CloudResourceManagerTest do
                      role == "roles/bigquery.jobUser"
                    end)
 
-          assert members == expected_members
+          assert Enum.sort(members) == Enum.sort(expected_members)
           assert role == "roles/bigquery.jobUser"
           assert service_accounts == expected_service_accounts(google_configs)
           {:ok, ""}
