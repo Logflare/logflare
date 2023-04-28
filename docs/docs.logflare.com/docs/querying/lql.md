@@ -62,3 +62,10 @@ Chart aggregations rules will display the aggregated trends in the chart. Chart 
 | c     | `p50`       | `c:p50(m.latency)` |
 | c     | `p95`       | `c:p95(m.latency)` |
 | c     | `p99`       | `c:p99(m.latency)` |
+
+
+## Beyond LQL
+
+Should you need to more powerful operators and aggregation capabilities, you can drop down to your backend querying engine.
+
+- [Querying in BigQuery](/backends/bigquery#querying-in-bigquery)
