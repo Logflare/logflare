@@ -62,7 +62,7 @@ defmodule LogflareWeb.PlansLive do
                 <li class="p-2">Logflare</li>
                 <li class="p-2">Up to 50</li>
                 <hr />
-                <li class="p-2">3 days</li>
+                <li class="p-2">Up to 3 days</li>
                 <li class="p-2">12,960,000</li>
                 <hr />
                 <li class="p-2">5 per second</li>
@@ -92,7 +92,7 @@ defmodule LogflareWeb.PlansLive do
                 <li class="p-2">Logflare<sup>1</sup></li>
                 <li class="p-2">Up to 500</li>
                 <hr />
-                <li class="p-2">90 days</li>
+                <li class="p-2">Up to 90 days</li>
                 <li class="p-2">Unlimited</li>
                 <hr />
                 <li class="p-2">Unlimited</li>
