@@ -159,6 +159,7 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
     get("/dashboard", SourceController, :dashboard)
+    live("/access-tokens", AccessTokensLive, :index)
   end
 
   scope "/endpoints", LogflareWeb do
@@ -253,9 +254,6 @@ defmodule LogflareWeb.Router do
     delete("/", UserController, :delete)
     get("/edit/api-key", UserController, :new_api_key)
     put("/edit/owner", UserController, :change_owner)
-
-    # access token management
-    live("/access-tokens", AccessTokensLive, :index)
   end
 
   scope "/integrations", LogflareWeb do
