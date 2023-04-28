@@ -11,7 +11,7 @@ permissions:
 jobs:
   publish:
     name: Build and publish amd64 image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
@@ -55,7 +55,7 @@ jobs:
     if: github.ref == 'refs/heads/master'
     needs:
       - publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]
     steps:
       - uses: actions/checkout@v3
       - name: Set prod envs
