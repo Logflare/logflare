@@ -13,8 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with: 
-          fetch-depth: 0 
+          fetch-depth: 0
       - name: Ensure version changed
-        run: git --no-pager diff --name-only master staging | grep VERSION
+        run: git --no-pager diff --name-only master staging -- | grep VERSION
     # - name: Ensure changelog is updated
     #   run: git --no-pager diff --name-only master staging | grep CHANGELOG
