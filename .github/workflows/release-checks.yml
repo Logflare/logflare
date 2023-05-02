@@ -15,6 +15,6 @@ jobs:
         with: 
           fetch-depth: 0
       - name: Ensure version changed
-        run: git --no-pager diff --name-only master staging -- | grep VERSION
+        run: git --no-pager diff --name-only origin/master origin/staging -- | grep VERSION
     # - name: Ensure changelog is updated
     #   run: git --no-pager diff --name-only master staging | grep CHANGELOG
