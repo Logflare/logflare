@@ -14,7 +14,7 @@ Sign up at https://logflare.app.
 
 | Provider/Runtime | Link                                                                                                                                                                                           |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cloudflare       | <a href="https://www.cloudflare.com/apps/logflare/install"><img src="https://install.cloudflareapps.com/install-button.png" alt="Install Logflare with Cloudflare" border="0" width="110"></a> |
+| Cloudflare       | <a href="https://www.cloudflareapps.com/apps/logflare"><img src="https://install.cloudflareapps.com/install-button.png" alt="Install Logflare with Cloudflare" border="0" width="110"></a> |
 | Vercel           | [Logflare Vercel integration](https://vercel.com/integrations/logflare)                                                                                                                        |
 | Fly              | [Logflare/fly-log-shipper](https://github.com/Logflare/fly-log-shipper)                                                                                                                        |
 | Github Action    | [Logflare/action](https://github.com/Logflare/action)                                                                                                                                          |
