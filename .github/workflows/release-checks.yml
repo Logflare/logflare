@@ -14,8 +14,6 @@ jobs:
       - uses: actions/checkout@v3
       - name: Ensure version changed
         run: |
-          git fetch origin master
-          git fetch origin staging
-          git --no-pager diff --name-only master staging | grep VERSION
+          git diff-index --name-only master | grep VERSION
     # - name: Ensure changelog is updated
     #   run: git --no-pager diff --name-only master staging | grep CHANGELOG
