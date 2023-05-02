@@ -20,5 +20,8 @@ then
 
 fi
 
+# wait for networking to be ready before starting Erlang
+sleep 15
+
 ./logflare eval Logflare.Release.migrate
 ./logflare start --sname logflare
