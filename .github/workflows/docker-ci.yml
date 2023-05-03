@@ -61,17 +61,17 @@ jobs:
       - name: Set prod envs
         if: github.ref == 'refs/heads/master'
         run: |
-          echo "LF_BRANCH=master" >> $GITHUB_ENV
-          echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> $GITHUB_ENV
-          echo "LF_PROJECT_ID=logflare-232118" >> $GITHUB_ENV
-          echo "LF_GCP_SECRETS=${{ secrets.GCP_PROD_CREDENTIALS }}" >> $GITHUB_ENV
+          echo "LF_BRANCH=master" >> "$GITHUB_ENV"
+          echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> "$GITHUB_ENV"
+          echo "LF_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
+          echo "LF_GCP_SECRETS=${{ secrets.GCP_PROD_CREDENTIALS }}" >> "$GITHUB_ENV"
       - name: Set staging envs
         if: github.ref == 'refs/heads/staging'
         run: |
-          echo "LF_BRANCH=staging" >> $GITHUB_ENV
-          echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> $GITHUB_ENV
-          echo "LF_PROJECT_ID=logflare-staging" >> $GITHUB_ENV
-          echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> $GITHUB_ENV
+          echo "LF_BRANCH=staging" >> "$GITHUB_ENV"
+          echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> "$GITHUB_ENV"
+          echo "LF_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
+          echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -88,4 +88,4 @@ jobs:
           version: '418.0.0'
           project_id: ${{ env.LF_PROJECT_ID}}
       - name: 'Trigger Cloud Build'
-        run: 'gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH}} --format "value(name)"'
+        run: 'gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH }} --format "value(name)"'
