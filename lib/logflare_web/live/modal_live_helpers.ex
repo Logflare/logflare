@@ -91,7 +91,7 @@ defmodule LogflareWeb.ModalLiveHelpers do
     link(contents, opts)
   end
 
-  def live_modal(socket, template, opts)
+  def live_modal(template, opts)
       when is_binary(template) do
     path = Keyword.fetch!(opts, :return_to)
     title = Keyword.fetch!(opts, :title)
@@ -106,10 +106,10 @@ defmodule LogflareWeb.ModalLiveHelpers do
       is_template?: true
     ]
 
-    live_component(socket, LogflareWeb.ModalComponent, modal_opts)
+    live_component(LogflareWeb.ModalComponent, modal_opts)
   end
 
-  def live_modal(socket, component, opts) when is_atom(component) do
+  def live_modal(component, opts) when is_atom(component) do
     path = Keyword.fetch!(opts, :return_to)
     title = Keyword.fetch!(opts, :title)
 
@@ -122,6 +122,6 @@ defmodule LogflareWeb.ModalLiveHelpers do
       is_template?: false
     ]
 
-    live_component(socket, LogflareWeb.ModalComponent, modal_opts)
+    live_component(LogflareWeb.ModalComponent, modal_opts)
   end
 end

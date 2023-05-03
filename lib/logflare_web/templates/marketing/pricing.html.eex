@@ -44,6 +44,7 @@
           events. Never worry about running a migration before adding a new field. Logflare does that
           automatically. We'll warn you about data type mismatches.</p>
       <h1 class="scroll-margin" id="retention">How long do you keep data for?</h1>
+      <p>Users can retain data <strong>up to</strong> their plan limitation. If it is desired to retain data beyond the metered plan's 90 days, we advise upgrading to the BYOB plan.</p>
       <p>Logflare includes some data storage with a paid plan so you don't have to think about what you might
           spend using your own BigQuery credentials. However, you can Bring Your Own BigQuery tables and keep
           data forever. Since we're backed by BigQuery you can set your table TTLs to as long as you want.</p>

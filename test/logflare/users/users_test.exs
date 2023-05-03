@@ -71,14 +71,16 @@ defmodule Logflare.UsersTest do
 
   describe "insert_user/1" do
     test "inserts new user" do
-      params = %{
-        "email" => TestUtils.random_string(),
-        "provider_uid" => Ecto.UUID.generate(),
-        "provider" => "email",
-        "token" => Ecto.UUID.generate()
-      }
-
+      params = %{"email" => TestUtils.random_string(), "provider" => "email"}
       assert {:ok, _user} = Users.insert_user(params)
+    end
+
+    test "inserts new user and generates provider_uid and token automatically" do
+      params = %{"email" => TestUtils.random_string(), "provider" => "email"}
+
+      assert {:ok, user} = Users.insert_user(params)
+      assert user.provider_uid
+      assert user.token
     end
   end
 

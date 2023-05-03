@@ -39,10 +39,14 @@ defmodule Logflare.Logs do
   def ingest(%LE{source: %Source{} = source} = le) do
     # indvididual source genservers
     Supervisor.ensure_started(source.token)
+
+    # error here if this doesn't match
+    {:ok, _} = BufferCounter.push(le)
+
     RecentLogsServer.push(le)
-    BufferCounter.push(le)
 
     # all sources genservers
+
     Sources.Counters.increment(source.token)
     SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
 

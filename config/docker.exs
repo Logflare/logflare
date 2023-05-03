@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 config :logflare, env: :dev, supabase_mode: true
 

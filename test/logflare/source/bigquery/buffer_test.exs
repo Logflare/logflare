@@ -66,4 +66,32 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     assert 2 = BigQuery.BufferCounter.get_count(source)
   end
+
+  test "errors when buffer is full", %{source: source} do
+    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+
+    batch = [
+      %Broadway.Message{
+        data: le,
+        acknowledger: {BigQuery.BufferProducer, source.token, nil}
+      },
+      %Broadway.Message{
+        data: le,
+        acknowledger: {BigQuery.BufferProducer, source.token, nil}
+      }
+    ]
+
+    {:ok, %{len_max: 3}} = BigQuery.BufferCounter.set_len_max(source.token, 3)
+
+    {:ok, %{len: 2}} =
+      BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+
+    {:ok, %{len: 4}} =
+      BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+
+    {:error, :buffer_full} =
+      BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+
+    assert %{len: 4, discarded: 2} = :sys.get_state(BigQuery.BufferCounter.name(source.token))
+  end
 end

@@ -76,7 +76,7 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :require_mgmt_api_auth do
-    plug(LogflareWeb.Plugs.SetVerifyUser)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
   pipeline :require_auth do
@@ -110,6 +110,10 @@ defmodule LogflareWeb.Router do
 
   pipeline :auth_switch do
     plug(LogflareWeb.Plugs.AuthSwitch)
+  end
+
+  pipeline :partner_api do
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(partner))
   end
 
   # Oauth2 Provider Routes
@@ -155,6 +159,7 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
     get("/dashboard", SourceController, :dashboard)
+    live("/access-tokens", AccessTokensLive, :index)
   end
 
   scope "/endpoints", LogflareWeb do
@@ -249,9 +254,6 @@ defmodule LogflareWeb.Router do
     delete("/", UserController, :delete)
     get("/edit/api-key", UserController, :new_api_key)
     put("/edit/owner", UserController, :change_owner)
-
-    # access token management
-    live("/access-tokens", AccessTokensLive, :index)
   end
 
   scope "/integrations", LogflareWeb do
@@ -290,6 +292,7 @@ defmodule LogflareWeb.Router do
     get("/accounts", AdminController, :accounts)
     live("/search", AdminSearchDashboardLive, layout: {LayoutView, :root})
     live("/cluster", Admin.ClusterLive, :index)
+    live("/partner", Admin.PartnerLive, :index)
 
     get("/plans", AdminPlanController, :index)
     get("/plans/new", AdminPlanController, :new)
@@ -362,10 +365,16 @@ defmodule LogflareWeb.Router do
     )
   end
 
-  scope "/api", LogflareWeb do
-    pipe_through [:api, LogflareWeb.Plugs.EnsureSuperUserAuthentication]
+  scope "/api/partner", LogflareWeb do
+    pipe_through [:api, :partner_api]
 
-    resources "/accounts", Api.AccountController, param: "token", only: [:create]
+    get "/accounts", Api.Partner.AccountController, :index
+    post "/accounts", Api.Partner.AccountController, :create
+
+    get "/accounts/:user_token", Api.Partner.AccountController, :get_user
+    get "/accounts/:user_token/usage", Api.Partner.AccountController, :get_user_usage
+
+    delete "/accounts/:user_token", Api.Partner.AccountController, :delete_user
   end
 
   scope "/api" do

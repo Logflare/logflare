@@ -100,6 +100,7 @@ defmodule Logflare.Users do
     |> Repo.update()
   end
 
+  @spec insert_user(map()) :: {:ok, User.t()} | {:error, any()}
   def insert_user(params) do
     %User{}
     |> user_changeset(params)

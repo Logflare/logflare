@@ -10,15 +10,13 @@ defmodule LogflareWeb.DocsView do
     true
 
   We do not need to specify the trailing `index` filename
-    iex> render_docs("querying") =~ "Logflare Query Language"
+    iex> render_docs("querying/lql") =~ "Logflare Query Language"
     true
 
   We can filter down to a specific html anchor
-    iex> render_docs("querying#logflare-query-language-lql") =~ "Logflare Query Language (LQL)"
+    iex> render_docs("querying/lql#event-message-filtering") =~ "Event Message Filtering"
     true
-    iex> render_docs("querying#logflare-query-language-lql") =~ "Event Message Filtering"
-    true
-    iex> render_docs("querying#logflare-query-language-lql") =~ "Live Search"
+    iex> render_docs("querying/lql#event-message-filtering") =~ "Live Search"
     false
 
   Specific html entities are also replaced
@@ -29,20 +27,18 @@ defmodule LogflareWeb.DocsView do
   Replace line breaks with newlines
 
     iex> escaped = "<br/>" |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
-    iex> render_docs("querying") =~ escaped
+    iex> render_docs("querying/lql") =~ escaped
     false
 
   Inline html in tables are also fixed and replaced
     iex> escaped = "<code>" |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
-    iex> render_docs("querying") =~ escaped
+    iex> render_docs("querying/lql") =~ escaped
     false
-
-
 
   We can also hide the top level header
 
-    iex> render_docs("querying#logflare-query-language-lql", hide_header: true) |> String.slice(0, 31)
-    "<p>\\nThe Logflare Query Language"
+    iex> render_docs("querying/lql#event-message-filtering", hide_header: true) |> String.slice(0, 29)
+    "<p>\\nAny string not matching a"
 
 
   """

@@ -12,6 +12,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   require Logger
 
   @broadcast_every 1_000
+  @max_buffer_len 5_000
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
@@ -20,7 +21,9 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
         source_id: source_id,
         pushed: 0,
         acknowledged: 0,
-        len: 0
+        len: 0,
+        len_max: @max_buffer_len,
+        discarded: 0
       },
       name: name(source_id)
     )
@@ -37,22 +40,26 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   """
 
   @spec push_batch(%{source: %Source{}, batch: [%Broadway.Message{}, ...], count: integer()}) ::
-          :ok
+          {:ok, map()} | {:error, :buffer_full}
   def push_batch(%{source: %Source{token: source_uuid}, batch: batch, count: count})
       when is_list(batch) do
     name = Source.BigQuery.Pipeline.name(source_uuid)
 
-    GenServer.cast(name(source_uuid), {:push, count})
-    Broadway.push_messages(name, batch)
+    case GenServer.call(name(source_uuid), {:push, count}) do
+      {:ok, _state} = reply ->
+        Broadway.push_messages(name, batch)
+        reply
 
-    :ok
+      {:error, _reason} = err ->
+        err
+    end
   end
 
   @doc """
   Wraps `LogEvent`s in a `Broadway.Message`, pushes log events into the Broadway pipeline and increments the `BufferCounter` count.
   """
 
-  @spec push(LE.t()) :: :ok
+  @spec push(LE.t()) :: {:ok, map()} | {:error, :buffer_full}
   def push(%LE{source: %Source{token: source_id}} = le) do
     name = Source.BigQuery.Pipeline.name(source_id)
 
@@ -63,10 +70,14 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       }
     ]
 
-    GenServer.cast(name(source_id), {:push, 1})
-    Broadway.push_messages(name, messages)
+    case GenServer.call(name(source_id), {:push, 1}) do
+      {:ok, _state} = reply ->
+        Broadway.push_messages(name, messages)
+        reply
 
-    :ok
+      {:error, _reason} = err ->
+        err
+    end
   end
 
   @doc """
@@ -74,9 +85,9 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   we don't have the log event anymore.
   """
 
-  @spec ack(atom(), UUID) :: :ok
+  @spec ack(atom(), UUID) :: {:ok, map()}
   def ack(source_id, _log_event_id) do
-    GenServer.cast(name(source_id), {:ack, 1})
+    GenServer.call(name(source_id), {:ack, 1})
   end
 
   @doc """
@@ -92,6 +103,15 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       :token -> GenServer.call(name(source_uuid), :get_count)
       :id -> GenServer.call(name(source_id), :get_count)
     end
+  end
+
+  @doc """
+  Sets the max length of a buffer.
+  """
+
+  @spec set_len_max(atom(), integer()) :: {:ok, map()}
+  def set_len_max(source_id, max) do
+    GenServer.call(name(source_id), {:set_len_max, max})
   end
 
   @doc """
@@ -116,20 +136,27 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 
-  def handle_cast({:push, by}, state) do
-    pushed = state.pushed + by
-    len = state.len + by
-    {:noreply, %{state | len: len, pushed: pushed}}
+  def handle_call({:push, by}, _from, %{len: len, len_max: max} = state) when len > max do
+    {:reply, {:error, :buffer_full}, %{state | discarded: state.discarded + by}}
   end
 
-  def handle_cast({:ack, by}, state) do
-    ackd = state.acknowledged + by
-    len = state.len - by
-    {:noreply, %{state | len: len, acknowledged: ackd}}
+  def handle_call({:push, by}, _from, state) do
+    state = %{state | len: state.len + by, pushed: state.pushed + by}
+    {:reply, {:ok, state}, state}
+  end
+
+  def handle_call({:ack, by}, _from, state) do
+    state = %{state | len: state.len - by, acknowledged: state.acknowledged + by}
+    {:reply, {:ok, state}, state}
   end
 
   def handle_call(:get_count, _from, state) do
     {:reply, state.len, state}
+  end
+
+  def handle_call({:set_len_max, len_max}, _from, state) do
+    state = %{state | len_max: len_max}
+    {:reply, {:ok, state}, state}
   end
 
   def handle_info(:check_buffer, state) do

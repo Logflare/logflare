@@ -22,9 +22,9 @@ steps:
       [
         "build",
          "--build-arg",
-        "TAG_VERSION=staging" 
+        "TAG_VERSION=staging",
         "-f",
-        "docker/secret_setup.Dockerfile",
+        "cloudbuild/secret_setup.Dockerfile",
         "--build-arg",
         "SHORT_COMMIT_SHA",
         "--build-arg",

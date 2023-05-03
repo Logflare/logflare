@@ -22,7 +22,7 @@ steps:
       - '-c'
       - >-
         docker build --build-arg $$MAGIC_COOKIE --build-arg TAG_VERSION=$(cat ./VERSION) -t gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t
-        gcr.io/$PROJECT_ID/logflare_app:latest -f docker/secret_setup.Dockerfile
+        gcr.io/$PROJECT_ID/logflare_app:latest -f cloudbuild/secret_setup.Dockerfile
         .
     entrypoint: sh
     secretEnv:

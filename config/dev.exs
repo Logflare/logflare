@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 config :logflare,
   node_shutdown_code: "d1032129-500c-4ab4-bcc9-853665509b6b",
@@ -88,9 +88,6 @@ config :logflare, Logflare.Vercel.Client,
   install_vercel_uri: "https://vercel.com/integrations/logflare-v2-dev/new"
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
-
-config :logflare, LogflareWeb.Plugs.EnsureSuperUserAuthentication,
-  token: "ydqr8TatrwEq/x/LMbhX1iUgl50MrdJ7cgXtzT+5s7KWG0bGt9d2DWio7dqqHtys"
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 
