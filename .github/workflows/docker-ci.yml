@@ -52,7 +52,7 @@ jobs:
           platforms: linux/amd64
   trigger_cloudbuild:
     name: Trigger Cloud Build in Production
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/staging'
     needs:
       - publish
     runs-on: ubuntu-latest
