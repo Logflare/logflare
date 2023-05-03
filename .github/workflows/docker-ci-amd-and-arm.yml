@@ -36,7 +36,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
-          tags: supabase/logflare:latest, supabase/${{ env.LOGFLARE_VERSION}}
+          tags: supabase/logflare:latest, supabase/logflare:${{ env.LOGFLARE_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/arm64,linux/amd64
