@@ -61,9 +61,9 @@ defmodule Logflare.SingleTenant do
       cache_duration_seconds: 0
     },
     %{
-      name: "charts.usage",
+      name: "usage.api-counts",
       query:
-        Application.app_dir(:logflare, "priv/supabase/endpoints/charts.usage.sql") |> File.read!(),
+        Application.app_dir(:logflare, "priv/supabase/endpoints/usage.api-counts.sql") |> File.read!(),
       sandboxable: true,
       max_limit: 1000,
       enable_auth: true,
