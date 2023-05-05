@@ -2,9 +2,11 @@ defmodule Logflare.TestUtils do
   @moduledoc """
   Testing utilities. Globally alised under the `TestUtils` namespace.
   """
-  alias Logflare.Source.BigQuery.SchemaBuilder
-  alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema
+  alias GoogleApi.BigQuery.V2.Model.TableSchema
+
   alias Logflare.SingleTenant
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
   @doc """
   Configures the following `:logflare` env keys:
