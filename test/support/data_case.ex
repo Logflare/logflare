@@ -18,6 +18,7 @@ defmodule Logflare.DataCase do
     quote do
       alias Logflare.Repo
       alias Logflare.TestUtils
+      alias Logflare.TestUtilsGrpc
       require TestUtils
 
       import Ecto

@@ -104,4 +104,6 @@ config :logflare, Logflare.Tracker, pool_size: 1
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
+config :grpc, start_server: true
+
 import_config "#{Mix.env()}.exs"
