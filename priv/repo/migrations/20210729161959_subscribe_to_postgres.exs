@@ -20,6 +20,7 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   @slot Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
   @env Application.get_env(:logflare, :env)
   @publications Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
+  @publication_tables Application.get_env(:logflare, Logflare.CacheBuster)[:publication_tables]
 
   def up do
     if @env in [:dev, :test] do
@@ -27,7 +28,12 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
       execute("ALTER USER #{@username} WITH REPLICATION;")
     end
 
-    for p <- @publications, do: execute("CREATE PUBLICATION #{p} FOR ALL TABLES;")
+    # execute on specific tables so that we don't need superuser priviledge
+    # to update the publication in the future, we rerun in another migration ALTER PUBLICATIONS .. FOR TABLE users, sources ...
+    for p <- @publications do
+      tables = Enum.join(@publication_tables, ", ")
+      execute("CREATE PUBLICATION #{p} FOR TABLE #{tables};")
+    end
 
     # This is happening in `20210810182003_set_rules_to_replica_identity_full.exs`
     # execute("alter table rules replica identity full")
