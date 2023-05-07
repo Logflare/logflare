@@ -84,8 +84,6 @@ defmodule Logflare.Application do
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
     topologies = Application.get_env(:libcluster, :topologies, [])
 
-    grpc_port = Application.get_env(:grpc, :port)
-
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
@@ -142,7 +140,6 @@ defmodule Logflare.Application do
 
       # If we get a log event and the Source.Supervisor is not up it will 500
       LogflareWeb.Endpoint,
-      {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port}},
       # Monitor system level metrics
       Logflare.SystemMetricsSup,
 
@@ -158,13 +155,27 @@ defmodule Logflare.Application do
     config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
 
     # only add in config cat to multi-tenant prod
-    if config_cat_key do
-      [
-        {ConfigCat, [sdk_key: config_cat_key]}
-      ]
-    else
-      []
-    end
+    children =
+      if config_cat_key do
+        [
+          {ConfigCat, [sdk_key: config_cat_key]}
+        ]
+      else
+        []
+      end
+
+    grpc_port = Application.get_env(:grpc, :port)
+
+    children =
+      if grpc_port,
+        do:
+          children ++
+            [
+              {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port}}
+            ],
+        else: children
+
+    children
   end
 
   def config_change(changed, _new, removed) do
