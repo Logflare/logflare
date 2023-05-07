@@ -28,7 +28,7 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
       execute("ALTER USER #{@username} WITH REPLICATION;")
     end
 
-    # execute on specific tables so that we don't need superuser priviledge
+    # execute on specific tables so that we don't need superuser privilege
     # to update the publication in the future, we rerun in another migration ALTER PUBLICATIONS .. FOR TABLE users, sources ...
     for p <- @publications do
       tables = Enum.join(@publication_tables, ", ")
