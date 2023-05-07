@@ -97,6 +97,7 @@ config :scrivener_html,
 config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"],
+  # remember to add an ALTER PUBLICATION ... migration when changing published tables!
   publication_tables: [
     "billing_accounts",
     "plans",
