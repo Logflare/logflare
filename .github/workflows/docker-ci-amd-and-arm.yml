@@ -14,6 +14,7 @@ jobs:
     outputs:
       version: ${{steps.env.outputs.version}}
     steps:
+      - uses: actions/checkout@v3
       - name: Setup outputs
         id: env
         run: |
