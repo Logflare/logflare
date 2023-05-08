@@ -1,4 +1,4 @@
-name: Docker CI
+name: Docker CI Multi-Platform
 
 on:
   workflow_dispatch:
@@ -11,7 +11,8 @@ permissions:
 jobs:
   publish:
     name: Build and publish amd64 and arm64 image
-    runs-on: ubuntu-latest
+    # run emulation on ARM64
+    runs-on: [self-hosted, ARM64]
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
