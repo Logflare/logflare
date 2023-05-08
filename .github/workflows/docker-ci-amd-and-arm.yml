@@ -20,6 +20,7 @@ jobs:
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_OUTPUT"
   release_amd:
+    timeout-minutes: 120
     needs: settings
     runs-on: [self-hosted, x64]
     outputs:
@@ -47,6 +48,7 @@ jobs:
           name: amd64
           path: /tmp/amd64.tar
   release_arm:
+    timeout-minutes: 120
     needs: settings
     runs-on: [self-hosted, arm-runner]
     outputs:
