@@ -26,7 +26,7 @@ jobs:
       - name: Setup docker context
         run: |
           docker context create buildcontext
-          docker context use buildcontext
+          docker buildx create buildcontext
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Login to Docker Hub
