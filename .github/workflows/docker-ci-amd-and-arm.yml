@@ -18,9 +18,9 @@ jobs:
         id: env
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_OUTPUT"
-  release_x86:
+  release_arm:
     needs: settings
-    runs-on: [self-hosted, x86]
+    runs-on: [self-hosted, x64]
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
@@ -78,7 +78,7 @@ jobs:
   merge_publish:
     needs:
       - settings
-      - release_x86
+      - release_arm
       - release_arm
     runs-on: ubuntu-latest
     steps:
@@ -91,7 +91,7 @@ jobs:
         if: ${{github.ref == 'refs/heads/master'}}
         run: |
           docker buildx imagetools create -t supabase/logflare:latest -t supabase/logflare:${{ needs.settings.outputs.version }} \
-          supabase/logflare@${{ needs.release_x86.outputs.image_digest }} \
+          supabase/logflare@${{ needs.release_arm.outputs.image_digest }} \
           supabase/logflare@${{ needs.release_arm.outputs.image_digest }}
           docker push supabase/logflare:latest
           docker psuh supabase/logflare:${{ needs.settings.outputs.version }}
@@ -99,7 +99,7 @@ jobs:
         if: ${{github.ref == 'refs/heads/staging'}}
         run: |
           docker buildx imagetools create -t supabase/logflare:staging  \
-          supabase/logflare@${{ needs.release_x86.outputs.image_digest }} \
+          supabase/logflare@${{ needs.release_arm.outputs.image_digest }} \
           supabase/logflare@${{ needs.release_arm.outputs.image_digest }}
           docker push supabase/logflare:staging
   # publish:
