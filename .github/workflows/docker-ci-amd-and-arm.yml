@@ -33,6 +33,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v2
+        # add driver config as we are using self-hosted runners
         with:
           driver: docker
           driver-opts: |
@@ -41,17 +42,12 @@ jobs:
       - id: build
         uses: docker/build-push-action@v3
         with:
+          push: true
           tags: supabase/logflare:${{ needs.settings.outputs.version }}-amd64
           platforms: linux/amd64
           # cache only amd
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=docker,dest=/tmp/amd64.tar
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: amd64
-          path: /tmp/amd64.tar
   release_arm:
     timeout-minutes: 120
     needs: settings
@@ -66,6 +62,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v2
         with:
+        # add driver config as we are using self-hosted runners
           driver: docker
           driver-opts: |
             image=moby/buildkit:master
@@ -73,16 +70,11 @@ jobs:
       - id: build
         uses: docker/build-push-action@v3
         with:
+          push: true
           tags: supabase/logflare:${{ needs.settings.outputs.version }}-arm64
           platforms: linux/arm64
           # don't cache for arm, only amd
           no-cache: true
-          outputs: type=docker,dest=/tmp/arm64.tar
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: arm64
-          path: /tmp/arm64.tar
 
   merge_publish:
     needs:
@@ -96,20 +88,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v2
-      - name: Download arm64 artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: arm64
-          path: /tmp
-      - name: Download amd64 artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: amd64
-          path: /tmp
-      - name: Load images
-        run: |
-          docker load --input /tmp/amd64.tar
-          docker load --input /tmp/arm64.tar
       - name: master - Merge multi-arch manifests and push
         if: ${{github.ref == 'refs/heads/master'}}
         run: |
