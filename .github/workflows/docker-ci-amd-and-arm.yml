@@ -20,8 +20,8 @@ jobs:
       - id: version
         name: Get version
         run: |
-          echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
-          echo "LOGFLARE_VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
+          echo "LOGFLARE_VERSION=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "LOGFLARE_VERSION=$(cat VERSION)" >> "$GITHUB_OUTPUT"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
