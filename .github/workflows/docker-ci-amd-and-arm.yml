@@ -33,12 +33,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v2
-        # add driver config as we are using self-hosted runners
-        with:
-          driver: docker
-          driver-opts: |
-            image=moby/buildkit:master
-            network=host
       - id: build
         uses: docker/build-push-action@v3
         with:
