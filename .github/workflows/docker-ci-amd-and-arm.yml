@@ -22,7 +22,7 @@ jobs:
   release_amd:
     timeout-minutes: 120
     needs: settings
-    runs-on: [self-hosted, x64]
+    runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
@@ -33,6 +33,11 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v2
+        with:
+          driver: docker
+          driver-opts: |
+            image=moby/buildkit:master
+            network=host
       - id: build
         uses: docker/build-push-action@v3
         with:
