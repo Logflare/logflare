@@ -18,7 +18,7 @@ jobs:
         id: env
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_OUTPUT"
-  release_arm:
+  release_amd:
     needs: settings
     runs-on: [self-hosted, x64]
     outputs:
@@ -80,7 +80,7 @@ jobs:
     needs:
       - settings
       - release_arm
-      - release_arm
+      - release_amd
     runs-on: ubuntu-latest
     steps:
       - uses: docker/login-action@v2
