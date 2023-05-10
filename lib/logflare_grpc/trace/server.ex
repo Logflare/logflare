@@ -13,15 +13,21 @@ defmodule LogflareGrpc.Trace.Server do
 
   require Logger
 
-  def export(%{resource_spans: resource_spans}, stream) do
+  def export(events, stream) do
     with %{"x-api-key" => api_key, "x-source-id" => source_token} <-
            GRPC.Stream.get_headers(stream),
          user when not is_nil(user) <- Users.get_by(api_key: api_key),
          {:ok, source_token} <- Ecto.UUID.cast(source_token),
-         source when not is_nil(source) <- Sources.get_by(user_id: user.id, token: source_token),
-         log_events <- Transform.to_log_events(resource_spans, source) do
-      Enum.each(log_events, fn le -> Logflare.Logs.ingest(le) end)
-      ExportTraceServiceResponse.new()
+         source when not is_nil(source) <- Sources.get_by(user_id: user.id, token: source_token) do
+      events
+      |> Stream.flat_map(fn %{resource_spans: resource_spans} ->
+        Transform.to_log_events(resource_spans, source)
+      end)
+      |> Enum.each(fn le ->
+        Logflare.Logs.ingest(le)
+        GRPC.Server.set_trailers(stream, %{"grpc-status" => "0"})
+        GRPC.Server.send_reply(stream, %ExportTraceServiceResponse{})
+      end)
     else
       error ->
         Logger.error("Invalid GRPC request: #{inspect(error)}")
