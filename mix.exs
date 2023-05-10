@@ -193,7 +193,7 @@ defmodule Logflare.Mixfile do
       {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
-      {:cainophile, "~> 0.1.0"},
+      {:cainophile, github: "Logflare/cainophile"},
       {:open_api_spex, "~> 3.16"},
 
       # {:honeydew, "~> 1.5.0"}
