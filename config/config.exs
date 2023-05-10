@@ -96,12 +96,23 @@ config :scrivener_html,
 
 config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
-  publications: ["logflare_pub"]
+  publications: ["logflare_pub"],
+  # remember to add an ALTER PUBLICATION ... migration when changing published tables!
+  publication_tables: [
+    "billing_accounts",
+    "plans",
+    "rules",
+    "source_schemas",
+    "sources",
+    "users"
+  ]
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Tracker, pool_size: 1
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
+
+config :grpc, start_server: true
 
 import_config "#{Mix.env()}.exs"

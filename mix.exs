@@ -193,7 +193,7 @@ defmodule Logflare.Mixfile do
       {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
-      {:cainophile, "~> 0.1.0"},
+      {:cainophile, github: "Logflare/cainophile"},
       {:open_api_spex, "~> 3.16"},
 
       # {:honeydew, "~> 1.5.0"}
@@ -220,6 +220,12 @@ defmodule Logflare.Mixfile do
       ],
       "start.pink": [
         "cmd env $(cat .dev.env|xargs) PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
+      ],
+      "grpc.protoc": [
+        "cmd rm -rf opentelemetry-proto",
+        "cmd git clone https://github.com/open-telemetry/opentelemetry-proto.git",
+        "cmd protoc -I=./opentelemetry-proto --elixir_out=plugins=grpc:./lib/logflare_grpc $(find ./opentelemetry-proto -iname \"*.proto\")",
+        "cmd rm -rf opentelemetry-proto"
       ],
       # coveralls will trigger unit tests as well
       test: ["cmd epmd -daemon", "ecto.create --quiet", "ecto.migrate", "test --no-start"],

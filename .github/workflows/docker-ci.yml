@@ -11,7 +11,7 @@ permissions:
 jobs:
   publish:
     name: Build and publish amd64 image
-    runs-on: [self-hosted, ubuntu-latest]
+    runs-on: ubuntu-latest
     env:
       PUSH_TO_DOCKER: ${{github.ref == 'refs/heads/staging'}}
     steps:
@@ -36,10 +36,10 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
-          tags: supabase/logflare:latest, supabase/${{ env.LOGFLARE_VERSION}}
+          tags: supabase/logflare:latest, supabase/logflare:${{ env.LOGFLARE_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/arm64,linux/amd64
+          platforms: linux/amd64
       # build for staging
       - name: Build and push staging build
         if: ${{github.ref == 'refs/heads/staging'}}
@@ -49,29 +49,29 @@ jobs:
           tags: supabase/logflare:staging
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/arm64,linux/amd64
+          platforms: linux/amd64
   trigger_cloudbuild:
     name: Trigger Cloud Build in Production
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/staging'
     needs:
       - publish
-    runs-on: [self-hosted, ubuntu-latest]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Set prod envs
         if: github.ref == 'refs/heads/master'
         run: |
-          echo "LF_BRANCH=master" >> $GITHUB_ENV
-          echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> $GITHUB_ENV
-          echo "LF_PROJECT_ID=logflare-232118" >> $GITHUB_ENV
-          echo "LF_GCP_SECRETS=${{ secrets.GCP_PROD_CREDENTIALS }}" >> $GITHUB_ENV
+          echo "LF_BRANCH=master" >> "$GITHUB_ENV"
+          echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> "$GITHUB_ENV"
+          echo "LF_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
+          echo "LF_GCP_SECRETS=${{ secrets.GCP_PROD_CREDENTIALS }}" >> "$GITHUB_ENV"
       - name: Set staging envs
         if: github.ref == 'refs/heads/staging'
         run: |
-          echo "LF_BRANCH=staging" >> $GITHUB_ENV
-          echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> $GITHUB_ENV
-          echo "LF_PROJECT_ID=logflare-staging" >> $GITHUB_ENV
-          echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> $GITHUB_ENV
+          echo "LF_BRANCH=staging" >> "$GITHUB_ENV"
+          echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> "$GITHUB_ENV"
+          echo "LF_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
+          echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -88,4 +88,4 @@ jobs:
           version: '418.0.0'
           project_id: ${{ env.LF_PROJECT_ID}}
       - name: 'Trigger Cloud Build'
-        run: 'gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH}} --format "value(name)"'
+        run: 'gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH }} --format "value(name)"'

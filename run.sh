@@ -7,6 +7,9 @@ if [ -f /tmp/.secrets.env ]
     export $(grep -v '^#' /tmp/.secrets.env | xargs);
 fi
 
+# wait for networking to be ready before starting Erlang
+echo 'Sleeping for 15 seconds...'
+sleep 15
 
 if [[ "$LIBCLUSTER_TOPOLOGY" == "gce" ]]
 then
@@ -20,8 +23,7 @@ then
 
 fi
 
-# wait for networking to be ready before starting Erlang
-sleep 15
+echo "LOGFLARE_NODE_HOST is: $LOGFLARE_NODE_HOST"
 
 ./logflare eval Logflare.Release.migrate
 ./logflare start --sname logflare
