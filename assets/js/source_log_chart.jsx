@@ -26,8 +26,7 @@ const theme = {
       strokeWidth: 2,
       strokeDasharray: "4 4",
     },
-  },
-  tooltip: { container: { background: brandLightBlack } },
+  }
 }
 
 const renderDefaultTooltip = ({ value, color, indexValue }) => {
@@ -42,7 +41,7 @@ const renderDefaultTooltip = ({ value, color, indexValue }) => {
 
 const renderCfStatusCodeTooltip = ({ data, color }) => {
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack }}>
       <strong style={{ color: brandGray }}>Timestamp: {data.timestamp}</strong>
       <br />
       <strong style={{ color: brandGray }}>Total: {data.total}</strong>
@@ -77,7 +76,7 @@ const renderElixirLoggerTooltip = ({ data, color }) => {
     { c: brandGray, p: "other", t: "Other" },
   ]
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack }}>
       {tooltips.map(
         ({ c: color, p: property, t }) => {
           return [

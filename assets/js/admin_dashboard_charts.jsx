@@ -13,12 +13,11 @@ const theme = {
     },
   },
   axis: { ticks: { text: { fill: brandGreen } } },
-  tooltip: { container: { background: brandLightBlack, }, },
 }
 
 const renderDefaultTooltip = ({ value, color, indexValue }) => {
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack }}>
       <strong style={{ color }}>Timestamp: {indexValue}</strong>
       <br />
       <strong style={{ color }}>Value: {value}</strong>
