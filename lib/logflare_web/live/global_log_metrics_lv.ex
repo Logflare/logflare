@@ -2,7 +2,7 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
   @moduledoc false
   alias Logflare.SystemMetrics.AllLogsLogged
   import Number.Delimit, only: [number_to_delimited: 1]
-  use Phoenix.LiveView, layout: {LogflareWeb.SharedView, "live_widget.html"}
+  use Phoenix.LiveView, layout: {LogflareWeb.SharedView, :live_widget}
 
   def render(assigns) do
     ~L"""
