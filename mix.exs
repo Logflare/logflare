@@ -65,7 +65,6 @@ defmodule Logflare.Mixfile do
       {:phoenix, "~> 1.6.0"},
       {:phoenix_html, "~> 3.0"},
       {:phoenix_live_view, "~> 0.16.4"},
-
       {:phoenix_pubsub, "~> 2.0.0"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
