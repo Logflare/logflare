@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   publish:
+    timeout-minutes: 120
     name: Build and publish amd64 image
     runs-on: ubuntu-latest
     env:
