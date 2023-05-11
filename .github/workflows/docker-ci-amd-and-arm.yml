@@ -31,7 +31,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest_arm64: ${{ steps.build-arm64.outputs.digest }}
+      digest_amd64: ${{ steps.build-amd64.outputs.digest }}
     steps:
       # checkout git commit 
       - uses: actions/checkout@v3
@@ -47,7 +48,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       # Build and push
-      - id: build
+      - id: build-${{ matrix.arch}}
         uses: docker/build-push-action@v3
         with:
           push: true
@@ -70,8 +71,8 @@ jobs:
       - name: Merge multi-arch manifests
         run: |
           docker buildx imagetools create -t supabase/logflare:latest \
-          supabase/logflare@${{ needs.release_arm.outputs.digest }} \
-          supabase/logflare@${{ needs.release_amd.outputs.digest }}
+          supabase/logflare@${{ needs.build.outputs.digest_amd64 }} \
+          supabase/logflare@${{ needs.build.outputs.digest_arm64 }}
       - name: master - Tag and push
         if: ${{github.ref == 'refs/heads/master'}}
         run: |
