@@ -206,6 +206,7 @@ defmodule LogflareWeb.Router do
       live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
         live("/rules", Sources.RulesLV)
       end
+
       delete("/saved-searches/:id", SavedSearchesController, :delete)
     end
 
@@ -292,6 +293,7 @@ defmodule LogflareWeb.Router do
     live_session(:admin, root_layout: {LayoutView, :root}) do
       live("/search", AdminSearchDashboardLive)
     end
+
     get("/dashboard", AdminController, :dashboard)
     get("/sources", AdminController, :sources)
     get("/accounts", AdminController, :accounts)
