@@ -102,9 +102,9 @@ defmodule LogflareWeb.PlansLive do
                 <h2 class="text-white">
                   <%= Billing.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
-                <small class="text-muted">starts at</small></br>
-                <small class="text-muted">per million log events</small></br>
-                <small class="text-muted">after one million</small></br>
+                <small class="text-muted">starts at</small><br />
+                <small class="text-muted">per million log events</small><br />
+                <small class="text-muted">after one million</small><br />
                 <small class="text-muted">paid <%= @period %>ly</small>
               </div>
               <div class="py-4">
@@ -142,9 +142,9 @@ defmodule LogflareWeb.PlansLive do
                 <h2 class="text-white">
                   <%= Billing.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
-                <small class="text-muted">starts at</small></br>
-                <small class="text-muted">per million log events</small></br>
-                <small class="text-muted">after one million</small></br>
+                <small class="text-muted">starts at</small><br />
+                <small class="text-muted">per million log events</small><br />
+                <small class="text-muted">after one million</small><br />
                 <small class="text-muted">paid <%= @period %>ly</small>
               </div>
               <div class="py-4">
@@ -164,6 +164,7 @@ defmodule LogflareWeb.PlansLive do
       <p class="nam-consectetur-an"><sup>1</sup> Bring Your Own Backend™ to use with Logflare. Give our service account
         access to your Google Cloud Platform account and all reads and writes from Logflare will be performed directly on
         your BigQuery tables. Never archive to object storage again.</p>
+    </div>
     """
   end
 

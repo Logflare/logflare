@@ -11,7 +11,8 @@ defmodule LogflareWeb.LqlHelpers do
       modal_id: :lql_help_link,
       title: "Logflare Query Language"
     ) do
-      ~E"""
+      assigns = %{}
+      ~L"""
       <i class="fas fa-code"></i><span class="hide-on-mobile"> LQL </span>
       """
     end
@@ -23,7 +24,8 @@ defmodule LogflareWeb.LqlHelpers do
       modal_id: :bq_schema_link,
       title: "Source Schema"
     ) do
-      ~E"""
+      assigns = %{}
+      ~L"""
       <i class="fas fa-database"></i><span class="hide-on-mobile"> schema </span>
       """
     end

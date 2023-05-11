@@ -31,7 +31,7 @@ defmodule LogflareWeb.EndpointsLive do
     <%= live_react_component("Comp.SubHeader", %{
       paths: [%{to: "/endpoints", label: "endpoints"}],
       actions: [
-        %{to: Routes.access_tokens_path(@socket, :index), html: ~E(<i class="fas fa-key"></i> Manage access tokens</span>) |> safe_to_string() }
+        %{to: Routes.access_tokens_path(@socket, :index), html: ~L(<i class="fas fa-key"></i> Manage access tokens</span>) |> safe_to_string() }
       ]
       }, [id: "subheader"])
     %>
@@ -51,37 +51,45 @@ defmodule LogflareWeb.EndpointsLive do
     """
   end
 
-  defp render_action(:index, assigns) do
+  defp render_action(:index, _assigns) do
+    assigns = %{}
     ~L"""
     <%= live_react_component("Interfaces.EndpointsIntro", %{}, [id: "endpoints-intro"]) %>
     """
   end
 
   defp render_action(:show, %{show_endpoint: nil} = assigns) do
+    assigns = %{}
     ~L"""
     <%= live_react_component("Interfaces.EndpointNotFound", %{}, [id: "not-found"]) %>
     """
   end
 
   defp render_action(:show, %{show_endpoint: %Query{}} = assigns) do
-    ~L"""
+      assigns = %{}
+      ~L"""
     <%= live_react_component("Interfaces.ShowEndpoint", %{baseUrl: @base_url, endpoint: @show_endpoint, declaredParams: @declared_params, queryResultRows: @query_result_rows}, [id: "show-endpoint"]) %>
     """
   end
 
   defp render_action(:edit, assigns) do
+    assigns = %{}
     ~L"""
     <%= live_react_component("Interfaces.EndpointEditor", %{endpoint: @show_endpoint, queryResultRows: @query_result_rows, declaredParams: @declared_params, parseErrorMessage: @parse_error_message}, [id: "edit-endpoint"]) %>
     """
   end
 
   defp render_action(:new, assigns) do
+    assigns = %{}
     ~L"""
     <%= live_react_component("Interfaces.EndpointEditor", %{queryResultRows: @query_result_rows, declaredParams: @declared_params, parseErrorMessage: @parse_error_message}, [id: "new-endpoint"]) %>
     """
   end
 
-  defp render_action(_, assigns), do: ~L""
+  defp render_action(_, assigns) do
+    assigns = %{}
+    ~L""
+  end
 
   def mount(%{}, %{"user_id" => user_id}, socket) do
     endpoints = Endpoints.list_endpoints_by(user_id: user_id)

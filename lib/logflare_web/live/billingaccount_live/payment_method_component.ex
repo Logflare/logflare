@@ -4,7 +4,6 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   """
 
   use LogflareWeb, :live_component
-  use Phoenix.HTML
 
   alias Logflare.Billing
 
@@ -204,13 +203,15 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   end
 
   defp delete_link(p, myself) do
-    ~E"""
+    assigns = %{}
+    ~L"""
     <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id="<%= p.id %>" phx-target="<%= myself %>" class="btn btn-danger btn-sm m-3">Delete</button>
     """
   end
 
   defp make_default(p, myself) do
-    ~E"""
+    assigns = %{}
+    ~L"""
     <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</button>
     """
   end

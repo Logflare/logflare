@@ -67,7 +67,7 @@ defmodule LogflareWeb.SourceBackendsLive do
         })
       )
 
-    {:ok, socket, layout: {LogflareWeb.LayoutView, "inline_live.html"}}
+    {:ok, socket, layout: {LogflareWeb.LayoutView, :inline_live}}
   end
 
   def handle_event(
