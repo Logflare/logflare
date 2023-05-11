@@ -20,7 +20,7 @@ select
   COUNTIF(REGEXP_CONTAINS(f2.path, '/realtime')) as total_realtime_requests,
 FROM
   dates, 
-  `cloudflare.logs.staging` as f0
+  `cloudflare.logs.prod` as f0
   LEFT JOIN UNNEST(metadata) AS f1 ON TRUE
   LEFT JOIN UNNEST(f1.request) AS f2 ON TRUE
 where
