@@ -3,7 +3,7 @@ defmodule LogflareWeb.ModalLiveHelpers do
   Modal helpers to be imported where modals may be called
   """
   import Phoenix.LiveView.Helpers
-  import Phoenix.LiveView, only: [assign: 3]
+  import Phoenix.Component, only: [assign: 3]
   import Phoenix.HTML.Link, only: [link: 2]
 
   defmacro __using__(_context) do
