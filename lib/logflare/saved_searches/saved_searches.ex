@@ -122,7 +122,7 @@ defmodule Logflare.SavedSearches do
   @doc """
   Get a SavedSearch by query string and source
   """
-  @spec get_by_qs_source_id(String.t(), number()) :: SavedSearch.t()
+  @spec get_by_qs_source_id(String.t(), number()) :: SavedSearch.t() | nil
   def get_by_qs_source_id(querystring, source_id) do
     SavedSearch
     |> where([s], s.querystring == ^querystring)
