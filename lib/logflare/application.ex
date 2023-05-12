@@ -15,12 +15,6 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
 
-    # Start distribution early for Cachex
-    # can work with it.
-    unless Node.alive?() or env in [:test] do
-      {:ok, _} = Node.start(:logflare)
-    end
-
     # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(

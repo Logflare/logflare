@@ -1,3 +1,4 @@
 elixir 1.14.4-otp-25
 nodejs 18.13.0
 rust 1.64.0
+erlang 25.3.1
