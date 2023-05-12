@@ -66,17 +66,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Merge multi-arch manifests
+      # use --dry-run option so that we don't push immediately
         run: |
-          docker buildx imagetools create -t supabase/logflare:latest \
+          docker buildx imagetools create --dry-run -t supabase/logflare:multi \
           supabase/logflare:${{ needs.settings.outputs.version }}-arm64 \
           supabase/logflare:${{ needs.settings.outputs.version }}-amd64
       - name: master - Tag and push
         if: ${{github.ref == 'refs/heads/master'}}
         run: |
-          docker image tag supabase/logflare:latest supabase/logflare:${{ needs.settings.outputs.version }}
-          docker image push --all-tags supabase/logflare
+          docker image tag supabase/logflare:multi supabase/logflare:${{ needs.settings.outputs.version }}
+          docker image tag supabase/logflare:multi supabase/logflare:latest
+          docker image push supabase/logflare:${{ needs.settings.outputs.version }}
+          docker image push supabase/logflare:latest
       - name: staging - Tag and push
         if: ${{github.ref == 'refs/heads/staging'}}
         run: |
-          docker image tag supabase/logflare:latest supabase/logflare:staging
+          docker image tag supabase/logflare:multi supabase/logflare:staging
           docker image push supabase/logflare:staging
