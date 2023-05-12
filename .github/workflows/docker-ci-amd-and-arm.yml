@@ -31,7 +31,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
-      # checkout git commit 
+      # checkout git commit
       - uses: actions/checkout@v3
       # Setup docker
       # https://github.com/supabase/postgres/blob/develop/.github/workflows/dockerhub-release.yml#LL41C11-L42C44
@@ -65,21 +65,18 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Merge multi-arch manifests
-      # use --dry-run option so that we don't push immediately
+      - name: Setup tags
         run: |
-          docker buildx imagetools create --dry-run -t supabase/logflare:multi \
-          supabase/logflare:${{ needs.settings.outputs.version }}-arm64 \
-          supabase/logflare:${{ needs.settings.outputs.version }}-amd64
-      - name: master - Tag and push
-        if: ${{github.ref == 'refs/heads/master'}}
+          echo "tag_amd64=supabase/logflare:${{ needs.settings.outputs.version }}-amd64" >> "$GITHUB_ENV"
+          echo "tag_arm64=supabase/logflare:${{ needs.settings.outputs.version }}-arm64" >> "$GITHUB_ENV"
+          echo "tag_ver=supabase/logflare:${{ needs.settings.outputs.version }}" >> "$GITHUB_ENV"
+      - name: Staging - Merge multi-arch manifests and push
+        if: github.ref == 'refs/heads/staging'
         run: |
-          docker image tag supabase/logflare:multi supabase/logflare:${{ needs.settings.outputs.version }}
-          docker image tag supabase/logflare:multi supabase/logflare:latest
-          docker image push supabase/logflare:${{ needs.settings.outputs.version }}
-          docker image push supabase/logflare:latest
-      - name: staging - Tag and push
-        if: ${{github.ref == 'refs/heads/staging'}}
+          docker buildx imagetools create -t supabase/logflare:staging  \
+          ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
+      - name: Master - Merge multi-arch manifests and push
+        if: github.ref == 'refs/heads/master'
         run: |
-          docker image tag supabase/logflare:multi supabase/logflare:staging
-          docker image push supabase/logflare:staging
+          docker buildx imagetools create -t supabase/logflare:latest -t ${{ env.tag_ver }}  \
+          ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
