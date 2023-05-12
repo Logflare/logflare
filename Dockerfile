@@ -1,23 +1,24 @@
 FROM elixir:1.14.4-alpine as builder
 
 ENV MIX_ENV prod
-
-RUN apk update && \
-    apk add -f curl git build-base nodejs npm rust cargo python3
-
-COPY . /logflare
-
-WORKDIR /logflare
 # Due to some Rust caveats with SSL on Alpine images, we need to use GIT to fecth cargo registry index
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN mix do local.rebar --force, local.hex --force, deps.get, release
 
-WORKDIR /logflare/assets
-RUN npm install
-RUN npm run deploy
-
+# cache intermediate layers for deps compilation
+COPY ./VERSION mix.exs mix.lock /logflare/
+COPY assets/package.json assets/package-lock.json /logflare/assets/
 WORKDIR /logflare
-RUN mix phx.digest
+RUN apk update && \
+    # all the base dependencies
+    apk add -f curl git build-base nodejs npm rust cargo python3 && \
+    # all the app dependencies
+    mix do local.rebar --force, local.hex --force, deps.get, deps.compile && \
+    npm --prefix assets ci
+
+COPY . /logflare
+RUN mix release  && \
+    npm run --prefix assets deploy && \
+    mix phx.digest
 
 # alpine version must match the base erlang image version used
 # https://github.com/erlef/docker-elixir/blob/master/1.14/alpine/Dockerfile
