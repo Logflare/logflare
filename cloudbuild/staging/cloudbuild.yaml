@@ -17,11 +17,38 @@ steps:
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.staging.cert.pem.enc
+      - --plaintext-file=./cert.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.staging.cert.key.enc
+      - --plaintext-file=./cert.key
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.staging.cacert.pem.enc
+      - --plaintext-file=./cacert.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
-         "--build-arg",
+        "--build-arg",
         "TAG_VERSION=staging",
         "-f",
         "cloudbuild/secret_setup.Dockerfile",
