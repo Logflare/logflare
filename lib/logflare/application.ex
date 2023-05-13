@@ -79,6 +79,8 @@ defmodule Logflare.Application do
     topologies = Application.get_env(:libcluster, :topologies, [])
 
     grpc_port = Application.get_env(:grpc, :port)
+    ssl = Application.get_env(:logflare, :ssl)
+    grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
 
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
@@ -136,7 +138,7 @@ defmodule Logflare.Application do
 
       # If we get a log event and the Source.Supervisor is not up it will 500
       LogflareWeb.Endpoint,
-      {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port}},
+      {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
       # Monitor system level metrics
       Logflare.SystemMetricsSup,
 
