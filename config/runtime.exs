@@ -215,10 +215,6 @@ if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.
     ssl: [
       cacertfile: "cacert.pem",
       certfile: "cert.pem",
-      keyfile: "cert.key",
-      secure_renegotiate: true,
-      reuse_sessions: true,
-      verify: :verify_peer,
-      fail_if_no_peer_cert: true
+      keyfile: "cert.key"
     ]
 end
