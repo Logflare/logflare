@@ -64,5 +64,6 @@ gcloud_prod.json
 # SSL Certificates required for LB to Instance TLS
 .*.cacert.*
 .*.cert.*
+.*.req.*
 !.*.cacert.*.enc
 !.*.cert.*.enc
