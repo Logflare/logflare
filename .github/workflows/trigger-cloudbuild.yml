@@ -17,27 +17,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      # GCP credentials is a multi-line string, and will result in error when trying to set it to github env.
+      # directly use it in the auth step instead.
       - name: Set prod envs
         if: github.ref == 'refs/heads/master'
         run: |
           echo "LF_BRANCH=master" >> "$GITHUB_ENV"
           echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> "$GITHUB_ENV"
           echo "LF_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
-          echo "LF_GCP_SECRETS=${{ secrets.GCP_PROD_CREDENTIALS }}" >> "$GITHUB_ENV"
       - name: Set staging envs
         if: ${{ github.ref == 'refs/heads/staging' }}
         run: |
           echo "LF_BRANCH=staging" >> "$GITHUB_ENV"
           echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> "$GITHUB_ENV"
           echo "LF_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
-          echo "LF_GCP_SECRETS=${{ secrets.GCP_STAGING_CREDENTIALS }}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - id: auth
+      - if: github.ref == 'refs/heads/master'
         uses: 'google-github-actions/auth@v1'
         with:
-          credentials_json: ${{ env.LF_GCP_SECRETS }}
+          credentials_json: ${{ secrets.GCP_PROD_CREDENTIALS }}
+          create_credentials_file: true
+          export_environment_variables: true
+          cleanup_credentials: false
+      - if: github.ref == 'refs/heads/staging'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: ${{ secrets.GCP_STAGING_CREDENTIALS }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: false
