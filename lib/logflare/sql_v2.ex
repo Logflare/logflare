@@ -36,28 +36,14 @@ defmodule Logflare.SqlV2 do
   def transform(
         input,
         %_{
-          bigquery_project_id: project_id,
-          bigquery_dataset_id: dataset_id
+          bigquery_project_id: user_project_id,
+          bigquery_dataset_id: user_dataset_id
         } = user
       ) do
     {query, sandboxed_query} =
       case input do
         q when is_binary(q) -> {q, nil}
         other when is_tuple(other) -> other
-      end
-
-    project_id =
-      if is_nil(project_id) do
-        Application.get_env(:logflare, Logflare.Google)[:project_id]
-      else
-        project_id
-      end
-
-    dataset_id =
-      if is_nil(dataset_id) do
-        User.generate_bq_dataset_id(user)
-      else
-        dataset_id
       end
 
     sources = Sources.list_sources_by_user(user)
@@ -69,8 +55,10 @@ defmodule Logflare.SqlV2 do
 
     with {:ok, statements} <- Parser.parse(query),
          data = %{
-           project_id: project_id,
-           dataset_id: dataset_id,
+           logflare_project_id: Application.get_env(:logflare, Logflare.Google)[:project_id],
+           user_project_id: user_project_id,
+           logflare_dataset_id: User.generate_bq_dataset_id(user),
+           user_dataset_id: user_dataset_id,
            sources: sources,
            source_mapping: source_mapping,
            source_names: Map.keys(source_mapping),
@@ -133,21 +121,56 @@ defmodule Logflare.SqlV2 do
 
   defp check_all_sources_known({"Table", %{"name" => name}}, _acc, %{
          source_names: source_names,
+         user_project_id: user_project_id,
+         logflare_project_id: logflare_project_id,
          ast: ast
        })
        when is_list(name) do
     cte_names = extract_cte_alises(ast)
 
-    unknown_table_names =
-      for %{"value" => table_name} <- name,
-          table_name not in source_names and table_name not in cte_names do
-        table_name
+    is_user_fully_qualified_name = fn name ->
+      if user_project_id != nil do
+        {:ok, regex} = Regex.compile("#{user_project_id}\\..+\\..+")
+        Regex.match?(regex, name)
+      else
+        false
       end
+    end
 
-    if length(unknown_table_names) == 0 do
-      :ok
-    else
-      {:error, "can't find source #{Enum.join(unknown_table_names, ", ")}"}
+    table_names = for %{"value" => table_name} <- name, do: table_name
+
+    {disallowed_table_names, remaining_table_names} =
+      table_names
+      |> Enum.split_while(fn name ->
+        # true will be put in disallowed list
+        cond do
+          String.starts_with?(name, logflare_project_id) ->
+            true
+
+          user_project_id != nil ->
+            # check that the name starts with user's bq project id
+            not is_user_fully_qualified_name.(name)
+
+          true ->
+            false
+        end
+      end)
+
+    unknown_table_names =
+      Enum.reject(remaining_table_names, fn name ->
+        name in source_names or name in cte_names or is_user_fully_qualified_name.(name)
+      end)
+
+    cond do
+      length(unknown_table_names) > 0 ->
+        {:error, "can't find source #{Enum.join(unknown_table_names, ", ")}"}
+
+      length(disallowed_table_names) > 0 ->
+        {:error,
+         "Querying outside of user BigQuery project is not allowed: #{Enum.join(disallowed_table_names, ", ")}"}
+
+      true ->
+        :ok
     end
   end
 
@@ -386,7 +409,15 @@ defmodule Logflare.SqlV2 do
       |> Atom.to_string()
       |> String.replace("-", "_")
 
-    ~s(#{data.project_id}.#{data.dataset_id}.#{token})
+    # byob bq
+    project_id =
+      if is_nil(data.user_project_id), do: data.logflare_project_id, else: data.user_project_id
+
+    # byob bq
+    dataset_id =
+      if is_nil(data.user_dataset_id), do: data.logflare_dataset_id, else: data.user_dataset_id
+
+    ~s(#{project_id}.#{dataset_id}.#{token})
   end
 
   @doc """
