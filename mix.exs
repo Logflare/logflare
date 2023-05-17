@@ -61,17 +61,16 @@ defmodule Logflare.Mixfile do
 
   defp deps do
     [
-      # Phoenix and LogflareWeb
-      {:phoenix, "~> 1.5.0", override: true},
+      # Phoenix stuff
+      {:phoenix, "~> 1.6.0"},
+      {:phoenix_html, "~> 3.0"},
+      {:phoenix_live_view, "~> 0.16.4"},
       {:phoenix_pubsub, "~> 2.0.0"},
       {:phoenix_ecto, "~> 4.4"},
-      {:phoenix_html, "~> 2.10"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       # {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.6"},
       {:plug_crypto, "~> 1.2.2"},
-      {:phoenix_live_view, "~> 0.15.3", override: true},
-      {:phoenix_live_dashboard, "~> 0.3.0"},
       {:cors_plug, "~> 2.0"},
 
       # Oauth
@@ -81,7 +80,7 @@ defmodule Logflare.Mixfile do
       {:oauth2, "~> 2.0.0", override: true},
 
       # Oauth2 provider
-      {:phoenix_oauth2_provider, "~> 0.5.1"},
+      {:phoenix_oauth2_provider, github: "Logflare/phoenix_oauth2_provider"},
       {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
@@ -134,7 +133,7 @@ defmodule Logflare.Mixfile do
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
       {:scrivener_list, "~> 2.0"},
-      {:scrivener_html, "~> 1.8"},
+      {:scrivener_html, github: "Logflare/scrivener_html"},
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
@@ -148,8 +147,8 @@ defmodule Logflare.Mixfile do
 
       # Telemetry & logging
       {:telemetry, "~> 0.4.0"},
-      {:telemetry_poller, "0.5.0"},
-      {:telemetry_metrics, "~> 0.6.0", override: true},
+      {:telemetry_metrics, "~> 0.6"},
+      {:telemetry_poller, "~> 0.5"},
       {:logflare_logger_backend, "~> 0.11.1"},
 
       # ETS
@@ -249,19 +248,35 @@ defmodule Logflare.Mixfile do
         "cmd gcloud kms encrypt --ciphertext-file='./.dev.env.enc' --plaintext-file=./.dev.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
       "decrypt.staging": [
         "cmd gcloud kms decrypt --ciphertext-file='./.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
+        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms decrypt --ciphertext-file='./.staging.cacert.key.enc' --plaintext-file=./.staging.cacert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms decrypt --ciphertext-file='./.staging.cacert.pem.enc' --plaintext-file=./.staging.cacert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms decrypt --ciphertext-file='./.staging.cert.key.enc' --plaintext-file=./.staging.cert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms decrypt --ciphertext-file='./.staging.cert.pem.enc' --plaintext-file=./.staging.cert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
       ],
       "encrypt.staging": [
         "cmd gcloud kms encrypt --ciphertext-file='./.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
+        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms encrypt --ciphertext-file='./.staging.cacert.key.enc' --plaintext-file=./.staging.cacert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms encrypt --ciphertext-file='./.staging.cacert.pem.enc' --plaintext-file=./.staging.cacert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms encrypt --ciphertext-file='./.staging.cert.key.enc' --plaintext-file=./.staging.cert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
+        "cmd gcloud kms encrypt --ciphertext-file='./.staging.cert.pem.enc' --plaintext-file=./.staging.cert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
       ],
       "decrypt.prod": [
         "cmd gcloud kms decrypt --ciphertext-file='./.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
+        "cmd gcloud kms decrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms decrypt --ciphertext-file='./.prod.cacert.key.enc' --plaintext-file=./.prod.cacert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms decrypt --ciphertext-file='./.prod.cacert.pem.enc' --plaintext-file=./.prod.cacert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms decrypt --ciphertext-file='./.prod.cert.key.enc' --plaintext-file=./.prod.cert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms decrypt --ciphertext-file='./.prod.cert.pem.enc' --plaintext-file=./.prod.cert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
       ],
       "encrypt.prod": [
         "cmd gcloud kms encrypt --ciphertext-file='./.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
+        "cmd gcloud kms encrypt --ciphertext-file='./gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms encrypt --ciphertext-file='./.prod.cacert.key.enc' --plaintext-file=./.prod.cacert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms encrypt --ciphertext-file='./.prod.cacert.pem.enc' --plaintext-file=./.prod.cacert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms encrypt --ciphertext-file='./.prod.cert.key.enc' --plaintext-file=./.prod.cert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
+        "cmd gcloud kms encrypt --ciphertext-file='./.prod.cert.pem.enc' --plaintext-file=./.prod.cert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
       ]
     ]
   end

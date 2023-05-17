@@ -17,6 +17,33 @@ steps:
       - '--location=us-central1'
       - '--keyring=logflare-prod-keyring-us-central1'
       - '--key=logflare-prod-secrets-key'
+      - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.prod.cert.pem.enc
+      - --plaintext-file=./cert.pem
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1'
+      - --key=logflare-prod-secrets-key'
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.prod.cert.key.enc
+      - --plaintext-file=./cert.key
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1'
+      - --key=logflare-prod-secrets-key'
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.prod.cacert.pem.enc
+      - --plaintext-file=./cacert.pem
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1'
+      - --key=logflare-prod-secrets-key'
   - name: gcr.io/cloud-builders/docker
     args:
       - '-c'

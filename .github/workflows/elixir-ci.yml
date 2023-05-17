@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [staging, master]
+    paths:
+      - '!.github/**'
+      - '!cloudbuild/**'
   pull_request:
     branches: [staging]
 
