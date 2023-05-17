@@ -3,29 +3,29 @@ steps:
     args:
       - kms
       - decrypt
-      - '--ciphertext-file=gcloud_prod.json.enc'
-      - '--plaintext-file=gcloud.json'
-      - '--location=us-central1'
-      - '--keyring=logflare-prod-keyring-us-central1'
-      - '--key=logflare-prod-secrets-key'
+      - --ciphertext-file=gcloud_prod.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
   - name: gcr.io/cloud-builders/gcloud
     args:
       - kms
       - decrypt
-      - '--ciphertext-file=./.prod.env.enc'
-      - '--plaintext-file=./.secrets.env'
-      - '--location=us-central1'
-      - '--keyring=logflare-prod-keyring-us-central1'
-      - '--key=logflare-prod-secrets-key'
-      - name: gcr.io/cloud-builders/gcloud
+      - --ciphertext-file=./.prod.env.enc
+      - --plaintext-file=./.secrets.env
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
     args:
       - kms
       - decrypt
       - --ciphertext-file=./.prod.cert.pem.enc
       - --plaintext-file=./cert.pem
       - --location=us-central1
-      - --keyring=logflare-prod-keyring-us-central1'
-      - --key=logflare-prod-secrets-key'
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
   - name: gcr.io/cloud-builders/gcloud
     args:
       - kms
@@ -33,8 +33,8 @@ steps:
       - --ciphertext-file=./.prod.cert.key.enc
       - --plaintext-file=./cert.key
       - --location=us-central1
-      - --keyring=logflare-prod-keyring-us-central1'
-      - --key=logflare-prod-secrets-key'
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
   - name: gcr.io/cloud-builders/gcloud
     args:
       - kms
@@ -42,11 +42,11 @@ steps:
       - --ciphertext-file=./.prod.cacert.pem.enc
       - --plaintext-file=./cacert.pem
       - --location=us-central1
-      - --keyring=logflare-prod-keyring-us-central1'
-      - --key=logflare-prod-secrets-key'
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
   - name: gcr.io/cloud-builders/docker
     args:
-      - '-c'
+      - "-c"
       - >-
         docker build --build-arg TAG_VERSION=$(cat ./VERSION) -t gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t
         gcr.io/$PROJECT_ID/logflare_app:latest -f cloudbuild/secret_setup.Dockerfile
@@ -57,11 +57,11 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - 'gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA'
+      - "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA"
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - 'gcr.io/$PROJECT_ID/logflare_app:latest'
+      - "gcr.io/$PROJECT_ID/logflare_app:latest"
 timeout: 1800s
 options:
   machineType: N1_HIGHCPU_32
