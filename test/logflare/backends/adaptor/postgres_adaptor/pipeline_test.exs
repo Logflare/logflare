@@ -8,6 +8,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
   alias Logflare.Buffers.MemoryBuffer
 
+  import Ecto.Query
+
   setup do
     %{username: username, password: password, database: database, hostname: hostname} =
       Application.get_env(:logflare, Logflare.Repo) |> Map.new()
@@ -34,10 +36,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
     )
 
     Ecto.Adapters.SQL.Sandbox.mode(repository_module, :auto)
-    Repo.create_log_event_table(repository_module)
+    Repo.create_log_event_table(repository_module, source_backend)
 
     on_exit(fn ->
-      Ecto.Migrator.run(repository_module, Repo.migrations(), :down, all: true)
+      Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
       migration_table = Keyword.get(repository_module.config(), :migration_source)
       Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
     end)
@@ -55,18 +57,29 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
     test "ingests dispatched message", %{
       memory_buffer_pid: memory_buffer_pid,
       repository_module: repository_module,
-      source_backend: %{source: source}
+      source_backend: source_backend
     } do
       log_event =
         build(:log_event,
           token: TestUtils.random_string(),
-          source: source,
+          source: source_backend.source,
           body: %{"data" => "data"}
         )
 
       MemoryBuffer.add(memory_buffer_pid, log_event)
 
-      fetcher = fn -> repository_module.all(LogEvent) end
+      fetcher = fn ->
+        repository_module.all(
+          from(l in Repo.table_name(source_backend),
+            select: %LogEvent{
+              id: l.id,
+              body: l.body,
+              event_message: l.event_message,
+              timestamp: l.timestamp
+            }
+          )
+        )
+      end
 
       asserts = fn
         [] ->

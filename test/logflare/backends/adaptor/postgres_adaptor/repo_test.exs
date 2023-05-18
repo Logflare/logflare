@@ -1,8 +1,11 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
   use Logflare.DataCase, async: false
+
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
   alias Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest.BadMigration
+
+  import Ecto.Query
 
   setup do
     %{username: username, password: password, database: database, hostname: hostname} =
@@ -25,7 +28,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
       repository_module = Repo.new_repository_for_source_backend(source_backend)
 
       assert repository_module ==
-               Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source_id}"])
+               Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source.token}"])
     end
   end
 
@@ -42,7 +45,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
       Ecto.Adapters.SQL.Sandbox.mode(repository_module, :auto)
 
       on_exit(fn ->
-        Ecto.Migrator.run(repository_module, Repo.migrations(), :down, all: true)
+        Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
         migration_table = Keyword.get(repository_module.config(), :migration_source)
         Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
       end)
@@ -54,18 +57,23 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
       source_backend: source_backend,
       repository_module: repository_module
     } do
-      assert Repo.create_log_event_table(repository_module) == :ok
-      assert repository_module.all(LogEvent)
+      assert Repo.create_log_event_table(repository_module, source_backend) == :ok
+
+      query = from(l in Repo.table_name(source_backend), select: LogEvent)
+      assert repository_module.all(query) == []
     end
 
     test "handle migration errors", %{
       source_backend: source_backend,
       repository_module: repository_module
     } do
-      bad_migration = [{0, BadMigration}]
+      bad_migrations = [{0, BadMigration}]
 
-      assert Repo.create_log_event_table(repository_module, bad_migration) ==
-               {:error, :failed_migration}
+      assert Repo.create_log_event_table(
+               repository_module,
+               source_backend,
+               bad_migrations
+             ) == {:error, :failed_migration}
     end
   end
 

@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
          repository_module <- Repo.new_repository_for_source_backend(source_backend),
          :ok <- Repo.connect_to_source_backend(repository_module, source_backend),
-         :ok <- Repo.create_log_event_table(repository_module) do
+         :ok <- Repo.create_log_event_table(repository_module, source_backend) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
         buffer_pid: buffer_pid,

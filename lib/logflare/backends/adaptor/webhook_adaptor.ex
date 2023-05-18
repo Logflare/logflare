@@ -1,15 +1,16 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @moduledoc false
+
+  use GenServer
+  use TypedStruct
+  use Logflare.Backends.Adaptor
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
-
-  use GenServer
-  use TypedStruct
-  use Adaptor
 
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())

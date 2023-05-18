@@ -5,8 +5,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   Using the Source Backend source id we create a new Ecto.Repo which whom we will
   be able to connect to the configured PSQL URL, run migrations and insert data.
   """
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
+  alias Logflare.Backends.SourceBackend
 
   require Logger
 
@@ -18,7 +20,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
 
   @spec new_repository_for_source_backend(SourceBackend.t()) :: atom()
   def new_repository_for_source_backend(source_backend) do
-    name = Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source_id}"])
+    source_backend = Repo.preload(source_backend, :source)
+    name = Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source.token}"])
 
     case Code.ensure_compiled(name) do
       {:module, _} -> nil
@@ -42,12 +45,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
     :ok
   end
 
-  @migrations [
-    {1, Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents}
-  ]
-  @spec create_log_event_table(Ecto.Repo.t(), []) ::
+  @spec create_log_event_table(Ecto.Repo.t(), SourceBackend.t(), list() | nil) ::
           :ok | {:error, :failed_migration}
-  def create_log_event_table(repository_module, migrations \\ @migrations) do
+  def create_log_event_table(repository_module, source_backend, override_migrations \\ nil) do
+    migrations = if override_migrations, do: override_migrations, else: migrations(source_backend)
     Ecto.Migrator.run(repository_module, migrations, :up, all: true)
 
     :ok
@@ -57,5 +58,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
       {:error, :failed_migration}
   end
 
-  def migrations, do: @migrations
+  @spec table_name(SourceBackend.t()) :: binary()
+  def table_name(source_backend) do
+    source_backend = Repo.preload(source_backend, :source)
+    token = source_backend.source.token |> Atom.to_string() |> String.replace("-", "_")
+    "log_events_#{token}"
+  end
+
+  @spec migrations(SourceBackend.t()) :: list({pos_integer(), atom()})
+  def migrations(source_backend), do: [{1, AddLogEvents.generate_migration(source_backend)}]
 end
