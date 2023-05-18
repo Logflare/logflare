@@ -99,7 +99,7 @@ defmodule Logflare.SqlV2 do
          :ok <- check_single_query_only(ast),
          :ok <- has_restricted_functions(ast),
          :ok <- has_wildcard_in_select(ast),
-         :ok <- check_all_sources_known(ast, data) do
+         :ok <- check_all_sources_allowed(ast, data) do
       :ok
     end
   end
@@ -114,12 +114,12 @@ defmodule Logflare.SqlV2 do
 
   defp maybe_validate_sandboxed_query_ast(_, _data), do: :ok
 
-  defp check_all_sources_known(statement, data),
-    do: check_all_sources_known(statement, :ok, data)
+  defp check_all_sources_allowed(statement, data),
+    do: check_all_sources_allowed(statement, :ok, data)
 
-  defp check_all_sources_known(_kv, {:error, _} = err, _data), do: err
+  defp check_all_sources_allowed(_kv, {:error, _} = err, _data), do: err
 
-  defp check_all_sources_known({"Table", %{"name" => name}}, _acc, %{
+  defp check_all_sources_allowed({"Table", %{"name" => name}}, _acc, %{
          source_names: source_names,
          user_project_id: user_project_id,
          logflare_project_id: logflare_project_id,
@@ -128,28 +128,55 @@ defmodule Logflare.SqlV2 do
        when is_list(name) do
     cte_names = extract_cte_alises(ast)
 
-    is_user_fully_qualified_name = fn name ->
-      if user_project_id != nil do
-        {:ok, regex} = Regex.compile("#{user_project_id}\\..+\\..+")
-        Regex.match?(regex, name)
-      else
-        false
-      end
-    end
-
     table_names = for %{"value" => table_name} <- name, do: table_name
 
+    {disallowed, unknown} =
+      reject_source_names(
+        table_names,
+        logflare_project_id,
+        user_project_id,
+        source_names ++ cte_names
+      )
+
+    cond do
+      length(unknown) > 0 ->
+        {:error, "can't find source #{Enum.join(unknown, ", ")}"}
+
+      length(disallowed) > 0 ->
+        {:error,
+         "Querying outside of user BigQuery project is not allowed: #{Enum.join(disallowed, ", ")}"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp check_all_sources_allowed(kv, acc, data) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.reduce(acc, fn kv, nested_acc ->
+      check_all_sources_allowed(kv, nested_acc, data)
+    end)
+  end
+
+  defp check_all_sources_allowed({_k, v}, acc, data) when is_list(v) or is_map(v) do
+    check_all_sources_allowed(v, acc, data)
+  end
+
+  defp check_all_sources_allowed(_kv, acc, _data), do: acc
+
+  # rejects sources into 2 groups, disallowed and unknown
+  defp reject_source_names(table_names, logflare_project_id, user_project_id, known_names) do
     {disallowed_table_names, remaining_table_names} =
       table_names
       |> Enum.split_while(fn name ->
         # true will be put in disallowed list
         cond do
-          String.starts_with?(name, logflare_project_id) ->
+          is_project_fully_qualified_name(name, logflare_project_id) ->
             true
 
           user_project_id != nil ->
             # check that the name starts with user's bq project id
-            not is_user_fully_qualified_name.(name)
+            not is_project_fully_qualified_name(name, user_project_id)
 
           true ->
             false
@@ -158,34 +185,12 @@ defmodule Logflare.SqlV2 do
 
     unknown_table_names =
       Enum.reject(remaining_table_names, fn name ->
-        name in source_names or name in cte_names or is_user_fully_qualified_name.(name)
+        name in known_names or
+          is_project_fully_qualified_name(name, user_project_id)
       end)
 
-    cond do
-      length(unknown_table_names) > 0 ->
-        {:error, "can't find source #{Enum.join(unknown_table_names, ", ")}"}
-
-      length(disallowed_table_names) > 0 ->
-        {:error,
-         "Querying outside of user BigQuery project is not allowed: #{Enum.join(disallowed_table_names, ", ")}"}
-
-      true ->
-        :ok
-    end
+    {disallowed_table_names, unknown_table_names}
   end
-
-  defp check_all_sources_known(kv, acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
-      check_all_sources_known(kv, nested_acc, data)
-    end)
-  end
-
-  defp check_all_sources_known({_k, v}, acc, data) when is_list(v) or is_map(v) do
-    check_all_sources_known(v, acc, data)
-  end
-
-  defp check_all_sources_known(_kv, acc, _data), do: acc
 
   defp check_single_query_only([_stmt]), do: :ok
 
@@ -613,4 +618,12 @@ defmodule Logflare.SqlV2 do
   end
 
   defp extract_all_parameters(_kv, acc), do: acc
+
+  # returns true if the name is fully qualified and has the project id prefix.
+  defp is_project_fully_qualified_name(_table_name, nil), do: false
+
+  defp is_project_fully_qualified_name(table_name, project_id) when is_binary(project_id) do
+    {:ok, regex} = Regex.compile("#{project_id}\\..+\\..+")
+    Regex.match?(regex, table_name)
+  end
 end
