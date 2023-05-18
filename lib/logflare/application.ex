@@ -59,6 +59,9 @@ defmodule Logflare.Application do
       # v2 ingestion pipelines
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+      {DynamicSupervisor,
+       strategy: :one_for_one,
+       name: Logflare.Backends.Logflare.Backends.Adaptor.Postgres.Supervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ]
@@ -146,7 +149,16 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
       # Startup tasks
-      {Task, fn -> startup_tasks() end}
+      {Task, fn -> startup_tasks() end},
+
+      # v2 ingestion pipelines
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+      {DynamicSupervisor,
+       strategy: :one_for_one,
+       name: Logflare.Backends.Logflare.Backends.Adaptor.Postgres.Supervisor},
+      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ conditional_children()
   end
 

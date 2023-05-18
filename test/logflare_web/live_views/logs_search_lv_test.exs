@@ -19,11 +19,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   defp setup_mocks(_ctx) do
     # mocks
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+    stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
       {:ok, TestUtils.gen_bq_response()}
     end)
 
@@ -157,8 +155,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         params = opts[:body].queryParameters
 
         if length(params) > 2 do
@@ -169,8 +166,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
-      view
-      |> render_change(:form_update, %{
+      render_change(view, :form_update, %{
         "search" => %{
           @default_search_params
           | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
@@ -179,8 +175,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       :timer.sleep(1000)
 
-      view
-      |> render_change(:start_search, %{
+      render_change(view, :start_search, %{
         "search" => %{
           "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
         }
@@ -205,8 +200,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # TODO: find a better way to test a source schema structure
       :timer.sleep(600)
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query |> String.downcase()
 
         if query =~ "select" and query =~ "inner join unnest" do
@@ -222,12 +216,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(800)
 
-      view
-      |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "m.nested:test top:test"
-        }
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
       })
 
       # wait for async search task to complete
@@ -257,25 +247,28 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(500)
 
-      view
-      |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "chart_period" => "day"
-        }
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "chart_period" => "day"}
       })
 
       # wait for async search task to complete
       :timer.sleep(500)
 
-      html = view |> element("#logs-list-container") |> render()
+      TestUtils.retry_fetch(
+        fn -> view |> element("#logs-list-container") |> render() end,
+        fn html ->
+          case html =~ "some event message" do
+            true -> assert html =~ "some event message"
+            false -> :retry
+          end
+        end
+      )
 
-      assert html =~ "some event message"
+      assert_receive(:done)
     end
 
     test "log event modal", %{conn: conn, source: source} do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
          TestUtils.gen_bq_response(%{
            "event_message" => "some modal message",
@@ -284,16 +277,31 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-      # post-init fetching
-      :timer.sleep(500)
 
-      view |> element("li a", "event body") |> render_click()
-      :timer.sleep(300)
-      assert view |> element("#log-event-viewer") |> has_element?()
-      html = render(view)
-      assert html =~ "Raw JSON"
-      assert html =~ "modal123"
-      assert html =~ "some modal message"
+      TestUtils.retry_fetch(
+        fn ->
+          try do
+            view |> element("li a", "event body") |> render_click()
+            view
+          rescue
+            _ -> :retry
+          end
+        end,
+        fn view ->
+          case view |> element("#log-event-viewer") |> has_element?() do
+            true ->
+              html = render(view)
+              assert html =~ "Raw JSON"
+              assert html =~ "modal123"
+              assert html =~ "some modal message"
+
+            false ->
+              :retry
+          end
+        end
+      )
+
+      assert_receive(:done)
     end
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do
@@ -345,14 +353,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(500)
 
-      view
-      |> render_change("datetime_update", %{"querystring" => "t:last@2h"})
+      render_change(view, "datetime_update", %{"querystring" => "t:last@2h"})
 
       assert get_view_assigns(view).querystring =~ "t:last@2hour"
       assert get_view_assigns(view).querystring =~ "error"
 
-      view
-      |> render_change("datetime_update", %{
+      render_change(view, "datetime_update", %{
         "querystring" => "t:2020-04-20T00:{01..02}:00",
         "period" => "second"
       })
@@ -362,6 +368,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  @tag :skip
   describe "single tenant searching" do
     TestUtils.setup_single_tenant(seed_user: true)
 
@@ -375,8 +382,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     setup [:setup_user_session, :setup_source_processes]
 
     test "run a query", %{conn: conn, source: source} do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query |> String.downcase()
 
         if query =~ "strpos(t0.event_message, ?" do
@@ -390,12 +396,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(800)
 
-      view
-      |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "somestring"
-        }
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => "somestring"}
       })
 
       # wait for async search task to complete

@@ -2,7 +2,8 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
-  alias Logflare.Backends.{SourceBackend, CommonIngestPipeline}
+  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.CommonIngestPipeline
   alias Logflare.Backends
   alias Logflare.Source
   alias Logflare.Buffers.MemoryBuffer
@@ -19,7 +20,6 @@ defmodule Logflare.Backends.SourceSup do
 
     children =
       [
-        # {Stack, [:hello]}
         {MemoryBuffer, name: Backends.via_source(source, :buffer)},
         {CommonIngestPipeline, source}
       ] ++ source_backend_specs

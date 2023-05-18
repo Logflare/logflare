@@ -1,33 +1,32 @@
 defmodule Logflare.Backends do
   @moduledoc false
-  alias Logflare.Backends.{
-    SourceBackend,
-    SourceDispatcher,
-    SourceRegistry,
-    SourceSup,
-    SourcesSup,
-    RecentLogs,
-    RecentLogsSup,
-    Adaptor.WebhookAdaptor
-  }
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.Postgres
+  alias Logflare.Backends.RecentLogs
+  alias Logflare.Backends.RecentLogsSup
+  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.SourceDispatcher
+  alias Logflare.Backends.SourceRegistry
+  alias Logflare.Backends.SourcesSup
+  alias Logflare.Backends.SourceSup
 
-  alias Logflare.{Buffers.MemoryBuffer, Source, LogEvent, Repo}
+  alias Logflare.Buffers.MemoryBuffer
+  alias Logflare.LogEvent
+  alias Logflare.Repo
+  alias Logflare.Source
+
   import Ecto.Query
 
-  @adaptor_mapping %{
-    webhook: WebhookAdaptor
-  }
+  @adaptor_mapping %{webhook: WebhookAdaptor, postgres: Postgres}
 
   @doc """
   Lists `SourceBackend`s for a given source.
   """
   @spec list_source_backends(Source.t()) :: list(SourceBackend.t())
   def list_source_backends(%Source{id: id}) do
-    Repo.all(from sb in SourceBackend, where: sb.source_id == ^id)
-    |> Enum.map(fn sb ->
-      sb
-      |> typecast_config_string_map_to_atom_map()
-    end)
+    from(sb in SourceBackend, where: sb.source_id == ^id)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
   @doc """
@@ -35,17 +34,18 @@ defmodule Logflare.Backends do
   """
   @spec create_source_backend(Source.t(), String.t(), map()) ::
           {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
-  def create_source_backend(%Source{} = source, type, %{} = config) do
-    source
-    |> Ecto.build_assoc(:source_backends)
-    |> SourceBackend.changeset(%{config: config, type: type})
-    |> validate_config()
-    |> Repo.insert()
-    |> case do
+  def create_source_backend(%Source{} = source, type, config \\ %{}) do
+    source_backend =
+      source
+      |> Ecto.build_assoc(:source_backends)
+      |> SourceBackend.changeset(%{config: config, type: type})
+      |> validate_config()
+      |> Repo.insert()
+
+    case source_backend do
       {:ok, updated} ->
-        {:ok,
-         updated
-         |> typecast_config_string_map_to_atom_map()}
+        restart_source_sup(source)
+        {:ok, typecast_config_string_map_to_atom_map(updated)}
 
       other ->
         other
@@ -58,15 +58,18 @@ defmodule Logflare.Backends do
   @spec update_source_backend_config(SourceBackend.t(), map()) ::
           {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
   def update_source_backend_config(%SourceBackend{} = source_backend, %{} = config) do
-    source_backend
-    |> SourceBackend.changeset(%{config: config})
-    |> validate_config()
-    |> Repo.update()
-    |> case do
+    source_backend = Repo.preload(source_backend, :source)
+
+    source_backend_config =
+      source_backend
+      |> SourceBackend.changeset(%{config: config})
+      |> validate_config()
+      |> Repo.update()
+
+    case source_backend_config do
       {:ok, updated} ->
-        {:ok,
-         updated
-         |> typecast_config_string_map_to_atom_map()}
+        restart_source_sup(source_backend.source)
+        {:ok, typecast_config_string_map_to_atom_map(updated)}
 
       other ->
         other
@@ -77,14 +80,10 @@ defmodule Logflare.Backends do
   defp validate_config(changeset) do
     type = Ecto.Changeset.get_field(changeset, :type)
 
-    changeset
-    |> Ecto.Changeset.validate_change(:config, fn :config, config ->
+    Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
       case @adaptor_mapping[type].cast_and_validate_config(config) do
-        %{valid?: true} ->
-          []
-
-        %{valid?: false, errors: errors} ->
-          for {key, err} <- errors, do: {:"config.#{key}", err}
+        %{valid?: true} -> []
+        %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
       end
     end)
   end
@@ -93,12 +92,12 @@ defmodule Logflare.Backends do
   defp typecast_config_string_map_to_atom_map(nil), do: nil
 
   defp typecast_config_string_map_to_atom_map(%SourceBackend{type: type} = source_backend) do
-    source_backend
-    |> Map.update!(:config, fn config ->
+    Map.update!(source_backend, :config, fn config ->
       mod = @adaptor_mapping[type]
 
       typecasted =
-        mod.cast_config(config)
+        config
+        |> mod.cast_config()
         |> Ecto.Changeset.apply_changes()
 
       mod_struct = struct(mod, %{config: typecasted})
@@ -110,10 +109,11 @@ defmodule Logflare.Backends do
   Retrieves a SourceBackend by id.
   """
   @spec get_source_backend(integer()) :: SourceBackend.t() | nil
-  def get_source_backend(id),
-    do:
-      Repo.get(SourceBackend, id)
-      |> typecast_config_string_map_to_atom_map()
+  def get_source_backend(id) do
+    source_backend = Repo.get(SourceBackend, id)
+
+    typecast_config_string_map_to_atom_map(source_backend)
+  end
 
   @doc """
   Deletes a Sourcebackend
@@ -156,8 +156,9 @@ defmodule Logflare.Backends do
   For internal use only, should not be called outside of the `Logflare` namespace.
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  def via_source(%Source{id: id}, process_id),
-    do: {:via, Registry, {SourceRegistry, {id, process_id}}}
+  def via_source(%Source{id: id}, process_id) do
+    {:via, Registry, {SourceRegistry, {id, process_id}}}
+  end
 
   @doc """
   Registers a unique source-related process on the source registry. Unique.
@@ -173,17 +174,17 @@ defmodule Logflare.Backends do
   checks if the SourceSup for a given source has been started.
   """
   @spec source_sup_started?(Source.t()) :: boolean()
-  def source_sup_started?(%Source{id: id}),
-    do: Registry.lookup(SourceRegistry, {id, SourceSup}) != []
+  def source_sup_started?(%Source{id: id}) do
+    Registry.lookup(SourceRegistry, {id, SourceSup}) != []
+  end
 
   @doc """
   Starts a given SourceSup for a source. If already started, will return an error tuple.
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
-    with {:ok, _pid} <- DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
-      :ok
-    else
+    case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
+      {:ok, _pid} -> :ok
       {:error, {:already_started = reason, _pid}} -> {:error, reason}
     end
   end
@@ -219,8 +220,9 @@ defmodule Logflare.Backends do
   """
   @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
   def list_recent_logs(%Source{} = source) do
-    pid = ensure_recent_logs_started(source)
-    RecentLogs.list(pid)
+    source
+    |> ensure_recent_logs_started()
+    |> RecentLogs.list()
   end
 
   @doc """
@@ -236,9 +238,9 @@ defmodule Logflare.Backends do
   # checks if a recent logs cache is started. If not, starts the process.
   # returns the pid of the cache process if found
   defp ensure_recent_logs_started(%Source{} = source) do
-    source
-    |> RecentLogs.get_pid()
-    |> case do
+    pid = RecentLogs.get_pid(source)
+
+    case pid do
       nil -> start_recent_logs_cache(source)
       pid -> pid
     end

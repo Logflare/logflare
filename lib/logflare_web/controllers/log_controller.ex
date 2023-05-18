@@ -1,22 +1,25 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
+
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Backends
 
-  plug CORSPlug,
-       [
-         origin: "*",
-         max_age: 1_728_000,
-         headers: [
-           "Authorization",
-           "Content-Type",
-           "Content-Length",
-           "X-Requested-With"
-         ],
-         methods: ["POST", "OPTIONS"],
-         send_preflight_response?: true
-       ]
-       when action in [:browser_reports, :generic_json, :create]
+  plug(
+    CORSPlug,
+    [
+      origin: "*",
+      max_age: 1_728_000,
+      headers: [
+        "Authorization",
+        "Content-Type",
+        "Content-Length",
+        "X-Requested-With"
+      ],
+      methods: ["POST", "OPTIONS"],
+      send_preflight_response?: true
+    ]
+    when action in [:browser_reports, :generic_json, :create]
+  )
 
   alias Logflare.Logs
 
@@ -51,9 +54,7 @@ defmodule LogflareWeb.LogController do
 
   def generic_json(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
-    batch =
-      batch
-      |> Logs.GenericJson.handle_batch()
+    batch = Logs.GenericJson.handle_batch(batch)
 
     ingest_and_render(conn, batch, source)
   end
@@ -69,9 +70,7 @@ defmodule LogflareWeb.LogController do
 
   def vector(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
-    batch =
-      batch
-      |> Logs.Vector.handle_batch()
+    batch = Logs.Vector.handle_batch(batch)
 
     ingest_and_render(conn, batch, source)
   end
@@ -87,9 +86,7 @@ defmodule LogflareWeb.LogController do
 
   def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
-    batch =
-      batch
-      |> Logs.BrowserReport.handle_batch()
+    batch = Logs.BrowserReport.handle_batch(batch)
 
     ingest_and_render(conn, batch, source)
   end

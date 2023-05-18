@@ -1,4 +1,4 @@
-<div class="subhead ">
+<div class="subhead">
   <div class="container mx-auto">
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/edit</h5>
     <div class="log-settings">
@@ -247,19 +247,20 @@
   <%= if LogflareWeb.Utils.flag("multibackend") == true do %>
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
-    <div class="form-group">
-      <%= label f, :v2_pipeline do %>
-        Toggle v2 pipeline for this source
-      <% end %>
-      <%= checkbox f, :v2_pipeline %>
-      <%= error_tag f, :v2_pipeline %>
-    </div>
+      <div class="form-group">
+        <%= label f, :v2_pipeline do %>
+          Toggle v2 pipeline for this source
+        <% end %>
+        <%= checkbox f, :v2_pipeline %>
+        <%= error_tag f, :v2_pipeline %>
+      </div>
+
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
-
     <%= if @conn.assigns.source.v2_pipeline do %>
       <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @conn.assigns.source.id})%>
     <% end %>
+
   <% end %>
 
 

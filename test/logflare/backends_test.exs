@@ -28,9 +28,11 @@ defmodule Logflare.BackendsTest do
       assert [%{config: %{url: "http" <> _}}, _] = Backends.list_source_backends(source)
     end
 
-    test "validates config correctly", %{source: source} do
-      assert {:ok, %SourceBackend{config: %{url: "http://example.com"}} = source_backend} =
+    test "validates config correctly for websocket backends", %{source: source} do
+      assert {:ok, source_backend} =
                Backends.create_source_backend(source, :webhook, %{url: "http://example.com"})
+
+      assert %SourceBackend{config: %{url: "http://example.com"}} = source_backend
 
       assert {:error, %Ecto.Changeset{}} =
                Backends.create_source_backend(source, :webhook, %{url: nil})
@@ -48,6 +50,28 @@ defmodule Logflare.BackendsTest do
 
       # unchanged
       assert %SourceBackend{config: %{url: "http" <> _}} =
+               Backends.get_source_backend(source_backend.id)
+    end
+
+    test "validates config correctly for postgres backends", %{source: source} do
+      assert {:ok, source_backend} =
+               Backends.create_source_backend(source, :postgres, %{url: "postgresql://host"})
+
+      assert %SourceBackend{config: %{url: "postgresql://host"}, type: :postgres} = source_backend
+
+      assert {:error, %Ecto.Changeset{}} =
+               Backends.create_source_backend(source, :postgres, %{url: nil})
+
+      assert {:ok, %SourceBackend{config: %{url: "postgresql://changed"}, type: :postgres}} =
+               Backends.update_source_backend_config(source_backend, %{
+                 url: "postgresql://changed"
+               })
+
+      assert {:error, %Ecto.Changeset{}} =
+               Backends.update_source_backend_config(source_backend, %{url: nil})
+
+      # unchanged
+      assert %SourceBackend{config: %{url: "postgresql" <> _}} =
                Backends.get_source_backend(source_backend.id)
     end
   end

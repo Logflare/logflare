@@ -17,18 +17,14 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
     # create
     assert view
            |> element("button", "Add a backend")
-           |> render_click() =~ "Url"
+           |> render_click() =~ "Select a backend type"
 
     assert view
            |> element("form")
-           |> render_submit(%{
-             source_backend: %{
-               type: "webhook",
-               config: %{url: "http://localhost:1234"}
-             }
-           }) =~ "localhost"
+           |> render_submit(%{backend_form: %{type: "webhook", url: "http://localhost:1234"}}) =~
+             "localhost"
 
-    refute view |> render() =~ "Url"
+    refute render(view) =~ "URL"
 
     refute view
            |> element("button", "Remove")
