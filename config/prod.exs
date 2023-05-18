@@ -38,7 +38,7 @@ config :logflare, Logflare.Repo,
   port: 5432
 
 config :logger,
-  sync_threshold: 10_001,
+  sync_threshold: 10_000,
   discard_threshold: 10_000,
   compile_time_purge_matching: [
     [level_lower_than: :info]
