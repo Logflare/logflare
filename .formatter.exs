@@ -12,5 +12,5 @@
     :typed_ecto_schema,
     :open_api_spex
   ],
-  plugins: [Phoenix.LiveView.HTMLFormatter],
+  plugins: [Phoenix.LiveView.HTMLFormatter]
 ]

@@ -41,7 +41,8 @@ defmodule LogflareWeb.Source.SearchLV do
     last_query_completed_at: nil,
     lql_rules: [],
     querystring: "",
-    search_history: []
+    search_history: [],
+    search_form: to_form(%{}, as: :search)
   ]
 
   def mount(params, session, socket) do

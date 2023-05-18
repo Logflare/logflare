@@ -12,6 +12,7 @@ defmodule LogflareWeb.LqlHelpers do
       title: "Logflare Query Language"
     ) do
       assigns = %{}
+
       ~L"""
       <i class="fas fa-code"></i><span class="hide-on-mobile"> LQL </span>
       """
@@ -25,6 +26,7 @@ defmodule LogflareWeb.LqlHelpers do
       title: "Source Schema"
     ) do
       assigns = %{}
+
       ~L"""
       <i class="fas fa-database"></i><span class="hide-on-mobile"> schema </span>
       """

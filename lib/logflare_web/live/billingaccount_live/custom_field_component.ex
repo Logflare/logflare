@@ -134,6 +134,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
 
   defp delete_link(key, myself) do
     assigns = %{}
+
     ~L"""
     <a href="#" phx-click="delete" phx-disable-with="deleting..." phx-value-key="<%= key %>" phx-target="<%= myself %>" class="small">delete</a>
     """

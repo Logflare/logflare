@@ -204,6 +204,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   defp delete_link(p, myself) do
     assigns = %{}
+
     ~L"""
     <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id="<%= p.id %>" phx-target="<%= myself %>" class="btn btn-danger btn-sm m-3">Delete</button>
     """
@@ -211,6 +212,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   defp make_default(p, myself) do
     assigns = %{}
+
     ~L"""
     <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</button>
     """
