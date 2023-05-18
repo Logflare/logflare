@@ -3,10 +3,13 @@
 # load secrets conditionally
 if [ -f /tmp/.secrets.env ]
     then
-    echo '/tmp/.secrets.env file present, loading secrets...'; 
+    echo '/tmp/.secrets.env file present, loading secrets...';
     export $(grep -v '^#' /tmp/.secrets.env | xargs);
 fi
 
+# wait for networking to be ready before starting Erlang
+echo 'Sleeping for 15 seconds...'
+sleep 15
 
 if [[ "$LIBCLUSTER_TOPOLOGY" == "gce" ]]
 then
@@ -20,8 +23,7 @@ then
 
 fi
 
-# wait for networking to be ready before starting Erlang
-sleep 15
+echo "LOGFLARE_NODE_HOST is: $LOGFLARE_NODE_HOST"
 
 ./logflare eval Logflare.Release.migrate
-./logflare start --sname logflare
+RELEASE_COOKIE=$(cat /tmp/.magic_cookie 2>/dev/null || echo $RANDOM | md5sum | head -c 20) ./logflare start --sname logflare

@@ -36,28 +36,14 @@ defmodule Logflare.SqlV2 do
   def transform(
         input,
         %_{
-          bigquery_project_id: project_id,
-          bigquery_dataset_id: dataset_id
+          bigquery_project_id: user_project_id,
+          bigquery_dataset_id: user_dataset_id
         } = user
       ) do
     {query, sandboxed_query} =
       case input do
         q when is_binary(q) -> {q, nil}
         other when is_tuple(other) -> other
-      end
-
-    project_id =
-      if is_nil(project_id) do
-        Application.get_env(:logflare, Logflare.Google)[:project_id]
-      else
-        project_id
-      end
-
-    dataset_id =
-      if is_nil(dataset_id) do
-        User.generate_bq_dataset_id(user)
-      else
-        dataset_id
       end
 
     sources = Sources.list_sources_by_user(user)
@@ -69,8 +55,10 @@ defmodule Logflare.SqlV2 do
 
     with {:ok, statements} <- Parser.parse(query),
          data = %{
-           project_id: project_id,
-           dataset_id: dataset_id,
+           logflare_project_id: Application.get_env(:logflare, Logflare.Google)[:project_id],
+           user_project_id: user_project_id,
+           logflare_dataset_id: User.generate_bq_dataset_id(user),
+           user_dataset_id: user_dataset_id,
            sources: sources,
            source_mapping: source_mapping,
            source_names: Map.keys(source_mapping),
@@ -111,7 +99,7 @@ defmodule Logflare.SqlV2 do
          :ok <- check_single_query_only(ast),
          :ok <- has_restricted_functions(ast),
          :ok <- has_wildcard_in_select(ast),
-         :ok <- check_all_sources_known(ast, data) do
+         :ok <- check_all_sources_allowed(ast, data) do
       :ok
     end
   end
@@ -126,43 +114,83 @@ defmodule Logflare.SqlV2 do
 
   defp maybe_validate_sandboxed_query_ast(_, _data), do: :ok
 
-  defp check_all_sources_known(statement, data),
-    do: check_all_sources_known(statement, :ok, data)
+  defp check_all_sources_allowed(statement, data),
+    do: check_all_sources_allowed(statement, :ok, data)
 
-  defp check_all_sources_known(_kv, {:error, _} = err, _data), do: err
+  defp check_all_sources_allowed(_kv, {:error, _} = err, _data), do: err
 
-  defp check_all_sources_known({"Table", %{"name" => name}}, _acc, %{
+  defp check_all_sources_allowed({"Table", %{"name" => name}}, _acc, %{
          source_names: source_names,
+         user_project_id: user_project_id,
+         logflare_project_id: logflare_project_id,
          ast: ast
        })
        when is_list(name) do
     cte_names = extract_cte_alises(ast)
 
-    unknown_table_names =
-      for %{"value" => table_name} <- name,
-          table_name not in source_names and table_name not in cte_names do
-        table_name
-      end
+    table_names = for %{"value" => table_name} <- name, do: table_name
 
-    if length(unknown_table_names) == 0 do
-      :ok
-    else
-      {:error, "can't find source #{Enum.join(unknown_table_names, ", ")}"}
+    {disallowed, unknown} =
+      reject_source_names(
+        table_names,
+        logflare_project_id,
+        user_project_id,
+        source_names ++ cte_names
+      )
+
+    cond do
+      length(unknown) > 0 ->
+        {:error, "can't find source #{Enum.join(unknown, ", ")}"}
+
+      length(disallowed) > 0 ->
+        {:error,
+         "Querying outside of user BigQuery project is not allowed: #{Enum.join(disallowed, ", ")}"}
+
+      true ->
+        :ok
     end
   end
 
-  defp check_all_sources_known(kv, acc, data) when is_list(kv) or is_map(kv) do
+  defp check_all_sources_allowed(kv, acc, data) when is_list(kv) or is_map(kv) do
     kv
     |> Enum.reduce(acc, fn kv, nested_acc ->
-      check_all_sources_known(kv, nested_acc, data)
+      check_all_sources_allowed(kv, nested_acc, data)
     end)
   end
 
-  defp check_all_sources_known({_k, v}, acc, data) when is_list(v) or is_map(v) do
-    check_all_sources_known(v, acc, data)
+  defp check_all_sources_allowed({_k, v}, acc, data) when is_list(v) or is_map(v) do
+    check_all_sources_allowed(v, acc, data)
   end
 
-  defp check_all_sources_known(_kv, acc, _data), do: acc
+  defp check_all_sources_allowed(_kv, acc, _data), do: acc
+
+  # rejects sources into 2 groups, disallowed and unknown
+  defp reject_source_names(table_names, logflare_project_id, user_project_id, known_names) do
+    {disallowed_table_names, remaining_table_names} =
+      table_names
+      |> Enum.split_while(fn name ->
+        # true will be put in disallowed list
+        cond do
+          is_project_fully_qualified_name(name, logflare_project_id) ->
+            true
+
+          user_project_id != nil ->
+            # check that the name starts with user's bq project id
+            not is_project_fully_qualified_name(name, user_project_id)
+
+          true ->
+            false
+        end
+      end)
+
+    unknown_table_names =
+      Enum.reject(remaining_table_names, fn name ->
+        name in known_names or
+          is_project_fully_qualified_name(name, user_project_id)
+      end)
+
+    {disallowed_table_names, unknown_table_names}
+  end
 
   defp check_single_query_only([_stmt]), do: :ok
 
@@ -386,7 +414,15 @@ defmodule Logflare.SqlV2 do
       |> Atom.to_string()
       |> String.replace("-", "_")
 
-    ~s(#{data.project_id}.#{data.dataset_id}.#{token})
+    # byob bq
+    project_id =
+      if is_nil(data.user_project_id), do: data.logflare_project_id, else: data.user_project_id
+
+    # byob bq
+    dataset_id =
+      if is_nil(data.user_dataset_id), do: data.logflare_dataset_id, else: data.user_dataset_id
+
+    ~s(#{project_id}.#{dataset_id}.#{token})
   end
 
   @doc """
@@ -582,4 +618,12 @@ defmodule Logflare.SqlV2 do
   end
 
   defp extract_all_parameters(_kv, acc), do: acc
+
+  # returns true if the name is fully qualified and has the project id prefix.
+  defp is_project_fully_qualified_name(_table_name, nil), do: false
+
+  defp is_project_fully_qualified_name(table_name, project_id) when is_binary(project_id) do
+    {:ok, regex} = Regex.compile("#{project_id}\\..+\\..+")
+    Regex.match?(regex, table_name)
+  end
 end

@@ -55,7 +55,15 @@ gcloud_prod.json
 
 .google.secret.json
 .*.env
+
 !.template.env
 !.docker.env
 # rustler nif binaries
 /priv/native
+
+# SSL Certificates required for LB to Instance TLS
+.*.cacert.*
+.*.cert.*
+.*.req.*
+!.*.cacert.*.enc
+!.*.cert.*.enc

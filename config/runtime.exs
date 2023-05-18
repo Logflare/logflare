@@ -207,4 +207,14 @@ config :stripity_stripe,
 
 if config_env() != :test do
   config :goth, json: File.read!("gcloud.json")
+  config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
+end
+
+if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.key")) do
+  config :logflare,
+    ssl: [
+      cacertfile: "cacert.pem",
+      certfile: "cert.pem",
+      keyfile: "cert.key"
+    ]
 end

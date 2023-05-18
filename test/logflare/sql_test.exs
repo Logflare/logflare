@@ -2,8 +2,20 @@ defmodule Logflare.SqlTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.SqlV2
-  @project_id "logflare-dev-238720"
+  @logflare_project_id "logflare-project-id"
+  @user_project_id "user-project-id"
+  @user_dataset_id "user-dataset-id"
   @env "test"
+
+  setup do
+    values = Application.get_env(:logflare, Logflare.Google)
+    to_put = Keyword.put(values, :project_id, @logflare_project_id)
+    Application.put_env(:logflare, Logflare.Google, to_put)
+
+    on_exit(fn ->
+      Application.put_env(:logflare, Logflare.Google, values)
+    end)
+  end
 
   test "parser can handle complex sql" do
     user = insert(:user)
@@ -16,7 +28,7 @@ defmodule Logflare.SqlTest do
     end
   end
 
-  test "transforms table names correctly" do
+  test "non-BYOB - transforms table names correctly" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
     source_dots = insert(:source, user: user, name: "my.table.name")
@@ -102,6 +114,12 @@ defmodule Logflare.SqlTest do
       assert {:ok, v2} = SqlV2.transform(input, user)
       assert String.downcase(v2) == expected
     end
+  end
+
+  test "non-BYOB invalid queries" do
+    user = insert(:user)
+    insert(:source, user: user, name: "my_table")
+    insert(:source, user: user, name: "other_table")
 
     # invalid queries
     for {input, expected} <- [
@@ -187,10 +205,28 @@ defmodule Logflare.SqlTest do
           {"select datetime() from `light-two-os-directions-test`",
            "can't find source light-two-os-directions-test"},
           {"with src as (select a from unknown_table) select datetime() from my_table",
-           "can't find source unknown_table"}
+           "can't find source unknown_table"},
+          # cannot query logflare project
+          {"select a from `#{@logflare_project_id}.mydataset.mytable`",
+           "querying outside of user BigQuery project is not allowed"}
         ] do
-      assert {:error, err2} = SqlV2.transform(input, user)
-      assert err2 =~ expected, "input: #{inspect(input)}"
+      assert {:error, err} = SqlV2.transform(input, user)
+
+      assert String.downcase(err) =~ String.downcase(expected),
+             "should error with '#{expected}'. input: #{inspect(input)}"
+    end
+  end
+
+  test "BYOB - transforms table names correctly" do
+    user =
+      insert(:user, bigquery_project_id: @user_project_id, bigquery_dataset_id: @user_dataset_id)
+
+    for {input, expected} <- [
+          # fully qualified names must start with the user's bigquery project
+          {"select a from `#{@user_project_id}.mydataset.mytable`",
+           "select a from `#{@user_project_id}.mydataset.mytable`"}
+        ] do
+      assert SqlV2.transform(input, user) |> elem(1) |> String.downcase() == expected
     end
   end
 
@@ -260,6 +296,6 @@ defmodule Logflare.SqlTest do
       |> Atom.to_string()
       |> String.replace("-", "_")
 
-    "`#{@project_id}.#{user.id}_#{@env}.#{token}`"
+    "`#{@logflare_project_id}.#{user.id}_#{@env}.#{token}`"
   end
 end

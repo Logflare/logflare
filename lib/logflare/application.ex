@@ -15,12 +15,6 @@ defmodule Logflare.Application do
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
 
-    # Start distribution early for Cachex
-    # can work with it.
-    unless Node.alive?() or env in [:test] do
-      {:ok, _} = Node.start(:logflare)
-    end
-
     # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
@@ -76,12 +70,17 @@ defmodule Logflare.Application do
     username = Application.get_env(:logflare, Logflare.Repo)[:username]
     password = Application.get_env(:logflare, Logflare.Repo)[:password]
     database = Application.get_env(:logflare, Logflare.Repo)[:database]
+
     port = Application.get_env(:logflare, Logflare.Repo)[:port]
     slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
     topologies = Application.get_env(:libcluster, :topologies, [])
+
+    grpc_port = Application.get_env(:grpc, :port)
+    ssl = Application.get_env(:logflare, :ssl)
+    grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
 
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
@@ -139,7 +138,7 @@ defmodule Logflare.Application do
 
       # If we get a log event and the Source.Supervisor is not up it will 500
       LogflareWeb.Endpoint,
-
+      {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
       # Monitor system level metrics
       Logflare.SystemMetricsSup,
 
