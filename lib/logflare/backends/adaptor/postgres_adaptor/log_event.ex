@@ -4,8 +4,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent do
   """
   use Ecto.Schema
   import Ecto.Changeset
+
   @primary_key {:id, :string, []}
-  schema "log_events" do
+
+  schema "log_event" do
     field(:body, :map)
     field(:event_message, :string)
     field(:timestamp, :utc_datetime_usec)

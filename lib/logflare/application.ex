@@ -14,7 +14,6 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
-    ensure_loaded_postgres_backend_migrations()
     # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
@@ -191,17 +190,5 @@ defmodule Logflare.Application do
       :timer.sleep(3_000)
       SingleTenant.update_supabase_source_schemas()
     end
-  end
-
-  defp ensure_loaded_postgres_backend_migrations do
-    # Needed to ensure that the migrations are properly loaded
-    # This was found during tests where the use Ecto.Migration apparently wasn't
-    # loading the migrations properly, triggering errors when running Ecto.Migrator
-
-    # Similar error found in Realtime: https://github.com/supabase/realtime/pull/520/files#diff-1de8846d5d70df4b816a1b2bca51468d6c8386bc81f9efe82df2bf837367497d
-    # This is fixed in ecto_sql main branch, awaiting new version to be released
-    # https://github.com/elixir-ecto/ecto_sql/blob/d8eaabcf34d52fad1d286dab653b2f200ba99333/lib/ecto/migrator.ex#L360
-    Logflare.Backends.Adaptor.PostgresAdaptor.Repo.migrations()
-    |> Enum.map(fn {_, migration} -> Code.ensure_loaded!(migration) end)
   end
 end
