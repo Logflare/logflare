@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 config :logflare, env: :staging
 
@@ -20,19 +20,13 @@ config :logflare, LogflareWeb.Endpoint,
     ],
     compress: true
   ],
-  url: [host: "logflarestaging.com", scheme: "https", port: 443],
-  cache_static_manifest: "priv/static/cache_manifest.json",
-  check_origin: [
-    "https://logflarestaging.com",
-    "//*.logflarestaging.com"
+  live_view: [
+    signing_salt: "2hJsy/zhChcvp8NEvaJyH3nokAbI+UrEQQhxLXmEcTKnNUxbMvVP7BOgrog00V7G"
   ],
+  cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
   code_reloader: false,
   version: Application.spec(:logflare, :vsn)
-
-config :logger,
-  level: :info,
-  backends: [:console]
 
 config :logger, :console, metadata: :all
 
@@ -45,50 +39,17 @@ config :logflare, Logflare.Repo,
   prepare: :unnamed,
   timeout: 30_000
 
-config :logflare, Logflare.Google,
-  dataset_id_append: "_staging",
-  project_number: "395392434060",
-  project_id: "logflare-staging",
-  service_account: "logflare-staging@logflare-staging.iam.gserviceaccount.com",
-  compute_engine_sa: "compute-engine-2022@logflare-staging.iam.gserviceaccount.com",
-  api_sa: "395392434060@cloudservices.gserviceaccount.com",
-  cloud_build_sa: "395392434060@cloudbuild.gserviceaccount.com"
-
 config :logflare_telemetry,
   source_id: :"e5d18201-f0e0-459b-b6b3-2d3bc7d16fa4"
 
-config :libcluster,
-  debug: true,
-  topologies: [
-    gce: [
-      strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
-      config: [
-        release_name: :logflare
-      ]
-    ]
-  ]
-
-config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
-  regions: [{"us-central1", "logflare-cluster-group"}],
-  zones: [
-    {"us-central1-a", "instance-group-1"},
-    {"us-central1-a", "instance-group"}
-  ]
+config :libcluster, debug: true
 
 config :logflare, Logflare.Tracker, pool_size: 1
-
-config :logflare, Logflare.Vercel.Client,
-  client_id: "oac_9AFs6dPQPFhy5xS1IOvc2xrf",
-  client_secret: "mmDrqcJYuJeIxNX9AXbNqrhm",
-  redirect_uri: "https://logflarestaging.com/install/vercel-v2",
-  install_vercel_uri: "https://vercel.com/integrations/logflare-dev/new"
-
-config :erlexec, root: true, user: "root"
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 import_config "telemetry.exs"
 
-if File.exists?("config/staging.secret.exs") do
-  import_config "staging.secret.exs"
-end
+# if File.exists?("config/staging.secret.exs") do
+#   import_config "staging.secret.exs"
+# end

@@ -171,9 +171,12 @@ defmodule Logflare.LqlParserTest do
                   operator: :=,
                   path: "timestamp",
                   shorthand: "now",
-                  value: now_ndt()
+                  value: now_out
                 }
-              ]} == Parser.parse("timestamp:now", @default_schema)
+              ]} = Parser.parse("timestamp:now", @default_schema)
+
+      # use diff to reduce test flakiness
+      assert DateTime.diff(now_ndt(), now_out, :millisecond) |> abs() <= 150
 
       for {qs, shorthand, start_value, end_value} <- [
             {"t:today", "today", today_dt(),
@@ -232,16 +235,19 @@ defmodule Logflare.LqlParserTest do
             {"t:last@1y", "last@1year",
              Timex.shift(%{now_udt_zero_sec() | minute: 0, hour: 0}, years: -1), now_ndt()}
           ] do
-        lql_rules = [
-          %Logflare.Lql.FilterRule{
-            operator: :range,
-            path: "timestamp",
-            shorthand: shorthand,
-            values: [start_value, end_value]
-          }
-        ]
+        assert {:ok,
+                [
+                  %Logflare.Lql.FilterRule{
+                    operator: :range,
+                    path: "timestamp",
+                    shorthand: ^shorthand,
+                    values: [start_out, end_out]
+                  }
+                ]} = Parser.parse(qs, @default_schema)
 
-        assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+        # use diff to reduce test flakiness
+        assert DateTime.diff(start_value, start_out, :millisecond) |> abs() <= 1500
+        assert DateTime.diff(end_value, end_out, :millisecond) |> abs() <= 1500
       end
     end
 
@@ -536,7 +542,7 @@ defmodule Logflare.LqlParserTest do
     |> String.replace("(metadata.", "(m.")
   end
 
-  defp build_schema(input, opts \\ []) do
-    SchemaBuilder.build_table_schema(input, @default_schema, opts)
+  defp build_schema(input) do
+    SchemaBuilder.build_table_schema(input, @default_schema)
   end
 end

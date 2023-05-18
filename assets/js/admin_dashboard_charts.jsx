@@ -1,5 +1,5 @@
 import React from "react"
-import {ResponsiveBarCanvas} from "@nivo/bar"
+import { ResponsiveBarCanvas } from "@nivo/bar"
 
 const brandLightBlack = "#1d1d1d"
 const brandGreen = "#5eeb8f"
@@ -12,26 +12,20 @@ const theme = {
       strokeDasharray: "4 4",
     },
   },
-  axis: {ticks: {text: {fill: brandGreen}}},
-
-  tooltip: {
-    container: {
-      background: brandLightBlack,
-    },
-  },
+  axis: { ticks: { text: { fill: brandGreen } } },
 }
 
-const renderDefaultTooltip = ({value, color, indexValue}) => {
+const renderDefaultTooltip = ({ value, color, indexValue }) => {
   return (
-    <div>
-      <strong style={{color}}>Timestamp: {indexValue}</strong>
+    <div style={{ backgroundColor: brandLightBlack }}>
+      <strong style={{ color }}>Timestamp: {indexValue}</strong>
       <br />
-      <strong style={{color}}>Value: {value}</strong>
+      <strong style={{ color }}>Value: {value}</strong>
     </div>
   )
 }
 
-const Chart = ({data, keys}) => {
+const Chart = ({ data, keys }) => {
   return (
     <div
       style={{
@@ -40,7 +34,7 @@ const Chart = ({data, keys}) => {
     >
       <ResponsiveBarCanvas
         data={data}
-        margin={{top: 30, right: 30, bottom: 30, left: 30}}
+        margin={{ top: 30, right: 30, bottom: 30, left: 30 }}
         padding={0.3}
         enableGridY={true}
         keys={keys}

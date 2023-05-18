@@ -1,14 +1,40 @@
 version: "3.9"
 services:
   db:
-    image: postgres:13.4
-    volumes:
-      - pg-data:/var/lib/postgresql/data
+    image: postgres:13.4-alpine
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
+      POSTGRES_DB: logflare_docker
     ports:
       - "5432:5432"
+    volumes:
+      - ./priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+      - pg-data:/var/lib/postgresql/data
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - "12111:12111"
+  logflare:
+    build:
+      dockerfile: ./Dockerfile
+      tags:
+        - "supabase/logflare:latest"
+        - "supabase/logflare:1.0.0"
+    ports:
+      - "4000:4000"
+    hostname: 127.0.0.1
+    volumes:
+      - type: bind
+        source: ${PWD}/.docker.env
+        target: /tmp/.secrets.env
+        read_only: true
+      - type: bind
+        source: ${PWD}/gcloud.json
+        target: /opt/app/rel/logflare/bin/gcloud.json
+        read_only: true
+    depends_on:
+      - db
 
 volumes:
   pg-data:

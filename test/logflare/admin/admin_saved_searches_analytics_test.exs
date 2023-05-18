@@ -9,7 +9,7 @@ defmodule Logflare.SavedSearches.AnalyticsTest do
 
   setup do
     u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-    s = insert(:source, token: Faker.UUID.v4(), rules: [], user_id: u.id)
+    s = insert(:source, token: TestUtils.gen_uuid(), rules: [], user_id: u.id)
 
     {:ok, ss} =
       SavedSearches.insert(

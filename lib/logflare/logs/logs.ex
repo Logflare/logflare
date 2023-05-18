@@ -5,7 +5,7 @@ defmodule Logflare.Logs do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
-  alias Logflare.Source.{BigQuery.Buffer, RecentLogsServer}
+  alias Logflare.Source.{BigQuery.BufferCounter, RecentLogsServer}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
@@ -39,12 +39,16 @@ defmodule Logflare.Logs do
   def ingest(%LE{source: %Source{} = source} = le) do
     # indvididual source genservers
     Supervisor.ensure_started(source.token)
+
+    # error here if this doesn't match
+    {:ok, _} = BufferCounter.push(le)
+
     RecentLogsServer.push(le)
-    Buffer.push(le)
 
     # all sources genservers
-    Sources.Counters.incriment(source.token)
-    SystemMetrics.AllLogsLogged.incriment(:total_logs_logged)
+
+    Sources.Counters.increment(source.token)
+    SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
 
     :ok
   end

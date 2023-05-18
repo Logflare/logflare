@@ -23,7 +23,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   use GenServer
 
-  alias Logflare.Source.BigQuery.{Schema, Pipeline, Buffer}
+  alias Logflare.Source.BigQuery.{Schema, Pipeline, BufferCounter}
 
   alias Logflare.Source.{
     EmailNotificationServer,
@@ -156,7 +156,7 @@ defmodule Logflare.Source.RecentLogsServer do
       {TextNotificationServer, rls},
       {WebhookNotificationServer, rls},
       {SlackHookServer, rls},
-      {Buffer, rls},
+      {BufferCounter, rls},
       {Schema, rls},
       {Pipeline, rls},
       {SearchQueryExecutor, rls},

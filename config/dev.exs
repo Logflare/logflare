@@ -1,10 +1,11 @@
-use Mix.Config
+import Config
 
 config :logflare,
   node_shutdown_code: "d1032129-500c-4ab4-bcc9-853665509b6b",
   env: :dev
 
 config :logflare, LogflareWeb.Endpoint,
+  server: true,
   http: [
     port: System.get_env("PORT") || 4000,
     transport_options: [
@@ -15,21 +16,16 @@ config :logflare, LogflareWeb.Endpoint,
     protocol_options: [max_keepalive: 1_000],
     compress: true
   ],
-  # url: [host: "dev.chasegranberry.net", scheme: "https", port: 443],
+  live_view: [
+    signing_salt: "eVpFFmpN+OHPrilThexLilWnF+a8zBLbCtdH/OzAayShcm1B3OHOyGiadM6qOezp"
+  ],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
   watchers: [
-    node: [
-      "node_modules/webpack/bin/webpack.js",
-      "--mode",
-      "development",
-      "--watch",
-      cd: Path.expand("../assets", __DIR__)
-    ]
-  ]
-
-config :logflare, LogflareWeb.Endpoint,
+    # build js files
+    npm: ["run", "watch", cd: Path.expand("../assets", __DIR__)]
+  ],
   live_reload: [
     patterns: [
       ~r{priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$},
@@ -40,20 +36,17 @@ config :logflare, LogflareWeb.Endpoint,
     ]
   ]
 
-config :logger,
-  level: :debug,
-  backends: [:console, LogflareLogger.HttpBackend]
-
 config :logger, :console,
   format: "\n[$level] [$metadata] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id],
+  level: :debug
 
 config :phoenix, :stacktrace_depth, 20
 
 config :logflare, Logflare.Repo,
   username: "postgres",
   password: "postgres",
-  database: "logflare",
+  database: "logflare_dev",
   hostname: "localhost",
   port: 5432,
   pool_size: 10,
@@ -67,7 +60,8 @@ config :logflare, Logflare.Google,
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
   compute_engine_sa: "compute-engine-2022@logflare-dev-238720.iam.gserviceaccount.com",
   api_sa: "1023172132421@cloudservices.gserviceaccount.com",
-  cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com"
+  cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com",
+  cloud_build_trigger_sa: "cloud-build@logflare-dev-238720.iam.gserviceaccount.com"
 
 config :libcluster,
   topologies: [
@@ -95,5 +89,10 @@ config :logflare, Logflare.Vercel.Client,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-import_config "dev.secret.exs"
-import_config "telemetry.exs"
+config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
+
+config :stripity_stripe,
+  api_key: "sk_test_thisisaboguskey",
+  api_base_url: "http://localhost:12111/v1/"
+
+import_config("telemetry.exs")

@@ -1,48 +1,142 @@
 defmodule Logflare.UsersTest do
   @moduledoc false
-  import Logflare.Factory
   use Logflare.DataCase
   alias Logflare.Sources
+  alias Logflare.User
   alias Logflare.Users
-  import Users
 
   setup do
     user = insert(:user)
-
     source = insert(:source, user_id: user.id)
     source = Sources.get_by(token: source.token)
-    user = user |> Users.preload_defaults()
+    user = Users.preload_defaults(user)
 
     {:ok, user: user, source: source}
   end
 
-  describe "Users" do
-    test "get_by/1", %{source: s1, user: u1} do
-      assert u1 ==
-               get_by(id: u1.id)
-               |> Users.preload_defaults()
+  test "users_count/0 returns user count" do
+    assert Users.count_users() == 1
+    insert(:user)
+    assert Users.count_users() == 2
+  end
 
+  describe "user_changeset" do
+    test "adds api_key to changeset changes if data does not have it" do
+      params = %{
+        "email" => TestUtils.gen_email(),
+        "provider_uid" => TestUtils.gen_uuid(),
+        "provider" => "email",
+        "token" => TestUtils.gen_uuid()
+      }
+
+      result = Users.user_changeset(%User{}, params)
+      assert result.changes.api_key
+    end
+
+    test "does not add api_key to changeset changes if data has it" do
+      user = insert(:user)
+      result = Users.user_changeset(user, %{name: TestUtils.random_string()})
+      refute Map.has_key?(result.changes, :api_key)
+    end
+  end
+
+  describe "get_by/1" do
+    test "get user by id", %{source: s1, user: u1} do
+      assert u1 == Users.get_by(id: u1.id) |> Users.preload_defaults()
       assert length(u1.sources) > 0
       assert s1_db = hd(u1.sources)
       assert s1_db.token == s1.token
       assert s1_db.user_id == u1.id
     end
 
-    test "get_by api_key", %{user: right_user} do
-      left_user = get_by(api_key: right_user.api_key)
+    test "get user by api_key", %{user: right_user} do
+      left_user = Users.get_by(api_key: right_user.api_key)
       assert left_user.id == right_user.id
-      assert get_by(api_key: "nil") == nil
+      assert Users.get_by(api_key: "nil") == nil
     end
+  end
 
-    test "delete preferred email", %{user: u1} do
-      user = get_by(api_key: u1.api_key)
+  describe "update_user_allowed/2" do
+    test "changes user information", %{user: u1} do
+      user = Users.get_by(api_key: u1.api_key)
+      email = TestUtils.random_string()
 
-      email = Faker.Internet.free_email()
       {:ok, user} = Users.update_user_allowed(user, %{"email_preferred" => email})
-      assert get_by(api_key: u1.api_key).email_preferred == email
+      assert Users.get_by(api_key: u1.api_key).email_preferred == String.downcase(email)
 
       {:ok, _user} = Users.update_user_allowed(user, %{"email_preferred" => nil})
-      assert get_by(api_key: u1.api_key).email_preferred == nil
+      assert Users.get_by(api_key: u1.api_key).email_preferred == nil
+    end
+  end
+
+  describe "insert_user/1" do
+    test "inserts new user" do
+      params = %{"email" => TestUtils.random_string(), "provider" => "email"}
+      assert {:ok, _user} = Users.insert_user(params)
+    end
+
+    test "inserts new user and generates provider_uid and token automatically" do
+      params = %{"email" => TestUtils.random_string(), "provider" => "email"}
+
+      assert {:ok, user} = Users.insert_user(params)
+      assert user.provider_uid
+      assert user.token
+    end
+  end
+
+  describe "insert_or_update_user/1" do
+    test "if user exists with provider_uid, updates it", %{user: u1} do
+      name = TestUtils.random_string()
+
+      params = %{
+        name: name,
+        provider: "email",
+        email: u1.email,
+        provider_uid: u1.provider_uid,
+        token: u1.token
+      }
+
+      {:ok_found_user, user} = Users.insert_or_update_user(params)
+      assert user.name == name
+      assert user.id == u1.id
+    end
+
+    test "if provider_uid does not exist but user exists, search by email and update", %{user: u1} do
+      name = TestUtils.random_string()
+
+      params = %{
+        name: name,
+        provider: "email",
+        email: u1.email,
+        provider_uid: Ecto.UUID.generate(),
+        token: u1.token
+      }
+
+      {:ok_found_user, user} = Users.insert_or_update_user(params)
+      assert user.name == name
+      assert user.id == u1.id
+    end
+
+    test "if no user exists with given email or provider_uid creates a new one with given params" do
+      params = %{
+        name: TestUtils.random_string(),
+        provider: "email",
+        email: TestUtils.random_string(),
+        provider_uid: Ecto.UUID.generate(),
+        token: Ecto.UUID.generate()
+      }
+
+      assert {:ok, _user} = Users.insert_or_update_user(params)
+    end
+
+    test "if there are missing params, returns the error changeset" do
+      params = %{
+        name: TestUtils.random_string(),
+        provider: "email",
+        token: Ecto.UUID.generate()
+      }
+
+      assert {:error, "Missing email or provider_uid"} = Users.insert_or_update_user(params)
     end
   end
 end

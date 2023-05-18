@@ -28,7 +28,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
-         relation: {"public", "sources"},
+         relation: {_schema, "sources"},
          record: %{"id" => id}
        })
        when is_binary(id) do
@@ -36,7 +36,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
-         relation: {"public", "users"},
+         relation: {_schema, "users"},
          record: %{"id" => id}
        })
        when is_binary(id) do
@@ -44,7 +44,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
-         relation: {"public", "billing_accounts"},
+         relation: {_schema, "billing_accounts"},
          record: %{"id" => id}
        })
        when is_binary(id) do
@@ -52,7 +52,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
-         relation: {"public", "plans"},
+         relation: {_schema, "plans"},
          record: %{"id" => id}
        })
        when is_binary(id) do
@@ -60,7 +60,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
-         relation: {"public", "source_schemas"},
+         relation: {_schema, "source_schemas"},
          record: %{"id" => id}
        })
        when is_binary(id) do
@@ -68,7 +68,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
-         relation: {"public", "billing_accounts"},
+         relation: {_schema, "billing_accounts"},
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
@@ -76,7 +76,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
-         relation: {"public", "source_schemas"},
+         relation: {_schema, "source_schemas"},
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
@@ -84,7 +84,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
-         relation: {"public", "sources"},
+         relation: {_schema, "sources"},
          record: %{"id" => _id, "user_id" => user_id}
        })
        when is_binary(user_id) do
@@ -94,7 +94,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
-         relation: {"public", "rules"},
+         relation: {_schema, "rules"},
          record: %{"id" => _id, "source_id" => source_id}
        })
        when is_binary(source_id) do
@@ -103,7 +103,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
-         relation: {"public", "users"},
+         relation: {_schema, "users"},
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
@@ -111,7 +111,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%DeletedRecord{
-         relation: {"public", "billing_accounts"},
+         relation: {_schema, "billing_accounts"},
          old_record: %{"id" => id}
        })
        when is_binary(id) do
@@ -119,7 +119,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%DeletedRecord{
-         relation: {"public", "sources"},
+         relation: {_schema, "sources"},
          old_record: %{"id" => id}
        })
        when is_binary(id) do
@@ -127,7 +127,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%DeletedRecord{
-         relation: {"public", "source_schemas"},
+         relation: {_schema, "source_schemas"},
          old_record: %{"id" => id}
        })
        when is_binary(id) do
@@ -135,7 +135,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%DeletedRecord{
-         relation: {"public", "users"},
+         relation: {_schema, "users"},
          old_record: %{"id" => id}
        })
        when is_binary(id) do
@@ -143,7 +143,7 @@ defmodule Logflare.CacheBuster do
   end
 
   defp handle_record(%DeletedRecord{
-         relation: {"public", "rules"},
+         relation: {_schema, "rules"},
          old_record: %{"id" => _id, "source_id" => source_id}
        })
        when is_binary(source_id) do

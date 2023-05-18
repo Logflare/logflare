@@ -1,25 +1,19 @@
 defmodule Logflare.Application do
   @moduledoc false
   use Application
+  require Logger
 
-  alias Logflare.{
-    Users,
-    Sources,
-    Logs,
-    Billing,
-    PubSubRates,
-    ContextCache,
-    SourceSchemas
-  }
+  alias Logflare.Billing
+  alias Logflare.ContextCache
+  alias Logflare.Logs
+  alias Logflare.PubSubRates
+  alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.SourceSchemas
+  alias Logflare.Users
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
-
-    # Start distribution early so that both Cachex and Logflare.SQL
-    # can work with it.
-    unless Node.alive?() or env in [:test] do
-      {:ok, _} = Node.start(:logflare)
-    end
 
     # TODO: Set node status in GCP when sigterm is received
     :ok =
@@ -38,13 +32,9 @@ defmodule Logflare.Application do
   end
 
   defp get_goth_child_spec() do
-    env = Application.get_env(:logflare, :env)
     # Setup Goth for GCP connections
-    credentials =
-      if env in [:dev, :test],
-        do: Application.get_env(:goth, :json) |> Jason.decode!(),
-        else: System.get_env("GOOGLE_APPLICATION_CREDENTIALS") |> File.read!() |> Jason.decode!()
-
+    require Logger
+    credentials = Jason.decode!(Application.get_env(:goth, :json))
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
     source = {:service_account, credentials, scopes: scopes}
     {Goth, name: Logflare.Goth, source: source}
@@ -80,12 +70,17 @@ defmodule Logflare.Application do
     username = Application.get_env(:logflare, Logflare.Repo)[:username]
     password = Application.get_env(:logflare, Logflare.Repo)[:password]
     database = Application.get_env(:logflare, Logflare.Repo)[:database]
+
     port = Application.get_env(:logflare, Logflare.Repo)[:port]
     slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
 
     tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
-    topologies = Application.get_env(:libcluster, :topologies)
+    topologies = Application.get_env(:libcluster, :topologies, [])
+
+    grpc_port = Application.get_env(:grpc, :port)
+    ssl = Application.get_env(:logflare, :ssl)
+    grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
 
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
@@ -134,7 +129,6 @@ defmodule Logflare.Application do
       Logflare.CacheBuster,
 
       # Sources
-      Sources.BuffersCache,
       Logs.RejectedLogEvents,
       # init Counters before Supervisof as Supervisor calls Counters through table create
       Sources.Counters,
@@ -144,18 +138,53 @@ defmodule Logflare.Application do
 
       # If we get a log event and the Source.Supervisor is not up it will 500
       LogflareWeb.Endpoint,
-
+      {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
       # Monitor system level metrics
       Logflare.SystemMetricsSup,
 
       # For Logflare Endpoints
-      Logflare.SQL,
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache}
-    ]
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+
+      # Startup tasks
+      {Task, fn -> startup_tasks() end}
+    ] ++ conditional_children()
+  end
+
+  def conditional_children do
+    config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
+
+    # only add in config cat to multi-tenant prod
+    if config_cat_key do
+      [
+        {ConfigCat, [sdk_key: config_cat_key]}
+      ]
+    else
+      []
+    end
   end
 
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  def startup_tasks do
+    # if single tenant, insert enterprise user
+    Logger.info("Executing startup tasks")
+
+    if SingleTenant.single_tenant?() do
+      Logger.info("Ensuring single tenant user is seeded...")
+      SingleTenant.create_default_plan()
+      SingleTenant.create_default_user()
+    end
+
+    if SingleTenant.supabase_mode?() do
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+      # buffer time for all sources to init and create tables
+      # in case of latency.
+      :timer.sleep(3_000)
+      SingleTenant.update_supabase_source_schemas()
+    end
   end
 end

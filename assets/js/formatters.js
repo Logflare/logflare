@@ -1,5 +1,5 @@
-import {DateTime} from "luxon"
-import {format, formatDistance} from "date-fns"
+import { DateTime } from "luxon"
+import { format, formatDistance } from "date-fns"
 
 import * as userConfig from "./user-config-storage"
 

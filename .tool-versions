@@ -1,6 +1,4 @@
-elixir 1.12.3-otp-24
-erlang 24.1.6
-gradle 7.3.3
-kotlin 1.5.20
-nodejs 16.4.2
-java openjdk-17
+elixir 1.14.4-otp-25
+nodejs 18.13.0
+rust 1.64.0
+erlang 25.3.1

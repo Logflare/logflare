@@ -3,7 +3,7 @@
 #
 # This configuration file is loaded before any dependency and
 # is restricted to this project.
-use Mix.Config
+import Config
 
 # General application configuration
 config :logflare,
@@ -11,20 +11,23 @@ config :logflare,
   # https://cloud.google.com/compute/docs/instances/deleting-instance#delete_timeout
   # preemtible is 30 seconds from shutdown to sigterm
   # normal instances can be more than 90 seconds
-
   sigterm_shutdown_grace_period_ms: 15_000
+
+config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
-  url: [host: "localhost"],
+  url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: Logflare.PubSub
+  pubsub_server: Logflare.PubSub,
+  live_view: [signing_salt: "Fvo_-oQi4bjPfQLh"]
 
 # Configures Elixir's Logger
 config :logger,
   handle_otp_reports: true,
-  handle_sasl_reports: false
+  handle_sasl_reports: false,
+  level: :info
 
 config :ueberauth, Ueberauth,
   providers: [
@@ -42,9 +45,8 @@ config :ueberauth, Ueberauth,
 config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
 
-config :logflare, ExOauth2Provider,
+oauth_common = [
   repo: Logflare.Repo,
-  resource_owner: Logflare.User,
   grant_flows: ~w(authorization_code),
   use_refresh_token: true,
   default_scopes: ~w(public),
@@ -52,6 +54,18 @@ config :logflare, ExOauth2Provider,
   revoke_refresh_token_on_use: true,
   otp_app: :logflare,
   access_token_expires_in: nil
+]
+
+config :logflare, ExOauth2Provider, [resource_owner: Logflare.User] ++ oauth_common
+
+config :logflare,
+       ExOauth2ProviderPartner,
+       [
+         resource_owner: Logflare.Partners.Partner,
+         application: Logflare.OauthApplications.PartnerOauthApplication,
+         access_token: Logflare.OauthAccessTokens.PartnerOauthAccessToken,
+         default_scopes: ~w(partner)
+       ] ++ oauth_common
 
 config :logflare, PhoenixOauth2Provider,
   current_resource_owner: :user,
@@ -59,10 +73,10 @@ config :logflare, PhoenixOauth2Provider,
   force_ssl_in_redirect_uri: true
 
 config :logflare, Logflare.Mailer,
-  adapter: Swoosh.Adapters.Mailgun,
+  adapter: Swoosh.Adapters.Local,
   domain: "logflare.app"
 
-config :swoosh, local: false
+config :swoosh, local: true
 
 config :tesla,
   adapter:
@@ -75,13 +89,6 @@ config :number,
     separator: "."
   ]
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-config :logflare, LogflareWeb.Endpoint,
-  live_view: [
-    signing_salt: System.get_env("PHOENIX_LIVE_VIEW_SECRET_SALT", "Fvo_-oQi4bjPfQLh")
-  ]
-
 config :scrivener_html,
   routes_helper: LogflareWeb.Router.Helpers,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
@@ -89,11 +96,23 @@ config :scrivener_html,
 
 config :logflare, Logflare.CacheBuster,
   replication_slot: :temporary,
-  publications: ["logflare_pub"]
+  publications: ["logflare_pub"],
+  # remember to add an ALTER PUBLICATION ... migration when changing published tables!
+  publication_tables: [
+    "billing_accounts",
+    "plans",
+    "rules",
+    "source_schemas",
+    "sources",
+    "users"
+  ]
+
+config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
+
+config :logflare, Logflare.Tracker, pool_size: 1
+
+config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
+
+config :grpc, start_server: true
 
 import_config "#{Mix.env()}.exs"
-
-# Any local configs a developer would like to set for themselves
-if Mix.env() == :dev do
-  import_config "local.secret.exs"
-end

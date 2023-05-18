@@ -13,6 +13,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.Validators
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
+  alias Logflare.SingleTenant
 
   describe "list" do
     setup %{conn: conn} do
@@ -89,6 +90,41 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "dashboard single tenant" do
+    TestUtils.setup_single_tenant(seed_user: true)
+
+    setup do
+      Logflare.Sources.Counters
+      |> stub()
+      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
+      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
+
+      [user: SingleTenant.get_default_user()]
+    end
+
+    test "renders source in dashboard", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      html =
+        conn
+        |> get(Routes.source_path(conn, :dashboard))
+        |> html_response(200)
+
+      assert html =~ source.name
+    end
+
+    test "renders source page", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      html =
+        conn
+        |> get(Routes.source_path(conn, :show, source))
+        |> html_response(200)
+
+      assert html =~ source.name
+    end
+  end
+
   describe "dashboard - rejected" do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
@@ -124,7 +160,7 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      new_name = Faker.String.base64()
+      new_name = TestUtils.random_string()
 
       params = %{
         "id" => s1.id,
@@ -188,7 +224,7 @@ defmodule LogflareWeb.SourceControllerTest do
       users: [u1, _u2],
       sources: [s1, _s2 | _]
     } do
-      nope_token = Faker.UUID.v4()
+      nope_token = TestUtils.gen_uuid()
       nope_api_quota = 1337
       nope_user_id = 1
 
@@ -263,7 +299,7 @@ defmodule LogflareWeb.SourceControllerTest do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
-      name = Faker.Person.name()
+      name = TestUtils.random_string()
 
       conn =
         conn
@@ -388,7 +424,7 @@ defmodule LogflareWeb.SourceControllerTest do
     Teams.create_team(u1, %{name: "u1 team"})
     Teams.create_team(u2, %{name: "u2 team"})
 
-    s1 = insert(:source, public_token: Faker.String.base64(16), user_id: u1.id)
+    s1 = insert(:source, public_token: TestUtils.random_string(), user_id: u1.id)
     s2 = insert(:source, user_id: u1.id)
     s3 = insert(:source, user_id: u2.id)
 

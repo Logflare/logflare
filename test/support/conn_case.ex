@@ -26,13 +26,17 @@ defmodule LogflareWeb.ConnCase do
     quote do
       use Mimic
 
-      import Plug.Conn
-      import Phoenix.ConnTest
-      import LogflareWeb.Router.Helpers
+      require Logflare.TestUtils
+
       import Logflare.Factory
+      import LogflareWeb.Router.Helpers
+      import Phoenix.ConnTest
       import Phoenix.LiveViewTest
+      import Plug.Conn
 
       alias Logflare.TestUtils
+      alias Logflare.User
+      alias Logflare.Partners.Partner
       alias LogflareWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing
@@ -40,12 +44,34 @@ defmodule LogflareWeb.ConnCase do
 
       setup context do
         Mimic.verify_on_exit!(context)
+
+        stub(ConfigCat, :get_value, fn _, _ -> true end)
+
+        :ok
       end
 
+      # for browser use
       def login_user(conn, user) do
         conn
         |> Plug.Test.init_test_session(%{user_id: user.id})
         |> Plug.Conn.assign(:user, user)
+      end
+
+      # for api use
+      def add_access_token(conn, user, scopes \\ ~w(public))
+
+      def add_access_token(conn, %User{} = user, scopes) do
+        scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
+        {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: scopes})
+
+        put_req_header(conn, "authorization", "Bearer #{access_token.token}")
+      end
+
+      def add_access_token(conn, %Partner{} = partner, scopes) do
+        scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
+        {:ok, access_token} = Logflare.Auth.create_access_token(partner, %{scopes: scopes})
+
+        put_req_header(conn, "authorization", "Bearer #{access_token.token}")
       end
     end
   end

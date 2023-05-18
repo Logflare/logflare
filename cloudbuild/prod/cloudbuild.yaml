@@ -12,42 +12,56 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./config/prod.secret.exs.enc
-      - --plaintext-file=./config/prod.secret.exs
+      - --ciphertext-file=./.prod.env.enc
+      - --plaintext-file=./.secrets.env
       - --location=us-central1
       - --keyring=logflare-prod-keyring-us-central1
       - --key=logflare-prod-secrets-key
-  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+  - name: gcr.io/cloud-builders/gcloud
     args:
-      [
-        "gsutil",
-        "cp",
-        "gs://logflare-build-support-prod/gudusoft.gsqlparser-2.5.2.5.jar",
-        "sql/gsp/gudusoft.gsqlparser-2.5.2.5.jar",
-      ]
-  - name: "gcr.io/cloud-builders/docker"
+      - kms
+      - decrypt
+      - --ciphertext-file=./.prod.cert.pem.enc
+      - --plaintext-file=./cert.pem
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
     args:
-      [
-        "build",
-        "--build-arg",
-        "MAGIC_COOKIE",
-        "-t",
-        "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA",
-        "-t",
-        "gcr.io/$PROJECT_ID/logflare_app:latest",
-        "-f",
-        "docker/prod.app.Dockerfile",
-        ".",
-      ]
-    secretEnv: ["MAGIC_COOKIE"]
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA"]
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/$PROJECT_ID/logflare_app:latest"]
-secrets:
-  - kmsKeyName: projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
+      - kms
+      - decrypt
+      - --ciphertext-file=./.prod.cert.key.enc
+      - --plaintext-file=./cert.key
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.prod.cacert.pem.enc
+      - --plaintext-file=./cacert.pem
+      - --location=us-central1
+      - --keyring=logflare-prod-keyring-us-central1
+      - --key=logflare-prod-secrets-key
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - "-c"
+      - >-
+        docker build --build-arg TAG_VERSION=$(cat ./VERSION) -t gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t
+        gcr.io/$PROJECT_ID/logflare_app:latest -f cloudbuild/secret_setup.Dockerfile
+        .
+    entrypoint: sh
     secretEnv:
-      MAGIC_COOKIE: "CiQAaKkB6bwW6k2L9NxnoxLiSerCpIeLBGlN54tyvdAtGmTqBeISSQA/IRNwMsuZjfo6o1os4UkkFYG3eJzzxp6hDWbI+6El6HxSZLWLDy3ousxpSU8hip3hLypJ9aSjOLlj4zrnXFxS6qzwLA3/pEE="
-options:
-  machineType: "N1_HIGHCPU_32"
+      - MAGIC_COOKIE
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA"
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - "gcr.io/$PROJECT_ID/logflare_app:latest"
 timeout: 1800s
+options:
+  machineType: N1_HIGHCPU_32

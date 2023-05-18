@@ -2,10 +2,70 @@ defmodule Logflare.TestUtils do
   @moduledoc """
   Testing utilities. Globally alised under the `TestUtils` namespace.
   """
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema
+  alias GoogleApi.BigQuery.V2.Model.TableSchema
+
+  alias Logflare.SingleTenant
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
+
+  @doc """
+  Configures the following `:logflare` env keys:
+  - :single_tenant gets set to true
+  - :api_key is randomly set, simulating user setting api key through env var
+  - :supabase_mode is set based on flag
+
+  Options:
+  - :seed_user - boolean - enable to seed default plan and user
+  - :supabase_mode - enable to seed supabase data
+  """
+  defmacro setup_single_tenant(opts \\ []) do
+    opts =
+      Enum.into(opts, %{
+        seed_user: false,
+        supabase_mode: false
+      })
+
+    quote do
+      setup do
+        # perform application env adjustments at runtime
+        initial_single_tenant = Application.get_env(:logflare, :single_tenant)
+        Application.put_env(:logflare, :single_tenant, true)
+
+        on_exit(fn ->
+          Application.put_env(:logflare, :single_tenant, initial_single_tenant)
+        end)
+
+        initial_api_key = Application.get_env(:logflare, :api_key)
+        Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
+
+        on_exit(fn ->
+          Application.put_env(:logflare, :api_key, initial_api_key)
+        end)
+
+        if unquote(opts.seed_user) do
+          {:ok, _} = SingleTenant.create_default_plan()
+          {:ok, _user} = SingleTenant.create_default_user()
+        end
+
+        if unquote(opts.supabase_mode) do
+          initial_supabase_mode = Application.get_env(:logflare, :supabase_mode)
+          Application.put_env(:logflare, :supabase_mode, true)
+
+          on_exit(fn ->
+            Application.put_env(:logflare, :supabase_mode, initial_supabase_mode)
+          end)
+        end
+
+        :ok
+      end
+    end
+  end
 
   def default_bq_schema, do: SchemaBuilder.initial_table_schema()
+
+  def build_bq_schema(params) do
+    SchemaBuilder.build_table_schema(params, default_bq_schema())
+  end
 
   @spec random_string(non_neg_integer()) :: String.t()
   def random_string(length \\ 6) do
@@ -21,6 +81,9 @@ defmodule Logflare.TestUtils do
   def gen_uuid do
     Ecto.UUID.generate()
   end
+
+  @spec gen_email() :: String.t()
+  def gen_email, do: "#{random_string()}@#{random_string()}.com"
 
   @doc """
   Generates a mock BigQuery response.
@@ -311,4 +374,6 @@ defmodule Logflare.TestUtils do
       ]
     }
   end
+
+  def random_pos_integer(limit \\ 1000), do: :rand.uniform(limit)
 end

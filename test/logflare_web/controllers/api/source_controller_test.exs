@@ -19,7 +19,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns list of sources for given user", %{conn: conn, user: user, sources: sources} do
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user, "private")
         |> get("/api/sources")
         |> json_response(200)
 
@@ -34,7 +34,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "returns single sources for given user", %{conn: conn, user: user, sources: [source | _]} do
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user, "private")
         |> get("/api/sources/#{source.token}")
         |> json_response(200)
 
@@ -45,7 +45,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> login_user(invalid_user)
+      |> add_access_token(invalid_user, "private")
       |> get("/api/sources/#{source.token}")
       |> response(404)
     end
@@ -57,11 +57,31 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user, "private")
         |> post("/api/sources", %{name: name})
         |> json_response(201)
 
       assert response["name"] == name
+    end
+
+    test "returns 422 on missing arguments", %{conn: conn, user: user} do
+      resp =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/sources")
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
+    end
+
+    test "returns 422 on bad arguments", %{conn: conn, user: user} do
+      resp =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/sources", %{name: 123})
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["is invalid"]}}
     end
   end
 
@@ -75,7 +95,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       response =
         conn
-        |> login_user(user)
+        |> add_access_token(user, "private")
         |> patch("/api/sources/#{source.token}", %{name: name})
         |> json_response(204)
 
@@ -86,9 +106,19 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> login_user(invalid_user)
+      |> add_access_token(invalid_user, "private")
       |> patch("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
       |> response(404)
+    end
+
+    test "returns 422 on bar arguments", %{conn: conn, user: user, sources: [source | _]} do
+      resp =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/sources/#{source.token}", %{name: 123})
+        |> json_response(422)
+
+      assert resp == %{"errors" => %{"name" => ["is invalid"]}}
     end
   end
 
@@ -100,15 +130,15 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     } do
       name = TestUtils.random_string()
 
-      conn
-      |> login_user(user)
-      |> delete("/api/sources/#{source.token}", %{name: name})
-      |> response(204)
+      assert conn
+             |> add_access_token(user, "private")
+             |> delete("/api/sources/#{source.token}", %{name: name})
+             |> response(204)
 
-      conn
-      |> login_user(user)
-      |> get("/api/sources/#{source.token}")
-      |> response(404)
+      assert conn
+             |> add_access_token(user, "private")
+             |> get("/api/sources/#{source.token}")
+             |> response(404)
     end
 
     test "returns not found if doesn't own the source", %{
@@ -117,28 +147,10 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     } do
       invalid_user = insert(:user)
 
-      conn
-      |> login_user(invalid_user)
-      |> delete("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
-      |> response(404)
+      assert conn
+             |> add_access_token(invalid_user, "private")
+             |> delete("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
+             |> response(404)
     end
-  end
-
-  test "changeset errors handled gracefully", %{conn: conn, user: user, sources: [source | _]} do
-    resp =
-      conn
-      |> login_user(user)
-      |> post("/api/sources")
-      |> json_response(422)
-
-    assert resp == %{"errors" => %{"name" => ["can't be blank"]}}
-
-    resp =
-      conn
-      |> login_user(user)
-      |> patch("/api/sources/#{source.token}", %{name: 123})
-      |> json_response(422)
-
-    assert resp == %{"errors" => %{"name" => ["is invalid"]}}
   end
 end

@@ -12,51 +12,53 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./config/staging.secret.exs.enc
-      - --plaintext-file=./config/staging.secret.exs
+      - --ciphertext-file=./.staging.env.enc
+      - --plaintext-file=./.secrets.env
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
       - --key=logflare-secrets-key
-  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+  - name: gcr.io/cloud-builders/gcloud
     args:
-      [
-        "gsutil",
-        "cp",
-        "gs://logflare-build-support/gudusoft.gsqlparser-2.5.2.5.jar",
-        "sql/gsp/gudusoft.gsqlparser-2.5.2.5.jar",
-      ]
-  - name: "gcr.io/kaniko-project/executor:latest"
+      - kms
+      - decrypt
+      - --ciphertext-file=./.staging.cert.pem.enc
+      - --plaintext-file=./cert.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
     args:
-      [
-        "--dockerfile=./docker/staging.base.Dockerfile",
-        "--destination=gcr.io/$PROJECT_ID/logflare_base:latest",
-        "--cache=true",
-        "--cache-ttl=336h",
-      ]
+      - kms
+      - decrypt
+      - --ciphertext-file=./.staging.cert.key.enc
+      - --plaintext-file=./cert.key
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./.staging.cacert.pem.enc
+      - --plaintext-file=./cacert.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
+        "--build-arg",
+        "TAG_VERSION=staging",
         "-f",
-        "docker/staging.app.Dockerfile",
-        "--build-arg",
-        "SHORT_COMMIT_SHA",
-        "--build-arg",
-        "MAGIC_COOKIE_PREFIX",
+        "cloudbuild/secret_setup.Dockerfile",
         "-t",
         "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
         "-t",
         "gcr.io/logflare-staging/logflare_origin:latest",
         ".",
       ]
-    env:
-      - "SHORT_COMMIT_SHA=$SHORT_SHA"
-    secretEnv: ["MAGIC_COOKIE_PREFIX"]
 images:
   - "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"
   - "gcr.io/logflare-staging/logflare_origin:latest"
-secrets:
-  - kmsKeyName: projects/logflare-staging/locations/us-central1/keyRings/logflare-keyring-us-central1/cryptoKeys/logflare-secrets-key
-    secretEnv:
-      MAGIC_COOKIE_PREFIX: "CiQAjmyjI9e7+KoUiS1WSalyQ819p/siYrGH8g5c9eiEPOYYYP8SSQDomD3wX4E++lI29Tj94GjGqhcHZeGkGt81el3/hMW4/5FepSlZrcaxoncTn3z51lab4obbhL1DhIB++Yyg0N7FnRcega3nXVg="
 timeout: 1800s

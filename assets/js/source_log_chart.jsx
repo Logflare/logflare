@@ -1,5 +1,6 @@
+import $ from "jquery"
 import React from "react"
-import DateTime from "luxon/src/datetime"
+import { DateTime } from "luxon"
 import { ResponsiveBarCanvas } from "@nivo/bar"
 
 import { BarLoader } from "react-spinners"
@@ -25,27 +26,22 @@ const theme = {
       strokeWidth: 2,
       strokeDasharray: "4 4",
     },
-  },
-  tooltip: {
-    container: {
-      background: brandLightBlack,
-    },
-  },
+  }
 }
 
 const renderDefaultTooltip = ({ value, color, indexValue }) => {
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
       <strong style={{ color }}>Timestamp: {indexValue}</strong>
       <br />
       <strong style={{ color }}>Value: {value}</strong>
-    </div>
+    </div >
   )
 }
 
 const renderCfStatusCodeTooltip = ({ data, color }) => {
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
       <strong style={{ color: brandGray }}>Timestamp: {data.timestamp}</strong>
       <br />
       <strong style={{ color: brandGray }}>Total: {data.total}</strong>
@@ -80,7 +76,7 @@ const renderElixirLoggerTooltip = ({ data, color }) => {
     { c: brandGray, p: "other", t: "Other" },
   ]
   return (
-    <div>
+    <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
       {tooltips.map(
         ({ c: color, p: property, t }) => {
           return [

@@ -14,6 +14,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Utils.Tasks
 
   import Ecto.Query, only: [from: 2]
 
@@ -147,13 +148,9 @@ defmodule Logflare.Source.Supervisor do
   def start_source(source_id) when is_atom(source_id) do
     # Calling this server doing boot times out due to dealing with bigquery in init_table()
 
-    # Double check source is in the database before starting
-    # Can be removed when manager fns move into their own genserver
-    if Sources.get_by(token: source_id) do
-      GenServer.abcast(__MODULE__, {:create, source_id})
-    else
-      Logger.warn("Attempted to start a source not found in the database.", source_id: source_id)
-    end
+    GenServer.abcast(__MODULE__, {:create, source_id})
+
+    {:ok, source_id}
   end
 
   def delete_source(source_id) do
@@ -180,16 +177,27 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp create_source(source_id) do
+    # Double check source is in the database before starting
+    # Can be removed when manager fns move into their own genserver
+
     source = Sources.get_by(token: source_id)
-    rls = %RLS{source_id: source_id, source: source}
 
-    children = [
-      Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
-    ]
+    if source do
+      rls = %RLS{source_id: source_id, source: source}
 
-    init_table(source_id)
+      children = [
+        Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
+      ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+      # fire off async init in async task, so that bq call does not block.
+      Tasks.start_child(fn ->
+        init_table(source_id)
+      end)
+
+      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+    else
+      {:error, :not_found_in_db}
+    end
   end
 
   defp reset_persisted_schema(source_id) do

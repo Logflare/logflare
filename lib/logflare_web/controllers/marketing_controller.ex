@@ -3,7 +3,7 @@ defmodule LogflareWeb.MarketingController do
 
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Number.Delimit
-
+  alias Logflare.SingleTenant
   @system_counter :total_logs_logged
   @announcement %{
     message: "Logflare is now part of Supabase.",
@@ -14,6 +14,7 @@ defmodule LogflareWeb.MarketingController do
 
   # only set the banner assigns on marketing pages
   plug :assign, {:banner, @announcement}
+  plug :single_tenant_redirect
 
   def index(conn, _params) do
     {:ok, log_count} = AllLogsLogged.log_count(@system_counter)
@@ -66,5 +67,15 @@ defmodule LogflareWeb.MarketingController do
 
   def event_analytics_demo(conn, _params) do
     render(conn, "event_analytics_demo.html")
+  end
+
+  defp single_tenant_redirect(conn, _) do
+    if SingleTenant.single_tenant?() do
+      conn
+      |> redirect(to: "/dashboard")
+      |> halt()
+    else
+      conn
+    end
   end
 end

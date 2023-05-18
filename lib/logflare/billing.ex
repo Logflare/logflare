@@ -14,6 +14,8 @@ defmodule Logflare.Billing do
     Billing.PaymentMethod
   }
 
+  alias Logflare.SingleTenant
+
   require Protocol
   Protocol.derive(Jason.Encoder, Stripe.List)
   Protocol.derive(Jason.Encoder, Stripe.Subscription)
@@ -315,31 +317,43 @@ defmodule Logflare.Billing do
     end
   end
 
-  @doc "Retrieve a user's plan. Defaults to legacy plan if billing is not enabled."
+  @doc """
+  Retrieve a user's plan.
+
+  Defaults to legacy plan if billing is not enabled.
+
+  Returns Enterprise plan if single-tenant.
+
+  """
   @spec get_plan_by_user(User.t()) :: Plan.t()
   def get_plan_by_user(%User{} = user) do
-    if user.billing_enabled do
-      case Billing.get_billing_account_by(user_id: user.id) do
-        nil ->
-          get_plan_by(name: "Free")
+    cond do
+      SingleTenant.single_tenant?() ->
+        get_plan_by(name: "Enterprise")
 
-        %Billing.BillingAccount{lifetime_plan: true} ->
-          get_plan_by(name: "Lifetime")
+      user.billing_enabled == false ->
+        legacy_plan()
 
-        %Billing.BillingAccount{stripe_subscriptions: nil} ->
-          get_plan_by(name: "Free")
+      user.billing_enabled ->
+        case Billing.get_billing_account_by(user_id: user.id) do
+          nil ->
+            get_plan_by(name: "Free")
 
-        billing_account ->
-          case Billing.get_billing_account_stripe_plan(billing_account) do
-            nil ->
-              get_plan_by(name: "Free")
+          %Billing.BillingAccount{lifetime_plan: true} ->
+            get_plan_by(name: "Lifetime")
 
-            stripe_plan ->
-              get_plan_by(stripe_id: stripe_plan["id"])
-          end
-      end
-    else
-      legacy_plan()
+          %Billing.BillingAccount{stripe_subscriptions: nil} ->
+            get_plan_by(name: "Free")
+
+          billing_account ->
+            case Billing.get_billing_account_stripe_plan(billing_account) do
+              nil ->
+                get_plan_by(name: "Free")
+
+              stripe_plan ->
+                get_plan_by(stripe_id: stripe_plan["id"])
+            end
+        end
     end
   end
 
@@ -383,4 +397,7 @@ defmodule Logflare.Billing do
       limit_source_fields_limit: 500
     }
   end
+
+  @spec cost_estimate(Plan.t(), pos_integer()) :: pos_integer()
+  def cost_estimate(%Plan{price: price}, usage), do: price * usage
 end

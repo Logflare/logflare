@@ -27,7 +27,8 @@ defmodule Logflare.User do
              :bigquery_dataset_location,
              :bigquery_dataset_id,
              :api_quota,
-             :company
+             :company,
+             :token
            ]}
 
   @default_user_api_quota 150
@@ -116,7 +117,8 @@ defmodule Logflare.User do
               :old_api_key,
               :api_quota,
               :bigquery_udfs_hash,
-              :billing_enabled
+              :billing_enabled,
+              :endpoints_beta
             ]
 
   @doc """
@@ -134,9 +136,38 @@ defmodule Logflare.User do
   def changeset(user, attrs) do
     user
     |> cast(attrs, @fields)
+    |> add_api_key()
+    |> add_token()
+    |> add_provider_uid()
     |> cast_assoc(:team)
     |> default_validations(user)
   end
+
+  defp add_token(%{data: %{token: nil}, changes: changes} = changeset)
+       when not is_map_key(changes, :token) do
+    put_change(changeset, :token, Ecto.UUID.generate())
+  end
+
+  defp add_token(changeset), do: changeset
+
+  defp add_provider_uid(%{data: %{provider_uid: nil}, changes: changes} = changeset)
+       when not is_map_key(changes, :provider_uid) do
+    put_change(changeset, :provider_uid, Ecto.UUID.generate())
+  end
+
+  defp add_provider_uid(changeset), do: changeset
+
+  defp add_api_key(%{data: %{api_key: nil}, changes: changes} = changeset)
+       when not is_map_key(changes, :api_key) do
+    api_key =
+      :crypto.strong_rand_bytes(12)
+      |> Base.url_encode64()
+      |> binary_part(0, 12)
+
+    put_change(changeset, :api_key, api_key)
+  end
+
+  defp add_api_key(changeset), do: changeset
 
   def preferences_changeset(user, attrs) do
     user
@@ -146,7 +177,7 @@ defmodule Logflare.User do
 
   def default_validations(changeset, user) do
     changeset
-    |> validate_required([:email, :provider, :token, :provider_uid])
+    |> validate_required([:email, :provider, :token, :provider_uid, :api_key])
     |> update_change(:email, &String.downcase/1)
     |> update_change(:email_preferred, fn
       nil -> nil

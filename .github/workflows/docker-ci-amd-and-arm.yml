@@ -1,0 +1,86 @@
+name: Docker CI Multi-Platform
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [staging, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{steps.env.outputs.version}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup outputs
+        id: env
+        run: |
+          echo "version=$(cat ./VERSION)" >> "$GITHUB_OUTPUT"
+  build:
+    needs: settings
+    strategy:
+      matrix:
+        include:
+          - runner: [self-hosted, X64]
+            arch: amd64
+          - runner: arm-runner
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      # checkout git commit
+      - uses: actions/checkout@v3
+      # Setup docker
+      # https://github.com/supabase/postgres/blob/develop/.github/workflows/dockerhub-release.yml#LL41C11-L42C44
+      - run: docker context create builders
+      - uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Build and push
+      - id: build
+        uses: docker/build-push-action@v3
+        with:
+          push: true
+          tags: supabase/logflare:${{ needs.settings.outputs.version }}-${{ matrix.arch }}
+          platforms: linux/${{ matrix.arch }}
+          # caching
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  merge_publish:
+    needs:
+      - settings
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Setup tags
+        run: |
+          echo "tag_amd64=supabase/logflare:${{ needs.settings.outputs.version }}-amd64" >> "$GITHUB_ENV"
+          echo "tag_arm64=supabase/logflare:${{ needs.settings.outputs.version }}-arm64" >> "$GITHUB_ENV"
+          echo "tag_ver=supabase/logflare:${{ needs.settings.outputs.version }}" >> "$GITHUB_ENV"
+      - name: Staging - Merge multi-arch manifests and push
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          docker buildx imagetools create -t supabase/logflare:staging  \
+          ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
+      - name: Master - Merge multi-arch manifests and push
+        if: github.ref == 'refs/heads/master'
+        run: |
+          docker buildx imagetools create -t supabase/logflare:latest -t ${{ env.tag_ver }}  \
+          ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
