@@ -3,17 +3,23 @@ defmodule Logflare.Backends.CommonIngestPipeline do
   A Broadway pipeline that handles all common log operations
   """
   use Broadway
+
   alias Broadway.Message
-  alias Logflare.{Buffers.BufferProducer, Buffers.MemoryBuffer, Source, Backends, LogEvent}
+  alias Logflare.Backends
+  alias Logflare.Buffers.BufferProducer
+  alias Logflare.Buffers.MemoryBuffer
+  alias Logflare.LogEvent
+  alias Logflare.Source
 
   @spec start_link(Source.t()) :: {:ok, pid()}
   def start_link(%Source{} = source) do
     Broadway.start_link(__MODULE__,
       name: Backends.via_source(source, __MODULE__),
       producer: [
-        module:
-          {BufferProducer,
-           buffer_module: MemoryBuffer, buffer_pid: Backends.via_source(source, :buffer)},
+        module: {
+          BufferProducer,
+          buffer_module: MemoryBuffer, buffer_pid: Backends.via_source(source, :buffer)
+        },
         transformer: {__MODULE__, :transform, []},
         concurrency: 1
       ],
@@ -48,7 +54,6 @@ defmodule Logflare.Backends.CommonIngestPipeline do
     # dispatch messages to backends
     log_events = for %{data: msg} <- messages, do: msg
     Backends.dispatch_ingest(log_events, source)
-
     Backends.push_recent_logs(source, log_events)
 
     messages

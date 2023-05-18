@@ -4,34 +4,20 @@ defmodule Logflare.Source.RecentLogsServer do
   things in the table. Handles loading the table from the disk if found on startup.
   """
   use TypedStruct
-  alias Logflare.Billing.Plan
-
-  typedstruct do
-    field :source_id, atom(), enforce: true
-    field :notifications_every, integer(), default: 60_000
-    field :inserts_since_boot, integer(), default: 0
-    field :bigquery_project_id, atom()
-    field :bigquery_dataset_id, binary()
-    field :source, struct()
-    field :user, struct()
-    field :plan, Plan.t()
-    field :total_cluster_inserts, integer(), default: 0
-    field :recent, list(), default: LQueue.new(100)
-    field :billing_last_node_count, integer(), default: 0
-    field :latest_log_event, LE.t()
-  end
-
   use GenServer
 
-  alias Logflare.Source.BigQuery.{Schema, Pipeline, BufferCounter}
+  alias Logflare.Billing.Plan
+  alias Logflare.TaskSupervisor
 
-  alias Logflare.Source.{
-    EmailNotificationServer,
-    TextNotificationServer,
-    WebhookNotificationServer,
-    SlackHookServer,
-    BillingWriter
-  }
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Source.BigQuery.BufferCounter
+
+  alias Logflare.Source.EmailNotificationServer
+  alias Logflare.Source.TextNotificationServer
+  alias Logflare.Source.WebhookNotificationServer
+  alias Logflare.Source.SlackHookServer
+  alias Logflare.Source.BillingWriter
 
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
@@ -45,6 +31,21 @@ defmodule Logflare.Source.RecentLogsServer do
   alias __MODULE__, as: RLS
 
   require Logger
+
+  typedstruct do
+    field(:source_id, atom(), enforce: true)
+    field(:notifications_every, integer(), default: 60_000)
+    field(:inserts_since_boot, integer(), default: 0)
+    field(:bigquery_project_id, atom())
+    field(:bigquery_dataset_id, binary())
+    field(:source, struct())
+    field(:user, struct())
+    field(:plan, Plan.t())
+    field(:total_cluster_inserts, integer(), default: 0)
+    field(:recent, list(), default: LQueue.new(100))
+    field(:billing_last_node_count, integer(), default: 0)
+    field(:latest_log_event, LE.t())
+  end
 
   @touch_timer :timer.minutes(45)
   @broadcast_every 500
@@ -89,25 +90,18 @@ defmodule Logflare.Source.RecentLogsServer do
 
     task =
       Task.async(fn ->
-        for n <- nodes do
-          Task.Supervisor.async(
-            {Logflare.TaskSupervisor, n},
-            __MODULE__,
-            :list,
-            [source_id]
-          )
-        end
+        nodes
+        |> Enum.map(&Task.Supervisor.async({TaskSupervisor, &1}, __MODULE__, :list, [source_id]))
         |> Task.yield_many()
         |> Enum.map(fn {%Task{pid: pid}, res} ->
-          res || Task.Supervisor.terminate_child(Logflare.TaskSupervisor, pid)
+          res || Task.Supervisor.terminate_child(TaskSupervisor, pid)
         end)
       end)
 
     case Task.yield(task, 5_000) || Task.shutdown(task) do
       {:ok, results} ->
-        for {:ok, events} <- results do
-          events
-        end
+        results
+        |> Enum.map(fn {:ok, events} -> events end)
         |> List.flatten()
         |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
         |> Enum.take(-100)
@@ -135,7 +129,8 @@ defmodule Logflare.Source.RecentLogsServer do
   def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
       when is_atom(source_id) do
     user =
-      Users.get(source.user_id)
+      source.user_id
+      |> Users.get()
       |> Users.maybe_preload_bigquery_defaults()
       |> Users.preload_billing_account()
 
