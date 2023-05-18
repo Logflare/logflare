@@ -218,7 +218,7 @@ defmodule Logflare.Mixfile do
         "cmd env $(cat .dev.env | xargs) PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server"
       ],
       "start.pink": [
-        "cmd env $(cat .dev.env|xargs) PORT=4001 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
+        "cmd env $(cat .dev.env|xargs) PORT=4001 LOGFLARE_GRPC_PORT=50052 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
       ],
       "grpc.protoc": [
         "cmd rm -rf opentelemetry-proto",

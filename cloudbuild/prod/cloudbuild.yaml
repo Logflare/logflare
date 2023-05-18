@@ -48,7 +48,7 @@ steps:
     args:
       - '-c'
       - >-
-        docker build --build-arg $$MAGIC_COOKIE --build-arg TAG_VERSION=$(cat ./VERSION) -t gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t
+        docker build --build-arg TAG_VERSION=$(cat ./VERSION) -t gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t
         gcr.io/$PROJECT_ID/logflare_app:latest -f cloudbuild/secret_setup.Dockerfile
         .
     entrypoint: sh
@@ -65,9 +65,3 @@ steps:
 timeout: 1800s
 options:
   machineType: N1_HIGHCPU_32
-secrets:
-  - kmsKeyName: >-
-      projects/logflare-232118/locations/us-central1/keyRings/logflare-prod-secrets-key/cryptoKeys/logflare-prod-secrets-key
-    secretEnv:
-      MAGIC_COOKIE: >-
-        CiQAaKkB6bwW6k2L9NxnoxLiSerCpIeLBGlN54tyvdAtGmTqBeISSQA/IRNwMsuZjfo6o1os4UkkFYG3eJzzxp6hDWbI+6El6HxSZLWLDy3ousxpSU8hip3hLypJ9aSjOLlj4zrnXFxS6qzwLA3/pEE=
