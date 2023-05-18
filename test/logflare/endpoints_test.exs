@@ -1,8 +1,9 @@
 defmodule Logflare.EndpointsTest do
-  @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
+
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
 
   test "list_endpoints_by" do
     %{id: id, name: name} = insert(:endpoint)
@@ -36,7 +37,8 @@ defmodule Logflare.EndpointsTest do
       )
 
     # rename the source
-    Ecto.Changeset.change(source, name: "new")
+    source
+    |> Ecto.Changeset.change(name: "new")
     |> Logflare.Repo.update()
 
     assert %Query{query: mapped_query} = Endpoints.get_mapped_query_by_token(endpoint.token)
@@ -113,18 +115,15 @@ defmodule Logflare.EndpointsTest do
     assert stored_sql =~ "myproject"
   end
 
-  describe "running queries" do
+  describe "running queries in bigquery backends" do
     setup do
       # mock goth behaviour
-      Goth
-      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
+      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
       :ok
     end
 
     test "run an endpoint query without caching" do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
@@ -136,8 +135,7 @@ defmodule Logflare.EndpointsTest do
     end
 
     test "run_query_string/3" do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
@@ -149,8 +147,7 @@ defmodule Logflare.EndpointsTest do
     end
 
     test "run_cached_query/1" do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
@@ -171,8 +168,7 @@ defmodule Logflare.EndpointsTest do
           :max_limit
         ] do
       test "update_query/2 will kill all existing caches on field change (#{field_changed})" do
-        GoogleApi.BigQuery.V2.Api.Jobs
-        |> expect(:bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
+        expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _, _, _ ->
           {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
         end)
 
@@ -196,6 +192,99 @@ defmodule Logflare.EndpointsTest do
         refute Process.alive?(cache_pid)
         # 2nd query should not hit cache
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(updated)
+      end
+    end
+  end
+
+  describe "running queries in postgres backends" do
+    setup do
+      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+      %{username: username, password: password, database: database, hostname: hostname} =
+        Application.get_env(:logflare, Logflare.Repo) |> Map.new()
+
+      url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
+
+      user = insert(:user)
+      source = insert(:source, user: user, name: "c")
+
+      source_backend =
+        insert(:source_backend,
+          type: :postgres,
+          config: %{"url" => url},
+          source: source
+        )
+
+      repository_module = Repo.new_repository_for_source_backend(source_backend)
+
+      :ok =
+        Repo.connect_to_source_backend(repository_module, source_backend,
+          pool: Ecto.Adapters.SQL.Sandbox
+        )
+
+      :ok = Repo.create_log_event_table(repository_module, source_backend)
+
+      on_exit(fn ->
+        Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
+        migration_table = Keyword.get(repository_module.config(), :migration_source)
+        Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
+        true = repository_module |> Process.whereis() |> Process.exit(:kill)
+      end)
+
+      %{source: source, user: user}
+    end
+
+    test "run an endpoint query without caching", %{source: source, user: user} do
+      query = "select body from #{source.name}"
+      source_mapping = %{source.name => source.token}
+      endpoint = insert(:endpoint, user: user, query: query, source_mapping: source_mapping)
+      assert {:ok, %{rows: []}} = Endpoints.run_query(endpoint)
+    end
+
+    test "run_query_string/3", %{source: source, user: user} do
+      query = "select body from #{source.name}"
+      assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, query)
+    end
+
+    test "run_cached_query/1", %{source: source, user: user} do
+      query = "select body from #{source.name}"
+      source_mapping = %{source.name => source.token}
+      endpoint = insert(:endpoint, user: user, query: query, source_mapping: source_mapping)
+      assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
+    end
+
+    for field_changed <- [
+          :query,
+          :sandboxable,
+          :cache_duration_seconds,
+          :proactive_requerying_seconds,
+          :max_limit
+        ] do
+      test "update_query/2 will kill all existing caches on field change (#{field_changed})", %{
+        source: source,
+        user: user
+      } do
+        query = "select body from #{source.name}"
+        source_mapping = %{source.name => source.token}
+        endpoint = insert(:endpoint, user: user, query: query, source_mapping: source_mapping)
+        cache_pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+
+        assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
+
+        params =
+          case unquote(field_changed) do
+            :query -> %{query: "select timestamp from #{source.name}"}
+            :sandboxable -> %{sandboxable: true}
+            # integer keys
+            key -> Map.new([{key, 123}])
+          end
+
+        assert {:ok, updated} = Endpoints.update_query(endpoint, params)
+        # should kill the cache process
+        :timer.sleep(500)
+        refute Process.alive?(cache_pid)
+        # 2nd query should not hit cache
+        assert {:ok, %{rows: []}} = Endpoints.run_cached_query(updated)
       end
     end
   end

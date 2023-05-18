@@ -12,8 +12,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
       Application.get_env(:logflare, Logflare.Repo) |> Map.new()
 
     url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
-    source = insert(:source, user: insert(:user))
-    source_backend = insert(:source_backend, type: :postgres, config: %{url: url}, source: source)
+
+    source_backend =
+      insert(:source_backend,
+        type: :postgres,
+        config: %{"url" => url},
+        source: insert(:source, user: insert(:user))
+      )
 
     %{source_backend: source_backend}
   end
@@ -36,11 +41,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
     setup %{source_backend: source_backend} do
       repository_module = Repo.new_repository_for_source_backend(source_backend)
 
-      Repo.connect_to_source_backend(
-        repository_module,
-        source_backend,
-        pool: Ecto.Adapters.SQL.Sandbox
-      )
+      :ok =
+        Repo.connect_to_source_backend(repository_module, source_backend,
+          pool: Ecto.Adapters.SQL.Sandbox
+        )
 
       Ecto.Adapters.SQL.Sandbox.mode(repository_module, :auto)
 
@@ -48,6 +52,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
         Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
         migration_table = Keyword.get(repository_module.config(), :migration_source)
         Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
+        true = repository_module |> Process.whereis() |> Process.exit(:kill)
       end)
 
       %{repository_module: repository_module}
@@ -58,7 +63,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
       repository_module: repository_module
     } do
       assert Repo.create_log_event_table(repository_module, source_backend) == :ok
-
       query = from(l in Repo.table_name(source_backend), select: LogEvent)
       assert repository_module.all(query) == []
     end

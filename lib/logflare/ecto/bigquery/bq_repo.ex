@@ -34,29 +34,26 @@ defmodule Logflare.BqRepo do
 
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
-    query_request =
-      %QueryRequest{
-        query: sql,
-        useLegacySql: false,
-        useQueryCache: @use_query_cache,
-        parameterMode: "POSITIONAL",
-        queryParameters: params,
-        dryRun: false,
-        timeoutMs: @query_request_timeout,
-        labels: %{
-          "managed_by" => "logflare",
-          "logflare_plan" => GenUtils.format_key(plan),
-          "logflare_account" => GenUtils.format_key(user.id)
-        }
+    query_request = %QueryRequest{
+      query: sql,
+      useLegacySql: false,
+      useQueryCache: @use_query_cache,
+      parameterMode: "POSITIONAL",
+      queryParameters: params,
+      dryRun: false,
+      timeoutMs: @query_request_timeout,
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_account" => GenUtils.format_key(user.id)
       }
-      |> Map.merge(override)
+    }
+
+    query_request = Map.merge(query_request, override)
 
     result =
       GenUtils.get_conn(:query)
-      |> Api.Jobs.bigquery_jobs_query(
-        project_id,
-        body: query_request
-      )
+      |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
       |> GenUtils.maybe_parse_google_api_result()
 
     with {:ok, response} <- result do
@@ -66,11 +63,14 @@ defmodule Logflare.BqRepo do
         |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer_or_zero/1)
         |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
         |> Map.from_struct()
-        |> Enum.map(fn {k, v} ->
-          {
-            k |> Atom.to_string() |> Recase.to_snake() |> String.to_atom(),
-            v
-          }
+        |> Enum.map(fn {key, value} ->
+          key =
+            key
+            |> Atom.to_string()
+            |> Recase.to_snake()
+            |> String.to_atom()
+
+          {key, value}
         end)
         |> Map.new()
 

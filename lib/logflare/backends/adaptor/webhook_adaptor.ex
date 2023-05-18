@@ -6,7 +6,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use Logflare.Backends.Adaptor
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher

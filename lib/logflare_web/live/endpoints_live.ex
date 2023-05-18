@@ -155,8 +155,6 @@ defmodule LogflareWeb.EndpointsLive do
     endpoint =
       if endpoint_id do
         Endpoints.get_by(id: endpoint_id, user_id: socket.assigns.user_id)
-      else
-        nil
       end
 
     socket =
@@ -166,7 +164,7 @@ defmodule LogflareWeb.EndpointsLive do
         socket when endpoint != nil ->
           {:ok, %{parameters: parameters}} = Endpoints.parse_query_string(endpoint.query)
 
-          socket |> assign(:declared_params, parameters)
+          assign(socket, :declared_params, parameters)
 
         other ->
           other
@@ -199,11 +197,11 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("edit-endpoint", %{"endpoint_id" => id}, socket) do
-    {:noreply, socket |> push_patch(to: Routes.endpoints_path(socket, :edit, id))}
+    {:noreply, push_patch(socket, to: Routes.endpoints_path(socket, :edit, id))}
   end
 
   def handle_event("list-endpoints", _params, socket) do
-    {:noreply, socket |> push_patch(to: Routes.endpoints_path(socket, :index))}
+    {:noreply, push_patch(socket, to: Routes.endpoints_path(socket, :index))}
   end
 
   def handle_event(
@@ -233,38 +231,39 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     endpoint = Enum.find(endpoints, fn e -> e.id == id end)
 
-    {:noreply,
-     socket
-     |> push_patch(to: "/endpoints/#{endpoint.id}")}
+    {:noreply, push_patch(socket, to: "/endpoints/#{endpoint.id}")}
   end
 
   def handle_event(
         "run-query",
-        %{"query_string" => query_string, "query_params" => query_params},
+        %{"endpoint_id" => endpoint_id, "query_params" => query_params},
+        socket
+      ) do
+    query = Endpoints.get_endpoint_query(endpoint_id)
+    result = Endpoints.run_query(query, query_params)
+    socket = handle_query_result(socket, result)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "run-query",
+        %{"query_params" => query_params},
+        %{assigns: %{show_endpoint: %Query{} = query}} = socket
+      ) do
+    result = Endpoints.run_query(query, query_params)
+    socket = handle_query_result(socket, result)
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "run-query",
+        %{"query_params" => query_params, "query_string" => query_string},
         %{assigns: %{user: user}} = socket
       ) do
-    case Endpoints.run_query_string(user, query_string, params: query_params) do
-      {:ok, %{rows: rows}} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Ran query successfully")
-         |> assign(:query_result_rows, rows)}
-
-      {:error, err} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
-         |> assign(:query_result, nil)}
-    end
-  end
-
-  def handle_event(
-        "run-query",
-        %{"query_params" => _} = params,
-        %{assigns: %{show_endpoint: %Query{} = endpoint}} = socket
-      ) do
-    params = Map.put(params, "query_string", endpoint.query)
-    handle_event("run-query", params, socket)
+    result = Endpoints.run_query_string(user, query_string, query_params)
+    socket = handle_query_result(socket, result)
+    {:noreply, socket}
   end
 
   def handle_event("parse-query", %{"query_string" => query_string}, socket) do
@@ -283,11 +282,7 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
-  def handle_event(
-        "new-endpoint",
-        _,
-        socket
-      ) do
+  def handle_event("new-endpoint", _, socket) do
     {:noreply, socket |> assign(:show_endpoint, nil) |> push_patch(to: "/endpoints/new")}
   end
 
@@ -297,5 +292,17 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply,
      socket
      |> put_flash(:info, "Successfully applied for the Endpoints beta. We'll be in touch!")}
+  end
+
+  defp handle_query_result(socket, {:ok, %{rows: rows}}) do
+    socket
+    |> put_flash(:info, "Ran query successfully")
+    |> assign(:query_result_rows, rows)
+  end
+
+  defp handle_query_result(socket, {:error, err}) do
+    socket
+    |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
+    |> assign(:query_result, nil)
   end
 end

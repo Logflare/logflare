@@ -5,15 +5,18 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source, Cluster, SourceSchemas}
+  alias Logflare.Cluster
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Rule
-  alias Logflare.User
-  alias Logflare.SavedSearch
   alias Logflare.PubSubRates
+  alias Logflare.Repo
+  alias Logflare.Rule
+  alias Logflare.SavedSearch
+  alias Logflare.Source
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.SourceSchemas
+  alias Logflare.User
 
   require Logger
 
@@ -140,6 +143,16 @@ defmodule Logflare.Sources do
     |> then(fn
       nil -> nil
       s -> preload_defaults(s)
+    end)
+  end
+
+  @spec get_by_and_preload(Keyword.t(), Keyword.t()) :: Source.t() | nil
+  def get_by_and_preload(kw, preloads) do
+    Source
+    |> Repo.get_by(kw)
+    |> then(fn
+      nil -> nil
+      s -> Repo.preload(s, preloads)
     end)
   end
 

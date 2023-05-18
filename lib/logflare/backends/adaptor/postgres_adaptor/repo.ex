@@ -5,10 +5,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   Using the Source Backend source id we create a new Ecto.Repo which whom we will
   be able to connect to the configured PSQL URL, run migrations and insert data.
   """
-  alias Logflare.Repo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
   alias Logflare.Backends.SourceBackend
+  alias Logflare.Repo
+  alias Logflare.Source
 
   require Logger
 
@@ -37,7 +38,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   @spec connect_to_source_backend(Ecto.Repo.t(), SourceBackend.t(), Keyword.t()) :: :ok
   def connect_to_source_backend(repository_module, %SourceBackend{config: config}, opts \\ []) do
     unless Process.whereis(repository_module) do
-      opts = [{:url, config.url} | opts]
+      opts = [{:url, config["url"]} | opts]
 
       {:ok, _} = DynamicSupervisor.start_child(Supervisor, repository_module.child_spec(opts))
     end
@@ -58,11 +59,17 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
       {:error, :failed_migration}
   end
 
-  @spec table_name(SourceBackend.t()) :: binary()
-  def table_name(source_backend) do
-    source_backend = Repo.preload(source_backend, :source)
-    token = source_backend.source.token |> Atom.to_string() |> String.replace("-", "_")
-    "log_events_#{token}"
+  @spec table_name(SourceBackend.t() | Source.t()) :: binary()
+  def table_name(%SourceBackend{} = source_backend) do
+    %{source: source} = Repo.preload(source_backend, :source)
+    table_name(source)
+  end
+
+  def table_name(%Source{token: token}) do
+    token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
+    |> then(&"log_events_#{&1}")
   end
 
   @spec migrations(SourceBackend.t()) :: list({pos_integer(), atom()})
