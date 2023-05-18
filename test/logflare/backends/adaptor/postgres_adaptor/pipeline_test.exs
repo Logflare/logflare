@@ -17,7 +17,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
     url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
 
     source = insert(:source, user: insert(:user))
-    source_backend = insert(:source_backend, type: :postgres, config: %{url: url}, source: source)
+
+    source_backend =
+      insert(:source_backend, type: :postgres, config: %{"url" => url}, source: source)
+
     repository_module = Repo.new_repository_for_source_backend(source_backend)
     pipeline_name = Backends.via_source_backend(source_backend, Pipeline)
     memory_buffer_pid = start_supervised!(MemoryBuffer)
@@ -31,17 +34,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
       repository_module: repository_module
     }
 
-    Repo.connect_to_source_backend(repository_module, source_backend,
-      pool: Ecto.Adapters.SQL.Sandbox
-    )
+    :ok =
+      Repo.connect_to_source_backend(repository_module, source_backend,
+        pool: Ecto.Adapters.SQL.Sandbox
+      )
 
     Ecto.Adapters.SQL.Sandbox.mode(repository_module, :auto)
-    Repo.create_log_event_table(repository_module, source_backend)
+    :ok = Repo.create_log_event_table(repository_module, source_backend)
 
     on_exit(fn ->
       Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
       migration_table = Keyword.get(repository_module.config(), :migration_source)
       Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
+      true = repository_module |> Process.whereis() |> Process.exit(:kill)
     end)
 
     {:ok, _} = Pipeline.start_link(state)

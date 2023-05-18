@@ -1,19 +1,24 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
+  alias Ecto.Adapters.SQL
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo, as: PostgresAdaptorRepo
+  alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
-  alias Logflare.Endpoints.Cache
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Users
   alias Logflare.Utils
+
   import Ecto.Query
+  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
 
   @spec count_endpoints_by_user(User.t() | integer()) :: integer()
   def count_endpoints_by_user(%User{id: user_id}), do: count_endpoints_by_user(user_id)
 
   def count_endpoints_by_user(user_id) do
-    from(s in Query, where: s.user_id == ^user_id)
-    |> Repo.aggregate(:count)
+    q = from(s in Query, where: s.user_id == ^user_id)
+    Repo.aggregate(q, :count)
   end
 
   @spec list_endpoints_by(keyword()) :: [Query.t()] | []
@@ -37,17 +42,15 @@ defmodule Logflare.Endpoints do
   def get_endpoint_query(id), do: Repo.get(Query, id)
 
   @spec get_query_by_token(binary()) :: Query.t() | nil
-  def get_query_by_token(token) when is_binary(token) do
-    get_by(token: token)
-  end
+  def get_query_by_token(token) when is_binary(token), do: get_by(token: token)
 
   def get_mapped_query_by_token(token) when is_binary(token) do
     token
     |> get_query_by_token()
-    |> case do
+    |> then(fn
       nil -> nil
       query -> Query.map_query_sources(query)
-    end
+    end)
   end
 
   @doc """
@@ -55,14 +58,10 @@ defmodule Logflare.Endpoints do
   This ensure that the query will have the latest source names (assuming a name change)
   """
   @spec map_query_sources(Query.t()) :: Query.t()
-  def map_query_sources(endpoint) do
-    Query.map_query_sources(endpoint)
-  end
+  def map_query_sources(endpoint), do: Query.map_query_sources(endpoint)
 
   @spec get_by(Keyword.t()) :: Query.t() | nil
-  def get_by(kw) do
-    Repo.get_by(Query, kw)
-  end
+  def get_by(kw), do: Repo.get_by(Query, kw)
 
   @spec create_query(User.t(), map()) :: {:ok, Query.t()} | {:error, any()}
   def create_query(user, params) do
@@ -127,9 +126,7 @@ defmodule Logflare.Endpoints do
   end
 
   @spec delete_query(Query.t()) :: {:ok, Query.t()} | {:error, any()}
-  def delete_query(query) do
-    Repo.delete(query)
-  end
+  def delete_query(query), do: Repo.delete(query)
 
   @doc """
   Parses a query string (but does not run it)
@@ -148,22 +145,27 @@ defmodule Logflare.Endpoints do
   @doc """
   Runs a an endpoint query
   """
-  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
   @spec run_query(Query.t(), params :: map()) :: run_query_return()
-  def run_query(
-        %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query,
-        params \\ %{}
-      ) do
+  def run_query(%Query{} = endpoint_query, params \\ %{}) do
+    %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
+    sql_param = Map.get(params, "sql")
+
+    transform_input =
+      if(sandboxable && sql_param, do: {query_string, sql_param}, else: query_string)
+
+    {backend, sources} = Query.choose_backend_and_extract_sources(endpoint_query)
+
     with {:ok, declared_params} <- Logflare.SqlV2.parameters(query_string),
-         sql_param <- Map.get(params, "sql"),
-         transform_input =
-           if(sandboxable && sql_param,
-             do: {query_string, sql_param},
-             else: query_string
-           ),
-         {:ok, transformed_query} <- Logflare.SqlV2.transform(transform_input, user_id),
+         {:ok, transformed_query} <- Logflare.SqlV2.transform(backend, transform_input, user_id),
          {:ok, result} <-
-           exec_sql_on_bq(endpoint_query, transformed_query, declared_params, params) do
+           run_on_backend(
+             backend,
+             sources,
+             endpoint_query,
+             transformed_query,
+             declared_params,
+             params
+           ) do
       {:ok, result}
     end
   end
@@ -180,11 +182,18 @@ defmodule Logflare.Endpoints do
   def run_query_string(user, query_string, opts \\ %{}) do
     opts = Enum.into(opts, %{sandboxable: false, params: %{}})
 
+    source_mapping =
+      user
+      |> Users.preload_sources()
+      |> then(fn %{sources: sources} -> sources end)
+      |> Enum.map(&{&1.name, &1.token})
+
     query = %Query{
       query: query_string,
       sandboxable: opts.sandboxable,
       user: user,
-      user_id: user.id
+      user_id: user.id,
+      source_mapping: source_mapping
     }
 
     run_query(query, opts.params)
@@ -195,7 +204,8 @@ defmodule Logflare.Endpoints do
   """
   @spec run_cached_query(Query.t(), map()) :: run_query_return()
   def run_cached_query(query, params \\ %{}) do
-    Resolver.resolve(query, params)
+    query
+    |> Resolver.resolve(params)
     |> Cache.query()
   end
 
@@ -203,16 +213,14 @@ defmodule Logflare.Endpoints do
        when is_binary(transformed_query) and
               is_list(declared_params) and
               is_map(input_params) do
+    endpoint_query = Repo.preload(endpoint_query, :user)
+
     bq_params =
-      Enum.map(declared_params, fn x ->
+      Enum.map(declared_params, fn input_name ->
         %{
-          name: x,
-          parameterValue: %{
-            value: input_params[x]
-          },
-          parameterType: %{
-            type: "STRING"
-          }
+          name: input_name,
+          parameterValue: %{value: input_params[input_name]},
+          parameterType: %{type: "STRING"}
         }
       end)
 
@@ -258,35 +266,55 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  defp process_bq_message(message, _user_id) when is_atom(message) do
-    message
-  end
+  defp process_bq_message(message, _user_id) when is_atom(message), do: message
 
   defp process_bq_message(message, user_id) when is_binary(message) do
     regex =
       ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
 
-    names = Regex.named_captures(regex, message)
-
-    case names do
+    case Regex.named_captures(regex, message) do
       %{"uuid" => uuid} ->
         uuid = String.replace(uuid, "_", "-")
 
         query =
-          from s in Logflare.Source,
+          from(s in Logflare.Source,
             where: s.token == ^uuid and s.user_id == ^user_id,
             select: s.name
+          )
 
         case Logflare.Repo.one(query) do
-          nil ->
-            message
-
-          name ->
-            Regex.replace(regex, message, name)
+          nil -> message
+          name -> Regex.replace(regex, message, name)
         end
 
       _ ->
         message
+    end
+  end
+
+  defp run_on_backend(:bigquery, _, endpoint_query, transformed_query, declared_params, params),
+    do: exec_sql_on_bq(endpoint_query, transformed_query, declared_params, params)
+
+  defp run_on_backend(
+         :postgres,
+         [source],
+         endpoint_query,
+         transformed_query,
+         declared_params,
+         params
+       ),
+       do: exec_sql_on_pg(source, endpoint_query, transformed_query, declared_params, params)
+
+  defp run_on_backend(:postgres, _, _, _, _, _),
+    do: {:error, "Postgres does not support multiple sources"}
+
+  defp exec_sql_on_pg(%{source_backends: [source_backend]}, _, transformed_query, _, input_params) do
+    with repo <- PostgresAdaptorRepo.new_repository_for_source_backend(source_backend),
+         :ok <- PostgresAdaptorRepo.connect_to_source_backend(repo, source_backend),
+         {:ok, result} <- SQL.query(repo, transformed_query, Map.to_list(input_params)),
+         %{columns: columns, rows: rows} <- result do
+      rows = Enum.map(rows, fn row -> columns |> Enum.zip(row) |> Map.new() end)
+      {:ok, %{rows: rows}}
     end
   end
 end
