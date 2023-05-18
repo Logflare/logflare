@@ -3,7 +3,7 @@
 # load secrets conditionally
 if [ -f /tmp/.secrets.env ]
     then
-    echo '/tmp/.secrets.env file present, loading secrets...'; 
+    echo '/tmp/.secrets.env file present, loading secrets...';
     export $(grep -v '^#' /tmp/.secrets.env | xargs);
 fi
 
@@ -26,4 +26,4 @@ fi
 echo "LOGFLARE_NODE_HOST is: $LOGFLARE_NODE_HOST"
 
 ./logflare eval Logflare.Release.migrate
-./logflare start --sname logflare
+RELEASE_COOKIE=$(cat /tmp/.magic_cookie 2>/dev/null || echo $RANDOM | md5sum | head -c 20) ./logflare start --sname logflare
