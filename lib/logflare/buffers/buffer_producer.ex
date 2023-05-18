@@ -9,12 +9,7 @@ defmodule Logflare.Buffers.BufferProducer do
   end
 
   def init(opts) do
-    state =
-      Enum.into(opts, %{
-        buffer_module: nil,
-        buffer_pid: nil,
-        demand: 0
-      })
+    state = Enum.into(opts, %{buffer_module: nil, buffer_pid: nil, demand: 0})
 
     for {key, nil} <- state do
       raise "#{key} must be provided and cannot be nil"
@@ -44,9 +39,6 @@ defmodule Logflare.Buffers.BufferProducer do
     total_demand = prev_demand + new_demand
     {:ok, items} = module.pop_many(pid, total_demand)
 
-    {
-      items,
-      %{state | demand: total_demand - length(items)}
-    }
+    {items, %{state | demand: total_demand - length(items)}}
   end
 end

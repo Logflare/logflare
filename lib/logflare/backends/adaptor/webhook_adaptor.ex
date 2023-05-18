@@ -1,21 +1,21 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @moduledoc false
   use GenServer
-  alias Logflare.Backends.{SourceBackend, Adaptor, Adaptor.WebhookAdaptor, SourceDispatcher}
-  alias Logflare.{Backends, Buffers.MemoryBuffer}
-  use Adaptor
   use TypedStruct
+  use Logflare.Backends.Adaptor
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.SourceDispatcher
+  alias Logflare.Buffers.MemoryBuffer
 
   typedstruct enforce: true do
-    field :buffer_module, Adaptor.t()
-    field :buffer_pid, pid()
-
-    field :config, %{
-      url: String.t()
-    }
-
-    field :source_backend, SourceBackend.t()
-    field :pipeline_name, tuple()
+    field(:buffer_module, Adaptor.t())
+    field(:buffer_pid, pid())
+    field(:config, %{url: String.t()})
+    field(:source_backend, SourceBackend.t())
+    field(:pipeline_name, tuple())
   end
 
   def start_link(%SourceBackend{} = source_backend) do
@@ -25,7 +25,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl true
   def init(source_backend) do
     {:ok, _} =
-      Registry.register(SourceDispatcher, source_backend.source_id, {WebhookAdaptor, :ingest})
+      Registry.register(SourceDispatcher, source_backend.source_id, {__MODULE__, :ingest})
 
     {:ok, buffer_pid} = MemoryBuffer.start_link([])
 
@@ -43,16 +43,16 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   # API
 
-  @impl Adaptor
+  @impl true
   def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
 
-  @impl Adaptor
+  @impl true
   def cast_config(params) do
     {%{}, %{url: :string}}
     |> Ecto.Changeset.cast(params, [:url])
   end
 
-  @impl Adaptor
+  @impl true
   def validate_config(changeset) do
     changeset
     |> Ecto.Changeset.validate_required([:url])
@@ -73,7 +73,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     use Tesla, docs: false
 
     # plug Tesla.Middleware.Headers, [{"authorization", "token xyz"}]
-    plug Tesla.Middleware.JSON
+    plug(Tesla.Middleware.JSON)
 
     def send(url, body, opts \\ %{}) do
       opts = Enum.into(opts, %{method: :post})
@@ -87,7 +87,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     use Broadway
     alias Broadway.Message
     alias Logflare.Buffers.BufferProducer
-    alias Logflare.Backends.Adaptor.{WebhookAdaptor, WebhookAdaptor.Client}
+    alias Logflare.Backends.Adaptor.WebhookAdaptor
+    alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
     @spec start_link(WebhookAdaptor.t()) :: {:ok, pid()}
     def start_link(adaptor_state) do
@@ -114,8 +115,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
 
     def handle_message(_processor_name, message, adaptor_state) do
-      message
-      |> Message.update_data(&process_data(&1, adaptor_state))
+      Message.update_data(message, &process_data(&1, adaptor_state))
     end
 
     defp process_data(log_event, %{config: %{url: url}}) do

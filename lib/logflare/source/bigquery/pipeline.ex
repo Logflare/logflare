@@ -5,20 +5,23 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   require Logger
 
   alias Broadway.Message
-  alias Logflare.Google.BigQuery
   alias GoogleApi.BigQuery.V2.Model
-  alias Logflare.Source.BigQuery.{Schema, BufferProducer}
-  alias Logflare.Google.BigQuery.{GenUtils, EventUtils}
-  alias Logflare.{Source}
-  alias Logflare.{Users, Sources}
-  alias Logflare.Source.Supervisor
-  alias Logflare.{AccountEmail, Mailer}
+  alias Logflare.AccountEmail
+  alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.LogEvent, as: LE
+  alias Logflare.Mailer
+  alias Logflare.Source
+  alias Logflare.Source.BigQuery.BufferProducer
+  alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Source.Supervisor
+  alias Logflare.Sources
+  alias Logflare.Users
 
   def start_link(%RLS{source: source, plan: _plan} = rls) do
     #    procs = calc_procs(source, plan)
-
     Broadway.start_link(__MODULE__,
       name: name(source.token),
       producer: [
@@ -82,16 +85,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
     case BigQuery.stream_batch!(context, rows) do
-      {:ok,
-       %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{
-         insertErrors: nil
-       }} ->
+      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
         messages
 
-      {:ok,
-       %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{
-         insertErrors: errors
-       }} ->
+      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
         Logger.warn("BigQuery insert errors.", error_string: inspect(errors))
 
         messages
@@ -173,12 +170,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       {:ok, user} ->
         Supervisor.reset_all_user_sources(user)
 
-        AccountEmail.backend_disconnected(user, message)
+        user
+        |> AccountEmail.backend_disconnected(message)
         |> Mailer.deliver()
 
-        Logger.warn("Backend disconnected for: #{user.email}",
-          tesla_response: message
-        )
+        Logger.warn("Backend disconnected for: #{user.email}", tesla_response: message)
 
       {:error, changeset} ->
         Logger.error("Failed to reset backend for user: #{user.email}",
