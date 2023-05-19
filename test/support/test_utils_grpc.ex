@@ -9,12 +9,15 @@ defmodule Logflare.TestUtilsGrpc do
   alias Opentelemetry.Proto.Trace.V1.ScopeSpans
   alias Opentelemetry.Proto.Trace.V1.Span
   alias Opentelemetry.Proto.Trace.V1.Span.Event
+  alias Opentelemetry.Proto.Trace.V1.ResourceSpans
 
   @doc """
   Generates a ExportTraceServiceRequest message which contains a Span and an Event in it
   """
   def random_export_service_request do
-    ExportTraceServiceRequest.new(resource_spans: random_resource_span())
+    %ExportTraceServiceRequest{
+      resource_spans: random_resource_span()
+    }
   end
 
   @doc """
@@ -22,27 +25,31 @@ defmodule Logflare.TestUtilsGrpc do
   """
   def random_resource_span do
     [
-      Opentelemetry.Proto.Trace.V1.ResourceSpans.new(
-        resource: Resource.new(),
+      %ResourceSpans{
+        resource: %Resource{},
         scope_spans: random_scope_span()
-      )
+      }
     ]
   end
 
   defp random_scope_span do
-    scope =
-      InstrumentationScope.new(
-        name: TestUtils.random_string(),
-        version: TestUtils.random_string(),
-        attributes: random_attributes()
-      )
+    scope = %InstrumentationScope{
+      name: TestUtils.random_string(),
+      version: TestUtils.random_string(),
+      attributes: random_attributes()
+    }
 
-    [ScopeSpans.new(scope: scope, spans: random_span())]
+    scope_spans = %ScopeSpans{
+      scope: scope,
+      spans: random_span()
+    }
+
+    [scope_spans]
   end
 
   defp random_span do
     [
-      Span.new(
+      %Span{
         name: TestUtils.random_string(),
         span_id: :crypto.strong_rand_bytes(8),
         parent_span_id: :crypto.strong_rand_bytes(8),
@@ -50,16 +57,16 @@ defmodule Logflare.TestUtilsGrpc do
         start_time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
         end_time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
         events: random_event()
-      )
+      }
     ]
   end
 
   defp random_event do
     [
-      Event.new(
+      %Event{
         name: TestUtils.random_string(),
         time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
-      )
+      }
     ]
   end
 
@@ -73,30 +80,32 @@ defmodule Logflare.TestUtilsGrpc do
   end
 
   defp random_key_value(:string) do
-    KeyValue.new(
+    %KeyValue{
       key: "random_string_#{TestUtils.random_string()}",
-      value: AnyValue.new(value: {:string_value, TestUtils.random_string()})
-    )
+      value: %AnyValue{
+        value: {:string_value, TestUtils.random_string()}
+      }
+    }
   end
 
   defp random_key_value(:boolean) do
-    KeyValue.new(
+    %KeyValue{
       key: "random_boolean_#{TestUtils.random_string()}",
-      value: AnyValue.new(value: {:bool_value, Enum.random([true, false])})
-    )
+      value: %AnyValue{value: {:bool_value, Enum.random([true, false])}}
+    }
   end
 
   defp random_key_value(:integer) do
-    KeyValue.new(
+    %KeyValue{
       key: "random_integer_#{TestUtils.random_string()}",
-      value: AnyValue.new(value: {:int_value, :rand.uniform(100)})
-    )
+      value: %AnyValue{value: {:int_value, :rand.uniform(100)}}
+    }
   end
 
   defp random_key_value(:double) do
-    KeyValue.new(
+    %KeyValue{
       key: "random_double_#{TestUtils.random_string()}",
-      value: AnyValue.new(value: {:double_value, :rand.uniform(100) + 1.00})
-    )
+      value: %AnyValue{value: {:double_value, :rand.uniform(100) + 1.00}}
+    }
   end
 end
