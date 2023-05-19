@@ -6,6 +6,7 @@ defmodule Logflare.SqlV2 do
   """
   alias Logflare.Sources
   alias Logflare.User
+  alias Logflare.SingleTenant
   alias __MODULE__.Parser
 
   @doc """
@@ -130,24 +131,37 @@ defmodule Logflare.SqlV2 do
 
     table_names = for %{"value" => table_name} <- name, do: table_name
 
-    {disallowed, unknown} =
-      reject_source_names(
-        table_names,
-        logflare_project_id,
-        user_project_id,
-        source_names ++ cte_names
-      )
+    table_names
+    # remove known names
+    |> Enum.reject(fn name ->
+      cond do
+        name in cte_names ->
+          true
 
-    cond do
-      length(unknown) > 0 ->
-        {:error, "can't find source #{Enum.join(unknown, ", ")}"}
+        name in source_names ->
+          true
 
-      length(disallowed) > 0 ->
-        {:error,
-         "Querying outside of user BigQuery project is not allowed: #{Enum.join(disallowed, ", ")}"}
+        SingleTenant.single_tenant?() and
+            is_project_fully_qualified_name(name, logflare_project_id) ->
+          # single tenant mode, allow user to use the global BQ project id
+          true
 
-      true ->
+        # user bigquery id is set
+        user_project_id != nil ->
+          is_project_fully_qualified_name(name, user_project_id)
+
+        # all else are unknown
+
+        true ->
+          false
+      end
+    end)
+    |> case do
+      [] ->
         :ok
+
+      unknown ->
+        {:error, "can't find source #{Enum.join(unknown, ", ")}"}
     end
   end
 
@@ -163,34 +177,6 @@ defmodule Logflare.SqlV2 do
   end
 
   defp check_all_sources_allowed(_kv, acc, _data), do: acc
-
-  # rejects sources into 2 groups, disallowed and unknown
-  defp reject_source_names(table_names, logflare_project_id, user_project_id, known_names) do
-    {disallowed_table_names, remaining_table_names} =
-      table_names
-      |> Enum.split_while(fn name ->
-        # true will be put in disallowed list
-        cond do
-          is_project_fully_qualified_name(name, logflare_project_id) ->
-            true
-
-          user_project_id != nil ->
-            # check that the name starts with user's bq project id
-            not is_project_fully_qualified_name(name, user_project_id)
-
-          true ->
-            false
-        end
-      end)
-
-    unknown_table_names =
-      Enum.reject(remaining_table_names, fn name ->
-        name in known_names or
-          is_project_fully_qualified_name(name, user_project_id)
-      end)
-
-    {disallowed_table_names, unknown_table_names}
-  end
 
   defp check_single_query_only([_stmt]), do: :ok
 
