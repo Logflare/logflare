@@ -10,5 +10,5 @@
     </div>
 </div>
 <div class="container">
-    <%= live_component(@socket, LogflareWeb.Search.LogEventViewerComponent, Map.merge(assigns, %{id: :log_event_viewer, source: @source, team_user: @team_user, user: @user})) %>
+    <%= live_component(LogflareWeb.Search.LogEventViewerComponent, Map.merge(assigns, %{id: :log_event_viewer, source: @source, team_user: @team_user, user: @user})) %>
 </div>

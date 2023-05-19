@@ -178,7 +178,7 @@ defmodule LogflareWeb.SourceControllerTest do
       s1_new = Sources.get_by(token: s1.token)
 
       assert html_response(conn, 302) =~ "redirected"
-      assert get_flash(conn, :info) == "Source updated!"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert s1_new.name == new_name
       assert s1_new.favorite == true
 
@@ -214,7 +214,7 @@ defmodule LogflareWeb.SourceControllerTest do
       s1_new = Sources.get_by(token: s1.token)
 
       assert s1_new.name != new_name
-      assert get_flash(conn, :error) == "Something went wrong!"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
     end
 
@@ -330,7 +330,7 @@ defmodule LogflareWeb.SourceControllerTest do
                name: {"can't be blank", [validation: :required]}
              ]
 
-      assert get_flash(conn) === %{"error" => "Something went wrong!"}
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) === "Something went wrong!"
     end
 
     test "renders error flash for source with empty name", %{conn: conn, users: [u1 | _]} do
@@ -347,7 +347,7 @@ defmodule LogflareWeb.SourceControllerTest do
                name: {"can't be blank", [validation: :required]}
              ]
 
-      assert get_flash(conn) === %{"error" => "Something went wrong!"}
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) === "Something went wrong!"
     end
   end
 
@@ -363,7 +363,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       new_s1 = Sources.get_by(id: s1.id)
 
-      assert get_flash(conn, :info) == "Source updated!"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert redirected_to(conn, 302) =~ source_path(conn, :dashboard)
       assert new_s1.favorite == not s1.favorite
     end

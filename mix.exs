@@ -8,7 +8,6 @@ defmodule Logflare.Mixfile do
       version: version(),
       elixir: "~> 1.4",
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [:phoenix] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -62,12 +61,13 @@ defmodule Logflare.Mixfile do
   defp deps do
     [
       # Phoenix stuff
-      {:phoenix, "~> 1.6.0"},
-      {:phoenix_html, "~> 3.0"},
-      {:phoenix_live_view, "~> 0.16.4"},
-      {:phoenix_pubsub, "~> 2.0.0"},
+      {:phoenix, "~> 1.7"},
+      # {:phoenix_html, "~> 3.2"},
+      {:phoenix_live_view, "~> 0.18"},
+      {:phoenix_view, "~> 2.0"},
+      {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
-      {:phoenix_live_reload, "~> 1.0", only: :dev},
+      {:phoenix_live_reload, "~> 1.4", only: :dev},
       # {:plug, "~> 1.8"},
       {:plug_cowboy, "~> 2.6"},
       {:plug_crypto, "~> 1.2.2"},

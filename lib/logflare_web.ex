@@ -68,7 +68,8 @@ defmodule LogflareWeb do
       import Phoenix.Controller,
         only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
 
-      import Phoenix.LiveView, only: [connected?: 1, assign: 2, assign: 3]
+      import Phoenix.Component, only: [assign: 2, assign: 3]
+      import Phoenix.LiveView, only: [connected?: 1]
       # Use all HTML functionality (forms, tags, etc)
       unquote(view_helpers())
       unquote(live_view_helpers())
@@ -78,7 +79,7 @@ defmodule LogflareWeb do
   def live_view do
     quote do
       use Phoenix.LiveView,
-        layout: {LogflareWeb.LayoutView, "live.html"}
+        layout: {LogflareWeb.LayoutView, :live}
 
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
 
@@ -96,6 +97,12 @@ defmodule LogflareWeb do
     end
   end
 
+  def html do
+    quote do
+      unquote(view_helpers())
+    end
+  end
+
   defp live_view_helpers do
     quote do
       use LogflareWeb.LiveCommons
@@ -110,8 +117,8 @@ defmodule LogflareWeb do
       import Phoenix.LiveView.Helpers
       import LogflareWeb.LiveHelpers
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
-
       import Phoenix.View
+      import Phoenix.Component
 
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
