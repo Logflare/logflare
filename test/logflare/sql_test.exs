@@ -1,6 +1,7 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
   use Logflare.DataCase
+  alias Logflare.SingleTenant
   alias Logflare.SqlV2
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
@@ -207,8 +208,9 @@ defmodule Logflare.SqlTest do
           {"with src as (select a from unknown_table) select datetime() from my_table",
            "can't find source unknown_table"},
           # cannot query logflare project
-          {"select a from `#{@logflare_project_id}.mydataset.mytable`",
-           "querying outside of user BigQuery project is not allowed"}
+          {"select a from `#{@logflare_project_id}.mydataset.mytable`", "can't find source"},
+          # fully qualified name that is not a source name should be rejected
+          {"select a from `a.b.c`", "can't find source"}
         ] do
       assert {:error, err} = SqlV2.transform(input, user)
 
@@ -217,16 +219,65 @@ defmodule Logflare.SqlTest do
     end
   end
 
-  test "BYOB - transforms table names correctly" do
+  test "BigQuery - fully qualified names" do
     user =
       insert(:user, bigquery_project_id: @user_project_id, bigquery_dataset_id: @user_dataset_id)
 
+    source_abc = insert(:source, user: user, name: "a.b.c")
+    source_cxy = insert(:source, user: user, name: "c.x.y")
+    source_cxyz = insert(:source, user: user, name: "c.x.y.z")
+
     for {input, expected} <- [
           # fully qualified names must start with the user's bigquery project
-          {"select a from `#{@user_project_id}.mydataset.mytable`",
-           "select a from `#{@user_project_id}.mydataset.mytable`"}
+          {"select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`",
+           "select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`"},
+          #  source names that look like dataset format
+          {"select a from `a.b.c`", "select a from #{bq_table_name(source_abc)}"},
+          {"with a as (select b from `c.x.y`) select b from a",
+           "with a as (select b from #{bq_table_name(source_cxy)}) select b from a"},
+          {"with a as (select b from `c.x.y.z`) select b from a",
+           "with a as (select b from #{bq_table_name(source_cxyz)}) select b from a"}
         ] do
       assert SqlV2.transform(input, user) |> elem(1) |> String.downcase() == expected
+    end
+  end
+
+  # This test checks if a source name starting with a logflare project id will get transformed correctly to the source value
+  # this ensures  users cannot access other users' sources.
+  test "source name replacement attack check - transform sources that have a fully-qualified name starting with global logflare project id" do
+    user = insert(:user)
+    source_name = "#{@logflare_project_id}.some.table"
+    insert(:source, user: user, name: source_name)
+    input = "select a from `#{source_name}`"
+
+    assert {:ok, transformed} = SqlV2.transform(input, user)
+    refute transformed =~ source_name
+  end
+
+  describe "single tenant - fully qualified name check" do
+    @single_tenant_bq_project_id "single-tenant-id"
+    TestUtils.setup_single_tenant(
+      seed_user: true,
+      bigquery_project_id: @single_tenant_bq_project_id
+    )
+
+    test "able to transform queries using provided bigquery project id" do
+      user = SingleTenant.get_default_user()
+      insert(:source, user: user, name: "a.b.c")
+      input = " select a from `a.b.c`"
+
+      assert {:ok, transformed} = SqlV2.transform(input, user)
+      assert transformed =~ @single_tenant_bq_project_id
+      refute transformed =~ @logflare_project_id
+    end
+
+    test "allow user to set fully-qualified names" do
+      user = SingleTenant.get_default_user()
+      input = " select a from `#{@single_tenant_bq_project_id}.my_dataset.my_table`"
+
+      assert {:ok, transformed} = SqlV2.transform(input, user)
+      assert transformed =~ "#{@single_tenant_bq_project_id}.my_dataset.my_table"
+      refute transformed =~ @logflare_project_id
     end
   end
 
@@ -290,12 +341,19 @@ defmodule Logflare.SqlTest do
     end
   end
 
-  defp bq_table_name(%{user: user} = source) do
+  defp bq_table_name(
+         %{user: user} = source,
+         override_project_id \\ nil,
+         override_dataset_id \\ nil
+       ) do
     token =
       source.token
       |> Atom.to_string()
       |> String.replace("-", "_")
 
-    "`#{@logflare_project_id}.#{user.id}_#{@env}.#{token}`"
+    project_id = override_project_id || user.bigquery_project_id || @logflare_project_id
+    dataset_id = override_dataset_id || user.bigquery_dataset_id || "#{user.id}_#{@env}"
+
+    "`#{project_id}.#{dataset_id}.#{token}`"
   end
 end
