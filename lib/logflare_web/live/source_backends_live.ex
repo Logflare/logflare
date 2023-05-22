@@ -5,26 +5,32 @@ defmodule LogflareWeb.SourceBackendsLive do
   alias Logflare.Backends
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <div class="mt-4">
       <%= if !@show_create_form do %>
         <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
       <% end %>
       <%= if @show_create_form do %>
-      <%= f = form_for :source_backend, "#", [phx_submit: :save_source_backend, class: "mt-4"] %>
-        Add <%= select f, :type, [:webhook], phx_change: :change_create_form_type %> backend
-        <div class="form-group mt-2">
-          <%= for f_config <- inputs_for(f, :config) do %>
+        <.form
+          :let={f}
+          for={@create_changeset}
+          action="#"
+          phx-submit="save_source_backend"
+          class="mt-4"
+        >
+          Add <%= select(f, :type, [:webhook], phx_change: :change_create_form_type) %> backend
+          <div class="form-group mt-2">
             <%= case @create_form_type do %>
               <% "webhook" -> %>
-                <%= label f_config, :url %>
-                <%= text_input f_config, :url %>
+                <%= label(f, :"config.url", "Url") %>
+                <%= text_input(f, :"config.url") %>
             <% end %>
-          <% end %>
-        </div>
-        <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">Cancel</button>
-        <%= submit "Add", class: "btn btn-primary" %>
-      </form>
+          </div>
+          <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">
+            Cancel
+          </button>
+          <%= submit("Add", class: "btn btn-primary") %>
+        </.form>
       <% end %>
 
       <div>
@@ -32,8 +38,15 @@ defmodule LogflareWeb.SourceBackendsLive do
         <ul>
           <%= for sb <- @source_backends do %>
             <li>
-                <%= sb.type %> <button class="ml-2 btn btn-danger" phx-click="remove_source_backend" phx-value-id="<%= sb.id %>">Remove</button>
-                <%= case sb.type do %>
+              <%= sb.type %>
+              <button
+                class="ml-2 btn btn-danger"
+                phx-click="remove_source_backend"
+                phx-value-id={sb.id}
+              >
+                Remove
+              </button>
+              <%= case sb.type do %>
                 <% :webhook -> %>
                   <ul>
                     <li>url: <%= sb.config.url %></li>
@@ -43,7 +56,6 @@ defmodule LogflareWeb.SourceBackendsLive do
           <% end %>
         </ul>
       </div>
-
     </div>
     """
   end
@@ -67,7 +79,7 @@ defmodule LogflareWeb.SourceBackendsLive do
         })
       )
 
-    {:ok, socket, layout: {LogflareWeb.LayoutView, "inline_live.html"}}
+    {:ok, socket, layout: {LogflareWeb.LayoutView, :inline_live}}
   end
 
   def handle_event(

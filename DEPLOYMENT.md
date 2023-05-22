@@ -10,7 +10,7 @@ To deploy the GRPC server in a new environment you need the following steps for 
   - Create .`<env>`.cacert.pem with the content from the certificate field
   - Create .`<env>`.cacert.key with the content from the key field
 - **Local:** Generate a self signed certificate for the origin server:
-  - `openssl req -newkey rsa:2048 -nodes -days 365000 -keyout .<env>.cert.key -out .<env>.req.pem` and set the email to your support email
+  - `openssl req -newkey rsa:2048 -nodes -days 365000 -keyout .<env>.cert.key -out .<env>.req.pem` and set your domain in the CN option when queried
   - `openssl x509 -req -days 12783 -set_serial 1 -in .<env>.req.pem -out .<env>.cert.pem -CA .<env>.cacert.pem -CAkey .<env>.cacert.key`
   - Store this files to be pushed into the server
 - **Google Cloud:** On your `Instance Template`, allow for HTTPS traffic in the Firewall configuration

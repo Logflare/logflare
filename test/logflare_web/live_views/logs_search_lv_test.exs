@@ -245,7 +245,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> assign(:user, nil)
         |> get(Routes.live_path(conn, SearchLV, source))
 
-      assert get_flash(conn, "error") =~ "must be logged in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "must be logged in"
       assert html_response(conn, 302)
       assert redirected_to(conn) == "/auth/login"
     end

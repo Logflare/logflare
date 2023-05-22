@@ -4,18 +4,15 @@ defmodule LogflareWeb.AlertComponent do
 
   @impl true
   def render(assigns) do
-    ~L"""
+    ~H"""
     <div class="message">
-        <div class="inner-message alert alert-<%= @alert_class %>" role="alert">
-          <span><%= @value %></span>
-          <a href="#" phx-click="close"
-                phx-target="<%= @myself %>"
-                phx-value-flash_key="<%= @key %>"
-                >
-            <button type="button" class="close" >
-              &times;
-            </button>
-          </a>
+      <div class={"inner-message alert alert-#{@alert_class}"} role="alert">
+        <span><%= @value %></span>
+        <a href="#" phx-click="close" phx-target={@myself} phx-value-flash_key={@key}>
+          <button type="button" class="close">
+            &times;
+          </button>
+        </a>
       </div>
     </div>
     """

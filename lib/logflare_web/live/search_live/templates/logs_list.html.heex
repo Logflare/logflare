@@ -1,18 +1,26 @@
-
 <%= if @search_op_log_events do %>
-  <div id="source-logs-search-list" data-last-query-completed-at="<%= @last_query_completed_at %>" phx-hook="SourceLogsSearchList">
+  <div
+    id="source-logs-search-list"
+    data-last-query-completed-at={@last_query_completed_at}
+    phx-hook="SourceLogsSearchList"
+  >
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list"></div>
     <% else %>
       <div id="logs-list" class="list-unstyled console-text-list">
         <%= for log <- @search_op_log_events.rows do %>
-          <%= if Map.has_key?(log.body, "event_message") do  %> <!-- TODO: TO BE DELETED WHEN UNDERLYING ISSUE IS FOUND -->
-            <li id="log-event_<%= log.id || log.body["timestamp"] %>">
-              <% %{"timestamp"=> timestamp, "event_message"=> message} = log.body %>
+          <%= if Map.has_key?(log.body, "event_message") do %>
+            <!-- TODO: TO BE DELETED WHEN UNDERLYING ISSUE IS FOUND -->
+            <li id={"log-event_#{log.id || log.body["timestamp"]}"}>
+              <% %{"timestamp" => timestamp, "event_message" => message} = log.body %>
               <%= if @use_local_time do %>
-                <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp, @user_local_timezone) %></mark>
+                <mark class="log-datestamp" data-timestamp={timestamp}>
+                  <%= format_timestamp(timestamp, @user_local_timezone) %>
+                </mark>
               <% else %>
-                <mark class="log-datestamp" data-timestamp="<%= timestamp %>"> <%= format_timestamp(timestamp) <> " UTC"%></mark>
+                <mark class="log-datestamp" data-timestamp={timestamp}>
+                  <%= format_timestamp(timestamp) <> " UTC" %>
+                </mark>
               <% end %>
               <%= message %>
               <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body["timestamp"]) do %>
@@ -25,5 +33,5 @@
     <% end %>
   </div>
 <% else %>
-  <div> </div>
+  <div></div>
 <% end %>
