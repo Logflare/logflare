@@ -68,6 +68,22 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     setup [:setup_user_session, :setup_source_processes]
 
+    test "subheader - lql docs", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element("a", "LQL")
+             |> render_click() =~ "Event Message Filtering"
+    end
+
+    test "subheader - schema modal", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "schema")
+             |> render_click() =~ "event_message"
+    end
+
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
@@ -87,14 +103,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_selected_chart_period(html) == "minute"
       assert find_chart_aggregate(html) == "count"
       assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
-    end
-
-    test "static elements", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-
-      assert view
-             |> element("a", "LQL")
-             |> render_click() =~ "Event Message Filtering"
     end
 
     test "lql filters", %{conn: conn, source: source} do
