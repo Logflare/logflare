@@ -9,7 +9,7 @@ import * as Logs from "./logs";
 import * as User from "./user";
 import BillingHooks from "./billing";
 import LiveModalHooks from "./live_modal";
-import { LogEventsChart } from "./source_log_chart.jsx";
+import { LogEventsChart } from "./LogEventsChart.jsx";
 import Chart from "./admin_dashboard_charts.jsx";
 import Loader from "./loader.jsx";
 import { LiveSocket } from "phoenix_live_view";

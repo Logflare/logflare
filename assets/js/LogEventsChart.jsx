@@ -1,23 +1,23 @@
-import $ from "jquery"
-import React from "react"
-import { DateTime } from "luxon"
-import { ResponsiveBarCanvas } from "@nivo/bar"
+import $ from "jquery";
+import React from "react";
+import { DateTime } from "luxon";
+import { ResponsiveBarCanvas } from "@nivo/bar";
 
-import { BarLoader } from "react-spinners"
+import { BarLoader } from "react-spinners";
 
-const brandLightBlack = "#1d1d1d"
-const brandGray = "#9a9a9a"
-const brandGreen = "#5eeb8f"
+const brandLightBlack = "#1d1d1d";
+const brandGray = "#9a9a9a";
+const brandGreen = "#5eeb8f";
 
-const warnColor = "#f1ba58"
-const criticalColor = "#bd1550"
-const emergencyColor = "#b11226"
-const alertColor = "#dc3545"
-const errorColor = "#dc3545"
-const debugColor = "#8e6ddf"
-const noticeColor = "#03C03C"
-const infoColor = "#5eeb8f"
-const secondInfoColor = "#6286db"
+const warnColor = "#f1ba58";
+const criticalColor = "#bd1550";
+const emergencyColor = "#b11226";
+const alertColor = "#dc3545";
+const errorColor = "#dc3545";
+const debugColor = "#8e6ddf";
+const noticeColor = "#03C03C";
+const infoColor = "#5eeb8f";
+const secondInfoColor = "#6286db";
 
 const theme = {
   grid: {
@@ -26,8 +26,8 @@ const theme = {
       strokeWidth: 2,
       strokeDasharray: "4 4",
     },
-  }
-}
+  },
+};
 
 const renderDefaultTooltip = ({ value, color, indexValue }) => {
   return (
@@ -35,9 +35,9 @@ const renderDefaultTooltip = ({ value, color, indexValue }) => {
       <strong style={{ color }}>Timestamp: {indexValue}</strong>
       <br />
       <strong style={{ color }}>Value: {value}</strong>
-    </div >
-  )
-}
+    </div>
+  );
+};
 
 const renderCfStatusCodeTooltip = ({ data, color }) => {
   return (
@@ -58,8 +58,8 @@ const renderCfStatusCodeTooltip = ({ data, color }) => {
       <br />
       <strong style={{ color: brandGray }}>Other: {data.other}</strong>
     </div>
-  )
-}
+  );
+};
 
 const renderElixirLoggerTooltip = ({ data, color }) => {
   const tooltips = [
@@ -74,33 +74,35 @@ const renderElixirLoggerTooltip = ({ data, color }) => {
     { c: infoColor, p: "level_info", t: "Info" },
     { c: debugColor, p: "level_debug", t: "Debug" },
     { c: brandGray, p: "other", t: "Other" },
-  ]
+  ];
   return (
     <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
-      {tooltips.map(
-        ({ c: color, p: property, t }) => {
-          return [
-            <strong style={{ color }}>{t}: {data[property]}</strong>,
-            <br />]
-        })}
+      {tooltips.map(({ c: color, p: property, t }) => {
+        return [
+          <strong style={{ color }}>
+            {t}: {data[property]}
+          </strong>,
+          <br />,
+        ];
+      })}
     </div>
-  )
-}
+  );
+};
 
 const tooltipFactory = (dataShape) => {
   switch (dataShape) {
     case "elixir_logger_levels":
-      return renderElixirLoggerTooltip
+      return renderElixirLoggerTooltip;
     case "cloudflare_status_codes":
-      return renderCfStatusCodeTooltip
+      return renderCfStatusCodeTooltip;
     case "vercel_status_codes":
-      return renderCfStatusCodeTooltip
+      return renderCfStatusCodeTooltip;
     case "netlify_status_codes":
-      return renderCfStatusCodeTooltip
+      return renderCfStatusCodeTooltip;
     default:
-      return renderDefaultTooltip
+      return renderDefaultTooltip;
   }
-}
+};
 
 const chartSettings = (type) => {
   switch (type) {
@@ -117,8 +119,8 @@ const chartSettings = (type) => {
             level_alert: alertColor,
             level_emergency: emergencyColor,
             other: brandGray,
-          }[id]
-          return color || brandGray
+          }[id];
+          return color || brandGray;
         },
         keys: [
           "level_info",
@@ -131,7 +133,7 @@ const chartSettings = (type) => {
           "level_warn",
           "other",
         ],
-      }
+      };
 
     case "cloudflare_status_codes":
       return {
@@ -143,8 +145,8 @@ const chartSettings = (type) => {
             status_2xx: infoColor,
             status_1xx: debugColor,
             other: brandGray,
-          }[id]
-          return color || brandGray
+          }[id];
+          return color || brandGray;
         },
         keys: [
           "status_5xx",
@@ -154,7 +156,7 @@ const chartSettings = (type) => {
           "status_1xx",
           "other",
         ],
-      }
+      };
 
     case "netlify_status_codes":
       return {
@@ -166,8 +168,8 @@ const chartSettings = (type) => {
             status_2xx: infoColor,
             status_1xx: debugColor,
             other: brandGray,
-          }[id]
-          return color || brandGray
+          }[id];
+          return color || brandGray;
         },
         keys: [
           "status_5xx",
@@ -177,7 +179,7 @@ const chartSettings = (type) => {
           "status_1xx",
           "other",
         ],
-      }
+      };
 
     case "vercel_status_codes":
       return {
@@ -189,8 +191,8 @@ const chartSettings = (type) => {
             status_2xx: infoColor,
             status_1xx: debugColor,
             other: brandGray,
-          }[id]
-          return color || brandGray
+          }[id];
+          return color || brandGray;
         },
         keys: [
           "status_5xx",
@@ -200,52 +202,52 @@ const chartSettings = (type) => {
           "status_1xx",
           "other",
         ],
-      }
+      };
     default:
       return {
         colors: (_) => infoColor,
         keys: ["value"],
-      }
+      };
   }
-}
+};
 
-const periods = ["day", "hour", "minute", "second"]
+const periods = ["day", "hour", "minute", "second"];
 const LogEventsChart = ({
   data,
   loading,
   chart_data_shape_id: chartDataShapeId,
   chart_period: chartPeriod,
+  use_local_timezone: useLocalTz,
+  user_local_timezone: userTz,
+  pushEvent,
 }) => {
-  const updateTimestampAndChart = window.updateTimestampAndChart
+  const tz = useLocalTz ? userTz : "Etc/UTC";
   const onClick = (event) => {
-    window.stopLiveSearch()
-    const utcDatetime = event.data.datetime
-    let tz
-
-    if (JSON.parse($("#user-preferences").attr("data-use-local-time"))) {
-      tz = $("#user-preferences").attr("data-user-local-timezone")
-    } else {
-      tz = "Etc/UTC"
-    }
+    pushEvent("soft_pause", {});
+    const utcDatetime = event.data.datetime;
 
     const start = DateTime.fromISO(utcDatetime, { zone: tz }).toISO({
       includeOffset: false,
       suppressMilliseconds: true,
       format: "extended",
-    })
+    });
     const end = DateTime.fromISO(utcDatetime, { zone: tz })
       .plus({ [chartPeriod + "s"]: 1 })
       .toISO({
         includeOffset: false,
         suppressMilliseconds: true,
         format: "extended",
-      })
-    const ts = `t:${start}..${end}`
-    const index = periods.findIndex((p) => p === chartPeriod)
-    const newPeriod = index === 3 ? periods[3] : periods[index + 1]
-    updateTimestampAndChart(ts, newPeriod)
-  }
-  const renderTooltip = tooltipFactory(chartDataShapeId)
+      });
+    const ts = `t:${start}..${end}`;
+    const index = periods.findIndex((p) => p === chartPeriod);
+    const newPeriod = index === 3 ? periods[3] : periods[index + 1];
+
+    pushEvent("datetime_update", {
+      querystring: ts,
+      period: newPeriod,
+    });
+  };
+  const renderTooltip = tooltipFactory(chartDataShapeId);
   return (
     <div
       style={{
@@ -288,7 +290,7 @@ const LogEventsChart = ({
         />
       )}
     </div>
-  )
-}
+  );
+};
 
-export { LogEventsChart }
+export { LogEventsChart };
