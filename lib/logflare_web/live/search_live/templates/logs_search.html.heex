@@ -131,7 +131,7 @@
         loading: @chart_loading,
         chart_period: get_chart_period(@lql_rules, "minute"),
         user_local_timezone: @user_local_timezone,
-        use_local_time: @use_local_time,
+        use_local_time: @use_local_time |> IO.inspect(),
         chart_data_shape_id:
           if(@search_op_log_aggregates,
             do: @search_op_log_aggregates.chart_data_shape_id,

@@ -217,11 +217,11 @@ const LogEventsChart = ({
   loading,
   chart_data_shape_id: chartDataShapeId,
   chart_period: chartPeriod,
-  use_local_timezone: useLocalTz,
+  use_local_time: useLocalTime,
   user_local_timezone: userTz,
   pushEvent,
 }) => {
-  const tz = useLocalTz ? userTz : "Etc/UTC";
+  const tz = useLocalTime ? userTz : "Etc/UTC";
   const onClick = (event) => {
     pushEvent("soft_pause", {});
     const utcDatetime = event.data.datetime;
