@@ -1,0 +1,13 @@
+<div class="subhead ">
+  <div class="container mx-auto tw-flex tw-justify-between">
+    <h5>~/endpoints</h5>
+    <div class="tw-flex tw-flex-row tw-justify-end tw-gap-2">
+        <%= link to: Routes.access_tokens_path(@socket, :index) do %>
+            <span><i class="fas fa-key"></i>access tokens</span>
+        <% end %>
+        <%= link to: "https://docs.logflare.app/endpoints" do %>
+            <span><i class="fas fa-key"></i> docs</span>
+        <% end %>
+    </div>
+  </div>
+</div>

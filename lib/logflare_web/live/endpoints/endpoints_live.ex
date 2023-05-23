@@ -6,71 +6,16 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Endpoints.Query
   alias Logflare.Users
   alias LogflareWeb.Utils
+  use Phoenix.Component
+  embed_templates "actions/*", suffix: "_action"
+  embed_templates "components/*"
 
-  def render(%{allow_access: false} = assigns) do
-    ~H"""
-    <div class="container tw-mx-auto tw-mt-5">
-      <div class="col-lg-6 tw-mb-4 tw-mx-auto">
-        <h3 class="tw-text-white">Logflare Endpoints Beta</h3>
-        <p>We're in the process of releasing a major feature called Logflare Endpoints.</p>
-        <p>
-          Endpoints lets you write ANSI SQL against your structured logs and create API endpoints from the results.
-        </p>
-        <p>
-          With Endpoints you can operationalize structured timestamped events and integrate your data into an end-user facing
-          application without any other complicated data pipelines or batch processing aggregations.
-        </p>
 
-        <h3 class="tw-text-white">Apply</h3>
-        <p>If this sounds intereseting to you just click the button below and we'll get in touch.</p>
-        <button class="btn btn-primary" phx-click="apply-beta">I'm interested!</button>
-      </div>
-    </div>
-    """
-  end
+  def render(%{allow_access: false} = assigns), do: closed_beta_action(assigns)
 
-  def render(%{allow_access: true} = assigns) do
-    ~H"""
-    <%= live_react_component(
-      "Comp.SubHeader",
-      %{
-        paths: [%{to: "/endpoints", label: "endpoints"}],
-        actions: [
-          %{
-            to: Routes.access_tokens_path(@socket, :index),
-            html:
-              ~H(<span><i class="fas fa-key"></i> Manage access tokens</span>)
-              |> Phoenix.HTML.Safe.to_iodata()
-              |> List.to_string()
-          }
-        ]
-      },
-      id: "subheader"
-    ) %>
-    <div class="tw-flex tw-flex-row tw-py-10 tw-px-4 h-full">
-      <section>
-        <%= live_react_component(
-          "Interfaces.EndpointsBrowserList",
-          %{
-            endpoints: @endpoints,
-            selectedEndpoint: @show_endpoint
-          },
-          id: "endpoints-browser-list"
-        ) %>
-      </section>
+  def render(%{live: :index} = assigns), do: list_action(assigns)
+  def render(%{live: :show} = assigns), do: show_action(assigns)
 
-      <section class="tw-flex-grow">
-        <%= render_action(assigns.live_action, assigns) %>
-      </section>
-    </div>
-    """
-  end
-
-  defp render_action(:index, assigns) do
-    ~H"""
-    <%= live_react_component("Interfaces.EndpointsIntro", %{}, id: "endpoints-intro") %>
-    """
-  end
 
   defp render_action(:show, %{show_endpoint: nil} = assigns) do
     ~H"""

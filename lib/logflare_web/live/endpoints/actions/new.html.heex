@@ -1,0 +1,15 @@
+<.subheader />
+
+<p className="tw-my-10">
+Logflare Endpoints are GET JSON API endpoints that run ANSI SQL queries on your
+event data.
+
+With Endpoints you can integrated queries over your ingested events and integrate your data into an end-user facing application.
+</p>
+
+
+<ul :for={endpoint <- @endpoints}>
+    <li>
+        <%= link endpoint.name, to: Routes.endpoints_path(@socket, :show, endpoint) %>
+    </li>
+</ul>

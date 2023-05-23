@@ -5,70 +5,70 @@ defmodule LogflareWeb.EndpointsLiveTest do
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
-
-    conn =
-      conn
-      |> login_user(user)
-
+    conn = login_user(conn, user)
     {:ok, user: user, conn: conn}
   end
 
-  test "list endpoints", %{conn: conn, user: user} do
-    endpoint = insert(:endpoint, user: user)
+  describe "with existing endpoint" do
+    setup %{user: user} do
+      {:ok, endpoint: insert(:endpoint, user: user)}
+    end
 
-    {:ok, view, _html} = live(conn, "/endpoints")
+    test "list endpoints", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints")
 
-    html = view |> element("#endpoints-browser-list") |> render()
-    assert html =~ endpoint.name
-    assert has_element?(view, "#endpoints-intro")
+      # intro message and link to docs
+      assert has_element?(view, "p", "are GET JSON API endpoints")
+      # link to docs
+      assert has_element?(view, ".subhead a", "docs")
 
-    render_hook(view, "show-endpoint", %{
-      endpoint_id: endpoint.id
-    })
+      # link to show
+      view
+      |> element("ul li a", endpoint.name)
+      |> render_click()
 
-    assert view
-           |> has_element?("#show-endpoint")
+      assert_patched(view, "/endpoints/#{endpoint.id}")
+      assert has_element?(view, "code", endpoint.query)
+    end
 
-    assert_patched(view, "/endpoints/#{endpoint.id}")
+    test "show endpoint", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      assert has_element?(view, "h1", endpoint.name)
+      assert has_element?(view, "code", endpoint.query)
 
-    html = view |> element("#show-endpoint") |> render()
-    assert html =~ endpoint.name
-    assert html =~ endpoint.query
+      # link to edit
+      assert element(view, ".subhead a", "edit") |> render_click() =~ "Edit Endpoint"
+      assert_patched(view, "/endpoints/#{endpoint.id}/edit")
+    end
 
-    render_hook(view, "list-endpoints")
-    assert_patched(view, "/endpoints")
-  end
+    test "show endpoint -> edit endpoint", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      assert html =~ "Edit Endpoint"
+      assert has_element?(view, "h1", endpoint.name)
 
-  test "show endpoint", %{conn: conn, user: user} do
-    endpoint = insert(:endpoint, user: user)
+      new_query = "select current_timestamp() as my_time"
 
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      render_submit("form#edit-endpoint", %{
+        endpoint: %{
+          query: new_query
+        }
+      })
 
-    assert view |> element("#show-endpoint") |> render() =~ endpoint.name
-    assert view |> element("#show-endpoint") |> render() =~ endpoint.query
-  end
+      # show the endpoint
+      assert has_element?(view, "code", new_query)
+    end
 
-  test "show endpoint -> edit endpoint", %{conn: conn, user: user} do
-    endpoint = insert(:endpoint, user: user)
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+    test "delete endpoint from show", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      assert view |> element(".subhead a", "delete") |> render_click() =~ "has been deleted"
 
-    render_hook(view, "edit-endpoint", %{endpoint_id: endpoint.id})
+      # link back to list, removed from endpoints list
+      assert_patched(view, "/endpoints")
+      refute has_element?(view, endpoint.name)
 
-    assert_patched(view, "/endpoints/#{endpoint.id}/edit")
-
-    assert view |> has_element?("#edit-endpoint")
-    assert view |> element("#edit-endpoint") |> render() =~ endpoint.name
-
-    # edit the endpoint
-    new_query = "select current_timestamp() as my_time"
-
-    render_hook(view, "save-endpoint", %{
-      endpoint: %{
-        query: new_query
-      }
-    })
-
-    assert view |> render() =~ new_query
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      assert has_element?(view, "#not-found")
+    end
   end
 
   test "new endpoint", %{conn: conn} do
@@ -94,59 +94,53 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert view |> element("#endpoints-browser-list") |> render() =~ "some query"
   end
 
-  test "delete endpoint", %{conn: conn, user: user} do
-    endpoint = insert(:endpoint, user: user)
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
-    assert view |> element("#show-endpoint") |> render() =~ endpoint.name
-    # should be in endpoints list
-    assert view |> element("#endpoints-browser-list") |> render() =~ endpoint.name
-    assert render_hook(view, "delete-endpoint", %{endpoint_id: endpoint.id}) =~ "has been deleted"
-    assert_patched(view, "/endpoints")
-    # removed from endpoints list
-    refute view |> element("#endpoints-browser-list") |> render() =~ endpoint.name
-
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
-    assert view |> has_element?("#not-found")
-  end
-
   describe "parse queries on change" do
     test "new endpoint", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
       # Error
-      render_hook(view, "parse-query", %{
+      assert view |> render_change("form#endpoint", %{
         query_string: "select current_datetime() in invalid"
-      })
+      }) =~ "parser error"
 
-      assert view |> element("#new-endpoint") |> render() =~ "parser error"
 
       # no error
-      render_hook(view, "parse-query", %{
+      refute view |> render_change("form#endpoint", %{
         query_string: "select @my_param as valid"
-      })
+      }) =~ "parser error"
 
-      refute view |> element("#new-endpoint") |> render() =~ "parser error"
-      assert view |> element("#new-endpoint") |> render() =~ "my_param"
+      # detects params correctly
+      assert has_element?(view, "form label", "my_param")
+
+      # saves the change
+      assert view |>  element("button", "Save") |> render_click() =~ "select @my_param as valid"
+      path= assert_patch(view)
+      assert path =~ ~r/\/endpoints\/\S+/
     end
 
     test "edit endpoint", %{conn: conn, user: user} do
-      endpoint = insert(:endpoint, user: user)
+      endpoint = insert(:endpoint, user: user, query: "select @other as initial")
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
 
       # Error
-      render_hook(view, "parse-query", %{
+      assert view |> render_change("form#endpoint", %{
         query_string: "select current_datetime() in invalid"
-      })
+      }) =~ "parser error"
 
-      assert view |> element("#edit-endpoint") |> render() =~ "parser error"
 
       # no error
-      render_hook(view, "parse-query", %{
+      refute view |> render_change("form#endpoint", %{
         query_string: "select @my_param as valid"
-      })
+      }) =~ "parser error"
+      # detects params correctly
+      assert has_element?(view, "form label", "my_param")
 
-      refute view |> element("#edit-endpoint") |> render() =~ "parser error"
-      assert view |> element("#edit-endpoint") |> render() =~ "my_param"
+
+      # saves the change
+      assert view |>  element("button", "Save") |> render_click() =~ "select @my_param as valid"
+      assert_patched(view, "/endpoints/#{endpoint.id}")
+      # no longer has the initail query string
+      refute render(view) =~ endpoint.query
     end
   end
 
