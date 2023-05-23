@@ -68,6 +68,66 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     setup [:setup_user_session, :setup_source_processes]
 
+    test "subheader - lql docs", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element("a", "LQL")
+             |> render_click() =~ "Event Message Filtering"
+    end
+
+    test "subheader - schema modal", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "schema")
+             |> render_click() =~ "event_message"
+    end
+
+    test "subheader - events", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "events")
+             |> render_click()
+
+      :timer.sleep(300)
+      assert render(view) =~ "Actual SQL query used when querying for results"
+    end
+
+    test "subheader - aggregeate", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "aggregate")
+             |> render_click()
+
+      :timer.sleep(300)
+      assert render(view) =~ "Actual SQL query used when querying for results"
+    end
+
+    test "subheader - timezone", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "timezone")
+             |> render_click()
+
+      :timer.sleep(300)
+      assert render(view) =~ "local timezone for your"
+    end
+
+    test "subheader - local time toggle", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "local time")
+             |> render_click()
+
+      :timer.sleep(200)
+      assert view |> element(".subhead a .toggle-on")
+    end
+
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
@@ -87,14 +147,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_selected_chart_period(html) == "minute"
       assert find_chart_aggregate(html) == "count"
       assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
-    end
-
-    test "static elements", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-
-      assert view
-             |> element("a", "LQL")
-             |> render_click() =~ "Event Message Filtering"
     end
 
     test "lql filters", %{conn: conn, source: source} do
@@ -261,15 +313,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       render_click(view, "soft_play", %{})
       assert get_view_assigns(view).tailing?
-    end
-
-    test "set_local_time", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
-      # post-init fetching
-      :timer.sleep(500)
-
-      assert render_click(view, "set_local_time", %{"use_local_time" => "true"}) =~
-               ~S|id="user-local-timezone"|
     end
 
     test "datetime_update", %{conn: conn, source: source} do
