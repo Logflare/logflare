@@ -84,6 +84,28 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click() =~ "event_message"
     end
 
+    test "subheader - events", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "events")
+             |> render_click()
+
+      :timer.sleep(500)
+      assert render(view) =~ "Actual SQL query used when querying for results"
+    end
+
+    test "subheader - aggregeate", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "aggregate")
+             |> render_click()
+
+      :timer.sleep(500)
+      assert render(view) =~ "Actual SQL query used when querying for results"
+    end
+
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
