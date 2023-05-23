@@ -85,6 +85,34 @@ defmodule Logflare.EndpointsTest do
              })
   end
 
+  test "create endpoint with normal source name" do
+    user = insert(:user)
+    source = insert(:source, user: user, name: "mysource")
+
+    assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
+             Endpoints.create_query(user, %{
+               name: "fully-qualified",
+               query: "select @test from #{source.name}"
+             })
+
+    assert stored_sql =~ "mysource"
+    assert mapping["mysource"] == Atom.to_string(source.token)
+  end
+
+  test "create endpoint with fully-qualified names " do
+    user = insert(:user, bigquery_project_id: "myproject")
+
+    assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
+             Endpoints.create_query(user, %{
+               name: "fully-qualified",
+               query: "select @test from `myproject.mydataset.mytable`"
+             })
+
+    assert mapping == %{}
+
+    assert stored_sql =~ "myproject"
+  end
+
   describe "running queries" do
     setup do
       # mock goth behaviour

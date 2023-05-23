@@ -412,7 +412,9 @@ defmodule Logflare.SqlV2 do
   end
 
   @doc """
-  Returns a name-uuid mapping of all sources detected from inside of the query
+  Returns a name-uuid mapping of all sources detected from inside of the query.
+
+  excludes any unrecognized names (such as fully-qualified names).
 
   ### Example
 
@@ -422,6 +424,7 @@ defmodule Logflare.SqlV2 do
   @spec sources(String.t(), User.t()) :: {:ok, %{String.t() => String.t()}} | {:error, String.t()}
   def sources(query, user) do
     sources = Sources.list_sources_by_user(user)
+    source_names = for s <- sources, do: s.name
 
     source_mapping =
       for source <- sources, into: %{} do
@@ -430,7 +433,7 @@ defmodule Logflare.SqlV2 do
 
     sources =
       with {:ok, ast} <- Parser.parse(query),
-           names <- find_all_source_names(ast) do
+           names <- find_all_source_names(ast) |> Enum.filter(fn name -> name in source_names end) do
         names
         |> Enum.map(fn name ->
           token =
