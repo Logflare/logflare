@@ -273,6 +273,29 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "some event message"
     end
 
+    test "log event modal", %{conn: conn, source: source} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123"
+         })}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      # post-init fetching
+      :timer.sleep(500)
+
+      view |> element("li a", "event body") |> render_click()
+      :timer.sleep(300)
+      assert view |> element("#log-event-viewer") |> has_element?()
+      html = render(view)
+      assert html =~ "Raw JSON"
+      assert html =~ "modal123"
+      assert html =~ "some modal message"
+    end
+
     test "shows flash error for malformed query", %{conn: conn, source: source} do
       assert {:ok, view, _html} =
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
