@@ -119,6 +119,7 @@ defmodule LogflareWeb do
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
       import Phoenix.View
       import Phoenix.Component
+      import Phoenix.VerifiedRoutes
 
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext

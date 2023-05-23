@@ -33,13 +33,14 @@ defmodule LogflareWeb.ConnCase do
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
       import Plug.Conn
-
+      import Phoenix.VerifiedRoutes
       alias Logflare.TestUtils
       alias Logflare.User
       alias Logflare.Partners.Partner
       alias LogflareWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing
+      @router LogflareWeb.Router
       @endpoint LogflareWeb.Endpoint
 
       setup context do

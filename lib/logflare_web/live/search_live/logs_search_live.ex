@@ -456,22 +456,14 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("set_local_time" = ev, metadata, socket) do
+  def handle_event("toggle_local_time", _metadata, socket) do
     source = socket.assigns.source
-    log_lv_received_event(ev, source)
-
-    use_local_time =
-      metadata
-      |> Map.get("use_local_time")
-      |> String.to_existing_atom()
-      |> Kernel.not()
-
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(source.token)
 
     socket =
       socket
-      |> assign(:use_local_time, use_local_time)
+      |> assign(:use_local_time, not socket.assigns.use_local_time)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
         socket.assigns.source.bq_table_schema

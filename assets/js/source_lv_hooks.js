@@ -220,15 +220,6 @@ hooks.SourceLogsSearch = {
       hook.pushEvent("soft_play", {})
     })
 
-    window.stopLiveSearch = () => hook.pushEvent("soft_pause", {})
-
-    window.updateTimestampAndChart = (tsClause, chartPeriod) => {
-      hook.pushEvent("datetime_update", {
-        querystring: tsClause,
-        period: chartPeriod,
-      })
-    }
-
     $daterangepicker.on("show.daterangepicker", (e, picker) => {
       hook.pushEvent("soft_pause", {})
     })
