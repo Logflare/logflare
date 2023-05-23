@@ -456,7 +456,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("toggle_local_time" = ev, metadata, socket) do
+  def handle_event("toggle_local_time", _metadata, socket) do
     source = socket.assigns.source
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.maybe_cancel_query(source.token)
