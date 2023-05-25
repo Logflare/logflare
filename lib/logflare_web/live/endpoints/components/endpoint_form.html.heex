@@ -1,0 +1,14 @@
+<.form
+  :let={f}
+  for={@endpoint_changeset}
+  id="endpoint"
+  phx-submit="save-endpoint"
+  phx-change="parse-query"
+>
+  <%= text_input(f, :name) %>
+  <%= text_input(f, :query) %>
+
+  <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
+
+  <%= submit("Save") %>
+</.form>

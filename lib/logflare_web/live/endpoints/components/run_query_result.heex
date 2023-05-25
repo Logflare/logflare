@@ -1,0 +1,3 @@
+<code :if={@query_result_rows}>
+  <%= Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print() %>
+</code>

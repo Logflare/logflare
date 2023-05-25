@@ -1,15 +1,27 @@
-<.subheader />
+<.subheader>
+  <:path>~/endpoints/<%= @show_endpoint.name %></:path>
+  <a
+    href="#"
+    data-confirm="Are you sure? This cannot be undone"
+    phx-click="delete-endpoint"
+    phx-value-endpoint_id={@show_endpoint.id}
+  >
+    <span><i class="fas fa-trash"></i> delete</span>
+  </a>
+  <%= link to: Routes.access_tokens_path(@socket, :index) do %>
+    <span><i class="fas fa-key"></i>access tokens</span>
+  <% end %>
+  <%= live_patch to: ~p"/endpoints/#{@show_endpoint.id}/edit" do %>
+    <span><i class="fas fa-edit"></i>edit</span>
+  <% end %>
+</.subheader>
 
-<p className="tw-my-10">
-Logflare Endpoints are GET JSON API endpoints that run ANSI SQL queries on your
-event data.
+<h1>
+  <%= @show_endpoint.name %>
+</h1>
+<code class="tw-whitespace-pre-wrap">
+  <%= @show_endpoint.query %>
+</code>
 
-With Endpoints you can integrated queries over your ingested events and integrate your data into an end-user facing application.
-</p>
-
-
-<ul :for={endpoint <- @endpoints}>
-    <li>
-        <%= link endpoint.name, to: Routes.endpoints_path(@socket, :show, endpoint) %>
-    </li>
-</ul>
+<.run_query_form {assigns} />
+<.run_query_result {assigns} />

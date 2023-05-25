@@ -10,16 +10,27 @@ defmodule LogflareWeb.EndpointsLive do
   embed_templates "actions/*", suffix: "_action"
   embed_templates "components/*"
 
-
   def render(%{allow_access: false} = assigns), do: closed_beta_action(assigns)
 
-  def render(%{live: :index} = assigns), do: list_action(assigns)
-  def render(%{live: :show} = assigns), do: show_action(assigns)
+  def render(%{live_action: :index} = assigns), do: list_action(assigns)
+  def render(%{live_action: :show, show_endpoint: nil} = assigns), do: not_found_action(assigns)
+  def render(%{live_action: :show} = assigns), do: show_action(assigns)
+  def render(%{live_action: :new} = assigns), do: new_action(assigns)
+  def render(%{live_action: :edit} = assigns), do: edit_action(assigns)
 
-
-  defp render_action(:show, %{show_endpoint: nil} = assigns) do
+  defp render_docs_link(assigns) do
     ~H"""
-    <%= live_react_component("Interfaces.EndpointNotFound", %{}, id: "not-found") %>
+    <%= link to: "https://docs.logflare.app/endpoints" do %>
+      <span><i class="fas fa-key"></i> docs</span>
+    <% end %>
+    """
+  end
+
+  defp render_access_tokens_link(assigns) do
+    ~H"""
+    <%= link to: Routes.access_tokens_path(@socket, :index) do %>
+      <span><i class="fas fa-key"></i>access tokens</span>
+    <% end %>
     """
   end
 
@@ -67,10 +78,6 @@ defmodule LogflareWeb.EndpointsLive do
     """
   end
 
-  defp render_action(_, assigns) do
-    ~H""
-  end
-
   def mount(%{}, %{"user_id" => user_id}, socket) do
     endpoints = Endpoints.list_endpoints_by(user_id: user_id)
     user = Users.get(user_id)
@@ -88,9 +95,12 @@ defmodule LogflareWeb.EndpointsLive do
      |> assign(:user, user)
      |> assign(:query_result_rows, nil)
      |> assign(:show_endpoint, nil)
+     |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
      |> assign(:allow_access, allow_access)
      |> assign(:base_url, LogflareWeb.Endpoint.url())
      |> assign(:parse_error_message, nil)
+     |> assign(:query_string, nil)
+     |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
      |> assign(:declared_params, [])}
   end
 
@@ -109,10 +119,15 @@ defmodule LogflareWeb.EndpointsLive do
         socket when endpoint != nil ->
           {:ok, %{parameters: parameters}} = Endpoints.parse_query_string(endpoint.query)
 
-          assign(socket, :declared_params, parameters)
+          socket
+          |> update_params_form(parameters)
+          # set changeset
+          |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
 
         other ->
           other
+          # reset the changeset
+          |> assign(:endpoint_changeset, nil)
       end)
 
     {:noreply, socket}
@@ -120,7 +135,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_event(
         "save-endpoint",
-        %{"endpoint" => params},
+        %{"query" => params},
         %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
       ) do
     {action, endpoint} =
@@ -139,14 +154,6 @@ defmodule LogflareWeb.EndpointsLive do
      |> put_flash(:info, "Successfully #{Atom.to_string(action)} endpoint #{endpoint.name}")
      |> push_patch(to: Routes.endpoints_path(socket, :show, endpoint))
      |> assign(:show_endpoint, endpoint)}
-  end
-
-  def handle_event("edit-endpoint", %{"endpoint_id" => id}, socket) do
-    {:noreply, push_patch(socket, to: Routes.endpoints_path(socket, :edit, id))}
-  end
-
-  def handle_event("list-endpoints", _params, socket) do
-    {:noreply, push_patch(socket, to: Routes.endpoints_path(socket, :index))}
   end
 
   def handle_event(
@@ -170,52 +177,34 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event(
-        "show-endpoint",
-        %{"endpoint_id" => id},
-        %{assigns: %{endpoints: endpoints}} = socket
-      ) do
-    endpoint = Enum.find(endpoints, fn e -> e.id == id end)
-
-    {:noreply, push_patch(socket, to: "/endpoints/#{endpoint.id}")}
-  end
-
-  def handle_event(
         "run-query",
-        %{"endpoint_id" => endpoint_id, "query_params" => query_params},
-        socket
-      ) do
-    query = Endpoints.get_endpoint_query(endpoint_id)
-    result = Endpoints.run_query(query, query_params)
-    socket = handle_query_result(socket, result)
-
-    {:noreply, socket}
-  end
-
-  def handle_event(
-        "run-query",
-        %{"query_params" => query_params},
-        %{assigns: %{show_endpoint: %Query{} = query}} = socket
-      ) do
-    result = Endpoints.run_query(query, query_params)
-    socket = handle_query_result(socket, result)
-    {:noreply, socket}
-  end
-
-  def handle_event(
-        "run-query",
-        %{"query_params" => query_params, "query_string" => query_string},
+        %{"run" => payload},
         %{assigns: %{user: user}} = socket
       ) do
-    result = Endpoints.run_query_string(user, {:bq_sql, query_string}, query_params)
-    socket = handle_query_result(socket, result)
-    {:noreply, socket}
+    query_string = Map.get(payload, "query", "")
+    query_params = Map.get(payload, "params", %{})
+
+    case Endpoints.run_query_string(user, {:bq_sql, query_string}, params: query_params) do
+      {:ok, %{rows: rows}} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Ran query successfully")
+         |> assign(:query_result_rows, rows)}
+
+      {:error, err} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
+         |> assign(:query_result_rows, nil)}
+    end
   end
 
-  def handle_event("parse-query", %{"query_string" => query_string}, socket) do
+  def handle_event("parse-query", %{"query" => %{"query" => query_string}}, socket) do
     socket =
       case Endpoints.parse_query_string(query_string) do
         {:ok, %{parameters: params_list}} ->
           socket
+          |> assign(:query_string, query_string)
           |> assign(:declared_params, params_list)
           |> assign(:parse_error_message, nil)
 
@@ -227,10 +216,6 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
-  def handle_event("new-endpoint", _, socket) do
-    {:noreply, socket |> assign(:show_endpoint, nil) |> push_patch(to: "/endpoints/new")}
-  end
-
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
     Logger.info("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
@@ -239,15 +224,18 @@ defmodule LogflareWeb.EndpointsLive do
      |> put_flash(:info, "Successfully applied for the Endpoints beta. We'll be in touch!")}
   end
 
-  defp handle_query_result(socket, {:ok, %{rows: rows}}) do
+  defp update_params_form(socket, parameters) do
     socket
-    |> put_flash(:info, "Ran query successfully")
-    |> assign(:query_result_rows, rows)
-  end
-
-  defp handle_query_result(socket, {:error, err}) do
-    socket
-    |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
-    |> assign(:query_result, nil)
+    |> assign(
+      :params_form,
+      to_form(
+        %{
+          "query" => nil,
+          "params" => for(k <- parameters, do: {k, nil}, into: %{})
+        },
+        as: "run"
+      )
+    )
+    |> assign(:declared_params, parameters)
   end
 end
