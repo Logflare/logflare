@@ -42,7 +42,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   end
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <div id="billing-chart" class="my-3 w-auto">
       <%= if @connecting || @loading, do: placeholder(), else: make_chart(@chart_data) %>
     </div>
