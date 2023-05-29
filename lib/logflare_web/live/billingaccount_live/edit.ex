@@ -37,6 +37,7 @@ defmodule LogflareWeb.BillingAccountLive do
           |> assign(:period, "month")
           |> assign(:plans, Billing.list_plans())
           |> assign(:plan, plan)
+          |> assign(:usage_form, to_form(%{}, as: :usage))
           |> assign(:user, user)
           |> assign(:payment_methods, [])
 

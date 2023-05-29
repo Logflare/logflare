@@ -181,40 +181,87 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   end
 
   def render(assigns) do
-    ~L"""
-    <ul class="list-unstyled">
-    <%= for p <- @payment_methods do %>
-    <li><%= String.upcase(p.brand) %> ending in <%= p.last_four %> expires <%= p.exp_month %>/<%= p.exp_year %> <%= delete_link(p, @myself) %> <%= if p.stripe_id == @user.billing_account.default_payment_method, do: nil, else: make_default(p, @myself) %></li>
-    <% end %>
-    </ul>
-    <div id="stripe-elements-form" class="mt-4">
-      <form id="payment-form" action="#" phx-submit="submit" phx-hook="PaymentMethodForm" data-stripe-key="<%= @stripe_key %>" data-stripe-customer="<%= @user.billing_account.stripe_customer %>" phx-target="<%= @myself %>">
-        <div id="card-element">
-          <!-- Elements will create input elements here -->
-        </div>
-        <!-- We'll put the error messages in this element -->
-        <div id="card-element-errors" role="alert"></div>
-        <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">Add payment method</button>
-      </form>
-      <button phx-click="sync" phx-disable-with="Syncing..." phx-target="<%= @myself %>" class="btn btn-dark btn-sm">Sync payment methods</button>
+    ~H"""
+    <div>
+      <ul class="list-unstyled">
+        <%= for p <- @payment_methods do %>
+          <li>
+            <%= String.upcase(p.brand) %> ending in <%= p.last_four %> expires <%= p.exp_month %>/<%= p.exp_year %> <%= delete_link(
+              p,
+              @myself
+            ) %> <%= if p.stripe_id == @user.billing_account.default_payment_method,
+              do: nil,
+              else: make_default(p, @myself) %>
+          </li>
+        <% end %>
+      </ul>
+      <div id="stripe-elements-form" class="mt-4">
+        <form
+          id="payment-form"
+          action="#"
+          phx-submit="submit"
+          phx-hook="PaymentMethodForm"
+          data-stripe-key={@stripe_key}
+          data-stripe-customer={@user.billing_account.stripe_customer}
+          phx-target={@myself}
+        >
+          <div id="card-element">
+            <!-- Elements will create input elements here -->
+          </div>
+          <!-- We'll put the error messages in this element -->
+          <div id="card-element-errors" role="alert"></div>
+          <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">
+            Add payment method
+          </button>
+        </form>
+        <button
+          phx-click="sync"
+          phx-disable-with="Syncing..."
+          phx-target={@myself}
+          class="btn btn-dark btn-sm"
+        >
+          Sync payment methods
+        </button>
+      </div>
     </div>
-
     """
   end
 
   defp delete_link(p, myself) do
-    assigns = %{}
+    assigns = %{
+      stripe_id: p.id,
+      myself: myself
+    }
 
-    ~L"""
-    <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id="<%= p.id %>" phx-target="<%= myself %>" class="btn btn-danger btn-sm m-3">Delete</button>
+    ~H"""
+    <button
+      phx-click="delete"
+      phx-disable-with="Deleting..."
+      phx-value-id={@stripe_id}
+      phx-target={@myself}
+      class="btn btn-danger btn-sm m-3"
+    >
+      Delete
+    </button>
     """
   end
 
   defp make_default(p, myself) do
-    assigns = %{}
+    assigns = %{
+      stripe_id: p.stripe_id,
+      myself: myself
+    }
 
-    ~L"""
-    <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id="<%= p.stripe_id %>" phx-target="<%= myself %>" class="btn btn-dark btn-sm">Make default</button>
+    ~H"""
+    <button
+      phx-click="make-default"
+      phx-disable-with="Updating..."
+      phx-value-stripe-id={@stripe_id}
+      phx-target={@myself}
+      class="btn btn-dark btn-sm"
+    >
+      Make default
+    </button>
     """
   end
 

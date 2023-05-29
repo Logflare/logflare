@@ -23,12 +23,21 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponent do
     presentation_start_date = Calendar.strftime(start_date, "%b %d")
     presentation_end_date = Calendar.strftime(end_date, "%b %d")
 
-    ~L"""
+    assigns =
+      Map.merge(assigns, %{
+        presentation_start_date: presentation_start_date,
+        presentation_end_date: presentation_end_date,
+        usage: usage
+      })
+
+    ~H"""
     <div class="my-3 w-auto">
-     <div class="flex flex-col">
-       <div>Estimate usage between <%= presentation_start_date %> and <%= presentation_end_date %>:</div>
-       <div>Usage: <%= usage %> inserts</div>
-     </div>
+      <div class="flex flex-col">
+        <div>
+          Estimate usage between <%= @presentation_start_date %> and <%= @presentation_end_date %>:
+        </div>
+        <div>Usage: <%= @usage %> inserts</div>
+      </div>
     </div>
     """
   end
