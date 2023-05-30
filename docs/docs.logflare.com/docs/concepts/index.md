@@ -9,9 +9,9 @@ sidebar_position: 3
 There are two ways in which you can ingest data into Logflare, via specifying the source UUID, or via the source's name.
 
 ```
-http://api.logflare.app/api/logs?source=9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
+POST http://api.logflare.app/api/logs?source=9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
 
-http://api.logflare.app/api/logs?source_name=my.logs.source
+POST http://api.logflare.app/api/logs?source_name=my.logs.source
 ```
 
 ### Batching Your Events
@@ -86,6 +86,10 @@ metadata: {
   counter: number;
 }
 ```
+
+### Key Transformation
+
+When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
 
 ### Schema Changes
 

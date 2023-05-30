@@ -1,3 +1,7 @@
+---
+toc_max_heading_level: 3
+---
+
 # BigQuery
 
 Logflare natively supports the storage of log events to BigQuery. Ingested logs are **streamed** into BigQuery, and each source is mapped to a BigQuery table.
@@ -24,6 +28,25 @@ For metered plan users, if the TTL is not set, the BigQuery table will default t
 
 For users on the Free plan, the maximum retention is **3 days**.
 
+#### Deep Dive: Table Partitioning
+
+Table partitioning effectively splits a BigQuery table into many smaller tables.
+When using partitioned tables, BigQuery storage is effectively half priced when the partitioned table is older than 90 days. When a table has not been modified in 90 days, BigQuery will only charge half the normal rate.
+
+When partitioned over time (which Logflare manages automatically), we are able to benefit from the discount by separating out the older and less-queried smaller tables, reducing total effective storage costs.
+
+Furthermore, by partitioning a table, we can then limit queries to scan data across only selected partitioned column/tables, saving you more money and making your queries even more responsive.
+
+However, the caveat of this is that BigQuery's streaming buffer is not include in partitioned queries by default. This would affect queries across the partitioned tables and would result in a lag time before the data will become visible in the partitioned tables.
+
+Should you need to query against the streaming buffer directly, you can use the following query ([source](https://stackoverflow.com/questions/41864257/how-to-query-for-data-in-streaming-buffer-only-in-bigquery)) to do so:
+
+```sql
+SELECT fields FROM `dataset.partitioned_table_name` WHERE _PARTITIONTIME IS NULL
+```
+
+You can read more about partitioned tables in the official Google Cloud [documentation](https://cloud.google.com/bigquery/docs/partitioned-tables).
+
 ## Logflare-Managed BigQuery
 
 Logflare free and metered users will not need to manage BigQuery settings and permissions, and will have access to their data via their registered e-mail address.
@@ -38,9 +61,11 @@ The differences in BigQuery behavior for the two plans are as follows:
 
 ## Bring Your Own Backend (BYOB)
 
-You can also Bring Your Own Backend by allowing Logflare to manage a GCP project's BigQuery.
+You can also Bring Your Own Backend by allowing Logflare to manage your GCP project's BigQuery.
 
 This allows you to retain data beyond the metered plan's 90 days, as well as integrating the BigQuery tables managed by Logflare into your BigQuery-backend data warehouse.
+
+Furthermore, you will have complete control over storage and querying costs as you will be billed directly by Google Cloud, while Logflare will only handle the ingestion pipeline.
 
 ### Setting Up Your Own BigQuery Backend
 
@@ -127,3 +152,63 @@ Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free ti
 ```
 
 To resolve this error, you will need enable billing for your project through the GCP console.
+
+## Data Studio (Looker) Integration
+
+When you log into the Logflare service with your Google account, we will automatically provide you access to the underlying Big Query tables associated with all your sources. This allows you to create visualizations and reports in Data Studio.
+
+Looker Studio has extensive documentation and tutorials to help you [learn more](https://support.google.com/looker-studio/#topic=6267740).
+
+### Setup Steps
+
+#### Step 1: Open Data Studio and Add a Data Source
+
+![Open Data Studio](./open-data-studio.png)
+
+#### Step 2: Select the BigQuery Connector
+
+![Select the BigQuery Connector](./bigquery-connector.png)
+
+#### Step 3: Find your Logflare Source
+
+The BigQuery table name will match the ID of the source as per the dashboard.
+
+![Find your Logflare Source](./find-logflare-source.png)
+
+#### Step 4: Select Partitioned Table Time Dimension
+
+Selecting this option will make your reports faster and let you effectively use the date range picker in a report.
+It will also help with ongoing BigQuery costs associated with queries.
+
+It may take up to 15 minutes for ingested data to flow into Data Studio immediately after report creation.
+
+![Select Partitioned Table Time Dimension](./partitioned-table-time-dimension.png)
+
+#### Step 5: Connect to the Data
+
+![Connect to the da ta](./connect-data-studio.png)
+
+#### Step 6: Set Timestamp Type to Date Hour (Optional)
+
+This allows you to see more fine grained fluctuations in your data.
+
+You can also mix hourly and daily data in your reports using `duplicate` on a field and configuring it to either `Date Hour` or `Date`.
+
+![Set the Timestamp type](./data-studio-timestamp-type.png)
+
+#### Step 7: Create the Report and Configure Settings
+
+Click on "Create Report" to finialize your initial report.
+![Create the Data Studio Report](./data-studio-create-report.png)
+
+You can also configure the report further by navigating to Report Settings
+
+![Configure Report Settings](./data-studio-report-settings.png)
+
+You should also configure the default data source date range to optimize your query cost.
+
+![Configure the data source date range](./data-studio-configure-date-range.png)
+
+#### Step 8: Create Your First Charts
+
+![Create your first chart](data-studio-create-chart.png)
