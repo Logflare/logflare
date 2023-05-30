@@ -42,31 +42,54 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def guides(conn, _params) do
-    render(conn, "guides.html")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://docs.logflare.app")
+    |> halt()
   end
 
   def overview(conn, _params) do
-    render(conn, "overview.html")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://docs.logflare.app")
+    |> halt()
   end
 
   def vercel_setup(conn, _params) do
-    render(conn, "vercel_setup.html")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://docs.logflare.app/integrations/vercel/")
+    |> halt()
   end
 
   def big_query_setup(conn, _params) do
-    render(conn, "bigquery_setup.html")
+    conn
+    |> put_status(301)
+    |> redirect(
+      external: "https://docs.logflare.app/backends/bigquery/#setting-up-your-own-bigquery-backend"
+    )
+    |> halt()
   end
 
   def slack_app_setup(conn, _params) do
-    render(conn, "slack_app_setup.html")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://docs.logflare.app/alerts/slack")
+    |> halt()
   end
 
   def data_studio_setup(conn, _params) do
-    render(conn, "data_studio_setup.html")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://docs.logflare.app/backends/bigquery/#data-studio-looker-integration")
+    |> halt()
   end
 
   def event_analytics_demo(conn, _params) do
-    render(conn, "event_analytics_demo.html")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://docs.logflare.app")
+    |> halt()
   end
 
   defp single_tenant_redirect(conn, _) do
