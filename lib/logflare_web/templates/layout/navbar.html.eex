@@ -31,7 +31,7 @@
                 <%= link "Endpoints", to: Routes.endpoints_path(@conn, :index), class: "nav-link" %>
             </li>
             <li class="nav-item">
-                <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
+                <%= link "Docs", to: "https://docs.logflare.app", class: "nav-link" %>
             </li>
             <%= if Map.get(@conn.assigns, :team_user) do %>
                 <li class="nav-item">
@@ -55,7 +55,7 @@
             <% end %>
             <% else %>
             <li class="nav-item">
-                <%= link "Guides", to: Routes.marketing_path(@conn, :guides), class: "nav-link" %>
+                <%= link "Docs", to: "https://docs.logflare.app", class: "nav-link" %>
             </li>
             <li class="nav-item">
                 <%= link "Pricing", to: Routes.marketing_path(@conn, :pricing), class: "nav-link" %>
