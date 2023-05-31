@@ -10,6 +10,16 @@ Logflare Endpoints creates GET HTTP API endpoints that executes a SQL query and 
 This feature is in Alpha stage and is only available for private preview.
 :::
 
+## API Endpoints
+
+There are two ways to query a Logflare Endpoint, via the Endpoint UUID or via the endpoint's name:
+
+```
+GET  https://api.logflare.app/api/endpoints/query/9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
+
+GET  https://api.logflare.app/api/endpoints/query/name/my.custom.endpoint
+```
+
 ## Crafting a Query
 
 Queries will be passed to the underlying backend to perform the querying.
@@ -89,4 +99,4 @@ When configured, the cache will be automatically updated at the set interval, pe
 
 ## Security
 
-Endpoints are unsecure by default. However, you can generate access tokens to secure the API endpoints.
+Endpoints are unsecure by default. However, you can generate [access tokens](/concepts/access-tokens) to secure the API endpoints.

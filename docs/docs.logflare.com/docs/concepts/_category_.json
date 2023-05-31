@@ -1,0 +1,10 @@
+{
+  "label": "Introduction",
+  "collapsible": false,
+  "collapsed": false,
+  "position": 1,
+  "link": {
+    "type": "doc",
+    "id": "concepts/index"
+  }
+}

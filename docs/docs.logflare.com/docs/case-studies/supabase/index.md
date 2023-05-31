@@ -12,4 +12,4 @@ Logflare is an integrated part of the Supabase stack, powering logging for each 
 
 [Logflare Endpoints](/endpoints) allows the querying of said logging data. Specifically, [query sandboxing](/endpoints#query-sandboxing) allows Supabase users to formulate their own SQL queries across their logging data, allowing complex and custom queries beyond what Supabase can provide out of the box. These queries are executed in the [Supabase Logs Explorer](https://supabase.com/docs/guides/platform/logs#logs-explorer), part of the logging experience in the Supabase Studio. Furthermore, the fully interactive log filtering user interface within the Supabase Logs UI dynamically builds SQL and allows users to eject into editing raw SQL queries to tweak and customize it to their specific debugging requirements.
 
-![Click here for full write up of how Logflare is the Supabase Logs server](https://supabase.com/blog/supabase-logs-self-hosted)
+[Click here for full write up of how Logflare is the Supabase Logs server](https://supabase.com/blog/supabase-logs-self-hosted)

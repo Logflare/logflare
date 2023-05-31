@@ -64,9 +64,14 @@ const config = {
         },
         items: [
           {
+            href: "https://logflare.app/dashboard",
+            label: "dashboard",
+            position: "left",
+          },
+          {
             href: "https://logflare.app/swaggerui",
             label: "OpenAPI",
-            position: "left",
+            position: "right",
           },
           {
             href: "https://github.com/Logflare/logflare",
