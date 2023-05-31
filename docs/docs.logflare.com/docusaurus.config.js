@@ -38,7 +38,8 @@ const config = {
           sidebarPath: require.resolve("./sidebars.js"),
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
-          editUrl: "https://github.com/Logflare/logflare/tree/staging/docs/docs.logflare.com",
+          editUrl:
+            "https://github.com/Logflare/logflare/tree/staging/docs/docs.logflare.com",
         },
         theme: {
           customCss: require.resolve("./src/css/custom.scss"),
@@ -62,6 +63,11 @@ const config = {
           src: "img/apple-icon.png",
         },
         items: [
+          {
+            href: "https://logflare.app/swaggerui",
+            label: "OpenAPI",
+            position: "left",
+          },
           {
             href: "https://github.com/Logflare/logflare",
             label: "GitHub",
