@@ -121,7 +121,7 @@ The steps for setting up self-hosted Logflare requires different BigQuery config
 
 You can directly execute SQL queries in BigQuery instead of through the Logflare UI. This would be helpful for generating reports that require aggregations, or to perform queries across multiple BigQuery tables.
 
-When referencing Logflare-managed BigQuery tables, you will need to reference the table by the source's UUID. If you are crafting the query within [Logflare Endpoints](/endpoints), the table name resolution is handled automatically for you.
+When referencing Logflare-managed BigQuery tables, you will need to reference the table by the source's UUID. If you are crafting the query within [Logflare Endpoints](/concepts/endpoints), the table name resolution is handled automatically for you.
 
 ### Unnesting Repeated Records
 
