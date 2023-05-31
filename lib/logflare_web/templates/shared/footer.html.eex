@@ -46,23 +46,23 @@
       <div class="col-md-2">
         <ul>
           <li>
-            <h5>Guides</h5>
+            <h5>Documentation</h5>
           </li>
           <li>
-            <%= link "All Guides", to: Routes.marketing_path(@conn, :guides)%>
+            <%= link "All Documentation", to: "https://docs.logflare.app" %>
           </li>
           <li>
-            <%= link "Overview", to: Routes.marketing_path(@conn, :overview)%>
+            <%= link "Ingestion", to: "https://docs.logflare.app/concepts/ingestion/"%>
           </li>
           <li>
-            <%= link "BigQuery Backend Setup", to: Routes.marketing_path(@conn, :big_query_setup)%>
+            <%= link "BigQuery Backend Setup", to: "https://docs.logflare.app/backends/bigquery/#bring-your-own-backend-byob" %>
           </li>
           <li>
-            <%= link "Data Studio Setup", to: Routes.marketing_path(@conn, :data_studio_setup)%>
+            <%= link "Data Studio Setup", to: "https://docs.logflare.app/backends/bigquery/#data-studio-looker-integration" %>
           </li>
           <li>
-            <%= link "Event Analytics Demo", to: Routes.marketing_path(@conn, :event_analytics_demo)%>
-          </ul>
+            <%= link "Self-Hosting", to: "https://docs.logflare.app/self-hosting" %>
+          </li>
         </ul>
       </div>
       <div class="col-md-6">
