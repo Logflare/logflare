@@ -103,9 +103,11 @@ Schema updates are additive and new columns cannot be removed through the UI. We
 
 Backend TTL refers to how long data is retained wtihin a given backend. Logflare will manage the retention settings for each backend where available.
 
-:::warn
+
+:::warning Use Logflare for Retention Handling Only
 It is not advisable to manage the backend's retention settings directly without going through Logflare, as conflicts may arise.
 :::
+
 
 You can configure the Backend TTL via source settings under Source > Edit > Backend TTL.
 

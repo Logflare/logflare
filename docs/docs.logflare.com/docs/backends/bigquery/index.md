@@ -69,7 +69,7 @@ Furthermore, you will have complete control over storage and querying costs as y
 
 ### Setting Up Your Own BigQuery Backend
 
-:::warn Enable Billing for Project
+:::warning Enable Billing for Project
 Enable a Google Cloud Platform billing account with payment information or [we won't be able to insert into your BigQuery table!](#ingestion-bigquery-streaming-insert-error)
 :::
 

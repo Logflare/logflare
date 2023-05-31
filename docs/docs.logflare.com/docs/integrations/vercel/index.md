@@ -72,7 +72,7 @@ m.parsedLambdaMessage.report.duration_ms:>1000
 
 To enable even more insights from your Vercel deployment you can log any JSON object and we'll parse that accordingly.
 
-:::warn Logflare Pino Transport
+:::warning Logflare Pino Transport
 For logging large amounts of structured data, it is advised to use the [Logflare Pino Transport](https://github.com/Logflare/pino-logflare), as Vercel's logging infrastructure will truncate long log lines.
 :::
 
