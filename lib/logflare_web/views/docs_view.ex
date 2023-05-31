@@ -6,7 +6,7 @@ defmodule LogflareWeb.DocsView do
   @doc """
   This is used to render docs markdown pages within the app.
 
-    iex>  render_docs("intro") =~ "Logflare is a log ingestion and querying engine"
+    iex>  render_docs("concepts") =~ "Logflare is a log ingestion and querying engine"
     true
 
   We do not need to specify the trailing `index` filename
@@ -21,7 +21,7 @@ defmodule LogflareWeb.DocsView do
 
   Specific html entities are also replaced
 
-    iex> render_docs("querying") =~ ~S(;#124;)
+    iex> render_docs("concepts") =~ ~S(;#124;)
     false
 
   Replace line breaks with newlines
