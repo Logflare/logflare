@@ -1,14 +1,15 @@
 defmodule Logflare.Backends.Adaptor.Postgres.Repo do
   alias Logflare.Backends.SourceBackend
-  alias Logflare.Backends.Logflare.Backends.Adaptor.Postgres.Supervisor
+  alias Logflare.Backends.Adaptor.Postgres.Supervisor
+
   require Logger
 
-  @query "CREATE TABLE IF NOT EXISTS log_events (id TEXT PRIMARY KEY, event_message TEXT, metadata JSONB, timestamp TIMESTAMP);"
   @ast (quote do
           use Ecto.Repo,
             otp_app: :logflare,
             adapter: Ecto.Adapters.Postgres
         end)
+
   @spec new_repository_for_source_backend(SourceBackend.t()) :: tuple()
   def new_repository_for_source_backend(source_backend) do
     name = Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source_id}"])
@@ -21,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.Postgres.Repo do
     name
   end
 
+  @spec connect_to_source_backend(Ecto.Repo.t(), SourceBackend.t(), Keyword.t()) :: :ok
   def connect_to_source_backend(repository_module, %SourceBackend{config: config}, opts \\ []) do
     unless Process.whereis(repository_module) do
       %{url: url} = config
@@ -32,17 +34,19 @@ defmodule Logflare.Backends.Adaptor.Postgres.Repo do
     :ok
   end
 
-  def create_log_event_table(repository_module) do
-    case Ecto.Adapters.SQL.query(repository_module, @query) do
-      {:ok, _} ->
-        :ok
+  @migrations [
+    {20_230_602_173_023, Logflare.Backends.Adaptor.Postgres.Repo.Migrations.AddLogEvents}
+  ]
+  @spec create_log_event_table(Ecto.Repo.t()) :: :ok | {:error, :failed_migration}
+  def create_log_event_table(repository_module, migrations \\ @migrations) do
+    Ecto.Migrator.run(repository_module, migrations, :up, all: true)
 
-      {:error, e} ->
-        Logger.error(
-          "Error creating table on target database for repository #{repository_module} with error #{inspect(e)}"
-        )
-
-        {:error, :database_error}
-    end
+    :ok
+  rescue
+    e in Postgrex.Error ->
+      Logger.error("Error creating log_events table: #{inspect(e)}")
+      {:error, :failed_migration}
   end
+
+  def migrations, do: @migrations
 end
