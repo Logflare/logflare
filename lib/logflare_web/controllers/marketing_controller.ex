@@ -66,7 +66,8 @@ defmodule LogflareWeb.MarketingController do
     conn
     |> put_status(301)
     |> redirect(
-      external: "https://docs.logflare.app/backends/bigquery/#setting-up-your-own-bigquery-backend"
+      external:
+        "https://docs.logflare.app/backends/bigquery/#setting-up-your-own-bigquery-backend"
     )
     |> halt()
   end
@@ -81,7 +82,9 @@ defmodule LogflareWeb.MarketingController do
   def data_studio_setup(conn, _params) do
     conn
     |> put_status(301)
-    |> redirect(external: "https://docs.logflare.app/backends/bigquery/#data-studio-looker-integration")
+    |> redirect(
+      external: "https://docs.logflare.app/backends/bigquery/#data-studio-looker-integration"
+    )
     |> halt()
   end
 
