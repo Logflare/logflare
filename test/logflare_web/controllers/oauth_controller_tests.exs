@@ -9,7 +9,7 @@ defmodule LogflareWeb.OAuthControllerTests do
         |> get(path, %{})
 
       assert html_response(conn, 302)
-      assert get_flash(conn)["error"] =~ "Authentication error"
+      assert conn.assigns.flash["error"] =~ "Authentication error"
     end
   end
 
@@ -17,13 +17,30 @@ defmodule LogflareWeb.OAuthControllerTests do
     insert(:plan)
     user = insert(:user)
     conn = login_user(conn, user)
+    env_oauth_config = Application.get_env(:logflare, ExOauth2Provider)
+
+    # create the oauth2 applications
+    admin = insert(:user)
+
+    {:ok, application} =
+      ExOauth2Provider.Applications.create_application(
+        admin,
+        %{
+          name: "Cloudflare App",
+          redirect_uri: "https://www.cloudflare.com/apps/oauth/",
+          scope: "read write",
+          secret: "",
+          uid: "d8a8af24ada66bfa29477d746d74ae7a8833d80019c6fa285f07fe6159491a5f"
+        },
+        env_oauth_config
+      )
 
     search =
       URI.encode_query(%{
         scope: "read write",
         response_type: "code",
-        redirect_uri: "www.cloudflare.com/apps/oauth/",
-        client_id: "my-client-id",
+        redirect_uri: application.redirect_uri,
+        client_id: application.uid,
         # additional app metadata should be forwarded
         "user.email": "test@logflare.app",
         "site.name": "test.logflare.app"
@@ -32,7 +49,7 @@ defmodule LogflareWeb.OAuthControllerTests do
     uri = "/oauth/authorize?#{search}"
     conn = get(conn, uri, %{})
     assert html_response(conn, 302)
-    assert get_flash(conn)["error"] == nil
+    assert conn.assigns.flash["error"] == nil
     assert redirected_to(conn) =~ "www.cloudflare.com"
   end
 end
