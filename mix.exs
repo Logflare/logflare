@@ -80,7 +80,7 @@ defmodule Logflare.Mixfile do
       {:oauth2, "~> 2.0.0", override: true},
 
       # Oauth2 provider
-      {:phoenix_oauth2_provider, github: "Logflare/phoenix_oauth2_provider"},
+      {:phoenix_oauth2_provider, github: "Logflare/phoenix_oauth2_provider", ref: "36e757920e54bffa0f603bf985aff91bb8b28f2d"},
       {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
