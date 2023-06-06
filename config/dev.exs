@@ -32,7 +32,8 @@ config :logflare, LogflareWeb.Endpoint,
       ~r{priv/gettext/.*(po)$},
       ~r{lib/logflare_web/views/.*(ex)$},
       ~r{lib/logflare_web/templates/.*(eex)$},
-      ~r{lib/logflare_web/live/.*(ex)$}
+      ~r{lib/logflare_web/live/.*(ex)$},
+      ~r{lib/logflare_web/.*(ex)$}
     ]
   ]
 

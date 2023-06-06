@@ -28,7 +28,6 @@ import "./vendor/daterangepicker.css";
 
 // interfaces
 import * as Interfaces from "./interfaces";
-import * as Components from "./components";
 
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
@@ -38,8 +37,6 @@ const liveReactHooks = { LiveReact };
 
 window.Components = { LogEventsChart, Loader, AdminChart: Chart };
 window.Interfaces = Interfaces;
-// todo: merge with window.Components
-window.Comp = Components;
 window.Dashboard = Dashboard;
 window.Logs = Logs;
 window.Source = Source;

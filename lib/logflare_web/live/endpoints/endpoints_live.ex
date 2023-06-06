@@ -3,7 +3,6 @@ defmodule LogflareWeb.EndpointsLive do
   use LogflareWeb, :live_view
   require Logger
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.Query
   alias Logflare.Users
   alias LogflareWeb.Utils
   use Phoenix.Component
@@ -20,61 +19,13 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_docs_link(assigns) do
     ~H"""
-    <%= link to: "https://docs.logflare.app/endpoints" do %>
-      <span><i class="fas fa-key"></i> docs</span>
-    <% end %>
+    <.subheader_link to="https://docs.logflare.app/endpoints" text="docs" fa_icon="book" />
     """
   end
 
   defp render_access_tokens_link(assigns) do
     ~H"""
-    <%= link to: Routes.access_tokens_path(@socket, :index) do %>
-      <span><i class="fas fa-key"></i>access tokens</span>
-    <% end %>
-    """
-  end
-
-  defp render_action(:show, %{show_endpoint: %Query{}} = assigns) do
-    ~H"""
-    <%= live_react_component(
-      "Interfaces.ShowEndpoint",
-      %{
-        baseUrl: @base_url,
-        endpoint: @show_endpoint,
-        declaredParams: @declared_params,
-        queryResultRows: @query_result_rows
-      },
-      id: "show-endpoint"
-    ) %>
-    """
-  end
-
-  defp render_action(:edit, assigns) do
-    ~H"""
-    <%= live_react_component(
-      "Interfaces.EndpointEditor",
-      %{
-        endpoint: @show_endpoint,
-        queryResultRows: @query_result_rows,
-        declaredParams: @declared_params,
-        parseErrorMessage: @parse_error_message
-      },
-      id: "edit-endpoint"
-    ) %>
-    """
-  end
-
-  defp render_action(:new, assigns) do
-    ~H"""
-    <%= live_react_component(
-      "Interfaces.EndpointEditor",
-      %{
-        queryResultRows: @query_result_rows,
-        declaredParams: @declared_params,
-        parseErrorMessage: @parse_error_message
-      },
-      id: "new-endpoint"
-    ) %>
+    <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
     """
   end
 

@@ -22,14 +22,31 @@ defmodule LogflareWeb.CoreComponents do
 
   def subheader(assigns) do
     ~H"""
-    <div class="subhead ">
-      <div class="container mx-auto tw-flex tw-justify-between">
+    <div class="subhead">
+      <div class="container pb-1 mx-auto tw-flex tw-flex-col tw-justify-between">
         <h5><%= render_slot(@path) %></h5>
-        <div class="tw-flex tw-flex-row tw-justify-end tw-gap-2">
+        <div class="tw-flex  tw-flex-row tw-justify-end tw-gap-2">
           <%= render_slot(@inner_block) %>
         </div>
       </div>
     </div>
+    """
+  end
+
+  @doc """
+  A subheader link, to be used together with the subheader component.
+  """
+  attr :text, :string
+  attr :to, :string
+  attr :fa_icon, :string
+
+  def subheader_link(assigns) do
+    ~H"""
+    <%= Phoenix.HTML.Link.link to: @to, class: "tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center" do %>
+      <i :if={@fa_icon} class={"inline-block h-3 w-3 fas fa-#{@fa_icon}"}></i><span>
+      <%= @text %>
+      </span>
+    <% end %>
     """
   end
 end
