@@ -6,38 +6,38 @@ defmodule LogflareWeb.DocsView do
   @doc """
   This is used to render docs markdown pages within the app.
 
-    iex>  render_docs("intro") =~ "Logflare is a log ingestion and querying engine"
+    iex>  render_docs("concepts") =~ "Logflare is a log ingestion and querying engine"
     true
 
   We do not need to specify the trailing `index` filename
-    iex> render_docs("querying/lql") =~ "Logflare Query Language"
+    iex> render_docs("concepts/lql") =~ "Logflare Query Language"
     true
 
   We can filter down to a specific html anchor
-    iex> render_docs("querying/lql#event-message-filtering") =~ "Event Message Filtering"
+    iex> render_docs("concepts/lql#event-message-filtering") =~ "Event Message Filtering"
     true
-    iex> render_docs("querying/lql#event-message-filtering") =~ "Live Search"
+    iex> render_docs("concepts/lql#event-message-filtering") =~ "Live Search"
     false
 
   Specific html entities are also replaced
 
-    iex> render_docs("querying") =~ ~S(;#124;)
+    iex> render_docs("concepts") =~ ~S(;#124;)
     false
 
   Replace line breaks with newlines
 
     iex> escaped = "<br/>" |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
-    iex> render_docs("querying/lql") =~ escaped
+    iex> render_docs("concepts/lql") =~ escaped
     false
 
   Inline html in tables are also fixed and replaced
     iex> escaped = "<code>" |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
-    iex> render_docs("querying/lql") =~ escaped
+    iex> render_docs("concepts/lql") =~ escaped
     false
 
   We can also hide the top level header
 
-    iex> render_docs("querying/lql#event-message-filtering", hide_header: true) |> String.slice(0, 29)
+    iex> render_docs("concepts/lql#event-message-filtering", hide_header: true) |> String.slice(0, 29)
     "<p>\\nAny string not matching a"
 
 

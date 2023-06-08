@@ -6,6 +6,10 @@ sidebar_position: 3
 
 The Logflare Query Language (LQL) is used within Logflare to power filtering capabilities for historical search and realtime streams.
 
+The quick reference for LQL can be accessed within the dashboard through the **LQL** button at the source navigation bar.
+
+![LQL Quick Reference](./lql-reference.png)
+
 #### Event Message Filtering
 
 Any string not matching a supported operator will search against the log event message. Some strings may need to be wrapped in double quotes. By default, all LQL statements are case sensitive.

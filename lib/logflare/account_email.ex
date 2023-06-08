@@ -31,7 +31,7 @@ defmodule Logflare.AccountEmail do
 
     3) With the same simple yet powerful query language you can quickly search your logs and build alerts: https://www.loom.com/share/961f3392e20941929ee24393bf01b43c
 
-    And so much more. Our guides provide some good info: #{Routes.marketing_url(Endpoint, :guides)}
+    And so much more. Check out our documentation site for more information: https://docs.logflare.app
 
     We have a little Loom library if you prefer video: https://loom.com/share/folder/4fd2f989ed1c4e18a3de76773ae9cf3e
 
