@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.Postgres.Repo do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   alias Logflare.Backends.SourceBackend
-  alias Logflare.Backends.Adaptor.Postgres.Supervisor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
 
   require Logger
 
@@ -19,6 +19,9 @@ defmodule Logflare.Backends.Adaptor.Postgres.Repo do
       _ -> {:module, _, _, _} = Module.create(name, @ast, Macro.Env.location(__ENV__))
     end
 
+    migration_table = "schema_migrations_#{source_backend.source_id}"
+    Application.put_env(:logflare, name, migration_source: migration_table)
+
     name
   end
 
@@ -35,9 +38,10 @@ defmodule Logflare.Backends.Adaptor.Postgres.Repo do
   end
 
   @migrations [
-    {20_230_602_173_023, Logflare.Backends.Adaptor.Postgres.Repo.Migrations.AddLogEvents}
+    {1, Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents}
   ]
-  @spec create_log_event_table(Ecto.Repo.t()) :: :ok | {:error, :failed_migration}
+  @spec create_log_event_table(Ecto.Repo.t(), []) ::
+          :ok | {:error, :failed_migration}
   def create_log_event_table(repository_module, migrations \\ @migrations) do
     Ecto.Migrator.run(repository_module, migrations, :up, all: true)
 

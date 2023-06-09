@@ -1,15 +1,14 @@
-defmodule Logflare.Backends.Adaptor.Postgres.RepoTest do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
   use Logflare.DataCase, async: false
-  alias Logflare.Backends.Adaptor.Postgres.Repo
-  alias Logflare.Backends.Adaptor.Postgres.LogEvent
-  alias Logflare.Backends.Adaptor.Postgres.RepoTest.BadMigration
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest.BadMigration
 
   setup do
     %{username: username, password: password, database: database, hostname: hostname} =
       Application.get_env(:logflare, Logflare.Repo) |> Map.new()
 
     url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
-
     source = insert(:source, user: insert(:user))
     source_backend = insert(:source_backend, type: :postgres, config: %{url: url}, source: source)
 
@@ -44,19 +43,25 @@ defmodule Logflare.Backends.Adaptor.Postgres.RepoTest do
 
       on_exit(fn ->
         Ecto.Migrator.run(repository_module, Repo.migrations(), :down, all: true)
+        migration_table = Keyword.get(repository_module.config(), :migration_source)
+        Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
       end)
 
       %{repository_module: repository_module}
     end
 
     test "runs migration for the newly created connection", %{
+      source_backend: source_backend,
       repository_module: repository_module
     } do
       assert Repo.create_log_event_table(repository_module) == :ok
       assert repository_module.all(LogEvent)
     end
 
-    test "handle migration errors", %{repository_module: repository_module} do
+    test "handle migration errors", %{
+      source_backend: source_backend,
+      repository_module: repository_module
+    } do
       bad_migration = [{0, BadMigration}]
 
       assert Repo.create_log_event_table(repository_module, bad_migration) ==
@@ -69,7 +74,6 @@ defmodule Logflare.Backends.Adaptor.Postgres.RepoTest do
 
     def up do
       alter table(:none) do
-        add(:none, :string)
       end
     end
   end

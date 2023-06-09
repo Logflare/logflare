@@ -1,11 +1,11 @@
-defmodule Logflare.Backends.Adaptor.Postgres.PipelineTest do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.Postgres
-  alias Logflare.Backends.Adaptor.Postgres.LogEvent
-  alias Logflare.Backends.Adaptor.Postgres.Pipeline
-  alias Logflare.Backends.Adaptor.Postgres.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
   alias Logflare.Buffers.MemoryBuffer
 
   setup do
@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.Postgres.PipelineTest do
     pipeline_name = Backends.via_source_backend(source_backend, Pipeline)
     memory_buffer_pid = start_supervised!(MemoryBuffer)
 
-    state = %Postgres{
+    state = %PostgresAdaptor{
       buffer_module: MemoryBuffer,
       buffer_pid: memory_buffer_pid,
       config: source_backend.config,
@@ -37,7 +37,9 @@ defmodule Logflare.Backends.Adaptor.Postgres.PipelineTest do
     Repo.create_log_event_table(repository_module)
 
     on_exit(fn ->
-      Ecto.Adapters.SQL.query(repository_module, "DROP TABLE log_events;")
+      Ecto.Migrator.run(repository_module, Repo.migrations(), :down, all: true)
+      migration_table = Keyword.get(repository_module.config(), :migration_source)
+      Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
     end)
 
     {:ok, _} = Pipeline.start_link(state)
@@ -59,7 +61,7 @@ defmodule Logflare.Backends.Adaptor.Postgres.PipelineTest do
         build(:log_event,
           token: TestUtils.random_string(),
           source: source,
-          metadata: %{"data" => "data"}
+          body: %{"data" => "data"}
         )
 
       MemoryBuffer.add(memory_buffer_pid, log_event)
@@ -72,7 +74,7 @@ defmodule Logflare.Backends.Adaptor.Postgres.PipelineTest do
 
         [res_log_event] ->
           assert log_event.id == res_log_event.id
-          assert log_event.body["metadata"] == res_log_event.metadata
+          assert log_event.body == res_log_event.body
           assert log_event.body["event_message"] == res_log_event.event_message
 
           expected_timestamp =

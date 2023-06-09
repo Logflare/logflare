@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.Postgres do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @moduledoc false
   use GenServer
   use TypedStruct
@@ -8,8 +8,8 @@ defmodule Logflare.Backends.Adaptor.Postgres do
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
-  alias Logflare.Backends.Adaptor.Postgres.Pipeline
-  alias Logflare.Backends.Adaptor.Postgres.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
 
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
