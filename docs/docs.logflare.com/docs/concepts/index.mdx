@@ -16,22 +16,36 @@ Logflare is a log ingestion and querying engine that allows the storage and quer
     light: "/img/dashboard.png",
     dark: "/img/dashboard-dark.png",
   }}
-  style={{maxHeight: 800, maxWidth: "100%"}}
+  style={{ maxHeight: 800, maxWidth: "100%" }}
 />
 
 Logflare has recently been [acquired by Supabase](https://supabase.com/blog/supabase-acquires-logflare), however the service still operates and powers the [Supabase Platform's](https://supabase.com/) logging and observability features.
 
-## Features
+## Features and Motivations
+
 ### Scalable Storage and Querying Costs
 
 Columnar databases allows for fast analysis while providing compact storage mechanisms, allowing you to store orders of magnitude more event data at the same cost that our competitors offer. Furthermore, the costs scale predictably according to the amount of data stored, allowing you to have a peace of mind when managing billing and infrastructure costs.
+
+Lucene-based log management systems worked well before the advent of scalable database options, but starts to get prohibitively expensive beyond a certain scale and volume, and the data would need to be shipped elsewhere to be further analyzed over the long term.
+
+BigQuery in particular was build in-house by Google to store and analyze petabytes of event data, and Logflare leverages it to allow you to store many magnitudes more data.
 
 ### Bring Your Own Backend
 
 Logflare can integrate with your very own backends, allowing Logflare to only manage the pipeline and throughput of log events. This ensures maximum flexibility for storing sensitive data and managing your own storage and querying costs.
 
+Bringing your own backend gives you complete control over your storage and querying costs.
+
+### Schema Management
+
+When events are ingested, the backend schema is automatically managed by Logflare, allowing you to insert JSON payloads without having to worry about data type changes.
+
+When new fields are sent to Logflare, the data type is detected automatically and merged into the current table schema.
+
 ### Querying UI and API
-Logflare provides a fully featured [querying interface](./querying). [Logflare Endpoints](./endpoints.md) provides a programmatic interface for executing SQL queries on your stored log events, allowing you to analyze and leverage your event data in downstream applications.
+
+Logflare provides a fully featured [querying interface](./concepts/ingestion#querying). [Logflare Endpoints](/concepts/endpoints.md) provides a programmatic interface for executing SQL queries on your stored log events, allowing you to analyze and leverage your event data in downstream applications.
 
 ---
 
@@ -64,4 +78,4 @@ Logflare provides a fully featured [querying interface](./querying). [Logflare E
 
 4. **Check the Source**
 
-   Congratulations, your first log event should be successfully POST-ed to Logflare! You can then search and filter the source for specific events using the [Logflare Query Language](./querying#logflare-query-language-lql).
+   Congratulations, your first log event should be successfully POST-ed to Logflare! You can then search and filter the source for specific events using the [Logflare Query Language](/concepts/lql).

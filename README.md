@@ -27,6 +27,6 @@ Sign up at https://logflare.app.
 ## Learn more
 
 - [Official website](https://logflare.app)
-- [Guides](https://logflare.app/guides) and [documentation](https://docs.logflare.app)
+- [Documentation](https://docs.logflare.app)
 - <support@logflare.app> or <support@supabase.com>
 - [Developer Docs](./DEVELOPMENT.md)

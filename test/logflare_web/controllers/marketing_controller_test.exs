@@ -11,16 +11,9 @@ defmodule LogflareWeb.MarketingControllerTest do
         :index,
         :contact,
         :pricing,
-        :overview,
-        :vercel_setup,
-        :big_query_setup,
-        :slack_app_setup,
-        :data_studio_setup,
-        :event_analytics_demo,
         :terms,
         :privacy,
-        :cookies,
-        :guides
+        :cookies
       ] do
     test "public marketing path #{action} ", %{
       conn: conn
@@ -36,6 +29,26 @@ defmodule LogflareWeb.MarketingControllerTest do
 
       # has announcement banner
       assert html_response(conn, 200) =~ "now part of Supabase"
+    end
+  end
+
+  # redirect to docs site
+
+  for action <- [
+        :overview,
+        :vercel_setup,
+        :big_query_setup,
+        :slack_app_setup,
+        :data_studio_setup,
+        :event_analytics_demo,
+        :guides
+      ] do
+    test "docs site redirect #{action} ", %{
+      conn: conn
+    } do
+      path = Routes.marketing_path(conn, unquote(action))
+      conn = conn |> get(path)
+      assert redirected_to(conn, 301) =~ "docs.logflare.app"
     end
   end
 
