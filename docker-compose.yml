@@ -35,14 +35,6 @@ services:
         read_only: true
     depends_on:
       - db
-  ingestion_db:
-    image: postgres:13.4-alpine
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_DB: ingestion
-    ports:
-      - "5433:5432"
 
 volumes:
   pg-data:

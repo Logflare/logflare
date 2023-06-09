@@ -1,7 +1,7 @@
 defmodule Logflare.Backends do
   @moduledoc false
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Backends.Adaptor.Postgres
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.RecentLogs
   alias Logflare.Backends.RecentLogsSup
   alias Logflare.Backends.SourceBackend
@@ -17,7 +17,7 @@ defmodule Logflare.Backends do
 
   import Ecto.Query
 
-  @adaptor_mapping %{webhook: WebhookAdaptor, postgres: Postgres}
+  @adaptor_mapping %{webhook: WebhookAdaptor, postgres: PostgresAdaptor}
 
   @doc """
   Lists `SourceBackend`s for a given source.

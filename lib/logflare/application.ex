@@ -60,7 +60,7 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
       {DynamicSupervisor,
-       strategy: :one_for_one, name: Logflare.Backends.Adaptor.Postgres.Supervisor},
+       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ common_children()
@@ -140,7 +140,7 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
       {DynamicSupervisor,
-       strategy: :one_for_one, name: Logflare.Backends.Adaptor.Postgres.Supervisor},
+       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ conditional_children() ++ common_children()
@@ -199,7 +199,9 @@ defmodule Logflare.Application do
     # loading the migrations properly, triggering errors when running Ecto.Migrator
 
     # Similar error found in Realtime: https://github.com/supabase/realtime/pull/520/files#diff-1de8846d5d70df4b816a1b2bca51468d6c8386bc81f9efe82df2bf837367497d
-    Logflare.Backends.Adaptor.Postgres.Repo.migrations()
+    # This is fixed in ecto_sql main branch, awaiting new version to be released
+    # https://github.com/elixir-ecto/ecto_sql/blob/d8eaabcf34d52fad1d286dab653b2f200ba99333/lib/ecto/migrator.ex#L360
+    Logflare.Backends.Adaptor.PostgresAdaptor.Repo.migrations()
     |> Enum.map(fn {_, migration} -> Code.ensure_loaded!(migration) end)
   end
 end

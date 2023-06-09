@@ -1,10 +1,10 @@
-defmodule Logflare.Backends.Adaptor.Postgres.Pipeline do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
   @moduledoc false
   use Broadway
 
   alias Broadway.Message
   alias Logflare.Buffers.BufferProducer
-  alias Logflare.Backends.Adaptor.Postgres.LogEvent
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
 
   @spec start_link(PostgresAdaptor.t()) :: {:ok, pid()}
   def start_link(adaptor_state) do
@@ -44,7 +44,7 @@ defmodule Logflare.Backends.Adaptor.Postgres.Pipeline do
       id: log_event.body["id"],
       event_message: log_event.body["event_message"],
       timestamp: timestamp,
-      metadata: log_event.body["metadata"]
+      body: log_event.body
     }
 
     changeset = LogEvent.changeset(%LogEvent{}, params)

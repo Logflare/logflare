@@ -5,7 +5,7 @@ defmodule Logflare.Backends.SourceBackend do
   import Ecto.Changeset
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Backends.Adaptor.Postgres
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Source
 
@@ -27,7 +27,7 @@ defmodule Logflare.Backends.SourceBackend do
     adaptor_module =
       case type do
         :webhook -> WebhookAdaptor
-        :postgres -> Postgres
+        :postgres -> PostgresAdaptor
       end
 
     %{
