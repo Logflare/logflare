@@ -23,6 +23,13 @@ then
 
 fi
 
+if [[ "$OVERRIDE_MAGIC_COOKIE" ]]
+then 
+    echo "OVERRIDE_MAGIC_COOKIE is set, using it..."
+    export MAGIC_COOKIE=$OVERRIDE_MAGIC_COOKIE
+    echo $MAGIC_COOKIE > /tmp/.magic_cookie
+fi
+
 echo "LOGFLARE_NODE_HOST is: $LOGFLARE_NODE_HOST"
 
 ./logflare eval Logflare.Release.migrate
