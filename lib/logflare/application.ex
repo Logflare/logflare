@@ -87,7 +87,7 @@ defmodule Logflare.Application do
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       get_goth_child_spec(),
       Logflare.Repo,
-      {Phoenix.PubSub, name: Logflare.PubSub},
+      {Phoenix.PubSub, name: Logflare.PubSub, pool_size: 10},
       {
         Logflare.Tracker,
         [
