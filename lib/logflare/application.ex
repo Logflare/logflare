@@ -74,10 +74,7 @@ defmodule Logflare.Application do
     port = Application.get_env(:logflare, Logflare.Repo)[:port]
     slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
-
-    tracker_pool_size = Application.get_env(:logflare, Logflare.Tracker)[:pool_size]
     topologies = Application.get_env(:libcluster, :topologies, [])
-
     grpc_port = Application.get_env(:grpc, :port)
     ssl = Application.get_env(:logflare, :ssl)
     grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
@@ -88,20 +85,7 @@ defmodule Logflare.Application do
       get_goth_child_spec(),
       Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub, pool_size: 10},
-      {
-        Logflare.Tracker,
-        [
-          name: Logflare.Tracker,
-          pubsub_server: Logflare.PubSub,
-          broadcast_period: 250,
-          down_period: 5_000,
-          permdown_period: 30_000,
-          pool_size: tracker_pool_size,
-          log_level: false
-        ]
-      },
       # supervisor(LogflareTelemetry.Supervisor, []),
-
       # Context Caches
       ContextCache,
       Users.Cache,
