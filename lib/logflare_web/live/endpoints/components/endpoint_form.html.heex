@@ -1,14 +1,50 @@
-<.form
-  :let={f}
-  for={@endpoint_changeset}
-  id="endpoint"
-  phx-submit="save-endpoint"
-  phx-change="parse-query"
->
-  <%= text_input(f, :name) %>
-  <%= text_input(f, :query) %>
+<div class="tw-flex tw-my-10">
+  <.form
+    :let={f}
+    for={@endpoint_changeset}
+    id="endpoint"
+    phx-submit="save-endpoint"
+    class="tw-w-1/2"
+  >
+    <div class="tw-sticky tw-flex tw-justify-end">
+      <%= submit("Save changes", class: "btn btn-primary") %>
+    </div>
 
-  <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
-
-  <%= submit("Save") %>
-</.form>
+    <h4>Name</h4>
+    <p>
+      This endpoint will can be queried at:
+      <code><%= url(~p"/api/endpoints/query/name/YourApp.EndpointName") %></code>
+    </p>
+    <div class="form-group">
+      <%= text_input(f, :name,
+        placeholder: "YourApp.EndpointName",
+        class: "form-control form-control-margin",
+        "phx-update": "ignore"
+      ) %>
+      <%= error_tag(f, :name) %>
+    </div>
+    <h4>Query</h4>
+    <section class="tw-flex tw-flex-row tw-gap-4 tw-w-full">
+      <div class="form-group">
+        <p>
+          This endpoint will execute this query on each <code>GET</code>
+          request.
+          Declare parameters using <code>@parameter_name</code>
+          and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
+        </p>
+        <%= textarea(f, :query,
+          placeholder: "select timestamp, event_message from `YourApp.SourceName`",
+          class: "form-control form-control-margin",
+          "phx-change": "parse-query",
+          id: "endpoint-query"
+        ) %>
+        <%= error_tag(f, :query) %>
+        <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
+      </div>
+    </section>
+  </.form>
+  <aside class="tw-w-1/2">
+    <.run_query_form {assigns} />
+    <.run_query_result {assigns} />
+  </aside>
+</div>

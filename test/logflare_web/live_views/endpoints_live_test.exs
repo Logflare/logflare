@@ -75,6 +75,16 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  test "index -> new endpoint", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/endpoints")
+
+    assert view
+           |> element("a", "New endpoint")
+           |> render_click() =~ ~r/\~\/.+endpoints.+\/new/
+
+    assert_patch(view, "/endpoints/new")
+  end
+
   test "new endpoint", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")
@@ -103,20 +113,16 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # Error
       assert view
-             |> element("form#endpoint")
+             |> element("#endpoint-query")
              |> render_change(%{
-               query: %{
-                 query: "select current_datetime() order-by invalid"
-               }
+               query: "select current_datetime() order-by invalid"
              }) =~ "parser error"
 
       # no error
       refute view
-             |> element("form#endpoint")
+             |> element("#endpoint-query")
              |> render_change(%{
-               query: %{
-                 query: "select @my_param as valid"
-               }
+               query: "select @my_param as valid"
              }) =~ "parser error"
 
       # detects params correctly
@@ -142,20 +148,16 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # Error
       assert view
-             |> element("form#endpoint")
+             |> element("*#endpoint-query")
              |> render_change(%{
-               query: %{
-                 query: "select current_datetime() order-by invalid"
-               }
+               query: "select current_datetime() order-by invalid"
              }) =~ "parser error"
 
       # no error
       refute view
-             |> element("form#endpoint")
+             |> element("*#endpoint-query")
              |> render_change(%{
-               query: %{
-                 query: "select @my_param as valid"
-               }
+               query: "select @my_param as valid"
              }) =~ "parser error"
 
       # detects params correctly
@@ -197,15 +199,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute render(view) =~ "results-123"
 
       view
-      |> element("form#endpoint")
+      |> element("#endpoint-query")
       |> render_change(%{
-        query: %{
-          query: "select current_datetime() as testing"
-        }
+        query: "select current_datetime() as testing"
       })
 
       view
-      |> element("form", "Run query")
+      |> element("form", "Test query")
       |> render_submit(%{}) =~ "results-123"
     end
 
@@ -215,13 +215,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute render(view) =~ "results-123"
 
       view
-      |> element("form", "Save")
+      |> element("#endpoint-query")
       |> render_change(%{
-        query: %{query: "select current_datetime() as testing"}
+        query: "select current_datetime() as testing"
       })
 
       view
-      |> element("form", "Run query")
+      |> element("form", "Test query")
       |> render_submit(%{}) =~ "results-123"
     end
 
@@ -233,7 +233,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert view |> render() =~ "test_param"
 
       assert view
-             |> element("form", "Run query")
+             |> element("form", "Test query")
              |> render_submit(%{
                run: %{
                  query: endpoint.query,

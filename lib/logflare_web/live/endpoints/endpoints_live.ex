@@ -11,7 +11,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   def render(%{allow_access: false} = assigns), do: closed_beta_action(assigns)
 
-  def render(%{live_action: :index} = assigns), do: list_action(assigns)
+  def render(%{live_action: :index} = assigns), do: index_action(assigns)
   def render(%{live_action: :show, show_endpoint: nil} = assigns), do: not_found_action(assigns)
   def render(%{live_action: :show} = assigns), do: show_action(assigns)
   def render(%{live_action: :new} = assigns), do: new_action(assigns)
@@ -150,7 +150,7 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  def handle_event("parse-query", %{"query" => %{"query" => query_string}}, socket) do
+  def handle_event("parse-query", %{"query" => query_string}, socket) do
     socket =
       case Endpoints.parse_query_string(query_string) do
         {:ok, %{parameters: params_list}} ->

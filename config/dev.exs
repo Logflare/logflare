@@ -24,7 +24,12 @@ config :logflare, LogflareWeb.Endpoint,
   check_origin: false,
   watchers: [
     # build js files
-    npm: ["run", "watch", cd: Path.expand("../assets", __DIR__)]
+    npm: [
+      "run",
+      "watch",
+      cd: Path.expand("../assets", __DIR__),
+      env: [{"NODE_ENV", "development"}]
+    ]
   ],
   live_reload: [
     patterns: [

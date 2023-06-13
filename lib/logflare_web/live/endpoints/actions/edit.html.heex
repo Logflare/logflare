@@ -1,9 +1,12 @@
 <.subheader {assigns}>
-  <:path>~/endpoints/<%= @show_endpoint.name %>/edit</:path>
+  <:path>
+    ~/<%= live_patch("endpoints",
+      to: ~p"/endpoints",
+      "data-confirm": "Confirm navigate away? All unsaved changes will be lost"
+    ) %>/<%= @show_endpoint.name %>/edit
+  </:path>
 </.subheader>
 
 <h1>Edit Endpoint <code><%= @show_endpoint.name %></code></h1>
 
 <.endpoint_form {assigns} />
-<.run_query_form {assigns} />
-<.run_query_result {assigns} />

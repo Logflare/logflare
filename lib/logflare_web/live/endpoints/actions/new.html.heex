@@ -1,7 +1,12 @@
 <.subheader>
-  <:path>~/endpoints/new</:path>
+  <:path>
+    ~/<%= live_patch("endpoints",
+      to: ~p"/endpoints",
+      "data-confirm": "Confirm navigate away? All unsaved changes will be lost"
+    ) %>/new
+  </:path>
 </.subheader>
 
-<.endpoint_form {assigns} />
-<.run_query_form {assigns} />
-<.run_query_result {assigns} />
+<div class="container mx-auto">
+  <.endpoint_form {assigns} />
+</div>
