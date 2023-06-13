@@ -86,7 +86,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_event(
         "save-endpoint",
-        %{"query" => params},
+        %{"endpoint" => params},
         %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
       ) do
     {action, endpoint} =
@@ -150,7 +150,13 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  def handle_event("parse-query", %{"query" => query_string}, socket) do
+  def handle_event(
+        "parse-query",
+        %{
+          "endpoint" => %{"query" => query_string}
+        },
+        socket
+      ) do
     socket =
       case Endpoints.parse_query_string(query_string) do
         {:ok, %{parameters: params_list}} ->

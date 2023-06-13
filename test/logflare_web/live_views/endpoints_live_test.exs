@@ -53,7 +53,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       view
       |> element("form#endpoint")
       |> render_submit(%{
-        query: %{
+        endpoint: %{
           query: new_query
         }
       })
@@ -94,7 +94,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     view
     |> element("form#endpoint")
     |> render_submit(%{
-      query: %{
+      endpoint: %{
         name: "some query",
         query: new_query,
         language: "bq_sql"
@@ -115,14 +115,18 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert view
              |> element("#endpoint-query")
              |> render_change(%{
-               query: "select current_datetime() order-by invalid"
+               endpoint: %{
+                 query: "select current_datetime() order-by invalid"
+               }
              }) =~ "parser error"
 
       # no error
       refute view
              |> element("#endpoint-query")
              |> render_change(%{
-               query: "select @my_param as valid"
+               endpoint: %{
+                 query: "select @my_param as valid"
+               }
              }) =~ "parser error"
 
       # detects params correctly
@@ -132,7 +136,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert view
              |> element("form", "Save")
              |> render_submit(%{
-               query: %{
+               endpoint: %{
                  name: "new-endpoint",
                  query: "select @my_param as valid"
                }
@@ -150,14 +154,18 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert view
              |> element("*#endpoint-query")
              |> render_change(%{
-               query: "select current_datetime() order-by invalid"
+               endpoint: %{
+                 query: "select current_datetime() order-by invalid"
+               }
              }) =~ "parser error"
 
       # no error
       refute view
              |> element("*#endpoint-query")
              |> render_change(%{
-               query: "select @my_param as valid"
+               endpoint: %{
+                 query: "select @my_param as valid"
+               }
              }) =~ "parser error"
 
       # detects params correctly
@@ -167,7 +175,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert view
              |> element("form#endpoint")
              |> render_submit(%{
-               query: %{
+               endpoint: %{
                  query: "select @my_param as valid"
                }
              })
@@ -198,15 +206,26 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       refute render(view) =~ "results-123"
 
-      view
-      |> element("#endpoint-query")
-      |> render_change(%{
-        query: "select current_datetime() as testing"
-      })
+      refute view
+             |> element("#endpoint-query")
+             |> render_change(%{
+               endpoint: %{
+                 query: "select current_datetime() as new"
+               }
+             }) =~ "parser error"
 
       view
       |> element("form", "Test query")
       |> render_submit(%{}) =~ "results-123"
+
+      assert view
+             |> element("form#endpoint")
+             |> render_submit(%{
+               endpoint: %{
+                 name: "some name",
+                 query: "select current_datetime() as saved"
+               }
+             }) =~ "saved"
     end
 
     test "edit endpoint", %{conn: conn, user: user} do
@@ -217,12 +236,20 @@ defmodule LogflareWeb.EndpointsLiveTest do
       view
       |> element("#endpoint-query")
       |> render_change(%{
-        query: "select current_datetime() as testing"
+        query: "select current_datetime() as updated"
       })
 
       view
       |> element("form", "Test query")
       |> render_submit(%{}) =~ "results-123"
+
+      assert view
+             |> element("form#endpoint")
+             |> render_submit(%{
+               endpoint: %{
+                 query: "select current_datetime() as updated"
+               }
+             }) =~ "updated"
     end
 
     test "show endpoint, with params", %{conn: conn, user: user} do
@@ -230,8 +257,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       refute render(view) =~ "results-123"
       # sow declared params
-      assert view |> render() =~ "test_param"
+      html = render(view)
+      assert html =~ "test_param"
+      assert html =~ endpoint.token
+      assert html =~ inspect(endpoint.max_limit)
+      assert html =~ ~r/caching\: #{endpoint.cache_duration_seconds} seconds/
+      assert html =~ ~r/cache warming\: #{endpoint.proactive_requerying_seconds} seconds/
+      assert html =~ ~r/query sandboxing\: disabled/
 
+      # test the query
       assert view
              |> element("form", "Test query")
              |> render_submit(%{
