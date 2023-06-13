@@ -20,8 +20,6 @@ config :logflare, Logflare.Google,
   cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA",
   cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA"
 
-config :logflare, Logflare.Tracker, pool_size: 5, level: :error
-
 config :logflare, Logflare.Repo,
   username: "postgres",
   password: "postgres",
