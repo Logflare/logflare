@@ -48,6 +48,4 @@ config :logflare_logger_backend,
   flush_interval: 2_000,
   max_batch_size: 250
 
-config :logflare, Logflare.Tracker, pool_size: 5
-
 import_config "telemetry.exs"

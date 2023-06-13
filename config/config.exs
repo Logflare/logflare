@@ -109,8 +109,6 @@ config :logflare, Logflare.CacheBuster,
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
-config :logflare, Logflare.Tracker, pool_size: 1
-
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 config :grpc, start_server: true

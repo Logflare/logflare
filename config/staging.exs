@@ -44,8 +44,6 @@ config :logflare_telemetry,
 
 config :libcluster, debug: true
 
-config :logflare, Logflare.Tracker, pool_size: 1
-
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 import_config "telemetry.exs"
