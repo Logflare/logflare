@@ -16,7 +16,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> stub(:bigquery_jobs_query, fn conn, _proj_id, _opts ->
-        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchQuery, receive_timeout: _]]} = conn.adapter
+        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchQuery, receive_timeout: _]]} =
+                 conn.adapter
+
         {:ok, TestUtils.gen_bq_response()}
       end)
 
