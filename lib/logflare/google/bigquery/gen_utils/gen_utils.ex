@@ -64,8 +64,16 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     String.replace(string, "-", "_")
   end
 
-  def get_conn() do
-    case Goth.fetch(Logflare.Goth) do
+  @doc """
+  Dynamically builds a Tesla client connection. Switches adapter at runtime based on first arg.
+
+  Uses `Logflare.FinchDefault` by default
+  """
+  @typep conn_type :: :ingest | :query | :default
+  @spec get_conn(conn_type()) :: Tesla.Env.client()
+  def get_conn(conn_type \\ :default) do
+    Goth.fetch(Logflare.Goth)
+    |> case do
       {:ok, %Goth.Token{} = goth} ->
         Connection.new(goth.token)
 
@@ -74,7 +82,27 @@ defmodule Logflare.Google.BigQuery.GenUtils do
         # This is going to give us an unauthorized connection but we are handling it downstream.
         Connection.new("")
     end
+    # dynamically set tesla adapter
+    |> Map.update!(:adapter, fn _value -> build_tesla_adapter_call(conn_type) end)
   end
+
+  # copy over runtime adapter building from Tesla.client/2
+  # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
+  defp build_tesla_adapter_call(:ingest) do
+    Tesla.client([], {Tesla.Adapter.Finch, name: Logflare.FinchIngest, receive_timeout: 15_000}).adapter
+  end
+
+  defp build_tesla_adapter_call(:query) do
+    Tesla.client(
+      [],
+      {Tesla.Adapter.Finch,
+       name: Logflare.FinchQuery,
+       receive_timeout: 60_000}
+    ).adapter
+  end
+
+  # use adapter in config.exs
+  defp build_tesla_adapter_call(_), do: nil
 
   @spec get_account_id(atom) :: String.t()
   def get_account_id(source_id) when is_atom(source_id) do

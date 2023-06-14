@@ -190,7 +190,7 @@ defmodule Logflare.Google.BigQuery do
         batch
       )
       when is_atom(source_id) do
-    conn = GenUtils.get_conn()
+    conn = GenUtils.get_conn(:ingest)
     table_name = GenUtils.format_table_name(source_id)
 
     body = %Model.TableDataInsertAllRequest{
