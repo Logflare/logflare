@@ -154,16 +154,10 @@ defmodule Logflare.Application do
 
   defp common_children do
     [
-      # Finch connection pools
-      {Finch, name: Logflare.FinchIngest
-      # , pools: %{:default => [protocol: :http2, count: 200]}
-      },
-      {Finch, name: Logflare.FinchQuery
-      # , pools: %{:default => [protocol: :http2, count: 100]}
-      },
-      {Finch, name: Logflare.FinchDefault
-      # , pools: %{:default => [protocol: :http2, count: 50]}
-    }
+      # Finch connection pools, using http2
+      {Finch, name: Logflare.FinchIngest , pools: %{:default => [protocol: :http2, count: 200]}},
+      {Finch, name: Logflare.FinchQuery , pools: %{:default => [protocol: :http2, count: 100]}},
+      {Finch, name: Logflare.FinchDefault , pools: %{:default => [protocol: :http2, count: 50]}}
     ]
   end
 
