@@ -3,6 +3,7 @@
     id="source-logs-search-list"
     data-last-query-completed-at={@last_query_completed_at}
     phx-hook="SourceLogsSearchList"
+    class="mt-4"
   >
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list"></div>
@@ -13,12 +14,12 @@
             <!-- TODO: TO BE DELETED WHEN UNDERLYING ISSUE IS FOUND -->
             <li id={"log-event_#{log.id || log.body["timestamp"]}"}>
               <% %{"timestamp" => timestamp, "event_message" => message} = log.body %>
-              <%= if @use_local_time do %>
-                <mark class="log-datestamp" data-timestamp={timestamp}><%= format_timestamp(timestamp, @user_local_timezone) %></mark>
-              <% else %>
-                <mark class="log-datestamp" data-timestamp={timestamp}><%= format_timestamp(timestamp) <> " UTC" %></mark>
-              <% end %>
-              <%= message %>
+              <mark class="log-datestamp" data-timestamp={timestamp}>
+                <%= if @use_local_time do
+                  format_timestamp(timestamp, @user_local_timezone)
+                else
+                  format_timestamp(timestamp) <> " UTC"
+                end %></mark>&nbsp;<%= message %>
               <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body["timestamp"]) do %>
                 <span>event body</span>
               <% end %>
