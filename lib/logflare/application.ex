@@ -117,7 +117,9 @@ defmodule Logflare.Application do
       # init Counters before Supervisof as Supervisor calls Counters through table create
       Sources.Counters,
       Sources.RateCounters,
-      Logflare.PubSubRates,
+      PubSubRates.Rates,
+      PubSubRates.Buffers,
+      PubSubRates.Inserts,
       Logflare.Source.Supervisor,
 
       # If we get a log event and the Source.Supervisor is not up it will 500
