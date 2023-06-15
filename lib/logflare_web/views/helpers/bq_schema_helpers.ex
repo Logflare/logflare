@@ -58,11 +58,8 @@ defmodule LogflareWeb.Helpers.BqSchema do
     metadata
     |> Iteraptor.map(
       fn
-        {_, [val]} ->
-          val
-
-        {_, val} ->
-          val
+        {_, [val]} -> val
+        {_, val} -> val
       end,
       yield: :all
     )
