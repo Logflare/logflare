@@ -90,22 +90,27 @@ defmodule Logflare.LogsTest do
   describe "full ingestion pipeline test" do
     test "additive schema update from log event", %{source: source} do
       GoogleApi.BigQuery.V2.Api.Tabledata
-      |> expect(:bigquery_tabledata_insert_all, fn _conn,
+      |> expect(:bigquery_tabledata_insert_all, fn conn,
                                                    _project_id,
                                                    _dataset_id,
                                                    _table_name,
                                                    opts ->
+        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchIngest, receive_timeout: _]]} =
+                 conn.adapter
+
         [%{json: json}] = opts[:body].rows
         assert json["event_message"] == "testing 123"
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
       GoogleApi.BigQuery.V2.Api.Tables
-      |> expect(:bigquery_tables_patch, fn _conn,
+      |> expect(:bigquery_tables_patch, fn conn,
                                            _project_id,
                                            _dataset_id,
                                            _table_name,
                                            [body: body] ->
+        #  use default config adapter
+        assert conn.adapter == nil
         schema = body.schema
         assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
         {:ok, %{}}

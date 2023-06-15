@@ -61,7 +61,7 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
-    ]
+    ] ++ common_children()
   end
 
   defp get_children(_) do
@@ -133,7 +133,7 @@ defmodule Logflare.Application do
 
       # Startup tasks
       {Task, fn -> startup_tasks() end}
-    ] ++ conditional_children()
+    ] ++ conditional_children() ++ common_children()
   end
 
   def conditional_children do
@@ -152,6 +152,15 @@ defmodule Logflare.Application do
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  defp common_children do
+    [
+      # Finch connection pools, using http2
+      {Finch, name: Logflare.FinchIngest, pools: %{:default => [protocol: :http2, count: 200]}},
+      {Finch, name: Logflare.FinchQuery, pools: %{:default => [protocol: :http2, count: 100]}},
+      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 50]}}
+    ]
   end
 
   def startup_tasks do
