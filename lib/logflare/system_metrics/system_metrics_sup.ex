@@ -16,7 +16,6 @@ defmodule Logflare.SystemMetricsSup do
       SystemMetrics.AllLogsLogged,
       SystemMetrics.AllLogsLogged.Poller,
       SystemMetrics.Schedulers.Poller,
-      SystemMetrics.Hackney.Poller,
       SystemMetrics.Cachex.Poller
     ]
 
