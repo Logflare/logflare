@@ -78,9 +78,10 @@ config :logflare, Logflare.Mailer,
 
 config :swoosh, local: true
 
+# use the default querying connection pool
+# see application.ex for pool settings
 config :tesla,
-  adapter:
-    {Tesla.Adapter.Hackney, [pool: Client.BigQuery, max_connections: 200, recv_timeout: 60_000]}
+  adapter: {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
 
 config :number,
   delimit: [

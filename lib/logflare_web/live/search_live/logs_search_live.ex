@@ -534,11 +534,7 @@ defmodule LogflareWeb.Source.SearchLV do
       search_result.aggregates.rows
       |> Enum.reverse()
       |> Enum.map(fn la ->
-        Map.update!(
-          la,
-          "timestamp",
-          &BqSchemaHelpers.format_timestamp(&1, timezone)
-        )
+        Map.update!(la, "timestamp", &BqSchemaHelpers.format_timestamp(&1, timezone))
       end)
 
     aggs =

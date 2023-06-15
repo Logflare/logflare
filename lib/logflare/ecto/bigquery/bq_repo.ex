@@ -52,7 +52,7 @@ defmodule Logflare.BqRepo do
       |> Map.merge(override)
 
     result =
-      GenUtils.get_conn()
+      GenUtils.get_conn(:query)
       |> Api.Jobs.bigquery_jobs_query(
         project_id,
         body: query_request
