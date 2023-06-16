@@ -11,12 +11,13 @@ defmodule Logflare.Logs.LogEvents.Cache do
   def child_spec(_) do
     %{
       id: __MODULE__,
+      name: __MODULE__,
       start: {
         Cachex,
         :start_link,
         [
           @cache,
-          [expiration: expiration(default: @ttl), limit: limit(size: 10_000)]
+          [expiration: expiration(default: @ttl), limit: limit(size: 10_000), stats: true]
         ]
       }
     }
@@ -56,4 +57,6 @@ defmodule Logflare.Logs.LogEvents.Cache do
   def get!(source_token, log_id) do
     Cachex.get!(__MODULE__, {source_token, log_id})
   end
+
+  def name, do: __MODULE__
 end

@@ -48,7 +48,8 @@ defmodule Logflare.Mixfile do
         :ssl,
         :phoenix_html,
         :phoenix,
-        :crypto
+        :crypto,
+        :os_mon
       ],
       included_applications: [:mnesia]
     ]
@@ -63,7 +64,7 @@ defmodule Logflare.Mixfile do
       # Phoenix stuff
       {:phoenix, "~> 1.7"},
       # {:phoenix_html, "~> 3.2"},
-      {:phoenix_live_view, "~> 0.18"},
+      {:phoenix_live_view, "~> 0.19"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
@@ -94,7 +95,7 @@ defmodule Logflare.Mixfile do
       {:typed_struct, "~> 0.1"},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
-      {:ex_machina, "~> 2.3"},
+      {:ex_machina, "~> 2.3", only: [:test]},
       {:iteraptor, "~> 1.10"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
@@ -200,7 +201,8 @@ defmodule Logflare.Mixfile do
       {:grpc, "~> 0.5.0"},
       {:protobuf, "~> 0.10"},
       {:gun, "~> 2.0", override: true},
-      {:cowlib, ">=2.12.0", override: true}
+      {:cowlib, ">=2.12.0", override: true},
+      {:phoenix_live_dashboard, "~> 0.8"}
     ]
   end
 
