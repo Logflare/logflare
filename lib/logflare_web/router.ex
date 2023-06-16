@@ -1,9 +1,12 @@
 defmodule LogflareWeb.Router do
   @moduledoc false
   use LogflareWeb, :router
-  alias LogflareWeb.LayoutView
   use PhoenixOauth2Provider.Router, otp_app: :logflare
+
+  import Phoenix.LiveDashboard.Router
   import Phoenix.LiveView.Router
+
+  alias LogflareWeb.LayoutView
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -165,10 +168,10 @@ defmodule LogflareWeb.Router do
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live "/", EndpointsLive, :index
-    live "/new", EndpointsLive, :new
-    live "/:id", EndpointsLive, :show
-    live "/:id/edit", EndpointsLive, :edit
+    live("/", EndpointsLive, :index)
+    live("/new", EndpointsLive, :new)
+    live("/:id", EndpointsLive, :show)
+    live("/:id/edit", EndpointsLive, :edit)
   end
 
   scope "/sources", LogflareWeb do
@@ -308,6 +311,8 @@ defmodule LogflareWeb.Router do
 
     delete("/accounts/:id", AdminController, :delete_account)
     get("/accounts/:id/become", AdminController, :become_account)
+
+    live_dashboard("/livedashboard", ecto_repos: [], metrics: Logflare.Telemetry)
   end
 
   scope "/admin", LogflareWeb do
@@ -372,15 +377,15 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/api/partner", LogflareWeb do
-    pipe_through [:api, :partner_api]
+    pipe_through([:api, :partner_api])
 
-    get "/accounts", Api.Partner.AccountController, :index
-    post "/accounts", Api.Partner.AccountController, :create
+    get("/accounts", Api.Partner.AccountController, :index)
+    post("/accounts", Api.Partner.AccountController, :create)
 
-    get "/accounts/:user_token", Api.Partner.AccountController, :get_user
-    get "/accounts/:user_token/usage", Api.Partner.AccountController, :get_user_usage
+    get("/accounts/:user_token", Api.Partner.AccountController, :get_user)
+    get("/accounts/:user_token/usage", Api.Partner.AccountController, :get_user_usage)
 
-    delete "/accounts/:user_token", Api.Partner.AccountController, :delete_user
+    delete("/accounts/:user_token", Api.Partner.AccountController, :delete_user)
   end
 
   scope "/api" do

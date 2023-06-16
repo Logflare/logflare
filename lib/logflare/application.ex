@@ -132,7 +132,10 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
       # Startup tasks
-      {Task, fn -> startup_tasks() end}
+      {Task, fn -> startup_tasks() end},
+
+      # Telemetry
+      Logflare.Telemetry
     ] ++ conditional_children() ++ common_children()
   end
 
