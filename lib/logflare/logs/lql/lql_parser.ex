@@ -2,9 +2,11 @@ defmodule Logflare.Lql.Parser do
   @moduledoc false
   import NimbleParsec
   import __MODULE__.Helpers
-  alias Logflare.Lql.{FilterRule, ChartRule}
-  alias Logflare.Google.BigQuery.SchemaUtils
+
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.FilterRule
 
   require Logger
 
@@ -50,12 +52,8 @@ defmodule Logflare.Lql.Parser do
         if not Enum.empty?(chart_rule_tokens) do
           chart_rule =
             chart_rule_tokens
-            |> Enum.reduce(%{}, fn
-              {:chart, fields}, acc -> Map.merge(acc, Map.new(fields))
-            end)
-
-          chart_rule =
-            Map.put(chart_rule, :value_type, get_path_type(typemap, chart_rule.path, querystring))
+            |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
+            |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
 
           struct!(ChartRule, chart_rule)
         end
