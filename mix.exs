@@ -64,7 +64,7 @@ defmodule Logflare.Mixfile do
       # Phoenix stuff
       {:phoenix, "~> 1.7"},
       # {:phoenix_html, "~> 3.2"},
-      {:phoenix_live_view, "~> 0.19"},
+      {:phoenix_live_view, "~> 0.18"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
