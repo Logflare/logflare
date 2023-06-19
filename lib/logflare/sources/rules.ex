@@ -1,13 +1,14 @@
 defmodule Logflare.Rules do
   @moduledoc false
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.Sources
-  alias Logflare.Rule
-  alias Logflare.Lql
-  alias Logflare.SourceSchemas
   import Ecto.Query
   require Logger
+
+  alias Logflare.Lql
+  alias Logflare.Repo
+  alias Logflare.Rule
+  alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.SourceSchemas
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
@@ -21,11 +22,8 @@ defmodule Logflare.Rules do
          {:ok, rule} <- Rule.changeset(%Rule{source_id: source.id}, params) |> Repo.insert() do
       {:ok, rule}
     else
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:error, changeset}
-
-      errtup ->
-        errtup
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+      errtup -> errtup
     end
   end
 

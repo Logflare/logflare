@@ -5,10 +5,13 @@ defmodule LogflareWeb.Sources.RulesLV do
   require Logger
   use LogflareWeb, :live_view
 
-  alias LogflareWeb.RuleView
-  alias Logflare.{Sources, SourceSchemas, Users}
-  alias Logflare.{Rules, Rule}
   alias Logflare.Lql
+  alias Logflare.Rule
+  alias Logflare.Rules
+  alias Logflare.Sources
+  alias Logflare.SourceSchemas
+  alias Logflare.Users
+  alias LogflareWeb.RuleView
 
   @lql_dialect :routing
   @lql_string ""
