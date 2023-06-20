@@ -4,10 +4,8 @@
   <.render_access_tokens_link {assigns} />
 </.subheader>
 
-<div class="p-2 tw-w-full md:tw-w-3/4"></div>
-
-<section class="mx-auto container jumbotron tw-py-5">
-  <h3>Logflare Endpoints</h3>
+<div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">
+  <h3 class="tw-text-white">Logflare Endpoints</h3>
   <p class="">
     Logflare Endpoints are GET JSON API endpoints that run ANSI SQL queries on your
     event data.
@@ -22,9 +20,11 @@
       </.button>
     <% end %>
   </div>
+</div>
 
-  <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)}>
-    <li>
+<section class="mx-auto container">
+  <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)} class="list-group">
+    <li class="list-group-item">
       <%= live_patch(endpoint.name, to: Routes.endpoints_path(@socket, :show, endpoint)) %>
     </li>
   </ul>

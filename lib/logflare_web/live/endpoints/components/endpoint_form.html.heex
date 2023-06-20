@@ -43,6 +43,81 @@
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
       </div>
     </section>
+
+    <div class="">
+      <%= checkbox(f, :enable_auth, id: "auth-checkbox", class: "form-check-input") %>
+      <%= label(f, :enable_auth, "Enable authentication",
+        for: "auth-checkbox",
+        class: "form-check-label"
+      ) %>
+      <%= error_tag(f, :enable_auth) %>
+      <small class="form-text text-muted">
+        Endpoints with authenticatino enabled will require an access token to be provided on each request.
+      </small>
+    </div>
+
+    <div>
+      <%= label(f, :max_limit, "Max limit") %>
+      <div class="input-group">
+        <%= text_input(f, :max_limit,
+          placeholder: if(@show_endpoint, do: nil, else: 1000),
+          class: "form-control"
+        ) %>
+        <div class="input-group-append">
+          <span class="input-group-text">rows</span>
+        </div>
+      </div>
+      <%= error_tag(f, :max_limit) %>
+    </div>
+
+    <div class="">
+      <%= checkbox(f, :sandboxable, id: "sandboxable-checkbox", class: "form-check-input") %>
+      <%= label(f, :sandboxable, "Enable query sandboxing",
+        for: "sandboxable-checkbox",
+        class: "form-check-label"
+      ) %>
+      <%= error_tag(f, :sandboxable) %>
+      <small class="form-text text-muted">
+        Endpoints with authenticatino enabled will require an access token to be provided on each request.
+      </small>
+    </div>
+
+    <h4>Caching</h4>
+    <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
+      <div>
+        <%= label(f, :cache_ttl, "Cache TTL") %>
+        <div class="input-group">
+          <%= text_input(f, :cache_ttl,
+            placeholder: if(@show_endpoint, do: nil, else: 3600),
+            class: "form-control"
+          ) %>
+          <div class="input-group-append">
+            <span class="input-group-text">seconds</span>
+          </div>
+        </div>
+        <%= error_tag(f, :cache_ttl) %>
+        <small class="form-text text-muted">
+          Endpoint results are cached on a per-request basis. Set Cache TTL to <code>0</code>
+          to disable caching completely.
+        </small>
+      </div>
+      <div>
+        <%= label(f, :proactive_requerying_seconds, "Proactive Re-querying") %>
+        <div class="input-group">
+          <%= text_input(f, :proactive_requerying_seconds,
+            placeholder: if(@show_endpoint, do: nil, else: 1800),
+            class: "form-control"
+          ) %>
+          <div class="input-group-append">
+            <span class="input-group-text">seconds</span>
+          </div>
+        </div>
+        <%= error_tag(f, :proactive_requerying_seconds) %>
+        <small class="form-text text-muted">
+          Cached results will be refreshed at this interval. Ignored if caching is disabled.
+        </small>
+      </div>
+    </section>
   </.form>
   <aside class="tw-w-1/2">
     <.run_query_form {assigns} />

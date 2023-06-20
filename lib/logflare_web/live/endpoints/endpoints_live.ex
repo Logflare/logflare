@@ -89,22 +89,35 @@ defmodule LogflareWeb.EndpointsLive do
         %{"endpoint" => params},
         %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
       ) do
-    {action, endpoint} =
-      case show_endpoint do
-        nil ->
-          {:ok, endpoint} = Endpoints.create_query(user, params)
-          {:created, endpoint}
+    Logger.info("Saving endpoint")
 
-        %_{} ->
-          {:ok, endpoint} = Endpoints.update_query(show_endpoint, params)
-          {:updated, endpoint}
-      end
+    with {:ok, endpoint} <-
+           (case show_endpoint do
+              nil ->
+                Endpoints.create_query(user, params)
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Successfully #{Atom.to_string(action)} endpoint #{endpoint.name}")
-     |> push_patch(to: Routes.endpoints_path(socket, :show, endpoint))
-     |> assign(:show_endpoint, endpoint)}
+              %_{} ->
+                Endpoints.update_query(show_endpoint, params)
+            end) do
+      verb = if(show_endpoint, do: "updated", else: "created")
+
+      {:noreply,
+       socket
+       |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
+       |> push_patch(to: Routes.endpoints_path(socket, :show, endpoint))
+       |> assign(:show_endpoint, endpoint)}
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        verb = if(show_endpoint, do: "update", else: "create")
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Could not #{verb} endpoint. Please fix the errors before trying again."
+         )
+         |> assign(:endpoint_changeset, changeset |> IO.inspect())}
+    end
   end
 
   def handle_event(

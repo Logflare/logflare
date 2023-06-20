@@ -218,6 +218,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
       |> element("form", "Test query")
       |> render_submit(%{}) =~ "results-123"
 
+      assert has_element?(view, "h4", "Caching")
+      assert has_element?(view, "label", "Cache TTL")
+      assert has_element?(view, "label", "Proactive Re-querying")
+      assert has_element?(view, "label", "Enable query sandboxing")
+      assert has_element?(view, "label", "Max limit")
+      assert has_element?(view, "label", "Enable authentication")
+
       assert view
              |> element("form#endpoint")
              |> render_submit(%{

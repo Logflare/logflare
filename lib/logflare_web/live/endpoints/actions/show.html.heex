@@ -15,30 +15,40 @@
     <span><i class="fas fa-edit"></i>edit</span>
   <% end %>
 </.subheader>
+<section class="mx-auto container pt-3">
+  <h1>
+    <%= @show_endpoint.name %>
+  </h1>
+  <div>
+    id: <%= @show_endpoint.token %>
+  </div>
 
-<h1>
-  <%= @show_endpoint.name %>
-</h1>
-<div>
-  id: <%= @show_endpoint.token %>
-</div>
-<code class="tw-whitespace-pre-wrap">
-  <%= @show_endpoint.query %>
-</code>
+  <code class="tw-whitespace-pre-wrap tw-py-2 tw-px-4 tw-bg-gray-700 tw-rounded">
+    <%= @show_endpoint.query %>
+  </code>
 
-<div>
-  max rows: <%= @show_endpoint.max_limit %> caching: <%= if @show_endpoint.cache_duration_seconds ==
-                                                              0,
-                                                            do: "disabled",
-                                                            else:
-                                                              inspect(
-                                                                @show_endpoint.cache_duration_seconds
-                                                              ) <> " seconds" %> %>
-  <span :if={@show_endpoint.cache_duration_seconds > 0}>
-    cache warming: <%= @show_endpoint.proactive_requerying_seconds %> seconds
-  </span>
-  <span>query sandboxing: disabled</span>
-</div>
+  <div>
+    <ul class="list-group tw-text-sm">
+      <li class="list-group-item">
+        max rows: <%= @show_endpoint.max_limit %>
+      </li>
+      <li class="list-group-item">
+        caching: <%= if @show_endpoint.cache_duration_seconds ==
+                          0,
+                        do: "disabled",
+                        else: inspect(@show_endpoint.cache_duration_seconds) <> " seconds" %>
+      </li>
+      <li class="list-group-item">
+        <span :if={@show_endpoint.cache_duration_seconds > 0}>
+          cache warming: <%= @show_endpoint.proactive_requerying_seconds %> seconds
+        </span>
+      </li>
+      <li class="list-group-item">
+        <span>query sandboxing: disabled</span>
+      </li>
+    </ul>
+  </div>
 
-<.run_query_form {assigns} />
-<.run_query_result {assigns} />
+  <.run_query_form {assigns} />
+  <.run_query_result {assigns} />
+</section>
