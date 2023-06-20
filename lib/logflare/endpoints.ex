@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Endpoints.Cache
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Utils
   import Ecto.Query
 
   @spec count_endpoints_by_user(User.t() | integer()) :: integer()
@@ -94,10 +95,35 @@ defmodule Logflare.Endpoints do
 
   @spec update_query(Query.t(), map()) :: {:ok, Query.t()} | {:error, any()}
   def update_query(query, params) do
-    query
-    |> Repo.preload(:user)
-    |> Query.update_by_user_changeset(params)
-    |> Repo.update()
+    with endpoint <- Repo.preload(query, :user),
+         changeset <- Query.update_by_user_changeset(endpoint, params),
+         {:ok, endpoint} <- Repo.update(changeset) do
+      changed_keys = Map.keys(changeset.changes)
+
+      should_kill_caches? =
+        Enum.any?(changed_keys, fn key ->
+          key in [
+            :query,
+            :sandboxable,
+            :cache_duration_seconds,
+            :proactive_requerying_seconds,
+            :max_limit,
+            :enable_auth
+          ]
+        end)
+
+      if should_kill_caches? do
+        # kill all caches
+        for pid <- Resolver.resolve(endpoint) do
+          Utils.Tasks.async(fn ->
+            Cache.invalidate(pid)
+          end)
+        end
+        |> Task.await_many(30_000)
+      end
+
+      {:ok, endpoint}
+    end
   end
 
   @spec delete_query(Query.t()) :: {:ok, Query.t()} | {:error, any()}
