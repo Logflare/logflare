@@ -6,6 +6,7 @@
     "watch": "node ./build.mjs watch"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^5.8.2",
     "@nivo/bar": "^0.81.0",
     "@nivo/core": "^0.81.0",
     "bootstrap": "^4.3.1",
@@ -26,14 +27,13 @@
     "react": "^16.11.0",
     "react-bootstrap": "^1.6.6",
     "react-dom": "^16.11.0",
-    "@fortawesome/fontawesome-free": "^5.8.2",
     "react-spinners": "^0.9.0",
     "sql-formatter": "^2.3.3"
   },
   "devDependencies": {
-    "chokidar": "^3.5.3",
     "autoprefixer": "^10.4.13",
-    "esbuild": "^0.16.17",
+    "chokidar": "^3.5.3",
+    "esbuild": "^0.18.5",
     "esbuild-plugin-copy": "^2.0.2",
     "esbuild-sass-plugin": "^2.5.0",
     "postcss": "^8.4.21",

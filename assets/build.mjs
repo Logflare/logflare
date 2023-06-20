@@ -53,28 +53,41 @@ let sassPostcssPlugin = sassPlugin({
   },
 });
 
-const build = async () => {
-  await esbuild.build({
-    logLevel: "info",
-    entryPoints: ["js/app.js"],
-    bundle: true,
-    minify: watch ? false : true,
-    sourcemap: true,
-    loader: { ".svg": "file", ".png": "file" },
-    outfile: "../priv/static/js/app.js",
-    plugins: [sassPostcssPlugin, externalizeCssImages, copyStatic],
-    jsx: "automatic",
-    treeShaking: watch ? false : true,
-    nodePaths: ["node_modules"],
-  });
+const options = {
+  logLevel: "info",
+  entryPoints: ["js/app.js"],
+  bundle: true,
+  minify: watch ? false : true,
+  sourcemap: true,
+  loader: { ".svg": "file", ".png": "file" },
+  outfile: "../priv/static/js/app.js",
+  plugins: [sassPostcssPlugin, externalizeCssImages, copyStatic],
+  jsx: "automatic",
+  treeShaking: watch ? false : true,
+  nodePaths: ["node_modules"],
+  color: true,
 };
 
-console.log(`[ESBUILD] Running build...`)
-await build();
+const printRebuildResults = (result) => {
+  const toPrint = [...result.errors, ...result.warnings];
+  console.log(`[CHOKIDAR] Rebuild complete`, toPrint.length > 0 ? toPrint : "");
+};
+
 if (watch) {
-  console.log('[CHOKIDAR] Watching content: ', tailwindConfig.content)
-  await chokidar.watch(tailwindConfig.content).on("change", async (event, path) => {
-    console.log(`[CHOKIDAR] File change detected, triggering rebuild...`)
-    await build();
-  });
+  const ctx = await esbuild.context(options);
+
+  console.log(`[ESBUILD] Running build...`);
+  const res = await ctx.rebuild();
+  printRebuildResults(res);
+  console.log("[CHOKIDAR] Watching content: ", tailwindConfig.content);
+  await chokidar
+    .watch(tailwindConfig.content)
+    .on("change", async (event, path) => {
+      console.log(`[CHOKIDAR] File change detected, triggering rebuild...`);
+      const result = await ctx.rebuild({ logLevel: "info" });
+      printRebuildResults(result);
+    });
+} else {
+  console.log(`[ESBUILD] Running production build...`);
+  await esbuild.build(options);
 }
