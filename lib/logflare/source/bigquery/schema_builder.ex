@@ -50,10 +50,10 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     iex> TestUtils.get_bq_field_schema(schema, "a.b")
     %TFS{ name: "b", mode: "NULLABLE", type: "STRING" }
 
-  For nested integer fields:
+  For nested integer fields, they will be converted to floats for reduced ambiguity:
     iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> 1}}, @default_schema)
     iex> TestUtils.get_bq_field_schema(schema, "a.b")
-    %TFS{ name: "b", mode: "NULLABLE", type: "INTEGER" }
+    %TFS{ name: "b", mode: "NULLABLE", type: "FLOAT" }
 
 
   For nested float fields:
