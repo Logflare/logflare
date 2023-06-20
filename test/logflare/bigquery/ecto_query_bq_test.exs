@@ -72,7 +72,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
           case rule.value do
             v when is_binary(v) -> "STRING"
             v when is_float(v) -> "FLOAT"
-            v when is_integer(v) -> "INTEGER"
+            v when is_integer(v) -> "FLOAT"
           end
 
         assert params == [

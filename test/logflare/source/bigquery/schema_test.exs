@@ -35,7 +35,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
                                             [body: body] ->
       schema = body.schema
 
-      assert %_{name: "test", type: "INTEGER"} =
+      assert %_{name: "test", type: "FLOAT"} =
                TestUtils.get_bq_field_schema(schema, "metadata.test")
 
       {:ok, %{}}

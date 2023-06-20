@@ -121,7 +121,7 @@ defmodule Logflare.LqlParserTest do
       unquoted "is quoted"
       m.context.address:~"\\d\\d\\d ST"
       m.context.file:"some module.ex"
-      m.context.line_number:100
+      m.context.line_number:100.0
       t:>2019-01-01
       t:<=2019-04-20
       t:<2020-01-01T03:14:15

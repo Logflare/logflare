@@ -76,13 +76,12 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
     end
   end
 
-
   test "schema diff for ambiguous types" do
-    base_schema = SchemaBuilder.build_table_schema(%{"a" => 123.0, "b"=> 123, "c"=> "123" }, @default_schema)
+    base_schema =
+      SchemaBuilder.build_table_schema(%{"a" => 123.0, "b" => 123, "c" => "123"}, @default_schema)
 
     # float should be the default numerical type
     assert %TFS{name: "a", type: "FLOAT"} = TestUtils.get_bq_field_schema(base_schema, "a")
     assert %TFS{name: "b", type: "FLOAT"} = TestUtils.get_bq_field_schema(base_schema, "b")
-
   end
 end
