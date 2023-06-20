@@ -51,4 +51,15 @@
 
   <.run_query_form {assigns} />
   <.run_query_result {assigns} />
+
+
+  <h3>Call your endpoint</h3>
+  <code>
+curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>"
+\ -H 'X-API-KEY: YOUR-ACCESS-TOKEN' 
+\ -H 'Content-Type: application/json; charset=utf-8'
+<span :if={length(@parameters) > 0}>
+\ -G <%= Enum.map(@parameters, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
+</span>
+  </code>
 </section>
