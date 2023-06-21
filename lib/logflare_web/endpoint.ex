@@ -58,10 +58,7 @@ defmodule LogflareWeb.Endpoint do
     if config[:load_from_system_env] do
       port = System.get_env("PORT") || raise "expected the PORT environment variable to be set"
 
-      config =
-        config
-        |> Keyword.put(:http, [:inet6, port: port])
-        |> Keyword.put(:live_dashboard, Application.get_env(:logflare, :live_dashboard))
+      config = Keyword.put(config, :http, [:inet6, port: port])
 
       {:ok, config}
     else

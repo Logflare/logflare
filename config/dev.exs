@@ -2,8 +2,7 @@ import Config
 
 config :logflare,
   node_shutdown_code: "d1032129-500c-4ab4-bcc9-853665509b6b",
-  env: :dev,
-  enable_live_dashboard: true
+  env: :dev
 
 config :logflare, LogflareWeb.Endpoint,
   server: true,
