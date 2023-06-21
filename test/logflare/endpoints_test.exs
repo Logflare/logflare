@@ -162,5 +162,41 @@ defmodule Logflare.EndpointsTest do
       # 2nd query should hit local cache
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
     end
+
+    for field_changed <- [
+          :query,
+          :sandboxable,
+          :cache_duration_seconds,
+          :proactive_requerying_seconds,
+          :max_limit
+        ] do
+      test "update_query/2 will kill all existing caches on field change (#{field_changed})" do
+        GoogleApi.BigQuery.V2.Api.Jobs
+        |> expect(:bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
+          {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+        end)
+
+        insert(:plan)
+        user = insert(:user)
+        endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+        cache_pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+        assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+
+        params =
+          case unquote(field_changed) do
+            :query -> %{query: "select 'datetime' as date"}
+            :sandboxable -> %{sandboxable: true}
+            # integer keys
+            key -> Map.new([{key, 123}])
+          end
+
+        assert {:ok, updated} = Endpoints.update_query(endpoint, params)
+        # should kill the cache process
+        :timer.sleep(500)
+        refute Process.alive?(cache_pid)
+        # 2nd query should not hit cache
+        assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(updated)
+      end
+    end
   end
 end

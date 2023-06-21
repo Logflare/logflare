@@ -33,16 +33,11 @@ config :logflare,
          secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
          check_origin:
            case System.get_env("PHX_CHECK_ORIGIN") do
-             nil ->
-               nil
-
-             value when is_binary(value) ->
-               String.split(value, ",")
+             nil -> nil
+             value when is_binary(value) -> String.split(value, ",")
            end,
          live_view:
-           [
-             signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")
-           ]
+           [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
            |> filter_nil_kv_pairs.()
        ]
        |> filter_nil_kv_pairs.()

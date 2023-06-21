@@ -4,12 +4,15 @@ defmodule LogflareWeb.Source.SearchLV do
   """
   use LogflareWeb, :live_view
 
+  alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
-  alias Logflare.{Sources, Users, Billing, TeamUsers}
+  alias Logflare.Sources
+  alias Logflare.TeamUsers
   alias Logflare.User
+  alias Logflare.Users
 
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
@@ -778,7 +781,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp error_socket(socket, :field_not_found, suggested_querystring, [head, replace, tail]) do
     replace =
-      live_redirect(replace,
+      link(replace,
         to:
           Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
             querystring: suggested_querystring,

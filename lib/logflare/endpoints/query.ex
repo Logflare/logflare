@@ -27,7 +27,7 @@ defmodule Logflare.Endpoints.Query do
     field :cache_duration_seconds, :integer, default: 3_600
     field :proactive_requerying_seconds, :integer, default: 1_800
     field :max_limit, :integer, default: 1_000
-    field :enable_auth, :boolean, default: false
+    field :enable_auth, :boolean, default: true
 
     belongs_to :user, Logflare.User
     has_many :sandboxed_queries, Query, foreign_key: :sandbox_query_id

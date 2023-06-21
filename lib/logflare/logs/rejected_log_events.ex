@@ -27,7 +27,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
   @cache __MODULE__
 
   def child_spec(_) do
-    %{id: @cache, start: {Cachex, :start_link, [@cache, [limit: 10_000]]}}
+    %{id: @cache, start: {Cachex, :start_link, [@cache, [limit: 10_000, stats: true]]}}
   end
 
   @spec get_by_source(Source.t()) :: list(LE.t())
