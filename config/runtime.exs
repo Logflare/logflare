@@ -39,7 +39,7 @@ config :logflare,
          live_view:
            [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
            |> filter_nil_kv_pairs.(),
-         live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
+         enable_live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
        ]
        |> filter_nil_kv_pairs.()
 

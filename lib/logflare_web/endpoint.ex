@@ -61,7 +61,7 @@ defmodule LogflareWeb.Endpoint do
       config =
         config
         |> Keyword.put(:http, [:inet6, port: port])
-        |> Keyword.put(:live_dashboard, Application.get_env(:logflare, :live_dashboard))
+        |> Keyword.put(:live_dashboard, Application.get_env(:logflare, :enable_live_dashboard))
 
       {:ok, config}
     else
