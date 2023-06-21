@@ -9,6 +9,8 @@ defmodule Logflare.Logs.LogEvents.Cache do
   @cache __MODULE__
 
   def child_spec(_) do
+    stats = Application.get_env(:logflare, :cache_stats, false)
+
     %{
       id: __MODULE__,
       name: __MODULE__,
@@ -17,7 +19,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
         :start_link,
         [
           @cache,
-          [expiration: expiration(default: @ttl), limit: limit(size: 10_000), stats: true]
+          [expiration: expiration(default: @ttl), limit: limit(size: 10_000), stats: stats]
         ]
       }
     }

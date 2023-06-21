@@ -6,7 +6,8 @@ defmodule Logflare.Billing.Cache do
   require Logger
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: true, limit: 100_000]]}}
+    stats = Application.get_env(:logflare, :cache_stats, false)
+    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: stats, limit: 100_000]]}}
   end
 
   def get_billing_account_by(keyword) do

@@ -9,7 +9,8 @@ defmodule Logflare.PubSubRates.Cache do
   @default_bucket_width 60
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: true]]}}
+    stats = Application.get_env(:logflare, :cache_stats, false)
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
   end
 
   def cache_rates(source_id, rates) when is_atom(source_id) do
