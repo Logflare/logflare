@@ -24,17 +24,23 @@ defmodule Logflare.Telemetry do
   end
 
   def metrics do
+    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
+
     cache_metrics =
-      Enum.flat_map(@caches, fn {_cache, metric} ->
-        [
-          last_value("cachex.#{metric}.purge"),
-          last_value("cachex.#{metric}.stats"),
-          last_value("cachex.#{metric}.evictions"),
-          last_value("cachex.#{metric}.expirations"),
-          last_value("cachex.#{metric}.operations"),
-          last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte})
-        ]
-      end)
+      if cache_stats? do
+        Enum.flat_map(@caches, fn {_cache, metric} ->
+          [
+            last_value("cachex.#{metric}.purge"),
+            last_value("cachex.#{metric}.stats"),
+            last_value("cachex.#{metric}.evictions"),
+            last_value("cachex.#{metric}.expirations"),
+            last_value("cachex.#{metric}.operations"),
+            last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte})
+          ]
+        end)
+      else
+        []
+      end
 
     phoenix_metrics = [
       summary("phoenix.endpoint.stop.duration", unit: {:native, :millisecond}),
@@ -67,7 +73,13 @@ defmodule Logflare.Telemetry do
   end
 
   defp periodic_measurements() do
-    [{__MODULE__, :cachex_metrics, []}]
+    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
+
+    if cache_stats? do
+      [{__MODULE__, :cachex_metrics, []}]
+    else
+      []
+    end
   end
 
   def cachex_metrics do

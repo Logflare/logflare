@@ -15,7 +15,8 @@ defmodule Logflare.ContextCache do
   @cache __MODULE__
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: true]]}}
+    stats = Application.get_env(:logflare, :cache_stats, false)
+    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
   end
 
   def apply_fun(context, {fun, arity}, args) do
