@@ -9,7 +9,9 @@ defmodule Logflare.Telemetry do
     {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
     {Logflare.Sources.Cache, :sources},
     {Logflare.SourceSchemas.Cache, :source_schemas},
-    {Logflare.PubSubRates.Cache, :pub_sub_rates}
+    {Logflare.PubSubRates.Cache, :pub_sub_rates},
+    {Logflare.Billing.Cache, :billing},
+    {Logflare.Users.Cache, :users}
   ]
 
   @impl true
