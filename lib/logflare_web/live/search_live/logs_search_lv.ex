@@ -52,11 +52,12 @@ defmodule LogflareWeb.Source.SearchLV do
     Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
 
     socket =
-      if connected?(socket) do
-        mount_connected(params, session, socket)
-      else
-        mount_disconnected(params, session, socket)
-      end
+      if connected?(socket),
+        do: mount_connected(params, session, socket),
+        else: mount_disconnected(params, session, socket)
+
+    socket = assign(socket, :force_query, Map.get(params, "force", "false") == "true")
+    Logger.info("Runninc query: #{Map.get(socket.assigns, :qs)}")
 
     {:ok, socket}
   end
@@ -66,45 +67,36 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
-      |> case do
+      |> then(fn
         %{assigns: %{user: %{sources: %Ecto.Association.NotLoaded{}}}} = socket ->
-          socket
-          |> assign(:user, Users.get_by_and_preload(id: socket.assigns.user.id))
+          assign(socket, :user, Users.get_by_and_preload(id: socket.assigns.user.id))
 
         socket ->
           socket
-      end
+      end)
       |> assign(:show_modal, false)
       |> assign(uri: URI.parse(uri))
       |> assign(uri_params: params)
 
     socket =
-      if team_user = socket.assigns[:team_user] do
-        assign(socket, :team_user, TeamUsers.get_team_user_and_preload(team_user.id))
-      else
-        socket
-      end
+      if team_user = socket.assigns[:team_user],
+        do: assign(socket, :team_user, TeamUsers.get_team_user_and_preload(team_user.id)),
+        else: socket
 
     socket =
-      if connected?(socket) do
-        assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
-      else
-        socket
-      end
+      if connected?(socket),
+        do: assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user),
+        else: socket
 
     socket =
-      with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema) do
-        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
-        qs = Lql.encode!(lql_rules)
-
+      with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
+           lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
+           {:ok, socket} <- check_suggested_fields(lql_rules, source, socket),
+           qs <- Lql.encode!(lql_rules) do
         search_op_log_events =
           if socket.assigns.search_op_log_events do
-            events =
-              Enum.map(
-                socket.assigns.search_op_log_events.rows,
-                &Map.put(&1, :is_from_stale_query, true)
-              )
-
+            rows = socket.assigns.search_op_log_events.rows
+            events = Enum.map(rows, &Map.put(&1, :is_from_stale_query, true))
             Map.put(socket.assigns.search_op_log_events, :rows, events)
           else
             socket.assigns.search_op_log_events
@@ -123,6 +115,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
       else
+        {:error, :suggested_field_not_found} ->
+          error_socket(socket, :suggested_field_not_found)
+
         {:error, error} ->
           socket
           |> assign(:querystring, qs)
@@ -138,11 +133,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(%{"source_id" => source}, uri, socket) do
-    handle_params(
-      %{"source_id" => source, "querystring" => "", "tailing?" => "true"},
-      uri,
-      socket
-    )
+    params = %{"source_id" => source, "querystring" => "", "tailing?" => "true"}
+    handle_params(params, uri, socket)
   end
 
   def handle_params(_params, _uri, socket) do
@@ -181,7 +173,8 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
-        lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
+        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+
         optimizedqs = Lql.encode!(lql_rules)
 
         socket
@@ -212,19 +205,12 @@ defmodule LogflareWeb.Source.SearchLV do
     source = Sources.get_source_for_lv_param(source_id)
     socket = assign(socket, :source, source)
     user = Users.get_by_and_preload(id: user_id)
-
-    socket =
-      assign(
-        socket,
-        :user_timezone_from_connect_params,
-        Map.get(get_connect_params(socket), "user_timezone")
-      )
+    user_tz = Map.get(get_connect_params(socket), "user_timezone")
+    socket = assign(socket, :user_timezone_from_connect_params, user_tz)
 
     team_user =
       if team_user_id = session["team_user_id"] do
         TeamUsers.get_team_user_and_preload(team_user_id)
-      else
-        nil
       end
 
     socket = assign_new_user_timezone(socket, team_user, user)
@@ -244,16 +230,12 @@ defmodule LogflareWeb.Source.SearchLV do
         team_user: team_user
       )
 
-    with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
-      lql_rules = lql_rules |> Lql.Utils.put_new_chart_rule(Lql.Utils.default_chart_rule())
-      optimizedqs = Lql.encode!(lql_rules)
-
-      socket =
-        socket
-        |> assign(:lql_rules, lql_rules)
-        |> assign(:querystring, optimizedqs)
-
+    with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema),
+         lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
+         optimizedqs <- Lql.encode!(lql_rules) do
       socket
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:querystring, optimizedqs)
     else
       {:error, error} ->
         maybe_cancel_tailing_timer(socket)
@@ -293,13 +275,14 @@ defmodule LogflareWeb.Source.SearchLV do
     rules = socket.assigns.lql_rules
 
     timestamp_rules =
-      Lql.Utils.get_ts_filters(rules)
+      rules
+      |> Lql.Utils.get_ts_filters()
       |> Lql.Utils.get_filter_rules()
 
     if Enum.empty?(timestamp_rules) do
       socket =
-        socket
-        |> put_flash(
+        put_flash(
+          socket,
           :error,
           "To jump #{direction} please include a timestamp filter in your query."
         )
@@ -366,11 +349,7 @@ defmodule LogflareWeb.Source.SearchLV do
     source = socket.assigns.source
     search_history = search_history(value, source)
 
-    socket =
-      socket
-      |> assign(:search_history, search_history)
-
-    {:noreply, socket}
+    {:noreply, assign(socket, :search_history, search_history)}
   end
 
   def handle_event("form_blur", %{"value" => _value}, socket) do
@@ -398,13 +377,10 @@ defmodule LogflareWeb.Source.SearchLV do
       if new_chart_agg != prev_chart_rule.aggregate or
            new_chart_period != prev_chart_rule.period do
         lql_rules =
-          prev_assigns.lql_rules
-          |> Lql.Utils.update_chart_rule(
+          Lql.Utils.update_chart_rule(
+            prev_assigns.lql_rules,
             Lql.Utils.default_chart_rule(),
-            %{
-              aggregate: new_chart_agg,
-              period: new_chart_period
-            }
+            %{aggregate: new_chart_agg, period: new_chart_period}
           )
 
         qs = Lql.encode!(lql_rules)
@@ -418,8 +394,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> clear_flash()
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
-        socket
-        |> assign(:search_history, search_history)
+        assign(socket, :search_history, search_history)
       end
 
     {:noreply, socket}
@@ -436,9 +411,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
-    lql_list =
-      assigns.lql_rules
-      |> Lql.Utils.update_timestamp_rules(ts_rules)
+    lql_list = Lql.Utils.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
     lql_list =
       if period do
@@ -476,8 +449,13 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("save_search" = ev, _, socket) do
-    %{source: source, querystring: qs, lql_rules: lql_rules, tailing?: tailing?, user: user} =
-      socket.assigns
+    %{
+      source: source,
+      querystring: qs,
+      lql_rules: lql_rules,
+      tailing?: tailing?,
+      user: user
+    } = socket.assigns
 
     log_lv_received_event(ev, source)
 
@@ -570,8 +548,6 @@ defmodule LogflareWeb.Source.SearchLV do
       if socket.assigns.tailing? do
         log_lv(socket.assigns.source, "is scheduling tail search")
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
-      else
-        nil
       end
 
     socket =
@@ -667,10 +643,9 @@ defmodule LogflareWeb.Source.SearchLV do
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 
-    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema) do
-      lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
-      qs = Lql.encode!(lql_rules)
-
+    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema),
+         lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
+         qs <- Lql.encode!(lql_rules) do
       socket
       |> assign(:loading, true)
       |> assign(:tailing_initial?, true)
@@ -780,14 +755,16 @@ defmodule LogflareWeb.Source.SearchLV do
   defp period_to_ms(:day), do: :timer.hours(24)
 
   defp error_socket(socket, :field_not_found, suggested_querystring, [head, replace, tail]) do
-    replace =
-      link(replace,
-        to:
-          Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
-            querystring: suggested_querystring,
-            tailing?: socket.assigns.tailing?
-          )
+    path =
+      Routes.live_path(
+        socket,
+        LogflareWeb.Source.SearchLV,
+        socket.assigns.source,
+        querystring: suggested_querystring,
+        tailing?: socket.assigns.tailing?
       )
+
+    replace = link(replace, to: path)
 
     error = [head, replace, tail]
 
@@ -796,22 +773,43 @@ defmodule LogflareWeb.Source.SearchLV do
     |> error_socket(error)
   end
 
+  defp error_socket(socket, :suggested_field_not_found) do
+    path =
+      Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
+        force: true,
+        querystring: socket.assigns.querystring
+      )
+
+    error = [
+      "Query does not include suggested fields, perfomance will be degraded. ",
+      "Do you want to proceed? ",
+      link("Click to force query", to: path)
+    ]
+
+    error_socket(socket, error)
+  end
+
   defp error_socket(socket, error) do
     socket
     |> assign(:tailing?, false)
     |> assign(:loading, false)
+    |> assign(:chart_loading, false)
     |> put_flash(:error, error)
   end
 
   defp search_history(new_qs, source) do
     search_history = SavedSearches.suggest_saved_searches(new_qs, source.id)
 
-    if Enum.count(search_history) == 1 && hd(search_history).querystring == new_qs,
-      do: [],
-      else: search_history
+    if Enum.count(search_history) == 1 &&
+         hd(search_history).querystring == new_qs,
+       do: [],
+       else: search_history
   end
 
-  defp soft_play(_ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
+  defp soft_play(
+         _ev,
+         %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket
+       ) do
     {:noreply, socket}
   end
 
@@ -828,7 +826,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(_ev, %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket) do
+  defp soft_pause(
+         _ev,
+         %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket
+       ) do
     {:noreply, socket}
   end
 
@@ -855,7 +856,10 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:tailing?, true)
-      |> push_patch_with_params(%{querystring: prev_assigns.querystring, tailing?: true})
+      |> push_patch_with_params(%{
+        querystring: prev_assigns.querystring,
+        tailing?: true
+      })
 
     {:noreply, socket}
   end
@@ -886,5 +890,32 @@ defmodule LogflareWeb.Source.SearchLV do
     socket
     |> assign(:querystring, qs)
     |> assign(:lql_rules, lql_rules)
+  end
+
+  defp check_suggested_fields(_lql_rules, _source, %{assigns: %{force_query: true}} = socket) do
+    {:ok, assign(socket, :force_query, false)}
+  end
+
+  defp check_suggested_fields(lql_rules, %{suggested_fields: ""}, socket) do
+    {:ok, socket}
+  end
+
+  defp check_suggested_fields(
+         lql_rules,
+         %{suggested_fields: suggested_fields},
+         %{assigns: %{force_query: false}} = socket
+       ) do
+    suggested_present =
+      suggested_fields
+      |> String.split(",")
+      |> Enum.map(fn
+        "m." <> suggested_field -> "metadata." <> suggested_field
+        suggested_field -> suggested_field
+      end)
+      |> Enum.all?(fn suggested_field ->
+        Enum.find(lql_rules, fn %{path: path} -> path == suggested_field end)
+      end)
+
+    if suggested_present, do: {:ok, socket}, else: {:error, :suggested_field_not_found}
   end
 end

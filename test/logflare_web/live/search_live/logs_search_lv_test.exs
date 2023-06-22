@@ -1,15 +1,17 @@
 defmodule LogflareWeb.Source.SearchLVTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  @endpoint LogflareWeb.Endpoint
-  import Phoenix.LiveViewTest
-  alias Logflare.Sources.Counters
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
-  alias LogflareWeb.Source.SearchLV
   alias Logflare.SingleTenant
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Sources.Counters
+  alias LogflareWeb.Source.SearchLV
 
+  import Phoenix.LiveViewTest
+
+  @endpoint LogflareWeb.Endpoint
   @default_search_params %{
     "querystring" => "c:count(*) c:group_by(t::minute)",
     "chart_period" => "minute",
@@ -19,11 +21,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   defp setup_mocks(_ctx) do
     # mocks
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+    stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
       {:ok, TestUtils.gen_bq_response()}
     end)
 
@@ -31,19 +31,27 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp on_exit_kill_tasks(_ctx) do
-    on_exit(fn ->
-      Logflare.Utils.Tasks.kill_all_tasks()
-    end)
+    on_exit(fn -> Logflare.Utils.Tasks.kill_all_tasks() end)
 
     :ok
   end
 
-  # requires a user, source, and plan set
-  defp setup_source_processes(%{source: source, plan: plan}) do
+  # requires a source, and plan set
+  defp setup_source_processes(context) do
+    plan = context.plan
+
     start_supervised!(Counters)
-    rls = %RLS{source_id: source.token, plan: plan}
-    start_supervised!({Schema, rls})
-    start_supervised!({SearchQueryExecutor, rls})
+
+    Enum.each(context, fn
+      {_, %Source{token: token}} ->
+        rls = %RecentLogsServer{source_id: token, plan: plan}
+        start_supervised!({Schema, rls}, id: token)
+        start_supervised!({SearchQueryExecutor, rls})
+
+      _ ->
+        nil
+    end)
+
     :ok
   end
 
@@ -125,7 +133,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click()
 
       :timer.sleep(200)
-      assert view |> element(".subhead a .toggle-on")
+      assert element(view, ".subhead a .toggle-on")
     end
 
     test "load page", %{conn: conn, source: source} do
@@ -140,7 +148,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
 
-      html = view |> render()
+      html = render(view)
       assert html =~ "Elapsed since last query"
 
       # default input values
@@ -157,8 +165,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         params = opts[:body].queryParameters
 
         if length(params) > 2 do
@@ -169,8 +176,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
-      view
-      |> render_change(:form_update, %{
+      render_change(view, :form_update, %{
         "search" => %{
           @default_search_params
           | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
@@ -179,8 +185,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       :timer.sleep(1000)
 
-      view
-      |> render_change(:start_search, %{
+      render_change(view, :start_search, %{
         "search" => %{
           "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
         }
@@ -205,8 +210,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # TODO: find a better way to test a source schema structure
       :timer.sleep(600)
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query |> String.downcase()
 
         if query =~ "select" and query =~ "inner join unnest" do
@@ -222,12 +226,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(800)
 
-      view
-      |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "m.nested:test top:test"
-        }
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
       })
 
       # wait for async search task to complete
@@ -240,8 +240,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "chart display interval", %{conn: conn, source: source} do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         params = opts[:body].queryParameters
 
         if length(params) > 2 do
@@ -257,12 +256,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(500)
 
-      view
-      |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "chart_period" => "day"
-        }
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "chart_period" => "day"}
       })
 
       # wait for async search task to complete
@@ -274,8 +269,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "log event modal", %{conn: conn, source: source} do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
          TestUtils.gen_bq_response(%{
            "event_message" => "some modal message",
@@ -300,7 +294,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert {:ok, view, _html} =
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
 
-      assert view |> render() =~ "Error while parsing timestamp filter"
+      assert render(view) =~ "Error while parsing timestamp filter"
     end
 
     test "redirected for non-owner user", %{conn: conn, source: source} do
@@ -345,14 +339,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(500)
 
-      view
-      |> render_change("datetime_update", %{"querystring" => "t:last@2h"})
+      render_change(view, "datetime_update", %{"querystring" => "t:last@2h"})
 
       assert get_view_assigns(view).querystring =~ "t:last@2hour"
       assert get_view_assigns(view).querystring =~ "error"
 
-      view
-      |> render_change("datetime_update", %{
+      render_change(view, "datetime_update", %{
         "querystring" => "t:2020-04-20T00:{01..02}:00",
         "period" => "second"
       })
@@ -375,8 +367,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     setup [:setup_user_session, :setup_source_processes]
 
     test "run a query", %{conn: conn, source: source} do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn conn, _proj_id, opts ->
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn conn, _proj_id, opts ->
         # use separate connection pool
         assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchQuery, receive_timeout: _]]} =
                  conn.adapter
@@ -394,12 +385,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(800)
 
-      view
-      |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "somestring"
-        }
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => "somestring"}
       })
 
       # wait for async search task to complete
@@ -409,6 +396,91 @@ defmodule LogflareWeb.Source.SearchLVTest do
       html = view |> element("#logs-list-container") |> render()
 
       assert html =~ "some correct message"
+    end
+  end
+
+  describe "source suggestion fields handling" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, suggested_fields: "event_message")
+      source_without_suggestion = insert(:source, user: user)
+      plan = insert(:plan)
+
+      %{
+        user: user,
+        source: source,
+        plan: plan,
+        source_without_suggestion: source_without_suggestion
+      }
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "on source with suggestion fields, creates flash with link to force query", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(800)
+
+      content =
+        view
+        |> render_change(:start_search, %{
+          "search" => %{
+            @default_search_params
+            | "querystring" => "c:count(*) c:group_by(t::minute)"
+          }
+        })
+        |> Floki.parse_document!()
+        |> Floki.find("div[role=alert]>span")
+
+      assert content
+             |> Floki.find("a")
+             |> Floki.attribute("href")
+             |> hd ==
+               "/sources/#{source.id}/search?force=true&querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aminute%29"
+
+      assert Floki.text(content) ==
+               "\nQuery does not include suggested fields, perfomance will be degraded. Do you want to proceed? Click to force query"
+    end
+
+    test "on source with suggestion fields, does not create a flash when query includes field", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(800)
+
+      assert view
+             |> render_change(:start_search, %{
+               "search" => %{
+                 @default_search_params
+                 | "querystring" => "c:count(*) c:group_by(t::minute) message"
+               }
+             })
+             |> Floki.parse_document!()
+             |> Floki.find("div[role=alert]>span") == []
+    end
+
+    test "on source without suggestion fields, does not create a flash", %{
+      conn: conn,
+      source_without_suggestion: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(800)
+
+      assert view
+             |> render_change(:start_search, %{
+               "search" => %{
+                 @default_search_params
+                 | "querystring" => "c:count(*) c:group_by(t::minute) message"
+               }
+             })
+             |> Floki.parse_document!()
+             |> Floki.find("div[role=alert]>span") == []
     end
   end
 
