@@ -17,8 +17,11 @@ There are two ways to query a Logflare Endpoint, via the Endpoint UUID or via th
 ```
 GET  https://api.logflare.app/api/endpoints/query/9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
 
-GET  https://api.logflare.app/api/endpoints/query/name/my.custom.endpoint
+# requires authentication
+GET  https://api.logflare.app/api/endpoints/query/my.custom.endpoint
 ```
+
+Querying by name requires authentication to be enabled and for a valid access token to be provided.
 
 ## Crafting a Query
 

@@ -54,11 +54,20 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
 
-      # should be able to query with endpoint name
+      # should be able to query with endpoint name (deprecated path)
       conn =
         init_conn
         |> put_req_header("x-api-key", user.api_key)
         |> get("/api/endpoints/query/name/#{endpoint.name}")
+
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      # should be able to query with endpoint name
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get("/api/endpoints/query/#{endpoint.name}")
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false

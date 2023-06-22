@@ -12,6 +12,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
   import Plug.Conn
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Utils
   def init(_opts), do: nil
 
   def call(%{assigns: %{resource_type: :source}, params: %{"source" => token}} = conn, _opts) do
@@ -19,8 +20,32 @@ defmodule LogflareWeb.Plugs.FetchResource do
     assign(conn, :source, source)
   end
 
-  def call(%{assigns: %{resource_type: :endpoint}, params: %{"token" => token}} = conn, _opts) do
-    endpoint = Endpoints.get_query_by_token(token)
+  def call(
+        %{
+          assigns: %{resource_type: :endpoint} = assigns,
+          params: %{"token_or_name" => token_or_name}
+        } = conn,
+        _opts
+      ) do
+    user_id =
+      Map.get(assigns, :user)
+      |> then(fn
+        nil -> nil
+        %_{} = user -> user.id
+      end)
+
+    endpoint =
+      case Utils.is_uuid?(token_or_name) do
+        true ->
+          Endpoints.get_query_by_token(token_or_name)
+
+        false when user_id != nil ->
+          Endpoints.get_by(name: token_or_name, user_id: user_id)
+
+        _ ->
+          nil
+      end
+
     assign(conn, :endpoint, endpoint)
   end
 

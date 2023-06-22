@@ -407,14 +407,16 @@ defmodule LogflareWeb.Router do
 
   scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
-    get("/query/:token", EndpointsController, :query)
+    get("/query/:token_or_name", EndpointsController, :query)
+
+    # deprecated
     get("/query/name/:name", EndpointsController, :query)
   end
 
   # legacy route
   scope "/endpoints/query", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
-    get("/:token", EndpointsController, :query)
+    get("/:token_or_name", EndpointsController, :query)
   end
 
   # Log ingest goes through https://api.logflare.app/logs
