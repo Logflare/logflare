@@ -124,7 +124,7 @@ defmodule Logflare.Source do
     field(:drop_lql_filters, Ecto.Term, default: [])
     field(:drop_lql_string, :string)
     field(:v2_pipeline, :boolean, default: false)
-    field(:suggested_fields, :string, default: "")
+    field(:suggested_keys, :string, default: "")
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -168,7 +168,7 @@ defmodule Logflare.Source do
       :drop_lql_filters,
       :drop_lql_string,
       :v2_pipeline,
-      :suggested_fields
+      :suggested_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -191,7 +191,7 @@ defmodule Logflare.Source do
       :drop_lql_filters,
       :drop_lql_string,
       :v2_pipeline,
-      :suggested_fields
+      :suggested_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)

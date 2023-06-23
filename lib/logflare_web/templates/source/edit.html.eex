@@ -243,12 +243,12 @@
   <p>Add a Google Cloud Platform project ID to get started!</p>
   <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
   <% end %>
-  <%= section_header("Suggested fields") %>
-  <p>Set suggested fields for this source (comma separated) for better query performance</p>
+  <%= section_header("Suggested search keys") %>
+  <p>Set suggested search keys for this source (comma separated) for better query performance</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
     <div class="form-group">
-      <%= text_input f, :suggested_fields , class: "form-control form-control-margin" %>
-      <%= error_tag f, :suggested_fields %>
+      <%= text_input f, :suggested_keys , class: "form-control form-control-margin" %>
+      <%= error_tag f, :suggested_keys %>
     </div>
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
