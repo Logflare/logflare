@@ -3,7 +3,7 @@ defmodule Logflare.Repo.Migrations.AddSuggestedFieldsToSources do
 
   def change do
     alter table(:sources) do
-      add(:suggested_fields, :string)
+      add(:suggested_keys, :string)
     end
   end
 end

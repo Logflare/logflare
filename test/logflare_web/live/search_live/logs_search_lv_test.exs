@@ -402,7 +402,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   describe "source suggestion fields handling" do
     setup do
       user = insert(:user)
-      source = insert(:source, user: user, suggested_fields: "event_message")
+      source = insert(:source, user: user, suggested_keys: "event_message")
       source_without_suggestion = insert(:source, user: user)
       plan = insert(:plan)
 
@@ -439,10 +439,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> Floki.find("a")
              |> Floki.attribute("href")
              |> hd ==
-               "/sources/#{source.id}/search?force=true&querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aminute%29"
+               "/sources/#{source.id}/search?force=true&tailing%3F=true&loading=true&chart_loading=true&querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aminute%29"
 
       assert Floki.text(content) ==
-               "\nQuery does not include suggested fields, perfomance will be degraded. Do you want to proceed? Click to force query"
+               "\nQuery does not include suggested keys, perfomance will be degraded. Do you want to proceed? Click to force query"
     end
 
     test "on source with suggestion fields, does not create a flash when query includes field", %{

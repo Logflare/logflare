@@ -91,7 +91,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
            lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
-           {:ok, socket} <- check_suggested_fields(lql_rules, source, socket),
+           {:ok, socket} <- check_suggested_keys(lql_rules, source, socket),
            qs <- Lql.encode!(lql_rules) do
         search_op_log_events =
           if socket.assigns.search_op_log_events do
@@ -777,11 +777,14 @@ defmodule LogflareWeb.Source.SearchLV do
     path =
       Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
         force: true,
+        tailing?: true,
+        loading: true,
+        chart_loading: true,
         querystring: socket.assigns.querystring
       )
 
     error = [
-      "Query does not include suggested fields, perfomance will be degraded. ",
+      "Query does not include suggested keys, perfomance will be degraded. ",
       "Do you want to proceed? ",
       link("Click to force query", to: path)
     ]
@@ -892,21 +895,21 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:lql_rules, lql_rules)
   end
 
-  defp check_suggested_fields(_lql_rules, _source, %{assigns: %{force_query: true}} = socket) do
-    {:ok, assign(socket, :force_query, false)}
-  end
-
-  defp check_suggested_fields(lql_rules, %{suggested_fields: ""}, socket) do
+  defp check_suggested_keys(_lql_rules, _source, %{assigns: %{force_query: true}} = socket) do
     {:ok, socket}
   end
 
-  defp check_suggested_fields(
+  defp check_suggested_keys(_lql_rules, %{suggested_keys: ""}, socket) do
+    {:ok, socket}
+  end
+
+  defp check_suggested_keys(
          lql_rules,
-         %{suggested_fields: suggested_fields},
+         %{suggested_keys: suggested_keys},
          %{assigns: %{force_query: false}} = socket
        ) do
     suggested_present =
-      suggested_fields
+      suggested_keys
       |> String.split(",")
       |> Enum.map(fn
         "m." <> suggested_field -> "metadata." <> suggested_field

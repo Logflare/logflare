@@ -3,7 +3,7 @@ defmodule Logflare.Repo.Migrations.SetSuggestedFieldsDefault do
 
   def change do
     alter table(:sources) do
-      modify(:suggested_fields, :string, default: "")
+      modify(:suggested_keys, :string, default: "")
     end
   end
 end
