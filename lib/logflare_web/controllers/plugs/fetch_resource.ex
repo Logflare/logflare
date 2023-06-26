@@ -19,8 +19,32 @@ defmodule LogflareWeb.Plugs.FetchResource do
     assign(conn, :source, source)
   end
 
-  def call(%{assigns: %{resource_type: :endpoint}, params: %{"token" => token}} = conn, _opts) do
-    endpoint = Endpoints.get_query_by_token(token)
+  def call(
+        %{
+          assigns: %{resource_type: :endpoint} = assigns,
+          params: %{"token_or_name" => token_or_name}
+        } = conn,
+        _opts
+      ) do
+    user_id =
+      Map.get(assigns, :user)
+      |> then(fn
+        nil -> nil
+        %_{} = user -> user.id
+      end)
+
+    endpoint =
+      case is_uuid?(token_or_name) do
+        true ->
+          Endpoints.get_query_by_token(token_or_name)
+
+        false when user_id != nil ->
+          Endpoints.get_by(name: token_or_name, user_id: user_id)
+
+        _ ->
+          nil
+      end
+
     assign(conn, :endpoint, endpoint)
   end
 
@@ -34,4 +58,12 @@ defmodule LogflareWeb.Plugs.FetchResource do
   end
 
   def call(conn, _), do: conn
+
+  # returns true if it is a valid uuid4 string
+  defp is_uuid?(value) when is_binary(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
 end
