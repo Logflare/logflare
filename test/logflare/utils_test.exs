@@ -3,6 +3,4 @@ defmodule Logflare.UtilsTest do
   use ExUnit.Case, async: true
   import Logflare.EnumDeepUpdate
   doctest Logflare.EnumDeepUpdate
-  import Logflare.Utils
-  doctest Logflare.Utils
 end

@@ -12,7 +12,6 @@ defmodule LogflareWeb.Plugs.FetchResource do
   import Plug.Conn
   alias Logflare.Sources
   alias Logflare.Endpoints
-  alias Logflare.Utils
   def init(_opts), do: nil
 
   def call(%{assigns: %{resource_type: :source}, params: %{"source" => token}} = conn, _opts) do
@@ -35,7 +34,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
       end)
 
     endpoint =
-      case Utils.is_uuid?(token_or_name) do
+      case is_uuid?(token_or_name) do
         true ->
           Endpoints.get_query_by_token(token_or_name)
 
@@ -59,4 +58,12 @@ defmodule LogflareWeb.Plugs.FetchResource do
   end
 
   def call(conn, _), do: conn
+
+  # returns true if it is a valid uuid4 string
+  defp is_uuid?(value) when is_binary(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
 end
