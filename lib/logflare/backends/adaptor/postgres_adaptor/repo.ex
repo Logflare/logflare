@@ -1,4 +1,10 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
+  @moduledoc """
+  Creates a Ecto.Repo for a source backend configuration, runs migrations and connects to it.
+
+  Using the Source Backend source id we create a new Ecto.Repo which whom we will
+  be able to connect to the configured PSQL URL, run migrations and insert data.
+  """
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
 
@@ -10,7 +16,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
             adapter: Ecto.Adapters.Postgres
         end)
 
-  @spec new_repository_for_source_backend(SourceBackend.t()) :: tuple()
+  @spec new_repository_for_source_backend(SourceBackend.t()) :: atom()
   def new_repository_for_source_backend(source_backend) do
     name = Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source_id}"])
 
@@ -28,8 +34,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   @spec connect_to_source_backend(Ecto.Repo.t(), SourceBackend.t(), Keyword.t()) :: :ok
   def connect_to_source_backend(repository_module, %SourceBackend{config: config}, opts \\ []) do
     unless Process.whereis(repository_module) do
-      %{url: url} = config
-      opts = [{:url, url} | opts]
+      opts = [{:url, config.url} | opts]
 
       {:ok, _} = DynamicSupervisor.start_child(Supervisor, repository_module.child_spec(opts))
     end

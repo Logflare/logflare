@@ -1,5 +1,9 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
-  @moduledoc false
+  @moduledoc """
+  Pipeline for PostgresAdaptor
+
+  This pipeline is responsible for taking log events from the source backend and inserting them into the configured database.
+  """
   use Broadway
 
   alias Broadway.Message
