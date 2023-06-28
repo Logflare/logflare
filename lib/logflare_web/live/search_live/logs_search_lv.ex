@@ -895,13 +895,14 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:lql_rules, lql_rules)
   end
 
-  defp check_suggested_keys(_lql_rules, _source, %{assigns: %{force_query: true}} = socket) do
-    {:ok, socket}
-  end
+  defp check_suggested_keys(_lql_rules, _source, %{assigns: %{force_query: true}} = socket),
+    do: {:ok, socket}
 
-  defp check_suggested_keys(_lql_rules, %{suggested_keys: ""}, socket) do
-    {:ok, socket}
-  end
+  defp check_suggested_keys(_lql_rules, %{suggested_keys: ""}, socket),
+    do: {:ok, socket}
+
+  defp check_suggested_keys(_lql_rules, %{suggested_keys: nil}, socket),
+    do: {:ok, socket}
 
   defp check_suggested_keys(
          lql_rules,
