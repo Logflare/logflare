@@ -154,7 +154,6 @@ defmodule Logflare.SingleTenant do
     end
   end
 
-
   @doc """
   Starts supabase sources if present.
   Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
@@ -163,9 +162,11 @@ defmodule Logflare.SingleTenant do
   @spec ensure_supabase_sources_started() :: :ok
   def ensure_supabase_sources_started do
     user = get_default_user()
-    for source <-  Sources.list_sources_by_user(user) do
+
+    for source <- Sources.list_sources_by_user(user) do
       Supervisor.ensure_started(source.token)
     end
+
     :ok
   end
 
@@ -178,12 +179,13 @@ defmodule Logflare.SingleTenant do
   @spec list_supabase_sources_pids() :: [pid()]
   def list_supabase_sources_pids do
     user = get_default_user()
-    for source <-  Sources.list_sources_by_user(user),
-    pid = Process.whereis(source.token), is_pid(pid) do
+
+    for source <- Sources.list_sources_by_user(user),
+        pid = Process.whereis(source.token),
+        is_pid(pid) do
       pid
     end
   end
-
 
   @doc """
   Inserts supabase endpoints via SQL files under priv/supabase.any()
@@ -265,7 +267,8 @@ defmodule Logflare.SingleTenant do
 
     source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
 
-    sources_sup_running = if (list_supabase_sources_pids() |> length()) > 0, do: :ok
+    sources_sup_running = if list_supabase_sources_pids() |> length() > 0, do: :ok
+
     %{
       seed_user: seed_user,
       seed_plan: seed_plan,
@@ -301,6 +304,4 @@ defmodule Logflare.SingleTenant do
     |> File.read!()
     |> Jason.decode!()
   end
-
-
 end
