@@ -163,8 +163,10 @@ defmodule Logflare.SingleTenant do
   def ensure_supabase_sources_started do
     user = get_default_user()
 
-    for source <- Sources.list_sources_by_user(user) do
-      Supervisor.ensure_started(source.token)
+    if user do
+      for source <- Sources.list_sources_by_user(user) do
+        Supervisor.ensure_started(source.token)
+      end
     end
 
     :ok
@@ -180,10 +182,14 @@ defmodule Logflare.SingleTenant do
   def list_supabase_sources_pids do
     user = get_default_user()
 
-    for source <- Sources.list_sources_by_user(user),
-        pid = Process.whereis(source.token),
-        is_pid(pid) do
-      pid
+    if user do
+      for source <- Sources.list_sources_by_user(user),
+          pid = Process.whereis(source.token),
+          is_pid(pid) do
+        pid
+      end
+    else
+      []
     end
   end
 
@@ -267,7 +273,6 @@ defmodule Logflare.SingleTenant do
 
     source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
 
-    sources_sup_running = if list_supabase_sources_pids() |> length() > 0, do: :ok
 
     %{
       seed_user: seed_user,
@@ -275,7 +280,6 @@ defmodule Logflare.SingleTenant do
       seed_sources: seed_sources,
       seed_endpoints: seed_endpoints,
       source_schemas_updated: source_schemas_updated,
-      sources_sup_running: sources_sup_running
     }
   end
 
