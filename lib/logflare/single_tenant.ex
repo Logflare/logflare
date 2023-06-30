@@ -143,9 +143,8 @@ defmodule Logflare.SingleTenant do
     if count == 0 do
       sources =
         for name <- @source_names do
+          # creating a source will automatically start the source's RLS process
           {:ok, source} = Sources.create_source(%{name: name}, user)
-
-          Supervisor.ensure_started(source.token)
           source
         end
 
@@ -153,6 +152,24 @@ defmodule Logflare.SingleTenant do
     else
       {:error, :already_created}
     end
+  end
+
+  @doc """
+  Starts supabase sources if present.
+  Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
+  TODO: add testing for v2
+  """
+  @spec ensure_supabase_sources_started() :: :ok
+  def ensure_supabase_sources_started do
+    user = get_default_user()
+
+    if user do
+      for source <- Sources.list_sources_by_user(user) do
+        Supervisor.ensure_started(source.token)
+      end
+    end
+
+    :ok
   end
 
   @doc """
