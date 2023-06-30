@@ -72,8 +72,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @typep conn_type :: :ingest | :query | :default
   @spec get_conn(conn_type()) :: Tesla.Env.client()
   def get_conn(conn_type \\ :default) do
-    Goth.fetch(Logflare.Goth)
-    |> case do
+    Logflare.Goth
+    |> Goth.fetch()
+    |> then(fn
       {:ok, %Goth.Token{} = goth} ->
         Connection.new(goth.token)
 
@@ -81,7 +82,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
         Logger.error("Goth error!", error_string: inspect(reason))
         # This is going to give us an unauthorized connection but we are handling it downstream.
         Connection.new("")
-    end
+    end)
     # dynamically set tesla adapter
     |> Map.update!(:adapter, fn _value -> build_tesla_adapter_call(conn_type) end)
   end

@@ -228,7 +228,7 @@ defmodule Logflare.EndpointsTest do
         Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
         migration_table = Keyword.get(repository_module.config(), :migration_source)
         Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
-        true = repository_module |> Process.whereis() |> Process.exit(:kill)
+        true = repository_module |> Process.whereis() |> Process.exit(:normal)
       end)
 
       %{source: source, user: user}

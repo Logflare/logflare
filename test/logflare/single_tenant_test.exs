@@ -1,14 +1,14 @@
 defmodule Logflare.SingleTenantTest do
-  @moduledoc false
-  use Logflare.DataCase
-  alias Logflare.SingleTenant
+  use Logflare.DataCase, async: false
+
   alias Logflare.Billing
-  alias Logflare.Users
-  alias Logflare.User
   alias Logflare.Billing.Plan
-  alias Logflare.Sources
   alias Logflare.Endpoints
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Repo
+  alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.User
+  alias Logflare.Users
 
   describe "single tenant mode" do
     TestUtils.setup_single_tenant()
@@ -62,13 +62,29 @@ defmodule Logflare.SingleTenantTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     setup do
-      stub(Schema, :update, fn _token, _le -> :ok end)
-      :ok
+      %{username: username, password: password, database: database, hostname: hostname} =
+        Application.get_env(:logflare, Logflare.Repo) |> Map.new()
+
+      url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
+      previous_url = Application.get_env(:logflare, :single_instance_postgres_url)
+      Application.put_env(:logflare, :single_instance_postgres_url, url)
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :single_instance_postgres_url, previous_url)
+      end)
+
+      %{url: url}
     end
 
-    test "create_supabase_sources/0, create_supabase_endpoints/0" do
-      assert {:ok, [_ | _]} = SingleTenant.create_supabase_sources()
+    test "create_supabase_sources/0, create_supabase_endpoints/0", %{url: url} do
+      assert {:ok, sources} = SingleTenant.create_supabase_sources()
       assert {:error, :already_created} = SingleTenant.create_supabase_sources()
+
+      assert [url] ==
+               sources
+               |> Enum.map(&Repo.preload(&1, :source_backends))
+               |> Enum.map(fn %{source_backends: [%{config: %{"url" => url}}]} -> url end)
+               |> Enum.uniq()
 
       # must have sources created first
       assert {:ok, [_ | _]} = SingleTenant.create_supabase_endpoints()
@@ -76,11 +92,8 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "startup tasks inserts log sources/endpoints" do
-      expect(Schema, :update, 9, fn _source_token, _log_event -> :ok end)
-
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
-      SingleTenant.update_supabase_source_schemas()
 
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
@@ -89,22 +102,20 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "supabase_mode_status/0" do
-      stub(Schema, :get_state, fn _ -> %{field_count: 3} end)
       SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+      started = SingleTenant.ensure_supabase_sources_started() |> Enum.map(&elem(&1, 1))
 
       assert %{
                seed_user: :ok,
                seed_plan: :ok,
                seed_sources: :ok,
-               seed_endpoints: nil,
-               source_schemas_updated: nil
+               seed_endpoints: :ok
              } = SingleTenant.supabase_mode_status()
 
-      stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
-
-      assert %{
-               source_schemas_updated: :ok
-             } = SingleTenant.supabase_mode_status()
+      on_exit(fn ->
+        Enum.each(started, &Process.exit(&1, :normal))
+      end)
     end
   end
 end

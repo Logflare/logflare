@@ -2,17 +2,16 @@ defmodule Logflare.SingleTenant do
   @moduledoc """
   Handles single tenant-related logic
   """
-  alias Logflare.Users
+  alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.Billing.Plan
+  alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
   alias Logflare.Source
-  alias Logflare.Sources
-  alias Logflare.Endpoints
   alias Logflare.Repo
-  alias Logflare.Source.Supervisor
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.LogEvent
+  alias Logflare.Sources
+  alias Logflare.Users
+
   require Logger
 
   @user_attrs %{
@@ -24,6 +23,7 @@ defmodule Logflare.SingleTenant do
     provider_uid: "default",
     endpoints_beta: true
   }
+
   @plan_attrs %{
     name: "Enterprise",
     period: "year",
@@ -50,7 +50,16 @@ defmodule Logflare.SingleTenant do
     "postgREST.logs.prod",
     "pgbouncer.logs.prod"
   ]
+
   @endpoint_params [
+    %{
+      name: "test",
+      query: "select body from 'cloudflare.logs.prod'",
+      sandboxable: true,
+      max_limit: 1000,
+      enable_auth: true,
+      cache_duration_seconds: 0
+    },
     %{
       name: "logs.all",
       query:
@@ -96,9 +105,7 @@ defmodule Logflare.SingleTenant do
   """
   def get_default_plan do
     Billing.list_plans()
-    |> Enum.find(fn plan ->
-      @plan_attrs = plan
-    end)
+    |> Enum.find(fn plan -> @plan_attrs = plan end)
   end
 
   @doc """
@@ -121,14 +128,11 @@ defmodule Logflare.SingleTenant do
   """
   @spec create_default_plan() :: {:ok, Plan.t()} | {:error, :already_created}
   def create_default_plan do
-    plan =
-      Billing.list_plans()
-      |> Enum.find(fn plan -> plan.name == "Enterprise" end)
+    plan = Billing.list_plans() |> Enum.find(fn plan -> plan.name == "Enterprise" end)
 
-    if plan == nil do
-      Billing.create_plan(@plan_attrs)
-    else
-      {:error, :already_created}
+    case plan do
+      nil -> Billing.create_plan(@plan_attrs)
+      _ -> {:error, :already_created}
     end
   end
 
@@ -144,7 +148,10 @@ defmodule Logflare.SingleTenant do
       sources =
         for name <- @source_names do
           # creating a source will automatically start the source's RLS process
-          {:ok, source} = Sources.create_source(%{name: name}, user)
+          url = Application.get_env(:logflare, :single_instance_postgres_url)
+          {:ok, source} = Sources.create_source(%{name: name, v2_pipeline: true}, user)
+          {:ok, _} = Backends.create_source_backend(source, :postgres, %{url: url})
+
           source
         end
 
@@ -159,17 +166,16 @@ defmodule Logflare.SingleTenant do
   Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
   TODO: add testing for v2
   """
-  @spec ensure_supabase_sources_started() :: :ok
+  @spec ensure_supabase_sources_started() :: list()
   def ensure_supabase_sources_started do
     user = get_default_user()
 
     if user do
       for source <- Sources.list_sources_by_user(user) do
-        Supervisor.ensure_started(source.token)
+        source = Repo.preload(source, :source_backends)
+        Logflare.Backends.start_source_sup(source)
       end
     end
-
-    :ok
   end
 
   @doc """
@@ -203,33 +209,6 @@ defmodule Logflare.SingleTenant do
   def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode) and single_tenant?()
 
   @doc """
-  Adds ingestion samples for supabase sources, so that schema is built and stored correctly.
-  """
-  @spec update_supabase_source_schemas :: nil
-  def update_supabase_source_schemas do
-    if supabase_mode?() do
-      user = get_default_user()
-
-      sources =
-        Sources.list_sources_by_user(user)
-        |> Repo.preload(:rules)
-
-      tasks =
-        for source <- sources do
-          Task.async(fn ->
-            source = Sources.refresh_source_metrics_for_ingest(source)
-            Logger.debug("Updating schemas for for #{source.name}")
-            event = read_ingest_sample_json(source.name)
-            log_event = LogEvent.make(event, %{source: source})
-            Schema.update(source.token, log_event)
-          end)
-        end
-
-      Task.await_many(tasks)
-    end
-  end
-
-  @doc """
   Returns the status of supabase mode setup process.
   Possible statuses: :ok, nil
   """
@@ -241,49 +220,18 @@ defmodule Logflare.SingleTenant do
     seed_plan = if default_plan, do: :ok
 
     seed_sources =
-      if default_user do
-        if Sources.list_sources_by_user(default_user) |> length() > 0, do: :ok
-      end
+      default_user &&
+        Sources.list_sources_by_user(default_user)
+        |> Enum.map(&Backends.source_sup_started?/1)
+        |> Enum.count(& &1)
 
-    seed_endpoints =
-      if default_user do
-        if Endpoints.list_endpoints_by(user_id: default_user.id) |> length() > 0, do: :ok
-      end
-
-    source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
+    seed_endpoints = default_user && Endpoints.list_endpoints_by(user_id: default_user.id)
 
     %{
       seed_user: seed_user,
       seed_plan: seed_plan,
-      seed_sources: seed_sources,
-      seed_endpoints: seed_endpoints,
-      source_schemas_updated: source_schemas_updated
+      seed_sources: if(seed_sources > 0, do: :ok),
+      seed_endpoints: if(seed_endpoints > 0, do: :ok)
     }
-  end
-
-  def supabase_mode_source_schemas_updated? do
-    user = get_default_user()
-
-    if user do
-      sources = Sources.list_sources_by_user(user)
-
-      checks =
-        for source <- sources,
-            source.name in @source_names,
-            state = Schema.get_state(source.token) do
-          state.field_count > 3
-        end
-
-      Enum.all?(checks) and length(sources) > 0
-    else
-      false
-    end
-  end
-
-  # Read a source ingest sample json file
-  defp read_ingest_sample_json(source_name) do
-    Application.app_dir(:logflare, "priv/supabase/ingest_samples/#{source_name}.json")
-    |> File.read!()
-    |> Jason.decode!()
   end
 end
