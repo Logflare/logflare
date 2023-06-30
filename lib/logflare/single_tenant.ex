@@ -143,9 +143,8 @@ defmodule Logflare.SingleTenant do
     if count == 0 do
       sources =
         for name <- @source_names do
+          # creating a source will automatically start the source's RLS process
           {:ok, source} = Sources.create_source(%{name: name}, user)
-
-          Supervisor.ensure_started(source.token)
           source
         end
 
@@ -154,6 +153,37 @@ defmodule Logflare.SingleTenant do
       {:error, :already_created}
     end
   end
+
+
+  @doc """
+  Starts supabase sources if present.
+  Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
+  TODO: add testing for v2
+  """
+  @spec ensure_supabase_sources_started() :: :ok
+  def ensure_supabase_sources_started do
+    user = get_default_user()
+    for source <-  Sources.list_sources_by_user(user) do
+      Supervisor.ensure_started(source.token)
+    end
+    :ok
+  end
+
+  @doc """
+  Lists supabase sources pids if processes have been started
+
+  Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
+  TODO: add testing for v2
+  """
+  @spec list_supabase_sources_pids() :: [pid()]
+  def list_supabase_sources_pids do
+    user = get_default_user()
+    for source <-  Sources.list_sources_by_user(user),
+    pid = Process.whereis(source.token), is_pid(pid) do
+      pid
+    end
+  end
+
 
   @doc """
   Inserts supabase endpoints via SQL files under priv/supabase.any()
@@ -235,12 +265,14 @@ defmodule Logflare.SingleTenant do
 
     source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
 
+    sources_sup_running = if (list_supabase_sources_pids() |> length()) > 0, do: :ok
     %{
       seed_user: seed_user,
       seed_plan: seed_plan,
       seed_sources: seed_sources,
       seed_endpoints: seed_endpoints,
-      source_schemas_updated: source_schemas_updated
+      source_schemas_updated: source_schemas_updated,
+      sources_sup_running: sources_sup_running
     }
   end
 
@@ -269,4 +301,6 @@ defmodule Logflare.SingleTenant do
     |> File.read!()
     |> Jason.decode!()
   end
+
+
 end
