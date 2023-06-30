@@ -172,24 +172,6 @@ defmodule Logflare.SingleTenant do
     :ok
   end
 
-  # Lists supabase sources pids if processes have been started
-  # Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
-  # TODO: add testing for v2
-  @spec list_supabase_sources_pids() :: [pid()]
-  defp list_supabase_sources_pids do
-    user = get_default_user()
-
-    if user do
-      for source <- Sources.list_sources_by_user(user),
-          pid = Process.whereis(source.token),
-          is_pid(pid) do
-        pid
-      end
-    else
-      []
-    end
-  end
-
   @doc """
   Inserts supabase endpoints via SQL files under priv/supabase.any()
   These SQL scripts are directly exported from logflare prod.
