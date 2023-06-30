@@ -273,13 +273,12 @@ defmodule Logflare.SingleTenant do
 
     source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
 
-
     %{
       seed_user: seed_user,
       seed_plan: seed_plan,
       seed_sources: seed_sources,
       seed_endpoints: seed_endpoints,
-      source_schemas_updated: source_schemas_updated,
+      source_schemas_updated: source_schemas_updated
     }
   end
 
