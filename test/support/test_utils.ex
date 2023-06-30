@@ -28,16 +28,6 @@ defmodule Logflare.TestUtils do
 
     quote do
       setup do
-        # conditionally update bigquery project id
-        initial_google_config = Application.get_env(:logflare, Logflare.Google)
-        replacement_project_id = unquote(opts.bigquery_project_id)
-        updated = Keyword.put(initial_google_config, :project_id, replacement_project_id)
-        Application.put_env(:logflare, Logflare.Google, updated)
-
-        on_exit(fn ->
-          Application.put_env(:logflare, Logflare.Google, initial_google_config)
-        end)
-
         # perform application env adjustments at runtime
         initial_single_tenant = Application.get_env(:logflare, :single_tenant)
         Application.put_env(:logflare, :single_tenant, true)

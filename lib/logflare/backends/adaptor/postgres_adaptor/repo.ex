@@ -38,7 +38,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   @spec connect_to_source_backend(Ecto.Repo.t(), SourceBackend.t(), Keyword.t()) :: :ok
   def connect_to_source_backend(repository_module, %SourceBackend{config: config}, opts \\ []) do
     unless Process.whereis(repository_module) do
-      opts = [{:url, config["url"]} | opts]
+      pool_size = Keyword.get(Application.get_env(:logflare, :postgres_backend_adapter), :pool_size, 10)
+
+      opts = [
+        {:url, config["url"] || config.url},
+        {:name, repository_module},
+        {:pool_size, pool_size} | opts
+      ]
 
       {:ok, _} = DynamicSupervisor.start_child(Supervisor, repository_module.child_spec(opts))
     end
