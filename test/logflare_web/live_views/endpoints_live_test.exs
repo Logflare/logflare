@@ -218,7 +218,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       |> element("form", "Test query")
       |> render_submit(%{}) =~ "results-123"
 
-      assert has_element?(view, "h4", "Caching")
+      assert has_element?(view, "h5", "Caching")
       assert has_element?(view, "label", "Cache TTL")
       assert has_element?(view, "label", "Proactive Re-querying")
       assert has_element?(view, "label", "Enable query sandboxing")

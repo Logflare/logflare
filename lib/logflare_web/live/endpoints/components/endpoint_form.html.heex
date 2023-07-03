@@ -11,7 +11,7 @@
       <%= submit("Save changes", class: "btn btn-primary") %>
     </div>
 
-    <h4>Name</h4>
+    <.header_with_anchor text="Name" />
     <p>
       This endpoint will can be queried at:
       <code><%= url(~p"/api/endpoints/query/name/YourApp.EndpointName") %></code>
@@ -24,7 +24,7 @@
       ) %>
       <%= error_tag(f, :name) %>
     </div>
-    <h4>Query</h4>
+    <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-row tw-gap-4 tw-w-full">
       <div class="form-group">
         <p>
@@ -82,7 +82,7 @@
       </small>
     </div>
 
-    <h4>Caching</h4>
+    <.header_with_anchor text="Caching" />
     <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
       <div>
         <%= label(f, :cache_ttl, "Cache TTL") %>
