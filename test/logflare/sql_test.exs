@@ -25,7 +25,7 @@ defmodule Logflare.SqlTest do
           "select d[0]",
           "select d[offset(0)]"
         ] do
-      assert {:ok, _v2} = SqlV2.transform(input, user)
+      assert {:ok, _v2} = SqlV2.transform(:bigquery, input, user)
     end
   end
 
@@ -101,9 +101,9 @@ defmodule Logflare.SqlTest do
             "with src as (select a from #{table}) select c from src order by c asc"
           }
         ] do
-      assert {:ok, v2} = SqlV2.transform(input, user)
+      assert {:ok, v2} = SqlV2.transform(:bigquery, input, user)
       assert String.downcase(v2) == expected
-      assert {:ok, v2} = SqlV2.transform(input, user.id)
+      assert {:ok, v2} = SqlV2.transform(:bigquery, input, user.id)
       assert String.downcase(v2) == expected
     end
 
@@ -112,7 +112,7 @@ defmodule Logflare.SqlTest do
           # subquery
           {"select a from (select b from my_table)", "select a from (select b from #{table})"}
         ] do
-      assert {:ok, v2} = SqlV2.transform(input, user)
+      assert {:ok, v2} = SqlV2.transform(:bigquery, input, user)
       assert String.downcase(v2) == expected
     end
   end
@@ -212,7 +212,7 @@ defmodule Logflare.SqlTest do
           # fully qualified name that is not a source name should be rejected
           {"select a from `a.b.c`", "can't find source"}
         ] do
-      assert {:error, err} = SqlV2.transform(input, user)
+      assert {:error, err} = SqlV2.transform(:bigquery, input, user)
 
       assert String.downcase(err) =~ String.downcase(expected),
              "should error with '#{expected}'. input: #{inspect(input)}"
@@ -238,7 +238,7 @@ defmodule Logflare.SqlTest do
           {"with a as (select b from `c.x.y.z`) select b from a",
            "with a as (select b from #{bq_table_name(source_cxyz)}) select b from a"}
         ] do
-      assert SqlV2.transform(input, user) |> elem(1) |> String.downcase() == expected
+      assert SqlV2.transform(:bigquery, input, user) |> elem(1) |> String.downcase() == expected
     end
   end
 
@@ -250,7 +250,7 @@ defmodule Logflare.SqlTest do
     insert(:source, user: user, name: source_name)
     input = "select a from `#{source_name}`"
 
-    assert {:ok, transformed} = SqlV2.transform(input, user)
+    assert {:ok, transformed} = SqlV2.transform(:bigquery, input, user)
     refute transformed =~ source_name
   end
 
@@ -266,7 +266,7 @@ defmodule Logflare.SqlTest do
       insert(:source, user: user, name: "a.b.c")
       input = " select a from `a.b.c`"
 
-      assert {:ok, transformed} = SqlV2.transform(input, user)
+      assert {:ok, transformed} = SqlV2.transform(:bigquery, input, user)
       assert transformed =~ @single_tenant_bq_project_id
       refute transformed =~ @logflare_project_id
     end
@@ -275,7 +275,7 @@ defmodule Logflare.SqlTest do
       user = SingleTenant.get_default_user()
       input = " select a from `#{@single_tenant_bq_project_id}.my_dataset.my_table`"
 
-      assert {:ok, transformed} = SqlV2.transform(input, user)
+      assert {:ok, transformed} = SqlV2.transform(:bigquery, input, user)
       assert transformed =~ "#{@single_tenant_bq_project_id}.my_dataset.my_table"
       refute transformed =~ @logflare_project_id
     end

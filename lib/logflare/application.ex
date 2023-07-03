@@ -14,7 +14,6 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
-
     # TODO: Set node status in GCP when sigterm is received
     :ok =
       :gen_event.swap_sup_handler(
@@ -59,6 +58,8 @@ defmodule Logflare.Application do
       # v2 ingestion pipelines
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ common_children()
@@ -134,8 +135,13 @@ defmodule Logflare.Application do
       # Startup tasks
       {Task, fn -> startup_tasks() end},
 
-      # Telemetry
-      Logflare.Telemetry
+      # v2 ingestion pipelines
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
+      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
+      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ conditional_children() ++ common_children()
   end
 
@@ -179,6 +185,7 @@ defmodule Logflare.Application do
     if SingleTenant.supabase_mode?() do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
+      SingleTenant.ensure_supabase_sources_started()
       # buffer time for all sources to init and create tables
       # in case of latency.
       :timer.sleep(3_000)

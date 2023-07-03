@@ -3,7 +3,9 @@ defmodule Logflare.Endpoints.Query do
   use TypedEctoSchema
   import Ecto.Changeset
   require Logger
+
   alias Logflare.Endpoints.Query
+  alias Logflare.Sources
 
   @derive {Jason.Encoder,
            only: [
@@ -19,19 +21,19 @@ defmodule Logflare.Endpoints.Query do
              :enable_auth
            ]}
   typed_schema "endpoint_queries" do
-    field :token, Ecto.UUID, autogenerate: true
-    field :name, :string
-    field :query, :string
-    field :source_mapping, :map
-    field :sandboxable, :boolean
-    field :cache_duration_seconds, :integer, default: 3_600
-    field :proactive_requerying_seconds, :integer, default: 1_800
-    field :max_limit, :integer, default: 1_000
-    field :enable_auth, :boolean, default: true
+    field(:token, Ecto.UUID, autogenerate: true)
+    field(:name, :string)
+    field(:query, :string)
+    field(:source_mapping, :map)
+    field(:sandboxable, :boolean)
+    field(:cache_duration_seconds, :integer, default: 3_600)
+    field(:proactive_requerying_seconds, :integer, default: 1_800)
+    field(:max_limit, :integer, default: 1_000)
+    field(:enable_auth, :boolean, default: true)
 
-    belongs_to :user, Logflare.User
-    has_many :sandboxed_queries, Query, foreign_key: :sandbox_query_id
-    belongs_to :sandbox_query, Query
+    belongs_to(:user, Logflare.User)
+    has_many(:sandboxed_queries, Query, foreign_key: :sandbox_query_id)
+    belongs_to(:sandbox_query, Query)
 
     timestamps()
   end
@@ -94,31 +96,53 @@ defmodule Logflare.Endpoints.Query do
   end
 
   def validate_query(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn field, value ->
-      case Logflare.SqlV2.transform(value, get_field(changeset, :user)) do
-        {:ok, _} ->
-          []
+    {backend, _} = choose_backend_and_extract_sources(changeset.data)
 
-        {:error, error} ->
-          [{field, error}]
+    validate_change(changeset, field, fn field, value ->
+      case Logflare.SqlV2.transform(backend, value, get_field(changeset, :user)) do
+        {:ok, _} -> []
+        {:error, error} -> [{field, error}]
       end
     end)
   end
 
-  # Only update source mapping if there are no errors
-  def update_source_mapping(%{errors: [], changes: %{query: query}} = changeset)
-      when is_binary(query) do
-    case Logflare.SqlV2.sources(query, get_field(changeset, :user)) do
-      {:ok, source_mapping} ->
-        Logger.debug("Source mapping: #{inspect(source_mapping, pretty: true)}")
-        put_change(changeset, :source_mapping, source_mapping)
+  @doc """
+  Defines which backend should be used to run a given query
+  """
+  @spec choose_backend_and_extract_sources(Query.t()) :: {:bigquery | :postgres, [Source.t()]}
+  def choose_backend_and_extract_sources(%Query{source_mapping: nil}), do: {:bigquery, nil}
 
-      {:error, error} ->
-        add_error(changeset, :query, error)
+  def choose_backend_and_extract_sources(%Query{source_mapping: source_mapping}) do
+    sources =
+      Enum.map(source_mapping, fn {_, token} ->
+        Sources.get_by_and_preload([token: token], [:source_backends])
+      end)
+
+    backend =
+      sources
+      |> Enum.reduce([], fn
+        %{source_backends: []}, acc -> [:bigquery] ++ acc
+        %{source_backends: source_backends}, acc -> Enum.map(source_backends, & &1.type) ++ acc
+      end)
+      |> Enum.uniq()
+      |> then(fn
+        [backend_type] -> backend_type
+        _ -> :bigquery
+      end)
+
+    {backend, sources}
+  end
+
+  # Only update source mapping if there are no errors
+  defp update_source_mapping(%{errors: [], changes: %{query: query}} = changeset)
+       when is_binary(query) do
+    case Logflare.SqlV2.sources(query, get_field(changeset, :user)) do
+      {:ok, source_mapping} -> put_change(changeset, :source_mapping, source_mapping)
+      {:error, error} -> add_error(changeset, :query, error)
     end
   end
 
-  def update_source_mapping(changeset), do: changeset
+  defp update_source_mapping(changeset), do: changeset
 
   @doc """
   Replaces a query with latest source names.

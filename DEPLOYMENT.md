@@ -24,6 +24,7 @@ To deploy the GRPC server in a new environment you need the following steps for 
     - Set certificate
   - Backend Configuration
     - Create `Backend Service` for each `Instance Group` you want to support
+    - Set protocol to `HTTP/2`
     - Select the target `Instance Group` and select the GRPC Port set earlier in the popup
     - Disable Cloud CDN
     - Enable Logging

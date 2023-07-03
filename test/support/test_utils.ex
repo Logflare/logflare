@@ -387,4 +387,28 @@ defmodule Logflare.TestUtils do
   end
 
   def random_pos_integer(limit \\ 1000), do: :rand.uniform(limit)
+
+  @doc """
+  Fetches data until the asserts is able to run its asserts a certain amount of times (default 10 times).
+  """
+  @spec retry_fetch(
+          (() -> :retry | any()),
+          (any() -> :retry | any()),
+          pos_integer(),
+          pos_integer()
+        ) ::
+          :ok | {:error, :max_retries_reached}
+  def retry_fetch(fetcher, asserts, times \\ 10, sleep \\ 50)
+  def retry_fetch(_, _, 0, _), do: {:error, :max_retries_reached}
+
+  def retry_fetch(fetcher, asserts, times, sleep) do
+    with fetcher_result when fetcher_result != :retry <- fetcher.(),
+         assert_result when assert_result != :retry <- asserts.(fetcher_result) do
+      send(self(), :done)
+    else
+      :retry ->
+        :timer.sleep(sleep)
+        retry_fetch(fetcher, asserts, times - 1)
+    end
+  end
 end

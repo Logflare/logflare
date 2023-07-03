@@ -18,19 +18,14 @@ config :logflare,
 
 config :logflare,
        LogflareWeb.Endpoint,
-       [
-         http:
-           [
-             port: System.get_env("PHX_HTTP_PORT")
-           ]
-           |> filter_nil_kv_pairs.(),
+       filter_nil_kv_pairs.(
+         http: filter_nil_kv_pairs.(port: System.get_env("PHX_HTTP_PORT")),
          url:
-           [
+           filter_nil_kv_pairs.(
              host: System.get_env("PHX_URL_HOST"),
              scheme: System.get_env("PHX_URL_SCHEME"),
              port: System.get_env("PHX_URL_PORT")
-           ]
-           |> filter_nil_kv_pairs.(),
+           ),
          secret_key_base: System.get_env("PHX_SECRET_KEY_BASE"),
          check_origin:
            case System.get_env("PHX_CHECK_ORIGIN") do
@@ -39,13 +34,13 @@ config :logflare,
            end,
          live_view:
            [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
-           |> filter_nil_kv_pairs.()
-       ]
-       |> filter_nil_kv_pairs.()
+           |> filter_nil_kv_pairs.(),
+         live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
+       )
 
 config :logflare,
        Logflare.Repo,
-       [
+       filter_nil_kv_pairs.(
          pool_size:
            if(System.get_env("DB_POOL_SIZE") != nil,
              do: String.to_integer(System.get_env("DB_POOL_SIZE")),
@@ -66,23 +61,25 @@ config :logflare,
              do: String.to_integer(System.get_env("DB_PORT")),
              else: nil
            )
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :logflare,
        Logflare.Cluster.Utils,
-       [
+       filter_nil_kv_pairs.(
          min_cluster_size: System.get_env("LOGFLARE_MIN_CLUSTER_SIZE", "3") |> String.to_integer()
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :logflare_logger_backend,
-       [
+       filter_nil_kv_pairs.(
          source_id: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"),
          url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL"),
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
+
+if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
+  config :logger,
+    backends: [:console, LogflareLogger.HttpBackend]
+end
 
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
@@ -93,12 +90,7 @@ log_level =
     _ -> nil
   end
 
-config :logger, [level: log_level] |> filter_nil_kv_pairs.()
-
-if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
-  config :logger,
-    backends: [:console, LogflareLogger.HttpBackend]
-end
+config :logger, filter_nil_kv_pairs.(level: log_level)
 
 # Set libcluster topologies
 gce_topology = [
@@ -127,25 +119,23 @@ config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
 
 config :logflare,
        LogflareWeb.Auth.VercelAuth,
-       [
+       filter_nil_kv_pairs.(
          vercel_app_host: System.get_env("VERCEL_AUTH_HOST"),
          client_id: System.get_env("VERCEL_AUTH_CLIENT_ID")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :logflare,
        Logflare.Vercel.Client,
-       [
+       filter_nil_kv_pairs.(
          client_id: System.get_env("VERCEL_CLIENT_ID"),
          client_secret: System.get_env("VERCEL_CLIENT_SECRET"),
          redirect_uri: System.get_env("VERCEL_CLIENT_REDIRECT_URI"),
          install_vercel_uri: System.get_env("VERCEL_CLIENT_INSTALL_URI")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :logflare,
        Logflare.Google,
-       [
+       filter_nil_kv_pairs.(
          dataset_id_append: System.get_env("GOOGLE_DATASET_ID_APPEND"),
          project_number: System.get_env("GOOGLE_PROJECT_NUMBER"),
          project_id: System.get_env("GOOGLE_PROJECT_ID"),
@@ -154,32 +144,28 @@ config :logflare,
          api_sa: System.get_env("GOOGLE_API_SA"),
          cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
          cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :ueberauth,
        Ueberauth.Strategy.Github.OAuth,
-       [
+       filter_nil_kv_pairs.(
          client_id: System.get_env("UEBERAUTH_GITHUB_CLIENT_ID"),
          client_secret: System.get_env("UEBERAUTH_GITHUB_CLIENT_SECRET")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :ueberauth,
        Ueberauth.Strategy.Google.OAuth,
-       [
+       filter_nil_kv_pairs.(
          client_id: System.get_env("UEBERAUTH_GOOGLE_CLIENT_ID"),
          client_secret: System.get_env("UEBERAUTH_GOOGLE_CLIENT_SECRET")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :ueberauth,
        Ueberauth.Strategy.SlackV2.OAuth,
-       [
+       filter_nil_kv_pairs.(
          client_id: System.get_env("UEBERAUTH_SLACK_CLIENT_ID"),
          client_secret: System.get_env("UEBERAUTH_SLACK_CLIENT_SECRET")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 if System.get_env("LOGFLARE_MAILER_API_KEY") do
   api_key = System.get_env("LOGFLARE_MAILER_API_KEY")
@@ -188,18 +174,16 @@ if System.get_env("LOGFLARE_MAILER_API_KEY") do
 end
 
 config :ex_twilio,
-       [
+       filter_nil_kv_pairs.(
          account_sid: System.get_env("TWILLIO_ACCOUNT_SID"),
          auth_token: System.get_env("TWILLIO_AUTH_TOKEN")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 config :stripity_stripe,
-       [
+       filter_nil_kv_pairs.(
          api_key: System.get_env("STRIPE_API_KEY"),
          publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY")
-       ]
-       |> filter_nil_kv_pairs.()
+       )
 
 if config_env() != :test do
   config :goth, json: File.read!("gcloud.json")
@@ -214,4 +198,20 @@ if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.
       keyfile: "cert.key",
       verify: :verify_peer
     ]
+end
+
+case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
+  nil ->
+    nil
+
+  value ->
+    config :logflare,
+      feature_flag_override:
+        value
+        |> String.downcase()
+        |> String.split(",")
+        |> Enum.map(&String.split(&1, "="))
+        |> Enum.map(&[List.to_tuple(&1)])
+        |> Enum.map(&Map.new/1)
+        |> Enum.reduce(&Map.merge/2)
 end

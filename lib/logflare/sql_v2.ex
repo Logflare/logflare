@@ -7,7 +7,8 @@ defmodule Logflare.SqlV2 do
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.SingleTenant
-  alias __MODULE__.Parser
+  alias Logflare.SqlV2.Parser
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -28,19 +29,38 @@ defmodule Logflare.SqlV2 do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @spec transform(input(), User.t()) :: {:ok, String.t()}
-  def transform(input, user_id) when is_integer(user_id) do
+  @spec transform(atom(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
+  def transform(backend, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
-    transform(input, user)
+    transform(backend, input, user)
   end
 
-  def transform(
-        input,
-        %_{
-          bigquery_project_id: user_project_id,
-          bigquery_dataset_id: user_dataset_id
-        } = user
-      ) do
+  def transform(:postgres, input, user) do
+    {:ok, [input]} = Parser.parse(input)
+
+    sources = Sources.list_sources_by_user(user)
+    source_mapping = source_mapping(sources)
+
+    from =
+      input
+      |> get_in(["Query", "body", "Select", "from"])
+      |> Enum.map(fn from ->
+        {_, updated} =
+          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
+            table_name = source_mapping |> Map.get(source) |> Repo.table_name()
+            {value, [%{"quote_style" => nil, "value" => table_name}]}
+          end)
+
+        updated
+      end)
+
+    input = put_in(input, ["Query", "body", "Select", "from"], from)
+    Parser.to_string(input)
+  end
+
+  def transform(:bigquery, input, %User{} = user) do
+    %_{bigquery_project_id: user_project_id, bigquery_dataset_id: user_dataset_id} = user
+
     {query, sandboxed_query} =
       case input do
         q when is_binary(q) -> {q, nil}
@@ -48,11 +68,7 @@ defmodule Logflare.SqlV2 do
       end
 
     sources = Sources.list_sources_by_user(user)
-
-    source_mapping =
-      for source <- sources, into: %{} do
-        {source.name, source}
-      end
+    source_mapping = source_mapping(sources)
 
     with {:ok, statements} <- Parser.parse(query),
          data = %{
@@ -68,11 +84,7 @@ defmodule Logflare.SqlV2 do
            ast: statements
          },
          :ok <- validate_query(statements, data),
-         {:ok, sandboxed_query_ast} <-
-           (case sandboxed_query do
-              q when is_binary(q) -> Parser.parse(q)
-              _ -> {:ok, nil}
-            end),
+         {:ok, sandboxed_query_ast} <- sandboxed_ast(data),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
 
@@ -81,6 +93,9 @@ defmodule Logflare.SqlV2 do
       |> Parser.to_string()
     end
   end
+
+  defp sandboxed_ast(%{sandboxed_query: q}) when is_binary(q), do: Parser.parse(q)
+  defp sandboxed_ast(_), do: {:ok, nil}
 
   @doc """
   Performs a check if a query contains a CTE. returns true if it is, returns false if not
@@ -433,20 +448,20 @@ defmodule Logflare.SqlV2 do
 
     sources =
       with {:ok, ast} <- Parser.parse(query),
-           names <- find_all_source_names(ast) |> Enum.filter(fn name -> name in source_names end) do
+           names <-
+             ast
+             |> find_all_source_names()
+             |> Enum.filter(fn name -> name in source_names end) do
         names
         |> Enum.map(fn name ->
           token =
             source_mapping
             |> Map.get(name)
             |> Map.get(:token)
-            |> case do
-              v when is_atom(v) ->
-                Atom.to_string(v)
-
-              v ->
-                v
-            end
+            |> then(fn
+              v when is_atom(v) -> Atom.to_string(v)
+              v -> v
+            end)
 
           {name, token}
         end)
@@ -614,5 +629,11 @@ defmodule Logflare.SqlV2 do
   defp is_project_fully_qualified_name(table_name, project_id) when is_binary(project_id) do
     {:ok, regex} = Regex.compile("#{project_id}\\..+\\..+")
     Regex.match?(regex, table_name)
+  end
+
+  defp source_mapping(sources) do
+    for source <- sources, into: %{} do
+      {source.name, source}
+    end
   end
 end

@@ -32,10 +32,15 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
 
   describe "endpoints" do
     setup %{endpoint: endpoint} do
-      [conn: build_conn(:get, "/endpoints/query/#{endpoint.token}", %{"token" => endpoint.token})]
+      [
+        conn:
+          build_conn(:get, "/endpoints/query/#{endpoint.token}", %{
+            "token_or_name" => endpoint.token
+          })
+      ]
     end
 
-    test "fetches an endpoint", %{conn: conn, endpoint: %Query{id: id}} do
+    test "fetches an endpoint by name or token", %{conn: conn, endpoint: %Query{id: id}} do
       refute Map.get(conn.assigns, :endpoint)
 
       conn =

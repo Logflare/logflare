@@ -5,12 +5,10 @@ defmodule Logflare.Endpoints.Resolver do
   alias Logflare.Endpoints.Cache
 
   def resolve(%Logflare.Endpoints.Query{id: id}) do
-    Enum.filter(:global.registered_names(), fn
-      {Cache, ^id, _} ->
-        true
-
-      _ ->
-        false
+    :global.registered_names()
+    |> Enum.filter(fn
+      {Cache, ^id, _} -> true
+      _ -> false
     end)
     |> Enum.map(&:global.whereis_name/1)
   end
@@ -24,11 +22,8 @@ defmodule Logflare.Endpoints.Resolver do
           spec = {Cache, {query, params}}
 
           case DynamicSupervisor.start_child(Cache, spec) do
-            {:ok, pid} ->
-              pid
-
-            {:error, {:already_started, pid}} ->
-              pid
+            {:ok, pid} -> pid
+            {:error, {:already_started, pid}} -> pid
           end
 
         pid ->

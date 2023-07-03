@@ -27,6 +27,12 @@ Mimic.copy(GoogleApi.BigQuery.V2.Api.Datasets)
 Mimic.copy(GoogleApi.CloudResourceManager.V1.Api.Projects)
 Mimic.copy(Goth)
 Mimic.copy(ConfigCat)
+Mimic.copy(Finch)
+
+# stub all outgoing requests
+Mimic.stub(Goth)
+Mimic.stub(Finch)
+
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
 

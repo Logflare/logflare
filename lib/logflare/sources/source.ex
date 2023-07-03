@@ -48,16 +48,16 @@ defmodule Logflare.Source do
              ]}
 
     typed_embedded_schema do
-      field :rate, :integer
-      field :latest, :integer
-      field :avg, :integer
-      field :max, :integer
-      field :buffer, :integer
-      field :inserts, :integer
-      field :inserts_string, :string
-      field :recent, :integer
-      field :rejected, :integer
-      field :fields, :integer
+      field(:rate, :integer)
+      field(:latest, :integer)
+      field(:avg, :integer)
+      field(:max, :integer)
+      field(:buffer, :integer)
+      field(:inserts, :integer)
+      field(:inserts_string, :string)
+      field(:recent, :integer)
+      field(:rejected, :integer)
+      field(:fields, :integer)
     end
   end
 
@@ -77,13 +77,13 @@ defmodule Logflare.Source do
              ]}
 
     embedded_schema do
-      field :team_user_ids_for_email, {:array, :string}, default: []
-      field :team_user_ids_for_sms, {:array, :string}, default: []
-      field :other_email_notifications, :string
-      field :user_email_notifications, :boolean, default: false
-      field :user_text_notifications, :boolean, default: false
-      field :user_schema_update_notifications, :boolean, default: true
-      field :team_user_ids_for_schema_updates, {:array, :string}, default: []
+      field(:team_user_ids_for_email, {:array, :string}, default: [])
+      field(:team_user_ids_for_sms, {:array, :string}, default: [])
+      field(:other_email_notifications, :string)
+      field(:user_email_notifications, :boolean, default: false)
+      field(:user_text_notifications, :boolean, default: false)
+      field(:user_schema_update_notifications, :boolean, default: true)
+      field(:team_user_ids_for_schema_updates, {:array, :string}, default: [])
     end
 
     def changeset(notifications, attrs) do
@@ -101,43 +101,43 @@ defmodule Logflare.Source do
   end
 
   schema "sources" do
-    field :name, :string
-    field :token, Ecto.UUID.Atom, autogenerate: true
-    field :public_token, :string
-    field :favorite, :boolean, default: false
-    field :bigquery_table_ttl, :integer
-    field :api_quota, :integer, default: @default_source_api_quota
-    field :webhook_notification_url, :string
-    field :slack_hook_url, :string
-    field :metrics, :map, virtual: true
-    field :has_rejected_events, :boolean, default: false, virtual: true
-    field :bq_table_id, :string, virtual: true
-    field :bq_dataset_id, :string, virtual: true
-    field :bq_table_schema, :any, virtual: true
-    field :bq_table_typemap, :any, virtual: true
-    field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
-    field :custom_event_message_keys, :string
-    field :log_events_updated_at, :naive_datetime
-    field :notifications_every, :integer, default: :timer.hours(4)
-    field :lock_schema, :boolean, default: false
-    field :validate_schema, :boolean, default: true
-    field :drop_lql_filters, Ecto.Term, default: []
-    field :drop_lql_string, :string
-    field :v2_pipeline, :boolean, default: false
-
+    field(:name, :string)
+    field(:token, Ecto.UUID.Atom, autogenerate: true)
+    field(:public_token, :string)
+    field(:favorite, :boolean, default: false)
+    field(:bigquery_table_ttl, :integer)
+    field(:api_quota, :integer, default: @default_source_api_quota)
+    field(:webhook_notification_url, :string)
+    field(:slack_hook_url, :string)
+    field(:metrics, :map, virtual: true)
+    field(:has_rejected_events, :boolean, default: false, virtual: true)
+    field(:bq_table_id, :string, virtual: true)
+    field(:bq_dataset_id, :string, virtual: true)
+    field(:bq_table_schema, :any, virtual: true)
+    field(:bq_table_typemap, :any, virtual: true)
+    field(:bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp)
+    field(:custom_event_message_keys, :string)
+    field(:log_events_updated_at, :naive_datetime)
+    field(:notifications_every, :integer, default: :timer.hours(4))
+    field(:lock_schema, :boolean, default: false)
+    field(:validate_schema, :boolean, default: true)
+    field(:drop_lql_filters, Ecto.Term, default: [])
+    field(:drop_lql_string, :string)
+    field(:v2_pipeline, :boolean, default: false)
+    field(:suggested_keys, :string, default: "")
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
-    belongs_to :user, Logflare.User
+    belongs_to(:user, Logflare.User)
 
-    has_many :rules, Logflare.Rule
-    has_many :source_backends, Logflare.Backends.SourceBackend
-    has_many :saved_searches, Logflare.SavedSearch
-    has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing
+    has_many(:rules, Logflare.Rule)
+    has_many(:source_backends, Logflare.Backends.SourceBackend)
+    has_many(:saved_searches, Logflare.SavedSearch)
+    has_many(:billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing)
 
-    embeds_one :notifications, Notifications, on_replace: :update
+    embeds_one(:notifications, Notifications, on_replace: :update)
 
-    has_one :source_schema, Logflare.SourceSchemas.SourceSchema
+    has_one(:source_schema, Logflare.SourceSchemas.SourceSchema)
 
     timestamps()
   end
@@ -167,7 +167,8 @@ defmodule Logflare.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
-      :v2_pipeline
+      :v2_pipeline,
+      :suggested_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -189,7 +190,8 @@ defmodule Logflare.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
-      :v2_pipeline
+      :v2_pipeline,
+      :suggested_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)

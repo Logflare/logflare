@@ -6,7 +6,7 @@ import Tabs from "react-bootstrap/Tabs"
 import QueryTester from "./endpoints/QueryTester.jsx"
 import SettingsManager from "./endpoints/SettingsManager.jsx"
 import ApiCallExamples from "./endpoints/ApiCallExamples.jsx"
-import {useState} from "react"
+import { useState } from "react"
 
 const ShowEndpoint = ({
   pushEvent,
@@ -17,18 +17,18 @@ const ShowEndpoint = ({
 }) => {
   const [testParams, setTestParams] = useState({})
   const handleEditQuery = () => {
-    pushEvent("edit-endpoint", {endpoint_id: endpoint.id})
+    pushEvent("edit-endpoint", { endpoint_id: endpoint.id })
   }
   const handleRunQuery = (params) => {
-    pushEvent("run-query", {query_string: endpoint.query, query_params: params})
+    pushEvent("run-query", { endpoint_id: endpoint.id, query_string: endpoint.query, query_params: params })
   }
   const handleSettingsUpdate = (key, value) => {
-    pushEvent("save-endpoint", {endpoint: {[key]: value}})
+    pushEvent("save-endpoint", { endpoint: { [key]: value } })
   }
   const handleDeleteEndpoint = () => {
     const check = confirm("Are you sure that you want to delete this endpoint?")
     if (check) {
-      pushEvent("delete-endpoint", {endpoint_id: endpoint.id})
+      pushEvent("delete-endpoint", { endpoint_id: endpoint.id })
     }
   }
   return (
