@@ -1,4 +1,4 @@
-<.form :let={f} for={@params_form} phx-submit="run-query">
+<.form :let={f} for={@params_form} phx-submit="run-query" class="tw-min-h-[80px]">
   <%= hidden_input(f, :query, value: @query_string || "") %>
 
   <%= for params_f <- inputs_for(f, :params) do %>

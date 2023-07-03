@@ -67,14 +67,18 @@ defmodule LogflareWeb.CoreComponents do
   attr :text, :string, required: true
 
   def header_with_anchor(assigns) do
-    anchor =
-      assigns.text
-      |> String.downcase()
-      |> String.replace(" ", "-")
+    assigns =
+      assign(
+        assigns,
+        :anchor,
+        assigns.text
+        |> String.downcase()
+        |> String.replace(" ", "-")
+      )
 
     ~H"""
-    <h5 id={anchor} class="header-margin scroll-margin">
-      <%= @text %> <%= Phoenix.HTML.Link.link("#", to: "#" <> anchor) %>
+    <h5 id={@anchor} class="header-margin scroll-margin">
+      <%= @text %> <%= Phoenix.HTML.Link.link("#", to: "#" <> @anchor) %>
     </h5>
     """
   end

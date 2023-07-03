@@ -15,17 +15,17 @@
     <span><i class="fas fa-edit"></i>edit</span>
   <% end %>
 </.subheader>
-<section class="mx-auto container pt-3">
-  <h1>
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h2>
     <%= @show_endpoint.name %>
-  </h1>
+  </h2>
   <div>
     id: <%= @show_endpoint.token %>
   </div>
 
-  <code class="tw-whitespace-pre-wrap tw-py-2 tw-px-4 tw-bg-gray-700 tw-rounded">
-    <%= @show_endpoint.query %>
-  </code>
+  <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
+    <code class="tw-whitespace-pre-wrap "><%= @show_endpoint.query %></code>
+  </div>
 
   <div>
     <ul class="list-group tw-text-sm">
@@ -53,12 +53,25 @@
   <.run_query_result {assigns} />
 
   <h3>Call your endpoint</h3>
-  <code>
-    curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>"
-    \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'
-    \ -H 'Content-Type: application/json; charset=utf-8'
-    <span :if={length(@declared_params) > 0}>
-\ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
+  <div class="tw-bg-zinc-800 tw-rounded tw-p-2 tw-flex tw-flex-col tw-gap-8">
+    <code class="tw-whitespace-pre">
+      # By UUID
+      curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>"
+      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'
+      \ -H 'Content-Type: application/json; charset=utf-8'
+      <span :if={length(@declared_params) > 0}>
+  \ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
 </span>
-  </code>
+    </code>
+
+    <code :if={@show_endpoint.enable_auth} class="tw-whitespace-pre">
+      # By name
+      curl "<%= url(~p"/api/endpoints/#{@show_endpoint.name}") %>"
+      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'
+      \ -H 'Content-Type: application/json; charset=utf-8'
+      <span :if={length(@declared_params) > 0}>
+  \ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
+</span>
+    </code>
+  </div>
 </section>
