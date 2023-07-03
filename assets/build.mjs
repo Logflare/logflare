@@ -5,9 +5,8 @@ import { copy } from "esbuild-plugin-copy";
 import postcss from "postcss";
 import autoprefixer from "autoprefixer";
 import tailwindcss from "tailwindcss";
-import * as chokidar from "chokidar";
 import tailwindConfig from "./tailwind.config.js";
-
+import { globSync } from "glob";
 const watch = process.argv[2] ? true : false;
 
 if (watch) {
@@ -28,6 +27,7 @@ let externalizeCssImages = {
     });
   },
 };
+
 let copyStatic = copy({
   // this is equal to process.cwd(), which means we use cwd path as base path to resolve `to` path
   // if not specified, this plugin uses ESBuild.build outdir/outfile options as base path.
@@ -38,18 +38,20 @@ let copyStatic = copy({
       from: ["./static/**/*"],
       to: ["../priv/static"],
     },
-    // copy output css to css folder
-    {
-      from: ["../priv/static/js/*.css"],
-      to: ["../priv/static/css"],
-    },
   ],
+});
+
+// needed because we want to run the sass-plugin for tailwind content files
+const watchPaths = tailwindConfig.content.flatMap((pattern) => {
+  return globSync(pattern, { ignore: "node_modules/**" });
 });
 
 let sassPostcssPlugin = sassPlugin({
   async transform(source, resolveDir) {
     const { css } = await postcss([autoprefixer, tailwindcss]).process(source);
-    return css;
+    // specify the loader, otherwise plugin tries to resolve the files as js
+    // https://github.com/glromeo/esbuild-sass-plugin/blob/main/src/plugin.ts#L86
+    return { loader: "css", contents: css, watchFiles: watchPaths };
   },
 });
 
@@ -67,27 +69,9 @@ const options = {
   nodePaths: ["node_modules"],
   color: true,
 };
-
-const printRebuildResults = (result) => {
-  const toPrint = [...result.errors, ...result.warnings];
-  console.log(`[CHOKIDAR] Rebuild complete`, toPrint.length > 0 ? toPrint : "");
-};
-
 if (watch) {
-  const ctx = await esbuild.context(options);
-
-  console.log(`[ESBUILD] Running build...`);
-  const res = await ctx.rebuild();
-  printRebuildResults(res);
-  console.log("[CHOKIDAR] Watching content: ", tailwindConfig.content);
-  await chokidar
-    .watch(tailwindConfig.content)
-    .on("change", async (event, path) => {
-      console.log(`[CHOKIDAR] File change detected, triggering rebuild...`);
-      const result = await ctx.rebuild({ logLevel: "info" });
-      printRebuildResults(result);
-    });
+  let ctx = await esbuild.context(options);
+  await ctx.watch();
 } else {
-  console.log(`[ESBUILD] Running production build...`);
   await esbuild.build(options);
 }

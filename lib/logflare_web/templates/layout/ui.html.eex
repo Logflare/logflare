@@ -7,7 +7,7 @@
     <meta name="description" content="Easily access your Cloudflare logs in a centralized web-based log management solution.">
     <meta name="author" content="">
     <title><%= page_title(assigns) %></title>
-    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
+    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/js/app.css") %>">
     <link rel="icon" href="<%= Routes.static_path(@conn, "/images/favicon.ico") %>">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css">
     <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>

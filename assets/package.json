@@ -32,10 +32,10 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.13",
-    "chokidar": "^3.5.3",
     "esbuild": "^0.18.5",
     "esbuild-plugin-copy": "^2.0.2",
     "esbuild-sass-plugin": "^2.10.0",
+    "glob": "^10.3.1",
     "postcss": "^8.4.21",
     "sass": "^1.58.3",
     "tailwindcss": "^3.3.2"
