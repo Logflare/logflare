@@ -37,7 +37,7 @@ defmodule LogflareWeb.CoreComponents do
   def subheader(assigns) do
     ~H"""
     <div class="subhead">
-      <div class="container pb-1 mx-auto tw-flex tw-flex-col tw-justify-between">
+      <div class="container mx-auto tw-flex tw-flex-col tw-justify-between">
         <h5><%= render_slot(@path) %></h5>
         <div class="tw-flex  tw-flex-row tw-justify-end tw-gap-2">
           <%= render_slot(@inner_block) %>

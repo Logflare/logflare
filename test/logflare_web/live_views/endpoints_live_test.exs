@@ -62,9 +62,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "code", new_query)
     end
 
-    test "delete endpoint from show", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
-      assert view |> element(".subhead a", "delete") |> render_click() =~ "has been deleted"
+    test "delete endpoint from edit", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/edit")
+      assert view |> element("button", "Delete endpoint") |> render_click() =~ "has been deleted"
 
       # link back to list, removed from endpoints list
       assert_patched(view, "/endpoints")

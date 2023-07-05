@@ -7,7 +7,16 @@
     phx-submit="save-endpoint"
     class="tw-w-1/2"
   >
-    <div class="tw-sticky tw-flex tw-justify-end">
+    <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
+      <button
+        :if={@show_endpoint}
+        data-confirm="Are you sure? This cannot be undone"
+        phx-click="delete-endpoint"
+        phx-value-endpoint_id={@show_endpoint.id}
+        class="btn btn-outline-danger"
+      >
+        <i class="fas fa-trash"></i>Delete endpoint
+      </button>
       <%= submit("Save changes", class: "btn btn-primary") %>
     </div>
 
