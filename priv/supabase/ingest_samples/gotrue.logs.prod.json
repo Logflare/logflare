@@ -8,7 +8,44 @@
     "msg": "request started",
     "path": "/user",
     "remote_addr": "152.26.89.239",
-    "timestamp": "2023-03-23T14:36:26Z"
+    "timestamp": "2023-03-23T14:36:26Z",
+    "action": "some action",
+    "args": ["arg"],
+    "auth_event": {
+      "action": "action",
+      "actor_id": "123-123",
+      "actor_name": "some name",
+      "actor_username": "some username",
+      "actor_via_sso": false,
+      "log_type": "some type",
+      "traits": {
+        "channel": "some channel",
+        "provider": "google",
+        "user_email": "some@email.com",
+        "user_id": "123-123",
+        "user_phone": "123-123"
+      }
+    },
+    "client_id": "123-123",
+    "duration": "123sec",
+    "error": "some error",
+    "factor_id": "123-123",
+    "header": "some header",
+    "instance_id": "123-123-123",
+    "issuer": "some issuer",
+    "project": "some123ref",
+    "metering": false,
+    "message": "some message",
+    "login_method": "some method",
+    "provider": "google",
+    "referer": "example.com",
+    "remote_addr": "123.123.123",
+    "request_id": "123-123",
+    "source_type": "some type",
+    "status": "some status",
+    "time": "2023-03-23T14:36:26Z",
+    "timestamp": "2023-03-23T14:36:26Z",
+    "user_id": "123-123"
   },
   "project": "default"
 }
