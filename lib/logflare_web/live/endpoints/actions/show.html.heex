@@ -1,11 +1,14 @@
 <.subheader>
-  <:path>~/endpoints/<%= @show_endpoint.name %></:path>
-  <%= link to: Routes.access_tokens_path(@socket, :index) do %>
-    <span><i class="fas fa-key"></i>access tokens</span>
-  <% end %>
-  <%= live_patch to: ~p"/endpoints/#{@show_endpoint.id}/edit" do %>
-    <span><i class="fas fa-edit"></i>edit</span>
-  <% end %>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/<%= @show_endpoint.name %>
+  </:path>
+  <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+  <.subheader_link
+    live_patch
+    to={~p"/endpoints/#{@show_endpoint.id}/edit"}
+    text="edit"
+    fa_icon="edit"
+  />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <h2>
@@ -22,21 +25,23 @@
   <div>
     <ul class="list-group tw-text-sm">
       <li class="list-group-item">
-        max rows: <%= @show_endpoint.max_limit %>
+        <strong>max rows:</strong> <%= @show_endpoint.max_limit %>
       </li>
       <li class="list-group-item">
-        caching: <%= if @show_endpoint.cache_duration_seconds ==
-                          0,
-                        do: "disabled",
-                        else: inspect(@show_endpoint.cache_duration_seconds) <> " seconds" %>
+        <strong>caching:</strong> <%= if @show_endpoint.cache_duration_seconds ==
+                                           0,
+                                         do: "disabled",
+                                         else:
+                                           inspect(@show_endpoint.cache_duration_seconds) <>
+                                             " seconds" %>
       </li>
       <li class="list-group-item">
         <span :if={@show_endpoint.cache_duration_seconds > 0}>
-          cache warming: <%= @show_endpoint.proactive_requerying_seconds %> seconds
+          <strong>cache warming:</strong> <%= @show_endpoint.proactive_requerying_seconds %> seconds
         </span>
       </li>
       <li class="list-group-item">
-        <span>query sandboxing: disabled</span>
+        <span><strong>query sandboxing:</strong> disabled</span>
       </li>
     </ul>
   </div>
@@ -46,24 +51,24 @@
 
   <h3>Call your endpoint</h3>
   <div class="tw-bg-zinc-800 tw-rounded tw-p-2 tw-flex tw-flex-col tw-gap-8">
-    <code class="tw-whitespace-pre">
-      # By UUID
-      curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>"
-      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'
-      \ -H 'Content-Type: application/json; charset=utf-8'
+    <code>
+      # By UUID<br /> curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>"<br />
+      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'<br />
+      \ -H 'Content-Type: application/json; charset=utf-8'<br />
       <span :if={length(@declared_params) > 0}>
         \ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
       </span>
+      <br />
     </code>
 
-    <code :if={@show_endpoint.enable_auth} class="tw-whitespace-pre">
-      # By name
-      curl "<%= url(~p"/api/endpoints/#{@show_endpoint.name}") %>"
-      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'
-      \ -H 'Content-Type: application/json; charset=utf-8'
+    <code :if={@show_endpoint.enable_auth}>
+      # By name<br /> curl "<%= url(~p"/api/endpoints/#{@show_endpoint.name}") %>"<br />
+      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'<br />
+      \ -H 'Content-Type: application/json; charset=utf-8'<br />
       <span :if={length(@declared_params) > 0}>
         \ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
       </span>
+      <br />
     </code>
   </div>
 </section>

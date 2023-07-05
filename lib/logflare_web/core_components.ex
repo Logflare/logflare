@@ -3,6 +3,9 @@ defmodule LogflareWeb.CoreComponents do
   Global components.
   """
   use Phoenix.Component
+  import Phoenix.VerifiedRoutes
+  @endpoint LogflareWeb.Endpoint
+  @router LogflareWeb.Router
 
   @doc "Alert the user of something"
   attr :variant, :string,
@@ -47,19 +50,48 @@ defmodule LogflareWeb.CoreComponents do
     """
   end
 
+  attr :to, :string
+  attr :live_patch, :boolean, default: false
+  slot :inner_block, required: true
+
+  def subheader_path_link(assigns) do
+    ~H"""
+    <%= if @live_patch do %>
+      <%= live_patch to: @to, class: "tw-text-gray-600 tw-hover:text-black" do %>
+        <%= render_slot(@inner_block) %>
+      <% end %>
+    <% else %>
+      <%= Phoenix.HTML.Link.link to: @to, class: "tw-text-gray-600 tw-hover:text-black" do %>
+        <%= render_slot(@inner_block) %>
+      <% end %>
+    <% end %>
+    """
+  end
+
   @doc """
   A subheader link, to be used together with the subheader component.
   """
   attr :text, :string
   attr :to, :string
   attr :fa_icon, :string
+  attr :live_patch, :boolean, default: false
 
   def subheader_link(assigns) do
     ~H"""
-    <%= Phoenix.HTML.Link.link to: @to, class: "tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center" do %>
-      <i :if={@fa_icon} class={"inline-block h-3 w-3 fas fa-#{@fa_icon}"}></i><span>
-      <%= @text %>
-      </span>
+    <% attrs = [
+      to: @to,
+      class: "tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center"
+    ]
+
+    icon_class = "inline-block h-3 w-3 fas fa-#{@fa_icon}" %>
+    <%= if @live_patch do %>
+      <%= live_patch attrs do %>
+        <i :if={@fa_icon} class={icon_class}></i><span> <%= @text %></span>
+      <% end %>
+    <% else %>
+      <%= Phoenix.HTML.Link.link attrs do %>
+        <i :if={@fa_icon} class={icon_class}></i><span> <%= @text %></span>
+      <% end %>
     <% end %>
     """
   end

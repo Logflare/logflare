@@ -1,11 +1,11 @@
-<div class="tw-flex tw-my-10">
+<div class="tw-flex tw-my-10 tw-gap-2">
   <.form
     :let={f}
     for={@endpoint_changeset}
     as={:endpoint}
     id="endpoint"
     phx-submit="save-endpoint"
-    class="tw-w-1/2"
+    class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600"
   >
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button
@@ -15,16 +15,12 @@
         phx-value-endpoint_id={@show_endpoint.id}
         class="btn btn-outline-danger"
       >
-        <i class="fas fa-trash"></i>Delete endpoint
+        <i class="fas fa-trash"></i> Delete
       </button>
       <%= submit("Save changes", class: "btn btn-primary") %>
     </div>
 
-    <.header_with_anchor text="Name" />
-    <p>
-      This endpoint will can be queried at:
-      <code><%= url(~p"/api/endpoints/query/name/YourApp.EndpointName") %></code>
-    </p>
+    <.header_with_anchor text="Endpoint Name" />
     <div class="form-group">
       <%= text_input(f, :name,
         placeholder: "YourApp.EndpointName",
@@ -32,9 +28,13 @@
         "phx-update": "ignore"
       ) %>
       <%= error_tag(f, :name) %>
+      <small class="form-text text-muted">
+        This endpoint will can be queried at:<br />
+        <code><%= url(~p"/api/endpoints/query/YourApp.EndpointName") %></code>
+      </small>
     </div>
     <.header_with_anchor text="Query" />
-    <section class="tw-flex tw-flex-row tw-gap-4 tw-w-full">
+    <section class="tw-flex tw-flex-col">
       <div class="form-group">
         <p>
           This endpoint will execute this query on each <code>GET</code>
@@ -51,52 +51,57 @@
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
       </div>
-    </section>
 
-    <div class="">
-      <%= checkbox(f, :enable_auth, id: "auth-checkbox", class: "form-check-input") %>
-      <%= label(f, :enable_auth, "Enable authentication",
-        for: "auth-checkbox",
-        class: "form-check-label"
-      ) %>
-      <%= error_tag(f, :enable_auth) %>
-      <small class="form-text text-muted">
-        Endpoints with authenticatino enabled will require an access token to be provided on each request.
-      </small>
-    </div>
-
-    <div>
-      <%= label(f, :max_limit, "Max limit") %>
-      <div class="input-group">
-        <%= text_input(f, :max_limit,
-          placeholder: if(@show_endpoint, do: nil, else: 1000),
-          class: "form-control"
-        ) %>
-        <div class="input-group-append">
-          <span class="input-group-text">rows</span>
+      <div class="form-group">
+        <%= label(f, :max_limit, "Max limit") %>
+        <div class="input-group">
+          <%= text_input(f, :max_limit,
+            placeholder: if(@show_endpoint, do: nil, else: 1000),
+            class: "form-control"
+          ) %>
+          <div class="input-group-append">
+            <span class="input-group-text">rows</span>
+          </div>
         </div>
+        <%= error_tag(f, :max_limit) %>
+        <small class="form-text text-muted">
+          This option determines the maximium result size returned from BigQuery.
+        </small>
       </div>
-      <%= error_tag(f, :max_limit) %>
-    </div>
 
-    <div class="">
-      <%= checkbox(f, :sandboxable, id: "sandboxable-checkbox", class: "form-check-input") %>
-      <%= label(f, :sandboxable, "Enable query sandboxing",
-        for: "sandboxable-checkbox",
-        class: "form-check-label"
-      ) %>
-      <%= error_tag(f, :sandboxable) %>
-      <small class="form-text text-muted">
-        Endpoints with authenticatino enabled will require an access token to be provided on each request.
-      </small>
-    </div>
+      <div class="form-group">
+        <%= checkbox(f, :enable_auth, id: "auth-checkbox", class: "form-check-input") %>
+        <%= label(f, :enable_auth, "Enable authentication",
+          for: "auth-checkbox",
+          class: "form-check-label"
+        ) %>
+        <%= error_tag(f, :enable_auth) %>
+        <small class="form-text text-muted">
+          Endpoints with authentication enabled will require an access token to be provided on each request.
+        </small>
+      </div>
+
+      <div class="">
+        <%= checkbox(f, :sandboxable, id: "sandboxable-checkbox", class: "form-check-input") %>
+        <%= label(f, :sandboxable, "Enable query sandboxing",
+          for: "sandboxable-checkbox",
+          class: "form-check-label"
+        ) %>
+        <%= error_tag(f, :sandboxable) %>
+        <small class="form-text text-muted">
+          Endpoints with sandboxing enabled will accept an <code>?sql=</code>
+          query parameter that will be inserted as the outer query of the defined CTE.
+          This restricts users of the endpoint to only query within the defined CTE result sets.
+        </small>
+      </div>
+    </section>
 
     <.header_with_anchor text="Caching" />
     <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
       <div>
-        <%= label(f, :cache_ttl, "Cache TTL") %>
+        <%= label(f, :cache_duration_seconds, "Cache TTL") %>
         <div class="input-group">
-          <%= text_input(f, :cache_ttl,
+          <%= text_input(f, :cache_duration_seconds,
             placeholder: if(@show_endpoint, do: nil, else: 3600),
             class: "form-control"
           ) %>
@@ -104,7 +109,7 @@
             <span class="input-group-text">seconds</span>
           </div>
         </div>
-        <%= error_tag(f, :cache_ttl) %>
+        <%= error_tag(f, :cache_duration_seconds) %>
         <small class="form-text text-muted">
           Endpoint results are cached on a per-request basis. Set Cache TTL to <code>0</code>
           to disable caching completely.

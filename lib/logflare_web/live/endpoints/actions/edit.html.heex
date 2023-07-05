@@ -1,12 +1,19 @@
 <.subheader {assigns}>
   <:path>
-    ~/<%= live_patch("endpoints",
-      to: ~p"/endpoints",
-      "data-confirm": "Confirm navigate away? All unsaved changes will be lost"
-    ) %>/<%= @show_endpoint.name %>/edit
+    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/<.subheader_path_link
+      live_patch
+      to={~p"/endpoints/#{@show_endpoint.id}"}
+    >
+      <%= @show_endpoint.name %>
+    </.subheader_path_link>/edit
   </:path>
+  <.subheader_link
+    to="https://docs.logflare.app/concepts/endpoints#crafting-a-query"
+    text="docs"
+    fa_icon="book"
+  />
 </.subheader>
 
-<h1>Edit Endpoint <code><%= @show_endpoint.name %></code></h1>
-
-<.endpoint_form {assigns} />
+<section class="mx-auto container">
+  <.endpoint_form {assigns} />
+</section>

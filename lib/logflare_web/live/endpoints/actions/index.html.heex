@@ -1,5 +1,7 @@
 <.subheader>
-  <:path>~/<%= live_patch("endpoints", to: ~p"/endpoints", class: "tw-text-gray-600 tw-hover:text-black") %></:path>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>
+  </:path>
   <.render_docs_link {assigns} />
   <.render_access_tokens_link {assigns} />
 </.subheader>

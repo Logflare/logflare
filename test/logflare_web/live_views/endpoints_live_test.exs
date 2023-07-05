@@ -39,14 +39,14 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "code", endpoint.query)
 
       # link to edit
-      assert element(view, ".subhead a", "edit") |> render_click() =~ "Edit Endpoint"
+      assert element(view, ".subhead a", "edit") |> render_click() =~ "/edit"
       assert_patched(view, "/endpoints/#{endpoint.id}/edit")
     end
 
     test "show endpoint -> edit endpoint", %{conn: conn, endpoint: endpoint} do
       {:ok, view, html} = live(conn, "/endpoints/#{endpoint.id}/edit")
-      assert html =~ "Edit Endpoint"
-      assert has_element?(view, "h1", endpoint.name)
+      assert html =~ "/edit"
+      assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
 
       new_query = "select current_timestamp() as my_time"
 
@@ -64,7 +64,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "delete endpoint from edit", %{conn: conn, endpoint: endpoint} do
       {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/edit")
-      assert view |> element("button", "Delete endpoint") |> render_click() =~ "has been deleted"
+      assert view |> element("button", "Delete") |> render_click() =~ "has been deleted"
 
       # link back to list, removed from endpoints list
       assert_patched(view, "/endpoints")
@@ -268,9 +268,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert html =~ "test_param"
       assert html =~ endpoint.token
       assert html =~ inspect(endpoint.max_limit)
-      assert html =~ ~r/caching\: #{endpoint.cache_duration_seconds} seconds/
-      assert html =~ ~r/cache warming\: #{endpoint.proactive_requerying_seconds} seconds/
-      assert html =~ ~r/query sandboxing\: disabled/
+      assert html =~ ~r/caching\:.+#{endpoint.cache_duration_seconds} seconds/
+      assert html =~ ~r/cache warming\:.+ #{endpoint.proactive_requerying_seconds} seconds/
+      assert html =~ ~r/query sandboxing\:.+ disabled/
 
       # test the query
       assert view
