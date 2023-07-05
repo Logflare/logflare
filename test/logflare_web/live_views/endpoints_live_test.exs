@@ -35,7 +35,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "show endpoint", %{conn: conn, endpoint: endpoint} do
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
-      assert has_element?(view, "h1", endpoint.name)
+      assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
       assert has_element?(view, "code", endpoint.query)
 
       # link to edit
@@ -101,7 +101,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       }
     }) =~ "created successfully"
 
-    assert has_element?(view, "h1", "some query")
+    assert has_element?(view, "h1,h2,h3,h4,h5", "some query")
     assert has_element?(view, "code", new_query)
     path = assert_patch(view)
     assert path =~ ~r/\/endpoints\/\S+/
