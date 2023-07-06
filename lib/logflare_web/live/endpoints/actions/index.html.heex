@@ -27,7 +27,7 @@
 <section class="mx-auto container">
   <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <%= live_patch(endpoint.name, to: Routes.endpoints_path(@socket, :show, endpoint)) %>
+      <%= live_patch(endpoint.name, to: ~p"/endpoints/#{endpoint.id}", class: "tw-text-white") %>
     </li>
   </ul>
 </section>
