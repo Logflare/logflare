@@ -3,9 +3,6 @@ defmodule LogflareWeb.CoreComponents do
   Global components.
   """
   use Phoenix.Component
-  import Phoenix.VerifiedRoutes
-  @endpoint LogflareWeb.Endpoint
-  @router LogflareWeb.Router
 
   @doc "Alert the user of something"
   attr :variant, :string,
@@ -35,6 +32,9 @@ defmodule LogflareWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Common subheader used across all pages
+  """
   slot :path, required: true
 
   def subheader(assigns) do
@@ -50,6 +50,9 @@ defmodule LogflareWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Styled link, to be used in the page path header
+  """
   attr :to, :string
   attr :live_patch, :boolean, default: false
   slot :inner_block, required: true
@@ -70,6 +73,7 @@ defmodule LogflareWeb.CoreComponents do
 
   @doc """
   A subheader link, to be used together with the subheader component.
+  Will be right aligned and placed one row below the subheader path heading.
   """
   attr :text, :string
   attr :to, :string
