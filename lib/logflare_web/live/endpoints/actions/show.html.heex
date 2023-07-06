@@ -18,6 +18,16 @@
     id: <%= @show_endpoint.token %>
   </div>
 
+  <div :if={@show_endpoint.enable_auth == false}>
+    <.alert variant="warning">
+      <strong>Authentication not enabled!</strong>
+      <br />
+      <span>
+        Authentication has not been enabled for this endpoint, and may pose a security risk.
+      </span>
+    </.alert>
+  </div>
+
   <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
     <code class="tw-whitespace-pre-wrap "><%= @show_endpoint.query %></code>
   </div>

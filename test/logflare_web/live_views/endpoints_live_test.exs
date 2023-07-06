@@ -187,6 +187,18 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  test "show endpoint, auth disabled", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user, query: "select 'id' as id", enable_auth: false)
+    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+    assert render(view) =~ "Authentication not enabled"
+  end
+
+  test "show endpoint, auth enabled", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user, query: "select 'id' as id", enable_auth: true)
+    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+    refute render(view) =~ "Authentication not enabled"
+  end
+
   describe "run queries" do
     setup do
       # mock goth behaviour
