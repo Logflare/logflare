@@ -71,7 +71,7 @@ defmodule LogflareWeb.EndpointsLive do
           {:ok, %{parameters: parameters}} = Endpoints.parse_query_string(endpoint.query)
 
           socket
-          |> update_params_form(parameters)
+          |> update_params_form(parameters, endpoint.query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
 
@@ -79,6 +79,8 @@ defmodule LogflareWeb.EndpointsLive do
           other
           # reset the changeset
           |> assign(:endpoint_changeset, nil)
+          # reset test results
+          |> assign(:query_result_rows, nil)
       end)
 
     {:noreply, socket}
@@ -116,7 +118,7 @@ defmodule LogflareWeb.EndpointsLive do
            :info,
            "Could not #{verb} endpoint. Please fix the errors before trying again."
          )
-         |> assign(:endpoint_changeset, changeset |> IO.inspect())}
+         |> assign(:endpoint_changeset, changeset)}
     end
   end
 
@@ -145,7 +147,7 @@ defmodule LogflareWeb.EndpointsLive do
         %{"run" => payload},
         %{assigns: %{user: user}} = socket
       ) do
-    query_string = Map.get(payload, "query", "")
+    query_string = Map.get(payload, "query")
     query_params = Map.get(payload, "params", %{})
 
     case Endpoints.run_query_string(user, {:bq_sql, query_string}, params: query_params) do
@@ -194,13 +196,13 @@ defmodule LogflareWeb.EndpointsLive do
      |> put_flash(:info, "Successfully applied for the Endpoints beta. We'll be in touch!")}
   end
 
-  defp update_params_form(socket, parameters) do
+  defp update_params_form(socket, parameters, query_string) do
     socket
     |> assign(
       :params_form,
       to_form(
         %{
-          "query" => nil,
+          "query" => query_string,
           "params" => for(k <- parameters, do: {k, nil}, into: %{})
         },
         as: "run"
