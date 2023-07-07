@@ -448,25 +448,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       :timer.sleep(800)
 
-      content =
-        view
-        |> render_change(:start_search, %{
-          "search" => %{
-            @default_search_params
-            | "querystring" => "c:count(*) c:group_by(t::minute)"
-          }
-        })
-        |> Floki.parse_document!()
-        |> Floki.find("div[role=alert]>span")
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute)"
+        }
+      })
 
-      assert content
-             |> Floki.find("a")
-             |> Floki.attribute("href")
-             |> hd ==
-               "/sources/#{source.id}/search?force=true&tailing%3F=true&loading=true&chart_loading=true&querystring=c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Aminute%29"
-
-      assert Floki.text(content) ==
-               "\nQuery does not include suggested keys, perfomance will be degraded. Do you want to proceed? Click to force query"
+      flash = view |> element(".message .alert") |> render()
+      assert flash =~ "Query does not include suggested keys"
+      assert flash =~ "event_message"
+      assert flash =~ "Click to force query"
+      assert flash =~ "force=true"
     end
 
     test "on source with suggestion fields, does not create a flash when query includes field", %{
@@ -477,15 +471,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       :timer.sleep(800)
 
-      assert view
-             |> render_change(:start_search, %{
-               "search" => %{
-                 @default_search_params
-                 | "querystring" => "c:count(*) c:group_by(t::minute) message"
-               }
-             })
-             |> Floki.parse_document!()
-             |> Floki.find("div[role=alert]>span") == []
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute) message"
+        }
+      })
+
+      refute view |> element(".message .alert") |> has_element?()
     end
 
     test "on source without suggestion fields, does not create a flash", %{

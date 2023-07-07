@@ -785,7 +785,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     error = [
       "Query does not include suggested keys, perfomance will be degraded. ",
-      "Do you want to proceed? ",
+      "Do you want to proceed?\n#{socket.assigns.source.suggested_keys}\n",
       link("Click to force query", to: path)
     ]
 
