@@ -325,4 +325,49 @@ defmodule Logflare.Endpoints do
         message
     end
   end
+
+  defp run_on_backend(:bigquery, _, endpoint_query, transformed_query, declared_params, params),
+    do: exec_sql_on_bq(endpoint_query, transformed_query, declared_params, params)
+
+  defp run_on_backend(
+         :postgres,
+         [source],
+         endpoint_query,
+         transformed_query,
+         declared_params,
+         params
+       ),
+       do: exec_sql_on_pg(source, endpoint_query, transformed_query, declared_params, params)
+
+  defp run_on_backend(:postgres, _, _, _, _, _),
+    do: {:error, "Postgres does not support multiple sources"}
+
+  defp exec_sql_on_pg(%{source_backends: [source_backend]}, _, transformed_query, _, input_params) do
+    with repo <- PostgresAdaptorRepo.new_repository_for_source_backend(source_backend),
+         :ok <- PostgresAdaptorRepo.connect_to_source_backend(repo, source_backend),
+         {:ok, result} <- SQL.query(repo, transformed_query, Map.to_list(input_params)),
+         %{columns: columns, rows: rows} <- result do
+      rows = Enum.map(rows, fn row -> columns |> Enum.zip(row) |> Map.new() end)
+      {:ok, %{rows: rows}}
+    end
+  end
+
+  @doc """
+  Calculates and sets the `:metrics` key with `Query.Metrics`, which contains info and stats relating to the endpoint
+  """
+  @spec calculate_endpoint_metrics(Query.t() | [Query.t()]) :: Query.t() | [Query.t()]
+  def calculate_endpoint_metrics(endpoints) when is_list(endpoints) do
+    for endpoint <- endpoints, do: calculate_endpoint_metrics(endpoint)
+  end
+
+  def calculate_endpoint_metrics(%Query{} = endpoint) do
+    cache_count = Resolver.resolve(endpoint) |> length()
+
+    %{
+      endpoint
+      | metrics: %Query.Metrics{
+          cache_count: cache_count
+        }
+    }
+  end
 end

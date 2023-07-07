@@ -31,11 +31,22 @@ defmodule Logflare.Endpoints.Query do
     field(:max_limit, :integer, default: 1_000)
     field(:enable_auth, :boolean, default: true)
 
+    field :metrics, :map, virtual: true
+
     belongs_to(:user, Logflare.User)
     has_many(:sandboxed_queries, Query, foreign_key: :sandbox_query_id)
     belongs_to(:sandbox_query, Query)
 
     timestamps()
+  end
+
+  defmodule Metrics do
+    @moduledoc false
+    use TypedEctoSchema
+
+    embedded_schema do
+      field :cache_count, :integer
+    end
   end
 
   @doc false

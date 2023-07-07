@@ -85,6 +85,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert_patch(view, "/endpoints/new")
   end
 
+  test "index - show cache count", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user)
+    _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+
+    {:ok, view, _html} = live(conn, "/endpoints")
+
+    assert render(view) =~ ~r/caches:.+1/
+  end
+
   test "new endpoint", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")
