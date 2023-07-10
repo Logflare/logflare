@@ -4,7 +4,7 @@ sidebar_position: 2
 
 import useBaseUrl from "@docusaurus/useBaseUrl";
 
-# Ingestion
+# Ingestion and Sources
 
 Log events are ingested into Logflare through the **ingestion API**, where JSON payloads are sent to Logflare to be processed and inserted into the configured backend.
 
@@ -156,6 +156,14 @@ When searching logs, you can turn your current search into a **Live Search**, wh
 3## Query Saving
 
 Queries that are frequently used can be saved, and will be available for quick access from the dashboard.
+
+### Suggested Search Keys
+
+To encourage usage of a particular search key filter, configure the **Suggested Search Keys** setting to trigger a check on each search query made through the UI.
+
+This is particularly useful when there are custom partitions set up for certain columns in the underlying backend table.
+
+For example, if there is an existing optimization made for the string column called `level`, we include it into the suggested search keys. Users will then be prompted to include the `level` filter in their LQL search queries, and will be given the option to force the query as well.
 
 ### Querying Outside of Logflare
 
