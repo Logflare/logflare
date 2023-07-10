@@ -148,7 +148,7 @@ defmodule Logflare.SingleTenant do
       sources =
         for name <- @source_names do
           # creating a source will automatically start the source's RLS process
-          url = Application.get_env(:logflare, :single_instance_postgres_url)
+          url = Application.get_env(:logflare, :postgres_backend_url)
           {:ok, source} = Sources.create_source(%{name: name, v2_pipeline: true}, user)
           {:ok, _} = Backends.create_source_backend(source, :postgres, %{url: url})
 

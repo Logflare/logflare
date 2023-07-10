@@ -66,11 +66,11 @@ defmodule Logflare.SingleTenantTest do
         Application.get_env(:logflare, Logflare.Repo) |> Map.new()
 
       url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
-      previous_url = Application.get_env(:logflare, :single_instance_postgres_url)
-      Application.put_env(:logflare, :single_instance_postgres_url, url)
+      previous_url = Application.get_env(:logflare, :postgres_backend_url)
+      Application.put_env(:logflare, :postgres_backend_url, url)
 
       on_exit(fn ->
-        Application.put_env(:logflare, :single_instance_postgres_url, previous_url)
+        Application.put_env(:logflare, :postgres_backend_url, previous_url)
       end)
 
       %{url: url}

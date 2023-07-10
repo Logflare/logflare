@@ -13,7 +13,7 @@ config :logflare,
          supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
          api_key: System.get_env("LOGFLARE_API_KEY"),
          cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
-         single_instance_postgres_url: System.get_env("SINGLE_INSTANCE_POSTGRES_URL")
+         postgres_backend_url: System.get_env("POSTGRES_BACKEND_URL")
        ]
        |> filter_nil_kv_pairs.()
 
