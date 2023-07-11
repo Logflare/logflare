@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
   alias Logflare.Buffers.MemoryBuffer
 
   import Ecto.Query
@@ -21,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
     source_backend =
       insert(:source_backend, type: :postgres, config: %{"url" => url}, source: source)
 
-    repository_module = Repo.new_repository_for_source_backend(source_backend)
+    repository_module = PostgresAdaptor.Repo.new_repository_for_source_backend(source_backend)
     pipeline_name = Backends.via_source_backend(source_backend, Pipeline)
     memory_buffer_pid = start_supervised!(MemoryBuffer)
 
@@ -35,15 +34,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
     }
 
     :ok =
-      Repo.connect_to_source_backend(repository_module, source_backend,
+      PostgresAdaptor.Repo.connect_to_source_backend(repository_module, source_backend,
         pool: Ecto.Adapters.SQL.Sandbox
       )
 
     Ecto.Adapters.SQL.Sandbox.mode(repository_module, :auto)
-    :ok = Repo.create_log_event_table(repository_module, source_backend)
+    :ok = PostgresAdaptor.Repo.create_log_event_table(repository_module, source_backend)
 
     on_exit(fn ->
-      Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
+      Ecto.Migrator.run(repository_module, PostgresAdaptor.Repo.migrations(source_backend), :down, all: true)
       migration_table = Keyword.get(repository_module.config(), :migration_source)
       Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
       true = repository_module |> Process.whereis() |> Process.exit(:kill)
@@ -75,7 +74,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PipelineTest do
 
       fetcher = fn ->
         repository_module.all(
-          from(l in Repo.table_name(source_backend),
+          from(l in PostgresAdaptor.Repo.table_name(source_backend),
             select: %LogEvent{
               id: l.id,
               body: l.body,
