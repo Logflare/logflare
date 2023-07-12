@@ -1,7 +1,7 @@
 defmodule Logflare.Backends do
   @moduledoc false
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.RecentLogs
   alias Logflare.Backends.RecentLogsSup
   alias Logflare.Backends.SourceBackend
@@ -184,8 +184,8 @@ defmodule Logflare.Backends do
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
     case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, _pid}} -> {:error, :already_started}
+      {:ok, _pid} -> :ok
+      {:error, {:already_started = reason, _pid}} -> {:error, reason}
     end
   end
 
@@ -209,7 +209,7 @@ defmodule Logflare.Backends do
           :ok | {:error, :already_started} | {:error, :not_started}
   def restart_source_sup(%Source{} = source) do
     with :ok <- stop_source_sup(source),
-         {:ok, _} <- start_source_sup(source) do
+         :ok <- start_source_sup(source) do
       :ok
     end
   end
