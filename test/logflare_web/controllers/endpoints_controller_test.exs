@@ -85,6 +85,24 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.status == 401
       assert conn.halted == true
     end
+
+    # ticket: https://www.notion.so/supabase/bug-Logflare-endpoint-query-by-name-sometimes-mistakes-a-string-for-a-uuid-0034097613954fafab27ed608e287f70?pvs=4
+    test "bug: query by name uuid pattern check", %{conn: init_conn, user: user} do
+      for name <- [
+            "logs.all.staging",
+            "logs-all-staging"
+          ] do
+        endpoint = insert(:endpoint, name: name, user: user, enable_auth: true)
+
+        conn =
+          init_conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> get("/api/endpoints/query/#{endpoint.name}")
+
+        assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+        assert conn.halted == false
+      end
+    end
   end
 
   describe "single tenant endpoint query" do

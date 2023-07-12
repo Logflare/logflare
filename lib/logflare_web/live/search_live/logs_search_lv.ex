@@ -785,7 +785,10 @@ defmodule LogflareWeb.Source.SearchLV do
 
     error = [
       "Query does not include suggested keys, perfomance will be degraded. ",
-      "Do you want to proceed? ",
+      Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
+      socket.assigns.source.suggested_keys,
+      Phoenix.HTML.raw("</code><br/>"),
+      "Do you want to proceed?",
       link("Click to force query", to: path)
     ]
 

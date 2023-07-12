@@ -61,7 +61,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
   # returns true if it is a valid uuid4 string
   defp is_uuid?(value) when is_binary(value) do
-    case Ecto.UUID.cast(value) do
+    case Ecto.UUID.dump(value) do
       {:ok, _} -> true
       _ -> false
     end
