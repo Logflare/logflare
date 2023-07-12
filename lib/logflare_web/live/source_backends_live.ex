@@ -86,7 +86,7 @@ defmodule LogflareWeb.SourceBackendsLive do
     %{assigns: %{source: source}} = socket
 
     socket =
-      case Backends.create_source_backend(source, params["type"], params) do
+      case Logflare.Backends.create_source_backend(source, params["type"], params) do
         {:ok, _} ->
           assign(socket, :show_create_form, false)
 
