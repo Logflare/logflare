@@ -18,8 +18,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   use GenServer
   use TypedStruct
   use Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor
-  @behaviour Logflare.Backends.Adaptor
 
   alias Logflare.Backends
   alias Logflare.Backends.SourceBackend
@@ -62,26 +60,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     end
   end
 
-  @impl Logflare.Backends.Adaptor
   def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
 
-  @impl Adaptor
   def cast_config(params) do
     {%{}, %{url: :string}}
     |> Ecto.Changeset.cast(params, [:url])
   end
 
-  @impl Adaptor
   def validate_config(changeset) do
     changeset
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/postgresql?\:\/\/.+/)
   end
 
-  @impl Adaptor
   def queryable?(), do: true
 
-  @impl Adaptor
   def execute_query(pid, query) do
     GenServer.call(pid, {:execute_query, query})
   end
@@ -132,7 +125,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl true
-  def handle_call({:execute_query, %Ecto.Query{select: select} = query}, _from, state) do
+  def handle_call({:execute_query, %Ecto.Query{} = query}, _from, state) do
     mod = state.repository_module
     result = mod.all(query)
     {:reply, result, state}
