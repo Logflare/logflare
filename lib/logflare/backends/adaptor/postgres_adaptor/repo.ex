@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   """
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Repo
   alias Logflare.Source
@@ -29,7 +30,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
       _ -> {:module, _, _, _} = Module.create(name, @ast, Macro.Env.location(__ENV__))
     end
 
-    migration_table = "schema_migrations_#{source_backend.source_id}"
+    migration_table = PostgresAdaptor.migrations_table_name(source_backend)
     Application.put_env(:logflare, name, migration_source: migration_table)
 
     name

@@ -83,11 +83,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.RepoTest do
     } do
       bad_migrations = [{0, BadMigration}]
 
-      assert {:error, :failed_migration} = PostgresAdaptor.Repo.create_log_event_table(
-               repository_module,
-               source_backend,
-               bad_migrations
-             )
+      assert {:error, :failed_migration} =
+               PostgresAdaptor.Repo.create_log_event_table(
+                 repository_module,
+                 source_backend,
+                 bad_migrations
+               )
     end
   end
 

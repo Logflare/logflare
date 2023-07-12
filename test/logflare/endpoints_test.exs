@@ -225,7 +225,13 @@ defmodule Logflare.EndpointsTest do
       :ok = PostgresAdaptor.Repo.create_log_event_table(repository_module, source_backend)
 
       on_exit(fn ->
-        Ecto.Migrator.run(repository_module, PostgresAdaptor.Repo.migrations(source_backend), :down, all: true)
+        Ecto.Migrator.run(
+          repository_module,
+          PostgresAdaptor.Repo.migrations(source_backend),
+          :down,
+          all: true
+        )
+
         migration_table = Keyword.get(repository_module.config(), :migration_source)
         Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
         true = repository_module |> Process.whereis() |> Process.exit(:normal)
