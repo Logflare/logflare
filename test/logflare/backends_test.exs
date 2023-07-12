@@ -91,14 +91,14 @@ defmodule Logflare.BackendsTest do
     end
 
     test "start_source_sup/1, stop_source_sup/1, restart_source_sup/1", %{source: source} do
-      assert {:ok, _} = Backends.start_source_sup(source)
+      assert :ok = Backends.start_source_sup(source)
       assert {:error, :already_started} = Backends.start_source_sup(source)
 
       assert :ok = Backends.stop_source_sup(source)
       assert {:error, :not_started} = Backends.stop_source_sup(source)
 
       assert {:error, :not_started} = Backends.restart_source_sup(source)
-      assert {:ok, _} = Backends.start_source_sup(source)
+      assert :ok = Backends.start_source_sup(source)
       assert :ok = Backends.restart_source_sup(source)
     end
   end
