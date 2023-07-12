@@ -22,8 +22,7 @@ defmodule LogflareWeb.SourceChannel do
         true
 
       socket.assigns[:user] ->
-        socket.assigns[:user].sources
-        |> Enum.map(& &1.token)
+        Enum.map(socket.assigns[:user].sources, & &1.token)
         |> Enum.member?(String.to_existing_atom(source_token))
 
       true ->
