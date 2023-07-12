@@ -99,7 +99,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     )
 
     :ok
-    # GenServer.call(pid, :rollback_migrations)
   end
 
   @doc """
