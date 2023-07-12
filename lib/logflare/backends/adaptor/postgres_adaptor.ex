@@ -60,21 +60,26 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     end
   end
 
+  @impl true
   def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
 
+  @impl true
   def cast_config(params) do
     {%{}, %{url: :string}}
     |> Ecto.Changeset.cast(params, [:url])
   end
 
+  @impl true
   def validate_config(changeset) do
     changeset
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/postgresql?\:\/\/.+/)
   end
 
+  @impl true
   def queryable?(), do: true
 
+  @impl true
   def execute_query(pid, query) do
     GenServer.call(pid, {:execute_query, query})
   end
@@ -106,7 +111,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     migrations_table = migrations_table_name(source_backend)
     Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migrations_table}")
     :ok
-    # GenServer.call(pid, :drop_migrations_table)
   end
 
   @doc """
