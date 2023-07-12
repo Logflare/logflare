@@ -10,10 +10,9 @@ config :logflare,
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT"),
-         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
+         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE"),
          api_key: System.get_env("LOGFLARE_API_KEY"),
-         cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
-         postgres_backend_url: System.get_env("POSTGRES_BACKEND_URL")
+         cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true"
        ]
        |> filter_nil_kv_pairs.()
 
@@ -34,7 +33,8 @@ config :logflare,
              value when is_binary(value) -> String.split(value, ",")
            end,
          live_view:
-           filter_nil_kv_pairs.(signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")),
+           [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
+           |> filter_nil_kv_pairs.(),
          live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
        )
 
@@ -186,9 +186,7 @@ config :stripity_stripe,
        )
 
 if config_env() != :test do
-  if !Application.get_env(:logflare, :supabase_mode) && File.exists?("gcloud.json") do
-    config :goth, json: File.read!("gcloud.json")
-  end
+  config :goth, json: File.read!("gcloud.json")
 
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
