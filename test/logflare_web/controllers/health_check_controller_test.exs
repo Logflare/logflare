@@ -3,6 +3,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   For node-level health check only.
   """
   use LogflareWeb.ConnCase
+  alias Logflare.Source.BigQuery.Schema
   alias Logflare.SingleTenant
 
   test "normal node health check", %{conn: conn} do
@@ -25,29 +26,14 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     setup do
-      %{username: username, password: password, database: database, hostname: hostname} =
-        Application.get_env(:logflare, Logflare.Repo) |> Map.new()
-
-      url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
-      previous_url = Application.get_env(:logflare, :postgres_backend_url)
-      Application.put_env(:logflare, :postgres_backend_url, url)
-
-      on_exit(fn ->
-        Application.put_env(:logflare, :postgres_backend_url, previous_url)
-      end)
-
-      %{url: url}
+      stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
+      :ok
     end
 
     test "ok", %{conn: conn} do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
-      started = SingleTenant.ensure_supabase_sources_started() |> Enum.map(&elem(&1, 1))
       assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
-
-      on_exit(fn ->
-        Enum.each(started, &Process.exit(&1, :normal))
-      end)
     end
   end
 end
