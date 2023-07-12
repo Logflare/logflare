@@ -179,25 +179,24 @@ defmodule Logflare.Source.Supervisor do
   defp create_source(source_id) do
     # Double check source is in the database before starting
     # Can be removed when manager fns move into their own genserver
-    if !Logflare.SingleTenant.supabase_mode?() do
-      source = Sources.get_by(token: source_id)
 
-      if source do
-        rls = %RLS{source_id: source_id, source: source}
+    source = Sources.get_by(token: source_id)
 
-        children = [
-          Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
-        ]
+    if source do
+      rls = %RLS{source_id: source_id, source: source}
 
-        # fire off async init in async task, so that bq call does not block.
-        Tasks.start_child(fn -> init_table(source_id) end)
+      children = [
+        Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
+      ]
 
-        Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
-      else
-        {:error, :not_found_in_db}
-      end
+      # fire off async init in async task, so that bq call does not block.
+      Tasks.start_child(fn ->
+        init_table(source_id)
+      end)
+
+      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     else
-      {:error, :supabase_mode}
+      {:error, :not_found_in_db}
     end
   end
 
