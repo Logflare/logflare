@@ -5,7 +5,6 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.SingleTenant
   alias Logflare.Cluster
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -41,33 +40,29 @@ defmodule Logflare.Sources do
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def create_source(source_params, user) do
-    user
-    |> Ecto.build_assoc(:sources)
-    |> Source.update_by_user_changeset(source_params)
-    |> Repo.insert()
-    |> initialize_source(SingleTenant.supabase_mode?())
-  end
+    source =
+      user
+      |> Ecto.build_assoc(:sources)
+      |> Source.update_by_user_changeset(source_params)
+      |> Repo.insert()
 
-  defp initialize_source({:ok, source}, true) do
-    {:ok, source}
-  end
+    case source do
+      {:ok, source} ->
+        init_schema = SchemaBuilder.initial_table_schema()
 
-  defp initialize_source({:ok, source}, false) do
-    init_schema = SchemaBuilder.initial_table_schema()
+        {:ok, _source_schema} =
+          SourceSchemas.create_source_schema(source, %{
+            bigquery_schema: init_schema,
+            schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
+          })
 
-    {:ok, _source_schema} =
-      SourceSchemas.create_source_schema(source, %{
-        bigquery_schema: init_schema,
-        schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
-      })
+        Source.Supervisor.start_source(source.token)
 
-    Source.Supervisor.start_source(source.token)
+        {:ok, source}
 
-    {:ok, source}
-  end
-
-  defp initialize_source({:error, changeset}, _) do
-    {:error, changeset}
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   @doc """
