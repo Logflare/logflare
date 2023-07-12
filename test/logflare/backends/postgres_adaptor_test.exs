@@ -14,7 +14,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     config = %{
       "url" => url
     }
-    source = insert(:source, user: insert(:user) )
+
+    source = insert(:source, user: insert(:user))
     source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
     pid = start_supervised!({PostgresAdaptor, source_backend})
 
@@ -26,7 +27,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     %{pid: pid, source_backend: source_backend}
   end
 
-  test "ingest/2 and execute_query/2 dispatched message", %{pid: pid, source_backend: source_backend} do
+  test "ingest/2 and execute_query/2 dispatched message", %{
+    pid: pid,
+    source_backend: source_backend
+  } do
     log_event =
       build(:log_event,
         source: source_backend.source,
