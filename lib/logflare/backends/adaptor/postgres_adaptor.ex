@@ -23,7 +23,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias __MODULE__.Pipeline
+  alias __MODULE__.PgRepo
 
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
@@ -43,9 +44,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     with source_id <- source_backend.source_id,
          {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
-         repository_module <- __MODULE__.Repo.create_repo(source_backend),
-         :ok <- __MODULE__.Repo.connect_to_repo(source_backend),
-         :ok <- __MODULE__.Repo.create_log_events_table(source_backend) do
+         repository_module <- create_repo(source_backend),
+         :ok <- connect_to_repo(source_backend),
+         :ok <- create_log_events_table(source_backend) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
         buffer_pid: buffer_pid,
@@ -85,49 +86,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   # expose PgRepo functions
-  defdelegate create_repo(source_backend), to: __MODULE__.Repo
-  defdelegate connect_to_repo(repo, source_backend, opts), to: __MODULE__.Repo
-  defdelegate table_name(source_or_source_backend), to: __MODULE__.Repo
-  defdelegate connect_to_repo(source_backend), to: __MODULE__.Repo
-  defdelegate connect_to_repo(source_backend, opts), to: __MODULE__.Repo
-  defdelegate create_log_events_table(source_backend), to: __MODULE__.Repo
-  defdelegate create_log_events_table(source_backend, override_migrations), to: __MODULE__.Repo
-
-  @doc """
-  Rolls back all migrations
-  """
-  @spec rollback_migrations(SourceBackend.t()) :: :ok
-  def rollback_migrations(source_backend) do
-    repository_module = __MODULE__.Repo.create_repo(source_backend)
-
-    Ecto.Migrator.run(
-      repository_module,
-      __MODULE__.Repo.migrations(source_backend),
-      :down,
-      all: true
-    )
-
-    :ok
-  end
-
-  @doc """
-  Drops the migration table
-  """
-  @spec drop_migrations_table(SourceBackend.t()) :: :ok
-  def drop_migrations_table(source_backend) do
-    repository_module = __MODULE__.Repo.create_repo(source_backend)
-    migrations_table = migrations_table_name(source_backend)
-    Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migrations_table}")
-    :ok
-  end
-
-  @doc """
-  Returns the migrations table name used for a given source
-  """
-  @spec migrations_table_name(SourceBackend.t()) :: String.t()
-  def migrations_table_name(%SourceBackend{source_id: source_id}) do
-    "schema_migrations_#{source_id}"
-  end
+  defdelegate create_repo(source_backend), to: PgRepo
+  defdelegate connect_to_repo(source_backend), to: PgRepo
+  defdelegate table_name(source_or_source_backend), to: PgRepo
+  defdelegate create_log_events_table(source_backend), to: PgRepo
+  defdelegate create_log_events_table(source_backend, override_migrations), to: PgRepo
+  defdelegate rollback_migrations(source_backend), to: PgRepo
+  defdelegate drop_migrations_table(source_backend), to: PgRepo
+  defdelegate migrations_table_name(source_backend), to: PgRepo
 
   # GenServer
   @impl true

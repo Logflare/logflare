@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Buffers.BufferProducer
 
   @spec start_link(PostgresAdaptor.t()) :: {:ok, pid()}
@@ -56,7 +56,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
 
     changeset =
       %LogEvent{}
-      |> Ecto.put_meta(source: Repo.table_name(source_backend))
+      |> Ecto.put_meta(source: PostgresAdaptor.table_name(source_backend))
       |> LogEvent.changeset(params)
 
     repository_module.insert(changeset)

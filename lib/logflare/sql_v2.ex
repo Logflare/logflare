@@ -8,7 +8,7 @@ defmodule Logflare.SqlV2 do
   alias Logflare.User
   alias Logflare.SingleTenant
   alias Logflare.SqlV2.Parser
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -47,7 +47,7 @@ defmodule Logflare.SqlV2 do
       |> Enum.map(fn from ->
         {_, updated} =
           get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-            table_name = source_mapping |> Map.get(source) |> Repo.table_name()
+            table_name = source_mapping |> Map.get(source) |> PgRepo.table_name()
             {value, [%{"quote_style" => nil, "value" => table_name}]}
           end)
 

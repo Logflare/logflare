@@ -47,8 +47,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       # TODO: replace with a timeout retry func
       :timer.sleep(1_500)
 
+      # query by Ecto.Query
       query =
-        from(l in PostgresAdaptor.Repo.table_name(source_backend),
+        from(l in PostgresAdaptor.table_name(source_backend),
           select: l.body
         )
 
@@ -101,7 +102,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       assert capture_log(fn ->
                assert {:error, :failed_migration} =
-                        PostgresAdaptor.Repo.create_log_events_table(
+                        PostgresAdaptor.create_log_events_table(
                           source_backend,
                           bad_migrations
                         )

@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @moduledoc """
   Creates a Ecto.Repo for a source backend configuration, runs migrations and connects to it.
 
@@ -40,15 +40,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
   Retrieves the repo module. Requires `:source` to be preloaded.
   """
   @spec get_repo_module(SourceBackend.t()) :: Ecto.Repo.t()
-  def get_repo_module(%SourceBackend{source: %Source{token: token}} = source_backend) do
+  def get_repo_module(%SourceBackend{source: %Source{token: token}}) do
     Module.concat([Logflare.Repo.Postgres, "Adaptor#{token}"])
   end
 
   @doc """
   Connects to a given postgres. Requires `:source` to be preloaded.
   """
-  @spec connect_to_repo(SourceBackend.t(), Keyword.t()) :: :ok
-  def connect_to_repo(%SourceBackend{config: config} = source_backend, opts \\ []) do
+  @spec connect_to_repo(SourceBackend.t()) :: :ok
+  def connect_to_repo(%SourceBackend{config: config} = source_backend) do
     repo = get_repo_module(source_backend)
 
     unless Process.whereis(repo) do
@@ -62,7 +62,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
         {:url, config["url"] || config.url},
         {:name, repo},
         {:pool, pool},
-        {:pool_size, pool_size} | opts
+        {:pool_size, pool_size}
       ]
 
       {:ok, _} = DynamicSupervisor.start_child(Supervisor, repo.child_spec(opts))
@@ -100,4 +100,40 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
 
   @spec migrations(SourceBackend.t()) :: list({pos_integer(), atom()})
   def migrations(source_backend), do: [{1, AddLogEvents.generate_migration(source_backend)}]
+
+  @doc """
+  Rolls back all migrations
+  """
+  @spec rollback_migrations(SourceBackend.t()) :: :ok
+  def rollback_migrations(source_backend) do
+    repository_module = create_repo(source_backend)
+
+    Ecto.Migrator.run(
+      repository_module,
+      migrations(source_backend),
+      :down,
+      all: true
+    )
+
+    :ok
+  end
+
+  @doc """
+  Drops the migration table
+  """
+  @spec drop_migrations_table(SourceBackend.t()) :: :ok
+  def drop_migrations_table(source_backend) do
+    repository_module = create_repo(source_backend)
+    migrations_table = migrations_table_name(source_backend)
+    Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migrations_table}")
+    :ok
+  end
+
+  @doc """
+  Returns the migrations table name used for a given source
+  """
+  @spec migrations_table_name(SourceBackend.t()) :: String.t()
+  def migrations_table_name(%SourceBackend{source_id: source_id}) do
+    "schema_migrations_#{source_id}"
+  end
 end
