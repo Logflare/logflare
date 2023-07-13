@@ -8,9 +8,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgLogEvent
   alias Logflare.Backends.SourceBackend
   alias Logflare.Repo
   alias Logflare.Source
+  alias Logflare.LogEvent
 
   require Logger
 
@@ -146,5 +148,32 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @spec migrations_table_name(SourceBackend.t()) :: String.t()
   def migrations_table_name(%SourceBackend{source_id: source_id}) do
     "schema_migrations_#{source_id}"
+  end
+
+  @doc """
+  Inserts a LogEvent into the given source backend table
+  """
+  @spec insert_log_event(SourceBackend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
+  def insert_log_event(source_backend, %LogEvent{} = log_event) do
+    repo = get_repo_module(source_backend)
+    table = PostgresAdaptor.table_name(source_backend)
+
+    timestamp =
+      log_event.body["timestamp"]
+      |> DateTime.from_unix!(:microsecond)
+      |> DateTime.to_naive()
+
+    params = %{
+      id: log_event.body["id"],
+      event_message: log_event.body["event_message"],
+      timestamp: timestamp,
+      body: log_event.body
+    }
+
+    changeset =
+      %PgLogEvent{}
+      |> Ecto.put_meta(source: table)
+      |> PgLogEvent.changeset(params)
+    repo.insert(changeset)
   end
 end

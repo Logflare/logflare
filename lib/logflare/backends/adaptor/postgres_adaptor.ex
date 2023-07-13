@@ -86,6 +86,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   defdelegate rollback_migrations(source_backend), to: PgRepo
   defdelegate drop_migrations_table(source_backend), to: PgRepo
   defdelegate migrations_table_name(source_backend), to: PgRepo
+  defdelegate insert_log_event(source_backend, log_event), to: PgRepo
 
   # GenServer
   @impl true
