@@ -215,29 +215,16 @@ defmodule Logflare.EndpointsTest do
           source: source
         )
 
-      repository_module = PostgresAdaptor.Repo.create_repo(source_backend)
-
-      :ok =
-        PostgresAdaptor.Repo.connect_to_repo(repository_module, source_backend,
-          pool: Ecto.Adapters.SQL.Sandbox
-        )
-
-      :ok = PostgresAdaptor.Repo.create_log_events_table(source_backend)
+      PostgresAdaptor.create_repo(source_backend)
+      PostgresAdaptor.connect_to_repo(source_backend)
+      PostgresAdaptor.create_log_events_table(source_backend)
 
       on_exit(fn ->
-        Ecto.Migrator.run(
-          repository_module,
-          PostgresAdaptor.Repo.migrations(source_backend),
-          :down,
-          all: true
-        )
-
-        migration_table = Keyword.get(repository_module.config(), :migration_source)
-        Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
-        true = repository_module |> Process.whereis() |> Process.exit(:normal)
+        PostgresAdaptor.rollback_migrations(source_backend)
+        PostgresAdaptor.drop_migrations_table(source_backend)
       end)
 
-      %{source: source, user: user}
+      %{source: source,  user: user}
     end
 
     test "run an endpoint query without caching", %{source: source, user: user} do

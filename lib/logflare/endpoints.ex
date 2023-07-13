@@ -309,6 +309,8 @@ defmodule Logflare.Endpoints do
     do: {:error, "Postgres does not support multiple sources"}
 
   defp exec_sql_on_pg(%{source_backends: [source_backend]}, _, transformed_query, _, input_params) do
+    source_backend = Repo.preload(source_backend, :source)
+
     with repo <- PostgresAdaptor.create_repo(source_backend),
          :ok <- PostgresAdaptor.connect_to_repo(source_backend),
          {:ok, result} <- SQL.query(repo, transformed_query, Map.to_list(input_params)),
