@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
   import Ecto.Query
 
+  import ExUnit.CaptureLog
+
   setup do
     repo = Application.get_env(:logflare, Logflare.Repo)
 
@@ -80,12 +82,17 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     end
 
     test "handle migration errors", %{source_backend: source_backend} do
-      repo = PostgresAdaptor.create_repo(source_backend)
+      PostgresAdaptor.create_repo(source_backend)
       assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
       bad_migrations = [{0, BadMigration}]
 
-      assert {:error, :failed_migration} =
-               PostgresAdaptor.Repo.create_log_events_table(source_backend, bad_migrations)
+      assert capture_log(fn ->
+               assert {:error, :failed_migration} =
+                        PostgresAdaptor.Repo.create_log_events_table(
+                          source_backend,
+                          bad_migrations
+                        )
+             end) =~ "[error]"
     end
   end
 end
