@@ -8,9 +8,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   ### On Source Backend creation:
   * Broadway pipeline for ingestion: Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   * MemoryBuffer for buffering log events: Logflare.Buffers.MemoryBuffer
-  * Dynamically created Ecto.Repo created for configured PSQL URL: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.new_repository_for_source_backend
-  * Dynamically loaded Ecto.Repo connects: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.connect_to_source_backend
-  * Dynamically loaded Ecto.Repo runs migrations required to work: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.create_log_event_table
+  * Dynamically created Ecto.Repo created for configured PSQL URL: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.create_repo
+  * Dynamically loaded Ecto.Repo connects: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.connect_to_repo
+  * Dynamically loaded Ecto.Repo runs migrations required to work: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.create_log_events_table
 
   ## On LogEvent ingestion:
   On a new event, the Postgres Pipeline will consume the event and store it into the dynamically loaded Logflare.Backends.Adaptor.PostgresAdaptor.Repo.
@@ -43,9 +43,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     with source_id <- source_backend.source_id,
          {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
-         repository_module <- __MODULE__.Repo.new_repository_for_source_backend(source_backend),
-         :ok <- __MODULE__.Repo.connect_to_source_backend(repository_module, source_backend),
-         :ok <- __MODULE__.Repo.create_log_event_table(repository_module, source_backend) do
+         repository_module <- __MODULE__.Repo.create_repo(source_backend),
+         :ok <- __MODULE__.Repo.connect_to_repo(source_backend),
+         :ok <- __MODULE__.Repo.create_log_events_table(source_backend) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
         buffer_pid: buffer_pid,
@@ -84,12 +84,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     GenServer.call(pid, {:execute_query, query})
   end
 
+  # expose PgRepo functions
+  defdelegate create_repo(source_backend), to: __MODULE__.Repo
+  defdelegate connect_to_repo(repo, source_backend, opts), to: __MODULE__.Repo
+  defdelegate table_name(source_or_source_backend), to: __MODULE__.Repo
+  defdelegate connect_to_repo(source_backend), to: __MODULE__.Repo
+  defdelegate connect_to_repo(source_backend, opts), to: __MODULE__.Repo
+  defdelegate create_log_events_table(source_backend), to: __MODULE__.Repo
+  defdelegate create_log_events_table(source_backend, override_migrations), to: __MODULE__.Repo
+
   @doc """
   Rolls back all migrations
   """
   @spec rollback_migrations(SourceBackend.t()) :: :ok
   def rollback_migrations(source_backend) do
-    repository_module = __MODULE__.Repo.new_repository_for_source_backend(source_backend)
+    repository_module = __MODULE__.Repo.create_repo(source_backend)
 
     Ecto.Migrator.run(
       repository_module,
@@ -106,7 +115,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   """
   @spec drop_migrations_table(SourceBackend.t()) :: :ok
   def drop_migrations_table(source_backend) do
-    repository_module = __MODULE__.Repo.new_repository_for_source_backend(source_backend)
+    repository_module = __MODULE__.Repo.create_repo(source_backend)
     migrations_table = migrations_table_name(source_backend)
     Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migrations_table}")
     :ok

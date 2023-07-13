@@ -20,10 +20,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
             adapter: Ecto.Adapters.Postgres
         end)
 
-  @spec new_repository_for_source_backend(SourceBackend.t()) :: atom()
-  def new_repository_for_source_backend(source_backend) do
+  @spec create_repo(SourceBackend.t()) :: atom()
+  def create_repo(source_backend) do
     source_backend = Repo.preload(source_backend, :source)
-    name = Module.concat([Logflare.Repo.Postgres, "Adaptor#{source_backend.source.token}"])
+    name = get_repo_module(source_backend)
 
     case Code.ensure_compiled(name) do
       {:module, _} -> nil
@@ -36,27 +36,45 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo do
     name
   end
 
-  @spec connect_to_source_backend(Ecto.Repo.t(), SourceBackend.t(), Keyword.t()) :: :ok
-  def connect_to_source_backend(repository_module, %SourceBackend{config: config}, opts \\ []) do
-    unless Process.whereis(repository_module) do
+  @doc """
+  Retrieves the repo module. Requires `:source` to be preloaded.
+  """
+  @spec get_repo_module(SourceBackend.t()) :: Ecto.Repo.t()
+  def get_repo_module(%SourceBackend{source: %Source{token: token}} = source_backend) do
+    Module.concat([Logflare.Repo.Postgres, "Adaptor#{token}"])
+  end
+
+  @doc """
+  Connects to a given postgres. Requires `:source` to be preloaded.
+  """
+  @spec connect_to_repo(SourceBackend.t(), Keyword.t()) :: :ok
+  def connect_to_repo(%SourceBackend{config: config} = source_backend, opts \\ []) do
+    repo = get_repo_module(source_backend)
+
+    unless Process.whereis(repo) do
       pool_size =
         Keyword.get(Application.get_env(:logflare, :postgres_backend_adapter), :pool_size, 10)
 
+      # use same pool type as Logflare.Repo
+      pool = Keyword.get(Application.get_env(:logflare, Logflare.Repo), :pool)
+
       opts = [
         {:url, config["url"] || config.url},
-        {:name, repository_module},
+        {:name, repo},
+        {:pool, pool},
         {:pool_size, pool_size} | opts
       ]
 
-      {:ok, _} = DynamicSupervisor.start_child(Supervisor, repository_module.child_spec(opts))
+      {:ok, _} = DynamicSupervisor.start_child(Supervisor, repo.child_spec(opts))
     end
 
     :ok
   end
 
-  @spec create_log_event_table(Ecto.Repo.t(), SourceBackend.t(), list() | nil) ::
+  @spec create_log_events_table(SourceBackend.t(), list() | nil) ::
           :ok | {:error, :failed_migration}
-  def create_log_event_table(repository_module, source_backend, override_migrations \\ nil) do
+  def create_log_events_table(source_backend, override_migrations \\ nil) do
+    repository_module = get_repo_module(source_backend)
     migrations = if override_migrations, do: override_migrations, else: migrations(source_backend)
     Ecto.Migrator.run(repository_module, migrations, :up, all: true)
 

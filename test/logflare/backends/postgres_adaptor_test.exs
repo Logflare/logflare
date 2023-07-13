@@ -8,49 +8,94 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   setup do
     repo = Application.get_env(:logflare, Logflare.Repo)
 
-    url =
-      "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
-
     config = %{
-      "url" => url
+      "url" =>
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
     }
 
     source = insert(:source, user: insert(:user))
     source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
-    pid = start_supervised!({PostgresAdaptor, source_backend})
-
-    on_exit(fn ->
-      PostgresAdaptor.rollback_migrations(source_backend)
-      PostgresAdaptor.drop_migrations_table(source_backend)
-    end)
-
-    %{pid: pid, source_backend: source_backend}
+    %{source_backend: source_backend}
   end
 
-  test "ingest/2 and execute_query/2 dispatched message", %{
-    pid: pid,
-    source_backend: source_backend
-  } do
-    log_event =
-      build(:log_event,
-        source: source_backend.source,
-        test: "data"
-      )
+  describe "with postgres repo" do
+    setup %{source_backend: source_backend} do
+      pid = start_supervised!({PostgresAdaptor, source_backend})
 
-    assert :ok = PostgresAdaptor.ingest(pid, [log_event])
+      on_exit(fn ->
+        PostgresAdaptor.rollback_migrations(source_backend)
+        PostgresAdaptor.drop_migrations_table(source_backend)
+      end)
 
-    # TODO: replace with a timeout retry func
-    :timer.sleep(1_500)
+      %{pid: pid}
+    end
 
-    query =
-      from(l in PostgresAdaptor.Repo.table_name(source_backend),
-        select: l.body
-      )
+    test "ingest/2 and execute_query/2 dispatched message", %{
+      pid: pid,
+      source_backend: source_backend
+    } do
+      log_event =
+        build(:log_event,
+          source: source_backend.source,
+          test: "data"
+        )
 
-    assert [
-             %{
-               "test" => "data"
-             }
-           ] = PostgresAdaptor.execute_query(pid, query)
+      assert :ok = PostgresAdaptor.ingest(pid, [log_event])
+
+      # TODO: replace with a timeout retry func
+      :timer.sleep(1_500)
+
+      query =
+        from(l in PostgresAdaptor.Repo.table_name(source_backend),
+          select: l.body
+        )
+
+      assert [
+               %{
+                 "test" => "data"
+               }
+             ] = PostgresAdaptor.execute_query(pid, query)
+    end
+  end
+
+  describe "repo module" do
+    test "create_repo/1 creates a new Ecto.Repo for given source_backend", %{
+      source_backend: source_backend
+    } do
+      repo = PostgresAdaptor.create_repo(source_backend)
+      assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
+
+      # module name should use source token
+      assert Atom.to_string(repo) =~ Atom.to_string(source_backend.source.token)
+    end
+
+    test "create_log_events_table/3 creates the table for a given source", %{
+      source_backend: source_backend
+    } do
+      repo = PostgresAdaptor.create_repo(source_backend)
+      assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
+      assert :ok = PostgresAdaptor.create_log_events_table(source_backend)
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.body)
+      assert repo.all(query) == []
+    end
+
+    test "handle migration errors", %{source_backend: source_backend} do
+      repo = PostgresAdaptor.create_repo(source_backend)
+      assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
+      bad_migrations = [{0, BadMigration}]
+
+      assert {:error, :failed_migration} =
+               PostgresAdaptor.Repo.create_log_events_table(source_backend, bad_migrations)
+    end
+  end
+end
+
+defmodule BadMigration do
+  @moduledoc false
+  use Ecto.Migration
+
+  def up do
+    alter table(:none) do
+    end
   end
 end

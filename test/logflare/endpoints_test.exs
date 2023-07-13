@@ -215,14 +215,14 @@ defmodule Logflare.EndpointsTest do
           source: source
         )
 
-      repository_module = PostgresAdaptor.Repo.new_repository_for_source_backend(source_backend)
+      repository_module = PostgresAdaptor.Repo.create_repo(source_backend)
 
       :ok =
-        PostgresAdaptor.Repo.connect_to_source_backend(repository_module, source_backend,
+        PostgresAdaptor.Repo.connect_to_repo(repository_module, source_backend,
           pool: Ecto.Adapters.SQL.Sandbox
         )
 
-      :ok = PostgresAdaptor.Repo.create_log_event_table(repository_module, source_backend)
+      :ok = PostgresAdaptor.Repo.create_log_events_table(source_backend)
 
       on_exit(fn ->
         Ecto.Migrator.run(
