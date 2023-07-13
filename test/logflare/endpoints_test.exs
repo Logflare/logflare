@@ -224,7 +224,7 @@ defmodule Logflare.EndpointsTest do
         PostgresAdaptor.drop_migrations_table(source_backend)
       end)
 
-      %{source: source,  user: user}
+      %{source: source, user: user}
     end
 
     test "run an endpoint query without caching", %{source: source, user: user} do

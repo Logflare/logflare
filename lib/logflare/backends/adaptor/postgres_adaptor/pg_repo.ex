@@ -93,7 +93,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       {:error, :failed_migration}
   end
 
-
   @doc """
   Returns the table name for a given Source or SourceBackend.
   If SourceBackend, :source must be preloaded.
@@ -174,6 +173,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       %PgLogEvent{}
       |> Ecto.put_meta(source: table)
       |> PgLogEvent.changeset(params)
+
     repo.insert(changeset)
   end
 end

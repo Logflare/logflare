@@ -370,7 +370,10 @@ defmodule Logflare.SqlTest do
       user: user
     } do
       input = "SELECT body, event_message, timestamp FROM #{name}"
-      expected = {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
+
+      expected =
+        {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
+
       assert SqlV2.transform(:postgres, input, user) == expected
     end
   end
