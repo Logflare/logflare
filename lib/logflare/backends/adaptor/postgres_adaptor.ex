@@ -114,12 +114,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     mod = state.repository_module
     result = Ecto.Adapters.SQL.query!(mod, query_string)
 
-    rows =
-      for row <- result.rows do
-        for {cell, index} <- Enum.with_index(row), into: %{} do
-          {Enum.at(result.columns, index), cell}
-        end
-      end
+    rows = for row <- result.rows do
+      result.columns |> Enum.zip(row) |> Map.new()
+    end
 
     {:reply, rows, state}
   end
