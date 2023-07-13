@@ -3,6 +3,7 @@ defmodule Logflare.SqlTest do
   use Logflare.DataCase
   alias Logflare.SingleTenant
   alias Logflare.SqlV2
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
   @user_dataset_id "user-dataset-id"
@@ -355,5 +356,22 @@ defmodule Logflare.SqlTest do
     dataset_id = override_dataset_id || user.bigquery_dataset_id || "#{user.id}_#{@env}"
 
     "`#{project_id}.#{dataset_id}.#{token}`"
+  end
+
+  describe "transform/3 for :postgres backends" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "source_#{TestUtils.random_string()}")
+      %{user: user, source: source}
+    end
+
+    test "changes query on FROM command to correct table name", %{
+      source: %{name: name} = source,
+      user: user
+    } do
+      input = "SELECT body, event_message, timestamp FROM #{name}"
+      expected = {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
+      assert SqlV2.transform(:postgres, input, user) == expected
+    end
   end
 end
