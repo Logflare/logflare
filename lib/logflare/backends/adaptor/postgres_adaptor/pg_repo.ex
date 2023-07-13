@@ -20,9 +20,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
             adapter: Ecto.Adapters.Postgres
         end)
 
+  @doc """
+  Dynamically compiles a new Ecto.Repo module for a given source.
+  Requires `:source` to be preloaded.
+  """
   @spec create_repo(SourceBackend.t()) :: atom()
-  def create_repo(source_backend) do
-    source_backend = Repo.preload(source_backend, :source)
+  def create_repo(%SourceBackend{source: %_{}} = source_backend) do
     name = get_repo_module(source_backend)
 
     case Code.ensure_compiled(name) do
@@ -71,6 +74,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     :ok
   end
 
+  @doc """
+  Creates the Log Events table for the given source.
+  """
   @spec create_log_events_table(SourceBackend.t(), list() | nil) ::
           :ok | {:error, :failed_migration}
   def create_log_events_table(source_backend, override_migrations \\ nil) do
@@ -85,11 +91,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       {:error, :failed_migration}
   end
 
+
+  @doc """
+  Returns the table name for a given Source or SourceBackend.
+  If SourceBackend, :source must be preloaded.
+  """
   @spec table_name(SourceBackend.t() | Source.t()) :: binary()
-  def table_name(%SourceBackend{} = source_backend) do
-    %{source: source} = Repo.preload(source_backend, :source)
-    table_name(source)
-  end
+  def table_name(%SourceBackend{source: %_{} = source}), do: table_name(source)
 
   def table_name(%Source{token: token}) do
     token
@@ -98,6 +106,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     |> then(&"log_events_#{&1}")
   end
 
+  @doc """
+  Retunrns a list of migrations to run.
+  """
   @spec migrations(SourceBackend.t()) :: list({pos_integer(), atom()})
   def migrations(source_backend), do: [{1, AddLogEvents.generate_migration(source_backend)}]
 
