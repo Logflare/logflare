@@ -1,19 +1,11 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @moduledoc """
-  The PostgresAdaptor is a backend adaptor for the Postgres database.
+  The backend adaptor for the Postgres database.
 
-  ## Configuration
-  We store the PSQL URL address to whom we will be connected to
-  ## How it works
-  ### On Source Backend creation:
-  * Broadway pipeline for ingestion: Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
-  * MemoryBuffer for buffering log events: Logflare.Buffers.MemoryBuffer
-  * Dynamically created Ecto.Repo created for configured PSQL URL: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.create_repo
-  * Dynamically loaded Ecto.Repo connects: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.connect_to_repo
-  * Dynamically loaded Ecto.Repo runs migrations required to work: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.create_log_events_table
+  Config:
+  `:url` - the database connection string
 
-  ## On LogEvent ingestion:
-  On a new event, the Postgres Pipeline will consume the event and store it into the dynamically loaded Logflare.Backends.Adaptor.PostgresAdaptor.Repo.
+  On ingest, pipeline will insert it into the log event table for the given source.
   """
   use GenServer
   use TypedStruct
