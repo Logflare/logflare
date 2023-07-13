@@ -142,4 +142,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     result = mod.all(query)
     {:reply, result, state}
   end
+
+  @impl true
+  def handle_call({:execute_query, query_string}, _from, state) when is_binary(query_string) do
+    mod = state.repository_module
+    result = Ecto.Adapters.SQL.query!(mod, query_string)
+
+    rows =
+      for row <- result.rows do
+        for {cell, index} <- Enum.with_index(row), into: %{} do
+          {Enum.at(result.columns, index), cell}
+        end
+      end
+
+    {:reply, rows, state}
+  end
 end

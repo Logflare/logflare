@@ -57,6 +57,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                  "test" => "data"
                }
              ] = PostgresAdaptor.execute_query(pid, query)
+
+      # query by string
+      assert [
+               %{
+                 "body" => %{
+                   "test" => "data"
+                 }
+               }
+             ] =
+               PostgresAdaptor.execute_query(
+                 pid,
+                 "select body from #{PostgresAdaptor.table_name(source_backend)}"
+               )
     end
   end
 
