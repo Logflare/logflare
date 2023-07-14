@@ -200,6 +200,18 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Ensures that a the SourceSup is started. Only returns error tuple if not alreadt started
+  """
+  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
+  def ensure_source_sup_started(%Source{} = source) do
+    case start_source_sup(source) do
+      {:ok, _pid} -> :ok
+      {:error, :already_started} -> :ok
+      {:error, _} = err -> err
+    end
+  end
+
+  @doc """
   Stops a given SourceSup for a source. if not started, it will return an error tuple.
   """
   @spec stop_source_sup(Source.t()) :: :ok | {:error, :not_started}
