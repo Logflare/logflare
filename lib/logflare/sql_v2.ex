@@ -35,7 +35,7 @@ defmodule Logflare.SqlV2 do
     transform(backend, input, user)
   end
 
-  def transform(:postgres, input, user) do
+  def transform(:pg_sql, input, user) do
     {:ok, [input]} = Parser.parse(input)
 
     sources = Sources.list_sources_by_user(user)
@@ -58,7 +58,8 @@ defmodule Logflare.SqlV2 do
     Parser.to_string(input)
   end
 
-  def transform(:bigquery, input, %User{} = user) do
+  # default to bq_sql
+  def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
     %_{bigquery_project_id: user_project_id, bigquery_dataset_id: user_dataset_id} = user
 
     {query, sandboxed_query} =

@@ -261,7 +261,7 @@ defmodule LogflareWeb.EndpointsLive do
         %{"query_params" => query_params, "query_string" => query_string},
         %{assigns: %{user: user}} = socket
       ) do
-    result = Endpoints.run_query_string(user, query_string, query_params)
+    result = Endpoints.run_query_string(user, {:bq_sql, query_string}, query_params)
     socket = handle_query_result(socket, result)
     {:noreply, socket}
   end

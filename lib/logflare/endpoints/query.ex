@@ -24,6 +24,7 @@ defmodule Logflare.Endpoints.Query do
     field(:token, Ecto.UUID, autogenerate: true)
     field(:name, :string)
     field(:query, :string)
+    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql])
     field(:source_mapping, :map)
     field(:sandboxable, :boolean)
     field(:cache_duration_seconds, :integer, default: 3_600)
@@ -49,9 +50,10 @@ defmodule Logflare.Endpoints.Query do
       :cache_duration_seconds,
       :proactive_requerying_seconds,
       :max_limit,
-      :enable_auth
+      :enable_auth,
+      :language
     ])
-    |> validate_required([:name, :query])
+    |> validate_required([:name, :query, :language])
   end
 
   def update_by_user_changeset(query, attrs) do
@@ -64,14 +66,15 @@ defmodule Logflare.Endpoints.Query do
       :cache_duration_seconds,
       :proactive_requerying_seconds,
       :max_limit,
-      :enable_auth
+      :enable_auth,
+      :language
     ])
     |> validate_query(:query)
     |> default_validations()
     |> update_source_mapping()
   end
 
-  def sandboxed_endpoint_changeset(query, attrs) do
+  def sandboxed_endpoint_changeset(query, attrs, sandbox) do
     query
     |> cast(attrs, [
       :name,
@@ -80,57 +83,32 @@ defmodule Logflare.Endpoints.Query do
       :cache_duration_seconds,
       :proactive_requerying_seconds,
       :max_limit,
-      :enable_auth
+      :enable_auth,
+      :language
     ])
     |> put_change(:sandboxable, false)
+    |> Ecto.Changeset.put_change(:language, sandbox.language)
     |> validate_required([:sandbox_query])
     |> default_validations()
   end
 
   def default_validations(changeset) do
     changeset
-    |> validate_required([:name, :query, :user])
+    |> validate_required([:name, :query, :user, :language])
     |> unique_constraint(:name, name: :endpoint_queries_name_index)
     |> unique_constraint(:token)
     |> validate_number(:max_limit, greater_than: 0, less_than: 10_001)
   end
 
   def validate_query(changeset, field) when is_atom(field) do
-    {backend, _} = choose_backend_and_extract_sources(changeset.data)
+    language = Ecto.Changeset.get_field(changeset, :language, :bq_sql)
 
     validate_change(changeset, field, fn field, value ->
-      case Logflare.SqlV2.transform(backend, value, get_field(changeset, :user)) do
+      case Logflare.SqlV2.transform(language, value, get_field(changeset, :user)) do
         {:ok, _} -> []
         {:error, error} -> [{field, error}]
       end
     end)
-  end
-
-  @doc """
-  Defines which backend should be used to run a given query
-  """
-  @spec choose_backend_and_extract_sources(Query.t()) :: {:bigquery | :postgres, [Source.t()]}
-  def choose_backend_and_extract_sources(%Query{source_mapping: nil}), do: {:bigquery, nil}
-
-  def choose_backend_and_extract_sources(%Query{source_mapping: source_mapping}) do
-    sources =
-      Enum.map(source_mapping, fn {_, token} ->
-        Sources.get_by_and_preload([token: token], [:source_backends])
-      end)
-
-    backend =
-      sources
-      |> Enum.reduce([], fn
-        %{source_backends: []}, acc -> [:bigquery] ++ acc
-        %{source_backends: source_backends}, acc -> Enum.map(source_backends, & &1.type) ++ acc
-      end)
-      |> Enum.uniq()
-      |> then(fn
-        [backend_type] -> backend_type
-        _ -> :bigquery
-      end)
-
-    {backend, sources}
   end
 
   # Only update source mapping if there are no errors

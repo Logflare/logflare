@@ -1,7 +1,6 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
   alias Ecto.Adapters.SQL
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
@@ -9,6 +8,9 @@ defmodule Logflare.Endpoints do
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
+  alias Logflare.Backends
+  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   import Ecto.Query
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
@@ -84,7 +86,7 @@ defmodule Logflare.Endpoints do
         user
         |> Ecto.build_assoc(:endpoint_queries, sandbox_query: sandbox)
         |> Repo.preload(:user)
-        |> Query.sandboxed_endpoint_changeset(attrs)
+        |> Query.sandboxed_endpoint_changeset(attrs, sandbox)
         |> Repo.insert()
 
       false ->
@@ -153,19 +155,11 @@ defmodule Logflare.Endpoints do
     transform_input =
       if(sandboxable && sql_param, do: {query_string, sql_param}, else: query_string)
 
-    {backend, sources} = Query.choose_backend_and_extract_sources(endpoint_query)
-
     with {:ok, declared_params} <- Logflare.SqlV2.parameters(query_string),
-         {:ok, transformed_query} <- Logflare.SqlV2.transform(backend, transform_input, user_id),
+         {:ok, transformed_query} <-
+           Logflare.SqlV2.transform(endpoint_query.language, transform_input, user_id),
          {:ok, result} <-
-           run_on_backend(
-             backend,
-             sources,
-             endpoint_query,
-             transformed_query,
-             declared_params,
-             params
-           ) do
+           exec_query_on_backend(endpoint_query, transformed_query, declared_params, params) do
       {:ok, result}
     end
   end
@@ -174,12 +168,14 @@ defmodule Logflare.Endpoints do
   Runs a query string
 
   ### Example
-    iex> run_query_string(%User{...}, "select current_time() where @value > 4", params: %{"value" => "123"})
+    iex> run_query_string(%User{...}, {:bq_sql, "select current_time() where @value > 4"}, params: %{"value" => "123"})
     {:ok, %{rows:  [...]} }
   """
   @typep run_query_string_opts :: [sandboxable: boolean(), params: map()]
-  @spec run_query_string(User.t(), String.t(), run_query_string_opts()) :: run_query_return()
-  def run_query_string(user, query_string, opts \\ %{}) do
+  @typep language :: :bq_sql | :pg_sql | :lql
+  @spec run_query_string(User.t(), {language(), String.t()}, run_query_string_opts()) ::
+          run_query_return()
+  def run_query_string(user, {language, query_string}, opts \\ %{}) do
     opts = Enum.into(opts, %{sandboxable: false, params: %{}})
 
     source_mapping =
@@ -190,6 +186,7 @@ defmodule Logflare.Endpoints do
 
     query = %Query{
       query: query_string,
+      language: language,
       sandboxable: opts.sandboxable,
       user: user,
       user_id: user.id,
@@ -209,7 +206,38 @@ defmodule Logflare.Endpoints do
     |> Cache.query()
   end
 
-  defp exec_sql_on_bq(%Query{} = endpoint_query, transformed_query, declared_params, input_params)
+  defp exec_query_on_backend(
+         %Query{language: :pg_sql} = endpoint_query,
+         transformed_query,
+         declared_params,
+         params
+       ) do
+    # find compatible source backend
+    # TODO: move this to Backends module
+    source_backend =
+      Backends.list_source_backends_by_user_id(endpoint_query.user_id)
+      |> Repo.preload([:source])
+      |> Enum.filter(fn sb -> sb.type == :postgres end)
+      |> List.first()
+      |> then(fn
+        nil ->
+          raise "No matching source backend found for Postgres query execution"
+
+        other ->
+          other
+      end)
+
+    with {:ok, rows} <- PostgresAdaptor.execute_query(source_backend, transformed_query) do
+      {:ok, %{rows: rows}}
+    end
+  end
+
+  defp exec_query_on_backend(
+         %Query{language: _} = endpoint_query,
+         transformed_query,
+         declared_params,
+         input_params
+       )
        when is_binary(transformed_query) and
               is_list(declared_params) and
               is_map(input_params) do
@@ -289,34 +317,6 @@ defmodule Logflare.Endpoints do
 
       _ ->
         message
-    end
-  end
-
-  defp run_on_backend(:bigquery, _, endpoint_query, transformed_query, declared_params, params),
-    do: exec_sql_on_bq(endpoint_query, transformed_query, declared_params, params)
-
-  defp run_on_backend(
-         :postgres,
-         [source],
-         endpoint_query,
-         transformed_query,
-         declared_params,
-         params
-       ),
-       do: exec_sql_on_pg(source, endpoint_query, transformed_query, declared_params, params)
-
-  defp run_on_backend(:postgres, _, _, _, _, _),
-    do: {:error, "Postgres does not support multiple sources"}
-
-  defp exec_sql_on_pg(%{source_backends: [source_backend]}, _, transformed_query, _, input_params) do
-    source_backend = Repo.preload(source_backend, :source)
-
-    with repo <- PostgresAdaptor.create_repo(source_backend),
-         :ok <- PostgresAdaptor.connect_to_repo(source_backend),
-         {:ok, result} <- SQL.query(repo, transformed_query, Map.to_list(input_params)),
-         %{columns: columns, rows: rows} <- result do
-      rows = Enum.map(rows, fn row -> columns |> Enum.zip(row) |> Map.new() end)
-      {:ok, %{rows: rows}}
     end
   end
 end

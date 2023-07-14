@@ -77,6 +77,8 @@ defmodule Logflare.EndpointsTest do
 
     assert %{name: "abc", query: "select r from u", sandboxable: false} = sandboxed
 
+    assert sandboxed.language == sandbox_query.language
+
     # non-cte
     invalid_sandbox = insert(:endpoint, user: user)
 
@@ -94,7 +96,8 @@ defmodule Logflare.EndpointsTest do
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
              Endpoints.create_query(user, %{
                name: "fully-qualified",
-               query: "select @test from #{source.name}"
+               query: "select @test from #{source.name}",
+               language: :bq_sql
              })
 
     assert stored_sql =~ "mysource"
@@ -107,7 +110,8 @@ defmodule Logflare.EndpointsTest do
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
              Endpoints.create_query(user, %{
                name: "fully-qualified",
-               query: "select @test from `myproject.mydataset.mytable`"
+               query: "select @test from `myproject.mydataset.mytable`",
+               language: :bq_sql
              })
 
     assert mapping == %{}
@@ -143,7 +147,9 @@ defmodule Logflare.EndpointsTest do
       user = insert(:user)
       insert(:source, user: user, name: "c")
       query_string = "select current_datetime() as testing"
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query_string(user, query_string)
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} =
+               Endpoints.run_query_string(user, {:bq_sql, query_string})
     end
 
     test "run_cached_query/1" do
@@ -202,10 +208,8 @@ defmodule Logflare.EndpointsTest do
 
       cfg = Application.get_env(:logflare, Logflare.Repo)
 
-      url =
-        "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
 
-      config = %{"url" => url}
       user = insert(:user)
       source = insert(:source, user: user, name: "c")
 
@@ -230,18 +234,18 @@ defmodule Logflare.EndpointsTest do
 
     test "run an endpoint query without caching", %{source: source, user: user} do
       query = "select body from #{source.name}"
-      endpoint = insert(:endpoint, user: user, query: query)
+      endpoint = insert(:endpoint, user: user, query: query, language: :pg_sql)
       assert {:ok, %{rows: []}} = Endpoints.run_query(endpoint)
     end
 
     test "run_query_string/3", %{source: source, user: user} do
       query = "select body from #{source.name}"
-      assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, query)
+      assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, {:pg_sql, query})
     end
 
     test "run_cached_query/1", %{source: source, user: user} do
       query = "select body from #{source.name}"
-      endpoint = insert(:endpoint, user: user, query: query)
+      endpoint = insert(:endpoint, user: user, query: query, language: :pg_sql)
       assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
     end
   end
