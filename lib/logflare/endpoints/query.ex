@@ -103,7 +103,7 @@ defmodule Logflare.Endpoints.Query do
     language = Ecto.Changeset.get_field(changeset, :language, :bq_sql)
 
     validate_change(changeset, field, fn field, value ->
-      case Logflare.SqlV2.transform(language, value, get_field(changeset, :user)) do
+      case Logflare.Sql.transform(language, value, get_field(changeset, :user)) do
         {:ok, _} -> []
         {:error, error} -> [{field, error}]
       end
@@ -113,7 +113,7 @@ defmodule Logflare.Endpoints.Query do
   # Only update source mapping if there are no errors
   defp update_source_mapping(%{errors: [], changes: %{query: query}} = changeset)
        when is_binary(query) do
-    case Logflare.SqlV2.sources(query, get_field(changeset, :user)) do
+    case Logflare.Sql.sources(query, get_field(changeset, :user)) do
       {:ok, source_mapping} -> put_change(changeset, :source_mapping, source_mapping)
       {:error, error} -> add_error(changeset, :query, error)
     end
@@ -128,7 +128,7 @@ defmodule Logflare.Endpoints.Query do
   def map_query_sources(
         %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
       ) do
-    case Logflare.SqlV2.source_mapping(query, user_id, source_mapping) do
+    case Logflare.Sql.source_mapping(query, user_id, source_mapping) do
       {:ok, query} ->
         Map.put(q, :query, query)
 

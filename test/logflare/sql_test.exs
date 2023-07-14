@@ -2,7 +2,7 @@ defmodule Logflare.SqlTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.SingleTenant
-  alias Logflare.SqlV2
+  alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
@@ -27,7 +27,7 @@ defmodule Logflare.SqlTest do
             "select d[0]",
             "select d[offset(0)]"
           ] do
-        assert {:ok, _v2} = SqlV2.transform(:bq_sql, input, user)
+        assert {:ok, _v2} = Sql.transform(:bq_sql, input, user)
       end
     end
 
@@ -103,9 +103,9 @@ defmodule Logflare.SqlTest do
               "with src as (select a from #{table}) select c from src order by c asc"
             }
           ] do
-        assert {:ok, v2} = SqlV2.transform(:bq_sql, input, user)
+        assert {:ok, v2} = Sql.transform(:bq_sql, input, user)
         assert String.downcase(v2) == expected
-        assert {:ok, v2} = SqlV2.transform(:bq_sql, input, user.id)
+        assert {:ok, v2} = Sql.transform(:bq_sql, input, user.id)
         assert String.downcase(v2) == expected
       end
 
@@ -114,7 +114,7 @@ defmodule Logflare.SqlTest do
             # subquery
             {"select a from (select b from my_table)", "select a from (select b from #{table})"}
           ] do
-        assert {:ok, v2} = SqlV2.transform(:bq_sql, input, user)
+        assert {:ok, v2} = Sql.transform(:bq_sql, input, user)
         assert String.downcase(v2) == expected
       end
     end
@@ -215,7 +215,7 @@ defmodule Logflare.SqlTest do
             # fully qualified name that is not a source name should be rejected
             {"select a from `a.b.c`", "can't find source"}
           ] do
-        assert {:error, err} = SqlV2.transform(:bq_sql, input, user)
+        assert {:error, err} = Sql.transform(:bq_sql, input, user)
 
         assert String.downcase(err) =~ String.downcase(expected),
                "should error with '#{expected}'. input: #{inspect(input)}"
@@ -243,7 +243,7 @@ defmodule Logflare.SqlTest do
             {"with a as (select b from `c.x.y.z`) select b from a",
              "with a as (select b from #{bq_table_name(source_cxyz)}) select b from a"}
           ] do
-        assert SqlV2.transform(:bq_sql, input, user) |> elem(1) |> String.downcase() == expected
+        assert Sql.transform(:bq_sql, input, user) |> elem(1) |> String.downcase() == expected
       end
     end
 
@@ -255,7 +255,7 @@ defmodule Logflare.SqlTest do
       insert(:source, user: user, name: source_name)
       input = "select a from `#{source_name}`"
 
-      assert {:ok, transformed} = SqlV2.transform(:bq_sql, input, user)
+      assert {:ok, transformed} = Sql.transform(:bq_sql, input, user)
       refute transformed =~ source_name
     end
   end
@@ -272,7 +272,7 @@ defmodule Logflare.SqlTest do
       insert(:source, user: user, name: "a.b.c")
       input = " select a from `a.b.c`"
 
-      assert {:ok, transformed} = SqlV2.transform(:bq_sql, input, user)
+      assert {:ok, transformed} = Sql.transform(:bq_sql, input, user)
       assert transformed =~ @single_tenant_bq_project_id
       refute transformed =~ @logflare_project_id
     end
@@ -281,7 +281,7 @@ defmodule Logflare.SqlTest do
       user = SingleTenant.get_default_user()
       input = " select a from `#{@single_tenant_bq_project_id}.my_dataset.my_table`"
 
-      assert {:ok, transformed} = SqlV2.transform(:bq_sql, input, user)
+      assert {:ok, transformed} = Sql.transform(:bq_sql, input, user)
       assert transformed =~ "#{@single_tenant_bq_project_id}.my_dataset.my_table"
       refute transformed =~ @logflare_project_id
     end
@@ -293,7 +293,7 @@ defmodule Logflare.SqlTest do
     other_source = insert(:source, user: user, name: "other.table")
     input = "select a from my_table"
     expected = %{"my_table" => Atom.to_string(source.token)}
-    assert {:ok, ^expected} = SqlV2.sources(input, user)
+    assert {:ok, ^expected} = Sql.sources(input, user)
 
     input = "select a from my_table, `other.table`"
 
@@ -302,7 +302,7 @@ defmodule Logflare.SqlTest do
       "other.table" => Atom.to_string(other_source.token)
     }
 
-    assert {:ok, ^expected} = SqlV2.sources(input, user)
+    assert {:ok, ^expected} = Sql.sources(input, user)
   end
 
   test "source_mapping/3 updates an SQL string with renamed sources" do
@@ -319,9 +319,9 @@ defmodule Logflare.SqlTest do
     Ecto.Changeset.change(source, name: "new")
     |> Logflare.Repo.update()
 
-    assert {:ok, output} = SqlV2.source_mapping(input, user.id, mapping)
+    assert {:ok, output} = Sql.source_mapping(input, user.id, mapping)
     assert String.downcase(output) == expected
-    assert {:ok, output} = SqlV2.source_mapping(input, user, mapping)
+    assert {:ok, output} = Sql.source_mapping(input, user, mapping)
     assert String.downcase(output) == expected
   end
 
@@ -342,8 +342,8 @@ defmodule Logflare.SqlTest do
           {"with q as (select old.a from old where char_length(@c)) select 1", ["c"]},
           {"with q as (select @c from old) select 1", ["c"]}
         ] do
-      assert {:ok, ^output} = SqlV2.parameters(input)
-      assert {:ok, ^output} = SqlV2.parameters(input)
+      assert {:ok, ^output} = Sql.parameters(input)
+      assert {:ok, ^output} = Sql.parameters(input)
     end
   end
 
@@ -379,7 +379,7 @@ defmodule Logflare.SqlTest do
       expected =
         {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
 
-      assert SqlV2.transform(:pg_sql, input, user) == expected
+      assert Sql.transform(:pg_sql, input, user) == expected
     end
   end
 end

@@ -55,4 +55,4 @@ fn to_string(json: &str) -> NifResult<Response> {
     });
 }
 
-rustler::init!("Elixir.Logflare.SqlV2.Parser.Native", [parse, to_string]);
+rustler::init!("Elixir.Logflare.Sql.Parser.Native", [parse, to_string]);

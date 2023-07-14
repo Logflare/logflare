@@ -1,4 +1,4 @@
-defmodule Logflare.SqlV2 do
+defmodule Logflare.Sql do
   @moduledoc """
   SQL parsing and transformation based on open source parser.
 
@@ -7,7 +7,7 @@ defmodule Logflare.SqlV2 do
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.SingleTenant
-  alias Logflare.SqlV2.Parser
+  alias Logflare.Sql.Parser
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
 
   @doc """

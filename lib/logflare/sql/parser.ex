@@ -1,4 +1,4 @@
-defmodule Logflare.SqlV2.Parser do
+defmodule Logflare.Sql.Parser do
   defmodule Native do
     use Rustler, otp_app: :logflare, crate: "sqlparser_ex"
 
