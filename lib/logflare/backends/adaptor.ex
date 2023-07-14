@@ -13,15 +13,10 @@ defmodule Logflare.Backends.Adaptor do
   @callback ingest(identifier(), [LogEvent.t()]) :: :ok
 
   @doc """
-  Checks if the adaptor can execute queries
-  """
-  @callback queryable? :: boolean()
-
-  @doc """
   Queries the backend using an endpoint query.
   """
-  @typep query :: Query.t() | Ecto.Query.t() | String.t()
-  @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_queryable}
+  @typep query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
+  @callback execute_query(identifier(), query()) :: {:ok, [term()]}
 
   @doc """
   Typecasts config params.
@@ -39,15 +34,6 @@ defmodule Logflare.Backends.Adaptor do
 
       @impl true
       def queryable?(), do: false
-
-      @impl true
-      def execute_query(_pid, _query) do
-        if function_exported?(__MODULE__, :queryable, 0) do
-          raise "queryable?/0 callback implemented but query execution callback has not been implemented yet!"
-        else
-          {:error, :not_queryable}
-        end
-      end
 
       @impl true
       def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")

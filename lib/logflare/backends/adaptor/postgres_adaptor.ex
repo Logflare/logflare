@@ -71,8 +71,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     |> Ecto.Changeset.validate_format(:url, ~r/postgresql?\:\/\/.+/)
   end
 
-  @impl true
-  def queryable?(), do: true
 
   @impl true
   def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
