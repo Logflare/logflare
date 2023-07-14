@@ -1,6 +1,5 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
-  alias Ecto.Adapters.SQL
   alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
@@ -9,7 +8,6 @@ defmodule Logflare.Endpoints do
   alias Logflare.Users
   alias Logflare.Utils
   alias Logflare.Backends
-  alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   import Ecto.Query
