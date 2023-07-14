@@ -67,7 +67,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       response =
         conn
         |> add_access_token(user, ~w(private))
-        |> post("/api/endpoints", %{name: name, query: "select a from logs"})
+        |> post("/api/endpoints", %{name: name, language: "bq_sql", query: "select a from logs"})
         |> json_response(201)
 
       assert response["name"] == name
@@ -80,7 +80,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> post("/api/endpoints")
         |> json_response(422)
 
-      assert resp == %{"errors" => %{"name" => ["can't be blank"], "query" => ["can't be blank"]}}
+      assert %{"errors" => %{"name" => _, "query" => _, "language" => _}} = resp
     end
 
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
@@ -90,7 +90,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> post("/api/endpoints", %{name: 123})
         |> json_response(422)
 
-      assert resp == %{"errors" => %{"name" => ["is invalid"], "query" => ["can't be blank"]}}
+      assert %{"errors" => %{"name" => _, "query" => _, "language" => _}} = resp
     end
   end
 

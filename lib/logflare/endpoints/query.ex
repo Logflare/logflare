@@ -5,7 +5,6 @@ defmodule Logflare.Endpoints.Query do
   require Logger
 
   alias Logflare.Endpoints.Query
-  alias Logflare.Sources
 
   @derive {Jason.Encoder,
            only: [
