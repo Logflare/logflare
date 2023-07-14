@@ -71,7 +71,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     |> Ecto.Changeset.validate_format(:url, ~r/postgresql?\:\/\/.+/)
   end
 
-
   @impl true
   def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
     mod = create_repo(source_backend)
@@ -80,11 +79,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, result}
   end
 
-  def execute_query(%SourceBackend{} = source_backend, query_string)
-      when is_binary(query_string) do
+  def execute_query(%SourceBackend{} = source_backend, query_string) when is_binary(query_string),
+    do: execute_query(source_backend, {query_string, []})
+
+  def execute_query(%SourceBackend{} = source_backend, {query_string, params})
+      when is_binary(query_string) and is_list(params) do
     mod = create_repo(source_backend)
     :ok = connect_to_repo(source_backend)
-    result = Ecto.Adapters.SQL.query!(mod, query_string)
+    result = Ecto.Adapters.SQL.query!(mod, query_string, params)
 
     rows =
       for row <- result.rows do
