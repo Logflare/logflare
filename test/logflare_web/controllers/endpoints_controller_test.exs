@@ -1,8 +1,9 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.SingleTenant
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
-  describe "query" do
+  describe "bigquery query" do
     setup :set_mimic_global
 
     setup do
@@ -102,6 +103,57 @@ defmodule LogflareWeb.EndpointsControllerTest do
         assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
         assert conn.halted == false
       end
+    end
+  end
+
+  describe "postgres backend" do
+    setup do
+      insert(:plan)
+
+      cfg = Application.get_env(:logflare, Logflare.Repo)
+
+      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+
+      user = insert(:user)
+      source = insert(:source, user: user, name: "c")
+
+      source_backend =
+        insert(:source_backend,
+          type: :postgres,
+          config: %{"url" => url},
+          source: source
+        )
+
+      PostgresAdaptor.create_repo(source_backend)
+      PostgresAdaptor.connect_to_repo(source_backend)
+      PostgresAdaptor.create_log_events_table(source_backend)
+
+      le = build(:log_event, my: "value", source: source)
+      PostgresAdaptor.insert_log_event(source_backend, le)
+
+      on_exit(fn ->
+        PostgresAdaptor.rollback_migrations(source_backend)
+        PostgresAdaptor.drop_migrations_table(source_backend)
+      end)
+
+      %{source: source, user: user}
+    end
+
+    test "GET /query with param", %{conn: conn, source: source, user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select body -> @col as field from c",
+          language: :pg_sql
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get("/endpoints/query/#{endpoint.token}")
+
+      assert [%{"field" => "value"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
     end
   end
 
