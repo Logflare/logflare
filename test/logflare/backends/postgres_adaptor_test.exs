@@ -57,7 +57,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                %{
                  "test" => "data"
                }
-             ] = PostgresAdaptor.execute_query(pid, query)
+             ] = PostgresAdaptor.execute_query(source_backend, query)
 
       # query by string
       assert [
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                }
              ] =
                PostgresAdaptor.execute_query(
-                 pid,
+                 source_backend,
                  "select body from #{PostgresAdaptor.table_name(source_backend)}"
                )
     end
