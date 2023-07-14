@@ -15,6 +15,7 @@ const EndpointEditor = ({
   const [queryParams, setQueryParams] = useState({
     name: endpoint?.name || defaultValues?.name || "",
     query: endpoint?.query || "",
+    language: "bq_sql"
   })
   const [testParams, setTestParams] = useState({})
   const handleSubmit = (e) => {
