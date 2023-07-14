@@ -81,7 +81,7 @@ defmodule Logflare.Endpoints do
   """
   @spec create_sandboxed_query(User.t(), Query.t(), map()) :: {:ok, Query.t()} | {:error, :no_cte}
   def create_sandboxed_query(user, sandbox, attrs) do
-    case Logflare.SqlV2.contains_cte?(sandbox.query) do
+    case Logflare.Sql.contains_cte?(sandbox.query) do
       true ->
         user
         |> Ecto.build_assoc(:endpoint_queries, sandbox_query: sandbox)
@@ -139,7 +139,7 @@ defmodule Logflare.Endpoints do
   """
   @spec parse_query_string(String.t()) :: {:ok, %{parameters: [String.t()]}} | {:error, any()}
   def parse_query_string(query_string) do
-    with {:ok, declared_params} <- Logflare.SqlV2.parameters(query_string) do
+    with {:ok, declared_params} <- Logflare.Sql.parameters(query_string) do
       {:ok, %{parameters: declared_params}}
     end
   end
@@ -155,9 +155,9 @@ defmodule Logflare.Endpoints do
     transform_input =
       if(sandboxable && sql_param, do: {query_string, sql_param}, else: query_string)
 
-    with {:ok, declared_params} <- Logflare.SqlV2.parameters(query_string),
+    with {:ok, declared_params} <- Logflare.Sql.parameters(query_string),
          {:ok, transformed_query} <-
-           Logflare.SqlV2.transform(endpoint_query.language, transform_input, user_id),
+           Logflare.Sql.transform(endpoint_query.language, transform_input, user_id),
          {:ok, result} <-
            exec_query_on_backend(endpoint_query, transformed_query, declared_params, params) do
       {:ok, result}
