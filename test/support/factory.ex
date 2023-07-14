@@ -178,6 +178,7 @@ defmodule Logflare.Factory do
       user: build(:user),
       token: Ecto.UUID.generate(),
       query: "select current_date() as date",
+      language: :bq_sql,
       name: TestUtils.random_string()
     }
   end
