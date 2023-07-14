@@ -73,8 +73,25 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def queryable?(), do: true
 
   @impl true
-  def execute_query(pid, query) do
-    GenServer.call(pid, {:execute_query, query})
+  def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
+    mod = create_repo(source_backend)
+    :ok = connect_to_repo(source_backend)
+    result = mod.all(query)
+    {:ok, result}
+  end
+
+  def execute_query(%SourceBackend{} = source_backend, query_string)
+      when is_binary(query_string) do
+    mod = create_repo(source_backend)
+    :ok = connect_to_repo(source_backend)
+    result = Ecto.Adapters.SQL.query!(mod, query_string)
+
+    rows =
+      for row <- result.rows do
+        result.columns |> Enum.zip(row) |> Map.new()
+      end
+
+    {:ok, rows}
   end
 
   # expose PgRepo functions
@@ -93,25 +110,5 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
     MemoryBuffer.add_many(state.buffer_pid, log_events)
     {:reply, :ok, state}
-  end
-
-  @impl true
-  def handle_call({:execute_query, %Ecto.Query{} = query}, _from, state) do
-    mod = state.repository_module
-    result = mod.all(query)
-    {:reply, result, state}
-  end
-
-  @impl true
-  def handle_call({:execute_query, query_string}, _from, state) when is_binary(query_string) do
-    mod = state.repository_module
-    result = Ecto.Adapters.SQL.query!(mod, query_string)
-
-    rows =
-      for row <- result.rows do
-        result.columns |> Enum.zip(row) |> Map.new()
-      end
-
-    {:reply, rows, state}
   end
 end
