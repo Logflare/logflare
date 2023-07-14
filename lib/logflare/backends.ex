@@ -30,6 +30,16 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Lists `SourceBackend`s by user
+  """
+  @spec list_source_backends_by_user_id(integer()) :: [SourceBackend.t()]
+  def list_source_backends_by_user_id(id) when is_integer(id) do
+    from(sb in SourceBackend, join: s in Source, where: s.user_id == ^id)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
   Creates a SourceBackend for a given source.
   """
   @spec create_source_backend(Source.t(), String.t(), map()) ::
