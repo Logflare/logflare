@@ -200,10 +200,10 @@ defmodule Logflare.EndpointsTest do
     setup do
       insert(:plan)
 
-      repo = Application.get_env(:logflare, Logflare.Repo)
+      cfg = Application.get_env(:logflare, Logflare.Repo)
 
       url =
-        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+        "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
 
       config = %{"url" => url}
       user = insert(:user)
