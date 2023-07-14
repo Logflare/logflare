@@ -28,7 +28,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   def start_link(%SourceBackend{} = source_backend) do
-    GenServer.start_link(__MODULE__, source_backend)
+    GenServer.start_link(__MODULE__, source_backend,
+      name: Backends.via_source_backend(source_backend, __MODULE__)
+    )
   end
 
   @impl true
