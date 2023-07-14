@@ -376,10 +376,12 @@ defmodule Logflare.SqlTest do
     } do
       input = "SELECT body, event_message, timestamp FROM #{name}"
 
-      expected =
-        {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
-
       assert Sql.transform(:pg_sql, input, user) == expected
+    end
+
+    test "changes query on FROM command to correct table name", %{user: user } do
+      input = "SELECT @my as col"
+      assert Sql.transform(:pg_sql, input, user) =~ "$1 as col"
     end
   end
 end
