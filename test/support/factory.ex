@@ -94,11 +94,18 @@ defmodule Logflare.Factory do
   def log_event_factory(attrs) do
     {source, params} = Map.pop(attrs, :source)
 
-    params = %{
-      "message" => params["message"] || params[:message] || "test-msg",
-      "timestamp" => params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string,
-      "metadata" => params["metadata"] || params[:metadata] || %{}
-    }
+    params =
+      Map.merge(
+        params,
+        %{
+          "message" =>
+            params["message"] || params["event_message"] || params[:message] || "test-msg",
+          "timestamp" =>
+            params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string,
+          "metadata" => params["metadata"] || params[:metadata] || %{}
+        }
+      )
+      |> Map.drop([:metadata, :event_message, :message, :timestamp])
 
     LogEvent.make(params, %{source: source})
   end

@@ -3,7 +3,7 @@ defmodule Logflare.EndpointsTest do
 
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   test "list_endpoints_by" do
     %{id: id, name: name} = insert(:endpoint)
@@ -215,20 +215,13 @@ defmodule Logflare.EndpointsTest do
           source: source
         )
 
-      repository_module = Repo.new_repository_for_source_backend(source_backend)
-
-      :ok =
-        Repo.connect_to_source_backend(repository_module, source_backend,
-          pool: Ecto.Adapters.SQL.Sandbox
-        )
-
-      :ok = Repo.create_log_event_table(repository_module, source_backend)
+      PostgresAdaptor.create_repo(source_backend)
+      PostgresAdaptor.connect_to_repo(source_backend)
+      PostgresAdaptor.create_log_events_table(source_backend)
 
       on_exit(fn ->
-        Ecto.Migrator.run(repository_module, Repo.migrations(source_backend), :down, all: true)
-        migration_table = Keyword.get(repository_module.config(), :migration_source)
-        Ecto.Adapters.SQL.query!(repository_module, "DROP TABLE IF EXISTS #{migration_table}")
-        true = repository_module |> Process.whereis() |> Process.exit(:kill)
+        PostgresAdaptor.rollback_migrations(source_backend)
+        PostgresAdaptor.drop_migrations_table(source_backend)
       end)
 
       %{source: source, user: user}

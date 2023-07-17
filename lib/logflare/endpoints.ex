@@ -1,7 +1,7 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
   alias Ecto.Adapters.SQL
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo, as: PostgresAdaptorRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
@@ -309,8 +309,10 @@ defmodule Logflare.Endpoints do
     do: {:error, "Postgres does not support multiple sources"}
 
   defp exec_sql_on_pg(%{source_backends: [source_backend]}, _, transformed_query, _, input_params) do
-    with repo <- PostgresAdaptorRepo.new_repository_for_source_backend(source_backend),
-         :ok <- PostgresAdaptorRepo.connect_to_source_backend(repo, source_backend),
+    source_backend = Repo.preload(source_backend, :source)
+
+    with repo <- PostgresAdaptor.create_repo(source_backend),
+         :ok <- PostgresAdaptor.connect_to_repo(source_backend),
          {:ok, result} <- SQL.query(repo, transformed_query, Map.to_list(input_params)),
          %{columns: columns, rows: rows} <- result do
       rows = Enum.map(rows, fn row -> columns |> Enum.zip(row) |> Map.new() end)

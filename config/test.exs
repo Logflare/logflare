@@ -28,4 +28,5 @@ config :logflare, Logflare.Repo,
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
 
+config :logflare, :postgres_backend_adapter, pool_size: 3
 config :grpc, start_server: false

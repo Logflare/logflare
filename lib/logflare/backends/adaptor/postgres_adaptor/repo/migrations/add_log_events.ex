@@ -4,10 +4,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   """
   use Ecto.Migration
 
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
 
   def generate_migration(source_backend) do
-    table_name = Repo.table_name(source_backend)
+    table_name = PgRepo.table_name(source_backend)
     name = Module.concat([__MODULE__, "MigrationFor#{table_name}"])
 
     ast =

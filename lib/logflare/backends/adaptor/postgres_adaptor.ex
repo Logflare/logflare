@@ -1,30 +1,22 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @moduledoc """
-  The PostgresAdaptor is a backend adaptor for the Postgres database.
+  The backend adaptor for the Postgres database.
 
-  ## Configuration
-  We store the PSQL URL address to whom we will be connected to
-  ## How it works
-  ### On Source Backend creation:
-  * Broadway pipeline for ingestion: Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
-  * MemoryBuffer for buffering log events: Logflare.Buffers.MemoryBuffer
-  * Dynamically created Ecto.Repo created for configured PSQL URL: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.new_repository_for_source_backend
-  * Dynamically loaded Ecto.Repo connects: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.connect_to_source_backend
-  * Dynamically loaded Ecto.Repo runs migrations required to work: Logflare.Backends.Adaptor.PostgresAdaptor.Repo.create_log_event_table
+  Config:
+  `:url` - the database connection string
 
-  ## On LogEvent ingestion:
-  On a new event, the Postgres Pipeline will consume the event and store it into the dynamically loaded Logflare.Backends.Adaptor.PostgresAdaptor.Repo.
+  On ingest, pipeline will insert it into the log event table for the given source.
   """
   use GenServer
   use TypedStruct
   use Logflare.Backends.Adaptor
 
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
 
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
@@ -44,9 +36,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     with source_id <- source_backend.source_id,
          {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
-         repository_module <- Repo.new_repository_for_source_backend(source_backend),
-         :ok <- Repo.connect_to_source_backend(repository_module, source_backend),
-         :ok <- Repo.create_log_event_table(repository_module, source_backend) do
+         repository_module <- create_repo(source_backend),
+         :ok <- connect_to_repo(source_backend),
+         :ok <- create_log_events_table(source_backend) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
         buffer_pid: buffer_pid,
@@ -76,6 +68,42 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/postgresql?\:\/\/.+/)
   end
+
+  @impl true
+  def queryable?(), do: true
+
+  @impl true
+  def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
+    mod = create_repo(source_backend)
+    :ok = connect_to_repo(source_backend)
+    result = mod.all(query)
+    {:ok, result}
+  end
+
+  def execute_query(%SourceBackend{} = source_backend, query_string)
+      when is_binary(query_string) do
+    mod = create_repo(source_backend)
+    :ok = connect_to_repo(source_backend)
+    result = Ecto.Adapters.SQL.query!(mod, query_string)
+
+    rows =
+      for row <- result.rows do
+        result.columns |> Enum.zip(row) |> Map.new()
+      end
+
+    {:ok, rows}
+  end
+
+  # expose PgRepo functions
+  defdelegate create_repo(source_backend), to: PgRepo
+  defdelegate connect_to_repo(source_backend), to: PgRepo
+  defdelegate table_name(source_or_source_backend), to: PgRepo
+  defdelegate create_log_events_table(source_backend), to: PgRepo
+  defdelegate create_log_events_table(source_backend, override_migrations), to: PgRepo
+  defdelegate rollback_migrations(source_backend), to: PgRepo
+  defdelegate drop_migrations_table(source_backend), to: PgRepo
+  defdelegate migrations_table_name(source_backend), to: PgRepo
+  defdelegate insert_log_event(source_backend, log_event), to: PgRepo
 
   # GenServer
   @impl true
