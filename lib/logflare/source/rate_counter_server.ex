@@ -18,6 +18,7 @@ defmodule Logflare.Source.RateCounterServer do
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
+  @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   use TypedStruct
 
@@ -252,11 +253,12 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def broadcast(%RCS{} = state) do
+    shard = :erlang.phash2(state.source_id, @pool_size)
     local_rates = %{Node.self() => state_to_external(state)}
 
     Phoenix.PubSub.broadcast(
       Logflare.PubSub,
-      "rates",
+      "rates:shard-#{shard}",
       {:rates, state.source_id, local_rates}
     )
 
