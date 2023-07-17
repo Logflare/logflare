@@ -207,8 +207,8 @@ defmodule Logflare.Endpoints do
   defp exec_query_on_backend(
          %Query{language: :pg_sql} = endpoint_query,
          transformed_query,
-         declared_params,
-         params
+         _declared_params,
+         _params
        ) do
     # find compatible source backend
     # TODO: move this to Backends module

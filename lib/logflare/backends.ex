@@ -34,7 +34,7 @@ defmodule Logflare.Backends do
   """
   @spec list_source_backends_by_user_id(integer()) :: [SourceBackend.t()]
   def list_source_backends_by_user_id(id) when is_integer(id) do
-    from(sb in SourceBackend, join: s in Source, where: s.user_id == ^id)
+    from(sb in SourceBackend, join: s in Source, on: true, where: s.user_id == ^id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end

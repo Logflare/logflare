@@ -16,7 +16,7 @@ defmodule Logflare.Backends.Adaptor do
   Queries the backend using an endpoint query.
   """
   @typep query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
-  @callback execute_query(identifier(), query()) :: {:ok, [term()]}
+  @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
 
   @doc """
   Typecasts config params.
@@ -33,15 +33,14 @@ defmodule Logflare.Backends.Adaptor do
       @behaviour Logflare.Backends.Adaptor
 
       @impl true
-      def queryable?(), do: false
-
-      @impl true
       def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")
 
       @impl true
       def validate_config(_config_changeset),
         do: raise("Config validation callback not implemented!")
 
+      @impl true
+      def execute_query(_identifier, _query), do: {:error, :not_implemented}
       @impl true
       def cast_config(_config), do: raise("Config casting callback not implemented!")
 
