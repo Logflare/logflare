@@ -11,12 +11,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   use TypedStruct
   use Logflare.Backends.Adaptor
 
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
-  alias __MODULE__.Pipeline
-  alias __MODULE__.PgRepo
 
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
