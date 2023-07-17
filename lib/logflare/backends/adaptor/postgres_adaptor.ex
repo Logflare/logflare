@@ -11,7 +11,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   use TypedStruct
   use Logflare.Backends.Adaptor
 
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends
