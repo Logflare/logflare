@@ -30,6 +30,16 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Lists `SourceBackend`s by user
+  """
+  @spec list_source_backends_by_user_id(integer()) :: [SourceBackend.t()]
+  def list_source_backends_by_user_id(id) when is_integer(id) do
+    from(sb in SourceBackend, join: s in Source, on: true, where: s.user_id == ^id)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
   Creates a SourceBackend for a given source.
   """
   @spec create_source_backend(Source.t(), String.t(), map()) ::
@@ -186,6 +196,18 @@ defmodule Logflare.Backends do
     case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
       {:ok, _pid} -> :ok
       {:error, {:already_started = reason, _pid}} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Ensures that a the SourceSup is started. Only returns error tuple if not alreadt started
+  """
+  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
+  def ensure_source_sup_started(%Source{} = source) do
+    case start_source_sup(source) do
+      {:ok, _pid} -> :ok
+      {:error, :already_started} -> :ok
+      {:error, _} = err -> err
     end
   end
 

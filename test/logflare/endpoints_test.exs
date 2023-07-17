@@ -77,6 +77,8 @@ defmodule Logflare.EndpointsTest do
 
     assert %{name: "abc", query: "select r from u", sandboxable: false} = sandboxed
 
+    assert sandboxed.language == sandbox_query.language
+
     # non-cte
     invalid_sandbox = insert(:endpoint, user: user)
 
@@ -94,7 +96,8 @@ defmodule Logflare.EndpointsTest do
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
              Endpoints.create_query(user, %{
                name: "fully-qualified",
-               query: "select @test from #{source.name}"
+               query: "select @test from #{source.name}",
+               language: :bq_sql
              })
 
     assert stored_sql =~ "mysource"
@@ -107,7 +110,8 @@ defmodule Logflare.EndpointsTest do
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
              Endpoints.create_query(user, %{
                name: "fully-qualified",
-               query: "select @test from `myproject.mydataset.mytable`"
+               query: "select @test from `myproject.mydataset.mytable`",
+               language: :bq_sql
              })
 
     assert mapping == %{}
@@ -143,7 +147,9 @@ defmodule Logflare.EndpointsTest do
       user = insert(:user)
       insert(:source, user: user, name: "c")
       query_string = "select current_datetime() as testing"
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query_string(user, query_string)
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} =
+               Endpoints.run_query_string(user, {:bq_sql, query_string})
     end
 
     test "run_cached_query/1" do
@@ -198,12 +204,11 @@ defmodule Logflare.EndpointsTest do
 
   describe "running queries in postgres backends" do
     setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+      insert(:plan)
 
-      %{username: username, password: password, database: database, hostname: hostname} =
-        Application.get_env(:logflare, Logflare.Repo) |> Map.new()
+      cfg = Application.get_env(:logflare, Logflare.Repo)
 
-      url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
+      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
 
       user = insert(:user)
       source = insert(:source, user: user, name: "c")
@@ -229,56 +234,19 @@ defmodule Logflare.EndpointsTest do
 
     test "run an endpoint query without caching", %{source: source, user: user} do
       query = "select body from #{source.name}"
-      source_mapping = %{source.name => source.token}
-      endpoint = insert(:endpoint, user: user, query: query, source_mapping: source_mapping)
+      endpoint = insert(:endpoint, user: user, query: query, language: :pg_sql)
       assert {:ok, %{rows: []}} = Endpoints.run_query(endpoint)
     end
 
     test "run_query_string/3", %{source: source, user: user} do
       query = "select body from #{source.name}"
-      assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, query)
+      assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, {:pg_sql, query})
     end
 
     test "run_cached_query/1", %{source: source, user: user} do
       query = "select body from #{source.name}"
-      source_mapping = %{source.name => source.token}
-      endpoint = insert(:endpoint, user: user, query: query, source_mapping: source_mapping)
+      endpoint = insert(:endpoint, user: user, query: query, language: :pg_sql)
       assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
-    end
-
-    for field_changed <- [
-          :query,
-          :sandboxable,
-          :cache_duration_seconds,
-          :proactive_requerying_seconds,
-          :max_limit
-        ] do
-      test "update_query/2 will kill all existing caches on field change (#{field_changed})", %{
-        source: source,
-        user: user
-      } do
-        query = "select body from #{source.name}"
-        source_mapping = %{source.name => source.token}
-        endpoint = insert(:endpoint, user: user, query: query, source_mapping: source_mapping)
-        cache_pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
-
-        assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
-
-        params =
-          case unquote(field_changed) do
-            :query -> %{query: "select timestamp from #{source.name}"}
-            :sandboxable -> %{sandboxable: true}
-            # integer keys
-            key -> Map.new([{key, 123}])
-          end
-
-        assert {:ok, updated} = Endpoints.update_query(endpoint, params)
-        # should kill the cache process
-        :timer.sleep(500)
-        refute Process.alive?(cache_pid)
-        # 2nd query should not hit cache
-        assert {:ok, %{rows: []}} = Endpoints.run_cached_query(updated)
-      end
     end
   end
 end

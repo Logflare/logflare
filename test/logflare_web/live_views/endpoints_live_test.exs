@@ -83,7 +83,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
     render_hook(view, "save-endpoint", %{
       endpoint: %{
         name: "some query",
-        query: new_query
+        query: new_query,
+        language: "bq_sql"
       }
     })
 

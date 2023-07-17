@@ -73,6 +73,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                  source_backend,
                  "select body from #{PostgresAdaptor.table_name(source_backend)}"
                )
+
+      # query by string with parameter
+      assert {:ok,
+              [
+                %{
+                  "value" => "data"
+                }
+              ]} =
+               PostgresAdaptor.execute_query(
+                 source_backend,
+                 {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source_backend)}",
+                  ["test"]}
+               )
     end
   end
 
