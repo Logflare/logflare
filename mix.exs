@@ -51,7 +51,8 @@ defmodule Logflare.Mixfile do
         :crypto,
         :os_mon
       ],
-      included_applications: [:mnesia]
+      included_applications: [:mnesia],
+      start_phases: [seed_system: [env: Mix.env()]]
     ]
   end
 
