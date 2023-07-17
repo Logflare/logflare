@@ -366,7 +366,7 @@ defmodule Logflare.SqlTest do
   describe "transform/3 for :postgres backends" do
     setup do
       user = insert(:user)
-      source = insert(:source, user: user, name: "source_#{TestUtils.random_string()}")
+      source = insert(:source, user: user, name: "source_a")
       %{user: user, source: source}
     end
 
