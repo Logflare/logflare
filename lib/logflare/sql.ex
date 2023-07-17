@@ -650,4 +650,34 @@ defmodule Logflare.Sql do
       {source.name, source}
     end
   end
+
+
+  def translate(:bq_sql, :pg_sql, query) when is_binary(query) do
+    {:ok, [ast]} = Parser.parse("bigquery", query)
+
+
+    {:ok, translated_query} = ast
+    |> bq_to_pg_quote_style()
+    |> Parser.to_string()
+
+    {:ok, translated_query}
+  end
+
+  defp bq_to_pg_quote_style(ast) do
+    from =
+      ast
+      |> get_in(["Query", "body", "Select", "from"])
+      |> Enum.map(fn from ->
+
+        {_, updated} =
+          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value"=> source}] = value ->
+            {value, [%{"quote_style" => "\"", "value" => source}]}
+          end)
+
+        updated
+      end)
+
+    input = put_in(ast, ["Query", "body", "Select", "from"], from)
+    input
+  end
 end

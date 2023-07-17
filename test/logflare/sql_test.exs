@@ -1,6 +1,6 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
@@ -381,5 +381,61 @@ defmodule Logflare.SqlTest do
 
       assert Sql.transform(:pg_sql, input, user) == expected
     end
+  end
+
+  describe "bq -> pg translation" do
+    setup do
+      repo = Application.get_env(:logflare, Logflare.Repo)
+
+      config = %{
+        "url" =>
+          "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+      }
+
+      source = insert(:source, user: insert(:user), name: "c.d.e")
+      source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
+
+      pid = start_supervised!({PostgresAdaptor, source_backend})
+
+      log_event =
+        build(:log_event,
+          source: source_backend.source,
+          test: "data",
+          metadata: %{"nested" => "value"}
+        )
+
+      PostgresAdaptor.insert_log_event(source_backend, log_event)
+
+      on_exit(fn ->
+        PostgresAdaptor.rollback_migrations(source_backend)
+        PostgresAdaptor.drop_migrations_table(source_backend)
+      end)
+
+      %{source: source, source_backend: source_backend, pid: pid}
+    end
+
+    test "UNNESTs into ARRAY with JSON-Query", %{source_backend: source_backend} do
+      bq_query = """
+      select test, m.nested from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      where m.nested is not null
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      # execute it on PG
+      assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
+               PostgresAdaptor.execute_query(source_backend, translated)
+    end
+
+    test "entities backtick to double quote" do
+      bq_query = """
+      select test from `c.d.e`
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert translated =~ ~s("c.d.e")
+    end
+
+    test "countif into count-filter"
   end
 end
