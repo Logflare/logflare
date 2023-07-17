@@ -13,6 +13,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
   @broadcast_every 5_000
   @max_buffer_len 5_000
+  @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
     GenServer.start_link(
@@ -178,9 +179,11 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   defp broadcast_buffer(state) do
     local_buffer = %{Node.self() => %{len: state.len}}
 
+    shard = :erlang.phash2(state.source_id, @pool_size)
+
     Phoenix.PubSub.broadcast(
       Logflare.PubSub,
-      "buffers",
+      "buffers:shard-#{shard}",
       {:buffers, state.source_id, local_buffer}
     )
 
