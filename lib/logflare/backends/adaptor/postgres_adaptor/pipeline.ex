@@ -7,8 +7,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
   use Broadway
 
   alias Broadway.Message
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Buffers.BufferProducer
 
   @spec start_link(PostgresAdaptor.t()) :: {:ok, pid()}
@@ -39,27 +38,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
     Message.update_data(message, &process_data(&1, adaptor_state))
   end
 
-  defp process_data(log_event, adaptor_state) do
-    %{repository_module: repository_module, source_backend: source_backend} = adaptor_state
-
-    timestamp =
-      log_event.body["timestamp"]
-      |> DateTime.from_unix!(:microsecond)
-      |> DateTime.to_naive()
-
-    params = %{
-      id: log_event.body["id"],
-      event_message: log_event.body["event_message"],
-      timestamp: timestamp,
-      body: log_event.body
-    }
-
-    changeset =
-      %LogEvent{}
-      |> Ecto.put_meta(source: Repo.table_name(source_backend))
-      |> LogEvent.changeset(params)
-
-    repository_module.insert(changeset)
+  defp process_data(log_event, %{source_backend: source_backend}) do
+    PostgresAdaptor.insert_log_event(source_backend, log_event)
   end
 
   def transform(event, _opts) do

@@ -11,7 +11,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
   require Logger
 
-  @broadcast_every 1_000
+  @broadcast_every 5_000
   @max_buffer_len 5_000
 
   def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do

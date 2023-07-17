@@ -1,4 +1,4 @@
-defmodule Logflare.SqlV2 do
+defmodule Logflare.Sql do
   @moduledoc """
   SQL parsing and transformation based on open source parser.
 
@@ -7,8 +7,8 @@ defmodule Logflare.SqlV2 do
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.SingleTenant
-  alias Logflare.SqlV2.Parser
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo
+  alias Logflare.Sql.Parser
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -29,14 +29,15 @@ defmodule Logflare.SqlV2 do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @spec transform(atom(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
-  def transform(backend, input, user_id) when is_integer(user_id) do
+  @typep language :: :pg_sql | :bq_sql
+  @spec transform(language(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
+  def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
-    transform(backend, input, user)
+    transform(lang, input, user)
   end
 
-  def transform(:postgres, input, user) do
-    {:ok, [input]} = Parser.parse(input)
+  def transform(:pg_sql, input, user) do
+    {:ok, [input]} = Parser.parse("postgres", input)
 
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
@@ -47,7 +48,7 @@ defmodule Logflare.SqlV2 do
       |> Enum.map(fn from ->
         {_, updated} =
           get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-            table_name = source_mapping |> Map.get(source) |> Repo.table_name()
+            table_name = source_mapping |> Map.get(source) |> PgRepo.table_name()
             {value, [%{"quote_style" => nil, "value" => table_name}]}
           end)
 
@@ -58,7 +59,8 @@ defmodule Logflare.SqlV2 do
     Parser.to_string(input)
   end
 
-  def transform(:bigquery, input, %User{} = user) do
+  # default to bq_sql
+  def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
     %_{bigquery_project_id: user_project_id, bigquery_dataset_id: user_dataset_id} = user
 
     {query, sandboxed_query} =
@@ -70,7 +72,7 @@ defmodule Logflare.SqlV2 do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    with {:ok, statements} <- Parser.parse(query),
+    with {:ok, statements} <- Parser.parse("bigquery", query),
          data = %{
            logflare_project_id: Application.get_env(:logflare, Logflare.Google)[:project_id],
            user_project_id: user_project_id,
@@ -81,7 +83,8 @@ defmodule Logflare.SqlV2 do
            source_names: Map.keys(source_mapping),
            sandboxed_query: sandboxed_query,
            sandboxed_query_ast: nil,
-           ast: statements
+           ast: statements,
+           dialect: "bigquery"
          },
          :ok <- validate_query(statements, data),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(data),
@@ -94,14 +97,18 @@ defmodule Logflare.SqlV2 do
     end
   end
 
-  defp sandboxed_ast(%{sandboxed_query: q}) when is_binary(q), do: Parser.parse(q)
+  defp sandboxed_ast(%{sandboxed_query: q, dialect: dialect}) when is_binary(q),
+    do: Parser.parse(dialect, q)
+
   defp sandboxed_ast(_), do: {:ok, nil}
 
   @doc """
   Performs a check if a query contains a CTE. returns true if it is, returns false if not
   """
-  def contains_cte?(query) do
-    with {:ok, ast} <- Parser.parse(query),
+  def contains_cte?(query, opts \\ []) do
+    opts = Enum.into(opts, %{dialect: "bigquery"})
+
+    with {:ok, ast} <- Parser.parse(opts.dialect, query),
          [_ | _] <- extract_cte_alises(ast) do
       true
     else
@@ -437,7 +444,9 @@ defmodule Logflare.SqlV2 do
     {:ok, %{"my_table" => "abced-weqqwe-..."}}
   """
   @spec sources(String.t(), User.t()) :: {:ok, %{String.t() => String.t()}} | {:error, String.t()}
-  def sources(query, user) do
+  def sources(query, user, opts \\ []) do
+    opts = Enum.into(opts, %{dialect: "bigquery"})
+
     sources = Sources.list_sources_by_user(user)
     source_names = for s <- sources, do: s.name
 
@@ -447,7 +456,7 @@ defmodule Logflare.SqlV2 do
       end
 
     sources =
-      with {:ok, ast} <- Parser.parse(query),
+      with {:ok, ast} <- Parser.parse(opts.dialect, query),
            names <-
              ast
              |> find_all_source_names()
@@ -518,14 +527,17 @@ defmodule Logflare.SqlV2 do
   iex> source_mapping("select a from old_table_name", %{"old_table_name"=> "abcde-fg123-..."}, %User{})
   {:ok, "select a from new_table_name"}
   """
-  def source_mapping(query, %Logflare.User{id: user_id}, mapping) do
-    source_mapping(query, user_id, mapping)
+  def source_mapping(query, user, mapping, opts \\ [])
+
+  def source_mapping(query, %Logflare.User{id: user_id}, mapping, opts) do
+    source_mapping(query, user_id, mapping, opts)
   end
 
-  def source_mapping(query, user_id, mapping) do
+  def source_mapping(query, user_id, mapping, opts) do
+    opts = Enum.into(opts, %{dialect: "bigquery"})
     sources = Sources.list_sources_by_user(user_id)
 
-    with {:ok, ast} <- Parser.parse(query) do
+    with {:ok, ast} <- Parser.parse(opts.dialect, query) do
       ast
       |> replace_old_source_names(%{
         sources: sources,
@@ -597,8 +609,10 @@ defmodule Logflare.SqlV2 do
     iex> parameters(query)
     {:ok, ["something"]}
   """
-  def parameters(query) do
-    with {:ok, ast} <- Parser.parse(query) do
+  def parameters(query, opts \\ []) do
+    opts = Enum.into(opts, %{dialect: "bigquery"})
+
+    with {:ok, ast} <- Parser.parse(opts.dialect, query) do
       {:ok, extract_all_parameters(ast)}
     end
   end

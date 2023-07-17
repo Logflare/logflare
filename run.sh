@@ -2,18 +2,18 @@
 
 # load secrets conditionally
 if [ -f /tmp/.secrets.env ]
-    then
+then
     echo '/tmp/.secrets.env file present, loading secrets...';
     export $(grep -v '^#' /tmp/.secrets.env | xargs);
 fi
 
-# wait for networking to be ready before starting Erlang
-echo 'Sleeping for 15 seconds...'
-sleep 15
-
 if [[ "$LIBCLUSTER_TOPOLOGY" == "gce" ]]
 then
     # run gce specific stuff
+
+    # wait for networking to be ready before starting Erlang
+    echo 'Sleeping for 15 seconds for GCE networking to be ready...'
+    sleep 15
 
     sysctl -w net.ipv4.tcp_keepalive_time=60 net.ipv4.tcp_keepalive_intvl=60 net.ipv4.tcp_keepalive_probes=5
 

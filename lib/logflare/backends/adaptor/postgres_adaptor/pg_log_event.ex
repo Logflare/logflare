@@ -1,13 +1,12 @@
-defmodule Logflare.Backends.Adaptor.PostgresAdaptor.LogEvent do
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgLogEvent do
   @moduledoc """
   Logflare Log Event schema to be used by the Postgres Adaptor
   """
-  use Ecto.Schema
+  use TypedEctoSchema
   import Ecto.Changeset
 
   @primary_key {:id, :string, []}
-
-  schema "log_event" do
+  typed_schema "log_event" do
     field(:body, :map)
     field(:event_message, :string)
     field(:timestamp, :utc_datetime_usec)
