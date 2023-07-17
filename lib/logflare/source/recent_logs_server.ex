@@ -49,6 +49,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   @touch_timer :timer.minutes(45)
   @broadcast_every 500
+  @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: source_id)
@@ -246,9 +247,11 @@ defmodule Logflare.Source.RecentLogsServer do
 
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
+      shard = :erlang.phash2(state.source_id, @pool_size)
+
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
-        "inserts",
+        "inserts:shard-#{shard}",
         {:inserts, state.source_id, inserts_payload}
       )
     end

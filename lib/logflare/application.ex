@@ -79,13 +79,14 @@ defmodule Logflare.Application do
     grpc_port = Application.get_env(:grpc, :port)
     ssl = Application.get_env(:logflare, :ssl)
     grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
+    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       get_goth_child_spec(),
       Logflare.Repo,
-      {Phoenix.PubSub, name: Logflare.PubSub, pool_size: 10},
+      {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
       # supervisor(LogflareTelemetry.Supervisor, []),
       # Context Caches
       ContextCache,

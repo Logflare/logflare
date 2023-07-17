@@ -7,6 +7,8 @@ defmodule Logflare.PubSubRates.Inserts do
 
   use GenServer
 
+  @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
+
   def start_link(args \\ []) do
     GenServer.start_link(
       __MODULE__,
@@ -16,7 +18,9 @@ defmodule Logflare.PubSubRates.Inserts do
   end
 
   def init(state) do
-    PubSub.subscribe(Logflare.PubSub, "inserts")
+    for shard <- 1..@pool_size do
+      PubSub.subscribe(Logflare.PubSub, "inserts:shard-#{shard}")
+    end
 
     {:ok, state}
   end
