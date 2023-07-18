@@ -5,6 +5,7 @@ defmodule Logflare.Source do
   import Ecto.Changeset
 
   alias Logflare.Billing
+  alias Logflare.SingleTenant
   alias Logflare.Users
 
   @default_source_api_quota 25
@@ -171,6 +172,7 @@ defmodule Logflare.Source do
       :suggested_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
+    |> put_single_tenant_postgres_changes()
     |> default_validations(source)
   end
 
@@ -194,6 +196,7 @@ defmodule Logflare.Source do
       :suggested_keys
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
+    |> put_single_tenant_postgres_changes()
     |> default_validations(source)
   end
 
@@ -247,5 +250,9 @@ defmodule Logflare.Source do
     source_token
     |> Atom.to_string()
     |> String.replace("-", "_")
+  end
+
+  defp put_single_tenant_postgres_changes(changeset) do
+    put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_url())
   end
 end

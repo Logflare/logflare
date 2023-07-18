@@ -26,7 +26,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   Requires `:source` to be preloaded.
   """
   @spec create_repo(SourceBackend.t()) :: atom()
-  def create_repo(%SourceBackend{source: %_{}} = source_backend) do
+
+  def create_repo(%SourceBackend{source: %Source{}} = source_backend) do
     name = get_repo_module(source_backend)
 
     case Code.ensure_compiled(name) do
@@ -34,7 +35,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       _ -> {:module, _, _, _} = Module.create(name, @ast, Macro.Env.location(__ENV__))
     end
 
-    migration_table = PostgresAdaptor.migrations_table_name(source_backend)
+    migration_table = migrations_table_name(source_backend)
     Application.put_env(:logflare, name, migration_source: migration_table)
 
     name
@@ -45,6 +46,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   """
   @spec get_repo_module(SourceBackend.t()) :: Ecto.Repo.t()
   def get_repo_module(%SourceBackend{source: %Source{token: token}}) do
+    token = token |> Atom.to_string() |> String.replace("-", "")
     Module.concat([Logflare.Repo.Postgres, "Adaptor#{token}"])
   end
 
@@ -59,13 +61,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       pool_size =
         Keyword.get(Application.get_env(:logflare, :postgres_backend_adapter), :pool_size, 10)
 
-      # use same pool type as Logflare.Repo
-      pool = Keyword.get(Application.get_env(:logflare, Logflare.Repo), :pool)
-
       opts = [
         {:url, config["url"] || config.url},
         {:name, repo},
-        {:pool, pool},
         {:pool_size, pool_size}
       ]
 
@@ -118,13 +116,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @spec rollback_migrations(SourceBackend.t()) :: :ok
   def rollback_migrations(source_backend) do
     repository_module = create_repo(source_backend)
-
-    Ecto.Migrator.run(
-      repository_module,
-      migrations(source_backend),
-      :down,
-      all: true
-    )
+    Ecto.Migrator.run(repository_module, migrations(source_backend), :down, all: true)
 
     :ok
   end
@@ -144,8 +136,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   Returns the migrations table name used for a given source
   """
   @spec migrations_table_name(SourceBackend.t()) :: String.t()
-  def migrations_table_name(%SourceBackend{source_id: source_id}) do
-    "schema_migrations_#{source_id}"
+  def migrations_table_name(%SourceBackend{source: %Source{token: token}}) do
+    token = token |> Atom.to_string() |> String.replace("-", "_")
+    "schema_migrations_#{token}"
   end
 
   @doc """

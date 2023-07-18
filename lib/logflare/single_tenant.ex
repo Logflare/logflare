@@ -205,6 +205,12 @@ defmodule Logflare.SingleTenant do
   @spec supabase_mode? :: boolean()
   def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode) and single_tenant?()
 
+  def postgres_backend_adapter_url() do
+    if single_tenant?() do
+      Application.get_env(:logflare, :postgres_backend_adapter) |> Keyword.get(:url)
+    end
+  end
+
   @doc """
   Adds ingestion samples for supabase sources, so that schema is built and stored correctly.
   """
@@ -214,14 +220,15 @@ defmodule Logflare.SingleTenant do
       user = get_default_user()
 
       sources =
-        Sources.list_sources_by_user(user)
+        user
+        |> Sources.list_sources_by_user()
         |> Repo.preload(:rules)
 
       tasks =
         for source <- sources do
           Task.async(fn ->
             source = Sources.refresh_source_metrics_for_ingest(source)
-            Logger.debug("Updating schemas for for #{source.name}")
+            Logger.info("Updating schemas for for #{source.name}")
             event = read_ingest_sample_json(source.name)
             log_event = LogEvent.make(event, %{source: source})
             Schema.update(source.token, log_event)

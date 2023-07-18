@@ -24,7 +24,7 @@ defmodule Logflare.Backends do
   """
   @spec list_source_backends(Source.t()) :: list(SourceBackend.t())
   def list_source_backends(%Source{id: id}) do
-    from(sb in SourceBackend, where: sb.source_id == ^id)
+    from(sb in SourceBackend, where: sb.source_id == ^id, preload: :source)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
