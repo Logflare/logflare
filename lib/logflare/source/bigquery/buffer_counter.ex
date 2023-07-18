@@ -177,24 +177,26 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   end
 
   defp broadcast_buffer(state) do
-    local_buffer = %{Node.self() => %{len: state.len}}
+    Task.start(fn ->
+      local_buffer = %{Node.self() => %{len: state.len}}
 
-    shard = :erlang.phash2(state.source_id, @pool_size)
+      shard = :erlang.phash2(state.source_id, @pool_size)
 
-    Phoenix.PubSub.broadcast(
-      Logflare.PubSub,
-      "buffers:shard-#{shard}",
-      {:buffers, state.source_id, local_buffer}
-    )
+      Phoenix.PubSub.broadcast(
+        Logflare.PubSub,
+        "buffers:shard-#{shard}",
+        {:buffers, state.source_id, local_buffer}
+      )
 
-    cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_id)
+      cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_id)
 
-    payload = %{
-      buffer: cluster_buffer,
-      source_token: state.source_id
-    }
+      payload = %{
+        buffer: cluster_buffer,
+        source_token: state.source_id
+      }
 
-    Source.ChannelTopics.broadcast_buffer(payload)
+      Source.ChannelTopics.broadcast_buffer(payload)
+    end)
   end
 
   defp check_buffer() do
