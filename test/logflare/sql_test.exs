@@ -376,10 +376,8 @@ defmodule Logflare.SqlTest do
     } do
       input = "SELECT body, event_message, timestamp FROM #{name}"
 
-      expected =
-        {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
-
-      assert Sql.transform(:pg_sql, input, user) == expected
+      assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
+      assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
     end
   end
 
@@ -392,16 +390,20 @@ defmodule Logflare.SqlTest do
           "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
       }
 
-      source = insert(:source, user: insert(:user), name: "c.d.e")
+      user = insert(:user)
+      source = insert(:source, user: user, name: "c.d.e")
       source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
 
       pid = start_supervised!({PostgresAdaptor, source_backend})
 
       log_event =
-        build(:log_event,
-          source: source_backend.source,
-          test: "data",
-          metadata: %{"nested" => "value"}
+        Logflare.LogEvent.make(
+          %{
+            "event_message" => "something",
+            "test" => "data",
+            "metadata" => %{"nested" => "value"}
+          },
+          %{source: source}
         )
 
       PostgresAdaptor.insert_log_event(source_backend, log_event)
@@ -411,20 +413,31 @@ defmodule Logflare.SqlTest do
         PostgresAdaptor.drop_migrations_table(source_backend)
       end)
 
-      %{source: source, source_backend: source_backend, pid: pid}
+      %{source: source, source_backend: source_backend, pid: pid, user: user}
     end
 
-    test "UNNESTs into ARRAY with JSON-Query", %{source_backend: source_backend} do
+    test "UNNESTs into JSON-Query", %{source_backend: source_backend, user: user} do
       bq_query = """
       select test, m.nested from `c.d.e` t
       cross join unnest(t.metadata) as m
       where m.nested is not null
       """
 
-      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+
+      translated = String.downcase(translated)
+      # changes source quotes
+      assert translated =~ ~s("c.d.e")
+      assert translated =~ "body -> 'test'"
+      assert translated =~ "body #> '{metadata,nested}'"
+      # remove cross joining
+      refute translated =~ "cross join"
+      refute translated =~ "unnest"
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
       assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
-               PostgresAdaptor.execute_query(source_backend, translated)
+               PostgresAdaptor.execute_query(source_backend, transformed)
     end
 
     test "entities backtick to double quote" do

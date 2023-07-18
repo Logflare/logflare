@@ -9,6 +9,7 @@ defmodule Logflare.Sql do
   alias Logflare.SingleTenant
   alias Logflare.Sql.Parser
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -36,27 +37,41 @@ defmodule Logflare.Sql do
     transform(lang, input, user)
   end
 
-  def transform(:pg_sql, input, user) do
-    {:ok, [input]} = Parser.parse("postgres", input)
+  def transform(:pg_sql, query, user) do
+    # {:ok, [input]} = Parser.parse("postgres", input)
+
+    # sources = Sources.list_sources_by_user(user)
+    # source_mapping = source_mapping(sources)
 
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    from =
-      input
-      |> get_in(["Query", "body", "Select", "from"])
-      |> Enum.map(fn from ->
-        {_, updated} =
-          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-            table_name = source_mapping |> Map.get(source) |> PgRepo.table_name()
-            {value, [%{"quote_style" => nil, "value" => table_name}]}
-          end)
+    # from =
+    #   input
+    #   |> get_in(["Query", "body", "Select", "from"])
+    #   |> Enum.map(fn from ->
+    #     {_, updated} =
+    #       get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
+    #         table_name = source_mapping |> Map.get(source) |> PgRepo.table_name()
+    #         {value, [%{"quote_style" => nil, "value" => table_name}]}
+    #       end)
 
-        updated
-      end)
+    #     updated
+    #   end)
 
-    input = put_in(input, ["Query", "body", "Select", "from"], from)
-    Parser.to_string(input)
+    # input = put_in(input, ["Query", "body", "Select", "from"], from)
+    # Parser.to_string(input)
+    with {:ok, statements} <- Parser.parse("bigquery", query) do
+      statements
+      |> do_transform(%{
+        sources: sources,
+        source_mapping: source_mapping,
+        source_names: Map.keys(source_mapping),
+        dialect: "postgres",
+        ast: statements
+      })
+      |> Parser.to_string()
+    end
   end
 
   # default to bq_sql
@@ -329,19 +344,26 @@ defmodule Logflare.Sql do
   end
 
   defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
+    dialect_quote_style =
+      case data.dialect do
+        "postgres" -> "\""
+        "bigquery" -> "`"
+      end
+
     new_name_list =
-      for name_map <- names do
-        name_value = Map.get(name_map, "value")
-
-        to_merge =
-          if name_value in data.source_names do
-            %{"value" => transform_name(name_value, data), "quote_style" => "`"}
+      for %{"value" => value, "quote_style" => quote_style} = name_map <- names do
+        name_value =
+          if value in data.source_names do
+            Map.merge(
+              name_map,
+              %{
+                "quote_style" => quote_style || dialect_quote_style,
+                "value" => transform_name(value, data)
+              }
+            )
           else
-            quote_style = Map.get(name_map, "quote_style")
-            %{"value" => name_value, "quote_style" => quote_style}
+            name_map
           end
-
-        Map.merge(name_map, to_merge)
       end
 
     {k, %{v | "name" => new_name_list}}
@@ -414,7 +436,12 @@ defmodule Logflare.Sql do
 
   defp replace_sandboxed_query(kv, _data), do: kv
 
-  defp transform_name(relname, data) do
+  defp transform_name(relname, %{dialect: "postgres"} = data) do
+    source = Enum.find(data.sources, fn s -> s.name == relname end)
+    PostgresAdaptor.table_name(source)
+  end
+
+  defp transform_name(relname, %{dialect: "bigquery"} = data) do
     source = Enum.find(data.sources, fn s -> s.name == relname end)
 
     token =
@@ -651,16 +678,15 @@ defmodule Logflare.Sql do
     end
   end
 
-
   def translate(:bq_sql, :pg_sql, query) when is_binary(query) do
-    {:ok, [ast]} = Parser.parse("bigquery", query)
+    {:ok, stmts} = Parser.parse("bigquery", query)
 
-
-    {:ok, translated_query} = ast
-    |> bq_to_pg_quote_style()
+    for ast <- stmts do
+      ast
+      |> bq_to_pg_quote_style()
+      |> bq_to_pg_field_references()
+    end
     |> Parser.to_string()
-
-    {:ok, translated_query}
   end
 
   defp bq_to_pg_quote_style(ast) do
@@ -668,9 +694,8 @@ defmodule Logflare.Sql do
       ast
       |> get_in(["Query", "body", "Select", "from"])
       |> Enum.map(fn from ->
-
         {_, updated} =
-          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value"=> source}] = value ->
+          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
             {value, [%{"quote_style" => "\"", "value" => source}]}
           end)
 
@@ -680,4 +705,123 @@ defmodule Logflare.Sql do
     input = put_in(ast, ["Query", "body", "Select", "from"], from)
     input
   end
+
+  defp bq_to_pg_field_references(ast) do
+    # table_alias = get_in(table_map, ["alias", "name", "value"])
+
+    joins =
+      ast
+      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"])
+
+    cleaned_joins = Enum.filter(joins, fn join -> get_in(join, ["relation", "UNNEST"]) == nil end)
+
+    selection = ast |> get_in(["Query", "body", "Select", "selection"])
+
+    alias_path_mappings = get_bq_alias_path_mappings(ast)
+
+    ast
+    |> traverse_convert_identifiers(alias_path_mappings)
+    |> put_in(["Query", "body", "Select", "from", Access.at(0), "joins"], cleaned_joins)
+  end
+
+  defp convert_keys_to_json_query(
+         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]} = i,
+         alias_path_mappings
+       ) do
+    path = "{#{alias_path_mappings[join_alias]},#{key}}"
+
+    %{
+      "JsonAccess" => %{
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => "body"}},
+        "operator" => "HashArrow",
+        "right" => %{"Value" => %{"SingleQuotedString" => path}}
+      }
+    }
+  end
+
+  defp convert_keys_to_json_query(%{"Identifier" => %{"value" => name}} = i, _alias_path_mappings) do
+    %{
+      "JsonAccess" => %{
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => "body"}},
+        "operator" => "Arrow",
+        "right" => %{"Value" => %{"SingleQuotedString" => name}}
+      }
+    }
+  end
+
+  defp get_identifier_alias(%{
+         "CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]
+       }) do
+    key
+  end
+
+  defp get_identifier_alias(%{"Identifier" => %{"value" => name}}) do
+    name
+  end
+
+  defp get_bq_alias_path_mappings(ast) do
+    table_map =
+      ast
+      |> get_in(["Query", "body", "Select", "from", Access.at(0), "relation", "Table"])
+
+    table_alias = get_in(table_map, ["alias", "name", "value"])
+
+    joins =
+      ast
+      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"])
+
+    Enum.reduce(joins, %{}, fn
+      %{
+        "relation" => %{
+          "UNNEST" => %{
+            "array_expr" => %{"CompoundIdentifier" => identifiers},
+            "alias" => %{"name" => %{"value" => alias_name}}
+          }
+        }
+      } = join,
+      acc ->
+        arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
+
+        str_path = Enum.join(arr_path, ",")
+
+        Map.put(acc, alias_name, str_path)
+
+      _join, acc ->
+        acc
+    end)
+  end
+
+  # auto set the column alias if not set
+  defp traverse_convert_identifiers(
+         {"UnnamedExpr", identifier},
+         alias_path_mappings
+       )
+       when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
+    {"ExprWithAlias",
+     %{
+       "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
+       "expr" => convert_keys_to_json_query(identifier, alias_path_mappings)
+     }}
+  end
+
+  defp traverse_convert_identifiers({k, v}, alias_path_mappings)
+       when k in ["CompoundIdentifier", "Identifier"] do
+    convert_keys_to_json_query(%{k => v}, alias_path_mappings)
+    |> Map.to_list()
+    |> List.first()
+  end
+
+  defp traverse_convert_identifiers({k, v}, alias_path_mappings) when is_list(v) or is_map(v) do
+    {k, traverse_convert_identifiers(v, alias_path_mappings)}
+  end
+
+  defp traverse_convert_identifiers(kv, alias_path_mappings) when is_list(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, alias_path_mappings) end)
+  end
+
+  defp traverse_convert_identifiers(kv, alias_path_mappings) when is_map(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, alias_path_mappings) end) |> Map.new()
+  end
+
+  defp traverse_convert_identifiers(kv, _data), do: kv
 end
