@@ -361,7 +361,7 @@ defmodule Logflare.Endpoints do
   end
 
   def calculate_endpoint_metrics(%Query{} = endpoint) do
-    cache_count = Resolver.resolve(endpoint) |> length()
+    cache_count = endpoint |> Resolver.resolve() |> length()
 
     %{
       endpoint
