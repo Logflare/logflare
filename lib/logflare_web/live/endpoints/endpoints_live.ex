@@ -215,7 +215,6 @@ defmodule LogflareWeb.EndpointsLive do
       Endpoints.list_endpoints_by(user_id: assigns.user_id)
       |> Endpoints.calculate_endpoint_metrics()
 
-    socket
-    |> assign(:endpoints, endpoints)
+    assign(socket, :endpoints, endpoints)
   end
 end
