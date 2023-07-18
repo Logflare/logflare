@@ -91,7 +91,7 @@ defmodule LogflareWeb.EndpointsLive do
         %{"endpoint" => params},
         %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
       ) do
-    Logger.info("Saving endpoint")
+    Logger.debug("Saving endpoint", params: params)
 
     with {:ok, endpoint} <-
            (case show_endpoint do
@@ -189,7 +189,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
-    Logger.info("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
+    Logger.debug("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
     {:noreply,
      socket
