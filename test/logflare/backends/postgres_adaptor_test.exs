@@ -97,7 +97,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
 
       # module name should use source token
-      assert Atom.to_string(repo) =~ Atom.to_string(source_backend.source.token)
+      expected =
+        source_backend.source.token
+        |> Atom.to_string()
+        |> String.replace("-", "")
+        |> String.to_atom()
+
+      assert Atom.to_string(repo) =~ Atom.to_string(expected)
     end
 
     test "create_log_events_table/3 creates the table for a given source", %{

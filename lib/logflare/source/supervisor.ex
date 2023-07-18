@@ -49,11 +49,10 @@ defmodule Logflare.Source.Supervisor do
         select: s
       )
 
-    sources =
-      query
-      |> Repo.all()
+    sources = Repo.all(query)
 
-    Enum.map(sources, fn source ->
+    sources
+    |> Enum.map(fn source ->
       rls = %RLS{source_id: source.token, source: source}
       Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
@@ -147,21 +146,26 @@ defmodule Logflare.Source.Supervisor do
 
   def start_source(source_id) when is_atom(source_id) do
     # Calling this server doing boot times out due to dealing with bigquery in init_table()
-
-    GenServer.abcast(__MODULE__, {:create, source_id})
+    unless Application.get_env(:logflare, :postgres_backend_adapter) do
+      GenServer.abcast(__MODULE__, {:create, source_id})
+    end
 
     {:ok, source_id}
   end
 
   def delete_source(source_id) do
-    GenServer.abcast(__MODULE__, {:delete, source_id})
-    BigQuery.delete_table(source_id)
+    unless Application.get_env(:logflare, :postgres_backend_adapter) do
+      GenServer.abcast(__MODULE__, {:delete, source_id})
+      BigQuery.delete_table(source_id)
+    end
 
     {:ok, source_id}
   end
 
   def reset_source(source_id) do
-    GenServer.abcast(__MODULE__, {:restart, source_id})
+    unless Application.get_env(:logflare, :postgres_backend_adapter) do
+      GenServer.abcast(__MODULE__, {:restart, source_id})
+    end
 
     {:ok, source_id}
   end
@@ -179,20 +183,15 @@ defmodule Logflare.Source.Supervisor do
   defp create_source(source_id) do
     # Double check source is in the database before starting
     # Can be removed when manager fns move into their own genserver
-
     source = Sources.get_by(token: source_id)
 
     if source do
       rls = %RLS{source_id: source_id, source: source}
 
-      children = [
-        Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)
-      ]
+      children = [Supervisor.child_spec({RLS, rls}, id: source_id, restart: :transient)]
 
       # fire off async init in async task, so that bq call does not block.
-      Tasks.start_child(fn ->
-        init_table(source_id)
-      end)
+      Tasks.start_child(fn -> init_table(source_id) end)
 
       Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     else

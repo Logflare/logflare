@@ -9,8 +9,8 @@ config :logflare,
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
-         single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT"),
-         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE"),
+         single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true",
+         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
          api_key: System.get_env("LOGFLARE_API_KEY"),
          cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true"
        ]
@@ -186,8 +186,26 @@ config :stripity_stripe,
        )
 
 if config_env() != :test do
-  config :goth, json: File.read!("gcloud.json")
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
+end
+
+cond do
+  System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
+      not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
+    postgres_backend_url = System.get_env("POSTGRES_BACKEND_URL")
+
+    config :logflare, :postgres_backend_adapter,
+      url: postgres_backend_url,
+      pool_size: 3
+
+  config_env() != :test ->
+    config :goth, json: File.read!("gcloud.json")
+
+  config_env() == :test ->
+    :ok
+
+  true ->
+    raise "Missing Google or Backend credentials"
 end
 
 if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.key")) do

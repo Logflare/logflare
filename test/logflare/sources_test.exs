@@ -4,37 +4,89 @@ defmodule Logflare.SourcesTest do
 
   import Logflare.Factory
 
+  alias Logflare.Backends.SourceBackend
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.SourceSchemas
   alias Logflare.Users
 
-  test "list_sources_by_user/1" do
-    user = insert(:user)
-    insert(:source, user: user)
-    assert [%Source{}] = Sources.list_sources_by_user(user)
-    assert [] == insert(:user) |> Sources.list_sources_by_user()
+  describe "create_source/2" do
+    setup do
+      user = insert(:user)
+      insert(:plan, name: "Free")
+      %{user: user}
+    end
+
+    test "creates a source for a given user and creates schema", %{
+      user: %{id: user_id} = user
+    } do
+      assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
+      assert %Source{user_id: ^user_id, v2_pipeline: false} = source
+      assert SourceSchemas.get_source_schema_by(source_id: source.id)
+    end
+
+    test "if :postgres_backend_url is set and single tenant, creates a source with a postgres backend",
+         %{
+           user: %{id: user_id} = user
+         } do
+      %{username: username, password: password, database: database, hostname: hostname} =
+        Application.get_env(:logflare, Logflare.Repo) |> Map.new()
+
+      url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
+
+      previous_postgres_backend_adapter =
+        Application.get_env(:logflare, :postgres_backend_adapter)
+
+      previous_single_tenant = Application.get_env(:logflare, :single_tenant)
+
+      Application.put_env(:logflare, :postgres_backend_adapter, url: url)
+      Application.put_env(:logflare, :single_tenant, true)
+
+      on_exit(fn ->
+        Application.put_env(
+          :logflare,
+          :postgres_backend_adapter,
+          previous_postgres_backend_adapter
+        )
+
+        Application.put_env(:logflare, :single_tenant, previous_single_tenant)
+      end)
+
+      assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
+      assert %Source{user_id: ^user_id, v2_pipeline: true} = source
+      assert [%SourceBackend{type: :postgres}] = Logflare.Backends.list_source_backends(source)
+    end
   end
 
-  describe "Sources" do
+  describe "list_sources_by_user/1" do
+    test "lists sources for a given user" do
+      user = insert(:user)
+      insert(:source, user: user)
+      assert [%Source{}] = Sources.list_sources_by_user(user)
+      assert [] == insert(:user) |> Sources.list_sources_by_user()
+    end
+  end
+
+  describe "get_bq_schema/1" do
     setup do
-      u = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
-      s = insert(:source, token: TestUtils.gen_uuid(), rules: [], user_id: u.id)
+      user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
+      source = insert(:source, token: TestUtils.gen_uuid(), rules: [], user_id: user.id)
 
       Source.BigQuery.Schema.start_link(%RLS{
-        source_id: s.token,
+        source_id: source.token,
         plan: %{limit_source_fields_limit: 500}
       })
 
-      {:ok, sources: [s], users: [u]}
+      %{source: source}
     end
 
     @tag :failing
-    test "get_bq_schema/1", %{sources: [s | _], users: [u | _]} do
-      source_id = s.token
+    test "fetches schema for given source", %{source: source, user: user} do
+      source_id = source.token
 
       %{
         bigquery_table_ttl: bigquery_table_ttl,
@@ -44,7 +96,7 @@ defmodule Logflare.SourcesTest do
       } = GenUtils.get_bq_user_info(source_id)
 
       BigQuery.init_table!(
-        u.id,
+        user.id,
         source_id,
         bigquery_project_id,
         bigquery_table_ttl,
@@ -87,7 +139,7 @@ defmodule Logflare.SourcesTest do
       assert {:ok, _} =
                BigQuery.patch_table(source_id, schema, bigquery_dataset_id, bigquery_project_id)
 
-      {:ok, left_schema} = Sources.get_bq_schema(s)
+      {:ok, left_schema} = Sources.get_bq_schema(source)
       assert left_schema == schema
     end
   end
