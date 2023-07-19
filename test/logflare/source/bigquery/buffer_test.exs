@@ -48,6 +48,21 @@ defmodule Logflare.Source.BigQuery.BufferTest do
     assert 0 = BigQuery.BufferCounter.get_count(source)
   end
 
+  test "ack a batch of log events", %{source: source} do
+    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+
+    BigQuery.BufferCounter.push(le)
+
+    message = %Broadway.Message{
+      data: le,
+      acknowledger: {BigQuery.BufferProducer, source.token, nil}
+    }
+
+    BigQuery.BufferCounter.ack(source.token, [message])
+
+    assert 0 = BigQuery.BufferCounter.get_count(source)
+  end
+
   test "push a batch of log events", %{source: source} do
     le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
 
