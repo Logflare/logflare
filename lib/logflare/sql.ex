@@ -678,6 +678,7 @@ defmodule Logflare.Sql do
     case function_name do
       "countif" ->
         filter = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+
         {"AggregateExpressionWithFilter",
          %{
            "expr" => %{
@@ -729,19 +730,20 @@ defmodule Logflare.Sql do
   end
 
   defp bq_to_pg_field_references(ast) do
-    joins =
-      ast
-      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"])
-
+    joins = get_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
     cleaned_joins = Enum.filter(joins, fn join -> get_in(join, ["relation", "UNNEST"]) == nil end)
-
-    selection = ast |> get_in(["Query", "body", "Select", "selection"])
 
     alias_path_mappings = get_bq_alias_path_mappings(ast)
 
     ast
     |> traverse_convert_identifiers(alias_path_mappings)
-    |> put_in(["Query", "body", "Select", "from", Access.at(0), "joins"], cleaned_joins)
+    |> then(fn
+      ast when joins != [] ->
+        put_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"], cleaned_joins)
+
+      ast ->
+        ast
+    end)
   end
 
   defp convert_keys_to_json_query(
@@ -788,7 +790,7 @@ defmodule Logflare.Sql do
 
     joins =
       ast
-      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"])
+      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
 
     Enum.reduce(joins, %{}, fn
       %{

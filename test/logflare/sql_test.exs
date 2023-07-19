@@ -455,5 +455,12 @@ defmodule Logflare.SqlTest do
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
+
+    test "current_timestamp" do
+      bq_query = "select current_timestamp() as t"
+      pg_query = ~s|select current_timestamp as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
   end
 end
