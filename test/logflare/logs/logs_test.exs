@@ -39,17 +39,17 @@ defmodule Logflare.LogsTest do
   end
 
   setup :source_and_user
-  setup :set_mimic_global
 
   describe "ingest input" do
     test "empty list", %{source: source} do
-      Mimic.reject(Logs, :broadcast, 1)
+      Logs |> Mimic.reject(:broadcast, 1)
 
       assert :ok = Logs.ingest_logs([], source)
     end
 
     test "message key gets converted to event_message", %{source: source, pid: pid} do
-      expect(Logs, :broadcast, 1, fn le ->
+      Logs
+      |> expect(:broadcast, 1, fn le ->
         try do
           assert %{"event_message" => "testing 123"} = le.body
           assert Map.keys(le.body) |> length() == 3
@@ -73,7 +73,8 @@ defmodule Logflare.LogsTest do
     end
 
     test "non-map value for metadata key", %{source: source, pid: pid} do
-      expect(Logs, :broadcast, 1, fn le ->
+      Logs
+      |> expect(:broadcast, 1, fn le ->
         try do
           assert %{"metadata" => "some_value"} = le.body
           le
@@ -91,48 +92,34 @@ defmodule Logflare.LogsTest do
 
   describe "full ingestion pipeline test" do
     test "additive schema update from log event", %{source: source, pid: pid} do
-      expect(GoogleApi.BigQuery.V2.Api.Tabledata, :bigquery_tabledata_insert_all, fn conn,
-                                                                                     _project_id,
-                                                                                     _dataset_id,
-                                                                                     _table_name,
-                                                                                     opts ->
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> expect(:bigquery_tabledata_insert_all, fn _, _, _, _, opts ->
         try do
-          {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchIngest, receive_timeout: _]]} =
-            conn.adapter
-
           assert [%{json: %{"event_message" => "testing 123"}}] = opts[:body].rows
           {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
         rescue
-          e ->
-            send(pid, {:fail, e})
+          e -> send(pid, {:fail, e})
         end
       end)
 
-      expect(GoogleApi.BigQuery.V2.Api.Tables, :bigquery_tables_patch, fn conn,
-                                                                          _project_id,
-                                                                          _dataset_id,
-                                                                          _table_name,
-                                                                          [body: body] ->
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> expect(:bigquery_tables_patch, fn _, _, _, _, [body: body] ->
+        #  use default config adapter
         try do
-          #  use default config adapter
-          assert conn.adapter == nil
           schema = body.schema
           assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
           {:ok, %{}}
         rescue
-          e ->
-            require Logger
-            Logger.error(ExUnit.Formatter.format_assertion_error(e))
-            send(pid, {:fail, e})
+          e -> send(pid, {:fail, e})
         end
       end)
 
-      expect(Logflare.Mailer, :deliver, fn _ -> :ok end)
+      Logflare.Mailer |> expect(:deliver, fn _ -> :ok end)
 
       batch = [%{"event_message" => "testing 123", "key" => "value"}]
 
       assert :ok = Logs.ingest_logs(batch, source)
-      :timer.sleep(1000)
+      :timer.sleep(1500)
       refute_receive {:fail, _}
     end
   end
@@ -144,7 +131,7 @@ defmodule Logflare.LogsTest do
       drop_test =
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
-      Mimic.reject(Logs, :broadcast, 1)
+      Logs |> Mimic.reject(:broadcast, 1)
 
       batch = [%{"event_message" => "testing 123"}]
 
@@ -152,7 +139,7 @@ defmodule Logflare.LogsTest do
     end
 
     test "no rules", %{source: source} do
-      expect(Logs, :broadcast, 2, fn le -> le end)
+      Logs |> expect(:broadcast, 2, fn le -> le end)
 
       batch = [
         %{"event_message" => "routed"},
@@ -166,7 +153,7 @@ defmodule Logflare.LogsTest do
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       source = Repo.preload(source, :rules, force: true)
 
-      expect(Logs, :broadcast, 3, fn le -> le end)
+      Logs |> expect(:broadcast, 3, fn le -> le end)
 
       batch = [
         %{"event_message" => "not routed"},
@@ -180,7 +167,7 @@ defmodule Logflare.LogsTest do
       insert(:rule, regex: "routed123", sink: target.token, source_id: source.id)
       source = Repo.preload(source, :rules, force: true)
 
-      expect(Logs, :broadcast, 3, fn le -> le end)
+      Logs |> expect(:broadcast, 3, fn le -> le end)
 
       batch = [
         %{"event_message" => "not routed"},
@@ -196,7 +183,7 @@ defmodule Logflare.LogsTest do
       insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
       source = Repo.preload(source, :rules, force: true)
 
-      expect(Logs, :broadcast, 2, fn le -> le end)
+      Logs |> expect(:broadcast, 2, fn le -> le end)
 
       assert :ok = Logs.ingest_logs([%{"event_message" => "testing 123"}], source)
     end

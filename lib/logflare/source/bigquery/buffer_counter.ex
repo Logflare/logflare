@@ -15,7 +15,8 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @max_buffer_len 5_000
   @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
-  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
+  def start_link(%RLS{source_id: source_id})
+      when is_atom(source_id) do
     GenServer.start_link(
       __MODULE__,
       %{
@@ -137,6 +138,12 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     String.to_atom("#{source_id}" <> "-buffer")
   end
 
+  @doc """
+  Returns the cadence of buffer broadcasts
+  """
+  @spec broadcast_every() :: pos_integer()
+  def broadcast_every, do: @broadcast_every
+
   def handle_call({:push, by}, _from, %{len: len, len_max: max} = state) when len > max do
     {:reply, {:error, :buffer_full}, %{state | discarded: state.discarded + by}}
   end
@@ -162,7 +169,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
   def handle_info(:check_buffer, state) do
     if Source.RateCounterServer.should_broadcast?(state.source_id) do
-      broadcast_buffer(state)
+      Task.Supervisor.start_child(Logflare.TaskSupervisor, fn -> broadcast_buffer(state) end)
     end
 
     check_buffer()
@@ -177,26 +184,24 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   end
 
   defp broadcast_buffer(state) do
-    Task.start(fn ->
-      local_buffer = %{Node.self() => %{len: state.len}}
+    local_buffer = %{Node.self() => %{len: state.len}}
 
-      shard = :erlang.phash2(state.source_id, @pool_size)
+    shard = :erlang.phash2(state.source_id, @pool_size)
 
-      Phoenix.PubSub.broadcast(
-        Logflare.PubSub,
-        "buffers:shard-#{shard}",
-        {:buffers, state.source_id, local_buffer}
-      )
+    Phoenix.PubSub.broadcast(
+      Logflare.PubSub,
+      "buffers:shard-#{shard}",
+      {:buffers, state.source_id, local_buffer}
+    )
 
-      cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_id)
+    cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_id)
 
-      payload = %{
-        buffer: cluster_buffer,
-        source_token: state.source_id
-      }
+    payload = %{
+      buffer: cluster_buffer,
+      source_token: state.source_id
+    }
 
-      Source.ChannelTopics.broadcast_buffer(payload)
-    end)
+    Source.ChannelTopics.broadcast_buffer(payload)
   end
 
   defp check_buffer() do
