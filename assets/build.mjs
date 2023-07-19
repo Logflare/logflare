@@ -1,15 +1,16 @@
-import * as esbuild from "esbuild"
-import {sassPlugin} from "esbuild-sass-plugin"
-import * as path from "path"
-import {copy} from "esbuild-plugin-copy"
-import postcss from "postcss"
-import autoprefixer from "autoprefixer"
-import tailwindcss from "tailwindcss"
-
-const watch = process.argv[2] ? true : false
+import * as esbuild from "esbuild";
+import { sassPlugin } from "esbuild-sass-plugin";
+import * as path from "path";
+import { copy } from "esbuild-plugin-copy";
+import postcss from "postcss";
+import autoprefixer from "autoprefixer";
+import tailwindcss from "tailwindcss";
+import tailwindConfig from "./tailwind.config.js";
+import { globSync } from "glob";
+const watch = process.argv[2] ? true : false;
 
 if (watch) {
-  console.log("[ESBUILD] Initiating watch mode...")
+  console.log("[ESBUILD] Initiating watch mode...");
 }
 
 let externalizeCssImages = {
@@ -18,14 +19,15 @@ let externalizeCssImages = {
     // Intercept import paths called "env" so esbuild doesn't attempt
     // to map them to a file system location. Tag them with the "env-ns"
     // namespace to reserve them for this plugin.
-    build.onResolve({filter: /\.png$/}, (args) => {
+    build.onResolve({ filter: /\.png$/ }, (args) => {
       return {
         path: args.path,
         external: true,
-      }
-    })
+      };
+    });
   },
-}
+};
+
 let copyStatic = copy({
   // this is equal to process.cwd(), which means we use cwd path as base path to resolve `to` path
   // if not specified, this plugin uses ESBuild.build outdir/outfile options as base path.
@@ -36,32 +38,40 @@ let copyStatic = copy({
       from: ["./static/**/*"],
       to: ["../priv/static"],
     },
-    // copy output css to css folder
-    {
-      from: ["../priv/static/js/*.css"],
-      to: ["../priv/static/css"],
-    },
   ],
-})
+});
+
+// needed because we want to run the sass-plugin for tailwind content files
+const watchPaths = tailwindConfig.content.flatMap((pattern) => {
+  return globSync(pattern, { ignore: "node_modules/**" });
+});
 
 let sassPostcssPlugin = sassPlugin({
   async transform(source, resolveDir) {
-    const {css} = await postcss([autoprefixer, tailwindcss]).process(source)
-    return css
+    const { css } = await postcss([autoprefixer, tailwindcss]).process(source);
+    // specify the loader, otherwise plugin tries to resolve the files as js
+    // https://github.com/glromeo/esbuild-sass-plugin/blob/main/src/plugin.ts#L86
+    return { loader: "css", contents: css, watchFiles: watchPaths };
   },
-})
+});
 
-await esbuild.build({
+const options = {
   logLevel: "info",
-  watch,
   entryPoints: ["js/app.js"],
   bundle: true,
-  minify: true,
+  minify: watch ? false : true,
   sourcemap: true,
-  loader: {".svg": "file", ".png": "file"},
+  loader: { ".svg": "file", ".png": "file" },
   outfile: "../priv/static/js/app.js",
   plugins: [sassPostcssPlugin, externalizeCssImages, copyStatic],
   jsx: "automatic",
-  treeShaking: true,
+  treeShaking: watch ? false : true,
   nodePaths: ["node_modules"],
-})
+  color: true,
+};
+if (watch) {
+  let ctx = await esbuild.context(options);
+  await ctx.watch();
+} else {
+  await esbuild.build(options);
+}

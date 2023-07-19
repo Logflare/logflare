@@ -72,6 +72,14 @@ defmodule Logflare.Endpoints do
     |> Repo.insert()
   end
 
+  @doc "returns an ecto changeset for changing an endpoint."
+  @spec change_query(Query.t(), map()) :: Ecto.Changeset.t()
+  def change_query(%Query{} = query, attrs \\ %{}) do
+    query
+    |> Repo.preload(:user)
+    |> Query.update_by_user_changeset(attrs)
+  end
+
   @doc """
   Creates a sandboxed endpoint. A sandboxed endpoint is an endpoint with a "parent" endpoint containing a CTE.
 

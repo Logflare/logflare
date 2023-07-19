@@ -81,7 +81,12 @@ defmodule LogflareWeb do
       use Phoenix.LiveView,
         layout: {LogflareWeb.LayoutView, :live}
 
+      # declare endpoint and router for Phoenix.VerifiedRoutes
+      @endpoint LogflareWeb.Endpoint
+      @router LogflareWeb.Router
+
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
+      import LogflareWeb.CoreComponents
 
       unquote(view_helpers())
       unquote(live_view_helpers())
@@ -125,6 +130,7 @@ defmodule LogflareWeb do
       alias LogflareWeb.Router.Helpers, as: Routes
 
       alias LogflareWeb.LqlHelpers
+      import Phoenix.VerifiedRoutes
     end
   end
 
