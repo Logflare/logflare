@@ -125,7 +125,7 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "delete-endpoint",
         %{"endpoint_id" => id},
-        %{assigns: assigns} = socket
+        %{assigns: _assigns} = socket
       ) do
     endpoint = Endpoints.get_endpoint_query(id)
     {:ok, _} = Endpoints.delete_query(endpoint)
