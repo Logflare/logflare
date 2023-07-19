@@ -72,6 +72,14 @@ defmodule Logflare.Endpoints do
     |> Repo.insert()
   end
 
+  @doc "returns an ecto changeset for changing an endpoint."
+  @spec change_query(Query.t(), map()) :: Ecto.Changeset.t()
+  def change_query(%Query{} = query, attrs \\ %{}) do
+    query
+    |> Repo.preload(:user)
+    |> Query.update_by_user_changeset(attrs)
+  end
+
   @doc """
   Creates a sandboxed endpoint. A sandboxed endpoint is an endpoint with a "parent" endpoint containing a CTE.
 
@@ -316,5 +324,24 @@ defmodule Logflare.Endpoints do
       _ ->
         message
     end
+  end
+
+  @doc """
+  Calculates and sets the `:metrics` key with `Query.Metrics`, which contains info and stats relating to the endpoint
+  """
+  @spec calculate_endpoint_metrics(Query.t() | [Query.t()]) :: Query.t() | [Query.t()]
+  def calculate_endpoint_metrics(endpoints) when is_list(endpoints) do
+    for endpoint <- endpoints, do: calculate_endpoint_metrics(endpoint)
+  end
+
+  def calculate_endpoint_metrics(%Query{} = endpoint) do
+    cache_count = endpoint |> Resolver.resolve() |> length()
+
+    %{
+      endpoint
+      | metrics: %Query.Metrics{
+          cache_count: cache_count
+        }
+    }
   end
 end

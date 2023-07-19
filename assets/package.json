@@ -6,6 +6,7 @@
     "watch": "node ./build.mjs watch"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^5.8.2",
     "@nivo/bar": "^0.81.0",
     "@nivo/core": "^0.81.0",
     "bootstrap": "^4.3.1",
@@ -30,13 +31,13 @@
     "sql-formatter": "^2.3.3"
   },
   "devDependencies": {
-    "@fortawesome/fontawesome-free": "^5.8.2",
     "autoprefixer": "^10.4.13",
-    "esbuild": "^0.16.17",
+    "esbuild": "^0.18.5",
     "esbuild-plugin-copy": "^2.0.2",
-    "esbuild-sass-plugin": "^2.5.0",
+    "esbuild-sass-plugin": "^2.10.0",
+    "glob": "^10.3.1",
     "postcss": "^8.4.21",
     "sass": "^1.58.3",
-    "tailwindcss": "^3.2.4"
+    "tailwindcss": "^3.3.2"
   }
 }

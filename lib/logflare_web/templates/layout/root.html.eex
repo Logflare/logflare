@@ -8,7 +8,7 @@
     content="Easily access your Cloudflare, Vercel & Elixir logs in a centralized web-based log management solution.">
     <meta name="author" content="">
     <title><%= page_title(assigns) %></title>
-    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>">
+    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/js/app.css") %>">
     <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png">
     <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png">
     <link rel="apple-touch-icon" sizes="72x72" href="/images/apple-icon-72x72.png">

@@ -1,0 +1,36 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>
+  </:path>
+  <.render_docs_link {assigns} />
+  <.render_access_tokens_link {assigns} />
+</.subheader>
+
+<div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">
+  <h3 class="tw-text-white">Logflare Endpoints</h3>
+  <p>
+    Logflare Endpoints are GET JSON API endpoints that run ANSI SQL queries on your
+    event data.
+    With Endpoints you can integrated queries over your ingested events and integrate your data into an end-user facing application.
+  </p>
+
+  <div class="tw-flex tw-gap-4 tw-items-center">
+    <%= link("Documentation", to: "https://docs.logflare.app/concepts/endpoints", target: "_blank") %>
+    <%= live_patch to: ~p"/endpoints/new" do %>
+      <.button variant="primary">
+        New endpoint
+      </.button>
+    <% end %>
+  </div>
+</div>
+
+<section class="mx-auto container">
+  <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)} class="list-group">
+    <li class="list-group-item">
+      <%= live_patch(endpoint.name, to: ~p"/endpoints/#{endpoint.id}", class: "tw-text-white") %>
+      <div class="tw-text-sm">
+        caches: <%= endpoint.metrics.cache_count %>
+      </div>
+    </li>
+  </ul>
+</section>
