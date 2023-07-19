@@ -32,8 +32,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   @spec ack(atom(), [%Broadway.Message{}], [%Broadway.Message{}]) :: :ok
   def ack(source_id, successful, unsuccessful) when is_atom(source_id) do
-    BufferCounter.ack(source_id, successful)
-    BufferCounter.ack(source_id, unsuccessful)
+    BufferCounter.ack(source_id, successful ++ unsuccessful)
 
     :ok
   end
