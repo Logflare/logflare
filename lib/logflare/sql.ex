@@ -40,6 +40,7 @@ defmodule Logflare.Sql do
   def transform(:pg_sql, query, user) do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
+
     with {:ok, statements} <- Parser.parse("bigquery", query) do
       statements
       |> do_transform(%{
@@ -664,9 +665,51 @@ defmodule Logflare.Sql do
       ast
       |> bq_to_pg_quote_style()
       |> bq_to_pg_field_references()
+      |> bq_to_pg_convert_functions()
     end
     |> Parser.to_string()
   end
+
+  # traverse ast to convert all functions
+  defp bq_to_pg_convert_functions({k, v} = kv)
+       when k in ["Function", "AggregateExpressionWithFilter"] do
+    function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
+
+    case function_name do
+      "countif" ->
+        filter = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        {"AggregateExpressionWithFilter",
+         %{
+           "expr" => %{
+             "Function" => %{
+               "args" => [%{"Unnamed" => "Wildcard"}],
+               "distinct" => false,
+               "name" => [%{"quote_style" => nil, "value" => "count"}],
+               "over" => nil,
+               "special" => false
+             }
+           },
+           "filter" => filter
+         }}
+
+      _ ->
+        kv
+    end
+  end
+
+  defp bq_to_pg_convert_functions({k, v}) when is_list(v) or is_map(v) do
+    {k, bq_to_pg_convert_functions(v)}
+  end
+
+  defp bq_to_pg_convert_functions(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end)
+  end
+
+  defp bq_to_pg_convert_functions(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end) |> Map.new()
+  end
+
+  defp bq_to_pg_convert_functions(kv), do: kv
 
   defp bq_to_pg_quote_style(ast) do
     from =
@@ -686,8 +729,6 @@ defmodule Logflare.Sql do
   end
 
   defp bq_to_pg_field_references(ast) do
-    # table_alias = get_in(table_map, ["alias", "name", "value"])
-
     joins =
       ast
       |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"])

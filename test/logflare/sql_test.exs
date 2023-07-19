@@ -449,6 +449,11 @@ defmodule Logflare.SqlTest do
       assert translated =~ ~s("c.d.e")
     end
 
-    test "countif into count-filter"
+    test "countif into count-filter" do
+      bq_query = "select countif(test = 1) from my_table"
+      pg_query = ~s|select count(*) filter (where body -> 'test' = 1) from "my_table"|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
   end
 end
