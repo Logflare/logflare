@@ -663,9 +663,9 @@ defmodule Logflare.Sql do
 
     for ast <- stmts do
       ast
+      |> bq_to_pg_convert_functions()
       |> bq_to_pg_quote_style()
       |> bq_to_pg_field_references()
-      |> bq_to_pg_convert_functions()
     end
     |> Parser.to_string()
   end
@@ -690,7 +690,48 @@ defmodule Logflare.Sql do
                "special" => false
              }
            },
-           "filter" => filter
+           "filter" => bq_to_pg_convert_functions(filter)
+         }}
+
+      "timestamp_sub" ->
+        to_sub = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        interval = get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Interval"])
+        interval_type = interval["leading_field"]
+        interval_value_str = get_in(interval, ["value", "Value", "Number", Access.at(0)])
+        pg_interval = String.downcase("#{interval_value_str} #{interval_type}")
+
+        {"BinaryOp",
+         %{
+           "left" => bq_to_pg_convert_functions(to_sub),
+           "op" => "Minus",
+           "right" => %{
+             "Interval" => %{
+               "fractional_seconds_precision" => nil,
+               "last_field" => nil,
+               "leading_field" => nil,
+               "leading_precision" => nil,
+               "value" => %{"Value" => %{"SingleQuotedString" => pg_interval}}
+             }
+           }
+         }}
+
+      "timestamp_trunc" ->
+        to_trunc = get_in(v, ["args", Access.at(0)])
+
+        interval_type =
+          get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Identifier", "value"])
+          |> String.downcase()
+
+        {k,
+         %{
+           v
+           | "args" => [
+               %{
+                 "Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}}
+               },
+               bq_to_pg_convert_functions(to_trunc)
+             ],
+             "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
          }}
 
       _ ->

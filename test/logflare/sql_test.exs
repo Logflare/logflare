@@ -462,5 +462,19 @@ defmodule Logflare.SqlTest do
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
+
+    test "timestamp_sub" do
+      bq_query = "select timestamp_sub(current_timestamp(), interval 1 day) as t"
+      pg_query = ~s|select current_timestamp - interval '1 day' as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "timestamp_trunc" do
+      bq_query = "select timestamp_trunc(current_timestamp(), day) as t"
+      pg_query = ~s|select date_trunc('day', current_timestamp) as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
   end
 end
