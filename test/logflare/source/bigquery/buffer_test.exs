@@ -43,7 +43,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     BigQuery.BufferCounter.push(le)
 
-    BigQuery.BufferCounter.ack(source.token, :"some-uuid")
+    BigQuery.BufferCounter.ack(source.token, "some-uuid")
 
     assert 0 = BigQuery.BufferCounter.get_count(source)
   end
