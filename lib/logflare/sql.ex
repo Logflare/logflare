@@ -38,29 +38,8 @@ defmodule Logflare.Sql do
   end
 
   def transform(:pg_sql, query, user) do
-    # {:ok, [input]} = Parser.parse("postgres", input)
-
-    # sources = Sources.list_sources_by_user(user)
-    # source_mapping = source_mapping(sources)
-
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
-
-    # from =
-    #   input
-    #   |> get_in(["Query", "body", "Select", "from"])
-    #   |> Enum.map(fn from ->
-    #     {_, updated} =
-    #       get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-    #         table_name = source_mapping |> Map.get(source) |> PgRepo.table_name()
-    #         {value, [%{"quote_style" => nil, "value" => table_name}]}
-    #       end)
-
-    #     updated
-    #   end)
-
-    # input = put_in(input, ["Query", "body", "Select", "from"], from)
-    # Parser.to_string(input)
     with {:ok, statements} <- Parser.parse("bigquery", query) do
       statements
       |> do_transform(%{
