@@ -476,5 +476,15 @@ defmodule Logflare.SqlTest do
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
+    test "CTE keys are not converted to json query"
+    test "multiple from references in CTE"
+    test "order by json query"
+    test "parameters are translated"
+    test "cte select is translated"
+    test "REGEXP_CONTAINS is translated"
+
+    # functions metrics
+    # test "APPROX_QUANTILES is translated"
+    # tes "offset() and indexing is translated"
   end
 end
