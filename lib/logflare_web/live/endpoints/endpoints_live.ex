@@ -30,7 +30,6 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def mount(%{}, %{"user_id" => user_id}, socket) do
-    endpoints = Endpoints.list_endpoints_by(user_id: user_id)
     user = Users.get(user_id)
 
     allow_access =
@@ -41,9 +40,10 @@ defmodule LogflareWeb.EndpointsLive do
 
     {:ok,
      socket
-     |> assign(:endpoints, endpoints)
      |> assign(:user_id, user_id)
      |> assign(:user, user)
+     #  must be below user_id assign
+     |> refresh_endpoints()
      |> assign(:query_result_rows, nil)
      |> assign(:show_endpoint, nil)
      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
@@ -125,15 +125,14 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "delete-endpoint",
         %{"endpoint_id" => id},
-        %{assigns: assigns} = socket
+        %{assigns: _assigns} = socket
       ) do
     endpoint = Endpoints.get_endpoint_query(id)
     {:ok, _} = Endpoints.delete_query(endpoint)
-    endpoints = Endpoints.list_endpoints_by(user_id: assigns.user_id)
 
     {:noreply,
      socket
-     |> assign(:endpoints, endpoints)
+     |> refresh_endpoints()
      |> assign(:show_endpoint, nil)
      |> put_flash(
        :info,
@@ -209,5 +208,13 @@ defmodule LogflareWeb.EndpointsLive do
       )
     )
     |> assign(:declared_params, parameters)
+  end
+
+  defp refresh_endpoints(%{assigns: assigns} = socket) do
+    endpoints =
+      Endpoints.list_endpoints_by(user_id: assigns.user_id)
+      |> Endpoints.calculate_endpoint_metrics()
+
+    assign(socket, :endpoints, endpoints)
   end
 end

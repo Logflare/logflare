@@ -325,4 +325,23 @@ defmodule Logflare.Endpoints do
         message
     end
   end
+
+  @doc """
+  Calculates and sets the `:metrics` key with `Query.Metrics`, which contains info and stats relating to the endpoint
+  """
+  @spec calculate_endpoint_metrics(Query.t() | [Query.t()]) :: Query.t() | [Query.t()]
+  def calculate_endpoint_metrics(endpoints) when is_list(endpoints) do
+    for endpoint <- endpoints, do: calculate_endpoint_metrics(endpoint)
+  end
+
+  def calculate_endpoint_metrics(%Query{} = endpoint) do
+    cache_count = endpoint |> Resolver.resolve() |> length()
+
+    %{
+      endpoint
+      | metrics: %Query.Metrics{
+          cache_count: cache_count
+        }
+    }
+  end
 end

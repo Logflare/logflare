@@ -249,4 +249,33 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
     end
   end
+
+  test "endpoint metrics - cache count" do
+    user = insert(:user)
+    endpoint = insert(:endpoint, user: user)
+    assert endpoint.metrics == nil
+
+    assert %_{
+             metrics: %Query.Metrics{
+               cache_count: 0
+             }
+           } = Endpoints.calculate_endpoint_metrics(endpoint)
+
+    _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+
+    assert %_{
+             metrics: %Query.Metrics{
+               cache_count: 1
+             }
+           } = Endpoints.calculate_endpoint_metrics(endpoint)
+
+    # accepts lists
+    assert [
+             %_{
+               metrics: %Query.Metrics{
+                 cache_count: 1
+               }
+             }
+           ] = Endpoints.calculate_endpoint_metrics([endpoint])
+  end
 end
