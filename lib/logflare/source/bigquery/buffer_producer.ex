@@ -5,7 +5,6 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   require Logger
 
   alias Logflare.Source.BigQuery.BufferCounter
-  alias Logflare.LogEvent, as: LE
 
   @impl true
   def init(%{source_id: source_id}) when is_atom(source_id) do
