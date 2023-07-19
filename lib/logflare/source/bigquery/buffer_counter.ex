@@ -87,8 +87,14 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   """
 
   @spec ack(atom(), UUID) :: {:ok, map()}
-  def ack(source_id, _log_event_id) do
+  def ack(source_id, log_event_id) when is_binary(log_event_id) do
     GenServer.call(name(source_id), {:ack, 1})
+  end
+
+  @spec ack(atom(), [%Broadway.Message{}]) :: {:ok, map()}
+  def ack(source_id, log_events) when is_list(log_events) do
+    count = Enum.count(log_events)
+    GenServer.call(name(source_id), {:ack, count})
   end
 
   @doc """
