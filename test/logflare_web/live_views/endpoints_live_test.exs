@@ -138,7 +138,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
              |> render_submit(%{
                endpoint: %{
                  name: "new-endpoint",
-                 query: "select @my_param as valid"
+                 query: "select @my_param as valid",
+                 language: "bq_sql"
                }
              }) =~ "select @my_param as valid"
 

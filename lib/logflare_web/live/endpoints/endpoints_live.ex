@@ -106,7 +106,7 @@ defmodule LogflareWeb.EndpointsLive do
       {:noreply,
        socket
        |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-       |> push_patch(to: Routes.endpoints_path(socket, :show, endpoint))
+       |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
        |> assign(:show_endpoint, endpoint)}
     else
       {:error, %Ecto.Changeset{} = changeset} ->
