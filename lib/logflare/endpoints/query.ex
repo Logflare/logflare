@@ -23,7 +23,7 @@ defmodule Logflare.Endpoints.Query do
     field(:token, Ecto.UUID, autogenerate: true)
     field(:name, :string)
     field(:query, :string)
-    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql])
+    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
     field(:source_mapping, :map)
     field(:sandboxable, :boolean)
     field(:cache_duration_seconds, :integer, default: 3_600)
@@ -31,7 +31,7 @@ defmodule Logflare.Endpoints.Query do
     field(:max_limit, :integer, default: 1_000)
     field(:enable_auth, :boolean, default: true)
 
-    field :metrics, :map, virtual: true
+    field(:metrics, :map, virtual: true)
 
     belongs_to(:user, Logflare.User)
     has_many(:sandboxed_queries, Query, foreign_key: :sandbox_query_id)
@@ -45,7 +45,7 @@ defmodule Logflare.Endpoints.Query do
     use TypedEctoSchema
 
     embedded_schema do
-      field :cache_count, :integer
+      field(:cache_count, :integer)
     end
   end
 

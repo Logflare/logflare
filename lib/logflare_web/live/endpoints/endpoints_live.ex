@@ -1,16 +1,18 @@
 defmodule LogflareWeb.EndpointsLive do
   @moduledoc false
   use LogflareWeb, :live_view
+  use Phoenix.Component
+
   require Logger
+
   alias Logflare.Endpoints
   alias Logflare.Users
   alias LogflareWeb.Utils
-  use Phoenix.Component
-  embed_templates "actions/*", suffix: "_action"
-  embed_templates "components/*"
+
+  embed_templates("actions/*", suffix: "_action")
+  embed_templates("components/*")
 
   def render(%{allow_access: false} = assigns), do: closed_beta_action(assigns)
-
   def render(%{live_action: :index} = assigns), do: index_action(assigns)
   def render(%{live_action: :show, show_endpoint: nil} = assigns), do: not_found_action(assigns)
   def render(%{live_action: :show} = assigns), do: show_action(assigns)
@@ -32,27 +34,25 @@ defmodule LogflareWeb.EndpointsLive do
   def mount(%{}, %{"user_id" => user_id}, socket) do
     user = Users.get(user_id)
 
-    allow_access =
-      Enum.any?([
-        Utils.flag("endpointsOpenBeta"),
-        user.endpoints_beta
-      ])
+    allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
-    {:ok,
-     socket
-     |> assign(:user_id, user_id)
-     |> assign(:user, user)
-     #  must be below user_id assign
-     |> refresh_endpoints()
-     |> assign(:query_result_rows, nil)
-     |> assign(:show_endpoint, nil)
-     |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
-     |> assign(:allow_access, allow_access)
-     |> assign(:base_url, LogflareWeb.Endpoint.url())
-     |> assign(:parse_error_message, nil)
-     |> assign(:query_string, nil)
-     |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
-     |> assign(:declared_params, [])}
+    socket =
+      socket
+      |> assign(:user_id, user_id)
+      |> assign(:user, user)
+      #  must be below user_id assign
+      |> refresh_endpoints()
+      |> assign(:query_result_rows, nil)
+      |> assign(:show_endpoint, nil)
+      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
+      |> assign(:allow_access, allow_access)
+      |> assign(:base_url, LogflareWeb.Endpoint.url())
+      |> assign(:parse_error_message, nil)
+      |> assign(:query_string, nil)
+      |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
+      |> assign(:declared_params, %{})
+
+    {:ok, socket}
   end
 
   def handle_params(params, _uri, socket) do
@@ -71,7 +71,7 @@ defmodule LogflareWeb.EndpointsLive do
           {:ok, %{parameters: parameters}} = Endpoints.parse_query_string(endpoint.query)
 
           socket
-          |> update_params_form(parameters, endpoint.query)
+          |> assign_updated_params_form(parameters, endpoint.query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
 
@@ -93,14 +93,7 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     Logger.debug("Saving endpoint", params: params)
 
-    with {:ok, endpoint} <-
-           (case show_endpoint do
-              nil ->
-                Endpoints.create_query(user, params)
-
-              %_{} ->
-                Endpoints.update_query(show_endpoint, params)
-            end) do
+    with {:ok, endpoint} <- upsert_query(show_endpoint, user, params) do
       verb = if(show_endpoint, do: "updated", else: "created")
 
       {:noreply,
@@ -111,14 +104,14 @@ defmodule LogflareWeb.EndpointsLive do
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")
+        message = "Could not #{verb} endpoint. Please fix the errors before trying again."
 
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "Could not #{verb} endpoint. Please fix the errors before trying again."
-         )
-         |> assign(:endpoint_changeset, changeset)}
+        socket =
+          socket
+          |> put_flash(:info, message)
+          |> assign(:endpoint_changeset, changeset)
+
+        {:noreply, socket}
     end
   end
 
@@ -134,10 +127,7 @@ defmodule LogflareWeb.EndpointsLive do
      socket
      |> refresh_endpoints()
      |> assign(:show_endpoint, nil)
-     |> put_flash(
-       :info,
-       "#{endpoint.name} has been deleted"
-     )
+     |> put_flash(:info, "#{endpoint.name} has been deleted")
      |> push_patch(to: "/endpoints")}
   end
 
@@ -159,29 +149,27 @@ defmodule LogflareWeb.EndpointsLive do
       {:error, err} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
-         |> assign(:query_result_rows, nil)}
+         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")}
     end
   end
 
   def handle_event(
         "parse-query",
-        %{
-          "endpoint" => %{"query" => query_string}
-        },
+        %{"endpoint" => %{"query" => query_string}},
         socket
       ) do
     socket =
       case Endpoints.parse_query_string(query_string) do
         {:ok, %{parameters: params_list}} ->
           socket
-          |> assign(:query_string, query_string)
-          |> assign(:declared_params, params_list)
           |> assign(:parse_error_message, nil)
+          |> assign_updated_params_form(params_list, query_string)
 
         {:error, err} ->
+          error = if(is_binary(err), do: err, else: inspect(err))
+
           socket
-          |> assign(:parse_error_message, if(is_binary(err), do: err, else: inspect(err)))
+          |> assign(:parse_error_message, error)
       end
 
     {:noreply, socket}
@@ -190,24 +178,18 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
     Logger.debug("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Successfully applied for the Endpoints beta. We'll be in touch!")}
+    message = "Successfully applied for the Endpoints beta. We'll be in touch!"
+    {:noreply, put_flash(socket, :info, message)}
   end
 
-  defp update_params_form(socket, parameters, query_string) do
+  defp assign_updated_params_form(socket, parameters, query_string) do
+    params = for(k <- parameters, do: {k, nil}, into: %{})
+    form = to_form(%{"query" => query_string, "params" => params}, as: "run")
+
     socket
-    |> assign(
-      :params_form,
-      to_form(
-        %{
-          "query" => query_string,
-          "params" => for(k <- parameters, do: {k, nil}, into: %{})
-        },
-        as: "run"
-      )
-    )
+    |> assign(:query_string, query_string)
     |> assign(:declared_params, parameters)
+    |> assign(:params_form, form)
   end
 
   defp refresh_endpoints(%{assigns: assigns} = socket) do
@@ -216,5 +198,12 @@ defmodule LogflareWeb.EndpointsLive do
       |> Endpoints.calculate_endpoint_metrics()
 
     assign(socket, :endpoints, endpoints)
+  end
+
+  defp upsert_query(show_endpoint, user, params) do
+    case show_endpoint do
+      nil -> Endpoints.create_query(user, params)
+      %_{} -> Endpoints.update_query(show_endpoint, params)
+    end
   end
 end
