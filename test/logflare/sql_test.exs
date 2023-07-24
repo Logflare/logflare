@@ -476,7 +476,18 @@ defmodule Logflare.SqlTest do
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
-    test "CTE keys are not converted to json query"
+
+    test "CTE aliases are not converted to json query" do
+      bq_query =
+        "with test as (select id, metadata from mytable) select id, metadata.request from test"
+
+      pg_query =
+        ~s|with test as (select body -> 'id' as id, body -> 'metadata' as metadata from mytable) select id as id, metadata -> 'request' as request from "test"|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     test "multiple from references in CTE"
     test "order by json query"
     test "parameters are translated"

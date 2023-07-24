@@ -776,8 +776,37 @@ defmodule Logflare.Sql do
 
     alias_path_mappings = get_bq_alias_path_mappings(ast)
 
+    # create mapping of cte tables to field aliases
+    cte_table_names = extract_cte_alises([ast])
+    cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
+
+    cte_aliases =
+      for table <- cte_table_names, into: %{} do
+        tree =
+          Enum.find(cte_tables_tree, fn tree ->
+            get_in(tree, ["alias", "name", "value"]) == table
+          end)
+
+        fields =
+          if tree != nil do
+            for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
+                {expr, identifier} <- field,
+                expr in ["UnnamedExpr", "ExprWithAlias"] do
+              get_identifier_alias(identifier)
+            end
+          else
+            []
+          end
+
+        {table, fields}
+      end
+
     ast
-    |> traverse_convert_identifiers(alias_path_mappings)
+    |> traverse_convert_identifiers(%{
+      alias_path_mappings: alias_path_mappings,
+      cte_aliases: cte_aliases,
+      in_cte_tables_tree: false
+    })
     |> then(fn
       ast when joins != [] ->
         put_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"], cleaned_joins)
@@ -787,25 +816,46 @@ defmodule Logflare.Sql do
     end)
   end
 
+  defp convert_keys_to_json_query(identifiers, alias_path_mapping, base \\ "body")
+
+  defp convert_keys_to_json_query(
+         %{"CompoundIdentifier" => [%{"value" => key}]},
+         _alias_path_mappings,
+         base
+       ) do
+    %{
+      "JsonAccess" => %{
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+        "operator" => "Arrow",
+        "right" => %{"Value" => %{"SingleQuotedString" => key}}
+      }
+    }
+  end
+
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]} = i,
-         alias_path_mappings
+         alias_path_mappings,
+         base
        ) do
     path = "{#{alias_path_mappings[join_alias]},#{key}}"
 
     %{
       "JsonAccess" => %{
-        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => "body"}},
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
         "operator" => "HashArrow",
         "right" => %{"Value" => %{"SingleQuotedString" => path}}
       }
     }
   end
 
-  defp convert_keys_to_json_query(%{"Identifier" => %{"value" => name}} = i, _alias_path_mappings) do
+  defp convert_keys_to_json_query(
+         %{"Identifier" => %{"value" => name}} = i,
+         _alias_path_mappings,
+         base
+       ) do
     %{
       "JsonAccess" => %{
-        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => "body"}},
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
         "operator" => "Arrow",
         "right" => %{"Value" => %{"SingleQuotedString" => name}}
       }
@@ -854,36 +904,72 @@ defmodule Logflare.Sql do
     end)
   end
 
+  defp traverse_convert_identifiers({"cte_tables" = k, v}, data),
+    do: {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
+
   # auto set the column alias if not set
   defp traverse_convert_identifiers(
-         {"UnnamedExpr", identifier},
-         alias_path_mappings
+         {"UnnamedExpr" = k, identifier},
+         %{alias_path_mappings: alias_path_mappings} = data
        )
        when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
     {"ExprWithAlias",
      %{
        "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
-       "expr" => convert_keys_to_json_query(identifier, alias_path_mappings)
+       "expr" => traverse_convert_identifiers(identifier, data)
      }}
   end
 
-  defp traverse_convert_identifiers({k, v}, alias_path_mappings)
-       when k in ["CompoundIdentifier", "Identifier"] do
-    convert_keys_to_json_query(%{k => v}, alias_path_mappings)
+  # identifiers outeside of cte
+  defp traverse_convert_identifiers(
+         {"CompoundIdentifier" = k, v},
+         %{in_cte_tables_tree: false} = data
+       ) do
+    # only convert if not a compound identifier
+    {base, fields} =
+      case v do
+        [base | fields] ->
+          {base["value"], fields}
+      end
+
+    # if compound identifier, use different base field
+    convert_keys_to_json_query(%{k => fields}, data.alias_path_mappings, base)
     |> Map.to_list()
     |> List.first()
   end
 
-  defp traverse_convert_identifiers({k, v}, alias_path_mappings) when is_list(v) or is_map(v) do
-    {k, traverse_convert_identifiers(v, alias_path_mappings)}
+  # if in cte, identifiers should be left as is if it is referencing a cte table
+  defp traverse_convert_identifiers(
+         {"Identifier" = k, %{"value" => field_alias} = v},
+         %{in_cte_tables_tree: false, cte_aliases: aliases} = data
+       ) do
+    allowed_aliases = aliases |> Map.values() |> List.flatten()
+
+    if field_alias in allowed_aliases do
+      {k, v}
+    else
+      convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
+      |> Map.to_list()
+      |> List.first()
+    end
   end
 
-  defp traverse_convert_identifiers(kv, alias_path_mappings) when is_list(kv) do
-    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, alias_path_mappings) end)
+  defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
+    convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
+    |> Map.to_list()
+    |> List.first()
   end
 
-  defp traverse_convert_identifiers(kv, alias_path_mappings) when is_map(kv) do
-    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, alias_path_mappings) end) |> Map.new()
+  defp traverse_convert_identifiers({k, v}, data) when is_list(v) or is_map(v) do
+    {k, traverse_convert_identifiers(v, data)}
+  end
+
+  defp traverse_convert_identifiers(kv, data) when is_list(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, data) end)
+  end
+
+  defp traverse_convert_identifiers(kv, data) when is_map(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, data) end) |> Map.new()
   end
 
   defp traverse_convert_identifiers(kv, _data), do: kv
