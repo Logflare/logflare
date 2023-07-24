@@ -490,8 +490,18 @@ defmodule Logflare.SqlTest do
 
     test "multiple from references in CTE"
     test "order by json query"
-    test "parameters are translated"
-    test "cte select is translated"
+
+    test "parameters are translated" do
+      bq_query = ~s|select @test as arg1, @another as arg2|
+      pg_query = ~s|select $1 as arg1, $2 as arg2|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      # determines sequence of parameters
+      assert {:ok, %{1 => "test", 2 => "another"}} = Sql.parameter_positions(bq_query)
+    end
+
+    test "cte WHERE identifiers are translated correctly"
 
     test "REGEXP_CONTAINS is translated" do
       bq_query = ~s|select regexp_contains("string", "str") as has_substring|

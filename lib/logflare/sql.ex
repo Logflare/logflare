@@ -656,6 +656,24 @@ defmodule Logflare.Sql do
     end
   end
 
+  def parameter_positions(string) when is_binary(string) do
+    {:ok, parameters} = parameters(string)
+    {:ok, do_parameter_positions_mapping(string, parameters)}
+  end
+
+  def do_parameter_positions_mapping(_string, []), do: %{}
+
+  def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
+    str = Enum.join(params, "|")
+    regexp = Regex.compile!("@(#{str})")
+
+    Regex.scan(regexp, string)
+    |> Enum.with_index(1)
+    |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
+      Map.put(acc, index, param)
+    end)
+  end
+
   def translate(:bq_sql, :pg_sql, query) when is_binary(query) do
     {:ok, stmts} = Parser.parse("bigquery", query)
 
@@ -665,7 +683,30 @@ defmodule Logflare.Sql do
       |> bq_to_pg_quote_style()
       |> bq_to_pg_field_references()
     end
-    |> Parser.to_string()
+    |> then(fn ast ->
+      params = extract_all_parameters(ast)
+
+      {:ok, query_string} =
+        ast
+        |> Parser.to_string()
+
+      converted =
+        query_string
+        |> bq_to_pg_convert_parameters(params)
+
+      {:ok, converted}
+    end)
+  end
+
+  # use regexp to convert the string to
+  defp bq_to_pg_convert_parameters(string, []), do: string
+
+  defp bq_to_pg_convert_parameters(string, params) do
+    mapping = do_parameter_positions_mapping(string, params)
+
+    Enum.reduce(mapping, string, fn {index, param}, acc ->
+      Regex.replace(~r/@#{param}/, acc, "$#{index}")
+    end)
   end
 
   # traverse ast to convert all functions
