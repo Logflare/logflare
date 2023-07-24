@@ -8,7 +8,6 @@ defmodule Logflare.Sql do
   alias Logflare.User
   alias Logflare.SingleTenant
   alias Logflare.Sql.Parser
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   @doc """
@@ -332,18 +331,17 @@ defmodule Logflare.Sql do
 
     new_name_list =
       for %{"value" => value, "quote_style" => quote_style} = name_map <- names do
-        name_value =
-          if value in data.source_names do
-            Map.merge(
-              name_map,
-              %{
-                "quote_style" => quote_style || dialect_quote_style,
-                "value" => transform_name(value, data)
-              }
-            )
-          else
-            name_map
-          end
+        if value in data.source_names do
+          Map.merge(
+            name_map,
+            %{
+              "quote_style" => quote_style || dialect_quote_style,
+              "value" => transform_name(value, data)
+            }
+          )
+        else
+          name_map
+        end
       end
 
     {k, %{v | "name" => new_name_list}}
@@ -844,7 +842,7 @@ defmodule Logflare.Sql do
   end
 
   defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]} = i,
+         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
          alias_path_mappings,
          base
        ) do
@@ -860,7 +858,7 @@ defmodule Logflare.Sql do
   end
 
   defp convert_keys_to_json_query(
-         %{"Identifier" => %{"value" => name}} = i,
+         %{"Identifier" => %{"value" => name}},
          _alias_path_mappings,
          base
        ) do
@@ -902,7 +900,7 @@ defmodule Logflare.Sql do
             "alias" => %{"name" => %{"value" => alias_name}}
           }
         }
-      } = join,
+      },
       acc ->
         arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
 
@@ -919,10 +917,7 @@ defmodule Logflare.Sql do
     do: {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
 
   # auto set the column alias if not set
-  defp traverse_convert_identifiers(
-         {"UnnamedExpr" = k, identifier},
-         %{alias_path_mappings: alias_path_mappings} = data
-       )
+  defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
        when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
     {"ExprWithAlias",
      %{
@@ -934,8 +929,9 @@ defmodule Logflare.Sql do
   # identifiers outeside of cte
   defp traverse_convert_identifiers(
          {"CompoundIdentifier" = k, v},
-         %{in_cte_tables_tree: false} = data
-       ) do
+         %{cte_aliases: cte_aliases, in_cte_tables_tree: false} = data
+       )
+       when cte_aliases != %{} do
     # only convert if not a compound identifier
     {base, fields} =
       case v do
@@ -949,12 +945,13 @@ defmodule Logflare.Sql do
     |> List.first()
   end
 
-  # if in cte, identifiers should be left as is if it is referencing a cte table
+  # if not cte, identifiers should be left as is if it is referencing a cte table
   defp traverse_convert_identifiers(
          {"Identifier" = k, %{"value" => field_alias} = v},
-         %{in_cte_tables_tree: false, cte_aliases: aliases} = data
-       ) do
-    allowed_aliases = aliases |> Map.values() |> List.flatten()
+         %{in_cte_tables_tree: false, cte_aliases: cte_aliases} = data
+       )
+       when cte_aliases != %{} do
+    allowed_aliases = cte_aliases |> Map.values() |> List.flatten()
 
     if field_alias in allowed_aliases do
       {k, v}
@@ -965,7 +962,8 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
+  defp traverse_convert_identifiers({k, v}, data)
+       when k in ["Identifier", "CompoundIdentifier"] do
     convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
     |> Map.to_list()
     |> List.first()
