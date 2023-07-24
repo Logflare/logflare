@@ -271,6 +271,14 @@ defmodule Logflare.SingleTenant do
     }
   end
 
+  @doc """
+  Returns true if postgres backend is enabled for single tenant
+  """
+  @spec postgres_backend? :: boolean()
+  def postgres_backend?() do
+    single_tenant?() && Application.get_env(:logflare, :postgres_backend_adapter) != nil
+  end
+
   def supabase_mode_source_schemas_updated? do
     user = get_default_user()
 

@@ -192,7 +192,10 @@ defmodule Logflare.Application do
       # buffer time for all sources to init and create tables
       # in case of latency.
       :timer.sleep(3_000)
-      SingleTenant.update_supabase_source_schemas()
+
+      unless SingleTenant.postgres_backend?() do
+        SingleTenant.update_supabase_source_schemas()
+      end
     end
   end
 end
