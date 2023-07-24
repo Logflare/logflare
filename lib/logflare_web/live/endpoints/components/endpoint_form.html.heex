@@ -46,7 +46,8 @@
           placeholder: "select timestamp, event_message from `YourApp.SourceName`",
           class: "form-control form-control-margin",
           "phx-change": "parse-query",
-          id: "endpoint-query"
+          id: "endpoint-query",
+          value: Map.get(@params_form.params, "query")
         ) %>
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
