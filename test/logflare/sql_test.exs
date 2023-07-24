@@ -492,7 +492,15 @@ defmodule Logflare.SqlTest do
     test "order by json query"
     test "parameters are translated"
     test "cte select is translated"
-    test "REGEXP_CONTAINS is translated"
+
+    test "REGEXP_CONTAINS is translated" do
+      bq_query = ~s|select regexp_contains("string", "str") as has_substring|
+
+      pg_query = ~s|select 'string' ~ 'str' as has_substring|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
 
     # functions metrics
     # test "APPROX_QUANTILES is translated"

@@ -676,6 +676,17 @@ defmodule Logflare.Sql do
     function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
 
     case function_name do
+      "regexp_contains" ->
+        string =
+          get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+
+        pattern =
+          get_in(v, ["args", Access.at(1), "Unnamed", "Expr"])
+          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+
+        {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
+
       "countif" ->
         filter = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
 
