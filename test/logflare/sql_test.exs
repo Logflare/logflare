@@ -502,7 +502,6 @@ defmodule Logflare.SqlTest do
       assert {:ok, %{1 => "test", 2 => "another"}} = Sql.parameter_positions(bq_query)
     end
 
-
     test "REGEXP_CONTAINS is translated" do
       bq_query = ~s|select regexp_contains("string", "str") as has_substring|
 
