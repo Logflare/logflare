@@ -197,7 +197,7 @@ defmodule Logflare.SingleTenantTest do
                seed_plan: :ok,
                seed_sources: :ok,
                seed_endpoints: nil,
-               source_schemas_updated: nil
+               source_schemas_updated: :ok
              } = SingleTenant.supabase_mode_status()
 
       stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
