@@ -451,7 +451,7 @@ defmodule Logflare.SqlTest do
 
     test "countif into count-filter" do
       bq_query = "select countif(test = 1) from my_table"
-      pg_query = ~s|select count(*) filter (where body -> 'test' = 1) from "my_table"|
+      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from "my_table"|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
@@ -482,13 +482,40 @@ defmodule Logflare.SqlTest do
         "with test as (select id, metadata from mytable) select id, metadata.request from test"
 
       pg_query =
-        ~s|with test as (select body -> 'id' as id, body -> 'metadata' as metadata from mytable) select id as id, metadata -> 'request' as request from "test"|
+        ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from "test"|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    # test "multiple from references in CTE"
+    test "CTE alias fields do not get converted to json query if referenced" do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+      ),
+      b as (
+        select 'btest' as other from a, my_table t
+        where a.col = t.my_col
+      )
+      select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+      ),
+      b as (
+        select 'btest' as other from a, my_table t
+        where a.col = (t.body -> 'my_col')
+      )
+      select a.col as col from "a"
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "field references within a cast() are converted to ->>e syntax for string casting"
     # test "order by json query"
     # test "cte WHERE identifiers are translated correctly"
 
