@@ -188,12 +188,13 @@ defmodule Logflare.Application do
     if SingleTenant.supabase_mode?() do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
-      SingleTenant.ensure_supabase_sources_started()
-      # buffer time for all sources to init and create tables
-      # in case of latency.
-      :timer.sleep(3_000)
 
       unless SingleTenant.postgres_backend?() do
+        SingleTenant.ensure_supabase_sources_started()
+        # buffer time for all sources to init and create tables
+        # in case of latency.
+        :timer.sleep(3_000)
+
         SingleTenant.update_supabase_source_schemas()
       end
     end
