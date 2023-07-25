@@ -265,7 +265,12 @@ defmodule Logflare.SingleTenant do
         if Endpoints.list_endpoints_by(user_id: default_user.id) |> length() > 0, do: :ok
       end
 
-    source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
+    source_schemas_updated =
+      cond do
+        postgres_backend?() -> :ok
+        supabase_mode_source_schemas_updated?() -> :ok
+        true -> nil
+      end
 
     %{
       seed_user: seed_user,
