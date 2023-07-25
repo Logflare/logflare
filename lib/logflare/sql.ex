@@ -8,7 +8,7 @@ defmodule Logflare.Sql do
   alias Logflare.User
   alias Logflare.SingleTenant
   alias Logflare.Sql.Parser
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -36,27 +36,21 @@ defmodule Logflare.Sql do
     transform(lang, input, user)
   end
 
-  def transform(:pg_sql, input, user) do
-    {:ok, [input]} = Parser.parse("postgres", input)
-
+  def transform(:pg_sql, query, user) do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    from =
-      input
-      |> get_in(["Query", "body", "Select", "from"])
-      |> Enum.map(fn from ->
-        {_, updated} =
-          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-            table_name = source_mapping |> Map.get(source) |> PgRepo.table_name()
-            {value, [%{"quote_style" => nil, "value" => table_name}]}
-          end)
-
-        updated
-      end)
-
-    input = put_in(input, ["Query", "body", "Select", "from"], from)
-    Parser.to_string(input)
+    with {:ok, statements} <- Parser.parse("bigquery", query) do
+      statements
+      |> do_transform(%{
+        sources: sources,
+        source_mapping: source_mapping,
+        source_names: Map.keys(source_mapping),
+        dialect: "postgres",
+        ast: statements
+      })
+      |> Parser.to_string()
+    end
   end
 
   # default to bq_sql
@@ -329,19 +323,25 @@ defmodule Logflare.Sql do
   end
 
   defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
+    dialect_quote_style =
+      case data.dialect do
+        "postgres" -> "\""
+        "bigquery" -> "`"
+      end
+
     new_name_list =
-      for name_map <- names do
-        name_value = Map.get(name_map, "value")
-
-        to_merge =
-          if name_value in data.source_names do
-            %{"value" => transform_name(name_value, data), "quote_style" => "`"}
-          else
-            quote_style = Map.get(name_map, "quote_style")
-            %{"value" => name_value, "quote_style" => quote_style}
-          end
-
-        Map.merge(name_map, to_merge)
+      for %{"value" => value, "quote_style" => quote_style} = name_map <- names do
+        if value in data.source_names do
+          Map.merge(
+            name_map,
+            %{
+              "quote_style" => quote_style || dialect_quote_style,
+              "value" => transform_name(value, data)
+            }
+          )
+        else
+          name_map
+        end
       end
 
     {k, %{v | "name" => new_name_list}}
@@ -414,7 +414,12 @@ defmodule Logflare.Sql do
 
   defp replace_sandboxed_query(kv, _data), do: kv
 
-  defp transform_name(relname, data) do
+  defp transform_name(relname, %{dialect: "postgres"} = data) do
+    source = Enum.find(data.sources, fn s -> s.name == relname end)
+    PostgresAdaptor.table_name(source)
+  end
+
+  defp transform_name(relname, %{dialect: "bigquery"} = data) do
     source = Enum.find(data.sources, fn s -> s.name == relname end)
 
     token =
@@ -650,4 +655,372 @@ defmodule Logflare.Sql do
       {source.name, source}
     end
   end
+
+  def parameter_positions(string) when is_binary(string) do
+    {:ok, parameters} = parameters(string)
+    {:ok, do_parameter_positions_mapping(string, parameters)}
+  end
+
+  def do_parameter_positions_mapping(_string, []), do: %{}
+
+  def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
+    str = Enum.join(params, "|")
+    regexp = Regex.compile!("@(#{str})")
+
+    Regex.scan(regexp, string)
+    |> Enum.with_index(1)
+    |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
+      Map.put(acc, index, param)
+    end)
+  end
+
+  def translate(:bq_sql, :pg_sql, query) when is_binary(query) do
+    {:ok, stmts} = Parser.parse("bigquery", query)
+
+    for ast <- stmts do
+      ast
+      |> bq_to_pg_convert_functions()
+      |> bq_to_pg_quote_style()
+      |> bq_to_pg_field_references()
+    end
+    |> then(fn ast ->
+      params = extract_all_parameters(ast)
+
+      {:ok, query_string} =
+        ast
+        |> Parser.to_string()
+
+      converted =
+        query_string
+        |> bq_to_pg_convert_parameters(params)
+
+      {:ok, converted}
+    end)
+  end
+
+  # use regexp to convert the string to
+  defp bq_to_pg_convert_parameters(string, []), do: string
+
+  defp bq_to_pg_convert_parameters(string, params) do
+    mapping = do_parameter_positions_mapping(string, params)
+
+    Enum.reduce(mapping, string, fn {index, param}, acc ->
+      Regex.replace(~r/@#{param}/, acc, "$#{index}")
+    end)
+  end
+
+  # traverse ast to convert all functions
+  defp bq_to_pg_convert_functions({k, v} = kv)
+       when k in ["Function", "AggregateExpressionWithFilter"] do
+    function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
+
+    case function_name do
+      "regexp_contains" ->
+        string =
+          get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+
+        pattern =
+          get_in(v, ["args", Access.at(1), "Unnamed", "Expr"])
+          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+
+        {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
+
+      "countif" ->
+        filter = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+
+        {"AggregateExpressionWithFilter",
+         %{
+           "expr" => %{
+             "Function" => %{
+               "args" => [%{"Unnamed" => "Wildcard"}],
+               "distinct" => false,
+               "name" => [%{"quote_style" => nil, "value" => "count"}],
+               "over" => nil,
+               "special" => false
+             }
+           },
+           "filter" => bq_to_pg_convert_functions(filter)
+         }}
+
+      "timestamp_sub" ->
+        to_sub = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        interval = get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Interval"])
+        interval_type = interval["leading_field"]
+        interval_value_str = get_in(interval, ["value", "Value", "Number", Access.at(0)])
+        pg_interval = String.downcase("#{interval_value_str} #{interval_type}")
+
+        {"BinaryOp",
+         %{
+           "left" => bq_to_pg_convert_functions(to_sub),
+           "op" => "Minus",
+           "right" => %{
+             "Interval" => %{
+               "fractional_seconds_precision" => nil,
+               "last_field" => nil,
+               "leading_field" => nil,
+               "leading_precision" => nil,
+               "value" => %{"Value" => %{"SingleQuotedString" => pg_interval}}
+             }
+           }
+         }}
+
+      "timestamp_trunc" ->
+        to_trunc = get_in(v, ["args", Access.at(0)])
+
+        interval_type =
+          get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Identifier", "value"])
+          |> String.downcase()
+
+        {k,
+         %{
+           v
+           | "args" => [
+               %{
+                 "Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}}
+               },
+               bq_to_pg_convert_functions(to_trunc)
+             ],
+             "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
+         }}
+
+      _ ->
+        kv
+    end
+  end
+
+  defp bq_to_pg_convert_functions({k, v}) when is_list(v) or is_map(v) do
+    {k, bq_to_pg_convert_functions(v)}
+  end
+
+  defp bq_to_pg_convert_functions(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end)
+  end
+
+  defp bq_to_pg_convert_functions(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end) |> Map.new()
+  end
+
+  defp bq_to_pg_convert_functions(kv), do: kv
+
+  defp bq_to_pg_quote_style(ast) do
+    from =
+      ast
+      |> get_in(["Query", "body", "Select", "from"])
+      |> Enum.map(fn from ->
+        {_, updated} =
+          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
+            {value, [%{"quote_style" => "\"", "value" => source}]}
+          end)
+
+        updated
+      end)
+
+    input = put_in(ast, ["Query", "body", "Select", "from"], from)
+    input
+  end
+
+  defp bq_to_pg_field_references(ast) do
+    joins = get_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
+    cleaned_joins = Enum.filter(joins, fn join -> get_in(join, ["relation", "UNNEST"]) == nil end)
+
+    alias_path_mappings = get_bq_alias_path_mappings(ast)
+
+    # create mapping of cte tables to field aliases
+    cte_table_names = extract_cte_alises([ast])
+    cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
+
+    cte_aliases =
+      for table <- cte_table_names, into: %{} do
+        tree =
+          Enum.find(cte_tables_tree, fn tree ->
+            get_in(tree, ["alias", "name", "value"]) == table
+          end)
+
+        fields =
+          if tree != nil do
+            for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
+                {expr, identifier} <- field,
+                expr in ["UnnamedExpr", "ExprWithAlias"] do
+              get_identifier_alias(identifier)
+            end
+          else
+            []
+          end
+
+        {table, fields}
+      end
+
+    ast
+    |> traverse_convert_identifiers(%{
+      alias_path_mappings: alias_path_mappings,
+      cte_aliases: cte_aliases,
+      in_cte_tables_tree: false
+    })
+    |> then(fn
+      ast when joins != [] ->
+        put_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"], cleaned_joins)
+
+      ast ->
+        ast
+    end)
+  end
+
+  defp convert_keys_to_json_query(identifiers, alias_path_mapping, base \\ "body")
+
+  defp convert_keys_to_json_query(
+         %{"CompoundIdentifier" => [%{"value" => key}]},
+         _alias_path_mappings,
+         base
+       ) do
+    %{
+      "JsonAccess" => %{
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+        "operator" => "Arrow",
+        "right" => %{"Value" => %{"SingleQuotedString" => key}}
+      }
+    }
+  end
+
+  defp convert_keys_to_json_query(
+         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
+         alias_path_mappings,
+         base
+       ) do
+    path = "{#{alias_path_mappings[join_alias]},#{key}}"
+
+    %{
+      "JsonAccess" => %{
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+        "operator" => "HashArrow",
+        "right" => %{"Value" => %{"SingleQuotedString" => path}}
+      }
+    }
+  end
+
+  defp convert_keys_to_json_query(
+         %{"Identifier" => %{"value" => name}},
+         _alias_path_mappings,
+         base
+       ) do
+    %{
+      "JsonAccess" => %{
+        "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+        "operator" => "Arrow",
+        "right" => %{"Value" => %{"SingleQuotedString" => name}}
+      }
+    }
+  end
+
+  defp get_identifier_alias(%{
+         "CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]
+       }) do
+    key
+  end
+
+  defp get_identifier_alias(%{"Identifier" => %{"value" => name}}) do
+    name
+  end
+
+  defp get_bq_alias_path_mappings(ast) do
+    table_map =
+      ast
+      |> get_in(["Query", "body", "Select", "from", Access.at(0), "relation", "Table"])
+
+    table_alias = get_in(table_map, ["alias", "name", "value"])
+
+    joins =
+      ast
+      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
+
+    Enum.reduce(joins, %{}, fn
+      %{
+        "relation" => %{
+          "UNNEST" => %{
+            "array_expr" => %{"CompoundIdentifier" => identifiers},
+            "alias" => %{"name" => %{"value" => alias_name}}
+          }
+        }
+      },
+      acc ->
+        arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
+
+        str_path = Enum.join(arr_path, ",")
+
+        Map.put(acc, alias_name, str_path)
+
+      _join, acc ->
+        acc
+    end)
+  end
+
+  defp traverse_convert_identifiers({"cte_tables" = k, v}, data),
+    do: {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
+
+  # auto set the column alias if not set
+  defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
+       when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
+    {"ExprWithAlias",
+     %{
+       "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
+       "expr" => traverse_convert_identifiers(identifier, data)
+     }}
+  end
+
+  # identifiers outeside of cte
+  defp traverse_convert_identifiers(
+         {"CompoundIdentifier" = k, v},
+         %{cte_aliases: cte_aliases, in_cte_tables_tree: false} = data
+       )
+       when cte_aliases != %{} do
+    # only convert if not a compound identifier
+    {base, fields} =
+      case v do
+        [base | fields] ->
+          {base["value"], fields}
+      end
+
+    # if compound identifier, use different base field
+    convert_keys_to_json_query(%{k => fields}, data.alias_path_mappings, base)
+    |> Map.to_list()
+    |> List.first()
+  end
+
+  # if not cte, identifiers should be left as is if it is referencing a cte table
+  defp traverse_convert_identifiers(
+         {"Identifier" = k, %{"value" => field_alias} = v},
+         %{in_cte_tables_tree: false, cte_aliases: cte_aliases} = data
+       )
+       when cte_aliases != %{} do
+    allowed_aliases = cte_aliases |> Map.values() |> List.flatten()
+
+    if field_alias in allowed_aliases do
+      {k, v}
+    else
+      convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
+      |> Map.to_list()
+      |> List.first()
+    end
+  end
+
+  defp traverse_convert_identifiers({k, v}, data)
+       when k in ["Identifier", "CompoundIdentifier"] do
+    convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
+    |> Map.to_list()
+    |> List.first()
+  end
+
+  defp traverse_convert_identifiers({k, v}, data) when is_list(v) or is_map(v) do
+    {k, traverse_convert_identifiers(v, data)}
+  end
+
+  defp traverse_convert_identifiers(kv, data) when is_list(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, data) end)
+  end
+
+  defp traverse_convert_identifiers(kv, data) when is_map(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, data) end) |> Map.new()
+  end
+
+  defp traverse_convert_identifiers(kv, _data), do: kv
 end
