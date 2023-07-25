@@ -855,7 +855,8 @@ defmodule Logflare.Sql do
     |> traverse_convert_identifiers(%{
       alias_path_mappings: alias_path_mappings,
       cte_aliases: cte_aliases,
-      in_cte_tables_tree: false
+      in_cte_tables_tree: false,
+      in_cast: false
     })
     |> then(fn
       ast when joins != [] ->
@@ -866,11 +867,11 @@ defmodule Logflare.Sql do
     end)
   end
 
-  defp convert_keys_to_json_query(identifiers, alias_path_mapping, base \\ "body")
+  defp convert_keys_to_json_query(identifiers, data, base \\ "body")
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
-         _alias_path_mappings,
+         data,
          [table, field]
        ) do
     %{
@@ -882,7 +883,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" => "Arrow",
+          "operator" => if(data.in_cast, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -891,14 +892,14 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
-         _alias_path_mappings,
+         data,
          base
        ) do
     %{
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => "Arrow",
+          "operator" => if(data.in_cast, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -907,16 +908,16 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
-         alias_path_mappings,
+         data,
          base
        ) do
-    path = "{#{alias_path_mappings[join_alias]},#{key}}"
+    path = "{#{data.alias_path_mappings[join_alias]},#{key}}"
 
     %{
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => "HashArrow",
+          "operator" => if(data.in_cast, do: "HashLongArrow", else: "HashArrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -925,14 +926,14 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"Identifier" => %{"value" => name}},
-         _alias_path_mappings,
+         data,
          base
        ) do
     %{
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => "Arrow",
+          "operator" => if(data.in_cast, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => name}}
         }
       }
@@ -1002,6 +1003,10 @@ defmodule Logflare.Sql do
     {k, traverse_convert_identifiers(v, Map.put(data, :from_table_aliases, aliases))}
   end
 
+  defp traverse_convert_identifiers({"Cast" = k, v}, data) do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_cast, true))}
+  end
+
   # auto set the column alias if not set
   defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
        when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
@@ -1029,7 +1034,7 @@ defmodule Logflare.Sql do
        when from_table_aliases != [] do
     if table_ref in from_table_aliases do
       # convert to [alias].[body] -> field
-      convert_keys_to_json_query(%{k => [field_map]}, data.alias_path_mappings, [
+      convert_keys_to_json_query(%{k => [field_map]}, data, [
         table_ref,
         "body"
       ])
@@ -1055,7 +1060,7 @@ defmodule Logflare.Sql do
       end
 
     # if compound identifier, use different base field
-    convert_keys_to_json_query(%{k => fields}, data.alias_path_mappings, base)
+    convert_keys_to_json_query(%{k => fields}, data, base)
     |> Map.to_list()
     |> List.first()
   end
@@ -1077,7 +1082,7 @@ defmodule Logflare.Sql do
 
   defp traverse_convert_identifiers({k, v}, data)
        when k in ["Identifier", "CompoundIdentifier"] do
-    convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
+    convert_keys_to_json_query(%{k => v}, data)
     |> Map.to_list()
     |> List.first()
   end
@@ -1097,7 +1102,7 @@ defmodule Logflare.Sql do
   defp traverse_convert_identifiers(kv, _data), do: kv
 
   defp do_normal_compount_identifier_convert({k, v}, data) do
-    convert_keys_to_json_query(%{k => v}, data.alias_path_mappings)
+    convert_keys_to_json_query(%{k => v}, data)
     |> Map.to_list()
     |> List.first()
   end
