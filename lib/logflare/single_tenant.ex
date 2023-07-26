@@ -205,14 +205,11 @@ defmodule Logflare.SingleTenant do
   @spec supabase_mode? :: boolean()
   def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode) and single_tenant?()
 
-  @doc "Returns postgres backend adapter url if single tenant and env is set"
-  @spec postgres_backend_adapter_url :: String.t() | nil
-  def postgres_backend_adapter_url() do
+  @doc "Returns postgres backend adapter configurations if single tenant and env is set"
+  @spec postgres_backend_adapter_opts :: Keyword.t() | nil
+  def postgres_backend_adapter_opts() do
     if single_tenant?() do
-      case Application.get_env(:logflare, :postgres_backend_adapter) do
-        nil -> nil
-        opts -> Keyword.get(opts, :url)
-      end
+      Application.get_env(:logflare, :postgres_backend_adapter)
     end
   end
 
@@ -286,7 +283,8 @@ defmodule Logflare.SingleTenant do
   """
   @spec postgres_backend? :: boolean()
   def postgres_backend?() do
-    single_tenant?() && postgres_backend_adapter_url() != nil
+    url = postgres_backend_adapter_opts() |> Keyword.get(:url)
+    single_tenant?() && url != nil
   end
 
   def supabase_mode_source_schemas_updated? do

@@ -19,17 +19,39 @@ defmodule LogflareWeb.SourceBackendsLive do
           phx-submit="save_source_backend"
           class="mt-4"
         >
-          Add <%= select(f, :type, ["", :webhook, :postgres], phx_change: :change_create_form_type) %> backend
+          <p>Add backend</p>
+          <%= select(f, :type, ["", Webhook: :webhook, Postgres: :postgres],
+            phx_change: :change_create_form_type,
+            class: "form-control form-control-margin"
+          ) %>
           <div class="form-group mt-2">
             <%= case @create_form_type do %>
               <% "webhook" -> %>
-                <%= label(f, :url, "URL") %>
-                <%= text_input(f, :url) %>
+                <%= label f, :url do %>
+                  Websocket URL to send the ingested data
+                <% end %>
+
+                <%= text_input(f, :url, class: "form-control form-control-margin") %>
               <% "postgres" -> %>
-                <%= label(f, :url, "URL") %>
-                <%= text_input(f, :url) %>
+                <%= label f, :url do %>
+                  Postgres URL for the ingestion database
+                <% end %>
+
+                <%= text_input(f, :url, class: "form-control form-control-margin") %>
+                <small class="form-text text-muted">
+                  Postgres URL with the following format, for example:
+                  <code>postgresql://user:password@host:port/database</code>
+                </small>
+                <%= label f, :schema do %>
+                  Schema where data should be store, if blank the database defaults will be used
+                <% end %>
+
+                <%= text_input(f, :schema, class: "form-control form-control-margin") %>
+                <small class="form-text text-muted">
+                  Schema name, for example: <code>analytics</code>
+                </small>
               <% _ -> %>
-                <div>Select a backend type</div>
+                <div>Select a Backend Type</div>
             <% end %>
           </div>
           <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">
@@ -53,7 +75,7 @@ defmodule LogflareWeb.SourceBackendsLive do
                 </ul>
               <% :postgres -> %>
                 <ul>
-                  <li>url: <%= sb.config.url %></li>
+                  <li>url: <%= sb.config.url %> - schema: <%= Map.get(sb.config, :schema, "") %></li>
                 </ul>
             <% end %>
           </li>

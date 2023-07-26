@@ -66,7 +66,7 @@ defmodule Logflare.TestUtils do
 
         url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
         previous = Application.get_env(:logflare, :postgres_backend_adapter)
-        Application.put_env(:logflare, :postgres_backend_adapter, url: url)
+        Application.put_env(:logflare, :postgres_backend_adapter, url: url, schema: "_analytics")
         on_exit(fn -> Application.put_env(:logflare, :postgres_backend_adapter, previous) end)
         :ok
       end

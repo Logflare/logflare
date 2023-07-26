@@ -194,9 +194,13 @@ cond do
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
     postgres_backend_url = System.get_env("POSTGRES_BACKEND_URL")
 
-    config :logflare, :postgres_backend_adapter,
-      url: postgres_backend_url,
-      pool_size: 3
+    config :logflare,
+           :postgres_backend_adapter,
+           filter_nil_kv_pairs.(
+             url: postgres_backend_url,
+             schema: System.get_env("DB_SCHEMA"),
+             pool_size: 3
+           )
 
   config_env() != :test ->
     config :goth, json: File.read!("gcloud.json")

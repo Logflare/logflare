@@ -53,9 +53,12 @@ defmodule Logflare.Sources do
       |> Source.update_by_user_changeset(source_params)
       |> Repo.insert()
 
-    cond do
-      url = SingleTenant.postgres_backend_adapter_url() -> create_backend_adaptor(source, url)
-      true -> create_big_query_schema_and_start_source(source)
+    opts = SingleTenant.postgres_backend_adapter_opts()
+
+    if opts && Keyword.get(opts, :url) do
+      create_backend_adaptor(source, opts)
+    else
+      create_big_query_schema_and_start_source(source)
     end
   end
 
@@ -75,8 +78,13 @@ defmodule Logflare.Sources do
 
   defp create_big_query_schema_and_start_source({:error, changeset}), do: {:error, changeset}
 
-  defp create_backend_adaptor({:ok, source}, url) when not is_nil(url) do
-    {:ok, _source_backend} = Backends.create_source_backend(source, :postgres, %{url: url})
+  defp create_backend_adaptor({:ok, source}, opts) do
+    url = Keyword.get(opts, :url)
+    schema = Keyword.get(opts, :schema)
+
+    {:ok, _source_backend} =
+      Backends.create_source_backend(source, :postgres, %{url: url, schema: schema})
+
     {:ok, source}
   end
 

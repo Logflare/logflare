@@ -17,7 +17,7 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
     # create
     assert view
            |> element("button", "Add a backend")
-           |> render_click() =~ "Select a backend type"
+           |> render_click() =~ "Add backend"
 
     assert view
            |> element("form")

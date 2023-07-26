@@ -253,6 +253,6 @@ defmodule Logflare.Source do
   end
 
   defp put_single_tenant_postgres_changes(changeset) do
-    put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_url())
+    put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_opts())
   end
 end
