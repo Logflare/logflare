@@ -92,9 +92,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   def create_log_events_table(source_backend, override_migrations \\ nil) do
     repository_module = get_repo_module(source_backend)
     migrations = if override_migrations, do: override_migrations, else: migrations(source_backend)
+    schema = Map.get(source_backend.config, "schema") || Map.get(source_backend.config, :schema)
 
     prefix =
-      case Map.get(source_backend.config, "schema") do
+      case schema do
         nil ->
           []
 
