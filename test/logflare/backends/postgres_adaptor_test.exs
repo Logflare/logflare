@@ -10,13 +10,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   setup do
     repo = Application.get_env(:logflare, Logflare.Repo)
 
+    url =
+      "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+
     config = %{
-      "url" =>
-        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+      "url" => url,
+      "schema" => "analytics"
     }
 
     source = insert(:source, user: insert(:user))
+
     source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
+
     %{source_backend: source_backend}
   end
 
@@ -36,11 +41,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       pid: pid,
       source_backend: source_backend
     } do
-      log_event =
-        build(:log_event,
-          source: source_backend.source,
-          test: "data"
-        )
+      log_event = build(:log_event, source: source_backend.source, test: "data")
 
       assert :ok = PostgresAdaptor.ingest(pid, [log_event])
 
@@ -48,39 +49,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       :timer.sleep(1_500)
 
       # query by Ecto.Query
-      query =
-        from(l in PostgresAdaptor.table_name(source_backend),
-          select: l.body
-        )
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.body)
 
-      assert {:ok,
-              [
-                %{
-                  "test" => "data"
-                }
-              ]} = PostgresAdaptor.execute_query(source_backend, query)
+      assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(source_backend, query)
 
       # query by string
-      assert {:ok,
-              [
-                %{
-                  "body" => %{
-                    "test" => "data"
-                  }
-                }
-              ]} =
+      assert {:ok, [%{"body" => %{"test" => "data"}}]} =
                PostgresAdaptor.execute_query(
                  source_backend,
                  "select body from #{PostgresAdaptor.table_name(source_backend)}"
                )
 
       # query by string with parameter
-      assert {:ok,
-              [
-                %{
-                  "value" => "data"
-                }
-              ]} =
+      assert {:ok, [%{"value" => "data"}]} =
                PostgresAdaptor.execute_query(
                  source_backend,
                  {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source_backend)}",
@@ -95,9 +76,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     } do
       repo = PostgresAdaptor.create_repo(source_backend)
       assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
+      env = Application.get_env(:logflare, repo)
 
       # module name should use source token
-      assert Atom.to_string(repo) =~ Atom.to_string(source_backend.source.token)
+      expected =
+        source_backend.source.token
+        |> Atom.to_string()
+        |> String.replace("-", "")
+        |> String.to_atom()
+
+      assert Atom.to_string(repo) =~ Atom.to_string(expected)
+
+      assert env[:migration_source] == PostgresAdaptor.migrations_table_name(source_backend)
+
+      assert env[:after_connect] ==
+               {Postgrex, :query!, ["set search_path=#{source_backend.config["schema"]}", []]}
     end
 
     test "create_log_events_table/3 creates the table for a given source", %{

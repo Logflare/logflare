@@ -80,7 +80,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> post("/api/endpoints")
         |> json_response(422)
 
-      assert %{"errors" => %{"name" => _, "query" => _, "language" => _}} = resp
+      assert %{"errors" => %{"name" => _, "query" => _}} = resp
     end
 
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
@@ -90,7 +90,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> post("/api/endpoints", %{name: 123})
         |> json_response(422)
 
-      assert %{"errors" => %{"name" => _, "query" => _, "language" => _}} = resp
+      assert %{"errors" => %{"name" => _, "query" => _}} = resp
     end
   end
 

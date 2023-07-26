@@ -32,7 +32,6 @@ defmodule Logflare.Application do
 
   defp get_goth_child_spec() do
     # Setup Goth for GCP connections
-    require Logger
     credentials = Jason.decode!(Application.get_env(:goth, :json))
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
     source = {:service_account, credentials, scopes: scopes}
@@ -84,7 +83,6 @@ defmodule Logflare.Application do
     [
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
-      get_goth_child_spec(),
       Logflare.Repo,
       {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
       # supervisor(LogflareTelemetry.Supervisor, []),
@@ -147,16 +145,20 @@ defmodule Logflare.Application do
   end
 
   def conditional_children do
-    config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
+    goth =
+      case Application.get_env(:goth, :json) do
+        nil -> []
+        _ -> [get_goth_child_spec()]
+      end
 
     # only add in config cat to multi-tenant prod
-    if config_cat_key do
-      [
-        {ConfigCat, [sdk_key: config_cat_key]}
-      ]
-    else
-      []
-    end
+    config_cat =
+      case Application.get_env(:logflare, :config_cat_sdk_key) do
+        nil -> []
+        config_cat_key -> [{ConfigCat, [sdk_key: config_cat_key]}]
+      end
+
+    goth ++ config_cat
   end
 
   def config_change(changed, _new, removed) do
@@ -186,11 +188,15 @@ defmodule Logflare.Application do
     if SingleTenant.supabase_mode?() do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
-      SingleTenant.ensure_supabase_sources_started()
-      # buffer time for all sources to init and create tables
-      # in case of latency.
-      :timer.sleep(3_000)
-      SingleTenant.update_supabase_source_schemas()
+
+      unless SingleTenant.postgres_backend?() do
+        SingleTenant.ensure_supabase_sources_started()
+        # buffer time for all sources to init and create tables
+        # in case of latency.
+        :timer.sleep(3_000)
+
+        SingleTenant.update_supabase_source_schemas()
+      end
     end
   end
 end

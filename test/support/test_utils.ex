@@ -27,32 +27,9 @@ defmodule Logflare.TestUtils do
       })
 
     quote do
+      unquote(setup_single_tenant_env(opts))
+
       setup do
-        # conditionally update bigquery project id
-        initial_google_config = Application.get_env(:logflare, Logflare.Google)
-        replacement_project_id = unquote(opts.bigquery_project_id)
-        updated = Keyword.put(initial_google_config, :project_id, replacement_project_id)
-        Application.put_env(:logflare, Logflare.Google, updated)
-
-        on_exit(fn ->
-          Application.put_env(:logflare, Logflare.Google, initial_google_config)
-        end)
-
-        # perform application env adjustments at runtime
-        initial_single_tenant = Application.get_env(:logflare, :single_tenant)
-        Application.put_env(:logflare, :single_tenant, true)
-
-        on_exit(fn ->
-          Application.put_env(:logflare, :single_tenant, initial_single_tenant)
-        end)
-
-        initial_api_key = Application.get_env(:logflare, :api_key)
-        Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
-
-        on_exit(fn ->
-          Application.put_env(:logflare, :api_key, initial_api_key)
-        end)
-
         if unquote(opts.seed_user) do
           {:ok, _} = SingleTenant.create_default_plan()
           {:ok, _user} = SingleTenant.create_default_user()
@@ -62,10 +39,50 @@ defmodule Logflare.TestUtils do
           initial_supabase_mode = Application.get_env(:logflare, :supabase_mode)
           Application.put_env(:logflare, :supabase_mode, true)
 
-          on_exit(fn ->
-            Application.put_env(:logflare, :supabase_mode, initial_supabase_mode)
-          end)
+          on_exit(fn -> Application.put_env(:logflare, :supabase_mode, initial_supabase_mode) end)
         end
+
+        initial_single_tenant = Application.get_env(:logflare, :single_tenant)
+        Application.put_env(:logflare, :single_tenant, true)
+
+        initial_api_key = Application.get_env(:logflare, :api_key)
+        Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
+
+        on_exit(fn ->
+          Application.put_env(:logflare, :single_tenant, initial_single_tenant)
+          Application.put_env(:logflare, :api_key, initial_api_key)
+        end)
+
+        :ok
+      end
+    end
+  end
+
+  defp setup_single_tenant_env(%{mode: :postgres}) do
+    quote do
+      setup do
+        %{username: username, password: password, database: database, hostname: hostname} =
+          Application.get_env(:logflare, Logflare.Repo) |> Map.new()
+
+        url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
+        previous = Application.get_env(:logflare, :postgres_backend_adapter)
+        Application.put_env(:logflare, :postgres_backend_adapter, url: url, schema: "_analytics")
+        on_exit(fn -> Application.put_env(:logflare, :postgres_backend_adapter, previous) end)
+        :ok
+      end
+    end
+  end
+
+  defp setup_single_tenant_env(opts) do
+    quote do
+      setup do
+        # conditionally update bigquery project id
+        initial_google_config = Application.get_env(:logflare, Logflare.Google)
+        replacement_project_id = unquote(opts.bigquery_project_id)
+        updated = Keyword.put(initial_google_config, :project_id, replacement_project_id)
+        Application.put_env(:logflare, Logflare.Google, updated)
+
+        on_exit(fn -> Application.put_env(:logflare, Logflare.Google, initial_google_config) end)
 
         :ok
       end

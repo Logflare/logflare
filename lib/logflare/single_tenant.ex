@@ -205,6 +205,14 @@ defmodule Logflare.SingleTenant do
   @spec supabase_mode? :: boolean()
   def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode) and single_tenant?()
 
+  @doc "Returns postgres backend adapter configurations if single tenant and env is set"
+  @spec postgres_backend_adapter_opts :: Keyword.t() | nil
+  def postgres_backend_adapter_opts() do
+    if single_tenant?() do
+      Application.get_env(:logflare, :postgres_backend_adapter)
+    end
+  end
+
   @doc """
   Adds ingestion samples for supabase sources, so that schema is built and stored correctly.
   """
@@ -214,14 +222,15 @@ defmodule Logflare.SingleTenant do
       user = get_default_user()
 
       sources =
-        Sources.list_sources_by_user(user)
+        user
+        |> Sources.list_sources_by_user()
         |> Repo.preload(:rules)
 
       tasks =
         for source <- sources do
           Task.async(fn ->
             source = Sources.refresh_source_metrics_for_ingest(source)
-            Logger.debug("Updating schemas for for #{source.name}")
+            Logger.info("Updating schemas for for #{source.name}")
             event = read_ingest_sample_json(source.name)
             log_event = LogEvent.make(event, %{source: source})
             Schema.update(source.token, log_event)
@@ -253,7 +262,12 @@ defmodule Logflare.SingleTenant do
         if Endpoints.list_endpoints_by(user_id: default_user.id) |> length() > 0, do: :ok
       end
 
-    source_schemas_updated = if supabase_mode_source_schemas_updated?(), do: :ok
+    source_schemas_updated =
+      cond do
+        postgres_backend?() -> :ok
+        supabase_mode_source_schemas_updated?() -> :ok
+        true -> nil
+      end
 
     %{
       seed_user: seed_user,
@@ -262,6 +276,15 @@ defmodule Logflare.SingleTenant do
       seed_endpoints: seed_endpoints,
       source_schemas_updated: source_schemas_updated
     }
+  end
+
+  @doc """
+  Returns true if postgres backend is enabled for single tenant
+  """
+  @spec postgres_backend? :: boolean()
+  def postgres_backend?() do
+    url = postgres_backend_adapter_opts() |> Keyword.get(:url)
+    single_tenant?() && url != nil
   end
 
   def supabase_mode_source_schemas_updated? do

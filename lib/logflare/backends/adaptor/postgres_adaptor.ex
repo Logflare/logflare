@@ -18,10 +18,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
 
+  import Ecto.Changeset
+
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
     field(:buffer_pid, pid())
-    field(:config, %{url: String.t()})
+    field(:config, %{url: String.t(), schema: String.t()})
     field(:source_backend, SourceBackend.t())
     field(:pipeline_name, tuple())
     field(:repository_module, tuple())
@@ -60,15 +62,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   @impl true
   def cast_config(params) do
-    {%{}, %{url: :string}}
-    |> Ecto.Changeset.cast(params, [:url])
+    {%{}, %{url: :string, schema: :string}}
+    |> cast(params, [:url, :schema])
   end
 
   @impl true
   def validate_config(changeset) do
     changeset
-    |> Ecto.Changeset.validate_required([:url])
-    |> Ecto.Changeset.validate_format(:url, ~r/postgresql?\:\/\/.+/)
+    |> validate_required([:url])
+    |> validate_format(:url, ~r/postgresql?\:\/\/.+/)
   end
 
   @doc """

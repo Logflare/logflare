@@ -1,6 +1,6 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
@@ -376,10 +376,177 @@ defmodule Logflare.SqlTest do
     } do
       input = "SELECT body, event_message, timestamp FROM #{name}"
 
-      expected =
-        {:ok, "SELECT body, event_message, timestamp FROM #{PostgresAdaptor.table_name(source)}"}
-
-      assert Sql.transform(:pg_sql, input, user) == expected
+      assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
+      assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
     end
+  end
+
+  describe "bq -> pg translation" do
+    setup do
+      repo = Application.get_env(:logflare, Logflare.Repo)
+
+      config = %{
+        "url" =>
+          "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+      }
+
+      user = insert(:user)
+      source = insert(:source, user: user, name: "c.d.e")
+      source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
+
+      pid = start_supervised!({PostgresAdaptor, source_backend})
+
+      log_event =
+        Logflare.LogEvent.make(
+          %{
+            "event_message" => "something",
+            "test" => "data",
+            "metadata" => %{"nested" => "value"}
+          },
+          %{source: source}
+        )
+
+      PostgresAdaptor.insert_log_event(source_backend, log_event)
+
+      on_exit(fn ->
+        PostgresAdaptor.rollback_migrations(source_backend)
+        PostgresAdaptor.drop_migrations_table(source_backend)
+      end)
+
+      %{source: source, source_backend: source_backend, pid: pid, user: user}
+    end
+
+    test "UNNESTs into JSON-Query", %{source_backend: source_backend, user: user} do
+      bq_query = """
+      select test, m.nested from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      where m.nested is not null
+      """
+
+      assert {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+
+      translated = String.downcase(translated)
+      # changes source quotes
+      assert translated =~ ~s("c.d.e")
+      assert translated =~ "body -> 'test'"
+      assert translated =~ "body #> '{metadata,nested}'"
+      # remove cross joining
+      refute translated =~ "cross join"
+      refute translated =~ "unnest"
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+      # execute it on PG
+      assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
+               PostgresAdaptor.execute_query(source_backend, transformed)
+    end
+
+    test "entities backtick to double quote" do
+      bq_query = """
+      select test from `c.d.e`
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert translated =~ ~s("c.d.e")
+    end
+
+    test "countif into count-filter" do
+      bq_query = "select countif(test = 1) from my_table"
+      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from "my_table"|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "current_timestamp" do
+      bq_query = "select current_timestamp() as t"
+      pg_query = ~s|select current_timestamp as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "timestamp_sub" do
+      bq_query = "select timestamp_sub(current_timestamp(), interval 1 day) as t"
+      pg_query = ~s|select current_timestamp - interval '1 day' as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "timestamp_trunc" do
+      bq_query = "select timestamp_trunc(current_timestamp(), day) as t"
+      pg_query = ~s|select date_trunc('day', current_timestamp) as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE aliases are not converted to json query" do
+      bq_query =
+        "with test as (select id, metadata from mytable) select id, metadata.request from test"
+
+      pg_query =
+        ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from "test"|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE alias fields do not get converted to json query if referenced" do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+      ),
+      b as (
+        select 'btest' as other from a, my_table t
+        where a.col = t.my_col
+      )
+      select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+      ),
+      b as (
+        select 'btest' as other from a, my_table t
+        where a.col = (t.body -> 'my_col')
+      )
+      select a.col as col from "a"
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "field references within a cast() are converted to ->> syntax for string casting" do
+      bq_query = ~s|select cast(col as timestamp) as date from my_table|
+      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from "my_table" |
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    # test "order by json query"
+    # test "cte WHERE identifiers are translated correctly"
+
+    test "parameters are translated" do
+      bq_query = ~s|select @test as arg1, @another as arg2|
+      pg_query = ~s|select $1 as arg1, $2 as arg2|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      # determines sequence of parameters
+      assert {:ok, %{1 => "test", 2 => "another"}} = Sql.parameter_positions(bq_query)
+    end
+
+    test "REGEXP_CONTAINS is translated" do
+      bq_query = ~s|select regexp_contains("string", "str") as has_substring|
+
+      pg_query = ~s|select 'string' ~ 'str' as has_substring|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    # functions metrics
+    # test "APPROX_QUANTILES is translated"
+    # tes "offset() and indexing is translated"
   end
 end

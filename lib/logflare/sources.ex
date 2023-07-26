@@ -5,6 +5,7 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
+  alias Logflare.Backends
   alias Logflare.Cluster
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -12,6 +13,7 @@ defmodule Logflare.Sources do
   alias Logflare.Repo
   alias Logflare.Rule
   alias Logflare.SavedSearch
+  alias Logflare.SingleTenant
   alias Logflare.Source
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder
@@ -40,30 +42,53 @@ defmodule Logflare.Sources do
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def create_source(source_params, user) do
+    source_params =
+      source_params
+      |> Enum.map(fn {k, v} -> {to_string(k), v} end)
+      |> Map.new()
+
     source =
       user
       |> Ecto.build_assoc(:sources)
       |> Source.update_by_user_changeset(source_params)
       |> Repo.insert()
 
-    case source do
-      {:ok, source} ->
-        init_schema = SchemaBuilder.initial_table_schema()
+    opts = SingleTenant.postgres_backend_adapter_opts()
 
-        {:ok, _source_schema} =
-          SourceSchemas.create_source_schema(source, %{
-            bigquery_schema: init_schema,
-            schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
-          })
-
-        Source.Supervisor.start_source(source.token)
-
-        {:ok, source}
-
-      {:error, changeset} ->
-        {:error, changeset}
+    if opts && Keyword.get(opts, :url) do
+      create_backend_adaptor(source, opts)
+    else
+      create_big_query_schema_and_start_source(source)
     end
   end
+
+  defp create_big_query_schema_and_start_source({:ok, source}) do
+    init_schema = SchemaBuilder.initial_table_schema()
+
+    {:ok, _source_schema} =
+      SourceSchemas.create_source_schema(source, %{
+        bigquery_schema: init_schema,
+        schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
+      })
+
+    Source.Supervisor.start_source(source.token)
+
+    {:ok, source}
+  end
+
+  defp create_big_query_schema_and_start_source({:error, changeset}), do: {:error, changeset}
+
+  defp create_backend_adaptor({:ok, source}, opts) do
+    url = Keyword.get(opts, :url)
+    schema = Keyword.get(opts, :schema)
+
+    {:ok, _source_backend} =
+      Backends.create_source_backend(source, :postgres, %{url: url, schema: schema})
+
+    {:ok, source}
+  end
+
+  def create_backend_adaptor({:error, changeset}), do: {:error, changeset}
 
   @doc """
   Retrieves a source by its uuid token
