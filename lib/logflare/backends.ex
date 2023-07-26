@@ -42,7 +42,7 @@ defmodule Logflare.Backends do
   @doc """
   Creates a SourceBackend for a given source.
   """
-  @spec create_source_backend(Source.t(), String.t(), map()) ::
+  @spec create_source_backend(Source.t(), atom(), map()) ::
           {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
   def create_source_backend(%Source{} = source, type, config \\ %{}) do
     source_backend =

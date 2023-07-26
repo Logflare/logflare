@@ -36,7 +36,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     end
 
     migration_table = migrations_table_name(source_backend)
-    Application.put_env(:logflare, name, migration_source: migration_table)
+
+    schema = Map.get(source_backend.config, "schema")
+
+    after_connect =
+      if schema do
+        {Postgrex, :query!, ["set search_path=#{schema}", []]}
+      end
+
+    Application.put_env(:logflare, name,
+      migration_source: migration_table,
+      after_connect: after_connect
+    )
 
     name
   end
@@ -81,7 +92,24 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   def create_log_events_table(source_backend, override_migrations \\ nil) do
     repository_module = get_repo_module(source_backend)
     migrations = if override_migrations, do: override_migrations, else: migrations(source_backend)
-    Ecto.Migrator.run(repository_module, migrations, :up, all: true)
+
+    prefix =
+      case Map.get(source_backend.config, "schema") do
+        nil ->
+          []
+
+        schema ->
+          query = """
+          CREATE SCHEMA IF NOT EXISTS #{schema}
+          """
+
+          {:ok, _} = Ecto.Adapters.SQL.query(repository_module, query, [])
+
+          [prefix: schema]
+      end
+
+    opts = [all: true] ++ prefix
+    Ecto.Migrator.run(repository_module, migrations, :up, opts)
 
     :ok
   rescue
