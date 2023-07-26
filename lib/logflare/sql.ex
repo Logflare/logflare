@@ -1029,7 +1029,7 @@ defmodule Logflare.Sql do
   # handle references to table aliases
   defp traverse_convert_identifiers(
          {"CompoundIdentifier" = k, [%{"value" => table_ref}, field_map] = v},
-         %{cte_aliases: cte_aliases, from_table_aliases: from_table_aliases} = data
+         %{from_table_aliases: from_table_aliases} = data
        )
        when from_table_aliases != [] do
     if table_ref in from_table_aliases do
