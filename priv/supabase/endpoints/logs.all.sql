@@ -16,19 +16,13 @@ select
   t.event_message, 
   t.metadata 
 from retention, `cloudflare.logs.prod` as t
-  cross join unnest(metadata) as m
-  cross join unnest(m.request) as r
 where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   t.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
+  AND t.timestamp > retention.date
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
-  AND t.timestamp > retention.date
 order by
   t.timestamp desc
 ),
@@ -44,12 +38,8 @@ where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   t.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
   order by
   timestamp desc
@@ -63,13 +53,9 @@ select
   t.metadata 
 from retention, `deno-relay-logs` as t
   cross join unnest(t.metadata) as m
-where
-   CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
-  AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
+where 
+  CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   and m.project_ref = @project
   AND t.timestamp > retention.date
 order by
@@ -88,12 +74,8 @@ where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   m.project_ref = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -106,18 +88,13 @@ select
   t.event_message, 
   t.metadata 
 from retention, `gotrue.logs.prod` as t
-  cross join unnest(t.metadata) as m
 where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   -- m.project = @project
   t.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -133,12 +110,8 @@ from retention, `realtime.logs.prod` as t
   cross join unnest(t.metadata) as m
 where
   m.project = @project 
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -154,12 +127,8 @@ from retention, `storage.logs.prod.2` as t
   cross join unnest(t.metadata) as m
 where
   m.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -172,7 +141,6 @@ select
   t.event_message, 
   t.metadata 
 from retention, `postgREST.logs.prod` as t
-  cross join unnest(t.metadata) as m
 where
   CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
@@ -189,7 +157,6 @@ select
   t.event_message, 
   t.metadata 
 from retention, `pgbouncer.logs.prod` as t
-  cross join unnest(t.metadata) as m
 where
   CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
