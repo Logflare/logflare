@@ -174,7 +174,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   Inserts a LogEvent into the given source backend table
   """
   @spec insert_log_event(SourceBackend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
-  def insert_log_event(source_backend, %LogEvent{} = log_event) do
+  def insert_log_event(%{config: config} = source_backend, %LogEvent{} = log_event) do
     repo = get_repo_module(source_backend)
     table = PostgresAdaptor.table_name(source_backend)
 
@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
 
     changeset =
       %PgLogEvent{}
-      |> Ecto.put_meta(source: table)
+      |> Ecto.put_meta(source: table, prefix: config["schema"])
       |> PgLogEvent.changeset(params)
 
     repo.insert(changeset)
