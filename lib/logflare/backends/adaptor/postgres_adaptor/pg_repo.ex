@@ -79,6 +79,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       ]
 
       {:ok, _} = DynamicSupervisor.start_child(Supervisor, repo.child_spec(opts))
+      schema = Map.get(source_backend.config, "schema") || Map.get(source_backend.config, :schema)
+
+      if schema do
+        query = """
+        CREATE SCHEMA IF NOT EXISTS #{schema}
+        """
+
+        {:ok, _} = Ecto.Adapters.SQL.query(repo, query, [])
+      end
     end
 
     :ok
@@ -94,22 +103,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     migrations = if override_migrations, do: override_migrations, else: migrations(source_backend)
     schema = Map.get(source_backend.config, "schema") || Map.get(source_backend.config, :schema)
 
-    prefix =
-      case schema do
-        nil ->
-          []
-
-        schema ->
-          query = """
-          CREATE SCHEMA IF NOT EXISTS #{schema}
-          """
-
-          {:ok, _} = Ecto.Adapters.SQL.query(repository_module, query, [])
-
-          [prefix: schema]
-      end
-
-    opts = [all: true] ++ prefix
+    opts = [all: true, prefix: schema]
     Ecto.Migrator.run(repository_module, migrations, :up, opts)
 
     :ok
@@ -166,7 +160,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   """
   @spec migrations_table_name(SourceBackend.t()) :: String.t()
   def migrations_table_name(%SourceBackend{source: %Source{token: token}}) do
-    token = token |> Atom.to_string() |> String.replace("-", "_")
+    token =
+      token
+      |> Atom.to_string()
+      |> String.replace("-", "_")
+
     "schema_migrations_#{token}"
   end
 
@@ -174,7 +172,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   Inserts a LogEvent into the given source backend table
   """
   @spec insert_log_event(SourceBackend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
-  def insert_log_event(%{config: config} = source_backend, %LogEvent{} = log_event) do
+  def insert_log_event(source_backend, %LogEvent{} = log_event) do
     repo = get_repo_module(source_backend)
     table = PostgresAdaptor.table_name(source_backend)
 
@@ -192,7 +190,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
 
     changeset =
       %PgLogEvent{}
-      |> Ecto.put_meta(source: table, prefix: config["schema"])
+      |> Ecto.put_meta(source: table)
       |> PgLogEvent.changeset(params)
 
     repo.insert(changeset)
