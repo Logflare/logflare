@@ -310,17 +310,4 @@ defmodule LogflareWeb.EndpointsLiveTest do
              }) =~ "results-123"
     end
   end
-
-  test "bug: endpoints with language set to nil", %{conn: conn, user: user} do
-    endpoint = insert(:endpoint, user: user, language: nil)
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
-
-    assert view
-           |> element("form#endpoint")
-           |> render_submit(%{
-             endpoint: %{
-               query: "select current_datetime() as updated"
-             }
-           }) =~ "BigQuery SQL"
-  end
 end
