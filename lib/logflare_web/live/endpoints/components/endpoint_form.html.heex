@@ -7,6 +7,7 @@
     phx-submit="save-endpoint"
     class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600"
   >
+    <%= hidden_input(f, :language) %>
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button
         :if={@show_endpoint}
