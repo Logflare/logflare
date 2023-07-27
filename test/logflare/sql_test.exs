@@ -523,7 +523,16 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    # test "order by json query"
+    test "order by json query" do
+      bq_query = ~s|select id from my_source t order by t.timestamp|
+
+      pg_query =
+        ~s|select (body -> 'id') as id from "my_source" t order by (t.body -> 'timestamp')|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     # test "cte WHERE identifiers are translated correctly"
 
     test "parameters are translated" do

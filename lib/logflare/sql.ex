@@ -856,7 +856,8 @@ defmodule Logflare.Sql do
       alias_path_mappings: alias_path_mappings,
       cte_aliases: cte_aliases,
       in_cte_tables_tree: false,
-      in_cast: false
+      in_cast: false,
+      from_table_aliases: nil
     })
     |> then(fn
       ast when joins != [] ->
@@ -991,8 +992,25 @@ defmodule Logflare.Sql do
     {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
   end
 
-  # select-level from aliases
+  # handle top level queries
+  defp traverse_convert_identifiers(
+         {"Query" = k, %{"body" => %{"Select" => %{"from" => [_ | _] = from_list}}} = v},
+         data
+       ) do
+    # TODO: refactor
+    aliases =
+      for from <- from_list,
+          value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
+          value != nil do
+        value
+      end
+
+    {k, traverse_convert_identifiers(v, Map.put(data, :from_table_aliases, aliases))}
+  end
+
+  # handle CTE-level queries
   defp traverse_convert_identifiers({"Select" = k, %{"from" => [_ | _]} = v}, data) do
+    # TODO: refactor
     aliases =
       for from <- v["from"],
           value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
