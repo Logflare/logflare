@@ -312,7 +312,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   test "bug: endpoints with language set to nil", %{conn: conn, user: user} do
-    endpoint = insert(:endpoint, user: user,  language: nil)
+    endpoint = insert(:endpoint, user: user, language: nil)
     {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
 
     assert view
