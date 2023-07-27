@@ -664,13 +664,17 @@ defmodule Logflare.Sql do
   def do_parameter_positions_mapping(_string, []), do: %{}
 
   def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
-    str = Enum.join(params, "|")
+    str =
+      params
+      |> Enum.map(&(&1 <> "(?:\\s|$)"))
+      |> Enum.join("|")
+
     regexp = Regex.compile!("@(#{str})")
 
     Regex.scan(regexp, string)
     |> Enum.with_index(1)
     |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
-      Map.put(acc, index, param)
+      Map.put(acc, index, String.trim(param))
     end)
   end
 
@@ -702,10 +706,13 @@ defmodule Logflare.Sql do
   defp bq_to_pg_convert_parameters(string, []), do: string
 
   defp bq_to_pg_convert_parameters(string, params) do
-    mapping = do_parameter_positions_mapping(string, params)
-
-    Enum.reduce(mapping, string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}/, acc, "$#{index}")
+    do_parameter_positions_mapping(string, params)
+    |> Map.to_list()
+    |> Enum.sort_by(fn {i, _v} -> i end, :asc)
+    |> Enum.reduce(string, fn {index, param}, acc ->
+      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}",
+        global: false
+      )
     end)
   end
 
