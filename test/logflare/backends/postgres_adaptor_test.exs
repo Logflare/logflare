@@ -15,14 +15,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
     config = %{
       "url" => url,
-      "schema" => "analytics"
+      "schema" => nil
     }
 
     source = insert(:source, user: insert(:user))
 
     source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
 
-    %{source_backend: source_backend}
+    %{source_backend: source_backend, source: source, postgres_url: url}
   end
 
   describe "with postgres repo" do
@@ -88,9 +88,35 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert Atom.to_string(repo) =~ Atom.to_string(expected)
 
       assert env[:migration_source] == PostgresAdaptor.migrations_table_name(source_backend)
+    end
 
-      assert env[:after_connect] ==
-               {Postgrex, :query!, ["set search_path=#{source_backend.config["schema"]}", []]}
+    test "custom schema", %{source: source, postgres_url: url} do
+      config = %{
+        "url" => url,
+        "schema" => "my_schema"
+      }
+
+      source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
+      #
+      assert {:ok, [%{"setting" => "my_schema"}]} =
+               PostgresAdaptor.execute_query(
+                 source_backend,
+                 "SELECT setting FROM pg_settings WHERE name = 'search_path'"
+               )
+
+      # should create schema on connect
+      assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
+
+      assert {:ok, [%{"schema_name" => "my_schema"}]} =
+        PostgresAdaptor.execute_query(
+          source_backend,
+          "select schema_name from information_schema.schemata where schema_name = 'my_schema'"
+        )
+
+
+      # insert a log event into schema
+      log_event = build(:log_event, source: source_backend.source, test: "data")
+      assert {:ok, %_{}} = PostgresAdaptor.insert_log_event(source_backend, log_event)
     end
 
     test "create_log_events_table/3 creates the table for a given source", %{
