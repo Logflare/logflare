@@ -150,4 +150,29 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert html_response(conn, 200) =~ "/endpoints"
     end
   end
+
+
+  describe "single tenant supabase mode" do
+    TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true, backend_type: :postgres)
+
+    setup do
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints
+      %{user: SingleTenant.get_default_user()}
+    end
+    test "GET a basic query", %{conn: conn, user: user} do
+      # query the logs.all endpoint
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{%{
+          sql: ~s(select "hello" as world from edge_logs)
+        }}")
+
+      assert [%{"world" => "hello"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+    end
+  end
+
 end
