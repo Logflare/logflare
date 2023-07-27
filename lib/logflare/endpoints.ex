@@ -9,6 +9,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Utils
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.SingleTenant
 
   import Ecto.Query
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
@@ -163,10 +164,16 @@ defmodule Logflare.Endpoints do
 
     with {:ok, declared_params} <- Logflare.Sql.parameters(query_string),
          {:ok, transformed_query} <-
-           Logflare.Sql.transform(endpoint_query.language, transform_input, user_id),
-         {:ok, result} <-
-           exec_query_on_backend(endpoint_query, transformed_query, declared_params, params) do
-      {:ok, result}
+           Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
+      {endpoint, query_string} = if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend_adapter_url() != nil do
+        # translate the query
+        {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query) |> dbg()
+        {Map.put(endpoint_query, :language, :pg_sql), q}
+      else
+        {endpoint_query, transformed_query}
+      end
+
+      exec_query_on_backend(endpoint, query_string, declared_params, params)
     end
   end
 
@@ -232,6 +239,8 @@ defmodule Logflare.Endpoints do
         other ->
           other
       end)
+
+    # convert params to PG params style
 
     with {:ok, rows} <- PostgresAdaptor.execute_query(source_backend, transformed_query) do
       {:ok, %{rows: rows}}
