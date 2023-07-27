@@ -192,13 +192,11 @@ end
 cond do
   System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
-    postgres_backend_url = System.get_env("POSTGRES_BACKEND_URL")
-
     config :logflare,
            :postgres_backend_adapter,
            filter_nil_kv_pairs.(
-             url: postgres_backend_url,
-             schema: System.get_env("DB_SCHEMA"),
+             url: System.get_env("POSTGRES_BACKEND_URL"),
+             schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
              pool_size: 3
            )
 
