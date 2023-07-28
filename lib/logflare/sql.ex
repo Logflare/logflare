@@ -1024,7 +1024,21 @@ defmodule Logflare.Sql do
         value
       end
 
-    {k, traverse_convert_identifiers(v, Map.put(data, :from_table_aliases, aliases))}
+    # values
+    values =
+      for from <- from_list,
+          value_map =  (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
+          value_map != nil do
+        value_map["value"]
+      end
+
+    data =
+      Map.merge(data, %{
+        from_table_aliases: aliases,
+        from_table_values: values
+      })
+
+    {k, traverse_convert_identifiers(v, data)}
   end
 
   # handle CTE-level queries
@@ -1037,7 +1051,20 @@ defmodule Logflare.Sql do
         value
       end
 
-    {k, traverse_convert_identifiers(v, Map.put(data, :from_table_aliases, aliases))}
+    values =
+      for from <- v["from"],
+          value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
+          value_map != nil do
+        value_map["value"]
+      end
+
+    data =
+      Map.merge(data, %{
+        from_table_aliases: aliases,
+        from_table_values: values
+      })
+
+    {k, traverse_convert_identifiers(v, data)}
   end
 
   defp traverse_convert_identifiers({"Cast" = k, v}, data) do
@@ -1060,55 +1087,38 @@ defmodule Logflare.Sql do
     end
   end
 
-  # handle references to cte tables
   defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, [%{"value" => cte_table}, _field_map] = v},
-         %{cte_aliases: cte_aliases}
-       )
-       when cte_aliases != %{} and is_map_key(cte_aliases, cte_table) do
-    {k, v}
-  end
+         {"CompoundIdentifier" = k,
+          [%{"value" => head_val} = head, %{"value" => tail_val} = tail] = v},
+         data
+       ) do
+    allowed_cte_aliases = data.cte_aliases |> Map.values() |> List.flatten()
 
-  # handle references to table aliases
-  defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, [%{"value" => table_ref}, field_map] = v},
-         %{from_table_aliases: from_table_aliases} = data
-       )
-       when from_table_aliases != [] do
-    if table_ref in from_table_aliases do
-      # convert to [alias].[body] -> field
-      convert_keys_to_json_query(%{k => [field_map]}, data, [
-        table_ref,
-        "body"
-      ])
-      |> Map.to_list()
-      |> List.first()
-    else
-      # convert as per normal
-      do_normal_compount_identifier_convert({k, v}, data)
+    cond do
+      head_val in data.from_table_aliases ->
+        # convert to t.body -> 'tail'
+        convert_keys_to_json_query(%{k => [tail]}, data, [head_val, "body"])
+        |> Map.to_list()
+        |> List.first()
+
+      is_map_key(data.cte_aliases, head_val) ->
+        # leave as is, head.tail
+        {k, v}
+
+      Enum.any?(data.from_table_values |> dbg(), fn from -> head_val in Map.get(data.cte_aliases, from, []) end) ->
+        # referencing a cte field, pop and convert
+        # metadata.key  into metadata -> 'key'
+        convert_keys_to_json_query(%{k => [tail]}, data, head_val)
+        |> Map.to_list()
+        |> List.first()
+
+      true ->
+        # convert to body -> '{head,tail}'
+        do_normal_compount_identifier_convert({k, v}, data)
     end
   end
 
-  # identifiers outeside of cte, handle cte table/field references
-  defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, v},
-         %{cte_aliases: cte_aliases, in_cte_tables_tree: false} = data
-       )
-       when cte_aliases != %{} do
-    # only convert if not a compound identifier
-    {base, fields} =
-      case v do
-        [base | fields] ->
-          {base["value"], fields}
-      end
-
-    # if compound identifier, use different base field
-    convert_keys_to_json_query(%{k => fields}, data, base)
-    |> Map.to_list()
-    |> List.first()
-  end
-
-  # if not cte, identifiers should be left as is if it is referencing a cte table
+  # identifiers should be left as is if it is referencing a cte table
   defp traverse_convert_identifiers(
          {"Identifier" = k, %{"value" => field_alias} = v},
          %{in_cte_tables_tree: false, cte_aliases: cte_aliases} = data
@@ -1123,8 +1133,10 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp traverse_convert_identifiers({k, v}, data)
-       when k in ["Identifier", "CompoundIdentifier"] do
+  # leave compound identifier as is
+  defp traverse_convert_identifiers({"CompoundIdentifier" = k, v}, _data), do: {k, v}
+
+  defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
     convert_keys_to_json_query(%{k => v}, data)
     |> Map.to_list()
     |> List.first()
