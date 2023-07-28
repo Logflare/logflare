@@ -574,7 +574,7 @@ defmodule Logflare.SqlTest do
 
     test "field references within a cast() are converted to ->> syntax for string casting" do
       bq_query = ~s|select cast(col as timestamp) as date from my_table|
-      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table |
+      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)

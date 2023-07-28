@@ -846,6 +846,7 @@ defmodule Logflare.Sql do
     cte_table_names = extract_cte_alises([ast])
     cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
 
+    # TOOD: refactor
     cte_aliases =
       for table <- cte_table_names, into: %{} do
         tree =
@@ -867,13 +868,37 @@ defmodule Logflare.Sql do
         {table, fields}
       end
 
+    # TOOD: refactor
+    cte_from_aliases =
+      for table <- cte_table_names, into: %{} do
+        tree =
+          Enum.find(cte_tables_tree, fn tree ->
+            get_in(tree, ["alias", "name", "value"]) == table
+          end)
+
+        aliases =
+          if tree != nil do
+            for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
+                table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
+                table_name != nil do
+              table_name
+            end
+          else
+            []
+          end
+
+        {table, aliases}
+      end
+
     ast
     |> traverse_convert_identifiers(%{
       alias_path_mappings: alias_path_mappings,
       cte_aliases: cte_aliases,
+      cte_from_aliases: cte_from_aliases,
       in_cte_tables_tree: false,
       in_cast: false,
-      from_table_aliases: nil
+      from_table_aliases: nil,
+      from_table_values: nil
     })
     |> then(fn
       ast when joins != [] ->
@@ -1027,7 +1052,7 @@ defmodule Logflare.Sql do
     # values
     values =
       for from <- from_list,
-          value_map =  (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
+          value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
           value_map != nil do
         value_map["value"]
       end
@@ -1088,24 +1113,29 @@ defmodule Logflare.Sql do
   end
 
   defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k,
-          [%{"value" => head_val} = head, %{"value" => tail_val} = tail] = v},
+         {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
-    allowed_cte_aliases = data.cte_aliases |> Map.values() |> List.flatten()
-
     cond do
-      head_val in data.from_table_aliases ->
+      # first OR condition: outside of cte and non-cte
+      # second OR condition: inside a cte
+      head_val in data.from_table_aliases or
+          Enum.any?(data.from_table_values, fn from ->
+            head_val in Map.get(data.cte_from_aliases, from, [])
+          end) ->
         # convert to t.body -> 'tail'
         convert_keys_to_json_query(%{k => [tail]}, data, [head_val, "body"])
         |> Map.to_list()
         |> List.first()
 
       is_map_key(data.cte_aliases, head_val) ->
+        # referencing a cte field alias
         # leave as is, head.tail
         {k, v}
 
-      Enum.any?(data.from_table_values |> dbg(), fn from -> head_val in Map.get(data.cte_aliases, from, []) end) ->
+      Enum.any?(data.from_table_values, fn from ->
+        head_val in Map.get(data.cte_aliases, from, [])
+      end) ->
         # referencing a cte field, pop and convert
         # metadata.key  into metadata -> 'key'
         convert_keys_to_json_query(%{k => [tail]}, data, head_val)
