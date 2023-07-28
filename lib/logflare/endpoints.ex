@@ -165,13 +165,14 @@ defmodule Logflare.Endpoints do
     with {:ok, declared_params} <- Logflare.Sql.parameters(query_string),
          {:ok, transformed_query} <-
            Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
-      {endpoint, query_string} = if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend_adapter_url() != nil do
-        # translate the query
-        {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query) |> dbg()
-        {Map.put(endpoint_query, :language, :pg_sql), q}
-      else
-        {endpoint_query, transformed_query}
-      end
+      {endpoint, query_string} =
+        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend_adapter_url() != nil do
+          # translate the query
+          {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query) |> dbg()
+          {Map.put(endpoint_query, :language, :pg_sql), q}
+        else
+          {endpoint_query, transformed_query}
+        end
 
       exec_query_on_backend(endpoint, query_string, declared_params, params)
     end

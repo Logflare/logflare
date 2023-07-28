@@ -48,7 +48,6 @@ defmodule Logflare.TestUtils do
         initial_api_key = Application.get_env(:logflare, :api_key)
         Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
 
-
         on_exit(fn ->
           Application.put_env(:logflare, :single_tenant, initial_single_tenant)
           Application.put_env(:logflare, :api_key, initial_api_key)
