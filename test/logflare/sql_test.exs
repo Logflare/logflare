@@ -551,6 +551,27 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "CTE order by is " do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        order by cast(t.timestamp as timestamp) desc
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        ) select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     test "field references within a cast() are converted to ->> syntax for string casting" do
       bq_query = ~s|select cast(col as timestamp) as date from my_table|
       pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table |
