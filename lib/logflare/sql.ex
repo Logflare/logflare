@@ -684,8 +684,8 @@ defmodule Logflare.Sql do
     for ast <- stmts do
       ast
       |> bq_to_pg_convert_functions()
-      |> bq_to_pg_quote_style()
       |> bq_to_pg_field_references()
+      |> pg_traverse_final_pass()
     end
     |> then(fn ast ->
       params = extract_all_parameters(ast)
@@ -710,9 +710,7 @@ defmodule Logflare.Sql do
     |> Map.to_list()
     |> Enum.sort_by(fn {i, _v} -> i end, :asc)
     |> Enum.reduce(string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}",
-        global: false
-      )
+      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}", global: false)
     end)
   end
 
@@ -810,27 +808,33 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
-  defp bq_to_pg_quote_style(ast) do
-    ast
-    |> traverse_convert_quote_style()
+  # convert backticks to double quotes
+  defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+  # drop cross join unnest
+  defp pg_traverse_final_pass({"joins" = k, joins}) do
+    filtered_joins =
+      for j <- joins,
+          Map.get(j, "join_operator") != "CrossJoin",
+          !is_map_key(Map.get(j, "relation"), "UNNEST") do
+        j
+      end
+
+    {k, filtered_joins}
   end
 
-  # TODO: do this on first pass.
-  defp traverse_convert_quote_style({"quote_style" = k, "`"}), do: {k, "\""}
-
-  defp traverse_convert_quote_style({k, v}) when is_list(v) or is_map(v) do
-    {k, traverse_convert_quote_style(v)}
+  defp pg_traverse_final_pass({k, v}) when is_list(v) or is_map(v) do
+    {k, pg_traverse_final_pass(v)}
   end
 
-  defp traverse_convert_quote_style(kv) when is_list(kv) do
-    Enum.map(kv, fn kv -> traverse_convert_quote_style(kv) end)
+  defp pg_traverse_final_pass(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> pg_traverse_final_pass(kv) end)
   end
 
-  defp traverse_convert_quote_style(kv) when is_map(kv) do
-    Enum.map(kv, fn kv -> traverse_convert_quote_style(kv) end) |> Map.new()
+  defp pg_traverse_final_pass(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> pg_traverse_final_pass(kv) end) |> Map.new()
   end
 
-  defp traverse_convert_quote_style(kv), do: kv
+  defp pg_traverse_final_pass(kv), do: kv
 
   defp bq_to_pg_field_references(ast) do
     joins = get_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
@@ -967,9 +971,9 @@ defmodule Logflare.Sql do
   defp get_identifier_alias(%{"expr" => _, "alias" => %{"value" => name}}) do
     name
   end
+
   # return non-matching as is
   defp get_identifier_alias(identifier), do: identifier
-
 
   defp get_bq_alias_path_mappings(ast) do
     table_map =
@@ -1044,14 +1048,15 @@ defmodule Logflare.Sql do
   defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
        when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
     normalized_identifier = get_identifier_alias(identifier)
+
     if normalized_identifier do
       {"ExprWithAlias",
        %{
          "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
          "expr" => traverse_convert_identifiers(identifier, data)
        }}
-      else
-        identifier
+    else
+      identifier
     end
   end
 

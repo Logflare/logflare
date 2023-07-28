@@ -530,6 +530,27 @@ defmodule Logflare.SqlTest do
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
+
+    test "CTE cross join UNNESTs are removed" do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        cross join unnest(t.metadata) as m
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+      ) select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     test "field references within a cast() are converted to ->> syntax for string casting" do
       bq_query = ~s|select cast(col as timestamp) as date from my_table|
       pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table |
@@ -541,8 +562,7 @@ defmodule Logflare.SqlTest do
     test "order by json query" do
       bq_query = ~s|select id from my_source t order by t.timestamp|
 
-      pg_query =
-        ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'timestamp')|
+      pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'timestamp')|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
