@@ -811,21 +811,26 @@ defmodule Logflare.Sql do
   defp bq_to_pg_convert_functions(kv), do: kv
 
   defp bq_to_pg_quote_style(ast) do
-    from =
-      ast
-      |> get_in(["Query", "body", "Select", "from"])
-      |> Enum.map(fn from ->
-        {_, updated} =
-          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-            {value, [%{"quote_style" => "\"", "value" => source}]}
-          end)
-
-        updated
-      end)
-
-    input = put_in(ast, ["Query", "body", "Select", "from"], from)
-    input
+    ast
+    |> traverse_convert_quote_style()
   end
+
+  # TODO: do this on first pass.
+  defp traverse_convert_quote_style({"quote_style" = k, "`"}), do: {k, "\""}
+
+  defp traverse_convert_quote_style({k, v}) when is_list(v) or is_map(v) do
+    {k, traverse_convert_quote_style(v)}
+  end
+
+  defp traverse_convert_quote_style(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_quote_style(kv) end)
+  end
+
+  defp traverse_convert_quote_style(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> traverse_convert_quote_style(kv) end) |> Map.new()
+  end
+
+  defp traverse_convert_quote_style(kv), do: kv
 
   defp bq_to_pg_field_references(ast) do
     joins = get_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
@@ -962,6 +967,9 @@ defmodule Logflare.Sql do
   defp get_identifier_alias(%{"expr" => _, "alias" => %{"value" => name}}) do
     name
   end
+  # return non-matching as is
+  defp get_identifier_alias(identifier), do: identifier
+
 
   defp get_bq_alias_path_mappings(ast) do
     table_map =
@@ -1035,11 +1043,16 @@ defmodule Logflare.Sql do
   # auto set the column alias if not set
   defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
        when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
-    {"ExprWithAlias",
-     %{
-       "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
-       "expr" => traverse_convert_identifiers(identifier, data)
-     }}
+    normalized_identifier = get_identifier_alias(identifier)
+    if normalized_identifier do
+      {"ExprWithAlias",
+       %{
+         "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
+         "expr" => traverse_convert_identifiers(identifier, data)
+       }}
+      else
+        identifier
+    end
   end
 
   # handle references to cte tables

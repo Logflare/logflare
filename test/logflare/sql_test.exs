@@ -451,7 +451,7 @@ defmodule Logflare.SqlTest do
 
     test "countif into count-filter" do
       bq_query = "select countif(test = 1) from my_table"
-      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from "my_table"|
+      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from my_table|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
@@ -482,7 +482,7 @@ defmodule Logflare.SqlTest do
         "with test as (select id, metadata from mytable) select id, metadata.request from test"
 
       pg_query =
-        ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from "test"|
+        ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from test|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -508,16 +508,31 @@ defmodule Logflare.SqlTest do
         select 'btest' as other from a, my_table t
         where a.col = (t.body -> 'my_col')
       )
-      select a.col as col from "a"
+      select a.col as col from a
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "CTE table quotations are converted" do
+      bq_query = ~s"""
+      with a as (select 'test' from `my.table` t) select 'test' from `a`
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test'
+        from "my.table" t
+      ) select 'test' from "a"
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
     test "field references within a cast() are converted to ->> syntax for string casting" do
       bq_query = ~s|select cast(col as timestamp) as date from my_table|
-      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from "my_table" |
+      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table |
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -527,7 +542,7 @@ defmodule Logflare.SqlTest do
       bq_query = ~s|select id from my_source t order by t.timestamp|
 
       pg_query =
-        ~s|select (body -> 'id') as id from "my_source" t order by (t.body -> 'timestamp')|
+        ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'timestamp')|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
