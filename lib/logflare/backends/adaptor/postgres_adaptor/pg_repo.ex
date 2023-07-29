@@ -188,9 +188,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       body: log_event.body
     }
 
+    schema = Map.get(source_backend.config, "schema") || Map.get(source_backend.config, :schema)
+
     changeset =
       %PgLogEvent{}
-      |> Ecto.put_meta(source: table)
+      |> Ecto.put_meta(source: table, prefix: schema)
       |> PgLogEvent.changeset(params)
 
     repo.insert(changeset)
