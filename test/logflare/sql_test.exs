@@ -601,13 +601,16 @@ defmodule Logflare.SqlTest do
 
     test "parameters are translated" do
       # test that substring of another arg is replaced correctly
-      bq_query = ~s|select @test as arg1, @test_another as arg2|
-      pg_query = ~s|select $1 as arg1, $2 as arg2|
+      bq_query =
+        ~s|select @test as arg1, @test_another as arg2, coalesce(@test, '') > @test as arg_copy|
+
+      pg_query = ~s|select $1 as arg1, $2 as arg2, coalesce($3, '') > $4 as arg_copy|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
       # determines sequence of parameters
-      assert {:ok, %{1 => "test", 2 => "test_another"}} = Sql.parameter_positions(bq_query)
+      assert {:ok, %{1 => "test", 2 => "test_another", 4 => "test"}} =
+               Sql.parameter_positions(bq_query)
     end
 
     test "REGEXP_CONTAINS is translated" do

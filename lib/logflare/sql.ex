@@ -666,10 +666,10 @@ defmodule Logflare.Sql do
   def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
     str =
       params
-      |> Enum.map(&(&1 <> "(?:\\s|$)"))
+      |> Enum.uniq()
       |> Enum.join("|")
 
-    regexp = Regex.compile!("@(#{str})")
+    regexp = Regex.compile!("@(#{str})(?:\\s|$|\\,|\\,|\\)|\\()")
 
     Regex.scan(regexp, string)
     |> Enum.with_index(1)
