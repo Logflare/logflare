@@ -221,10 +221,10 @@ defmodule Logflare.Endpoints do
   end
 
   defp exec_query_on_backend(
-         %Query{language: :pg_sql} = endpoint_query,
+         %Query{query: query_string, language: :pg_sql} = endpoint_query,
          transformed_query,
          _declared_params,
-         _params
+         params
        ) do
     # find compatible source backend
     # TODO: move this to Backends module
@@ -242,8 +242,19 @@ defmodule Logflare.Endpoints do
       end)
 
     # convert params to PG params style
+    positions =
+      Logflare.Sql.parameter_positions(query_string)
+      |> then(fn {:ok, params} ->
+        params
+        |> Enum.sort_by(&{elem(&1, 0)})
+      end)
 
-    with {:ok, rows} <- PostgresAdaptor.execute_query(source_backend, transformed_query) do
+    args =
+      for {_pos, parameter} <- positions do
+        Map.get(params, parameter)
+      end
+
+    with {:ok, rows} <- PostgresAdaptor.execute_query(source_backend, {transformed_query, args}) do
       {:ok, %{rows: rows}}
     end
   end

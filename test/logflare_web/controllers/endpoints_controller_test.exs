@@ -157,12 +157,21 @@ defmodule LogflareWeb.EndpointsControllerTest do
     setup do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
+      SingleTenant.ensure_supabase_sources_started()
       %{user: SingleTenant.get_default_user()}
     end
 
-    test "GET a basic query", %{conn: conn, user: user} do
-      # query the logs.all endpoint
+    test "GET a basic sandboxed query", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{%{sql: ~s(select 'hello' as world)}}")
 
+      assert [%{"world" => "hello"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+    end
+
+    test "GET a basic sandboxed query with fromt able", %{conn: conn, user: user} do
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
@@ -170,7 +179,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
           ~p"/endpoints/query/logs.all?#{%{sql: ~s(select 'hello' as world from edge_logs)}}"
         )
 
-      assert [%{"world" => "hello"}] = json_response(conn, 200)["result"]
+      assert [] = json_response(conn, 200)["result"]
       assert conn.halted == false
     end
   end
