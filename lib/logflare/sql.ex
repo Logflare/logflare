@@ -1043,7 +1043,7 @@ defmodule Logflare.Sql do
   # handle top level queries
   defp traverse_convert_identifiers(
          {"Query" = k, %{"body" => %{"Select" => %{"from" => [_ | _] = from_list}}} = v},
-         data
+         %{in_cte_tables_tree: false} = data
        ) do
     # TODO: refactor
     aliases =
@@ -1071,17 +1071,25 @@ defmodule Logflare.Sql do
   end
 
   # handle CTE-level queries
-  defp traverse_convert_identifiers({"Select" = k, %{"from" => [_ | _]} = v}, data) do
+  defp traverse_convert_identifiers(
+         {"query" = k,
+          %{
+            "body" => %{
+              "Select" => %{"from" => [_ | _] = from_list}
+            }
+          } = v},
+         %{in_cte_tables_tree: true} = data
+       ) do
     # TODO: refactor
     aliases =
-      for from <- v["from"],
+      for from <- from_list,
           value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
           value != nil do
         value
       end
 
     values =
-      for from <- v["from"],
+      for from <- from_list,
           value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
           value_map != nil do
         value_map["value"]
