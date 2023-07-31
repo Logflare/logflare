@@ -456,11 +456,19 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "current_timestamp" do
+    test "current_timestamp handling " do
       bq_query = "select current_timestamp() as t"
       pg_query = ~s|select current_timestamp as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      refute translated =~ "current_timestamp()"
+
+      # in cte
+      bq_query = "with a as (select current_timestamp() as t) select a.t"
+      pg_query = ~s|with a as (select current_timestamp as t) select a.t as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      refute translated =~ "current_timestamp()"
     end
 
     test "timestamp_sub" do

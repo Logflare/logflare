@@ -697,6 +697,9 @@ defmodule Logflare.Sql do
       converted =
         query_string
         |> bq_to_pg_convert_parameters(params)
+        # TODO: remove once sqlparser-rs bug is fixed
+        # parser for postgres adds parenthesis to the end for postgres
+        |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
 
       {:ok, converted}
     end)
