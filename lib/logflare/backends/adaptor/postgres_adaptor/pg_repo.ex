@@ -125,6 +125,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     |> Atom.to_string()
     |> String.replace("-", "_")
     |> then(&"log_events_#{&1}")
+    |> dbg()
   end
 
   @doc """
