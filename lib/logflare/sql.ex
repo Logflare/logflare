@@ -663,6 +663,7 @@ defmodule Logflare.Sql do
   iex> parameter_positions("select @test as testing")
   %{1 => "test"}
   """
+  @spec parameter_positions(String.t()):: %{integer() => String.t()}
   def parameter_positions(string) when is_binary(string) do
     {:ok, parameters} = parameters(string)
     {:ok, do_parameter_positions_mapping(string, parameters)}
