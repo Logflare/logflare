@@ -22,12 +22,8 @@ where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   t.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -44,12 +40,8 @@ where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   t.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
   order by
   timestamp desc
@@ -64,12 +56,8 @@ select
 from retention, `deno-relay-logs` as t
   cross join unnest(t.metadata) as m
 where
-   CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
-  AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
+  CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   and m.project_ref = @project
   AND t.timestamp > retention.date
 order by
@@ -88,12 +76,8 @@ where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   m.project_ref = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -112,12 +96,8 @@ where
   -- project then timestamp then everything else
   -- m.project = @project
   t.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -133,12 +113,8 @@ from retention, `realtime.logs.prod` as t
   cross join unnest(t.metadata) as m
 where
   m.project = @project 
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
@@ -154,12 +130,8 @@ from retention, `storage.logs.prod.2` as t
   cross join unnest(t.metadata) as m
 where
   m.project = @project
-  AND CASE WHEN COALESCE(@period_start, '') = '' THEN  TRUE ELSE  t.timestamp > @period_start END
-  AND CASE WHEN COALESCE(@period_end, '') = '' THEN TRUE ELSE t.timestamp <= @period_end END
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > @iso_timestamp_start END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= @iso_timestamp_end END
-  AND CASE WHEN COALESCE(@timestamp_start, '') = '' THEN  TRUE ELSE  t.timestamp > TIMESTAMP_MICROS(CAST(@timestamp_start as int64)) END
-  AND CASE WHEN COALESCE(@timestamp_end, '') = '' THEN TRUE ELSE t.timestamp <= TIMESTAMP_MICROS(CAST(@timestamp_end as int64)) END
   AND t.timestamp > retention.date
 order by
   t.timestamp desc
