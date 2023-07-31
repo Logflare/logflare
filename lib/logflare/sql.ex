@@ -900,8 +900,8 @@ defmodule Logflare.Sql do
       cte_from_aliases: cte_from_aliases,
       in_cte_tables_tree: false,
       in_cast: false,
-      from_table_aliases: nil,
-      from_table_values: nil
+      from_table_aliases: [],
+      from_table_values: []
     })
     |> then(fn
       ast when joins != [] ->
