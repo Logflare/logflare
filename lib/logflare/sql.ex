@@ -656,6 +656,13 @@ defmodule Logflare.Sql do
     end
   end
 
+  @doc """
+  Determine positions of all parameters
+
+  ### Example
+  iex> parameter_positions("select @test as testing")
+  %{1 => "test"}
+  """
   def parameter_positions(string) when is_binary(string) do
     {:ok, parameters} = parameters(string)
     {:ok, do_parameter_positions_mapping(string, parameters)}
