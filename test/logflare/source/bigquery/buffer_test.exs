@@ -107,6 +107,6 @@ defmodule Logflare.Source.BigQuery.BufferTest do
     {:error, :buffer_full} =
       BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
 
-    assert %{len: 4, discarded: 2} = :sys.get_state(BigQuery.BufferCounter.name(source.token))
+    assert %{len: 4, discarded: 2} = BigQuery.BufferCounter.get_counts(source.token)
   end
 end
