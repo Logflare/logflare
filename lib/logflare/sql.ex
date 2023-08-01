@@ -1021,7 +1021,6 @@ defmodule Logflare.Sql do
       end)
 
     for from <- from_list,
-        table_alias = get_in(from, ["relation", "Table"]),
         %{
           "relation" => %{
             "UNNEST" => %{
@@ -1029,37 +1028,13 @@ defmodule Logflare.Sql do
               "alias" => %{"name" => %{"value" => alias_name}}
             }
           }
-        } = join <- from["joins"] || [],
+        } <- from["joins"] || [],
         into: %{} do
       arr_path = for i <- identifiers, value = i["value"], value not in table_aliases, do: value
 
       str_path = Enum.join(arr_path, ",")
       {alias_name, str_path}
     end
-
-    # joins =
-    #   ast
-    #   |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
-
-    # Enum.reduce(joins, %{}, fn
-    #   %{
-    #     "relation" => %{
-    #       "UNNEST" => %{
-    #         "array_expr" => %{"CompoundIdentifier" => identifiers},
-    #         "alias" => %{"name" => %{"value" => alias_name}}
-    #       }
-    #     }
-    #   },
-    #   acc ->
-    #     arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
-
-    #     str_path = Enum.join(arr_path, ",")
-
-    #     Map.put(acc, alias_name, str_path)
-
-    #   _join, acc ->
-    #     acc
-    # end)
   end
 
   defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do
