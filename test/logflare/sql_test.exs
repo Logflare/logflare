@@ -623,6 +623,28 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "CTE cross join UNNESTs with multiple from" do
+      bq_query = ~s"""
+      with c as (select '123' as val), a as (
+        select 'test' as col
+        from c, my_table t
+        cross join unnest(t.metadata) as m
+        where m.project = '123'
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with c as (select '123' as val), a as (
+        select 'test' as col
+        from c, my_table t
+        where (body #> '{metadata,project}') = '123'
+        ) select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     test "field references within a cast() are converted to ->> syntax for string casting" do
       bq_query = ~s|select cast(col as timestamp) as date from my_table|
       pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table|

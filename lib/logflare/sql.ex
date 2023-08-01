@@ -1013,35 +1013,53 @@ defmodule Logflare.Sql do
   defp get_identifier_alias(identifier), do: identifier
 
   defp get_bq_alias_path_mappings(ast) do
-    table_map =
-      ast
-      |> get_in(["Query", "body", "Select", "from", Access.at(0), "relation", "Table"])
+    from_list = get_in(ast, ["Query", "body", "Select", "from"]) || []
 
-    table_alias = get_in(table_map, ["alias", "name", "value"])
+    table_aliases =
+      Enum.map(from_list, fn from ->
+        get_in(from, ["relation", "Table", "alias", "name", "value"])
+      end)
 
-    joins =
-      ast
-      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
-
-    Enum.reduce(joins, %{}, fn
-      %{
-        "relation" => %{
-          "UNNEST" => %{
-            "array_expr" => %{"CompoundIdentifier" => identifiers},
-            "alias" => %{"name" => %{"value" => alias_name}}
+    for from <- from_list,
+        table_alias = get_in(from, ["relation", "Table"]),
+        %{
+          "relation" => %{
+            "UNNEST" => %{
+              "array_expr" => %{"CompoundIdentifier" => identifiers},
+              "alias" => %{"name" => %{"value" => alias_name}}
+            }
           }
-        }
-      },
-      acc ->
-        arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
+        } = join <- from["joins"] || [],
+        into: %{} do
+      arr_path = for i <- identifiers, value = i["value"], value not in table_aliases, do: value
 
-        str_path = Enum.join(arr_path, ",")
+      str_path = Enum.join(arr_path, ",")
+      {alias_name, str_path}
+    end
 
-        Map.put(acc, alias_name, str_path)
+    # joins =
+    #   ast
+    #   |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
 
-      _join, acc ->
-        acc
-    end)
+    # Enum.reduce(joins, %{}, fn
+    #   %{
+    #     "relation" => %{
+    #       "UNNEST" => %{
+    #         "array_expr" => %{"CompoundIdentifier" => identifiers},
+    #         "alias" => %{"name" => %{"value" => alias_name}}
+    #       }
+    #     }
+    #   },
+    #   acc ->
+    #     arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
+
+    #     str_path = Enum.join(arr_path, ",")
+
+    #     Map.put(acc, alias_name, str_path)
+
+    #   _join, acc ->
+    #     acc
+    # end)
   end
 
   defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do
