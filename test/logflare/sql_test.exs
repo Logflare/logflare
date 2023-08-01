@@ -451,16 +451,24 @@ defmodule Logflare.SqlTest do
 
     test "countif into count-filter" do
       bq_query = "select countif(test = 1) from my_table"
-      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from "my_table"|
+      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from my_table|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "current_timestamp" do
+    test "current_timestamp handling " do
       bq_query = "select current_timestamp() as t"
       pg_query = ~s|select current_timestamp as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      refute translated =~ "current_timestamp()"
+
+      # in cte
+      bq_query = "with a as (select current_timestamp() as t) select a.t"
+      pg_query = ~s|with a as (select current_timestamp as t) select a.t as t|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      refute translated =~ "current_timestamp()"
     end
 
     test "timestamp_sub" do
@@ -482,7 +490,7 @@ defmodule Logflare.SqlTest do
         "with test as (select id, metadata from mytable) select id, metadata.request from test"
 
       pg_query =
-        ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from "test"|
+        ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from test|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -508,7 +516,129 @@ defmodule Logflare.SqlTest do
         select 'btest' as other from a, my_table t
         where a.col = (t.body -> 'my_col')
       )
-      select a.col as col from "a"
+      select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE table quotations are converted" do
+      bq_query = ~s"""
+      with a as (select 'test' from `my.table` t) select 'test' from `a`
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test'
+        from "my.table" t
+      ) select 'test' from "a"
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE cross join UNNESTs are removed" do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        cross join unnest(t.metadata) as m
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+      ) select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE order by is " do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        order by cast(t.timestamp as timestamp) desc
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        ) select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE order by without from " do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        order by cast(t.timestamp as timestamp) desc
+      ) select 'tester' as col
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        ) select 'tester' as col
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE cross join UNNESTs with filter reference" do
+      bq_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        cross join unnest(t.metadata) as m
+        where m.project = '123'
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with a as (
+        select 'test' as col
+        from my_table t
+        where (body #> '{metadata,project}') = '123'
+        ) select a.col as col from a
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE cross join UNNESTs with multiple from" do
+      bq_query = ~s"""
+      with c as (select '123' as val), a as (
+        select 'test' as col
+        from c, my_table t
+        cross join unnest(t.metadata) as m
+        where m.project = '123'
+      ) select a.col from a
+      """
+
+      pg_query = ~s"""
+      with c as (select '123' as val), a as (
+        select 'test' as col
+        from c, my_table t
+        where (body #> '{metadata,project}') = '123'
+        ) select a.col as col from a
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
@@ -517,23 +647,35 @@ defmodule Logflare.SqlTest do
 
     test "field references within a cast() are converted to ->> syntax for string casting" do
       bq_query = ~s|select cast(col as timestamp) as date from my_table|
-      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from "my_table" |
+      pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    # test "order by json query"
+    test "order by json query" do
+      bq_query = ~s|select id from my_source t order by t.timestamp|
+
+      pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'timestamp')|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     # test "cte WHERE identifiers are translated correctly"
 
     test "parameters are translated" do
-      bq_query = ~s|select @test as arg1, @another as arg2|
-      pg_query = ~s|select $1 as arg1, $2 as arg2|
+      # test that substring of another arg is replaced correctly
+      bq_query =
+        ~s|select @test as arg1, @test_another as arg2, coalesce(@test, '') > @test as arg_copy|
+
+      pg_query = ~s|select $1 as arg1, $2 as arg2, coalesce($3, '') > $4 as arg_copy|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
       # determines sequence of parameters
-      assert {:ok, %{1 => "test", 2 => "another"}} = Sql.parameter_positions(bq_query)
+      assert {:ok, %{1 => "test", 2 => "test_another", 4 => "test"}} =
+               Sql.parameter_positions(bq_query)
     end
 
     test "REGEXP_CONTAINS is translated" do

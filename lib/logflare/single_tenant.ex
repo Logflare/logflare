@@ -13,6 +13,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.Supervisor
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
+  alias Logflare.Backends
   require Logger
 
   @user_attrs %{
@@ -168,7 +169,11 @@ defmodule Logflare.SingleTenant do
 
     if user do
       for source <- Sources.list_sources_by_user(user) do
-        Supervisor.ensure_started(source.token)
+        if postgres_backend?() do
+          Backends.start_source_sup(source)
+        else
+          Supervisor.ensure_started(source.token)
+        end
       end
     end
 

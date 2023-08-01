@@ -111,7 +111,7 @@ defmodule Logflare.SingleTenantTest do
   end
 
   describe "single tenant mode using Postgres" do
-    TestUtils.setup_single_tenant(mode: :postgres)
+    TestUtils.setup_single_tenant(backend_type: :postgres)
 
     test "create_default_plan/0 creates default enterprise plan if not present" do
       assert {:ok, plan} = SingleTenant.create_default_plan()
@@ -158,7 +158,7 @@ defmodule Logflare.SingleTenantTest do
   end
 
   describe "supabase_mode=true using Postgres" do
-    TestUtils.setup_single_tenant(mode: :postgres, seed_user: true, supabase_mode: true)
+    TestUtils.setup_single_tenant(backend_type: :postgres, seed_user: true, supabase_mode: true)
 
     setup do
       stub(Schema, :update, fn _token, _le -> :ok end)

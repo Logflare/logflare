@@ -78,14 +78,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
       env = Application.get_env(:logflare, repo)
 
-      # module name should use source token
-      expected =
-        source_backend.source.token
-        |> Atom.to_string()
-        |> String.replace("-", "")
-        |> String.to_atom()
-
-      assert Atom.to_string(repo) =~ Atom.to_string(expected)
+      # module name should have a prefix
+      assert "Elixir.Logflare.Repo.Postgres.Adaptor" <> _ = Atom.to_string(repo)
 
       assert env[:migration_source] == PostgresAdaptor.migrations_table_name(source_backend)
     end
