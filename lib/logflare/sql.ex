@@ -1103,10 +1103,13 @@ defmodule Logflare.Sql do
         value_map["value"]
       end
 
+    alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
+
     data =
       Map.merge(data, %{
         from_table_aliases: aliases,
-        from_table_values: values
+        from_table_values: values,
+        alias_path_mappings: alias_path_mappings
       })
 
     {k, traverse_convert_identifiers(v, data)}
