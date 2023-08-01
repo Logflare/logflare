@@ -79,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       env = Application.get_env(:logflare, repo)
 
       # module name should have a prefix
-      assert "Elixir.Logflare.Repo.Postgres.Adaptor" <> _ =  Atom.to_string(repo)
+      assert "Elixir.Logflare.Repo.Postgres.Adaptor" <> _ = Atom.to_string(repo)
 
       assert env[:migration_source] == PostgresAdaptor.migrations_table_name(source_backend)
     end
