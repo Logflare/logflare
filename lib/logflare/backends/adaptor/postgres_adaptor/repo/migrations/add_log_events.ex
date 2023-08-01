@@ -25,7 +25,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
           create table(unquote(table_name), primary_key: false) do
             add(:id, :string, primary_key: true)
             add(:body, :map)
-            add(:event_message, :string)
+            add(:event_message, :text)
             add(:timestamp, :utc_datetime_usec)
           end
         end
