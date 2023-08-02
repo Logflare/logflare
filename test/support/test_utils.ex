@@ -24,7 +24,8 @@ defmodule Logflare.TestUtils do
         seed_user: false,
         supabase_mode: false,
         bigquery_project_id: random_string(),
-        backend_type: :bigquery
+        backend_type: :bigquery,
+        pg_schema: nil
       })
 
     quote do
@@ -58,7 +59,7 @@ defmodule Logflare.TestUtils do
     end
   end
 
-  defp setup_single_tenant_backend(%{backend_type: :postgres}) do
+  defp setup_single_tenant_backend(%{backend_type: :postgres, pg_schema: schema}) do
     quote do
       setup do
         %{username: username, password: password, database: database, hostname: hostname} =
@@ -66,7 +67,12 @@ defmodule Logflare.TestUtils do
 
         url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
         previous = Application.get_env(:logflare, :postgres_backend_adapter)
-        Application.put_env(:logflare, :postgres_backend_adapter, url: url)
+
+        Application.put_env(:logflare, :postgres_backend_adapter,
+          url: url,
+          schema: unquote(schema)
+        )
+
         on_exit(fn -> Application.put_env(:logflare, :postgres_backend_adapter, previous) end)
         :ok
       end
