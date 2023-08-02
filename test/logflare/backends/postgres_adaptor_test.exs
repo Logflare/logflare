@@ -71,17 +71,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   end
 
   describe "repo module" do
-    test "create_repo/1 creates a new Ecto.Repo for given source_backend", %{
+    test "connected?/1 true when repo is connected", %{source_backend: source_backend} do
+      PostgresAdaptor.create_repo(source_backend)
+      assert :ok = PostgresAdaptor.connected?(source_backend)
+    end
+
+    test "create_repo/1 creates a new Ecto.Repo for given source_backend and connects", %{
       source_backend: source_backend
     } do
       repo = PostgresAdaptor.create_repo(source_backend)
+      assert :ok = PostgresAdaptor.connected?(source_backend)
       assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
-      env = Application.get_env(:logflare, repo)
 
       # module name should have a prefix
       assert "Elixir.Logflare.Repo.Postgres.Adaptor" <> _ = Atom.to_string(repo)
-
-      assert env[:migration_source] == PostgresAdaptor.migrations_table_name(source_backend)
     end
 
     test "custom schema", %{source: source, postgres_url: url} do
@@ -93,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
       PostgresAdaptor.create_repo(source_backend)
 
-      assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
+      assert :ok = PostgresAdaptor.connected?(source_backend)
 
       assert {:ok, [%{"schema_name" => "my_schema"}]} =
                PostgresAdaptor.execute_query(
@@ -111,7 +114,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       source_backend: source_backend
     } do
       repo = PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
+      assert :ok = PostgresAdaptor.connected?(source_backend)
       assert :ok = PostgresAdaptor.create_log_events_table(source_backend)
       query = from(l in PostgresAdaptor.table_name(source_backend), select: l.body)
       assert repo.all(query) == []
@@ -119,7 +122,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
     test "handle migration errors", %{source_backend: source_backend} do
       PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connect_to_repo(source_backend)
+      assert :ok = PostgresAdaptor.connected?(source_backend)
       bad_migrations = [{0, BadMigration}]
 
       assert capture_log(fn ->

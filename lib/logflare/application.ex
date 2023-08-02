@@ -59,6 +59,8 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
       {Registry, name: Logflare.CounterRegistry, keys: :unique}
@@ -140,6 +142,8 @@ defmodule Logflare.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
       {Registry, name: Logflare.CounterRegistry, keys: :unique}
@@ -190,9 +194,9 @@ defmodule Logflare.Application do
     if SingleTenant.supabase_mode?() do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
+      SingleTenant.ensure_supabase_sources_started()
 
       unless SingleTenant.postgres_backend?() do
-        SingleTenant.ensure_supabase_sources_started()
         # buffer time for all sources to init and create tables
         # in case of latency.
         :timer.sleep(3_000)
