@@ -60,7 +60,8 @@ defmodule Logflare.Application do
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
+      {Registry, name: Logflare.CounterRegistry, keys: :unique}
     ] ++ common_children()
   end
 
@@ -140,7 +141,8 @@ defmodule Logflare.Application do
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
+      {Registry, name: Logflare.CounterRegistry, keys: :unique}
     ] ++ conditional_children() ++ common_children()
   end
 
