@@ -41,6 +41,22 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   end
 
   @doc """
+  Wraps `LogEvent`s in a `Broadway.Message`, pushes log events into the Broadway pipeline and increments the `BufferCounter` count.
+  """
+
+  @spec push(LE.t()) :: {:ok, map()} | {:error, :buffer_full}
+  def push(%LE{source: %Source{token: source_uuid} = source} = le) do
+    batch = [
+      %Broadway.Message{
+        data: le,
+        acknowledger: {Source.BigQuery.BufferProducer, source_uuid, nil}
+      }
+    ]
+
+    push_batch(%{source: source, batch: batch, count: 1})
+  end
+
+  @doc """
   Takes a `batch` of `Broadway.Message`s, pushes them into a Broadway pipeline and increments the `BufferCounter` count.
   """
 
@@ -49,31 +65,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   def push_batch(%{source: %Source{token: source_uuid}, batch: batch, count: count})
       when is_list(batch) and is_atom(source_uuid) do
     with {:ok, ref} <- lookup_counter(source_uuid),
-         {:ok, resp} <- push_by(ref, {:push, count}) do
-      Source.BigQuery.Pipeline.name(source_uuid)
-      |> Broadway.push_messages(batch)
-
-      {:ok, resp}
-    else
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  @doc """
-  Wraps `LogEvent`s in a `Broadway.Message`, pushes log events into the Broadway pipeline and increments the `BufferCounter` count.
-  """
-
-  @spec push(LE.t()) :: {:ok, map()} | {:error, :buffer_full}
-  def push(%LE{source: %Source{token: source_uuid}} = le) do
-    with {:ok, ref} <- lookup_counter(source_uuid),
-         {:ok, resp} <- push_by(ref, {:push, 1}) do
-      batch = [
-        %Broadway.Message{
-          data: le,
-          acknowledger: {Source.BigQuery.BufferProducer, source_uuid, nil}
-        }
-      ]
-
+         {:ok, resp} <- push_by(ref, count) do
       Source.BigQuery.Pipeline.name(source_uuid)
       |> Broadway.push_messages(batch)
 
@@ -87,36 +79,78 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   Decrements the actual buffer count. If we've got a successfull `ack` from Broadway it means
   we don't have the log event anymore.
   """
-
-  @spec ack(atom(), UUID) :: {:ok, map()}
+  @spec ack(atom(), binary()) :: {:ok, %{len: integer}}
   def ack(source_uuid, log_event_id) when is_binary(log_event_id) do
     {:ok, ref} = source_uuid |> lookup_counter()
 
-    ack_by(ref, {:ack, 1})
+    ack_by(ref, 1)
   end
 
-  @spec ack(atom(), [%Broadway.Message{}]) :: {:ok, map()}
-  def ack(source_uuid, log_events) when is_list(log_events) do
+  @spec ack_batch(atom(), [%Broadway.Message{}]) :: {:ok, map()}
+  def ack_batch(source_uuid, log_events) when is_list(log_events) do
     count = Enum.count(log_events)
 
     {:ok, ref} = source_uuid |> lookup_counter()
 
-    ack_by(ref, {:ack, count})
+    ack_by(ref, count)
+  end
+
+  @spec push_by(:counters.counters_ref(), integer) ::
+          {:error, :buffer_full} | {:ok, %{len: integer}}
+  def push_by(ref, count) do
+    len = :counters.get(ref, len_idx())
+    max_len = :counters.get(ref, len_max_idx())
+
+    if len < max_len do
+      :ok = :counters.add(ref, len_idx(), count)
+      :ok = :counters.add(ref, pushed_idx(), count)
+
+      {:ok, %{len: len + count}}
+    else
+      :ok = :counters.add(ref, discarded_idx(), count)
+      {:error, :buffer_full}
+    end
+  end
+
+  @spec ack_by(:counters.counters_ref(), integer) :: {:ok, %{len: integer}}
+  def ack_by(ref, count) do
+    :ok = :counters.sub(ref, len_idx(), count)
+    len = :counters.get(ref, len_idx())
+
+    {:ok, %{len: len}}
   end
 
   @doc """
-  Gets the current count of the buffer.
+  Gets the current length of the buffer.
   """
 
-  @spec get_count(Source.t()) :: integer
-  def get_count(%Source{token: source_uuid}) when is_atom(source_uuid) do
+  @spec len(Source.t()) :: integer
+  def len(%Source{token: source_uuid}) when is_atom(source_uuid) do
     {:ok, ref} = lookup_counter(source_uuid)
 
     :counters.get(ref, len_idx())
   end
 
   @doc """
-  Sets the max length of a buffer.
+  Gets all the buffer counters for a source.
+  """
+
+  @spec get_counts(atom) :: map()
+  def get_counts(source_uuid) do
+    {:ok, ref} = lookup_counter(source_uuid)
+
+    %{
+      source_id: source_uuid,
+      pushed: :counters.get(ref, pushed_idx()),
+      acknowledged: :counters.get(ref, ackd_idx()),
+      len: :counters.get(ref, len_idx()),
+      len_max: :counters.get(ref, len_max_idx()),
+      discarded: :counters.get(ref, discarded_idx())
+    }
+  end
+
+  @doc """
+  Sets the max length of a buffer. For tests.
   """
 
   @spec set_len_max(atom(), integer()) :: {:ok, map()}
@@ -128,6 +162,11 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     {:ok, %{len_max: max}}
   end
 
+  @doc """
+  Looks up the counter reference from the Registry.
+  """
+
+  @spec lookup_counter(atom) :: {:error, :not_found} | {:ok, any}
   def lookup_counter(source_uuid) when is_atom(source_uuid) do
     case Registry.lookup(Logflare.CounterRegistry, {__MODULE__, source_uuid}) do
       [{_pid, counter_ref}] -> {:ok, counter_ref}
@@ -148,41 +187,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @spec name(atom() | integer()) :: atom
   def name(source_uuid) when is_atom(source_uuid) do
     String.to_atom("#{source_uuid}" <> "-buffer")
-  end
-
-  def push_by(ref, {:push, by}) do
-    len = :counters.get(ref, len_idx())
-    max_len = :counters.get(ref, len_max_idx())
-
-    if len < max_len do
-      :ok = :counters.add(ref, len_idx(), by)
-      :ok = :counters.add(ref, pushed_idx(), by)
-
-      {:ok, %{len: len + by}}
-    else
-      :ok = :counters.add(ref, discarded_idx(), by)
-      {:error, :buffer_full}
-    end
-  end
-
-  def ack_by(ref, {:ack, by}) do
-    :ok = :counters.sub(ref, len_idx(), by)
-    len = :counters.get(ref, len_idx())
-
-    {:ok, %{len: len}}
-  end
-
-  def get_counts(source_uuid) do
-    {:ok, ref} = lookup_counter(source_uuid)
-
-    %{
-      source_id: source_uuid,
-      pushed: :counters.get(ref, pushed_idx()),
-      acknowledged: :counters.get(ref, ackd_idx()),
-      len: :counters.get(ref, len_idx()),
-      len_max: :counters.get(ref, len_max_idx()),
-      discarded: :counters.get(ref, discarded_idx())
-    }
   end
 
   def handle_info(:check_buffer, state) do
