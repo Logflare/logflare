@@ -708,7 +708,7 @@ defmodule Logflare.Sql do
         # TODO: remove once sqlparser-rs bug is fixed
         # parser for postgres adds parenthesis to the end for postgres
         |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
-        |> String.replace(~r/\"([\w\_\-]+\.[\w\_\-]+)\.([\w_]{36})"/im, "\"log_events_\\g{2}\"")
+        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, "\"log_events_\\g{2}\"")
 
       {:ok, converted}
     end)

@@ -687,6 +687,15 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "malformed table name when global bq project id is not set" do
+      # if global bq project id is not set, the first part will be empty
+      input =
+        "SELECT body, event_message, timestamp FROM `.1_prod.b658a216_0aef_427e_bae8_9dfc68aad6dd`"
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input)
+      assert translated =~ ~s("log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+    end
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"
