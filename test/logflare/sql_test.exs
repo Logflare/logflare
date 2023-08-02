@@ -696,6 +696,16 @@ defmodule Logflare.SqlTest do
       assert translated =~ ~s("log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
     end
 
+    test "custom schema prefixing" do
+      input =
+        "SELECT body, event_message, timestamp FROM `.1_prod.b658a216_0aef_427e_bae8_9dfc68aad6dd`"
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input)
+      assert translated =~ ~s("log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input, "my_schema")
+      assert translated =~ ~s("my_schema"."log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+    end
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"

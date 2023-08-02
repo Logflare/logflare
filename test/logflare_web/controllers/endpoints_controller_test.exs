@@ -152,7 +152,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
   end
 
   describe "single tenant supabase mode" do
-    TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true, backend_type: :postgres)
+    TestUtils.setup_single_tenant(
+      seed_user: true,
+      supabase_mode: true,
+      backend_type: :postgres,
+      pg_schema: "my_schema"
+    )
 
     setup do
       SingleTenant.create_supabase_sources()

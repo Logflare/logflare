@@ -686,7 +686,7 @@ defmodule Logflare.Sql do
     end)
   end
 
-  def translate(:bq_sql, :pg_sql, query) when is_binary(query) do
+  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_binary(query) do
     {:ok, stmts} = Parser.parse("bigquery", query)
 
     for ast <- stmts do
@@ -702,13 +702,21 @@ defmodule Logflare.Sql do
         ast
         |> Parser.to_string()
 
+      # explicitly set the schema prefix of the table
+      replacement_pattern =
+        if schema_prefix do
+          ~s|"#{schema_prefix}"."log_events_\\g{2}"|
+        else
+          "\"log_events_\\g{2}\""
+        end
+
       converted =
         query_string
         |> bq_to_pg_convert_parameters(params)
         # TODO: remove once sqlparser-rs bug is fixed
         # parser for postgres adds parenthesis to the end for postgres
         |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
-        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, "\"log_events_\\g{2}\"")
+        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
 
       {:ok, converted}
     end)
