@@ -98,10 +98,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def execute_query(%SourceBackend{} = source_backend, query_string) when is_binary(query_string),
     do: execute_query(source_backend, {query_string, []})
 
-  def execute_query(%SourceBackend{} = source_backend, {query_string, params})
+  def execute_query(%SourceBackend{config: config} = source_backend, {query_string, params})
       when is_binary(query_string) and is_list(params) do
     mod = create_repo(source_backend)
     :ok = connect_to_repo(source_backend)
+
+    # explicitly set search path
+    schema = Map.get(config, "schema") || Map.get(config, :schema)
+
+    if schema do
+      Ecto.Adapters.SQL.query!(mod, "SET search_path=#{schema}")
+    end
+
     result = Ecto.Adapters.SQL.query!(mod, query_string, params)
 
     rows =
