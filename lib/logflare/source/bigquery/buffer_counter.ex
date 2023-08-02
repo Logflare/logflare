@@ -157,7 +157,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @spec set_len_max(atom(), integer()) :: {:ok, map()}
   def set_len_max(source_uuid, max) when is_atom(source_uuid) do
     {:ok, ref} = lookup_counter(source_uuid)
-    :counters.put(ref, len_max_idx(), max)
+    :ok = :counters.put(ref, len_max_idx(), max)
     max = :counters.get(ref, len_max_idx())
 
     {:ok, %{len_max: max}}
