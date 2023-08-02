@@ -48,7 +48,8 @@
           class: "form-control form-control-margin",
           "phx-change": "parse-query",
           id: "endpoint-query",
-          value: Map.get(@params_form.params, "query")
+          value: Map.get(@params_form.params, "query"),
+          style: "height: 20rem"
         ) %>
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>

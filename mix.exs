@@ -151,12 +151,11 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 0.4.0"},
       {:telemetry_metrics, "~> 0.6"},
       {:telemetry_poller, "~> 0.5"},
-      {:logflare_logger_backend, "~> 0.11.1"},
+      {:logflare_logger_backend, "~> 0.11.4"},
 
       # ETS
       {:ets, "~> 0.8.0"},
       {:ex2ms, "~> 1.0"},
-      {:etso, "~> 1.1"},
 
       # Statistics
       {:statistex, "~> 1.0.0"},

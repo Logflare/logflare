@@ -656,6 +656,14 @@ defmodule Logflare.Sql do
     end
   end
 
+  @doc """
+  Determine positions of all parameters
+
+  ### Example
+  iex> parameter_positions("select @test as testing")
+  %{1 => "test"}
+  """
+  @spec parameter_positions(String.t()) :: %{integer() => String.t()}
   def parameter_positions(string) when is_binary(string) do
     {:ok, parameters} = parameters(string)
     {:ok, do_parameter_positions_mapping(string, parameters)}
@@ -664,13 +672,17 @@ defmodule Logflare.Sql do
   def do_parameter_positions_mapping(_string, []), do: %{}
 
   def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
-    str = Enum.join(params, "|")
-    regexp = Regex.compile!("@(#{str})")
+    str =
+      params
+      |> Enum.uniq()
+      |> Enum.join("|")
+
+    regexp = Regex.compile!("@(#{str})(?:\\s|$|\\,|\\,|\\)|\\()")
 
     Regex.scan(regexp, string)
     |> Enum.with_index(1)
     |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
-      Map.put(acc, index, param)
+      Map.put(acc, index, String.trim(param))
     end)
   end
 
@@ -680,8 +692,8 @@ defmodule Logflare.Sql do
     for ast <- stmts do
       ast
       |> bq_to_pg_convert_functions()
-      |> bq_to_pg_quote_style()
       |> bq_to_pg_field_references()
+      |> pg_traverse_final_pass()
     end
     |> then(fn ast ->
       params = extract_all_parameters(ast)
@@ -693,6 +705,10 @@ defmodule Logflare.Sql do
       converted =
         query_string
         |> bq_to_pg_convert_parameters(params)
+        # TODO: remove once sqlparser-rs bug is fixed
+        # parser for postgres adds parenthesis to the end for postgres
+        |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
+        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, "\"log_events_\\g{2}\"")
 
       {:ok, converted}
     end)
@@ -702,10 +718,11 @@ defmodule Logflare.Sql do
   defp bq_to_pg_convert_parameters(string, []), do: string
 
   defp bq_to_pg_convert_parameters(string, params) do
-    mapping = do_parameter_positions_mapping(string, params)
-
-    Enum.reduce(mapping, string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}/, acc, "$#{index}")
+    do_parameter_positions_mapping(string, params)
+    |> Map.to_list()
+    |> Enum.sort_by(fn {i, _v} -> i end, :asc)
+    |> Enum.reduce(string, fn {index, param}, acc ->
+      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}", global: false)
     end)
   end
 
@@ -803,22 +820,33 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
-  defp bq_to_pg_quote_style(ast) do
-    from =
-      ast
-      |> get_in(["Query", "body", "Select", "from"])
-      |> Enum.map(fn from ->
-        {_, updated} =
-          get_and_update_in(from, ["relation", "Table", "name"], fn [%{"value" => source}] = value ->
-            {value, [%{"quote_style" => "\"", "value" => source}]}
-          end)
+  # convert backticks to double quotes
+  defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+  # drop cross join unnest
+  defp pg_traverse_final_pass({"joins" = k, joins}) do
+    filtered_joins =
+      for j <- joins,
+          Map.get(j, "join_operator") != "CrossJoin",
+          !is_map_key(Map.get(j, "relation"), "UNNEST") do
+        j
+      end
 
-        updated
-      end)
-
-    input = put_in(ast, ["Query", "body", "Select", "from"], from)
-    input
+    {k, filtered_joins}
   end
+
+  defp pg_traverse_final_pass({k, v}) when is_list(v) or is_map(v) do
+    {k, pg_traverse_final_pass(v)}
+  end
+
+  defp pg_traverse_final_pass(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> pg_traverse_final_pass(kv) end)
+  end
+
+  defp pg_traverse_final_pass(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> pg_traverse_final_pass(kv) end) |> Map.new()
+  end
+
+  defp pg_traverse_final_pass(kv), do: kv
 
   defp bq_to_pg_field_references(ast) do
     joins = get_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
@@ -830,6 +858,7 @@ defmodule Logflare.Sql do
     cte_table_names = extract_cte_alises([ast])
     cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
 
+    # TOOD: refactor
     cte_aliases =
       for table <- cte_table_names, into: %{} do
         tree =
@@ -851,12 +880,37 @@ defmodule Logflare.Sql do
         {table, fields}
       end
 
+    # TOOD: refactor
+    cte_from_aliases =
+      for table <- cte_table_names, into: %{} do
+        tree =
+          Enum.find(cte_tables_tree, fn tree ->
+            get_in(tree, ["alias", "name", "value"]) == table
+          end)
+
+        aliases =
+          if tree != nil do
+            for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
+                table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
+                table_name != nil do
+              table_name
+            end
+          else
+            []
+          end
+
+        {table, aliases}
+      end
+
     ast
     |> traverse_convert_identifiers(%{
       alias_path_mappings: alias_path_mappings,
       cte_aliases: cte_aliases,
+      cte_from_aliases: cte_from_aliases,
       in_cte_tables_tree: false,
-      in_cast: false
+      in_cast: false,
+      from_table_aliases: [],
+      from_table_values: []
     })
     |> then(fn
       ast when joins != [] ->
@@ -955,52 +1009,103 @@ defmodule Logflare.Sql do
     name
   end
 
+  # return non-matching as is
+  defp get_identifier_alias(identifier), do: identifier
+
   defp get_bq_alias_path_mappings(ast) do
-    table_map =
-      ast
-      |> get_in(["Query", "body", "Select", "from", Access.at(0), "relation", "Table"])
+    from_list = get_in(ast, ["Query", "body", "Select", "from"]) || []
 
-    table_alias = get_in(table_map, ["alias", "name", "value"])
+    table_aliases =
+      Enum.map(from_list, fn from ->
+        get_in(from, ["relation", "Table", "alias", "name", "value"])
+      end)
 
-    joins =
-      ast
-      |> get_in(["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
-
-    Enum.reduce(joins, %{}, fn
-      %{
-        "relation" => %{
-          "UNNEST" => %{
-            "array_expr" => %{"CompoundIdentifier" => identifiers},
-            "alias" => %{"name" => %{"value" => alias_name}}
+    for from <- from_list,
+        %{
+          "relation" => %{
+            "UNNEST" => %{
+              "array_expr" => %{"CompoundIdentifier" => identifiers},
+              "alias" => %{"name" => %{"value" => alias_name}}
+            }
           }
-        }
-      },
-      acc ->
-        arr_path = for i <- identifiers, value = i["value"], value != table_alias, do: value
+        } <- from["joins"] || [],
+        into: %{} do
+      arr_path = for i <- identifiers, value = i["value"], value not in table_aliases, do: value
 
-        str_path = Enum.join(arr_path, ",")
-
-        Map.put(acc, alias_name, str_path)
-
-      _join, acc ->
-        acc
-    end)
+      str_path = Enum.join(arr_path, ",")
+      {alias_name, str_path}
+    end
   end
 
   defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do
     {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
   end
 
-  # select-level from aliases
-  defp traverse_convert_identifiers({"Select" = k, %{"from" => [_ | _]} = v}, data) do
+  # handle top level queries
+  defp traverse_convert_identifiers(
+         {"Query" = k, %{"body" => %{"Select" => %{"from" => [_ | _] = from_list}}} = v},
+         %{in_cte_tables_tree: false} = data
+       ) do
+    # TODO: refactor
     aliases =
-      for from <- v["from"],
+      for from <- from_list,
           value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
           value != nil do
         value
       end
 
-    {k, traverse_convert_identifiers(v, Map.put(data, :from_table_aliases, aliases))}
+    # values
+    values =
+      for from <- from_list,
+          value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
+          value_map != nil do
+        value_map["value"]
+      end
+
+    data =
+      Map.merge(data, %{
+        from_table_aliases: aliases,
+        from_table_values: values
+      })
+
+    {k, traverse_convert_identifiers(v, data)}
+  end
+
+  # handle CTE-level queries
+  defp traverse_convert_identifiers(
+         {"query" = k,
+          %{
+            "body" => %{
+              "Select" => %{"from" => [_ | _] = from_list}
+            }
+          } = v},
+         %{in_cte_tables_tree: true} = data
+       ) do
+    # TODO: refactor
+    aliases =
+      for from <- from_list,
+          value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
+          value != nil do
+        value
+      end
+
+    values =
+      for from <- from_list,
+          value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
+          value_map != nil do
+        value_map["value"]
+      end
+
+    alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
+
+    data =
+      Map.merge(data, %{
+        from_table_aliases: aliases,
+        from_table_values: values,
+        alias_path_mappings: alias_path_mappings
+      })
+
+    {k, traverse_convert_identifiers(v, data)}
   end
 
   defp traverse_convert_identifiers({"Cast" = k, v}, data) do
@@ -1010,62 +1115,56 @@ defmodule Logflare.Sql do
   # auto set the column alias if not set
   defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
        when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
-    {"ExprWithAlias",
-     %{
-       "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
-       "expr" => traverse_convert_identifiers(identifier, data)
-     }}
-  end
+    normalized_identifier = get_identifier_alias(identifier)
 
-  # handle references to cte tables
-  defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, [%{"value" => cte_table}, _field_map] = v},
-         %{cte_aliases: cte_aliases}
-       )
-       when cte_aliases != %{} and is_map_key(cte_aliases, cte_table) do
-    {k, v}
-  end
-
-  # handle references to table aliases
-  defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, [%{"value" => table_ref}, field_map] = v},
-         %{from_table_aliases: from_table_aliases} = data
-       )
-       when from_table_aliases != [] do
-    if table_ref in from_table_aliases do
-      # convert to [alias].[body] -> field
-      convert_keys_to_json_query(%{k => [field_map]}, data, [
-        table_ref,
-        "body"
-      ])
-      |> Map.to_list()
-      |> List.first()
+    if normalized_identifier do
+      {"ExprWithAlias",
+       %{
+         "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
+         "expr" => traverse_convert_identifiers(identifier, data)
+       }}
     else
-      # convert as per normal
-      do_normal_compount_identifier_convert({k, v}, data)
+      identifier
     end
   end
 
-  # identifiers outeside of cte, handle cte table/field references
   defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, v},
-         %{cte_aliases: cte_aliases, in_cte_tables_tree: false} = data
-       )
-       when cte_aliases != %{} do
-    # only convert if not a compound identifier
-    {base, fields} =
-      case v do
-        [base | fields] ->
-          {base["value"], fields}
-      end
+         {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
+         data
+       ) do
+    cond do
+      # first OR condition: outside of cte and non-cte
+      # second OR condition: inside a cte
+      head_val in data.from_table_aliases or
+          Enum.any?(data.from_table_values, fn from ->
+            head_val in Map.get(data.cte_from_aliases, from, [])
+          end) ->
+        # convert to t.body -> 'tail'
+        convert_keys_to_json_query(%{k => [tail]}, data, [head_val, "body"])
+        |> Map.to_list()
+        |> List.first()
 
-    # if compound identifier, use different base field
-    convert_keys_to_json_query(%{k => fields}, data, base)
-    |> Map.to_list()
-    |> List.first()
+      is_map_key(data.cte_aliases, head_val) ->
+        # referencing a cte field alias
+        # leave as is, head.tail
+        {k, v}
+
+      Enum.any?(data.from_table_values, fn from ->
+        head_val in Map.get(data.cte_aliases, from, [])
+      end) ->
+        # referencing a cte field, pop and convert
+        # metadata.key  into metadata -> 'key'
+        convert_keys_to_json_query(%{k => [tail]}, data, head_val)
+        |> Map.to_list()
+        |> List.first()
+
+      true ->
+        # convert to body -> '{head,tail}'
+        do_normal_compount_identifier_convert({k, v}, data)
+    end
   end
 
-  # if not cte, identifiers should be left as is if it is referencing a cte table
+  # identifiers should be left as is if it is referencing a cte table
   defp traverse_convert_identifiers(
          {"Identifier" = k, %{"value" => field_alias} = v},
          %{in_cte_tables_tree: false, cte_aliases: cte_aliases} = data
@@ -1080,8 +1179,10 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp traverse_convert_identifiers({k, v}, data)
-       when k in ["Identifier", "CompoundIdentifier"] do
+  # leave compound identifier as is
+  defp traverse_convert_identifiers({"CompoundIdentifier" = k, v}, _data), do: {k, v}
+
+  defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
     convert_keys_to_json_query(%{k => v}, data)
     |> Map.to_list()
     |> List.first()

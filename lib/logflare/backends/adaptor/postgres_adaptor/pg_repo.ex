@@ -56,9 +56,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   Retrieves the repo module. Requires `:source` to be preloaded.
   """
   @spec get_repo_module(SourceBackend.t()) :: Ecto.Repo.t()
-  def get_repo_module(%SourceBackend{source: %Source{token: token}}) do
-    token = token |> Atom.to_string() |> String.replace("-", "")
-    Module.concat([Logflare.Repo.Postgres, "Adaptor#{token}"])
+  def get_repo_module(%SourceBackend{config: config, source: %Source{}}) do
+    data = inspect(config)
+    sha256 = :crypto.hash(:sha256, data) |> Base.encode16() |> String.downcase()
+    Module.concat([Logflare.Repo.Postgres, "Adaptor#{sha256}"])
   end
 
   @doc """

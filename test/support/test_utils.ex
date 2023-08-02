@@ -23,11 +23,12 @@ defmodule Logflare.TestUtils do
       Enum.into(opts, %{
         seed_user: false,
         supabase_mode: false,
-        bigquery_project_id: random_string()
+        bigquery_project_id: random_string(),
+        backend_type: :bigquery
       })
 
     quote do
-      unquote(setup_single_tenant_env(opts))
+      unquote(setup_single_tenant_backend(opts))
 
       setup do
         if unquote(opts.seed_user) do
@@ -38,7 +39,6 @@ defmodule Logflare.TestUtils do
         if unquote(opts.supabase_mode) do
           initial_supabase_mode = Application.get_env(:logflare, :supabase_mode)
           Application.put_env(:logflare, :supabase_mode, true)
-
           on_exit(fn -> Application.put_env(:logflare, :supabase_mode, initial_supabase_mode) end)
         end
 
@@ -58,7 +58,7 @@ defmodule Logflare.TestUtils do
     end
   end
 
-  defp setup_single_tenant_env(%{mode: :postgres}) do
+  defp setup_single_tenant_backend(%{backend_type: :postgres}) do
     quote do
       setup do
         %{username: username, password: password, database: database, hostname: hostname} =
@@ -66,14 +66,14 @@ defmodule Logflare.TestUtils do
 
         url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
         previous = Application.get_env(:logflare, :postgres_backend_adapter)
-        Application.put_env(:logflare, :postgres_backend_adapter, url: url, schema: "_analytics")
+        Application.put_env(:logflare, :postgres_backend_adapter, url: url)
         on_exit(fn -> Application.put_env(:logflare, :postgres_backend_adapter, previous) end)
         :ok
       end
     end
   end
 
-  defp setup_single_tenant_env(opts) do
+  defp setup_single_tenant_backend(%{backend_type: :bigquery} = opts) do
     quote do
       setup do
         # conditionally update bigquery project id

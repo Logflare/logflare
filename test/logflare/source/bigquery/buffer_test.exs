@@ -35,7 +35,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     BigQuery.BufferCounter.push(le)
 
-    assert 1 = BigQuery.BufferCounter.get_count(source)
+    assert 1 = BigQuery.BufferCounter.len(source)
   end
 
   test "ack a log event", %{source: source} do
@@ -45,7 +45,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     BigQuery.BufferCounter.ack(source.token, "some-uuid")
 
-    assert 0 = BigQuery.BufferCounter.get_count(source)
+    assert 0 = BigQuery.BufferCounter.len(source)
   end
 
   test "ack a batch of log events", %{source: source} do
@@ -58,9 +58,9 @@ defmodule Logflare.Source.BigQuery.BufferTest do
       acknowledger: {BigQuery.BufferProducer, source.token, nil}
     }
 
-    BigQuery.BufferCounter.ack(source.token, [message])
+    BigQuery.BufferCounter.ack_batch(source.token, [message])
 
-    assert 0 = BigQuery.BufferCounter.get_count(source)
+    assert 0 = BigQuery.BufferCounter.len(source)
   end
 
   test "push a batch of log events", %{source: source} do
@@ -79,7 +79,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
 
-    assert 2 = BigQuery.BufferCounter.get_count(source)
+    assert 2 = BigQuery.BufferCounter.len(source)
   end
 
   test "errors when buffer is full", %{source: source} do
@@ -107,6 +107,6 @@ defmodule Logflare.Source.BigQuery.BufferTest do
     {:error, :buffer_full} =
       BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
 
-    assert %{len: 4, discarded: 2} = :sys.get_state(BigQuery.BufferCounter.name(source.token))
+    assert %{len: 4, discarded: 2} = BigQuery.BufferCounter.get_counts(source.token)
   end
 end
