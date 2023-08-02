@@ -221,7 +221,7 @@ defmodule Logflare.EndpointsTest do
         )
 
       PostgresAdaptor.create_repo(source_backend)
-      PostgresAdaptor.connect_to_repo(source_backend)
+      assert :ok = PostgresAdaptor.connected?(source_backend)
       PostgresAdaptor.create_log_events_table(source_backend)
 
       on_exit(fn ->
