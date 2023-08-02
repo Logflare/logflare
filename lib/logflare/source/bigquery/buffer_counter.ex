@@ -66,7 +66,8 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       when is_list(batch) and is_atom(source_uuid) do
     with {:ok, ref} <- lookup_counter(source_uuid),
          {:ok, resp} <- push_by(ref, count) do
-      Source.BigQuery.Pipeline.name(source_uuid)
+      source_uuid
+      |> Source.BigQuery.Pipeline.name()
       |> Broadway.push_messages(batch)
 
       {:ok, resp}
