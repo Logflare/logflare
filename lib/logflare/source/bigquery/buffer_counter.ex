@@ -82,7 +82,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   """
   @spec ack(atom(), binary()) :: {:ok, %{len: integer}}
   def ack(source_uuid, log_event_id) when is_binary(log_event_id) do
-    {:ok, ref} = source_uuid |> lookup_counter()
+    {:ok, ref} = lookup_counter(source_uuid)
 
     ack_by(ref, 1)
   end
@@ -91,7 +91,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   def ack_batch(source_uuid, log_events) when is_list(log_events) do
     count = Enum.count(log_events)
 
-    {:ok, ref} = source_uuid |> lookup_counter()
+    {:ok, ref} = lookup_counter(source_uuid)
 
     ack_by(ref, count)
   end
