@@ -169,7 +169,9 @@ defmodule Logflare.Endpoints do
         if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend_adapter_opts() != nil do
           # translate the query
           schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
+
           {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query, schema_prefix)
+
           {Map.put(endpoint_query, :language, :pg_sql), q}
         else
           {endpoint_query, transformed_query}
@@ -255,7 +257,8 @@ defmodule Logflare.Endpoints do
         Map.get(params, parameter)
       end
 
-    with {:ok, rows} <- PostgresAdaptor.execute_query(source_backend, {transformed_query, args}) do
+    with {:ok, rows} <-
+           PostgresAdaptor.execute_query(source_backend, {transformed_query, args}) do
       {:ok, %{rows: rows}}
     end
   end
