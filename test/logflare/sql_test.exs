@@ -514,7 +514,7 @@ defmodule Logflare.SqlTest do
       ),
       b as (
         select 'btest' as other from a, my_table t
-        where a.col = (t.body -> 'my_col')
+        where a.col = (t.body ->> 'my_col')
       )
       select a.col as col from a
       """
@@ -653,6 +653,14 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "field references in left-right operators are converted to ->> syntax" do
+      bq_query = ~s|select t.id = 'test' as value from my_table t|
+      pg_query = ~s|select (t.body ->> 'id') = 'test' as value from my_table t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     test "order by json query" do
       bq_query = ~s|select id from my_source t order by t.timestamp|
 
@@ -669,7 +677,8 @@ defmodule Logflare.SqlTest do
       bq_query =
         ~s|select @test as arg1, @test_another as arg2, coalesce(@test, '') > @test as arg_copy|
 
-      pg_query = ~s|select $1::text as arg1, $2::text as arg2, coalesce($3::text, '') > $4::text as arg_copy|
+      pg_query =
+        ~s|select $1::text as arg1, $2::text as arg2, coalesce($3::text, '') > $4::text as arg_copy|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
