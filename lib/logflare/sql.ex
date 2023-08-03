@@ -730,7 +730,7 @@ defmodule Logflare.Sql do
     |> Map.to_list()
     |> Enum.sort_by(fn {i, _v} -> i end, :asc)
     |> Enum.reduce(string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}", global: false)
+      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}::text", global: false)
     end)
   end
 

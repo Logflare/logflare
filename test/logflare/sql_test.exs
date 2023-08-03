@@ -669,7 +669,7 @@ defmodule Logflare.SqlTest do
       bq_query =
         ~s|select @test as arg1, @test_another as arg2, coalesce(@test, '') > @test as arg_copy|
 
-      pg_query = ~s|select $1 as arg1, $2 as arg2, coalesce($3, '') > $4 as arg_copy|
+      pg_query = ~s|select $1::text as arg1, $2::text as arg2, coalesce($3::text, '') > $4::text as arg_copy|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
