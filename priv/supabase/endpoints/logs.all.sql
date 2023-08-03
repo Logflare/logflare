@@ -22,7 +22,7 @@ where
   -- project then timestamp then everything else
   t.project = @project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
-  AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_start as timestamp) END
+  AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
 order by
   cast(t.timestamp as timestamp) desc
@@ -92,8 +92,8 @@ where
   -- project then timestamp then everything else
   -- m.project = @project
   t.project = @project
-  AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > @iso_timestamp_start END
-  AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= @iso_timestamp_end END
+  AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
+  AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
 order by cast(t.timestamp as timestamp) desc
 ),

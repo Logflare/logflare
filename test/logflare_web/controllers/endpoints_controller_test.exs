@@ -181,7 +181,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> put_req_header("x-api-key", user.api_key)
         |> get(
-          ~p"/endpoints/query/logs.all?#{%{sql: ~s(select 'hello' as world from edge_logs)}}"
+          ~p"/endpoints/query/logs.all?#{%{iso_timestamp_start: "2023-08-01T16:00:00.000Z", iso_timestamp_end: "2023-08-01T16:00:00.000Z", project: "123abc", project_tier: "ENTERPRISE", sql: ~s(select 'hello' as world from edge_logs)}}"
         )
 
       assert [] = json_response(conn, 200)["result"]

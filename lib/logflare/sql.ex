@@ -730,7 +730,7 @@ defmodule Logflare.Sql do
     |> Map.to_list()
     |> Enum.sort_by(fn {i, _v} -> i end, :asc)
     |> Enum.reduce(string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}", global: false)
+      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}::text", global: false)
     end)
   end
 
@@ -918,7 +918,8 @@ defmodule Logflare.Sql do
       in_cte_tables_tree: false,
       in_cast: false,
       from_table_aliases: [],
-      from_table_values: []
+      from_table_values: [],
+      in_binaryop: false
     })
     |> then(fn
       ast when joins != [] ->
@@ -945,7 +946,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" => if(data.in_cast, do: "LongArrow", else: "Arrow"),
+          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -961,7 +962,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast, do: "LongArrow", else: "Arrow"),
+          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -979,7 +980,8 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast, do: "HashLongArrow", else: "HashArrow"),
+          "operator" =>
+            if(data.in_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -995,7 +997,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast, do: "LongArrow", else: "Arrow"),
+          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => name}}
         }
       }
@@ -1043,6 +1045,10 @@ defmodule Logflare.Sql do
       str_path = Enum.join(arr_path, ",")
       {alias_name, str_path}
     end
+  end
+
+  defp traverse_convert_identifiers({"BinaryOp" = k, v}, data) do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_binaryop, true))}
   end
 
   defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do

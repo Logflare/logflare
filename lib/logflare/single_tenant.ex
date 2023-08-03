@@ -51,42 +51,45 @@ defmodule Logflare.SingleTenant do
     "postgREST.logs.prod",
     "pgbouncer.logs.prod"
   ]
-  @endpoint_params [
-    %{
-      name: "logs.all",
-      query:
-        Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(),
-      sandboxable: true,
-      max_limit: 1000,
-      language: :bq_sql,
-      enable_auth: true,
-      cache_duration_seconds: 0
-    },
-    %{
-      name: "usage.api-counts",
-      query:
-        Application.app_dir(:logflare, "priv/supabase/endpoints/usage.api-counts.sql")
-        |> File.read!(),
-      sandboxable: true,
-      max_limit: 1000,
-      language: :bq_sql,
-      enable_auth: true,
-      cache_duration_seconds: 900,
-      proactive_requerying_seconds: 300
-    },
-    %{
-      name: "functions.invocation-stats",
-      query:
-        Application.app_dir(:logflare, "priv/supabase/endpoints/functions.invocation-stats.sql")
-        |> File.read!(),
-      sandboxable: true,
-      max_limit: 1000,
-      language: :bq_sql,
-      enable_auth: true,
-      cache_duration_seconds: 900,
-      proactive_requerying_seconds: 300
-    }
-  ]
+
+  defp endpoint_params do
+    [
+      %{
+        name: "logs.all",
+        query:
+          Application.app_dir(:logflare, "priv/supabase/endpoints/logs.all.sql") |> File.read!(),
+        sandboxable: true,
+        max_limit: 1000,
+        language: :bq_sql,
+        enable_auth: true,
+        cache_duration_seconds: 0
+      },
+      %{
+        name: "usage.api-counts",
+        query:
+          Application.app_dir(:logflare, "priv/supabase/endpoints/usage.api-counts.sql")
+          |> File.read!(),
+        sandboxable: true,
+        max_limit: 1000,
+        language: :bq_sql,
+        enable_auth: true,
+        cache_duration_seconds: 900,
+        proactive_requerying_seconds: 300
+      },
+      %{
+        name: "functions.invocation-stats",
+        query:
+          Application.app_dir(:logflare, "priv/supabase/endpoints/functions.invocation-stats.sql")
+          |> File.read!(),
+        sandboxable: true,
+        max_limit: 1000,
+        language: :bq_sql,
+        enable_auth: true,
+        cache_duration_seconds: 900,
+        proactive_requerying_seconds: 300
+      }
+    ]
+  end
 
   @doc """
   Retrieves the default user
@@ -191,7 +194,7 @@ defmodule Logflare.SingleTenant do
 
     if count == 0 do
       endpoints =
-        for params <- @endpoint_params do
+        for params <- endpoint_params() do
           {:ok, endpoint} = Endpoints.create_query(user, params)
           endpoint
         end
