@@ -932,6 +932,105 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(identifiers, data, base \\ "body")
 
+  # convert body.timestamp from unix microsecond to postgres timestamp
+  defp convert_keys_to_json_query(%{"CompoundIdentifier" => [%{"value" => "timestamp"}]}, data, [
+         table,
+         "body"
+       ]) do
+    %{
+      "Nested" => %{
+        "AtTimeZone" => %{
+          "time_zone" => "UTC",
+          "timestamp" => %{
+            "Function" => %{
+              "args" => [
+                %{
+                  "Unnamed" => %{
+                    "Expr" => %{
+                      "BinaryOp" => %{
+                        "left" => %{
+                          "Cast" => %{
+                            "data_type" => %{"BigInt" => nil},
+                            "expr" => %{
+                              "Nested" => %{
+                                "JsonAccess" => %{
+                                  "left" => %{
+                                    "CompoundIdentifier" => [
+                                      %{"quote_style" => nil, "value" => table},
+                                      %{"quote_style" => nil, "value" => "body"}
+                                    ]
+                                  },
+                                  "operator" => "LongArrow",
+                                  "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "op" => "Divide",
+                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                      }
+                    }
+                  }
+                }
+              ],
+              "distinct" => false,
+              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "over" => nil,
+              "special" => false
+            }
+          }
+        }
+      }
+    }
+  end
+
+  defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, data, "body") do
+    %{
+      "Nested" => %{
+        "AtTimeZone" => %{
+          "time_zone" => "UTC",
+          "timestamp" => %{
+            "Function" => %{
+              "args" => [
+                %{
+                  "Unnamed" => %{
+                    "Expr" => %{
+                      "BinaryOp" => %{
+                        "left" => %{
+                          "Cast" => %{
+                            "data_type" => %{"BigInt" => nil},
+                            "expr" => %{
+                              "Nested" => %{
+                                "JsonAccess" => %{
+                                  "left" => %{
+                                    "Identifier" => %{"quote_style" => nil, "value" => "body"}
+                                  },
+                                  "operator" => "LongArrow",
+                                  "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "op" => "Divide",
+                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                      }
+                    }
+                  }
+                }
+              ],
+              "distinct" => false,
+              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "over" => nil,
+              "special" => false
+            }
+          }
+        }
+      }
+    }
+  end
+
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
          data,

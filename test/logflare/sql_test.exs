@@ -564,7 +564,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast(t.timestamp as timestamp) desc
+        order by cast(t.my_col as timestamp) desc
       ) select a.col from a
       """
 
@@ -572,7 +572,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        order by cast( (t.body ->> 'my_col') as timestamp) desc
         ) select a.col as col from a
       """
 
@@ -585,7 +585,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast(t.timestamp as timestamp) desc
+        order by cast(t.my_col as timestamp) desc
       ) select 'tester' as col
       """
 
@@ -593,7 +593,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        order by cast( (t.body ->> 'my_col') as timestamp) desc
         ) select 'tester' as col
       """
 
@@ -662,9 +662,9 @@ defmodule Logflare.SqlTest do
     end
 
     test "order by json query" do
-      bq_query = ~s|select id from my_source t order by t.timestamp|
+      bq_query = ~s|select id from my_source t order by t.my_col|
 
-      pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'timestamp')|
+      pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'my_col')|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -713,6 +713,16 @@ defmodule Logflare.SqlTest do
       assert translated =~ ~s("log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input, "my_schema")
       assert translated =~ ~s("my_schema"."log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+    end
+
+    test "unix microsecond timestamp handling" do
+      bq_query = ~s|select t.timestamp as ts from my_table t|
+
+      pg_query =
+        ~s|select (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') as ts from my_table t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
     # functions metrics
