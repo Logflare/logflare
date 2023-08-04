@@ -190,7 +190,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       params = %{
         iso_timestamp_start:
-          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601() |> dbg(),
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
         project: "default",
         project_tier: "ENTERPRISE",
         sql: "select  timestamp,  event_message, metadata from edge_logs"
