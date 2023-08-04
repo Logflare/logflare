@@ -1,6 +1,8 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.SingleTenant
+  alias Logflare.Backends
+  alias Logflare.Source
 
   describe "query" do
     setup :set_mimic_global
@@ -176,15 +178,30 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
 
-    test "GET a basic sandboxed query with fromt able", %{conn: conn, user: user} do
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> get(
-          ~p"/endpoints/query/logs.all?#{%{iso_timestamp_start: "2023-08-01T16:00:00.000Z", iso_timestamp_end: "2023-08-01T16:00:00.000Z", project: "123abc", project_tier: "ENTERPRISE", sql: ~s(select 'hello' as world from edge_logs)}}"
+    test "GET a basic sandboxed query with fromt able", %{conn: initial_conn, user: user} do
+      for source <- Logflare.Repo.all(Source) do
+        Backends.ingest_logs(
+          [%{"event_message" => "some message", "project" => "default"}],
+          source
         )
+      end
 
-      assert [] = json_response(conn, 200)["result"]
+      :timer.sleep(2000)
+
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql: "select  timestamp,  event_message, metadata from edge_logs"
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"event_message" => "some message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
     end
   end
