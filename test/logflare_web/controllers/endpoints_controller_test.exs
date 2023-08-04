@@ -1,10 +1,8 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.SingleTenant
-  alias Logflare.Backends.SourceBackend
   alias Logflare.Backends
   alias Logflare.Source
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   describe "query" do
     setup :set_mimic_global
