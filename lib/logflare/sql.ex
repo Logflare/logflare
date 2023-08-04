@@ -933,7 +933,7 @@ defmodule Logflare.Sql do
   defp convert_keys_to_json_query(identifiers, data, base \\ "body")
 
   # convert body.timestamp from unix microsecond to postgres timestamp
-  defp convert_keys_to_json_query(%{"CompoundIdentifier" => [%{"value" => "timestamp"}]}, data, [
+  defp convert_keys_to_json_query(%{"CompoundIdentifier" => [%{"value" => "timestamp"}]}, _data, [
          table,
          "body"
        ]) do
@@ -985,7 +985,7 @@ defmodule Logflare.Sql do
     }
   end
 
-  defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, data, "body") do
+  defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, _data, "body") do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
