@@ -201,7 +201,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> put_req_header("x-api-key", user.api_key)
         |> get(~p"/endpoints/query/logs.all?#{params}")
 
-      assert [%{"event_message" => "some message"}] = json_response(conn, 200)["result"]
+      assert [%{"event_message" => "some message", "timestamp" => timestamp}] =
+               json_response(conn, 200)["result"]
+
+      # render as unix microsecond
+      assert inspect(timestamp) |> String.length() == 16
+      assert "16" <> _ = inspect(timestamp)
       assert conn.halted == false
 
       # test a logs ui query
