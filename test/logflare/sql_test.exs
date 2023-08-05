@@ -719,7 +719,16 @@ defmodule Logflare.SqlTest do
       bq_query = ~s|select t.timestamp as ts from my_table t|
 
       pg_query =
-        ~s|select (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') as ts from my_table t|
+        ~s|select (t.body -> 'timestamp') as ts from my_table t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      # only convert if not in projection
+      bq_query = ~s|select t.id as id from my_table t where t.timestamp is not null|
+
+      pg_query =
+        ~s|select (t.body -> 'id') as id from my_table t where (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') is not null|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -742,7 +751,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s"""
       with edge_logs as (
         select
-        (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') as timestamp,
+          (t.body -> 'timestamp') as timestamp,
           (t.body -> 'id') as id,
           (t.body -> 'event_message') AS event_message,
           (t.body -> 'metadata') as metadata
