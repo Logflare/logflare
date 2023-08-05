@@ -1074,7 +1074,7 @@ defmodule Logflare.Sql do
   end
 
   defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
+         %{"CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]},
          data,
          {base, arr_path}
        ) do
