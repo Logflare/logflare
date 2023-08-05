@@ -936,7 +936,11 @@ defmodule Logflare.Sql do
   # convert body.timestamp from unix microsecond to postgres timestamp
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => "timestamp"}]},
-         %{in_cte_tables_tree: in_cte_tables_tree, cte_aliases: cte_aliases, in_projection_tree: false} = _data,
+         %{
+           in_cte_tables_tree: in_cte_tables_tree,
+           cte_aliases: cte_aliases,
+           in_projection_tree: false
+         } = _data,
          [
            table,
            "body"
@@ -1197,6 +1201,7 @@ defmodule Logflare.Sql do
   defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do
     {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
   end
+
   defp traverse_convert_identifiers({"projection" = k, v}, data) do
     {k, traverse_convert_identifiers(v, Map.put(data, :in_projection_tree, true))}
   end

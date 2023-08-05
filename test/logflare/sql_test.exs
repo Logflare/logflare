@@ -718,8 +718,7 @@ defmodule Logflare.SqlTest do
     test "unix microsecond timestamp handling" do
       bq_query = ~s|select t.timestamp as ts from my_table t|
 
-      pg_query =
-        ~s|select (t.body -> 'timestamp') as ts from my_table t|
+      pg_query = ~s|select (t.body -> 'timestamp') as ts from my_table t|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
