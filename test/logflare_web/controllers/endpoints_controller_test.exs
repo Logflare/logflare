@@ -244,6 +244,24 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert [] = json_response(conn, 200)["result"]
       assert conn.halted == false
+
+      # log chart sql
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql:
+          "\nSELECT\n-- event-chart\n  timestamp_trunc(t.timestamp, minute) as timestamp,\n  count(t.timestamp) as count\nFROM\n  edge_logs t\n  cross join unnest(t.metadata) as metadata \n  cross join unnest(metadata.request) as request \n  cross join unnest(metadata.response) as response\n  where t.timestamp > '2023-08-05T09:00:00.000Z'\nGROUP BY\ntimestamp\nORDER BY\n  timestamp ASC\n"
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"count" => 1}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
     end
   end
 end

@@ -770,6 +770,21 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "should not convert to body json query if referencing cte field" do
+      bq_query = ~s"""
+      with edge_logs as (select t.id from  `cloudflare.logs.prod` t)
+      select t.id from edge_logs t
+      """
+
+      pg_query = ~s"""
+      with edge_logs as ( select (t.body -> 'id') as id from  "cloudflare.logs.prod" t )
+      SELECT t.id AS id FROM edge_logs t
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"

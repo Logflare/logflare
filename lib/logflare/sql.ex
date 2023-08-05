@@ -1078,6 +1078,7 @@ defmodule Logflare.Sql do
     }
   end
 
+  # handle cross join aliases when there are different base field names as compared to what is referenced
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]},
          data,
@@ -1300,6 +1301,7 @@ defmodule Logflare.Sql do
          {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
+    # dbg({v, data})
     cond do
       is_map_key(data.alias_path_mappings, head_val) and
           length(data.alias_path_mappings[head_val || []]) > 1 ->
@@ -1317,6 +1319,12 @@ defmodule Logflare.Sql do
         convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
         |> Map.to_list()
         |> List.first()
+
+      # outside of a cte, referencing table alias
+      # preserve as is
+      head_val in data.from_table_aliases and data.in_cte_tables_tree == false and
+          data.cte_aliases != %{} ->
+        {k, v}
 
       # first OR condition: outside of cte and non-cte
       # second OR condition: inside a cte
