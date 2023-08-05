@@ -811,18 +811,6 @@ defmodule Logflare.Sql do
                   }
                 }
               }
-              #  bq_to_pg_convert_functions(to_trunc)
-              #  %{s
-              #   "Unnamed"=>%{"Expr"=>%{
-              #    "Value"=> %{
-              #      "Cast" => %{
-              #        "data_type" => %{"Timestamp" => nil},
-              #        "expr" =>   bq_to_pg_convert_functions(to_trunc)
-              #      }
-              #    }
-              #  },
-              #  }
-              # }
              ],
              "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
          }}
