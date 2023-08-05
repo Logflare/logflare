@@ -725,6 +725,43 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "CTE translation with cross join" do
+      bq_query = ~s"""
+      with edge_logs as (
+        select t.timestamp, t.id, t.event_message, t.metadata
+        from  `cloudflare.logs.prod` t
+        cross join unnest(metadata) as m
+      )
+      select id, timestamp, event_message, request.method, request.path, response.status_code
+      from edge_logs
+      cross join unnest(metadata) as m
+      cross join unnest(m.request) as request
+      cross join unnest(m.response) as response
+      """
+
+      pg_query = ~s"""
+      with edge_logs as (
+        select
+        (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') as timestamp,
+          (t.body -> 'id') as id,
+          (t.body -> 'event_message') AS event_message,
+          (t.body -> 'metadata') as metadata
+        from  "cloudflare.logs.prod" t
+      )
+      SELECT
+      id AS id,
+      timestamp AS timestamp,
+      event_message AS event_message,
+      ( metadata #> '{request,method}') AS method,
+      ( metadata #> '{request,path}') AS path,
+      ( metadata #> '{response,status_code}') AS status_code
+      FROM edge_logs
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"

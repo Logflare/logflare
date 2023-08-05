@@ -203,6 +203,42 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert [%{"event_message" => "some message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
+
+      # test a logs ui query
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql:
+          "select id, timestamp, event_message, request.method, request.path, response.status_code from edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as request cross join unnest(m.response) as response limit 100 "
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"event_message" => "some message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      # different project filter
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "other",
+        project_tier: "ENTERPRISE",
+        sql:
+          "select id, timestamp, event_message, request.method, request.path, response.status_code from edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as request cross join unnest(m.response) as response limit 100 "
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [] = json_response(conn, 200)["result"]
+      assert conn.halted == false
     end
   end
 end
