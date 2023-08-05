@@ -933,10 +933,15 @@ defmodule Logflare.Sql do
   defp convert_keys_to_json_query(identifiers, data, base \\ "body")
 
   # convert body.timestamp from unix microsecond to postgres timestamp
-  defp convert_keys_to_json_query(%{"CompoundIdentifier" => [%{"value" => "timestamp"}]}, _data, [
-         table,
-         "body"
-       ]) do
+  defp convert_keys_to_json_query(
+         %{"CompoundIdentifier" => [%{"value" => "timestamp"}]},
+         %{in_cte_tables_tree: in_cte_tables_tree, cte_aliases: cte_aliases} = _data,
+         [
+           table,
+           "body"
+         ]
+       )
+       when cte_aliases == %{} or in_cte_tables_tree == true do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
@@ -1071,9 +1076,30 @@ defmodule Logflare.Sql do
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
          data,
+         {base, arr_path}
+       ) do
+    str_path = Enum.join(arr_path, ",")
+    path = "{#{str_path},#{key}}"
+
+    %{
+      "Nested" => %{
+        "JsonAccess" => %{
+          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "operator" =>
+            if(data.in_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
+          "right" => %{"Value" => %{"SingleQuotedString" => path}}
+        }
+      }
+    }
+  end
+
+  defp convert_keys_to_json_query(
+         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
+         data,
          base
        ) do
-    path = "{#{data.alias_path_mappings[join_alias]},#{key}}"
+    str_path = Enum.join(data.alias_path_mappings[join_alias], ",")
+    path = "{#{str_path},#{key}}"
 
     %{
       "Nested" => %{
@@ -1129,7 +1155,19 @@ defmodule Logflare.Sql do
         get_in(from, ["relation", "Table", "alias", "name", "value"])
       end)
 
-    for from <- from_list,
+    for from <- from_list do
+      Enum.reduce(from["joins"] || [], %{}, fn
+        %{
+          "relation" => %{
+            "UNNEST" => %{
+              "array_expr" => %{"Identifier" => %{"value" => identifier_val}},
+              "alias" => %{"name" => %{"value" => alias_name}}
+            }
+          }
+        },
+        acc ->
+          Map.put(acc, alias_name, [identifier_val])
+
         %{
           "relation" => %{
             "UNNEST" => %{
@@ -1137,13 +1175,18 @@ defmodule Logflare.Sql do
               "alias" => %{"name" => %{"value" => alias_name}}
             }
           }
-        } <- from["joins"] || [],
-        into: %{} do
-      arr_path = for i <- identifiers, value = i["value"], value not in table_aliases, do: value
+        },
+        acc ->
+          arr_path =
+            for i <- identifiers, value = i["value"], value not in table_aliases do
+              if is_map_key(acc, value), do: acc[value], else: [value]
+            end
+            |> List.flatten()
 
-      str_path = Enum.join(arr_path, ",")
-      {alias_name, str_path}
+          Map.put(acc, alias_name, arr_path)
+      end)
     end
+    |> Enum.reduce(%{}, fn mappings, acc -> Map.merge(acc, mappings) end)
   end
 
   defp traverse_convert_identifiers({"BinaryOp" = k, v}, data) do
@@ -1175,10 +1218,13 @@ defmodule Logflare.Sql do
         value_map["value"]
       end
 
+    alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
+
     data =
       Map.merge(data, %{
         from_table_aliases: aliases,
-        from_table_values: values
+        from_table_values: values,
+        alias_path_mappings: alias_path_mappings
       })
 
     {k, traverse_convert_identifiers(v, data)}
@@ -1246,6 +1292,23 @@ defmodule Logflare.Sql do
          data
        ) do
     cond do
+      is_map_key(data.alias_path_mappings, head_val) and
+          length(data.alias_path_mappings[head_val || []]) > 1 ->
+        # referencing a cross join unnest
+        # pop first path part and use it as the base
+        # with a cross join unnest(metadata) as m
+        # with a cross join unnest(m.request) as request
+        # reference of request.status_code gets converted to:
+        # metadata -> 'request, status_code'
+        # base is set to the first item of the path (full json path is metadata.request.status_code)
+
+        # pop the first
+        [base | arr_path] = data.alias_path_mappings[head_val]
+
+        convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
+        |> Map.to_list()
+        |> List.first()
+
       # first OR condition: outside of cte and non-cte
       # second OR condition: inside a cte
       head_val in data.from_table_aliases or
