@@ -480,7 +480,7 @@ defmodule Logflare.SqlTest do
 
     test "timestamp_trunc" do
       bq_query = "select timestamp_trunc(current_timestamp(), day) as t"
-      pg_query = ~s|select date_trunc('day', current_timestamp) as t|
+      pg_query = ~s|select date_trunc('day', cast(current_timestamp as timestamp)) as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
@@ -653,6 +653,16 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+
+    test "field references within a DATE_TRUNC() are converted to ->> syntax for string casting" do
+      bq_query = ~s|select DATE_TRUNC('day', col) as date from my_table|
+      pg_query = ~s|select DATE_TRUNC('day',  (body ->> 'col')) as date from my_table|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+
     test "field references in left-right operators are converted to ->> syntax" do
       bq_query = ~s|select t.id = 'test' as value from my_table t|
       pg_query = ~s|select (t.body ->> 'id') = 'test' as value from my_table t|
@@ -773,12 +783,12 @@ defmodule Logflare.SqlTest do
     test "should not convert to body json query if referencing cte field" do
       bq_query = ~s"""
       with edge_logs as (select t.id from  `cloudflare.logs.prod` t)
-      select t.id from edge_logs t
+      select timestamp_trunc(t.id, day) as id from edge_logs t
       """
 
       pg_query = ~s"""
       with edge_logs as ( select (t.body -> 'id') as id from  "cloudflare.logs.prod" t )
-      SELECT t.id AS id FROM edge_logs t
+      SELECT date_trunc('day', cast(t.id as timestamp)) AS id FROM edge_logs t
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)

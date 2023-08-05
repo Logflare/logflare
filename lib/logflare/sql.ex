@@ -791,7 +791,7 @@ defmodule Logflare.Sql do
          }}
 
       "timestamp_trunc" ->
-        to_trunc = get_in(v, ["args", Access.at(0)])
+        to_trunc = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
 
         interval_type =
           get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Identifier", "value"])
@@ -804,7 +804,25 @@ defmodule Logflare.Sql do
                %{
                  "Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}}
                },
-               bq_to_pg_convert_functions(to_trunc)
+               %{
+                "Unnamed" => %{
+                  "Expr" => %{
+                    "Cast" => %{"data_type" => %{"Timestamp" => [nil, "None"]}, "expr" => bq_to_pg_convert_functions(to_trunc)}
+                  }
+                }
+              }
+              #  bq_to_pg_convert_functions(to_trunc)
+              #  %{s
+              #   "Unnamed"=>%{"Expr"=>%{
+              #    "Value"=> %{
+              #      "Cast" => %{
+              #        "data_type" => %{"Timestamp" => nil},
+              #        "expr" =>   bq_to_pg_convert_functions(to_trunc)
+              #      }
+              #    }
+              #  },
+              #  }
+              # }
              ],
              "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
          }}
@@ -916,7 +934,7 @@ defmodule Logflare.Sql do
       cte_aliases: cte_aliases,
       cte_from_aliases: cte_from_aliases,
       in_cte_tables_tree: false,
-      in_cast: false,
+      in_function_or_cast: false,
       in_projection_tree: false,
       from_table_aliases: [],
       from_table_values: [],
@@ -1055,7 +1073,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1071,7 +1089,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1092,7 +1110,7 @@ defmodule Logflare.Sql do
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
           "operator" =>
-            if(data.in_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
+            if(data.in_function_or_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1112,7 +1130,7 @@ defmodule Logflare.Sql do
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
           "operator" =>
-            if(data.in_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
+            if(data.in_function_or_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1128,7 +1146,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => name}}
         }
       }
@@ -1277,8 +1295,8 @@ defmodule Logflare.Sql do
     {k, traverse_convert_identifiers(v, data)}
   end
 
-  defp traverse_convert_identifiers({"Cast" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_cast, true))}
+  defp traverse_convert_identifiers({ k, v}, data) when k in ["Function", "Cast"] do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_function_or_cast, true))}
   end
 
   # auto set the column alias if not set
