@@ -224,7 +224,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> put_req_header("x-api-key", user.api_key)
         |> get(~p"/endpoints/query/logs.all?#{params}")
 
-      assert [%{"event_message" => "some message"}] = json_response(conn, 200)["result"]
+      assert [%{"event_message" => "some message", "id" => log_id}] =
+               json_response(conn, 200)["result"]
+
       assert conn.halted == false
 
       # different project filter
@@ -261,6 +263,26 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> get(~p"/endpoints/query/logs.all?#{params}")
 
       assert [%{"count" => 1}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      # log chart sql
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql:
+          "select id, timestamp, event_message, metadata from edge_logs where id = '#{log_id}' limit 1"
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"event_message" => "some message", "id" => ^log_id}] =
+               json_response(conn, 200)["result"]
+
       assert conn.halted == false
     end
   end

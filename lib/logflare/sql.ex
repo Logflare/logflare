@@ -842,12 +842,28 @@ defmodule Logflare.Sql do
          {"BinaryOp" = k,
           %{
             "left" => left,
-            "right" => right
+            "right" => right,
+            "op" => operator
           } = v}
        ) do
-    updated_left = if is_timestamp_identifier?(left), do: at_time_zone(left), else: left
-    updated_right = if is_timestamp_identifier?(right), do: at_time_zone(right), else: right
-    {k, %{v | "left" => updated_left, "right" => updated_right} |> pg_traverse_final_pass()}
+    [left, right] =
+      for expr <- [left, right] do
+        cond do
+          is_timestamp_identifier?(expr) ->
+            at_time_zone(expr)
+
+          is_identifier?(expr) and operator == "Eq" ->
+            # wrap with a cast
+            expr
+            |> cast_to_jsonb()
+            |> jsonb_to_text()
+
+          true ->
+            expr
+        end
+      end
+
+    {k, %{v | "left" => left, "right" => right} |> pg_traverse_final_pass()}
   end
 
   # convert backticks to double quotes
@@ -1368,6 +1384,9 @@ defmodule Logflare.Sql do
     |> List.first()
   end
 
+  defp is_identifier?(identifier),
+    do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
+
   defp is_timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
 
   defp is_timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
@@ -1406,6 +1425,27 @@ defmodule Logflare.Sql do
               "special" => false
             }
           }
+        }
+      }
+    }
+  end
+
+  defp cast_to_jsonb(identifier) do
+    %{
+      "Cast" => %{
+        "data_type" => %{"Custom" => [[%{"quote_style" => nil, "value" => "jsonb"}], []]},
+        "expr" => identifier
+      }
+    }
+  end
+
+  defp jsonb_to_text(jsonb) do
+    %{
+      "Nested" => %{
+        "JsonAccess" => %{
+          "left" => jsonb,
+          "operator" => "HashLongArrow",
+          "right" => %{"Value" => %{"SingleQuotedString" => "{}"}}
         }
       }
     }

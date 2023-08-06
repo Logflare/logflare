@@ -514,7 +514,7 @@ defmodule Logflare.SqlTest do
       ),
       b as (
         select 'btest' as other from a, my_table t
-        where a.col = (t.body ->> 'my_col')
+        where (a.col::jsonb #>> '{}' )  = (t.body ->> 'my_col')
       )
       select a.col as col from a
       """
@@ -804,6 +804,23 @@ defmodule Logflare.SqlTest do
       with edge_logs as ( select (t.body -> 'timestamp') as timestamp from  "cloudflare.logs.prod" t )
       SELECT t.timestamp AS timestamp FROM edge_logs t
       where (to_timestamp(CAST(t.timestamp AS BIGINT) / 1000000.0) AT TIME ZONE 'UTC') > '2023-08-05T09:00:00.000Z'
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "fields in binary op are cast to text only when equal" do
+      bq_query = ~s"""
+      with edge_logs as (select t.id from  `cloudflare.logs.prod` t)
+      select t.id as id from edge_logs t
+      where t.id = '123' and t.id > 123
+      """
+
+      pg_query = ~s"""
+      with edge_logs as ( select (t.body -> 'id') as id from  "cloudflare.logs.prod" t )
+      SELECT t.id AS id FROM edge_logs t
+      where (cast(t.id as jsonb) #>> '{}') = '123' and t.id > 123
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
