@@ -478,9 +478,9 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "timestamp_trunc" do
+    test "timestamp_trunc without a field reference" do
       bq_query = "select timestamp_trunc(current_timestamp(), day) as t"
-      pg_query = ~s|select date_trunc('day', cast(current_timestamp as timestamp)) as t|
+      pg_query = ~s|select date_trunc('day', current_timestamp) as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
@@ -653,7 +653,6 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-
     test "field references within a DATE_TRUNC() are converted to ->> syntax for string casting" do
       bq_query = ~s|select DATE_TRUNC('day', col) as date from my_table|
       pg_query = ~s|select DATE_TRUNC('day',  (body ->> 'col')) as date from my_table|
@@ -661,7 +660,6 @@ defmodule Logflare.SqlTest do
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
-
 
     test "field references in left-right operators are converted to ->> syntax" do
       bq_query = ~s|select t.id = 'test' as value from my_table t|
@@ -780,15 +778,32 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "should not convert to body json query if referencing cte field" do
+    test "special handling of timestamp field and date_trunc : " do
       bq_query = ~s"""
-      with edge_logs as (select t.id from  `cloudflare.logs.prod` t)
-      select timestamp_trunc(t.id, day) as id from edge_logs t
+      with edge_logs as (select t.timestamp from  `cloudflare.logs.prod` t)
+      select timestamp_trunc(t.timestamp, day) as timestamp from edge_logs t
       """
 
       pg_query = ~s"""
-      with edge_logs as ( select (t.body -> 'id') as id from  "cloudflare.logs.prod" t )
-      SELECT date_trunc('day', cast(t.id as timestamp)) AS id FROM edge_logs t
+      with edge_logs as ( select (t.body -> 'timestamp') as timestamp from  "cloudflare.logs.prod" t )
+      SELECT date_trunc('day', (to_timestamp( t.timestamp::bigint / 1000000.0) AT TIME ZONE 'UTC') ) AS timestamp FROM edge_logs t
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "special handling of timestamp field for binary ops" do
+      bq_query = ~s"""
+      with edge_logs as (select t.timestamp from  `cloudflare.logs.prod` t)
+      select t.timestamp as timestamp from edge_logs t
+      where t.timestamp > '2023-08-05T09:00:00.000Z'
+      """
+
+      pg_query = ~s"""
+      with edge_logs as ( select (t.body -> 'timestamp') as timestamp from  "cloudflare.logs.prod" t )
+      SELECT t.timestamp AS timestamp FROM edge_logs t
+      where (to_timestamp(CAST(t.timestamp AS BIGINT) / 1000000.0) AT TIME ZONE 'UTC') > '2023-08-05T09:00:00.000Z'
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
