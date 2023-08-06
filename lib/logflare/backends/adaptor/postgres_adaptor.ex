@@ -41,7 +41,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
          {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
          repository_module <- create_repo(source_backend),
-         :ok <- connect_to_repo(source_backend),
+         :ok <- connected?(source_backend),
          :ok <- create_log_events_table(source_backend) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
@@ -90,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @impl true
   def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
     mod = create_repo(source_backend)
-    :ok = connect_to_repo(source_backend)
+    :ok = connected?(source_backend)
     result = mod.all(query)
     {:ok, result}
   end
@@ -98,10 +98,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def execute_query(%SourceBackend{} = source_backend, query_string) when is_binary(query_string),
     do: execute_query(source_backend, {query_string, []})
 
-  def execute_query(%SourceBackend{} = source_backend, {query_string, params})
+  def execute_query(%SourceBackend{config: config} = source_backend, {query_string, params})
       when is_binary(query_string) and is_list(params) do
     mod = create_repo(source_backend)
-    :ok = connect_to_repo(source_backend)
+    :ok = connected?(source_backend)
+
+    # explicitly set search path
+    schema = Map.get(config, "schema") || Map.get(config, :schema)
+
+    if schema do
+      Ecto.Adapters.SQL.query!(mod, "SET search_path=#{schema}")
+    end
+
     result = Ecto.Adapters.SQL.query!(mod, query_string, params)
 
     rows =
@@ -113,8 +121,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   # expose PgRepo functions
+  defdelegate connected?(source_backend), to: PgRepo
   defdelegate create_repo(source_backend), to: PgRepo
-  defdelegate connect_to_repo(source_backend), to: PgRepo
   defdelegate table_name(source_or_source_backend), to: PgRepo
   defdelegate create_log_events_table(source_backend), to: PgRepo
   defdelegate create_log_events_table(source_backend, override_migrations), to: PgRepo

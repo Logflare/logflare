@@ -451,7 +451,7 @@ defmodule Logflare.SqlTest do
 
     test "countif into count-filter" do
       bq_query = "select countif(test = 1) from my_table"
-      pg_query = ~s|select count(*) filter (where (body -> 'test') = 1) from my_table|
+      pg_query = ~s|select count(*) filter (where (body ->> 'test') = 1) from my_table|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
@@ -478,7 +478,7 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "timestamp_trunc" do
+    test "timestamp_trunc without a field reference" do
       bq_query = "select timestamp_trunc(current_timestamp(), day) as t"
       pg_query = ~s|select date_trunc('day', current_timestamp) as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
@@ -514,7 +514,7 @@ defmodule Logflare.SqlTest do
       ),
       b as (
         select 'btest' as other from a, my_table t
-        where a.col = (t.body -> 'my_col')
+        where (a.col::jsonb #>> '{}' )  = (t.body ->> 'my_col')
       )
       select a.col as col from a
       """
@@ -564,7 +564,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast(t.timestamp as timestamp) desc
+        order by cast(t.my_col as timestamp) desc
       ) select a.col from a
       """
 
@@ -572,7 +572,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        order by cast( (t.body ->> 'my_col') as timestamp) desc
         ) select a.col as col from a
       """
 
@@ -585,7 +585,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast(t.timestamp as timestamp) desc
+        order by cast(t.my_col as timestamp) desc
       ) select 'tester' as col
       """
 
@@ -593,7 +593,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        order by cast( (t.body ->> 'timestamp') as timestamp) desc
+        order by cast( (t.body ->> 'my_col') as timestamp) desc
         ) select 'tester' as col
       """
 
@@ -615,7 +615,7 @@ defmodule Logflare.SqlTest do
       with a as (
         select 'test' as col
         from my_table t
-        where (body #> '{metadata,project}') = '123'
+        where (body #>> '{metadata,project}') = '123'
         ) select a.col as col from a
       """
 
@@ -637,7 +637,7 @@ defmodule Logflare.SqlTest do
       with c as (select '123' as val), a as (
         select 'test' as col
         from c, my_table t
-        where (body #> '{metadata,project}') = '123'
+        where (body #>> '{metadata,project}') = '123'
         ) select a.col as col from a
       """
 
@@ -653,10 +653,26 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "order by json query" do
-      bq_query = ~s|select id from my_source t order by t.timestamp|
+    test "field references within a DATE_TRUNC() are converted to ->> syntax for string casting" do
+      bq_query = ~s|select DATE_TRUNC('day', col) as date from my_table|
+      pg_query = ~s|select DATE_TRUNC('day',  (body ->> 'col')) as date from my_table|
 
-      pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'timestamp')|
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "field references in left-right operators are converted to ->> syntax" do
+      bq_query = ~s|select t.id = 'test' as value from my_table t|
+      pg_query = ~s|select (t.body ->> 'id') = 'test' as value from my_table t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "order by json query" do
+      bq_query = ~s|select id from my_source t order by t.my_col|
+
+      pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'my_col')|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -669,7 +685,8 @@ defmodule Logflare.SqlTest do
       bq_query =
         ~s|select @test as arg1, @test_another as arg2, coalesce(@test, '') > @test as arg_copy|
 
-      pg_query = ~s|select $1 as arg1, $2 as arg2, coalesce($3, '') > $4 as arg_copy|
+      pg_query =
+        ~s|select $1::text as arg1, $2::text as arg2, coalesce($3::text, '') > $4::text as arg_copy|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -694,6 +711,120 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input)
       assert translated =~ ~s("log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+    end
+
+    test "custom schema prefixing" do
+      input =
+        "SELECT body, event_message, timestamp FROM `.1_prod.b658a216_0aef_427e_bae8_9dfc68aad6dd`"
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input)
+      assert translated =~ ~s("log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, input, "my_schema")
+      assert translated =~ ~s("my_schema"."log_events_b658a216_0aef_427e_bae8_9dfc68aad6dd")
+    end
+
+    test "unix microsecond timestamp handling" do
+      bq_query = ~s|select t.timestamp as ts from my_table t|
+
+      pg_query = ~s|select (t.body -> 'timestamp') as ts from my_table t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      # only convert if not in projection
+      bq_query = ~s|select t.id as id from my_table t where t.timestamp is not null|
+
+      pg_query =
+        ~s|select (t.body -> 'id') as id from my_table t where (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') is not null|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "CTE translation with cross join" do
+      bq_query = ~s"""
+      with edge_logs as (
+        select t.timestamp, t.id, t.event_message, t.metadata
+        from  `cloudflare.logs.prod` t
+        cross join unnest(metadata) as m
+      )
+      select id, timestamp, event_message, request.method, request.path, response.status_code
+      from edge_logs
+      cross join unnest(metadata) as m
+      cross join unnest(m.request) as request
+      cross join unnest(m.response) as response
+      """
+
+      pg_query = ~s"""
+      with edge_logs as (
+        select
+          (t.body -> 'timestamp') as timestamp,
+          (t.body -> 'id') as id,
+          (t.body -> 'event_message') AS event_message,
+          (t.body -> 'metadata') as metadata
+        from  "cloudflare.logs.prod" t
+      )
+      SELECT
+      id AS id,
+      timestamp AS timestamp,
+      event_message AS event_message,
+      ( metadata #> '{request,method}') AS method,
+      ( metadata #> '{request,path}') AS path,
+      ( metadata #> '{response,status_code}') AS status_code
+      FROM edge_logs
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "special handling of timestamp field and date_trunc : " do
+      bq_query = ~s"""
+      with edge_logs as (select t.timestamp from  `cloudflare.logs.prod` t)
+      select timestamp_trunc(t.timestamp, day) as timestamp from edge_logs t
+      """
+
+      pg_query = ~s"""
+      with edge_logs as ( select (t.body -> 'timestamp') as timestamp from  "cloudflare.logs.prod" t )
+      SELECT date_trunc('day', (to_timestamp( t.timestamp::bigint / 1000000.0) AT TIME ZONE 'UTC') ) AS timestamp FROM edge_logs t
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "special handling of timestamp field for binary ops" do
+      bq_query = ~s"""
+      with edge_logs as (select t.timestamp from  `cloudflare.logs.prod` t)
+      select t.timestamp as timestamp from edge_logs t
+      where t.timestamp > '2023-08-05T09:00:00.000Z'
+      """
+
+      pg_query = ~s"""
+      with edge_logs as ( select (t.body -> 'timestamp') as timestamp from  "cloudflare.logs.prod" t )
+      SELECT t.timestamp AS timestamp FROM edge_logs t
+      where (to_timestamp(CAST(t.timestamp AS BIGINT) / 1000000.0) AT TIME ZONE 'UTC') > '2023-08-05T09:00:00.000Z'
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "fields in binary op are cast to text only when equal" do
+      bq_query = ~s"""
+      with edge_logs as (select t.id from  `cloudflare.logs.prod` t)
+      select t.id as id from edge_logs t
+      where t.id = '123' and t.id > 123
+      """
+
+      pg_query = ~s"""
+      with edge_logs as ( select (t.body -> 'id') as id from  "cloudflare.logs.prod" t )
+      SELECT t.id AS id FROM edge_logs t
+      where (cast(t.id as jsonb) #>> '{}') = '123' and t.id > 123
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
     # functions metrics

@@ -1,6 +1,8 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.SingleTenant
+  alias Logflare.Backends
+  alias Logflare.Source
 
   describe "query" do
     setup :set_mimic_global
@@ -152,7 +154,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
   end
 
   describe "single tenant supabase mode" do
-    TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true, backend_type: :postgres)
+    TestUtils.setup_single_tenant(
+      seed_user: true,
+      supabase_mode: true,
+      backend_type: :postgres,
+      pg_schema: "my_schema"
+    )
 
     setup do
       SingleTenant.create_supabase_sources()
@@ -171,15 +178,111 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
 
-    test "GET a basic sandboxed query with fromt able", %{conn: conn, user: user} do
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> get(
-          ~p"/endpoints/query/logs.all?#{%{sql: ~s(select 'hello' as world from edge_logs)}}"
+    test "GET a basic sandboxed query with fromt able", %{conn: initial_conn, user: user} do
+      for source <- Logflare.Repo.all(Source) do
+        Backends.ingest_logs(
+          [%{"event_message" => "some message", "project" => "default"}],
+          source
         )
+      end
+
+      :timer.sleep(2000)
+
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql: "select  timestamp,  event_message, metadata from edge_logs"
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"event_message" => "some message", "timestamp" => timestamp}] =
+               json_response(conn, 200)["result"]
+
+      # render as unix microsecond
+      assert inspect(timestamp) |> String.length() == 16
+      assert "16" <> _ = inspect(timestamp)
+      assert conn.halted == false
+
+      # test a logs ui query
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql:
+          "select id, timestamp, event_message, request.method, request.path, response.status_code from edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as request cross join unnest(m.response) as response limit 100 "
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"event_message" => "some message", "id" => log_id}] =
+               json_response(conn, 200)["result"]
+
+      assert conn.halted == false
+
+      # different project filter
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "other",
+        project_tier: "ENTERPRISE",
+        sql:
+          "select id, timestamp, event_message, request.method, request.path, response.status_code from edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as request cross join unnest(m.response) as response limit 100 "
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
 
       assert [] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      # log chart sql
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql:
+          "\nSELECT\n-- event-chart\n  timestamp_trunc(t.timestamp, minute) as timestamp,\n  count(t.timestamp) as count\nFROM\n  edge_logs t\n  cross join unnest(t.metadata) as metadata \n  cross join unnest(metadata.request) as request \n  cross join unnest(metadata.response) as response\n  where t.timestamp > '2023-08-05T09:00:00.000Z'\nGROUP BY\ntimestamp\nORDER BY\n  timestamp ASC\n"
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"count" => 1}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      # log chart sql
+      params = %{
+        iso_timestamp_start:
+          DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
+        project: "default",
+        project_tier: "ENTERPRISE",
+        sql:
+          "select id, timestamp, event_message, metadata from edge_logs where id = '#{log_id}' limit 1"
+      }
+
+      conn =
+        initial_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/endpoints/query/logs.all?#{params}")
+
+      assert [%{"event_message" => "some message", "id" => ^log_id}] =
+               json_response(conn, 200)["result"]
+
       assert conn.halted == false
     end
   end
