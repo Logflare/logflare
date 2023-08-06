@@ -791,11 +791,18 @@ defmodule Logflare.Sql do
          }}
 
       "timestamp_trunc" ->
-        to_trunc = get_in(v, ["args", Access.at(0)])
+        to_trunc = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
 
         interval_type =
           get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Identifier", "value"])
           |> String.downcase()
+
+        field_arg =
+          if is_timestamp_identifier?(to_trunc) do
+            at_time_zone(to_trunc)
+          else
+            to_trunc
+          end
 
         {k,
          %{
@@ -804,7 +811,9 @@ defmodule Logflare.Sql do
                %{
                  "Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}}
                },
-               bq_to_pg_convert_functions(to_trunc)
+               %{
+                 "Unnamed" => %{"Expr" => field_arg}
+               }
              ],
              "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
          }}
@@ -827,6 +836,19 @@ defmodule Logflare.Sql do
   end
 
   defp bq_to_pg_convert_functions(kv), do: kv
+
+  # handle timestamp references in binary operations
+  defp pg_traverse_final_pass(
+         {"BinaryOp" = k,
+          %{
+            "left" => left,
+            "right" => right
+          } = v}
+       ) do
+    updated_left = if is_timestamp_identifier?(left), do: at_time_zone(left), else: left
+    updated_right = if is_timestamp_identifier?(right), do: at_time_zone(right), else: right
+    {k, %{v | "left" => updated_left, "right" => updated_right} |> pg_traverse_final_pass()}
+  end
 
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
@@ -916,7 +938,7 @@ defmodule Logflare.Sql do
       cte_aliases: cte_aliases,
       cte_from_aliases: cte_from_aliases,
       in_cte_tables_tree: false,
-      in_cast: false,
+      in_function_or_cast: false,
       in_projection_tree: false,
       from_table_aliases: [],
       from_table_values: [],
@@ -947,98 +969,34 @@ defmodule Logflare.Sql do
          ]
        )
        when cte_aliases == %{} or in_cte_tables_tree == true do
-    %{
+    at_time_zone(%{
       "Nested" => %{
-        "AtTimeZone" => %{
-          "time_zone" => "UTC",
-          "timestamp" => %{
-            "Function" => %{
-              "args" => [
-                %{
-                  "Unnamed" => %{
-                    "Expr" => %{
-                      "BinaryOp" => %{
-                        "left" => %{
-                          "Cast" => %{
-                            "data_type" => %{"BigInt" => nil},
-                            "expr" => %{
-                              "Nested" => %{
-                                "JsonAccess" => %{
-                                  "left" => %{
-                                    "CompoundIdentifier" => [
-                                      %{"quote_style" => nil, "value" => table},
-                                      %{"quote_style" => nil, "value" => "body"}
-                                    ]
-                                  },
-                                  "operator" => "LongArrow",
-                                  "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "op" => "Divide",
-                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
-                      }
-                    }
-                  }
-                }
-              ],
-              "distinct" => false,
-              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
-              "over" => nil,
-              "special" => false
-            }
-          }
+        "JsonAccess" => %{
+          "left" => %{
+            "CompoundIdentifier" => [
+              %{"quote_style" => nil, "value" => table},
+              %{"quote_style" => nil, "value" => "body"}
+            ]
+          },
+          "operator" => "LongArrow",
+          "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
         }
       }
-    }
+    })
   end
 
   defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, _data, "body") do
-    %{
+    at_time_zone(%{
       "Nested" => %{
-        "AtTimeZone" => %{
-          "time_zone" => "UTC",
-          "timestamp" => %{
-            "Function" => %{
-              "args" => [
-                %{
-                  "Unnamed" => %{
-                    "Expr" => %{
-                      "BinaryOp" => %{
-                        "left" => %{
-                          "Cast" => %{
-                            "data_type" => %{"BigInt" => nil},
-                            "expr" => %{
-                              "Nested" => %{
-                                "JsonAccess" => %{
-                                  "left" => %{
-                                    "Identifier" => %{"quote_style" => nil, "value" => "body"}
-                                  },
-                                  "operator" => "LongArrow",
-                                  "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "op" => "Divide",
-                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
-                      }
-                    }
-                  }
-                }
-              ],
-              "distinct" => false,
-              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
-              "over" => nil,
-              "special" => false
-            }
-          }
+        "JsonAccess" => %{
+          "left" => %{
+            "Identifier" => %{"quote_style" => nil, "value" => "body"}
+          },
+          "operator" => "LongArrow",
+          "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
         }
       }
-    }
+    })
   end
 
   defp convert_keys_to_json_query(
@@ -1055,7 +1013,8 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" =>
+            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1071,13 +1030,15 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" =>
+            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
     }
   end
 
+  # handle cross join aliases when there are different base field names as compared to what is referenced
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]},
          data,
@@ -1091,7 +1052,10 @@ defmodule Logflare.Sql do
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
           "operator" =>
-            if(data.in_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
+            if(data.in_function_or_cast or data.in_binaryop,
+              do: "HashLongArrow",
+              else: "HashArrow"
+            ),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1111,7 +1075,10 @@ defmodule Logflare.Sql do
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
           "operator" =>
-            if(data.in_cast or data.in_binaryop, do: "HashLongArrow", else: "HashArrow"),
+            if(data.in_function_or_cast or data.in_binaryop,
+              do: "HashLongArrow",
+              else: "HashArrow"
+            ),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1127,7 +1094,8 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => if(data.in_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" =>
+            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
           "right" => %{"Value" => %{"SingleQuotedString" => name}}
         }
       }
@@ -1276,8 +1244,8 @@ defmodule Logflare.Sql do
     {k, traverse_convert_identifiers(v, data)}
   end
 
-  defp traverse_convert_identifiers({"Cast" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_cast, true))}
+  defp traverse_convert_identifiers({k, v}, data) when k in ["Function", "Cast"] do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_function_or_cast, true))}
   end
 
   # auto set the column alias if not set
@@ -1300,6 +1268,7 @@ defmodule Logflare.Sql do
          {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
+    # dbg({v, data})
     cond do
       is_map_key(data.alias_path_mappings, head_val) and
           length(data.alias_path_mappings[head_val || []]) > 1 ->
@@ -1317,6 +1286,12 @@ defmodule Logflare.Sql do
         convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
         |> Map.to_list()
         |> List.first()
+
+      # outside of a cte, referencing table alias
+      # preserve as is
+      head_val in data.from_table_aliases and data.in_cte_tables_tree == false and
+          data.cte_aliases != %{} ->
+        {k, v}
 
       # first OR condition: outside of cte and non-cte
       # second OR condition: inside a cte
@@ -1391,5 +1366,48 @@ defmodule Logflare.Sql do
     convert_keys_to_json_query(%{k => v}, data)
     |> Map.to_list()
     |> List.first()
+  end
+
+  defp is_timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
+
+  defp is_timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
+    do: true
+
+  defp is_timestamp_identifier?(_), do: false
+
+  defp at_time_zone(identifier) do
+    %{
+      "Nested" => %{
+        "AtTimeZone" => %{
+          "time_zone" => "UTC",
+          "timestamp" => %{
+            "Function" => %{
+              "args" => [
+                %{
+                  "Unnamed" => %{
+                    "Expr" => %{
+                      "BinaryOp" => %{
+                        "left" => %{
+                          "Cast" => %{
+                            "data_type" => %{"BigInt" => nil},
+                            "expr" => identifier
+                          }
+                        },
+                        "op" => "Divide",
+                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                      }
+                    }
+                  }
+                }
+              ],
+              "distinct" => false,
+              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "over" => nil,
+              "special" => false
+            }
+          }
+        }
+      }
+    }
   end
 end
