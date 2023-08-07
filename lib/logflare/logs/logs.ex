@@ -77,30 +77,30 @@ defmodule Logflare.Logs do
   end
 
   @spec maybe_ingest_and_broadcast(Logflare.LogEvent.t()) :: Logflare.LogEvent.t()
-  def maybe_ingest_and_broadcast(%LE{} = og_le) do
-    with {:drop, false} <- {:drop, og_le.drop},
-         {:valid, true} <- {:valid, og_le.valid},
-         %LE{} = le <- LE.apply_custom_event_message(og_le),
+  def maybe_ingest_and_broadcast(%LE{} = le) do
+    with {:drop, false} <- {:drop, le.drop},
+         {:valid, true} <- {:valid, le.valid},
+         %LE{} = le <- LE.apply_custom_event_message(le),
          %LE{} = le <- ingest(le),
          %LE{} = le <- __MODULE__.broadcast(le),
-         %LE{} = _le <- SourceRouting.route_to_sinks_and_ingest(og_le) do
+         %LE{} = le <- SourceRouting.route_to_sinks_and_ingest(le) do
       le
     else
       {:drop, true} ->
-        og_le
+        le
 
       {:valid, false} ->
-        tap(og_le, &RejectedLogEvents.ingest/1)
+        tap(le, &RejectedLogEvents.ingest/1)
 
       {:error, :buffer_full} ->
-        og_le
+        le
         |> Map.put(:valid, false)
         |> Map.put(:ingest_error, "buffer_full")
 
       e ->
         Logger.error("Unknown ingest error: " <> inspect(e))
 
-        og_le
+        le
         |> Map.put(:valid, false)
         |> Map.put(:ingest_error, "unknown error")
     end
