@@ -137,8 +137,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   defp nested_map_update(value), do: value
 
-  defp nested_map_update({"metadata", value}, acc) do
-    Map.put(acc, "metadata", [nested_map_update(value)])
+  defp nested_map_update({key, value}, acc) when is_map(value) do
+    Map.put(acc, key, [nested_map_update(value)])
   end
 
   defp nested_map_update({key, value}, acc) do
