@@ -221,6 +221,7 @@ defmodule Logflare.Source.Supervisor do
     end
   end
 
+  @spec ensure_started(atom) :: {:ok, :already_started | :started}
   def ensure_started(source_id) do
     case Process.whereis(source_id) do
       nil ->
