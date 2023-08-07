@@ -34,6 +34,18 @@
         <code><%= url(~p"/api/endpoints/query/YourApp.EndpointName") %></code>
       </small>
     </div>
+
+    <div class="form-group">
+      <%= label(f, :description, "Description") %>
+      <div class="input-group">
+        <%= textarea(f, :description, class: "form-control", "phx-update": "ignore") %>
+      </div>
+      <%= error_tag(f, :description) %>
+      <small class="form-text text-muted">
+        Add a helpful description for what this endpoint is used for.
+      </small>
+    </div>
+
     <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-col">
       <div class="form-group">

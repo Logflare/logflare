@@ -24,6 +24,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # link to access tokens
       assert has_element?(view, ".subhead a", "access tokens")
 
+      # description
+      assert has_element?(view, "ul li p", endpoint.description)
+
       # link to show
       view
       |> element("ul li a", endpoint.name)
@@ -37,6 +40,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
       assert has_element?(view, "code", endpoint.query)
+      assert has_element?(view, "p", endpoint.description)
 
       # link to edit
       assert element(view, ".subhead a", "edit") |> render_click() =~ "/edit"
@@ -104,6 +108,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     |> element("form#endpoint")
     |> render_submit(%{
       endpoint: %{
+        description: "some description",
         name: "some query",
         query: new_query,
         language: "bq_sql"
@@ -114,6 +119,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert has_element?(view, "code", new_query)
     path = assert_patch(view)
     assert path =~ ~r/\/endpoints\/\S+/
+    assert render(view) =~ "some description"
   end
 
   describe "parse queries on change" do
@@ -245,6 +251,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
         }
       }) =~ "results-123"
 
+      assert has_element?(view, "label", "Description")
       assert has_element?(view, "h5", "Caching")
       assert has_element?(view, "label", "Cache TTL")
       assert has_element?(view, "label", "Proactive Re-querying")
@@ -281,9 +288,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
              |> element("form#endpoint")
              |> render_submit(%{
                endpoint: %{
+                 description: "different description",
                  query: "select current_datetime() as updated"
                }
              }) =~ "updated"
+
+      assert render(view) =~ "different description"
     end
 
     test "show endpoint, with params", %{conn: conn, user: user} do
