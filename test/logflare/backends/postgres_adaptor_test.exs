@@ -68,6 +68,72 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                   ["test"]}
                )
     end
+
+    test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
+         %{
+           pid: pid,
+           source_backend: source_backend
+         } do
+      log_event =
+        build(:log_event,
+          source: source_backend.source,
+          event_message:
+            "192.168.16.4 2023-08-07 00:27:16.963 UTC [69] supabase_admin@postgres LOG:  logical decoding found consistent point at 0/20DB7D0",
+          id: "93d0f6b4-91f9-4a08-938c-39f00cca7fdd",
+          metadata: %{
+            "host" => "db-default",
+            "parsed" => %{
+              "error_severity" => "warning",
+              "timestamp" => "2023-08-07T00:27:16Z",
+              "elements" => [%{"metadata" => %{"data" => "date"}}]
+            }
+          },
+          timestamp: 1_691_368_036_000_000
+        )
+
+      assert :ok = PostgresAdaptor.ingest(pid, [log_event])
+
+      expected_event = %{
+        "event_message" => "test-msg",
+        "id" => "93d0f6b4-91f9-4a08-938c-39f00cca7fdd",
+        "metadata" => [
+          %{
+            "host" => "db-default",
+            "parsed" => %{
+              "error_severity" => "warning",
+              "timestamp" => "2023-08-07T00:27:16Z",
+              "elements" => [%{"metadata" => [%{"data" => "date"}]}]
+            }
+          }
+        ],
+        "timestamp" => 1_691_368_036_000_000
+      }
+
+      # TODO: replace with a timeout retry func
+      :timer.sleep(1_500)
+
+      # query by Ecto.Query
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.body)
+
+      assert {:ok, [^expected_event]} = PostgresAdaptor.execute_query(source_backend, query)
+
+      # query by string
+      assert {:ok, [%{"body" => ^expected_event}]} =
+               PostgresAdaptor.execute_query(
+                 source_backend,
+                 "select body from #{PostgresAdaptor.table_name(source_backend)}"
+               )
+
+      # non map results are not impacted by metadata transformations
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: count(l.id))
+      assert {:ok, [1]} = PostgresAdaptor.execute_query(source_backend, query)
+
+      # struct results are not impacted by metadata transformations
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.timestamp)
+
+      assert {:ok, [~N[2023-08-07 00:27:16.000000]]} =
+               PostgresAdaptor.execute_query(source_backend, query)
+    end
   end
 
   describe "repo module" do
