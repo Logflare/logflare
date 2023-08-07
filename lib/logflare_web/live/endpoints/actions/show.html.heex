@@ -79,7 +79,7 @@
     </code>
 
     <code :if={@show_endpoint.enable_auth}>
-      # By name<br /> curl "<%= url(~p"/api/endpoints/#{@show_endpoint.name}") %>"<br />
+      # By name<br /> curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.name}") %>"<br />
       \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'<br />
       \ -H 'Content-Type: application/json; charset=utf-8'<br />
       <span :if={length(@declared_params) > 0}>
