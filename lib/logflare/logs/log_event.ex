@@ -19,7 +19,8 @@ defmodule Logflare.LogEvent do
     field :valid, :boolean
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
-    field :validation_error, {:array, :string}
+    field :validation_error, :string
+    field :ingest_error, :string
     field :ingested_at, :utc_datetime_usec
     field :sys_uint, :integer
     field :params, :map
@@ -41,7 +42,7 @@ defmodule Logflare.LogEvent do
       |> mapper()
 
     %__MODULE__{}
-    |> cast(params, [:valid, :validation_error, :id, :body])
+    |> cast(params, [:valid, :validation_error, :ingest_error, :id, :body])
     |> cast_embed(:source, with: &Source.no_casting_changeset/1)
     |> apply_changes()
     |> Map.put(:source, source)
@@ -54,7 +55,7 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:body, :valid, :validation_error])
+      |> cast(mapper(params), [:body, :valid, :validation_error, :ingest_error])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
       |> validate_required([:body])
 
@@ -141,7 +142,7 @@ defmodule Logflare.LogEvent do
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do
         :ok ->
-          {:cont, %{le | valid: true}}
+          {:cont, %{le | valid: true, validation_error: nil}}
 
         {:error, message} ->
           {:halt, %{le | valid: false, validation_error: message}}
