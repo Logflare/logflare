@@ -23,7 +23,8 @@ defmodule Logflare.LogEventTest do
              source: %_{},
              sys_uint: _,
              valid: true,
-             validation_error: "",
+             validation_error: nil,
+             ingest_error: nil,
              via_rule: nil
            } = LogEvent.make(@valid_params, %{source: source})
 
@@ -42,7 +43,8 @@ defmodule Logflare.LogEventTest do
              drop: false,
              # validity gets overwritten
              valid: true,
-             validation_error: "",
+             validation_error: nil,
+             ingest_error: nil,
              source: %_{}
            } = LogEvent.make(params, %{source: source})
   end
