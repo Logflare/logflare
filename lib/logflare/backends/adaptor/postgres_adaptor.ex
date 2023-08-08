@@ -91,7 +91,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
     mod = create_repo(source_backend)
     :ok = connected?(source_backend)
-    result = mod.all(query)
+
+    result =
+      query
+      |> mod.all()
+      |> Enum.map(&nested_map_update/1)
+
     {:ok, result}
   end
 
@@ -114,10 +119,30 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
     rows =
       for row <- result.rows do
-        result.columns |> Enum.zip(row) |> Map.new()
+        result.columns
+        |> Enum.zip(row)
+        |> Map.new()
+        |> nested_map_update()
       end
 
     {:ok, rows}
+  end
+
+  defp nested_map_update(value) when is_struct(value), do: value
+
+  defp nested_map_update(value) when is_map(value),
+    do: Enum.reduce(value, %{}, &nested_map_update/2)
+
+  defp nested_map_update(value) when is_list(value), do: Enum.map(value, &nested_map_update/1)
+
+  defp nested_map_update(value), do: value
+
+  defp nested_map_update({key, value}, acc) when is_map(value) do
+    Map.put(acc, key, [nested_map_update(value)])
+  end
+
+  defp nested_map_update({key, value}, acc) do
+    Map.put(acc, key, nested_map_update(value))
   end
 
   # expose PgRepo functions

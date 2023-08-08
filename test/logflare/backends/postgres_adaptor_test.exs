@@ -54,7 +54,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(source_backend, query)
 
       # query by string
-      assert {:ok, [%{"body" => %{"test" => "data"}}]} =
+      assert {:ok, [%{"body" => [%{"test" => "data"}]}]} =
                PostgresAdaptor.execute_query(
                  source_backend,
                  "select body from #{PostgresAdaptor.table_name(source_backend)}"
@@ -67,6 +67,64 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                  {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source_backend)}",
                   ["test"]}
                )
+    end
+
+    test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
+         %{
+           pid: pid,
+           source_backend: source_backend
+         } do
+      log_event =
+        build(:log_event,
+          source: source_backend.source,
+          message: "some msg",
+          nested: %{
+            "host" => "db-default",
+            "parsed" => %{
+              "elements" => [%{"meta" => %{"data" => "date"}}]
+            }
+          }
+        )
+
+      assert :ok = PostgresAdaptor.ingest(pid, [log_event])
+
+      # TODO: replace with a timeout retry func
+      :timer.sleep(1_500)
+
+      # query by string
+      assert {:ok,
+              [
+                %{
+                  "body" => [
+                    %{
+                      "event_message" => "some msg",
+                      "nested" => [
+                        %{
+                          "host" => "db-default",
+                          "parsed" => [
+                            %{
+                              "elements" => [%{"meta" => [%{"data" => "date"}]}]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]} =
+               PostgresAdaptor.execute_query(
+                 source_backend,
+                 "select body from #{PostgresAdaptor.table_name(source_backend)}"
+               )
+
+      # non map results are not impacted by metadata transformations
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: count(l.id))
+      assert {:ok, [1]} = PostgresAdaptor.execute_query(source_backend, query)
+
+      # struct results are not impacted by metadata transformations
+      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.timestamp)
+
+      assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(source_backend, query)
     end
   end
 
