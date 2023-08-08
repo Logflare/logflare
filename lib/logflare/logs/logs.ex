@@ -95,14 +95,22 @@ defmodule Logflare.Logs do
       {:error, :buffer_full} ->
         le
         |> Map.put(:valid, false)
-        |> Map.put(:ingest_error, "buffer_full")
+        |> Map.put(:pipeline_error, %LE.PipelineError{
+          stage: "ingest",
+          type: "buffer_full",
+          message: "Source buffer full, please try again in a minute."
+        })
 
       e ->
         Logger.error("Unknown ingest error: " <> inspect(e))
 
         le
         |> Map.put(:valid, false)
-        |> Map.put(:ingest_error, "unknown error")
+        |> Map.put(:pipeline_error, %LE.PipelineError{
+          stage: "ingest",
+          type: "unknown_error",
+          message: "An unknown error has occured, please contact support if this continues."
+        })
     end
   end
 
@@ -110,8 +118,7 @@ defmodule Logflare.Logs do
     Enum.reduce(log_events, [], fn le, acc ->
       cond do
         le.valid -> acc
-        le.validation_error -> [Map.take(le, [:id, :validation_error]) | acc]
-        le.ingest_error -> [Map.take(le, [:id, :ingest_error]) | acc]
+        le.pipeline_error -> [le.pipeline_error.message | acc]
       end
     end)
   end
