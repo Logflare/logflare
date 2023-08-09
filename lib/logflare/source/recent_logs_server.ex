@@ -66,12 +66,13 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, rls, {:continue, :boot}}
   end
 
-  @spec push(atom | String.t() | LE.t()) :: :ok
+  @spec push(LE.t()) :: :ok
   def push(%LE{source: %Source{token: source_id}} = log_event) do
     GenServer.cast(source_id, {:push, source_id, log_event})
   end
 
-  def push(source_id, %LE{} = log_event) do
+  @spec push(atom(), Logflare.LogEvent.t()) :: :ok
+  def push(source_id, %LE{} = log_event) when is_atom(source_id) do
     GenServer.cast(source_id, {:push, source_id, log_event})
   end
 

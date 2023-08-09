@@ -15,16 +15,22 @@ defmodule Logflare.LogEvent do
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     field :body, :map, default: %{}
-    embeds_one :source, Source
     field :valid, :boolean
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
-    field :validation_error, {:array, :string}
     field :ingested_at, :utc_datetime_usec
     field :sys_uint, :integer
     field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
+
+    embeds_one :source, Source
+
+    embeds_one :pipeline_error, PipelineError do
+      field :stage, :string
+      field :type, :string
+      field :message, :string
+    end
   end
 
   @doc """
@@ -41,8 +47,9 @@ defmodule Logflare.LogEvent do
       |> mapper()
 
     %__MODULE__{}
-    |> cast(params, [:valid, :validation_error, :id, :body])
+    |> cast(params, [:valid, :id, :body])
     |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+    |> cast_embed(:pipeline_error, with: &pipeline_error_changeset/2)
     |> apply_changes()
     |> Map.put(:source, source)
   end
@@ -54,13 +61,23 @@ defmodule Logflare.LogEvent do
   def make(params, %{source: source}) do
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:body, :valid, :validation_error])
+      |> cast(mapper(params), [:body, :valid])
       |> cast_embed(:source, with: &Source.no_casting_changeset/1)
+      |> cast_embed(:pipeline_error, with: &pipeline_error_changeset/2)
       |> validate_required([:body])
+
+    pipeline_error =
+      if changeset.valid?,
+        do: nil,
+        else: %LE.PipelineError{
+          stage: "changeset",
+          type: "validators",
+          message: changeset_error_to_string(changeset)
+        }
 
     le_map =
       changeset.changes
-      |> Map.put(:validation_error, changeset_error_to_string(changeset))
+      |> Map.put(:pipeline_error, pipeline_error)
       |> Map.put(:source, source)
       |> Map.put(:origin_source_id, source.token)
       |> Map.put(:valid, changeset.valid?)
@@ -141,10 +158,19 @@ defmodule Logflare.LogEvent do
     |> Enum.reduce_while(true, fn validator, _acc ->
       case validator.validate(le) do
         :ok ->
-          {:cont, %{le | valid: true}}
+          {:cont, %{le | valid: true, pipeline_error: nil}}
 
         {:error, message} ->
-          {:halt, %{le | valid: false, validation_error: message}}
+          {:halt,
+           %{
+             le
+             | valid: false,
+               pipeline_error: %LE.PipelineError{
+                 stage: "validators",
+                 type: "validate",
+                 message: message
+               }
+           }}
       end
     end)
   end
@@ -174,6 +200,18 @@ defmodule Logflare.LogEvent do
     message = make_message(le, source)
 
     Kernel.put_in(le.body["event_message"], message)
+  end
+
+  @doc """
+  Changeset for pipeline errors.
+  """
+  def pipeline_error_changeset(pipeline_error, attrs) do
+    pipeline_error
+    |> cast(attrs, [
+      :stage,
+      :message
+    ])
+    |> validate_required([:stage, :message])
   end
 
   defp make_message(le, source) do

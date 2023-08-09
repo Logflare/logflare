@@ -23,40 +23,38 @@ defmodule Logflare.Logs do
       |> maybe_mark_le_dropped_by_lql()
       |> maybe_ingest_and_broadcast()
     end)
-    |> Enum.reduce([], fn le, acc ->
-      if le.valid do
-        acc
-      else
-        [le.validation_error | acc]
-      end
-    end)
+    |> maybe_acc_errors()
     |> case do
       [] -> :ok
       errors when is_list(errors) -> {:error, errors}
     end
   end
 
+  @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t() | {:error, term}
   def ingest(%LE{source: %Source{} = source} = le) do
-    # indvididual source genservers
-    Supervisor.ensure_started(source.token)
+    with {:ok, _} <- Supervisor.ensure_started(source.token),
+         {:ok, _} <- BufferCounter.push(le),
+         :ok <- RecentLogsServer.push(le),
+         # tests fail when we match on these for some reason
+         _ok <- Sources.Counters.increment(source.token),
+         _ok <- SystemMetrics.AllLogsLogged.increment(:total_logs_logged) do
+      le
+    else
+      {:error, _reason} = e ->
+        e
 
-    # error here if this doesn't match
-    {:ok, _} = BufferCounter.push(le)
-
-    RecentLogsServer.push(le)
-
-    # all sources genservers
-
-    Sources.Counters.increment(source.token)
-    SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
-
-    :ok
+      e ->
+        {:error, e}
+    end
   end
 
+  @spec broadcast(Logflare.LogEvent.t()) :: Logflare.LogEvent.t()
   def broadcast(%LE{} = le) do
     if le.source.metrics.avg < 5 do
       Source.ChannelTopics.broadcast_new(le)
     end
+
+    le
   end
 
   def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_string: drop_lql_string}} = le)
@@ -78,22 +76,50 @@ defmodule Logflare.Logs do
     end
   end
 
-  defp maybe_ingest_and_broadcast(%LE{} = le) do
-    cond do
-      le.drop ->
+  @spec maybe_ingest_and_broadcast(Logflare.LogEvent.t()) :: Logflare.LogEvent.t()
+  def maybe_ingest_and_broadcast(%LE{} = le) do
+    with {:drop, false} <- {:drop, le.drop},
+         {:valid, true} <- {:valid, le.valid},
+         %LE{} = le <- LE.apply_custom_event_message(le),
+         %LE{} = le <- ingest(le),
+         %LE{} = le <- __MODULE__.broadcast(le),
+         %LE{} = le <- SourceRouting.route_to_sinks_and_ingest(le) do
+      le
+    else
+      {:drop, true} ->
         le
 
-      le.valid ->
-        le
-        |> tap(&SourceRouting.route_to_sinks_and_ingest/1)
-        |> LE.apply_custom_event_message()
-        |> tap(&ingest/1)
-        # use module reference namespace for Mimic mocking
-        |> tap(&__MODULE__.broadcast/1)
+      {:valid, false} ->
+        tap(le, &RejectedLogEvents.ingest/1)
 
-      true ->
+      {:error, :buffer_full} ->
         le
-        |> tap(&RejectedLogEvents.ingest/1)
+        |> Map.put(:valid, false)
+        |> Map.put(:pipeline_error, %LE.PipelineError{
+          stage: "ingest",
+          type: "buffer_full",
+          message: "Source buffer full, please try again in a minute."
+        })
+
+      e ->
+        Logger.error("Unknown ingest error: " <> inspect(e))
+
+        le
+        |> Map.put(:valid, false)
+        |> Map.put(:pipeline_error, %LE.PipelineError{
+          stage: "ingest",
+          type: "unknown_error",
+          message: "An unknown error has occured, please contact support if this continues."
+        })
     end
+  end
+
+  defp maybe_acc_errors(log_events) do
+    Enum.reduce(log_events, [], fn le, acc ->
+      cond do
+        le.valid -> acc
+        le.pipeline_error -> [le.pipeline_error.message | acc]
+      end
+    end)
   end
 end

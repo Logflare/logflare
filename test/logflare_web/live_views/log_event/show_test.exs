@@ -250,7 +250,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       source: nil,
       sys_uint: nil,
       valid: nil,
-      validation_error: nil,
+      pipeline_error: nil,
       via_rule: nil
     }
   end

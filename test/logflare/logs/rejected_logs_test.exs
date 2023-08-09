@@ -29,7 +29,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
             "ip" => "0.0.0.0"
           }
         },
-        validation_error: validator.message(),
+        pipeline_error: %LogEvent.PipelineError{message: validator.message()},
         source: source,
         ingested_at: timestamp,
         valid: false
@@ -62,7 +62,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
         },
         source: source1,
         valid: false,
-        validation_error: validator.message()
+        pipeline_error: %LogEvent.PipelineError{message: validator.message()}
       }
 
       log_event_2_source_1 = %LogEvent{
@@ -75,7 +75,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
         },
         source: source1,
         valid: false,
-        validation_error: validator.message()
+        pipeline_error: %LogEvent.PipelineError{message: validator.message()}
       }
 
       log_event_1_source_2 = %LogEvent{
@@ -88,7 +88,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
         },
         source: source2,
         valid: false,
-        validation_error: validator.message()
+        pipeline_error: %LogEvent.PipelineError{message: validator.message()}
       }
 
       _ = RejectedLogEvents.ingest(log_event_1_source_1)
@@ -100,13 +100,23 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
       assert map_size(result) == 2
 
       assert [
-               %LogEvent{validation_error: validator_message, body: _, params: _, ingested_at: _},
-               %LogEvent{validation_error: validator_message, body: _, params: _, ingested_at: _}
+               %LogEvent{
+                 pipeline_error: %LogEvent.PipelineError{message: validator_message},
+                 body: _,
+                 params: _,
+                 ingested_at: _
+               },
+               %LogEvent{
+                 pipeline_error: %LogEvent.PipelineError{message: validator_message},
+                 body: _,
+                 params: _,
+                 ingested_at: _
+               }
              ] = result[source1.token]
 
       assert [
                %LogEvent{
-                 validation_error: ^validator_message,
+                 pipeline_error: %LogEvent.PipelineError{message: ^validator_message},
                  body: _,
                  params: _,
                  ingested_at: _

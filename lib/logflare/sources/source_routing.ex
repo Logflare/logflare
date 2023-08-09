@@ -7,13 +7,13 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.Logs
   require Logger
 
-  @spec route_to_sinks_and_ingest(LE.t()) :: :ok | :noop
+  @spec route_to_sinks_and_ingest(LE.t()) :: LE.t()
   def route_to_sinks_and_ingest(%LE{via_rule: %Rule{} = rule} = le) do
     Logger.error(
       "LogEvent #{le.id} has already been routed using the rule #{rule.id}, can't proceed!"
     )
 
-    :noop
+    le
   end
 
   def route_to_sinks_and_ingest(%LE{body: body, source: source, via_rule: nil} = le) do
@@ -31,11 +31,11 @@ defmodule Logflare.Logs.SourceRouting do
           do_route(le, rule)
 
         true ->
-          :noop
+          le
       end
     end
 
-    :ok
+    le
   end
 
   # routes the log event

@@ -128,10 +128,9 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "dashboard - rejected" do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
-    @tag :failing
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
-        validation_error: Validators.EqDeepFieldTypes.message(),
+        pipeline_error: %LogEvent.PipelineError{message: Validators.EqDeepFieldTypes.message()},
         params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
         valid: false,
@@ -147,8 +146,10 @@ defmodule LogflareWeb.SourceControllerTest do
 
       assert [
                %LogEvent{
-                 validation_error:
-                   "Metadata validation error: values with the same field path must have the same type.",
+                 pipeline_error: %LogEvent.PipelineError{
+                   message:
+                     "Validation error: values with the same field path must have the same type."
+                 },
                  params: %{"no_log_entry" => true, "timestamp" => ""},
                  ingested_at: _
                }
@@ -218,7 +219,6 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 406) =~ "Source Name"
     end
 
-    @tag :failing
     test "returns 200 but doesn't change restricted params", %{
       conn: conn,
       users: [u1, _u2],
@@ -354,7 +354,6 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "favorite" do
     setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
 
-    @tag :failing
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
@@ -371,7 +370,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "public" do
     setup [:old_setup]
-    @tag :failing
+
     test "shows a source page", %{conn: conn, sources: [s1 | _]} do
       conn =
         conn
@@ -383,7 +382,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "delete" do
     setup [:old_setup]
-    @tag :failing
+
     test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
       {:ok, saved_search} =
         SavedSearches.insert(
