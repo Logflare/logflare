@@ -23,7 +23,7 @@ defmodule Logflare.LogEventTest do
              source: %_{},
              sys_uint: _,
              valid: true,
-             validation_error: "",
+             pipeline_error: nil,
              via_rule: nil
            } = LogEvent.make(@valid_params, %{source: source})
 
@@ -35,14 +35,14 @@ defmodule Logflare.LogEventTest do
     params =
       Map.merge(@valid_params, %{
         "valid" => false,
-        "validation_error" => "some error"
+        "pipeline_error" => "some error"
       })
 
     assert %LogEvent{
              drop: false,
              # validity gets overwritten
              valid: true,
-             validation_error: "",
+             pipeline_error: nil,
              source: %_{}
            } = LogEvent.make(params, %{source: source})
   end
