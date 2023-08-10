@@ -291,7 +291,9 @@ defmodule Logflare.SingleTenant do
   """
   @spec postgres_backend? :: boolean()
   def postgres_backend?() do
-    url = postgres_backend_adapter_opts() |> Keyword.get(:url)
+    opts = postgres_backend_adapter_opts() || []
+
+    url = Keyword.get(opts, :url)
     single_tenant?() && url != nil
   end
 
