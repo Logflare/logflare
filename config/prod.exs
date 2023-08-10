@@ -8,7 +8,7 @@ config :logflare, LogflareWeb.Endpoint,
     port: 4000,
     transport_options: [
       max_connections: 64_000,
-      num_acceptors: 100,
+      num_acceptors: 1_000,
       # for so_reuseport
       socket_opts: [{:raw, 1, 15, <<1::32-native>>}]
     ],
