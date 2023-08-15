@@ -2,7 +2,51 @@
 
 Logflare can be self-hosted. As of now, only a single machine setup is supported.
 
-## Pre-requisites
+Two different backends are supported:
+
+- BigQuery
+- PostgreSQL (experimental)
+
+Docker-compose is the recommended way to manage single node deployments.
+
+### Limitations
+
+Inviting team users and other team-related functionality is currently not supported, as Logflare self-hosted is currently intended for single-user experience only.
+
+All browser authentication will be disabled when in single-tenant mode.
+
+## Configuration
+
+### Common Configuration
+
+| Env Var                  | Type                                                                      | Description                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `LOGFLARE_SINGLE_TENANT` | Boolean, defaults to `false`                                              | If enabled, a singular user will be seeded. All browser usage will default to the user.                                     |
+| `LOGFLARE_API_KEY`       | string, defaults to `nil`                                                 | If set, this API Key can be used for interacting with the Logflare API. API key will be automatically generated if not set. |
+| `LOGFLARE_SUPABASE_MODE` | Boolean, defaults to `false`                                              | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.     |
+| `PHX_HTTP_PORT`          | Integer, defaults to `4000`                                               | Allows configuration of the HTTP server port.                                                                               |
+| `DB_SCHEMA`              | String, defaults to `nil`                                                 | Allows configuration of the database schema to scope Logflare operations.                                                   |
+| `LOGFLARE_LOG_LEVEL`     | String, defaults to `info`. <br/>Options: `error`,`warn`, `info`, `debug` | Allows runtime configuration of log level.                                                                                  |
+| `LOGFLARE_NODE_HOST`     | string, defaults to `127.0.0.1`                                           | Sets node host on startup, which affects the node name `logflare@<host>`                                                    |
+
+### BigQuery Backend Configuration
+
+| Env Var                    | Type                        | Description                                                   |
+| -------------------------- | --------------------------- | ------------------------------------------------------------- |
+| `GOOGLE_PROJECT_ID`        | string, required            | Specifies the GCP project to use.                             |
+| `GOOGLE_PROJECT_NUMBER`    | string, required            | Specifies the GCP project to use.                             |
+| `GOOGLE_DATASET_ID_APPEND` | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery. |
+
+### PostgreSQL Backend Configuration
+
+| Env Var                   | Type                                   | Description                                                                                                              |
+| ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permssions to manage the schema. |
+| `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
+
+## BigQuery Setup
+
+### Pre-requisites
 
 You will need a Google Cloud project **with billing enabled** in order to proceed.
 
@@ -12,7 +56,7 @@ The requirements for server startup are as follows after creating the project:
 - Project number
 - A service account key
 
-### Setting up BigQuery Service Account
+#### Setting up BigQuery Service Account
 
 To ensure that you have sufficient permissions to insert into your Google Cloud BigQuery, ensure that you have created a service account with either:
 
@@ -34,7 +78,7 @@ To ensure that you have sufficient permissions to insert into your Google Cloud 
 
 We recommend setting the BigQuery Admin role, as it simplifies permissions setup.
 
-### Obtaining the BigQuery Service Account Key
+#### Obtaining the BigQuery Service Account Key
 
 In order for Logflare to connect sources to their relevant BigQuery tables, we would need to have a service account key that can sign the JWTs needed to authenticate with the Google Cloud APIs.
 
@@ -48,7 +92,7 @@ Thereafter, click on "Add Key" to create a new key. The key will be in a JSON fo
 
 You can also obtain the key via the `gcloud` cli by following the [official documentation](https://cloud.google.com/iam/docs/keys-create-delete).
 
-## `docker-compose`
+## Deployment with Docker Compose
 
 Using docker compose is the **recommended method** for self-hosting.
 
@@ -80,9 +124,15 @@ services:
       - DB_USERNAME=postgres
       - LOGFLARE_SINGLE_TENANT=true
       - LOGFLARE_API_KEY=my-cool-api-key
+
+      # Required for BigQuery backend
       - GOOGLE_DATASET_ID_APPEND=_your_env
       - GOOGLE_PROJECT_ID=logflare-docker-example
       - GOOGLE_PROJECT_NUMBER=123123123213
+
+      # Required for Postgres backend
+      - POSTGRES_BACKEND_URL=postgresql://user:pass@host:port/db
+      - POSTGRES_BACKEND_SCHEMA=my_schema
     volumes:
       - type: bind
         source: ${PWD}/.env
@@ -134,47 +184,3 @@ The directory structure will now be as follows:
 |- .env
 |- docker-compose.yml
 ```
-
-## Configuration
-
-### `LOGFLARE_SINGLE_TENANT`
-
-> Boolean, required, defaults to false
-
-This is will seed a singular user into the database, and will disable browser authentication. All browser usage will default to this user. Inviting team users and other team-related functionality is currently not supported for self-hosted. Logflare self-hosted is currently intended for single-user experience only.
-
-### `LOGFLARE_API_KEY`
-
-> String, optional, defaults to `nil`
-
-Allows you to pass in an API key that will used for authentication. This is intended for programmatic usage where an external program sets the API key. It is advised to use the UI to configure the access tokens instead. If this value is not provided, the default API key will be automatically generated.
-
-### `LOGFLARE_SUPABASE_MODE`
-
-> Boolean, defaults to false
-
-This is a special mode for Logflare which will seed additional resources for usage with Supabase self-hosted.
-
-### `PHX_HTTP_PORT`
-
-> Defaults to 4000
-
-Allows configuration of the HTTP port that Logflare will run on.
-
-### `DB_SCHEMA`
-
-> String, defaults to nil
-
-This ENV variable sets the search path to a custom database schema. This allows you to customize the schema used on the database.
-
-### `LOGFLARE_LOG_LEVEL`
-
-> string, defualts to `info`. Options: `error|warn|info|debug`
-
-Allows the setting of the log level at runtime. For production settings, we advise `warn`.
-
-### `LOGFLARE_NODE_HOST`
-
-> string, defaults to `127.0.0.1`
-
-Sets the node's host on startup. The nodes name will be set as `logflare@<host>` where `host` is determined by this environment variable.
