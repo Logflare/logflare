@@ -10,6 +10,7 @@ defmodule Logflare.Endpoints.Query do
            only: [
              :id,
              :token,
+             :description,
              :name,
              :query,
              :source_mapping,
@@ -23,6 +24,7 @@ defmodule Logflare.Endpoints.Query do
     field(:token, Ecto.UUID, autogenerate: true)
     field(:name, :string)
     field(:query, :string)
+    field(:description, :string)
     field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
     field(:source_mapping, :map)
     field(:sandboxable, :boolean)
@@ -61,7 +63,8 @@ defmodule Logflare.Endpoints.Query do
       :proactive_requerying_seconds,
       :max_limit,
       :enable_auth,
-      :language
+      :language,
+      :description
     ])
     |> validate_required([:name, :query, :language])
   end
@@ -77,7 +80,8 @@ defmodule Logflare.Endpoints.Query do
       :proactive_requerying_seconds,
       :max_limit,
       :enable_auth,
-      :language
+      :language,
+      :description
     ])
     |> validate_query(:query)
     |> default_validations()
@@ -94,7 +98,8 @@ defmodule Logflare.Endpoints.Query do
       :proactive_requerying_seconds,
       :max_limit,
       :enable_auth,
-      :language
+      :language,
+      :description
     ])
     |> put_change(:sandboxable, false)
     |> Ecto.Changeset.put_change(:language, sandbox.language)
