@@ -21,6 +21,7 @@ Any string not matching a supported operator will search against the log event m
 | Message | match, regex                   | regex string                    | `~server\_\d`                                     |
 | Message | match regex with spaces        | double quoted regex string      | `~"log message \d\d"`                             |
 | Message | match regex, case insensitive  | regex string with `(?i)` prefix | `~(?i)server\_\d` <br/> `~"(?i)log message \d\d"` |
+| Message | match regex with double quotes | regex string with symbol        | `~some\"value` <br/> `~"msg with \" spaces"`      |
 | Message | match regex, with OR           | regex string with symbol        | <code>~"jpg$&#124;jpeg$&#124;png$"</code>         |
 
 #### Metadata Filtering
@@ -66,7 +67,6 @@ Chart aggregations rules will display the aggregated trends in the chart. Chart 
 | c     | `p50`       | `c:p50(m.latency)` |
 | c     | `p95`       | `c:p95(m.latency)` |
 | c     | `p99`       | `c:p99(m.latency)` |
-
 
 ## Beyond LQL
 
