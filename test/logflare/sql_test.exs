@@ -873,6 +873,21 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "translate in operator arguments to text" do
+      bq_query = ~s"""
+      select t.col as col from `my.source` t
+      where t.col in ('val')
+      """
+
+      pg_query = ~s"""
+      select (t.body -> 'col') as col from "my.source" t
+      where ( (t.body -> 'col')  #>> '{}') in ('val')
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"

@@ -911,6 +911,12 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
+  # references should be cast to text
+  defp pg_traverse_final_pass({"InList" = k, %{ "expr" => expr } = v} ) do
+    new_expr = if is_json_access?(expr), do: jsonb_to_text(expr), else: expr
+    {k, %{v | "expr" => new_expr}}
+  end
+
   # handle timestamp references in binary operations
   defp pg_traverse_final_pass(
          {"BinaryOp" = k,
@@ -1463,6 +1469,10 @@ defmodule Logflare.Sql do
 
   defp is_identifier?(identifier),
     do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
+
+  defp is_json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
+  defp is_json_access?(%{"JsonAccess" => _}), do: true
+  defp is_json_access?(_), do: false
 
   defp is_timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
 
