@@ -4,6 +4,7 @@ defmodule Logflare.Sql do
 
   This module provides the main interface with the rest of the app.
   """
+  require Logger
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.SingleTenant
@@ -792,6 +793,10 @@ defmodule Logflare.Sql do
         |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
         |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
 
+      Logger.debug(
+        "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
+      )
+
       {:ok, converted}
     end)
   end
@@ -912,8 +917,9 @@ defmodule Logflare.Sql do
   defp bq_to_pg_convert_functions(kv), do: kv
 
   # references should be cast to text
-  defp pg_traverse_final_pass({"InList" = k, %{ "expr" => expr } = v} ) do
-    new_expr = if is_json_access?(expr), do: jsonb_to_text(expr), else: expr
+  defp pg_traverse_final_pass({"InList" = k, %{"expr" => expr} = v}) do
+    new_expr = if is_json_access?(expr), do: expr |> jsonb_to_text(), else: expr
+
     {k, %{v | "expr" => new_expr}}
   end
 
@@ -1038,7 +1044,8 @@ defmodule Logflare.Sql do
       in_projection_tree: false,
       from_table_aliases: [],
       from_table_values: [],
-      in_binaryop: false
+      in_binaryop: false,
+      in_inlist: false
     })
     |> then(fn
       ast when joins != [] ->
@@ -1109,8 +1116,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => json_access_arrow(data, false),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1126,8 +1132,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => json_access_arrow(data, false),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1147,11 +1152,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop,
-              do: "HashLongArrow",
-              else: "HashArrow"
-            ),
+          "operator" => json_access_arrow(data, true),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1170,11 +1171,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop,
-              do: "HashLongArrow",
-              else: "HashArrow"
-            ),
+          "operator" => json_access_arrow(data, true),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1256,6 +1253,10 @@ defmodule Logflare.Sql do
       end)
     end
     |> Enum.reduce(%{}, fn mappings, acc -> Map.merge(acc, mappings) end)
+  end
+
+  defp traverse_convert_identifiers({"InList" = k, v}, data) do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_inlist, true))}
   end
 
   defp traverse_convert_identifiers({"BinaryOp" = k, v}, data) do
@@ -1536,5 +1537,21 @@ defmodule Logflare.Sql do
         }
       }
     }
+  end
+
+  defp json_access_arrow(data, hash) do
+    arrow =
+      cond do
+        data.in_function_or_cast -> "LongArrow"
+        data.in_inlist -> "Arrow"
+        data.in_binaryop -> "LongArrow"
+        true -> "Arrow"
+      end
+
+    if hash do
+      "Hash" <> arrow
+    else
+      arrow
+    end
   end
 end

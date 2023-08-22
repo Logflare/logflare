@@ -876,12 +876,12 @@ defmodule Logflare.SqlTest do
     test "translate in operator arguments to text" do
       bq_query = ~s"""
       select t.col as col from `my.source` t
-      where t.col in ('val')
+      where t.col in ('val') and t.col not in ('other')
       """
 
       pg_query = ~s"""
       select (t.body -> 'col') as col from "my.source" t
-      where ( (t.body -> 'col')  #>> '{}') in ('val')
+      where ( (t.body -> 'col')  #>> '{}') in ('val') and ( (t.body -> 'col')  #>> '{}') not in ('other')
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
