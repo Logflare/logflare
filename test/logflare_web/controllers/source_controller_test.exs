@@ -90,6 +90,58 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "Premium only features" do
+    setup %{conn: conn} do
+      # mocks
+      Logflare.Sources.Counters
+      |> stub()
+      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
+      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
+
+      # setup paid plan
+      insert(:plan, name: "Free")
+      paid_user = insert(:user, billing_enabled: true)
+      plan = insert(:plan, name: "Paid", stripe_id: "stripe-id")
+      insert(:billing_account, user: paid_user, stripe_plan_id: plan.stripe_id)
+      insert(:team, user: paid_user)
+
+      free_user = insert(:user)
+      insert(:team, user: free_user)
+
+      [conn: conn, paid_user: paid_user, free_user: free_user]
+    end
+
+    test "can see SMS alert options", %{conn: conn, paid_user: paid_user} do
+      source = insert(:source, user: paid_user)
+      paid_user = Repo.preload(paid_user, :sources)
+
+      html =
+        conn
+        |> login_user(paid_user)
+        |> get(Routes.source_path(conn, :edit, source))
+        |> html_response(200)
+
+      assert html =~ "Update SMS preferences"
+      refute html =~ "SMS alerts are not available with the Free plan"
+    end
+
+    test "free user", %{conn: conn, free_user: free_user} do
+      source = insert(:source, user: free_user)
+      free_user = Repo.preload(free_user, :sources)
+
+      html =
+        conn
+        |> login_user(free_user)
+        |> get(Routes.source_path(conn, :edit, source))
+        |> html_response(200)
+
+      # cannot see update button
+      refute html =~ "Update SMS preferences"
+      # can see alert
+      assert html =~ "SMS alerts are not available with the Free plan"
+    end
+  end
+
   describe "dashboard single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)
 

@@ -76,27 +76,31 @@
   <%= section_header("SMS Alerts") %>
   <p>Get text message alerts when a source gets new events. Sometimes sources can get a lot of events quickly. At most
     you will get one text message per minute.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
-  <div class="form-group">
-    <div class="form-control-margin">
-      <%= inputs_for c, :notifications, fn cn -> %>
-      <%= label cn, :user_text_notifications, "Send SMS alerts to the account owner", class: "" %>
-      <%= if is_nil(@user.phone) do %>
-      <%= link " (add a phone number)", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
-      <% else %>
-      <%= link " (#{@user.phone})", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
-      <% end %>
-      <%= checkbox cn, :user_text_notifications %>
-      <%= error_tag cn, :user_text_notifications %>
-    </div>
-    <%= label cn, :team_user_ids_for_sms, "Select some team members to alert (team members without phone numbers are not listed)", class: "label-padding" %>
-    <%= multiple_select cn, :team_user_ids_for_sms, Enum.filter(@team.team_users, &(&1.phone)) |> Enum.map(fn x -> {"#{x.name || x.email} (#{x.phone})", x.id} end), selected: @source.notifications.team_user_ids_for_sms, class: "form-control form-control-margin selectpicker", data: [width: "65%"] %>
-    <small class="form-text text-muted">
-      Reset SMS preferences to clear this list.
-    </small>
+  <%= if @plan.name != "Free" do %>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn c -> %>
+      <div class="form-group">
+        <div class="form-control-margin">
+          <%= inputs_for c, :notifications, fn cn -> %>
+          <%= label cn, :user_text_notifications, "Send SMS alerts to the account owner", class: "" %>
+          <%= if is_nil(@user.phone) do %>
+          <%= link " (add a phone number)", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
+          <% else %>
+          <%= link " (#{@user.phone})", to: Routes.user_path(@conn, :edit), class: "label-padding" %>
+          <% end %>
+          <%= checkbox cn, :user_text_notifications %>
+          <%= error_tag cn, :user_text_notifications %>
+        </div>
+        <%= label cn, :team_user_ids_for_sms, "Select some team members to alert (team members without phone numbers are not listed)", class: "label-padding" %>
+        <%= multiple_select cn, :team_user_ids_for_sms, Enum.filter(@team.team_users, &(&1.phone)) |> Enum.map(fn x -> {"#{x.name || x.email} (#{x.phone})", x.id} end), selected: @source.notifications.team_user_ids_for_sms, class: "form-control form-control-margin selectpicker", data: [width: "65%"] %>
+        <small class="form-text text-muted">
+          Reset SMS preferences to clear this list.
+        </small>
+        <% end %>
+      </div>
+      <%= submit "Update SMS preferences", class: "btn btn-primary form-button" %>
     <% end %>
-  </div>
-  <%= submit "Update SMS preferences", class: "btn btn-primary form-button" %>
+    <% else %>
+    <p>SMS alerts are not available with the Free plan.</p>
   <% end %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn clear_c -> %>
   <%= inputs_for clear_c, :notifications, fn cn -> %>
