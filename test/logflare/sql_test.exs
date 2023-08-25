@@ -888,6 +888,44 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "translate between operator sides to numeric" do
+      bq_query = ~s"""
+      select t.col as col from `my.source` t
+      where t.col between 200 and 299
+      """
+
+      pg_query = ~s"""
+      select (t.body -> 'col') as col from "my.source" t
+      where cast( (t.body ->> 'col') as numeric) between 200 and 299
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "translate >, >=, =, <, <=  operator to numeric if comparison side is a number" do
+      bq_query = ~s"""
+      select t.col as col from `my.source` t
+      where t.col >= 123
+        and t.col <= 123
+        and t.col = 123
+        and t.col > 123
+        and t.col < 123
+      """
+
+      pg_query = ~s"""
+      select (t.body -> 'col') as col from "my.source" t
+      where cast( (t.body ->> 'col') as numeric) >= 123
+        and cast( (t.body ->> 'col') as numeric) <= 123
+        and cast( (t.body ->> 'col') as numeric) = 123
+        and cast( (t.body ->> 'col') as numeric) > 123
+        and cast( (t.body ->> 'col') as numeric) < 123
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"
