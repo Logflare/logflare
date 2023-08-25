@@ -28,6 +28,7 @@ Mimic.copy(GoogleApi.CloudResourceManager.V1.Api.Projects)
 Mimic.copy(Goth)
 Mimic.copy(ConfigCat)
 Mimic.copy(Finch)
+Mimic.copy(ExTwilio.Message)
 
 # stub all outgoing requests
 Mimic.stub(Goth)
