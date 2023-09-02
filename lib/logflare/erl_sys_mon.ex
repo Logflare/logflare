@@ -21,7 +21,7 @@ defmodule Logflare.ErlSysMon do
   end
 
   def handle_info(msg, state) do
-    Logger.warning("#{__MODULE__} message: " <> msg)
+    Logger.warning("#{__MODULE__} message: " <> inspect(msg))
 
     {:noreply, state}
   end
