@@ -3,6 +3,8 @@ defmodule Logflare.ErlSysMon do
   Logs Erlang System Monitor events.
   """
 
+  require Logger
+
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
