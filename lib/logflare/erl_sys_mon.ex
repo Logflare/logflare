@@ -13,7 +13,7 @@ defmodule Logflare.ErlSysMon do
     :erlang.system_monitor(self(), [
       :busy_dist_port,
       :busy_port,
-      {:long_gc, 100},
+      {:long_gc, 1_000},
       {:long_schedule, 100}
     ])
 
