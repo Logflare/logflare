@@ -43,7 +43,6 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
             icon_url: "https://logflare.app/images/logos/logflare-logo.png"
           },
           title: "#{rate} new event(s)",
-          footer: %{text: "Thanks for using Logflare 🙏"},
           fields: prepped_recent_events
         }
       ]

@@ -141,8 +141,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
           type: "context",
           elements: [
             %{
-              type: "mrkdwn",
-              text: "Thanks for using Logflare 🙏"
+              type: "mrkdwn"
             }
           ]
         }
