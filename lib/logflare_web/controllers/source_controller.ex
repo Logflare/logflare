@@ -239,10 +239,11 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
 
-  def edit(%{assigns: %{source: source}} = conn, _params) do
+  def edit(%{assigns: %{source: source, plan: plan}} = conn, _params) do
     changeset = Source.update_by_user_changeset(source, %{})
 
     render(conn, "edit.html",
+      plan: plan,
       changeset: changeset,
       source: source,
       notifications_opts: notifications_options()

@@ -14,10 +14,34 @@ defmodule Logflare.Lql.Parser.Helpers do
       |> unwrap_and_tag(:operator)
     )
     |> concat(
-      ascii_string(
-        [?a..?z, ?A..?Z, ?., ?_, ?0..?9, ?!, ?%, ?$, ?^, ?\\, ?+, ?[, ?], ??, ?!, ?(, ?), ?{, ?}],
+      times(
+        choice([
+          string(~S(\")),
+          ascii_char([
+            ?a..?z,
+            ?A..?Z,
+            ?.,
+            ?_,
+            ?0..?9,
+            ?!,
+            ?%,
+            ?$,
+            ?^,
+            ?\\,
+            ?+,
+            ?[,
+            ?],
+            ??,
+            ?!,
+            ?(,
+            ?),
+            ?{,
+            ?}
+          ])
+        ]),
         min: 1
       )
+      |> reduce({List, :to_string, []})
       |> unwrap_and_tag(:word)
     )
     |> label("word filter")
@@ -34,7 +58,10 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> concat(
       ignore(string("\""))
       |> repeat_while(
-        utf8_char([]),
+        choice([
+          string(~S(\")),
+          utf8_char([])
+        ]),
         {:not_quote, []}
       )
       |> ignore(string("\""))
@@ -698,8 +725,16 @@ defmodule Logflare.Lql.Parser.Helpers do
     rule
   end
 
+  def not_quote(<<?\\, ?", _::binary>>, context, _, _), do: {:cont, context}
   def not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
   def not_quote(_, context, _, _), do: {:cont, context}
+
+  def not_whitespace(<<c, _::binary>>, context, _, _)
+      when c in [?\s, ?\n, ?\t, ?\v, ?\r, ?\f, ?\b],
+      do: {:halt, context}
+
+  def not_whitespace("", context, _, _), do: {:halt, context}
+  def not_whitespace(_, context, _, _), do: {:cont, context}
 
   def not_right_paren(<<?), _::binary>>, context, _, _), do: {:halt, context}
   def not_right_paren(_, context, _, _), do: {:cont, context}

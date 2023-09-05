@@ -23,7 +23,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   @batcher_multiple 0.5
 
   def start_link(%RLS{source: source, plan: _plan} = rls) do
-    max_batchers = (System.schedulers_online() * @batcher_multiple) |> Kernel.floor()
+    max_batchers = (System.schedulers_online() * @batcher_multiple) |> Kernel.ceil()
 
     Broadway.start_link(__MODULE__,
       name: name(source.token),

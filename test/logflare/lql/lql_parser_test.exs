@@ -48,6 +48,27 @@ defmodule Logflare.LqlParserTest do
       assert Lql.encode!(lql_rules) == qs
     end
 
+    test "regexp double-quote escaping" do
+      qs = ~S|~"user \"sign\" up" ~^er\"ror|
+
+      lql_rules = [
+        %FilterRule{
+          operator: :"~",
+          path: "event_message",
+          value: ~S(user \"sign\" up),
+          modifiers: %{quoted_string: true}
+        },
+        %FilterRule{
+          operator: :"~",
+          path: "event_message",
+          value: ~S(^er\"ror)
+        }
+      ]
+
+      assert {:ok, lql_rules} == Parser.parse(qs, @default_schema)
+      assert Lql.encode!(lql_rules) == qs
+    end
+
     test "range int/float" do
       schema = build_schema(%{"metadata" => %{"float" => 1.0, "int" => 1}})
       qs = ~S|m.float:30.1..300.1 m.int:50..200|

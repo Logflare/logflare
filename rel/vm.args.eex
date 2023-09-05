@@ -16,7 +16,7 @@
 +sbwtdio medium
 
 ## Set distribution buffer limit - default is 1024
-+zdbbl 10240
++zdbbl 1028000
 
 ## Set process limit
 +P 1000000

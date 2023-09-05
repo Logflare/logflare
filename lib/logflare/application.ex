@@ -84,6 +84,7 @@ defmodule Logflare.Application do
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
     [
+      Logflare.ErlSysMon,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
       Logflare.Repo,

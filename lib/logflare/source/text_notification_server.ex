@@ -25,6 +25,8 @@ defmodule Logflare.Source.TextNotificationServer do
     {:ok, %{rls | inserts_since_boot: current_inserts}}
   end
 
+  def handle_info(:check_rate, %RLS{plan: %_{name: "Free"}} = rls), do: {:noreply, rls}
+
   def handle_info(:check_rate, rls) do
     {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
     rate = current_inserts - rls.inserts_since_boot
