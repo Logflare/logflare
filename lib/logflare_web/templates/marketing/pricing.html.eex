@@ -53,6 +53,8 @@
       <h1 class="scroll-margin" id="rate-limit">What happens when I'm rate limited?</h1>
       <p>The free plan is rate limited at 5 log events per second on average for the last 60 seconds. When you hit
           that average we will stop ingesting log events. You will be warned via an email and an alert in the interface.</p>
+      <h1 class="scroll-margin" id="rate-limit">What kind of alerts are available?</h1>
+      <p>All users have access to email, webhook, Slack, and Discord alerts. SMS alerts are only available for paid subscribers.</p>
     </div>
   </div>
 </div>
