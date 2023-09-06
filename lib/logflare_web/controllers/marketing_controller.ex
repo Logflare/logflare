@@ -30,15 +30,11 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def terms(conn, _params) do
-    render(conn, "terms_of_service.html")
+    redirect(conn, external: "https://supabase.com/terms")
   end
 
   def privacy(conn, _params) do
-    render(conn, "privacy_policy.html")
-  end
-
-  def cookies(conn, _params) do
-    render(conn, "cookie_policy.html")
+    redirect(conn, external: "https://supabase.com/privacy")
   end
 
   def guides(conn, _params) do

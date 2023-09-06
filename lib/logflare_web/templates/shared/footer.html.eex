@@ -14,13 +14,10 @@
             <%= link "Contact Us", to: Routes.marketing_path(@conn, :contact)%>
           </li>
           <li>
-            <%= link "Terms of Service", to: Routes.marketing_path(@conn, :terms)%>
+            <%= link "Terms of Service", to: "https://supabase.com/terms", target: "_blank" %>
           </li>
           <li>
-            <%= link "Privacy Policy", to: Routes.marketing_path(@conn, :privacy)%>
-          </li>
-          <li>
-            <%= link "Cookie Policy", to: Routes.marketing_path(@conn, :cookies)%>
+            <%= link "Privacy Policy", to: "https://supabase.com/privacy", target: "_blank" %>
           </li>
         </ul>
       </div>
