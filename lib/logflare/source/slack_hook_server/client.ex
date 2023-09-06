@@ -136,14 +136,6 @@ defmodule Logflare.Source.SlackHookServer.Client do
             url: source_link,
             style: "primary"
           }
-        },
-        %{
-          type: "context",
-          elements: [
-            %{
-              type: "mrkdwn"
-            }
-          ]
         }
       ]
     }
