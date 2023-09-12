@@ -38,7 +38,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         field_count_limit: rls.plan.limit_source_fields_limit,
         next_update: System.system_time(:millisecond)
       },
-      name: name(rls.source_id)
+      name: Source.Supervisor.start_via(__MODULE__, rls.source_id)
     )
   end
 
@@ -87,24 +87,27 @@ defmodule Logflare.Source.BigQuery.Schema do
     reason
   end
 
-  def get_state(source_token) do
-    GenServer.call(name(source_token), :get)
+  def get_state(source_token) when is_atom(source_token) do
+    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    GenServer.call(pid, :get)
   end
 
-  def update(source_token, %LogEvent{} = log_event) do
-    GenServer.call(name(source_token), {:update, log_event}, @timeout)
+  def update(source_token, %LogEvent{} = log_event) when is_atom(source_token) do
+    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    GenServer.call(pid, {:update, log_event}, @timeout)
   end
 
   # For tests
-  def update(source_token, schema) do
-    GenServer.call(name(source_token), {:update, schema}, @timeout)
+  def update(source_token, schema) when is_atom(source_token) do
+    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    GenServer.call(pid, {:update, schema}, @timeout)
   end
 
   # @spec update_cluster(atom(), map(), map(), non_neg_integer()) :: atom
   # def update_cluster(source_token, schema, type_map, field_count) when is_atom(source_token) do
   #  GenServer.abcast(
   #    Node.list(),
-  #    name(source_token),
+  #    pid(source_token),
   #    {:update, schema, type_map, field_count}
   #  )
   # end
@@ -283,10 +286,6 @@ defmodule Logflare.Source.BigQuery.Schema do
       end
 
     next_update_ts(updates_per_minute)
-  end
-
-  defp name(source_token) do
-    String.to_atom("#{source_token}" <> "-schema")
   end
 
   defp same_schemas?(old_schema, new_schema) do

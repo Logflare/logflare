@@ -1,8 +1,9 @@
 defmodule Logflare.Source.Data do
   @moduledoc false
+  alias Logflare.Source
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.{RateCounterServer, BigQuery.BufferCounter, BigQuery.Schema}
+  alias Logflare.Source.{RateCounterServer, BigQuery.Schema}
 
   def get_logs(source_id) when is_atom(source_id) do
     Logflare.Source.RecentLogsServer.list(source_id)
@@ -80,25 +81,11 @@ defmodule Logflare.Source.Data do
     RateCounterServer.get_max_rate(source_id)
   end
 
-  @spec get_buffer(atom, integer) :: integer
-  def get_buffer(source_id, fallback \\ 0) do
-    case Process.whereis(String.to_atom("#{source_id}-buffer")) do
-      nil ->
-        fallback
-
-      _ ->
-        BufferCounter.len(source_id)
-    end
-  end
-
   @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
-    case Process.whereis(String.to_atom("#{source.token}-schema")) do
-      nil ->
-        0
-
-      _ ->
-        Schema.get_state(source.token).field_count
+    case Source.Supervisor.lookup_via(Schema, source.token) do
+      {:error, _} -> 0
+      {:ok, _pid} -> Schema.get_state(source.token).field_count
     end
   end
 end

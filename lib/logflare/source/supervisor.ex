@@ -69,8 +69,8 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_id}, state) do
-    case Process.whereis(source_id) do
-      nil ->
+    case lookup_via(RLS, source_id) do
+      {:error, _} ->
         case create_source(source_id) do
           {:ok, _pid} ->
             state = Enum.uniq([source_id | state])
@@ -82,18 +82,18 @@ defmodule Logflare.Source.Supervisor do
             {:noreply, state}
         end
 
-      _ ->
+      {:ok, _pid} ->
         {:noreply, state}
     end
   end
 
   def handle_cast({:delete, source_id}, state) do
-    case Process.whereis(source_id) do
-      nil ->
+    case lookup_via(RLS, source_id) do
+      {:error, _} ->
         {:noreply, state}
 
-      _ ->
-        send(source_id, {:stop_please, :shutdown})
+      {:ok, pid} ->
+        send(pid, {:stop_please, :shutdown})
         Counters.delete(source_id)
 
         state = List.delete(state, source_id)
@@ -102,8 +102,8 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:restart, source_id}, state) do
-    case Process.whereis(source_id) do
-      nil ->
+    case lookup_via(RLS, source_id) do
+      {:error, _} ->
         case create_source(source_id) do
           {:ok, _pid} ->
             state = Enum.uniq([source_id | state])
@@ -117,8 +117,8 @@ defmodule Logflare.Source.Supervisor do
 
         {:noreply, state}
 
-      _ ->
-        send(source_id, {:stop_please, :shutdown})
+      {:ok, pid} ->
+        send(pid, {:stop_please, :shutdown})
 
         reset_persisted_schema(source_id)
 
@@ -180,6 +180,17 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
+  def start_via(module, source_id) when is_atom(source_id) do
+    {:via, Registry, {Logflare.OldSourceRegistry, {module, source_id}, :registered}}
+  end
+
+  def lookup_via(module, source_id) when is_atom(source_id) do
+    case Registry.lookup(Logflare.OldSourceRegistry, {module, source_id}) do
+      [{pid, :registered}] -> {:ok, pid}
+      [] -> {:error, :no_proc}
+    end
+  end
+
   defp create_source(source_id) do
     # Double check source is in the database before starting
     # Can be removed when manager fns move into their own genserver
@@ -223,15 +234,15 @@ defmodule Logflare.Source.Supervisor do
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
   def ensure_started(source_id) do
-    case Process.whereis(source_id) do
-      nil ->
+    case lookup_via(RLS, source_id) do
+      {:error, _} ->
         Logger.info("Source process not found, starting...", source_id: source_id)
 
         start_source(source_id)
 
         {:ok, :started}
 
-      _else ->
+      {:ok, _pid} ->
         {:ok, :already_started}
     end
   end

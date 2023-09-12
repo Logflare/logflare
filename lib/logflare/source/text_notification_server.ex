@@ -4,6 +4,7 @@ defmodule Logflare.Source.TextNotificationServer do
 
   require Logger
 
+  alias Logflare.Source
   alias Logflare.{Sources, Users, TeamUsers}
   alias Logflare.Sources.Counters
   alias LogflareWeb.Router.Helpers, as: Routes
@@ -13,7 +14,7 @@ defmodule Logflare.Source.TextNotificationServer do
   @twilio_phone "+16026006731"
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: name(source_id))
+    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.start_via(__MODULE__, source_id))
   end
 
   def init(rls) do
@@ -75,9 +76,5 @@ defmodule Logflare.Source.TextNotificationServer do
 
   defp check_rate(notifications_every) do
     Process.send_after(self(), :check_rate, notifications_every)
-  end
-
-  defp name(source_id) do
-    String.to_atom("#{source_id}" <> "-texter")
   end
 end
