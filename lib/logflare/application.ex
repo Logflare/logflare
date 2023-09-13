@@ -51,7 +51,7 @@ defmodule Logflare.Application do
       {Phoenix.PubSub, name: Logflare.PubSub},
       Logflare.Repo,
       {Registry,
-       name: Logflare.OldSourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+       name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
       {Registry,
        name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
       # get_goth_child_spec(),
@@ -123,7 +123,7 @@ defmodule Logflare.Application do
       # Sources
       # v1 ingest pipline
       {Registry,
-       name: Logflare.OldSourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+       name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
       {Registry,
        name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
       Logs.RejectedLogEvents,

@@ -181,11 +181,11 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def start_via(module, source_id) when is_atom(source_id) do
-    {:via, Registry, {Logflare.OldSourceRegistry, {module, source_id}, :registered}}
+    {:via, Registry, {Logflare.V1SourceRegistry, {module, source_id}, :registered}}
   end
 
   def lookup_via(module, source_id) when is_atom(source_id) do
-    case Registry.lookup(Logflare.OldSourceRegistry, {module, source_id}) do
+    case Registry.lookup(Logflare.V1SourceRegistry, {module, source_id}) do
       [{pid, :registered}] -> {:ok, pid}
       [] -> {:error, :no_proc}
     end
