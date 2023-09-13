@@ -30,7 +30,9 @@ defmodule LogflareWeb.MarketingController do
   end
 
   def terms(conn, _params) do
-    redirect(conn, external: "https://supabase.com/terms")
+    conn
+    |> put_status(301)
+    |> redirect(external: "https://supabase.com/terms")
   end
 
   def privacy(conn, _params) do
