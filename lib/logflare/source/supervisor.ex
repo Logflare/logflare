@@ -69,7 +69,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_id}, state) do
-    case lookup_via(RLS, source_id) do
+    case lookup(RLS, source_id) do
       {:error, _} ->
         case create_source(source_id) do
           {:ok, _pid} ->
@@ -88,7 +88,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:delete, source_id}, state) do
-    case lookup_via(RLS, source_id) do
+    case lookup(RLS, source_id) do
       {:error, _} ->
         {:noreply, state}
 
@@ -102,7 +102,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:restart, source_id}, state) do
-    case lookup_via(RLS, source_id) do
+    case lookup(RLS, source_id) do
       {:error, _} ->
         case create_source(source_id) do
           {:ok, _pid} ->
@@ -180,11 +180,11 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
-  def start_via(module, source_id) when is_atom(source_id) do
+  def via(module, source_id) when is_atom(source_id) do
     {:via, Registry, {Logflare.V1SourceRegistry, {module, source_id}, :registered}}
   end
 
-  def lookup_via(module, source_id) when is_atom(source_id) do
+  def lookup(module, source_id) when is_atom(source_id) do
     case Registry.lookup(Logflare.V1SourceRegistry, {module, source_id}) do
       [{pid, :registered}] -> {:ok, pid}
       [] -> {:error, :no_proc}
@@ -234,7 +234,7 @@ defmodule Logflare.Source.Supervisor do
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
   def ensure_started(source_id) do
-    case lookup_via(RLS, source_id) do
+    case lookup(RLS, source_id) do
       {:error, _} ->
         Logger.info("Source process not found, starting...", source_id: source_id)
 

@@ -31,7 +31,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # API
   def start_link(%RLS{source_id: source_id}, _opts \\ %{}) do
     GenServer.start_link(__MODULE__, %{source_id: source_id},
-      name: Source.Supervisor.start_via(__MODULE__, source_id)
+      name: Source.Supervisor.via(__MODULE__, source_id)
     )
   end
 
@@ -43,7 +43,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_cancel_query(source_token) when is_atom(source_token) do
-    case Source.Supervisor.lookup_via(__MODULE__, source_token) do
+    case Source.Supervisor.lookup(__MODULE__, source_token) do
       {:ok, _} ->
         :ok = cancel_query(source_token)
         :ok = cancel_agg(source_token)
@@ -58,7 +58,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
     end)
 
-    case Source.Supervisor.lookup_via(__MODULE__, source_token) do
+    case Source.Supervisor.lookup(__MODULE__, source_token) do
       {:ok, _} ->
         :ok = query(params)
 
@@ -70,7 +70,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_execute_agg_query(source_token, params) when is_atom(source_token) do
-    case Source.Supervisor.lookup_via(__MODULE__, source_token) do
+    case Source.Supervisor.lookup(__MODULE__, source_token) do
       {:ok, _} ->
         :ok = query_agg(params)
 
@@ -97,22 +97,22 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def query(params) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, params.source.token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, params.source.token)
     GenServer.call(pid, {:query, params}, @query_timeout)
   end
 
   def query_agg(params) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, params.source.token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, params.source.token)
     GenServer.call(pid, {:query_agg, params}, @query_timeout)
   end
 
   def cancel_agg(source_token) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
     GenServer.call(pid, :cancel_agg, @query_timeout)
   end
 
   def cancel_query(source_token) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
     GenServer.call(pid, :cancel_query, @query_timeout)
   end
 

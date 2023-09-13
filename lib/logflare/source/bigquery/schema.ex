@@ -38,7 +38,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         field_count_limit: rls.plan.limit_source_fields_limit,
         next_update: System.system_time(:millisecond)
       },
-      name: Source.Supervisor.start_via(__MODULE__, rls.source_id)
+      name: Source.Supervisor.via(__MODULE__, rls.source_id)
     )
   end
 
@@ -88,18 +88,18 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def get_state(source_token) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
     GenServer.call(pid, :get)
   end
 
   def update(source_token, %LogEvent{} = log_event) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
     GenServer.call(pid, {:update, log_event}, @timeout)
   end
 
   # For tests
   def update(source_token, schema) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup_via(__MODULE__, source_token)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
     GenServer.call(pid, {:update, schema}, @timeout)
   end
 

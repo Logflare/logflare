@@ -21,7 +21,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       %{
         source_uuid: source_uuid
       },
-      name: Source.Supervisor.start_via(__MODULE__, source_uuid)
+      name: Source.Supervisor.via(__MODULE__, source_uuid)
     )
   end
 
