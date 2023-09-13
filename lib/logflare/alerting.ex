@@ -39,6 +39,10 @@ defmodule Logflare.Alerting do
   """
   def get_alert_query!(id), do: Repo.get!(AlertQuery, id)
 
+  def get_alert_query_by(kw) do
+    Repo.get_by(AlertQuery, kw)
+  end
+
   @doc """
   Creates a alert_query.
 

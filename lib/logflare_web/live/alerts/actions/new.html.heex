@@ -1,0 +1,12 @@
+<.subheader>
+  <:path>
+    ~/<%= live_patch("alerts",
+      to: ~p"/alerts",
+      "data-confirm": "Confirm navigate away? All unsaved changes will be lost"
+    ) %>/new
+  </:path>
+</.subheader>
+
+<div class="container mx-auto">
+  <.alert_form {assigns} />
+</div>

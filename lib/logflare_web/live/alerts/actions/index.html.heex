@@ -1,0 +1,36 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>
+  </:path>
+  <.render_docs_link {assigns} />
+  <.render_access_tokens_link {assigns} />
+</.subheader>
+
+<div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">
+  <h3 class="tw-text-white">Logflare Alerts</h3>
+  <p>
+    Logflare Alerts are scheduled queries that run against your sources.
+    With Alerts, you can set up complex queries to notify you of specific events or criteria.
+  </p>
+
+  <div class="tw-flex tw-gap-4 tw-items-center">
+    <%= link("Documentation", to: "https://docs.logflare.app/concepts/alerts", target: "_blank") %>
+    <%= live_patch to: ~p"/alerts/new" do %>
+      <.button variant="primary">
+        New alert
+      </.button>
+    <% end %>
+  </div>
+</div>
+
+<section class="mx-auto container">
+  <ul :for={alert <- Enum.sort_by(@alerts, & &1.name)} class="list-group">
+    <li class="list-group-item">
+      <%= live_patch(alert.name, to: ~p"/alerts/#{alert.id}", class: "tw-text-white") %>
+      <span class="tw-block tw-text-sm">uuid: <%= alert.token %></span>
+      <p :if={alert.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
+        <%= alert.description %>
+      </p>
+    </li>
+  </ul>
+</section>

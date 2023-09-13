@@ -127,15 +127,15 @@ defmodule Logflare.Endpoints.Query do
   end
 
   # Only update source mapping if there are no errors
-  defp update_source_mapping(%{errors: [], changes: %{query: query}} = changeset)
-       when is_binary(query) do
+  def update_source_mapping(%Ecto.Changeset{errors: [], changes: %{query: query}} = changeset)
+      when is_binary(query) do
     case Logflare.Sql.sources(query, get_field(changeset, :user)) do
       {:ok, source_mapping} -> put_change(changeset, :source_mapping, source_mapping)
       {:error, error} -> add_error(changeset, :query, error)
     end
   end
 
-  defp update_source_mapping(changeset), do: changeset
+  def update_source_mapping(changeset), do: changeset
 
   @doc """
   Replaces a query with latest source names.

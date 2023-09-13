@@ -6,8 +6,9 @@ defmodule Logflare.Repo.Migrations.CreateAlertQueries do
       add :name, :string
       add :token, :uuid
       add :query, :string
+      add :description, :string
+      add :language, :string
       add :cron, :string
-      add :active, :boolean, default: true
       add :source_mapping, :map
       add :slack_hook_url, :string
       add :webhook_notification_url, :string

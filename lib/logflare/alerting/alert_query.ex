@@ -10,20 +10,22 @@ defmodule Logflare.Alerting.AlertQuery do
              :token,
              :cron,
              :name,
+             :description,
+             :language,
              :query,
-             :active,
              :webhook_notification_url,
              :slack_hook_url
            ]}
   typed_schema "alert_queries" do
     field :name, :string
+    field :description, :string
+    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
     field :query, :string
     field :cron, :string
-    field :slack_hook_url, :string
     field :source_mapping, :map
     field :token, Ecto.UUID, autogenerate: true
+    field :slack_hook_url, :string
     field :webhook_notification_url, :string
-    field :active, :boolean, default: true
     belongs_to :user, Logflare.User
 
     timestamps()
@@ -32,8 +34,16 @@ defmodule Logflare.Alerting.AlertQuery do
   @doc false
   def changeset(alert_query, attrs) do
     alert_query
-    |> cast(attrs, [:name, :query, :cron, :slack_hook_url, :webhook_notification_url, :active])
-    |> validate_required([:name, :query, :cron])
+    |> cast(attrs, [
+      :name,
+      :description,
+      :language,
+      :query,
+      :cron,
+      :slack_hook_url,
+      :webhook_notification_url
+    ])
+    |> validate_required([:name, :query, :cron, :language])
     # this source mapping logic is for any generic changeset
     # we implement the same columns for now,
     # can consider migrating to separate table in future.

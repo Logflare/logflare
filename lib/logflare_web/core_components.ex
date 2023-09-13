@@ -113,7 +113,7 @@ defmodule LogflareWeb.CoreComponents do
       )
 
     ~H"""
-    <h5 id={@anchor} class="header-margin scroll-margin">
+    <h5 id={@anchor} class="tw-mb-2 tw-mt-4 tw-text-white scroll-margin">
       <%= @text %> <%= Phoenix.HTML.Link.link("#", to: "#" <> @anchor) %>
     </h5>
     """
