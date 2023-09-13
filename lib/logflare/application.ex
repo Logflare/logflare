@@ -50,10 +50,15 @@ defmodule Logflare.Application do
       Logs.RejectedLogEvents,
       {Phoenix.PubSub, name: Logflare.PubSub},
       Logflare.Repo,
+      {Registry,
+       name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+      {Registry,
+       name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
       # get_goth_child_spec(),
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+
       # v2 ingestion pipelines
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
@@ -62,8 +67,7 @@ defmodule Logflare.Application do
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
-      {Registry, name: Logflare.CounterRegistry, keys: :unique}
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ common_children()
   end
 
@@ -117,6 +121,11 @@ defmodule Logflare.Application do
       Logflare.CacheBuster,
 
       # Sources
+      # v1 ingest pipline
+      {Registry,
+       name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+      {Registry,
+       name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
       Logs.RejectedLogEvents,
       # init Counters before Supervisof as Supervisor calls Counters through table create
       Sources.Counters,
@@ -146,8 +155,7 @@ defmodule Logflare.Application do
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
-      {Registry, name: Logflare.CounterRegistry, keys: :unique}
+      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ conditional_children() ++ common_children()
   end
 

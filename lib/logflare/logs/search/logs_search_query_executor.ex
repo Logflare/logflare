@@ -30,7 +30,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   # API
   def start_link(%RLS{source_id: source_id}, _opts \\ %{}) do
-    GenServer.start_link(__MODULE__, %{source_id: source_id}, name: name(source_id))
+    GenServer.start_link(__MODULE__, %{source_id: source_id},
+      name: Source.Supervisor.via(__MODULE__, source_id)
+    )
   end
 
   def child_spec(%RLS{source_id: source_id} = rls) do
@@ -41,16 +43,13 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_cancel_query(source_token) when is_atom(source_token) do
-    source_token
-    |> name()
-    |> Process.whereis()
-    |> if do
-      :ok = cancel_query(source_token)
-      :ok = cancel_agg(source_token)
-    else
-      Logger.error(
-        "Cancel query failed: SearchQueryExecutor process for #{source_token} not alive"
-      )
+    case Source.Supervisor.lookup(__MODULE__, source_token) do
+      {:ok, _} ->
+        :ok = cancel_query(source_token)
+        :ok = cancel_agg(source_token)
+
+      {:error, _} ->
+        :ok
     end
   end
 
@@ -59,24 +58,26 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
     end)
 
-    source_token
-    |> name()
-    |> Process.whereis()
-    |> if do
-      :ok = query(params)
-    else
-      Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+    case Source.Supervisor.lookup(__MODULE__, source_token) do
+      {:ok, _} ->
+        :ok = query(params)
+
+      {:error, _} ->
+        Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+
+        :error
     end
   end
 
   def maybe_execute_agg_query(source_token, params) when is_atom(source_token) do
-    source_token
-    |> name()
-    |> Process.whereis()
-    |> if do
-      :ok = query_agg(params)
-    else
-      Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+    case Source.Supervisor.lookup(__MODULE__, source_token) do
+      {:ok, _} ->
+        :ok = query_agg(params)
+
+      {:error, _} ->
+        Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+
+        :error
     end
   end
 
@@ -96,19 +97,23 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def query(params) do
-    GenServer.call(name(params.source.token), {:query, params}, @query_timeout)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, params.source.token)
+    GenServer.call(pid, {:query, params}, @query_timeout)
   end
 
   def query_agg(params) do
-    GenServer.call(name(params.source.token), {:query_agg, params}, @query_timeout)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, params.source.token)
+    GenServer.call(pid, {:query_agg, params}, @query_timeout)
   end
 
   def cancel_agg(source_token) when is_atom(source_token) do
-    GenServer.call(name(source_token), :cancel_agg, @query_timeout)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
+    GenServer.call(pid, :cancel_agg, @query_timeout)
   end
 
   def cancel_query(source_token) when is_atom(source_token) do
-    GenServer.call(name(source_token), :cancel_query, @query_timeout)
+    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
+    GenServer.call(pid, :cancel_query, @query_timeout)
   end
 
   def name(source_id) do

@@ -4,13 +4,14 @@ defmodule Logflare.Source.WebhookNotificationServer do
 
   require Logger
 
+  alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias __MODULE__, as: WNS
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: name(source_id))
+    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
   end
 
   def test_post(source) do
@@ -95,9 +96,5 @@ defmodule Logflare.Source.WebhookNotificationServer do
 
   defp check_rate(notifications_every) do
     Process.send_after(self(), :check_rate, notifications_every)
-  end
-
-  defp name(source_id) do
-    String.to_atom("#{source_id}" <> "-webhooks")
   end
 end

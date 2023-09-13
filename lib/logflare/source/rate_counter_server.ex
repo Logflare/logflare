@@ -47,7 +47,7 @@ defmodule Logflare.Source.RateCounterServer do
     GenServer.start_link(
       __MODULE__,
       source_id,
-      name: name(source_id)
+      name: Source.Supervisor.via(__MODULE__, source_id)
     )
   end
 
