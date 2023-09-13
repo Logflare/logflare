@@ -84,12 +84,12 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def list(source_id) when is_atom(source_id) do
     case Source.Supervisor.lookup_via(__MODULE__, source_id) do
-      {:error, _} ->
-        []
-
       {:ok, pid} ->
         {:ok, logs} = GenServer.call(pid, :list)
         logs
+
+      {:error, _} ->
+        []
     end
   end
 
@@ -121,14 +121,14 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def get_latest_date(source_id) when is_atom(source_id) do
     case Source.Supervisor.lookup_via(__MODULE__, source_id) do
-      {:error, _} ->
-        0
-
       {:ok, pid} ->
         case GenServer.call(pid, :latest_le) do
           {:ok, log_event} -> log_event.body["timestamp"]
           {:error, _reason} -> 0
         end
+
+      {:error, _} ->
+        0
     end
   end
 

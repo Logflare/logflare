@@ -49,7 +49,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
         :ok = cancel_agg(source_token)
 
       {:error, _} ->
-        :noop
+        :ok
     end
   end
 
@@ -64,6 +64,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
       {:error, _} ->
         Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+
+        :error
     end
   end
 
@@ -74,6 +76,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
       {:error, _} ->
         Logger.error("Query failed: SearchQueryExecutor process for #{source_token} not alive")
+
+        :error
     end
   end
 

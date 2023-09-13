@@ -84,8 +84,8 @@ defmodule Logflare.Source.Data do
   @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
     case Source.Supervisor.lookup_via(Schema, source.token) do
-      {:error, _} -> 0
       {:ok, _pid} -> Schema.get_state(source.token).field_count
+      {:error, _} -> 0
     end
   end
 end
