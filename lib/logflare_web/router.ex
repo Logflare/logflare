@@ -144,7 +144,6 @@ defmodule LogflareWeb.Router do
     get("/pricing", MarketingController, :pricing)
     get("/terms", MarketingController, :terms)
     get("/privacy", MarketingController, :privacy)
-    get("/cookies", MarketingController, :cookies)
     get("/contact", MarketingController, :contact)
   end
 
