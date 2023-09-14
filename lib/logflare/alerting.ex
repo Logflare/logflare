@@ -6,8 +6,11 @@ defmodule Logflare.Alerting do
   import Ecto.Query, warn: false
   alias Logflare.Repo
 
+  require Logger
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Alerting.AlertQuery
   alias Logflare.User
+
 
   @doc """
   Returns the list of alert_queries.
@@ -110,4 +113,91 @@ defmodule Logflare.Alerting do
   def change_alert_query(%AlertQuery{} = alert_query, attrs \\ %{}) do
     AlertQuery.changeset(alert_query, attrs)
   end
+
+  def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
+
+  def get_alert_job(id) do
+    case Logflare.AlertsScheduler.get_job(id) do
+      {_pid, job} -> job
+      nil -> nil
+    end
+  end
+
+  def upsert_alert_job(%AlertQuery{} = alert_query) do
+    Logflare.AlertsScheduler.put_job(%Citrine.Job{
+      id: alert_query.id,
+      schedule: alert_query.cron,
+      extended_syntax: true,
+      task: {:run_alert, [alert_query]}
+    })
+
+    {:ok, get_alert_job(alert_query)}
+  end
+
+  @doc """
+  Performs the check lifecycle of an AlertQuery.
+  """
+  @spec run_alert(AlertQuery.t()) :: :ok
+  def run_alert(%AlertQuery{} = alert_query) do
+    alert_query = alert_query |> Repo.preload([:user])
+    with {:ok, [ _ | _] = results} <- execute_alert_query(alert_query) do
+      if alert_query.webhook_notification_url do
+        WebhookAdaptor.Client.send(alert_query.webhook_notification_url, %{
+          "result"=> results,
+        })
+      end
+      :ok
+    else
+      {:ok, []} ->
+        :ok
+      other -> other
+    end
+  end
+
+
+  @doc """
+  Deletes an AlertQuery's Citrine.Job from the scheduler
+  noop if already deleted.
+
+  ### Examples
+    iex> delete_alert_job(%AlertQuery{})
+    :ok
+    iex> delete_alert_job(alert_query.id)
+    :ok
+  """
+  @spec delete_alert_job(AlertQuery.t() | number()) :: :ok
+  def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
+
+  def delete_alert_job(alert_id) do
+    Logflare.AlertsScheduler.delete_job(alert_id)
+  end
+
+  @doc """
+  Executes an AlertQuery and returns its results
+
+  Requires `:user` key to be preloaded.
+  ### Examples
+    iex> execute_alert_query(alert_query)
+    {:ok, [{"user_id" => "my-user-id"}]}
+  """
+  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
+    Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
+
+    with {:ok, transformed_query} <- Logflare.Sql.transform(:bq_sql, alert_query.query, alert_query.user_id),
+           {:ok, %{rows: rows}} <- Logflare.BqRepo.query_with_sql_and_params(
+             alert_query.user,
+             alert_query.user.bigquery_project_id || env_project_id(),
+             transformed_query,
+             [],
+             parameterMode: "NAMED",
+             maxResults: 1000,
+             location: alert_query.user.bigquery_dataset_location
+           ) do
+
+            {:ok, rows}
+    end
+  end
+
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
 end

@@ -36,9 +36,12 @@
     <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-col">
       <div class="form-group">
-        <p>This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.</p>
+        <p>
+          This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
+        </p>
         <%= textarea(f, :query,
-          placeholder: "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
+          placeholder:
+            "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
           class: "form-control form-control-margin",
           id: "alert-query",
           value: Map.get(@params_form.params, "query"),
@@ -48,7 +51,7 @@
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
       </div>
 
-    <.header_with_anchor text="Query Schedule" />
+      <.header_with_anchor text="Query Schedule" />
       <div class="form-group">
         <p>The schedule must be a valid cron expression.</p>
         <%= label(f, :cron, "Cron Expression") %>

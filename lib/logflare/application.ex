@@ -156,6 +156,9 @@ defmodule Logflare.Application do
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
       {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+
+      # citrine scheduler for alerts
+      Logflare.AlertsScheduler
     ] ++ conditional_children() ++ common_children()
   end
 

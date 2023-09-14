@@ -128,5 +128,4 @@ defmodule LogflareWeb.AlertsLive do
       %_{} -> Alerting.update_alert_query(alert, params)
     end
   end
-
 end

@@ -201,7 +201,10 @@ defmodule Logflare.Mixfile do
       {:protobuf, "~> 0.10"},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
-      {:phoenix_live_dashboard, "~> 0.8"}
+      {:phoenix_live_dashboard, "~> 0.8"},
+
+      # alerts feature
+      {:citrine, "~> 0.1.0"}
     ]
   end
 

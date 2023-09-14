@@ -2,8 +2,12 @@ defmodule Logflare.AlertingTest do
   use Logflare.DataCase
 
   alias Logflare.Alerting
+  alias Logflare.AlertsScheduler
 
   setup do
+      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+      insert(:plan, name: "Free")
+    start_supervised!(AlertsScheduler)
     {:ok, user: insert(:user)}
   end
 
@@ -101,6 +105,44 @@ defmodule Logflare.AlertingTest do
     test "change_alert_query/1 returns a alert_query changeset", %{user: user} do
       alert_query = alert_query_fixture(user)
       assert %Ecto.Changeset{} = Alerting.change_alert_query(alert_query)
+    end
+
+    test "execute_alert_query", %{user: user} do
+      alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      assert {:ok, [%{"testing" => "123"}]} = Alerting.execute_alert_query(alert_query)
+    end
+
+    test "run_alert_query/1 runs the entire alert" , %{user: user} do
+      alert_query = insert(:alert, user: user)
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect( :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      |> expect(:send, fn _url, _body -> :ok end)
+
+      assert :ok = Alerting.run_alert(alert_query)
+    end
+  end
+
+  describe "citrine integration" do
+    test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
+         %{user: user} do
+      alert = insert(:alert, user_id: user.id)
+      alert_id = alert.id
+      assert {:ok, %Citrine.Job{id: ^alert_id}} = Alerting.upsert_alert_job(alert)
+      # create a citrine job
+      assert %Citrine.Job{id: ^alert_id} = Alerting.get_alert_job(alert_id)
+
+      assert :ok = Alerting.delete_alert_job(alert)
+      assert :ok = Alerting.delete_alert_job(alert.id)
+
+      assert nil == Alerting.get_alert_job(alert_id)
     end
   end
 end

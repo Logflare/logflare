@@ -290,7 +290,7 @@ defmodule Logflare.Factory do
     %AlertQuery{
       name: "some name",
       cron: "1 * * * * *",
-      query: "select 'id' as id",
+      query: "select current_date() as date",
       slack_hook_url: "some slack_hook_url",
       source_mapping: %{},
       webhook_notification_url: "some webhook_notification_url",
