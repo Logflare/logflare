@@ -21,7 +21,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       %{
         source_uuid: source_uuid
       },
-      name: name(source_uuid)
+      name: Source.Supervisor.via(__MODULE__, source_uuid)
     )
   end
 
@@ -173,21 +173,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       [{_pid, counter_ref}] -> {:ok, counter_ref}
       _error -> {:error, :buffer_counter_not_found}
     end
-  end
-
-  @doc """
-  Name of our buffer.
-
-  ## Examples
-
-      iex> Logflare.Source.BigQuery.BufferCounter.name(:"36a9d6a3-f569-4f0b-b7a8-8289b4270e11")
-      :"36a9d6a3-f569-4f0b-b7a8-8289b4270e11-buffer"
-
-  """
-
-  @spec name(atom() | integer()) :: atom
-  def name(source_uuid) when is_atom(source_uuid) do
-    String.to_atom("#{source_uuid}" <> "-buffer")
   end
 
   def handle_info(:check_buffer, state) do

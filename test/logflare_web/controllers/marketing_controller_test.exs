@@ -10,10 +10,7 @@ defmodule LogflareWeb.MarketingControllerTest do
   for action <- [
         :index,
         :contact,
-        :pricing,
-        :terms,
-        :privacy,
-        :cookies
+        :pricing
       ] do
     test "public marketing path #{action} ", %{
       conn: conn
@@ -29,6 +26,19 @@ defmodule LogflareWeb.MarketingControllerTest do
 
       # has announcement banner
       assert html_response(conn, 200) =~ "now part of Supabase"
+    end
+  end
+
+  for action <- [
+        :terms,
+        :privacy
+      ] do
+    test "legal redirect #{action}", %{
+      conn: conn
+    } do
+      path = Routes.marketing_path(conn, unquote(action))
+      conn = conn |> get(path)
+      assert redirected_to(conn, 301) =~ "supabase.com"
     end
   end
 

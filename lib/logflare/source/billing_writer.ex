@@ -6,11 +6,12 @@ defmodule Logflare.Source.BillingWriter do
   alias Logflare.Billing.BillingCounts
   alias Logflare.Billing
   alias Logflare.Source.Data
+  alias Logflare.Source
 
   require Logger
 
   def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: name(source_id))
+    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
   end
 
   def init(rls) do
@@ -46,10 +47,6 @@ defmodule Logflare.Source.BillingWriter do
   defp write() do
     every = :timer.minutes(Enum.random(45..75))
     Process.send_after(self(), :write_count, every)
-  end
-
-  defp name(source_id) do
-    String.to_atom("#{source_id}" <> "-bw")
   end
 
   defp record_to_stripe(rls, count) do

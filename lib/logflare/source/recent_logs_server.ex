@@ -52,7 +52,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: source_id)
+    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
   end
 
   ## Client
@@ -68,22 +68,28 @@ defmodule Logflare.Source.RecentLogsServer do
 
   @spec push(LE.t()) :: :ok
   def push(%LE{source: %Source{token: source_id}} = log_event) do
-    GenServer.cast(source_id, {:push, source_id, log_event})
+    case Source.Supervisor.lookup(__MODULE__, source_id) do
+      {:ok, pid} -> GenServer.cast(pid, {:push, source_id, log_event})
+      {:error, _} -> :ok
+    end
   end
 
   @spec push(atom(), Logflare.LogEvent.t()) :: :ok
   def push(source_id, %LE{} = log_event) when is_atom(source_id) do
-    GenServer.cast(source_id, {:push, source_id, log_event})
+    case Source.Supervisor.lookup(__MODULE__, source_id) do
+      {:ok, pid} -> GenServer.cast(pid, {:push, source_id, log_event})
+      {:error, _} -> :ok
+    end
   end
 
   def list(source_id) when is_atom(source_id) do
-    case Process.whereis(source_id) do
-      nil ->
-        []
-
-      pid ->
+    case Source.Supervisor.lookup(__MODULE__, source_id) do
+      {:ok, pid} ->
         {:ok, logs} = GenServer.call(pid, :list)
         logs
+
+      {:error, _} ->
+        []
     end
   end
 
@@ -114,15 +120,15 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def get_latest_date(source_id) when is_atom(source_id) do
-    case Process.whereis(source_id) do
-      nil ->
-        0
-
-      pid ->
+    case Source.Supervisor.lookup(__MODULE__, source_id) do
+      {:ok, pid} ->
         case GenServer.call(pid, :latest_le) do
           {:ok, log_event} -> log_event.body["timestamp"]
           {:error, _reason} -> 0
         end
+
+      {:error, _} ->
+        0
     end
   end
 
