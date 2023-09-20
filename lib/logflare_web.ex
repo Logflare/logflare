@@ -25,7 +25,7 @@ defmodule LogflareWeb do
       import Plug.Conn
       import Phoenix.LiveView.Controller
 
-      alias LogflareWeb.Router.Helpers, as: Routes
+      unquote(path_helpers())
 
       # define global controller functions
 
@@ -54,6 +54,7 @@ defmodule LogflareWeb do
 
       # Use all HTML functionality (forms, tags, etc)
       unquote(view_helpers())
+      unquote(path_helpers())
     end
   end
 
@@ -73,6 +74,7 @@ defmodule LogflareWeb do
       # Use all HTML functionality (forms, tags, etc)
       unquote(view_helpers())
       unquote(live_view_helpers())
+      unquote(path_helpers())
     end
   end
 
@@ -90,6 +92,7 @@ defmodule LogflareWeb do
 
       unquote(view_helpers())
       unquote(live_view_helpers())
+      unquote(path_helpers())
     end
   end
 
@@ -99,6 +102,7 @@ defmodule LogflareWeb do
 
       unquote(view_helpers())
       unquote(live_view_helpers())
+      unquote(path_helpers())
     end
   end
 
@@ -115,6 +119,16 @@ defmodule LogflareWeb do
     end
   end
 
+  defp path_helpers do
+    quote do
+      # declare endpoint and router for Phoenix.VerifiedRoutes
+      @endpoint LogflareWeb.Endpoint
+      @router LogflareWeb.Router
+      alias LogflareWeb.Router.Helpers, as: Routes
+      import Phoenix.VerifiedRoutes
+    end
+  end
+
   defp view_helpers do
     quote do
       use Phoenix.HTML
@@ -123,14 +137,11 @@ defmodule LogflareWeb do
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
       import Phoenix.View
       import Phoenix.Component
-      import Phoenix.VerifiedRoutes
 
       import LogflareWeb.ErrorHelpers
       import LogflareWeb.Gettext
-      alias LogflareWeb.Router.Helpers, as: Routes
 
       alias LogflareWeb.LqlHelpers
-      import Phoenix.VerifiedRoutes
     end
   end
 

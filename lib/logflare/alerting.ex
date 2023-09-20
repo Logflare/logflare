@@ -8,9 +8,9 @@ defmodule Logflare.Alerting do
 
   require Logger
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Alerting.AlertQuery
   alias Logflare.User
-
 
   @doc """
   Returns the list of alert_queries.
@@ -110,10 +110,17 @@ defmodule Logflare.Alerting do
       %Ecto.Changeset{data: %AlertQuery{}}
 
   """
+  @spec change_alert_query(AlertQuery.t()) :: Ecto.Changeset.t()
   def change_alert_query(%AlertQuery{} = alert_query, attrs \\ %{}) do
     AlertQuery.changeset(alert_query, attrs)
   end
 
+
+  @doc """
+  Retrieves a Citrine.Job based on AlertQuery.
+  Citrine.Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
+  """
+  @spec get_alert_job(AlertQuery.t()) :: Citrine.Job.t()
   def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
 
   def get_alert_job(id) do
@@ -123,6 +130,10 @@ defmodule Logflare.Alerting do
     end
   end
 
+  @doc """
+  Updates or creates a new Citrine.Job based on a given AlertQuery
+  """
+  @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Citrine.Job.t()}
   def upsert_alert_job(%AlertQuery{} = alert_query) do
     Logflare.AlertsScheduler.put_job(%Citrine.Job{
       id: alert_query.id,
@@ -136,24 +147,33 @@ defmodule Logflare.Alerting do
 
   @doc """
   Performs the check lifecycle of an AlertQuery.
+
+  Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
   @spec run_alert(AlertQuery.t()) :: :ok
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> Repo.preload([:user])
-    with {:ok, [ _ | _] = results} <- execute_alert_query(alert_query) do
+
+    with {:ok, [_ | _] = results} <- execute_alert_query(alert_query) do
       if alert_query.webhook_notification_url do
         WebhookAdaptor.Client.send(alert_query.webhook_notification_url, %{
-          "result"=> results,
+          "result" => results
         })
       end
+
+      if alert_query.slack_hook_url do
+        SlackAdaptor.send_message(alert_query.slack_hook_url, results)
+      end
+
       :ok
     else
       {:ok, []} ->
         :ok
-      other -> other
+
+      other ->
+        other
     end
   end
-
 
   @doc """
   Deletes an AlertQuery's Citrine.Job from the scheduler
@@ -176,15 +196,19 @@ defmodule Logflare.Alerting do
   Executes an AlertQuery and returns its results
 
   Requires `:user` key to be preloaded.
+
   ### Examples
     iex> execute_alert_query(alert_query)
     {:ok, [{"user_id" => "my-user-id"}]}
   """
+  @spec execute_alert_query(AlertQuery.t()) :: {:ok, [map()]}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
-    Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
+    Logger.info("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
-    with {:ok, transformed_query} <- Logflare.Sql.transform(:bq_sql, alert_query.query, alert_query.user_id),
-           {:ok, %{rows: rows}} <- Logflare.BqRepo.query_with_sql_and_params(
+    with {:ok, transformed_query} <-
+           Logflare.Sql.transform(:bq_sql, alert_query.query, alert_query.user_id),
+         {:ok, %{rows: rows}} <-
+           Logflare.BqRepo.query_with_sql_and_params(
              alert_query.user,
              alert_query.user.bigquery_project_id || env_project_id(),
              transformed_query,
@@ -193,11 +217,10 @@ defmodule Logflare.Alerting do
              maxResults: 1000,
              location: alert_query.user.bigquery_dataset_location
            ) do
-
-            {:ok, rows}
+      {:ok, rows}
     end
   end
 
+  # helper to get the google project id via env.
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
 end

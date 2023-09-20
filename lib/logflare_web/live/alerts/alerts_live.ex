@@ -116,6 +116,20 @@ defmodule LogflareWeb.AlertsLive do
      |> push_patch(to: "/alerts")}
   end
 
+  def handle_event(
+        "remove-slack",
+        _params,
+        %{assigns: %{alert: %_{id: alert_id}}} = socket
+      ) do
+    alert = Alerting.get_alert_query!(alert_id)
+    with {:ok, alert} <- Alerting.update_alert_query(alert, %{slack_hook_url: nil})  do
+      {:noreply,
+      socket
+      |> assign(:alert, alert)
+      |> put_flash(:info, "Slack notifications have been removed.")}
+    end
+  end
+
   defp refresh(%{assigns: assigns} = socket) do
     alerts = Alerting.list_alert_queries(assigns.user)
 

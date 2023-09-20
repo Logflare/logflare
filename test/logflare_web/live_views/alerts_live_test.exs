@@ -105,5 +105,17 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert_patch(view, "/alerts")
       refute view |> has_element?("li", alert_query.name)
     end
+
+    test "remove slack hook", %{conn: conn, alert_query: alert_query} do
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Remove Slack")
+             |> render_click() =~ "Slack notifications have been removed"
+
+      assert view
+              |> element("img[alt='Add to Slack']")
+              |> has_element?()
+    end
   end
 end

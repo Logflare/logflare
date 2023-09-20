@@ -7,6 +7,7 @@ defmodule LogflareWeb.Auth.OauthController do
   alias Logflare.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
+  alias Logflare.Alerting
 
   def request(conn, params) do
     Logger.warn("Received unrecognized Oauth provider request", error_string: inspect(params))
@@ -27,9 +28,8 @@ defmodule LogflareWeb.Auth.OauthController do
       when is_binary(state) do
     state = JSON.decode!(state)
 
-    case state["action"] do
-      "save_hook_url" ->
-        source = state["source"]
+    case state do
+      %{"action" => "save_hook_url", "source" => source} ->
         slack_hook_url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
         source_changes = %{slack_hook_url: slack_hook_url}
 
@@ -49,6 +49,26 @@ defmodule LogflareWeb.Auth.OauthController do
             conn
             |> put_flash(:error, "Something went wrong!")
             |> redirect(to: Routes.source_path(conn, :edit, source["id"]))
+        end
+
+      %{"action" => "save_hook_url", "alert_query_id" => id} ->
+        url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
+        alert_query = Alerting.get_alert_query!(id)
+
+        case Alerting.update_alert_query(alert_query, %{slack_hook_url: url}) do
+          {:ok, _alert_query} ->
+            conn
+            |> put_flash(:info, "Alert connected to Slack!")
+            |> redirect(to: ~p"/alerts/#{id}")
+
+          {:error, _changeset} = err ->
+            Logger.error("Error when saving slack hook url for AleryQuery",
+              error_string: inspect(err)
+            )
+
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> redirect(to: ~p"/alerts/#{id}")
         end
     end
   end

@@ -5,8 +5,8 @@ defmodule Logflare.AlertingTest do
   alias Logflare.AlertsScheduler
 
   setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-      insert(:plan, name: "Free")
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+    insert(:plan, name: "Free")
     start_supervised!(AlertsScheduler)
     {:ok, user: insert(:user)}
   end
@@ -109,6 +109,7 @@ defmodule Logflare.AlertingTest do
 
     test "execute_alert_query", %{user: user} do
       alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
+
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
@@ -116,15 +117,19 @@ defmodule Logflare.AlertingTest do
       assert {:ok, [%{"testing" => "123"}]} = Alerting.execute_alert_query(alert_query)
     end
 
-    test "run_alert_query/1 runs the entire alert" , %{user: user} do
+    test "run_alert_query/1 runs the entire alert", %{user: user} do
       alert_query = insert(:alert, user: user)
+
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect( :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
-      |> expect(:send, fn _url, _body -> :ok end)
+      |> expect(:send, fn _url, %{"result" => _} = _body -> :ok end)
+
+      Logflare.Backends.Adaptor.SlackAdaptor.Client
+      |> expect(:send, fn _url, %{blocks: _} = _records -> :ok end)
 
       assert :ok = Alerting.run_alert(alert_query)
     end
