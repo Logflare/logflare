@@ -122,11 +122,12 @@ defmodule LogflareWeb.AlertsLive do
         %{assigns: %{alert: %_{id: alert_id}}} = socket
       ) do
     alert = Alerting.get_alert_query!(alert_id)
-    with {:ok, alert} <- Alerting.update_alert_query(alert, %{slack_hook_url: nil})  do
+
+    with {:ok, alert} <- Alerting.update_alert_query(alert, %{slack_hook_url: nil}) do
       {:noreply,
-      socket
-      |> assign(:alert, alert)
-      |> put_flash(:info, "Slack notifications have been removed.")}
+       socket
+       |> assign(:alert, alert)
+       |> put_flash(:info, "Slack notifications have been removed.")}
     end
   end
 

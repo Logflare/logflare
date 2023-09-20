@@ -39,7 +39,9 @@
           <%= if @alert.slack_hook_url do %>
             <div class="tw-flex tw-gap-3 tw-align-items-center">
               <span>Connected</span>
-              <button phx-click="remove-slack" class="btn btn-outline-danger btn-sm">Remove Slack</button>
+              <button phx-click="remove-slack" class="btn btn-outline-danger btn-sm">
+                Remove Slack
+              </button>
             </div>
           <% else %>
             <a href={"https://slack.com/oauth/v2/authorize?client_id=#{Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id]}&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=#{url(~p"/auth/slack/callback")}&state=#{Jason.encode!(%{"action" => "save_hook_url", "alert_query" => @alert})}"}>

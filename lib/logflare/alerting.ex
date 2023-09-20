@@ -115,7 +115,6 @@ defmodule Logflare.Alerting do
     AlertQuery.changeset(alert_query, attrs)
   end
 
-
   @doc """
   Retrieves a Citrine.Job based on AlertQuery.
   Citrine.Job shares the same id as AlertQuery, resulting in a 1-1 relationship.

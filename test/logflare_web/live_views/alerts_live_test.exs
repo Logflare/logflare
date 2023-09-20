@@ -114,8 +114,8 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_click() =~ "Slack notifications have been removed"
 
       assert view
-              |> element("img[alt='Add to Slack']")
-              |> has_element?()
+             |> element("img[alt='Add to Slack']")
+             |> has_element?()
     end
   end
 end
