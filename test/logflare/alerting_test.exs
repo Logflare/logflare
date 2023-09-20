@@ -25,7 +25,7 @@ defmodule Logflare.AlertingTest do
     }
     @update_attrs %{
       name: "some updated name",
-      cron: "2 * * * *",
+      cron: "*/18 * * * *",
       query: "select other from `some-source`",
       slack_hook_url: "some updated slack_hook_url",
       source_mapping: %{},

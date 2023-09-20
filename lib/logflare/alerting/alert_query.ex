@@ -45,14 +45,12 @@ defmodule Logflare.Alerting.AlertQuery do
     ])
     |> validate_required([:name, :query, :cron, :language])
     |> validate_change(:cron, fn :cron, cron ->
-      limit_from_now = NaiveDateTime.utc_now() |> NaiveDateTime.add(15, :minute)
-
       with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
-           {:ok, next_run_date} <- Crontab.Scheduler.get_next_run_date(expr),
-           :gt <- NaiveDateTime.compare(next_run_date, limit_from_now) do
+           [first, second] <- Crontab.Scheduler.get_next_run_dates(expr) |> Enum.take(2),
+           true <- NaiveDateTime.diff(first, second, :minute) <= -15 do
         []
       else
-        :lt -> [cron: "can only trigger up to 15 minute intervals"]
+        false -> [cron: "can only trigger up to 15 minute intervals"]
         {:error, msg} -> [cron: msg]
       end
     end)
