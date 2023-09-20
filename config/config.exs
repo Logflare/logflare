@@ -116,6 +116,6 @@ config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 config :grpc, start_server: true
 
-config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.AlertsScheduler, :init_jobs, []}
+config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
 import_config "#{Mix.env()}.exs"

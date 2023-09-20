@@ -149,5 +149,12 @@ defmodule Logflare.AlertingTest do
 
       assert nil == Alerting.get_alert_job(alert_id)
     end
+
+    test "init function will populate citrine with alerts", %{user: user} do
+      alert = insert(:alert, user_id: user.id)
+      assert nil == Alerting.get_alert_job(alert.id)
+      assert :ok = Alerting.init_alert_jobs()
+      assert %Citrine.Job{} = Alerting.get_alert_job(alert.id)
+    end
   end
 end

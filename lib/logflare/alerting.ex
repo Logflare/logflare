@@ -145,6 +145,23 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
+  Initializes and ensures that all alert jobs are created.
+  TODO: batching instead of loading whole table.
+  """
+  def init_alert_jobs do
+    AlertQuery
+    |> Repo.all()
+    |> Stream.each(fn alert_query ->
+      if get_alert_job(alert_query) == nil do
+        upsert_alert_job(alert_query)
+      end
+    end)
+    |> Stream.run()
+
+    :ok
+  end
+
+  @doc """
   Performs the check lifecycle of an AlertQuery.
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
