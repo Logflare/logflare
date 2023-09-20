@@ -44,6 +44,19 @@ defmodule Logflare.Alerting.AlertQuery do
       :webhook_notification_url
     ])
     |> validate_required([:name, :query, :cron, :language])
+    |> validate_change(:cron, fn :cron, cron ->
+      limit_from_now = NaiveDateTime.utc_now() |> NaiveDateTime.add(15, :minute)
+
+      with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
+           {:ok, next_run_date} <- Crontab.Scheduler.get_next_run_date(expr),
+           :gt <- NaiveDateTime.compare(next_run_date, limit_from_now) do
+        []
+      else
+        :lt -> [cron: "can only trigger up to 15 minute intervals"]
+        {:error, msg} -> [cron: msg]
+      end
+    end)
+
     # this source mapping logic is for any generic changeset
     # we implement the same columns for now,
     # can consider migrating to separate table in future.

@@ -16,7 +16,7 @@ defmodule Logflare.AlertingTest do
 
     @valid_attrs %{
       name: "some name",
-      cron: "1 * * * * *",
+      cron: "*/25 * * * *",
       query: "select id from `some-source`",
       slack_hook_url: "some slack_hook_url",
       source_mapping: %{},
@@ -25,7 +25,7 @@ defmodule Logflare.AlertingTest do
     }
     @update_attrs %{
       name: "some updated name",
-      cron: "2 * * * * *",
+      cron: "2 * * * *",
       query: "select other from `some-source`",
       slack_hook_url: "some updated slack_hook_url",
       source_mapping: %{},
@@ -73,6 +73,20 @@ defmodule Logflare.AlertingTest do
 
     test "create_alert_query/1 with invalid data returns error changeset", %{user: user} do
       assert {:error, %Ecto.Changeset{}} = Alerting.create_alert_query(user, @invalid_attrs)
+      # invalid cron
+      assert {:error, %Ecto.Changeset{}} =
+               Alerting.create_alert_query(user, %{@valid_attrs | cron: "something"})
+
+      # less than 15 mins
+      assert {:error, %Ecto.Changeset{}} =
+               Alerting.create_alert_query(user, %{@valid_attrs | cron: "* * * * *"})
+
+      assert {:error, %Ecto.Changeset{}} =
+               Alerting.create_alert_query(user, %{@valid_attrs | cron: "*/10 * * * *"})
+
+      # second precision extended syntax
+      assert {:error, %Ecto.Changeset{}} =
+               Alerting.create_alert_query(user, %{@valid_attrs | cron: "* * * * * *"})
     end
 
     test "update_alert_query/2 with valid data updates the alert_query", %{user: user} do

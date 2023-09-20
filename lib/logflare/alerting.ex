@@ -137,7 +137,7 @@ defmodule Logflare.Alerting do
     Logflare.AlertsScheduler.put_job(%Citrine.Job{
       id: alert_query.id,
       schedule: alert_query.cron,
-      extended_syntax: true,
+      extended_syntax: false,
       task: {:run_alert, [alert_query]}
     })
 

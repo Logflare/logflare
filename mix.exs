@@ -204,7 +204,8 @@ defmodule Logflare.Mixfile do
       {:phoenix_live_dashboard, "~> 0.8"},
 
       # alerts feature
-      {:citrine, "~> 0.1.0"}
+      {:citrine, "~> 0.1.0"},
+      {:crontab, "~> 1.1"}
     ]
   end
 
