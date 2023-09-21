@@ -33,6 +33,14 @@
         <%= endpoint.description %>
       </p>
       <div class="tw-text-sm">
+        <span :if={endpoint.enable_auth} title="Auth enabled">
+          <i class="fas fa-lock"></i>
+        </span>
+
+        <span :if={!endpoint.enable_auth} title="Auth disabled">
+          <i class="fas fa-lock-open"></i>
+        </span>
+        <span>caches: <%= endpoint.metrics.cache_count %></span>
         <span>caches: <%= endpoint.metrics.cache_count %></span>
       </div>
     </li>
