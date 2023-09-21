@@ -76,7 +76,7 @@ defmodule LogflareWeb.EndpointsLive do
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
 
         # index page
-        socket when params == %{} ->
+        %{assigns: %{live_action: :index}} = socket ->
           socket
           |> refresh_endpoints()
           |> assign(:endpoint_changeset, nil)
