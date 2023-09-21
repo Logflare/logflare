@@ -5,7 +5,6 @@ defmodule LogflareWeb.EndpointsController do
   require Logger
   alias Logflare.Endpoints
 
-  alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.EndpointQuery
 
