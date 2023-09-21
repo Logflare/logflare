@@ -5,7 +5,6 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Backends
 
-  alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.LogsCreated
