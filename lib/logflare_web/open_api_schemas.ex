@@ -1,6 +1,12 @@
 defmodule LogflareWeb.OpenApiSchemas do
   alias OpenApiSpex.Schema
 
+  defmodule LogsCreated do
+    @properties %{
+      message: %Schema{type: :string, example: "Logged!"},
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
   defmodule Endpoint do
     @properties %{
       token: %Schema{type: :string},
