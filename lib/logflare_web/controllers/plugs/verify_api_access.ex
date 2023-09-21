@@ -59,20 +59,20 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
   defp extract_token(conn) do
     auth_header =
-      conn.req_headers
-      |> Enum.into(%{})
-      |> Map.get("authorization")
+      conn
+      |> Plug.Conn.get_req_header("authorization")
+      |> List.first()
 
     bearer =
-      if auth_header && String.contains?(auth_header, "Bearer ") do
-        String.split(auth_header, " ")
-        |> Enum.at(1)
+      case auth_header do
+        "Bearer " <> token -> token
+        _ -> nil
       end
 
     api_key =
-      conn.req_headers
-      |> Enum.into(%{})
-      |> Map.get("x-api-key", conn.params["api_key"])
+      conn
+      |> Plug.Conn.get_req_header("x-api-key")
+      |> List.first(conn.params["api_key"])
 
     cond do
       bearer != nil -> {:ok, bearer}
