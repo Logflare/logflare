@@ -626,7 +626,7 @@ defmodule Logflare.Sql do
     do: extract_all_parameters(ast, [])
 
   defp extract_all_parameters({"Placeholder", "@" <> value}, acc) do
-    if value not in acc, do: [value | acc], else: acc
+    if value in acc, do: acc, else: [value | acc]
   end
 
   defp extract_all_parameters(kv, acc) when is_list(kv) or is_map(kv) do

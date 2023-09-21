@@ -243,10 +243,10 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
       |> Enum.map(fn {:ok, datum} -> datum end)
       |> Enum.map(&%{"data" => &1})
 
-    if not Enum.empty?(results) do
-      {"lines", results}
-    else
+    if Enum.empty?(results) do
       {"lines_string", maybe_multi_json}
+    else
+      {"lines", results}
     end
   end
 
