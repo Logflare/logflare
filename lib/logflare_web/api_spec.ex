@@ -19,12 +19,18 @@ defmodule LogflareWeb.ApiSpec do
         title: to_string(Application.spec(:logflare, :description)),
         version: to_string(Application.spec(:logflare, :vsn))
       },
-      paths: Paths.from_router(Router),
+      paths: Paths.from_router(Router) |> filter_routes(),
       components: %Components{
         securitySchemes: %{
           "authorization" => %SecurityScheme{type: "http", scheme: "bearer", bearerFormat: "JWT"}
         }
       }
     })
+  end
+
+  defp filter_routes(routes_map) do
+    for {"/api" <> _path = k, v} <- routes_map, into: %{} do
+      {k, v}
+    end
   end
 end
