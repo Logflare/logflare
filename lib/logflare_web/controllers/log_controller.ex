@@ -12,7 +12,7 @@ defmodule LogflareWeb.LogController do
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
-  tags(["Ingestion"])
+  tags(["Public"])
 
   plug(
     CORSPlug,
@@ -37,11 +37,24 @@ defmodule LogflareWeb.LogController do
 
   operation(:create,
     summary: "Create log event",
-    description: "Full details are available in the [ingestion documentation](https://docs.logflare.app/concepts/ingestion/)",
+    description:
+      "Full details are available in the [ingestion documentation](https://docs.logflare.app/concepts/ingestion/)",
     parameters: [
-      source: [in: :query, description: "Source UUID", type: :string, example: "a040ae88-3e27-448b-9ee6-622278b23193", required: false],
-      source_name: [in: :query, description: "Source name", type: :string, example: "MyApp.MySource", required: false]
+      source: [
+        in: :query,
+        description: "Source UUID",
+        type: :string,
+        example: "a040ae88-3e27-448b-9ee6-622278b23193",
+        required: false
       ],
+      source_name: [
+        in: :query,
+        description: "Source name",
+        type: :string,
+        example: "MyApp.MySource",
+        required: false
+      ]
+    ],
     responses: %{
       201 => Created.response(LogsCreated),
       500 => ServerError.response()
