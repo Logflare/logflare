@@ -236,12 +236,9 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
     results =
       maybe_multi_json
       |> String.split("\n")
-      |> Enum.map(fn maybe_json ->
-        Jason.decode(maybe_json)
-      end)
+      |> Enum.map(&Jason.decode/1)
       |> Enum.filter(&match?({:ok, _}, &1))
-      |> Enum.map(fn {:ok, datum} -> datum end)
-      |> Enum.map(&%{"data" => &1})
+      |> Enum.map(fn {:ok, datum} -> %{"data" => datum} end)
 
     if Enum.empty?(results) do
       {"lines_string", maybe_multi_json}
