@@ -75,6 +75,13 @@ defmodule LogflareWeb.EndpointsLive do
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
 
+        # index page
+        socket when params == %{} ->
+          socket
+          |> refresh_endpoints()
+          |> assign(:endpoint_changeset, nil)
+          |> assign(:query_result_rows, nil)
+
         other ->
           other
           # reset the changeset
