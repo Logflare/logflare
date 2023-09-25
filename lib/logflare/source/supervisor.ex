@@ -56,7 +56,7 @@ defmodule Logflare.Source.Supervisor do
       rls = %RLS{source_id: source.token, source: source}
       Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
     end)
-    |> Enum.chunk_every(100)
+    |> Enum.chunk_every(25)
     |> Enum.each(fn children ->
       # BigQuery Rate limit is 100/second
       # Also gives the database a break on boot
