@@ -54,7 +54,7 @@
         <small>If you don't already have a Logflare account one will get created for you.</small>
       </p>
       <p class="text-center">
-        <small>Logflare is own and operated by Supabase. When using the Logflare hosted service you agree to the Supabase
+        <small>Logflare is owned and operated by Supabase. When using the Logflare hosted service you agree to the Supabase
           <%= link "terms of service", to: "https://supabase.com/terms", target: "_blank" %> and
           <%= link "privacy policy", to: "https://supabase.com/privacy", target: "_blank" %>.</small>
       </p>
