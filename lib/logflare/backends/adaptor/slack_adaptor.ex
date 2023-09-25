@@ -62,9 +62,9 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     indent = "    "
 
     text =
-      for {key, value} <- Map.to_list(row) |> Enum.sort_by(fn {k, _v} -> k end) do
-        "#{key}: #{value}"
-      end
+      row
+      |> Enum.sort_by(fn {k, _} -> k end)
+      |> Enum.map(fn {k, v} -> "#{k}: #{v}" end)
       |> Enum.join("\r" <> indent)
 
     bullet <> text

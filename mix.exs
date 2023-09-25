@@ -50,8 +50,7 @@ defmodule Logflare.Mixfile do
         :phoenix,
         :crypto,
         :os_mon
-      ],
-      included_applications: [:mnesia]
+      ]
     ]
   end
 
@@ -195,8 +194,6 @@ defmodule Logflare.Mixfile do
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile"},
       {:open_api_spex, "~> 3.16"},
-
-      # {:honeydew, "~> 1.5.0"}
       {:grpc, "~> 0.5.0"},
       {:protobuf, "~> 0.10"},
       {:gun, "~> 2.0", override: true},

@@ -16,7 +16,7 @@ defmodule Logflare.AlertingTest do
 
     @valid_attrs %{
       name: "some name",
-      cron: "*/25 * * * *",
+      cron: "0 0 1 * *",
       query: "select id from `some-source`",
       slack_hook_url: "some slack_hook_url",
       source_mapping: %{},

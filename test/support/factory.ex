@@ -289,7 +289,7 @@ defmodule Logflare.Factory do
   def alert_factory() do
     %AlertQuery{
       name: "some name",
-      cron: "1 * * * * *",
+      cron: "0 0 1 * *",
       query: "select current_date() as date",
       slack_hook_url: "some slack_hook_url",
       source_mapping: %{},
