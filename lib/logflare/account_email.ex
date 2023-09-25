@@ -201,22 +201,6 @@ defmodule Logflare.AccountEmail do
     |> text_body(part_one <> part_two <> unsuscribe_part)
   end
 
-  def schema_updated(
-        email,
-        %Source{token: token},
-        _new_schema,
-        _old_schema,
-        _opts
-      )
-      when is_nil(email) do
-    Logger.error(
-      "Email schema notification not sent. Email is nil for source user source token: #{inspect(token)}",
-      source_id: token
-    )
-
-    {:error, :nil_email}
-  end
-
   defp notification_email(email, rate, source_name, source_link, unsubscribe_link) do
     new()
     |> to(email)
